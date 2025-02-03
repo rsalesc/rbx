@@ -371,7 +371,7 @@ of how this feature works.
 [$ ON 2:$] ~ INCORRECT
 ```
 
-Finder expressions are really powerful, and can even be used to test your checkers, instead of solutionsthemselves.
+Finder expressions are really powerful, and can even be used to test your checkers, instead of solutions themselves.
 
 ```sh
 # Find a test where the checker returns something different than WA,
