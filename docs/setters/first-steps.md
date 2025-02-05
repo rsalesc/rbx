@@ -91,7 +91,7 @@ test
 
 ## Build
 
-Let's skip the configuration of the problem for a second, and just build and run it. You can build a problem with {{rbx.build}}. This will populate a `build` folder inside your problem's folder with all the testcases generated for the problem.
+Let's skip the configuration of the problem for a second, and just build and run it. You can build a problem with `rbx build`. This will populate a `build` folder inside your problem's folder with all the testcases generated for the problem.
 
 ```{.bash .no-copy}
 $ rbx build
