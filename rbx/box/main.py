@@ -266,10 +266,17 @@ def stress(
         ),
     ] = None,
     timeout: Annotated[
-        int, typer.Option(help='For how many seconds to run the stress test.')
+        int,
+        typer.Option(
+            '--timeout',
+            '--time',
+            '-t',
+            help='For how many seconds to run the stress test.',
+        ),
     ] = 10,
     findings: Annotated[
-        int, typer.Option(help='How many breaking tests to look for.')
+        int,
+        typer.Option('--findings', '-n', help='How many breaking tests to look for.'),
     ] = 1,
     verbose: bool = typer.Option(
         False,
