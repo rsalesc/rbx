@@ -210,6 +210,14 @@ def get_validator(root: pathlib.Path = pathlib.Path()) -> CodeItem:
 
 
 @functools.cache
+def get_validator_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeItem]:
+    package = find_problem_package_or_die(root)
+    if package.validator is None:
+        return None
+    return package.validator
+
+
+@functools.cache
 def get_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
     package = find_problem_package_or_die(root)
 

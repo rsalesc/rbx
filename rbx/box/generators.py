@@ -349,7 +349,7 @@ def generate_standalone(
 
         raise typer.Exit(1)
 
-    validator = package.get_validator()
+    validator = package.get_validator_or_nil()
     # Run validator, if it is available.
     if validator is not None and validate:
         if validator_digest is None:
