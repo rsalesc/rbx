@@ -76,6 +76,7 @@ def model_to_yaml(model: BaseModel) -> str:
             model.model_dump(mode='json', exclude_unset=True, exclude_none=True)
         ),
         sort_keys=False,
+        allow_unicode=True,
     )
 
 
