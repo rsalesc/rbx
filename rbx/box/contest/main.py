@@ -3,6 +3,7 @@ import shutil
 import subprocess
 from typing import Annotated, Optional
 
+import rich.prompt
 import typer
 
 from rbx import annotations, console, utils
@@ -38,7 +39,7 @@ app.add_typer(
 
 @app.command('create, c', help='Create a new contest package.')
 def create(
-    name: str,
+    path: str,
     preset: Annotated[
         str,
         typer.Option(
@@ -54,7 +55,7 @@ def create(
         help='Whether to inline the installed preset within the contest folder.',
     ),
 ):
-    console.console.print(f'Creating new contest [item]{name}[/item]...')
+    console.console.print(f'Creating new contest at [item]{path}[/item]...')
 
     fetch_info = get_preset_fetch_info(preset)
     if fetch_info is None:
@@ -85,17 +86,24 @@ def create(
         )
         raise typer.Exit(1)
 
-    dest_path = pathlib.Path(name)
+    dest_path = pathlib.Path(path)
 
     if dest_path.exists():
-        console.console.print(
-            f'[error]Directory [item]{dest_path}[/item] already exists.[/error]'
-        )
-        raise typer.Exit(1)
+        if not rich.prompt.Confirm.ask(
+            f'Directory [item]{dest_path}[/item] already exists. Create contest in it? This might be destructive.',
+            show_default=False,
+            console=console.console,
+        ):
+            console.console.print(
+                f'[error]Directory [item]{dest_path}[/item] already exists.[/error]'
+            )
+            raise typer.Exit(1)
 
-    shutil.copytree(str(contest_path), str(dest_path))
+    dest_path.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(str(contest_path), str(dest_path), dirs_exist_ok=True)
     shutil.rmtree(str(dest_path / 'build'), ignore_errors=True)
     shutil.rmtree(str(dest_path / '.box'), ignore_errors=True)
+    shutil.rmtree(str(dest_path / '.local.rbx'), ignore_errors=True)
     # TODO: consider clearing build and .box recursively for nested problem directories
     for lock in dest_path.rglob('.preset-lock.yml'):
         lock.unlink(missing_ok=True)
