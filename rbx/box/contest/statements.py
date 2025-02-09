@@ -51,7 +51,13 @@ def build(
             )
             with utils.new_cd(problem.get_path()):
                 contest_utils.clear_package_cache()
-                builder.build(verification=verification, groups=set(['samples']))
+                if not builder.build(
+                    verification=verification, groups=set(['samples'])
+                ):
+                    console.console.print(
+                        '[error]Failed to build statements with samples, aborting.[/error]'
+                    )
+                    raise typer.Exit(1)
 
     contest = find_contest_package_or_die()
     candidate_languages = languages

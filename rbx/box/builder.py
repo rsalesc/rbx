@@ -9,20 +9,46 @@ from rbx.box.solutions import (
     print_run_report,
     run_solutions,
 )
-from rbx.box.validators import print_validation_report, validate_testcases
+from rbx.box.validators import (
+    has_validation_errors,
+    print_validation_report,
+    validate_testcases,
+)
 
 
 def build(
     verification: environment.VerificationParam,
     groups: Optional[Set[str]] = None,
     output: bool = True,
-) -> None:
+) -> bool:
     with utils.StatusProgress(
         'Building testcases...',
         'Built [item]{processed}[/item] testcases...',
         keep=True,
     ) as s:
         generate_testcases(s, groups=groups)
+
+    if verification > 0:
+        validator = package.get_validator_or_nil()
+        if validator is None:
+            console.console.print(
+                '[warning]No validator found, skipping validation.[/warning]'
+            )
+
+        if validator is not None:
+            with utils.StatusProgress(
+                'Validating testcases...',
+                'Validated [item]{processed}[/item] testcases...',
+                keep=True,
+            ) as s:
+                infos = validate_testcases(s, groups=groups)
+                print_validation_report(infos)
+
+        if has_validation_errors(infos):
+            console.console.print(
+                '[error]Validation failed, check the report above.[/error]'
+            )
+            return False
 
     with utils.StatusProgress(
         'Building outputs for testcases...',
@@ -32,23 +58,16 @@ def build(
         if output:
             generate_outputs_for_testcases(s, groups=groups)
 
-    if verification > 0:
-        with utils.StatusProgress(
-            'Validating testcases...',
-            'Validated [item]{processed}[/item] testcases...',
-            keep=True,
-        ) as s:
-            infos = validate_testcases(s, groups=groups)
-            print_validation_report(infos)
-
     console.console.print(
         '[success]Problem built.[/success] '
         '[warning]Check the output for verification errors![/warning]'
     )
+    return True
 
 
 def verify(verification: environment.VerificationParam) -> bool:
-    build(verification=verification)
+    if not build(verification=verification):
+        return False
 
     if verification < VerificationLevel.FAST_SOLUTIONS.value:
         return True

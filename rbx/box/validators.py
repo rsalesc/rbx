@@ -202,6 +202,10 @@ def validate_testcases(
     return validation_info
 
 
+def has_validation_errors(infos: List[TestcaseValidationInfo]) -> bool:
+    return any(not info.ok for info in infos)
+
+
 def print_validation_report(infos: List[TestcaseValidationInfo]):
     console.console.rule('Validation report', style='status')
     hit_bounds_per_group: Dict[str, HitBounds] = {}

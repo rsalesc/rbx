@@ -132,7 +132,8 @@ def run(
         )
         check = False
 
-    builder.build(verification=verification, output=check)
+    if not builder.build(verification=verification, output=check):
+        return
 
     if verification <= VerificationLevel.VALIDATE.value:
         console.console.print(
