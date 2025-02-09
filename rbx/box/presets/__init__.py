@@ -334,6 +334,8 @@ def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
     shutil.copytree(str(root), str(installation_path))
     shutil.rmtree(str(installation_path / 'build'), ignore_errors=True)
     shutil.rmtree(str(installation_path / '.box'), ignore_errors=True)
+    shutil.rmtree(str(installation_path / '.local.rbx'), ignore_errors=True)
+    shutil.rmtree(str(installation_path / '.git'), ignore_errors=True)
 
 
 def install_from_remote(fetch_info: PresetFetchInfo, force: bool = False) -> str:
