@@ -278,6 +278,7 @@ class FileCacher:
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
         with self.get_file(digest) as src:
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
             with dst_path.open('wb') as dst:
                 storage.copyfileobj(src, dst, self.CHUNK_SIZE)
 
