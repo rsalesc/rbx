@@ -1,22 +1,22 @@
 site_name: rbx
 repo_url: https://github.com/rsalesc/rbx
 nav:
-  - 'index.md'
-  - 'Introduction':
-    - 'intro/installation.md'
-    - 'intro/configuration.md'
-  - 'rbx: rbx for setters':
-    - 'setters/first-steps.md'
-    - 'setters/cheatsheet.md'
-    - 'Reference':
-      - 'Package':
-        - 'setters/reference/package/index.md'
-        - 'Schema': 'setters/reference/package/schema.md'
-      - 'Contest':
-        - 'setters/reference/contest/index.md'
-        - 'Schema': 'setters/reference/contest/schema.md'
-      - 'setters/reference/environment.md'
-      - 'setters/reference/cli.md'
+  - "index.md"
+  - "Introduction":
+      - "intro/installation.md"
+      - "intro/configuration.md"
+  - "rbx: rbx for setters":
+      - "setters/first-steps.md"
+      - "setters/cheatsheet.md"
+      - "Reference":
+          - "Package":
+              - "setters/reference/package/index.md"
+              - "Schema": "setters/reference/package/schema.md"
+          - "Contest":
+              - "setters/reference/contest/index.md"
+              - "Schema": "setters/reference/contest/schema.md"
+        # - 'setters/reference/environment.md'
+        # - 'setters/reference/cli.md'
 theme:
   name: material
   palette:
@@ -45,7 +45,7 @@ plugins:
           options:
             unwrap_annotated: true
             extensions:
-            - griffe_fieldz
+              - griffe_fieldz
 extra:
   rbx: "[rbx](){:.rbx}"
   rbxTeX: "[rbxTeX](){:.rbx}"
@@ -59,7 +59,7 @@ extra:
   tags:
     accepted: '<span style="color: green">accepted</span>'
     wrong_answer: '<span style="color: red">wrong answer</span>'
-extra_css: 
+extra_css:
   - extra.css
 markdown_extensions:
   - admonition
