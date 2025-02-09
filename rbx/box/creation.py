@@ -61,7 +61,7 @@ def create(
         )
         raise typer.Exit(1)
 
-    dest_path.mkdir(parents=True, exist_ok=True)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(str(problem_path), str(dest_path))
 
     # Remove a few left overs.
