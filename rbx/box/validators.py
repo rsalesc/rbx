@@ -52,6 +52,9 @@ def _process_bounds(log: str) -> HitBounds:
         k, v = items
         v = v.strip()
 
+        if 'constant-bounds' in k:
+            continue
+
         hit = ('min-value-hit' in v, 'max-value-hit' in v)
         if k not in bounds:
             bounds[k] = hit
