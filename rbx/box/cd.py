@@ -3,9 +3,8 @@ import pathlib
 from typing import Optional
 
 import typer
-from rich import console
 
-from rbx import utils
+from rbx import console, utils
 
 
 def find_package(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
