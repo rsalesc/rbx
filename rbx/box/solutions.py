@@ -378,6 +378,7 @@ def _run_interactive_solutions(
     shutil.rmtree(str(irun_dir), ignore_errors=True)
     irun_dir.mkdir(parents=True, exist_ok=True)
     inputs_dir = irun_dir / 'inputs'
+    inputs_dir.mkdir(parents=True, exist_ok=True)
     input_path = inputs_dir / '000.in'
     output_path = input_path.with_suffix('.out')
 
