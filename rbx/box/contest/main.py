@@ -128,7 +128,8 @@ def edit():
 
 @app.command('add, a', help='Add new problem to contest.')
 @within_contest
-def add(name: str, short_name: str, preset: Optional[str] = None):
+def add(path: str, short_name: str, preset: Optional[str] = None):
+    name = pathlib.Path(path).stem
     utils.validate_field(ContestProblem, 'short_name', short_name)
     utils.validate_field(Package, 'name', name)
 
@@ -141,21 +142,21 @@ def add(name: str, short_name: str, preset: Optional[str] = None):
     preset_lock = presets.get_preset_lock()
     if preset is None and preset_lock is not None:
         preset = preset_lock.preset_name
-    creation.create(name, preset=preset, path=pathlib.Path(name))
+    creation.create(name, preset=preset, path=pathlib.Path(path))
 
     contest = find_contest_package_or_die()
     # Reassign mutable object before saving.
     contest.problems = sorted(
         [
             *contest.problems,
-            ContestProblem(short_name=short_name, path=pathlib.Path(name)),
+            ContestProblem(short_name=short_name, path=pathlib.Path(path)),
         ],
         key=lambda p: p.short_name,
     )
 
     save_contest(contest)
     console.console.print(
-        f'Problem [item]{name} ({short_name})[/item] added to contest.'
+        f'Problem [item]{name} ({short_name})[/item] added to contest at [item]{path}[/item].'
     )
 
 
