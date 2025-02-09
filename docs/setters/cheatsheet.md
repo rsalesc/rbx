@@ -9,7 +9,6 @@
 | Compile a file given its path                   | `rbx compile any my/file.cpp`                  |
 | Open the problem configuration in a text editor | `rbx edit`                                     |
 | Generate all testcases                          | `rbx build`                                    |
-| Generate all testcases and run validators       | `rbx verify`                                   |
 | Run all solutions and check their tags          | `rbx run`                                      |
 | Run all solutions except the slow ones          | `rbx run -v2`                                  |
 | Run all solutions without checking              | `rbx run --nocheck`                            |
