@@ -19,9 +19,8 @@ class VerificationLevel(Enum):
     NONE = 0
     VALIDATE = 1
     FAST_SOLUTIONS = 2
-    ASAN = 3
-    ALL_SOLUTIONS = 4
-    FULL = 5
+    ALL_SOLUTIONS = 3
+    FULL = 4
 
 
 VerificationParam = Annotated[
@@ -31,7 +30,7 @@ VerificationParam = Annotated[
         '--verification',
         '-v',
         help='Verification level to use when building package.',
-        default_factory=lambda: VerificationLevel.ALL_SOLUTIONS.value,
+        default_factory=lambda: VerificationLevel.FULL.value,
     ),
 ]
 
