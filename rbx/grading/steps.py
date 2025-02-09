@@ -1,5 +1,8 @@
+import functools
+import os
 import pathlib
 import shlex
+import shutil
 import subprocess
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -250,8 +253,24 @@ def _split_and_expand(command: str, sandbox: SandboxBase) -> List[str]:
     return res
 
 
+def _is_c_command(exe_command: str) -> bool:
+    return exe_command.endswith('gcc') or exe_command.endswith('clang')
+
+
 def _is_cpp_command(exe_command: str) -> bool:
     return exe_command.endswith('g++') or exe_command.endswith('clang++')
+
+
+@functools.cache
+def _complain_about_clang() -> None:
+    console.print(
+        '[warning]Notice your C++ files are being compiled with [item]clang[/item] instead of [item]g++[/item].[/warning]'
+    )
+    console.print('[warning]This may lead to unexpected behavior.[/warning]')
+    console.print('[warning]Consider using [item]g++[/item] instead.[/warning]')
+    console.print(
+        '[warning]See [item]https://rsalesc.github.io/rbx/cpp-on-macos[/item] for instructions on how to use [item]g++[/item] on MacOS.'
+    )
 
 
 def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
@@ -274,6 +293,7 @@ def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]
     if 'clang' not in lines[0]:
         return None
 
+    _complain_about_clang()
     bits = get_bits_stdcpp()
     return GradingFileInput(src=bits, dest=pathlib.Path('bits/stdc++.h'))
 
@@ -288,12 +308,45 @@ def _maybe_get_bits_stdcpp_for_commands(
     return None
 
 
+@functools.cache
+def _try_following_alias_for_exe(exe: str) -> Optional[str]:
+    if _is_c_command(exe) and os.environ.get('RBX_C_PATH'):
+        return os.environ['RBX_C_PATH']
+    if _is_cpp_command(exe) and os.environ.get('RBX_CPP_PATH'):
+        return os.environ['RBX_CPP_PATH']
+    output = subprocess.run(
+        f'which {exe}', shell=True, executable=shutil.which('bash'), capture_output=True
+    )
+    if output.returncode != 0:
+        return None
+    return output.stdout.decode().strip()
+
+
+def _try_following_alias_for_command(command: str) -> str:
+    cmds = shlex.split(command)
+    if not cmds:
+        return command
+    exe = cmds[0]
+    new_exe = _try_following_alias_for_exe(exe)
+    if new_exe is None:
+        return command
+    return shlex.join([new_exe, *cmds[1:]])
+
+
+def _try_following_alias_for_commands(commands: List[str]) -> List[str]:
+    res: List[str] = []
+    for command in commands:
+        res.append(_try_following_alias_for_command(command))
+    return res
+
+
 def compile(
     commands: List[str],
     params: SandboxParams,
     sandbox: SandboxBase,
     artifacts: GradingArtifacts,
 ) -> bool:
+    commands = _try_following_alias_for_commands(commands)
     bits_artifact = _maybe_get_bits_stdcpp_for_commands(commands)
     if bits_artifact is not None:
         _process_input_artifacts(GradingArtifacts(inputs=[bits_artifact]), sandbox)
