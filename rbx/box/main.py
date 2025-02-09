@@ -96,13 +96,6 @@ def build(verification: environment.VerificationParam):
     builder.build(verification=verification)
 
 
-@app.command('verify, v', help='Build and verify all the tests for the problem.')
-@package.within_problem
-def verify(verification: environment.VerificationParam):
-    if not builder.verify(verification=verification):
-        console.console.print('[error]Verification failed, check the report.[/error]')
-
-
 @app.command('run, r', help='Build and run solution(s).')
 @package.within_problem
 def run(
@@ -140,6 +133,12 @@ def run(
         check = False
 
     builder.build(verification=verification, output=check)
+
+    if verification <= VerificationLevel.VALIDATE.value:
+        console.console.print(
+            '[warning]Verification level is set to [item]validate (-v1)[/item], so rbx only build tests and validated them.[/warning]'
+        )
+        return
 
     with utils.StatusProgress('Running solutions...') as s:
         tracked_solutions = None
@@ -206,6 +205,12 @@ def irun(
         console.console.print(
             '[warning]Outputs will be written to files. If you wish to print them to the terminal, use the "-p" parameter.'
         )
+    if verification < VerificationLevel.ALL_SOLUTIONS.value:
+        console.console.print(
+            '[warning]Verification level should be at least [item]all solutions (-v4)[/item] to run solutions interactively.'
+        )
+        return
+
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
