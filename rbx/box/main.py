@@ -3,6 +3,7 @@ from gevent import monkey
 
 monkey.patch_all()
 
+import tempfile
 import shlex
 import sys
 import typing
@@ -31,6 +32,7 @@ from rbx.box import (
     compile,
     presets,
     stresses,
+    validators,
 )
 from rbx.box.contest import main as contest
 from rbx.box.environment import VerificationLevel, get_environment_path
@@ -364,6 +366,39 @@ def compile_command(
     path: Annotated[str, typer.Argument(help='Path to the asset to compile.')],
 ):
     compile.any(path)
+
+
+@app.command('validate', help='Run the validator in a one-off fashion, interactively.')
+@package.within_problem
+def validate(
+    path: Annotated[
+        Optional[str],
+        typer.Option('--path', '-p', help='Path to the testcase to validate.'),
+    ] = None,
+):
+    validator_tuple = validators.compile_main_validator()
+    if validator_tuple is None:
+        console.console.print('[error]No validator found for this problem.[/error]')
+        raise typer.Exit(1)
+
+    validator, validator_digest = validator_tuple
+
+    input = console.multiline_prompt('Testcase input')
+
+    if path is None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = pathlib.Path(tmpdir) / '000.in'
+            tmppath.write_text(input)
+
+            info = validators.validate_one_off(
+                pathlib.Path(tmppath), validator, validator_digest
+            )
+    else:
+        info = validators.validate_one_off(
+            pathlib.Path(path), validator, validator_digest
+        )
+
+    validators.print_validation_report([info])
 
 
 @app.command('environment, env', help='Set or show the current box environment.')

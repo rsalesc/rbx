@@ -13,6 +13,7 @@
 | Run all solutions except the slow ones          | `rbx run -v2`                                  |
 | Run all solutions without checking              | `rbx run --nocheck`                            |
 | Run all solutions interactively                 | `rbx irun`                                     |
+| Run the validator interactively                 | `rbx validate`                                 |
 | Run a stress test with name `break`             | `rbx stress break`                             |
 | Run a stress test for a generator               | `rbx stress gen -g "[1..10]" -s sols/main.cpp` |
 | Download {{testlib}} to the current folder      | `rbx download testlib`                         |
@@ -32,6 +33,8 @@
 | Show help message                               | `rbx contest --help`                           |
 | Create a new contest in folder `package`        | `rbx contest create package`                   |
 | Add a new problem to the contest with letter A  | `rbx contest add new-problem A`                |
+| Remove a problem from the contest               | `rbx contest remove A`                         |
+| Remove a problem at a certain path              | `rbx contest remove path/to/problem`           |
 | Open the contest configuration in a text editor | `rbx contest edit`                             |
 | Build PDF statements                            | `rbx contest statements build --output=pdf`    |
 | Build PDF statements for English                | `rbx contest statements build en --output=pdf` |

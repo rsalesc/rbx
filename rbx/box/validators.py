@@ -141,6 +141,22 @@ def compile_main_validator() -> Optional[Tuple[CodeItem, str]]:
     return pkg.validator, _compile_validator(pkg.validator)
 
 
+def validate_one_off(
+    testcase: pathlib.Path,
+    validator: CodeItem,
+    validator_digest: str,
+) -> TestcaseValidationInfo:
+    ok, message, _ = validate_test(testcase, validator, validator_digest)
+    info = TestcaseValidationInfo(
+        group='interactive',
+        path=testcase,
+        ok=ok,
+        hit_bounds={},
+        message=message,
+    )
+    return info
+
+
 def compile_validators(
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -224,6 +240,10 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
         hit_bounds_per_group[info.group] = _merge_hit_bounds(
             [hit_bounds_per_group[info.group], info.hit_bounds]
         )
+
+    if not hit_bounds_per_group:
+        console.console.print()
+        return
 
     if not _has_group_specific_validator():
         hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
