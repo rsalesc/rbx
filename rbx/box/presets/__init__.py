@@ -294,6 +294,18 @@ def get_installed_preset(name: str, root: pathlib.Path = pathlib.Path()) -> Pres
     return preset
 
 
+def optionally_install_environment_from_preset(
+    preset: Preset, root: pathlib.Path = pathlib.Path()
+):
+    if preset.env is None:
+        return
+    env_path = get_environment_path(preset.name)
+    if env_path.is_file():
+        return
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(str(root / preset.env), env_path)
+
+
 def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
     preset = get_preset_yaml(root)
 

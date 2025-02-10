@@ -423,10 +423,17 @@ def activate():
             console.console.print(
                 '[error]Preset is not installed. Install it manually, or specify a URI in [item].preset-lock.yml[/item].[/error]'
             )
-            raise
+            raise typer.Exit(1)
         presets.install(preset_lock.uri)
 
     preset = presets.get_installed_preset(preset_lock.preset_name)
+
+    # Install the environment from the preset if it's not already installed.
+    presets.optionally_install_environment_from_preset(
+        preset, root=presets.get_preset_installation_path(preset_lock.name)
+    )
+
+    # Activate the environment.
     if preset.env is not None:
         environment_command(preset.name)
 
