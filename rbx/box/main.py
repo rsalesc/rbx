@@ -69,9 +69,6 @@ app.add_typer(
 app.add_typer(
     contest.app, name='contest', cls=annotations.AliasGroup, help='Contest management.'
 )
-app.add_typer(
-    compile.app, name='compile', cls=annotations.AliasGroup, help='Compile assets.'
-)
 
 
 @app.command('ui', hidden=True)
@@ -359,6 +356,14 @@ def stress(
         except typer.Exit:
             continue
         break
+
+
+@app.command('compile', help='Compile an asset given its path.')
+@package.within_problem
+def compile_command(
+    path: Annotated[str, typer.Argument(help='Path to the asset to compile.')],
+):
+    compile.any(path)
 
 
 @app.command('environment, env', help='Set or show the current box environment.')
