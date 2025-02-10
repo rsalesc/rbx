@@ -567,7 +567,8 @@ def _print_solution_outcome(
             console.print(
                 '[yellow]WARNING[/yellow] The solution still passed in double TL.'
             )
-        else:
+        elif not (bad_verdicts - {Outcome.TIME_LIMIT_EXCEEDED}):
+            # The solution has other bad soft TLE outcomes.
             other_verdicts_names = ' '.join(v.name for v in other_verdicts)
             console.print(
                 f'[yellow]WARNING[/yellow] The solution could still run under double TL, but failed with [item]{other_verdicts_names}[/item].'
