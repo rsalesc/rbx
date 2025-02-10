@@ -160,6 +160,32 @@ def add(path: str, short_name: str, preset: Optional[str] = None):
     )
 
 
+@app.command('remove, r', help='Remove problem from contest.')
+@within_contest
+def remove(path_or_short_name: str):
+    contest = find_contest_package_or_die()
+
+    kept_problems = []
+    removed_problems = []
+    for problem in contest.problems:
+        if (
+            problem.path == pathlib.Path(path_or_short_name)
+            or problem.short_name == path_or_short_name
+        ):
+            removed_problems.append(problem)
+        else:
+            kept_problems.append(problem)
+
+    contest.problems = kept_problems
+    save_contest(contest)
+
+    for problem in removed_problems:
+        shutil.rmtree(str(problem.path), ignore_errors=True)
+        console.console.print(
+            f'Problem [item]{problem.short_name}[/item] removed from contest at [item]{problem.path}[/item].'
+        )
+
+
 @app.command(
     'each',
     help='Run a command for each problem in the contest.',
