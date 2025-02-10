@@ -119,12 +119,13 @@ def check(
     )
     message = package.get_digest_as_string(error.value or '') or ''
 
-    if checker_run_log is None or checker_run_log.exitcode not in [0, 1, 2, 3]:
-        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
-
     if (
         checker_run_log is not None
-        and checker_run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
+        and checker_run_log.exitcode != 0
+        and (
+            checker_run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
+            or checker_run_log.exitcode not in [0, 1, 2, 3]
+        )
     ):
         console.console.print(
             f'[error]Checker [item]{package.get_checker().path}[/item] failed unexpectedly.[/error]'
@@ -142,6 +143,9 @@ def check(
             f'[error]Program output:[/error] [item]{program_output}[/item]'
         )
         raise typer.Exit(1)
+
+    if checker_run_log is None or checker_run_log.exitcode not in [0, 1, 2, 3]:
+        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
     result = CheckerResult(outcome=Outcome.ACCEPTED, message=message)
 
