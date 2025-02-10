@@ -22,7 +22,7 @@ def _compile(item: CodeItem):
     out_path.chmod(0o755)
 
     console.console.print(
-        f'[success]Compiled file written at [item]{out_path}[/item].[/success]'
+        f'[success]Compiled file written at [item]{out_path}[/item][/success]'
     )
 
 
