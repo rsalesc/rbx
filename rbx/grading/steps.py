@@ -154,6 +154,13 @@ class RunLog(BaseModel):
             return None
         return self.metadata.language
 
+    def get_summary(self) -> str:
+        if self.exitcode == 0:
+            return 'OK'
+        time = self.time or 0.0
+        memory = self.memory or 0
+        return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory}MB)'
+
 
 class TestcaseLog(RunLog):
     stdout_absolute_path: Optional[pathlib.Path] = None

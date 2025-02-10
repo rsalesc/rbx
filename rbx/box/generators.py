@@ -82,6 +82,8 @@ def _run_generator(
         console.console.print(
             f'[error]Failed generating test {i} from group path {group_path}[/error]',
         )
+        if run_log is not None:
+            console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
         if generation_stderr.value is not None:
             console.console.print('[error]Stderr:[/error]')
             console.console.print(
@@ -142,9 +144,7 @@ def generate_output_for_testcase(
             f'[error]Failed generating output for [item]{testcase.inputPath}[/item][/error]',
         )
         if run_log is not None:
-            console.console.print(
-                f'[error]Main solution exited with code [item]{-run_log.exitcode}[/item][/error]',
-            )
+            console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
             checker_result = checkers.check_with_no_output(run_log)
             console.console.print(
                 f'[warning]Time: [item]{run_log.time:.2f}s[/item][/warning]',
@@ -238,7 +238,7 @@ def _run_generator_script(testcase: TestcaseSubgroup, cacher: FileCacher) -> str
             )
             if run_log is not None:
                 console.console.print(
-                    f'[error]Script exited with code [item]{-run_log.exitcode}[/item][/error]',
+                    f'[error]Summary:[/error] {run_log.get_summary()}'
                 )
             if run_stderr.value is not None:
                 console.console.print('[error]Stderr:[/error]')
@@ -341,6 +341,10 @@ def generate_standalone(
         console.console.print(
             f'[error]Failed generating test using generator call [info]{call.name} {expanded_args_str}[/info].[/error]',
         )
+        if generation_log is not None:
+            console.console.print(
+                f'[error]Summary:[/error] {generation_log.get_summary()}'
+            )
         if generation_stderr.value is not None:
             console.console.print('[error]Stderr:[/error]')
             console.console.print(

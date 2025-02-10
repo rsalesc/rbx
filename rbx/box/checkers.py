@@ -122,6 +122,27 @@ def check(
     if checker_run_log is None or checker_run_log.exitcode not in [0, 1, 2, 3]:
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
+    if (
+        checker_run_log is not None
+        and checker_run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
+    ):
+        console.console.print(
+            f'[error]Checker [item]{package.get_checker().path}[/item] failed unexpectedly.[/error]'
+        )
+        console.console.print(
+            f'[error]Summary:[/error] {checker_run_log.get_summary()}'
+        )
+        console.console.print(
+            f'[error]Testcase input:[/error] [item]{testcase.inputPath}[/item]'
+        )
+        console.console.print(
+            f'[error]Testcase output:[/error] [item]{testcase.outputPath}[/item]'
+        )
+        console.console.print(
+            f'[error]Program output:[/error] [item]{program_output}[/item]'
+        )
+        raise typer.Exit(1)
+
     result = CheckerResult(outcome=Outcome.ACCEPTED, message=message)
 
     if checker_run_log.exitcode in [1, 2]:

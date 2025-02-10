@@ -2,6 +2,7 @@ import pathlib
 import shlex
 from typing import Dict, List, Optional, Set, Tuple
 
+import typer
 from pydantic import BaseModel
 
 from rbx import console
@@ -9,6 +10,7 @@ from rbx.box import package
 from rbx.box.code import compile_item, run_item
 from rbx.box.schema import CodeItem, Primitive
 from rbx.box.testcases import find_built_testcase_inputs
+from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -111,6 +113,18 @@ def _validate_testcase(
         ],
         extra_args=shlex.join(var_args) if var_args else None,
     )
+
+    if (
+        run_log is not None
+        and run_log.exitcode != 0
+        and run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
+    ):
+        console.console.print(
+            f'[error]Validator [item]{validator.path}[/item] failed unexpectedly.[/error]'
+        )
+        console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
+        raise typer.Exit(1)
+
     log_overview = ''
     if log_digest.value is not None:
         log_overview = package.get_digest_as_string(log_digest.value or '')
