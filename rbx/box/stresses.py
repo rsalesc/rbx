@@ -104,6 +104,8 @@ def run_stress(
         if time.monotonic() - startTime > timeoutInSeconds:
             break
 
+        executed += 1
+
         if progress:
             seconds = timeoutInSeconds - int(time.monotonic() - startTime)
             progress.update(
@@ -259,7 +261,6 @@ def run_stress(
         )
 
         # Be cooperative.
-        executed += 1
         time.sleep(0.001)
 
     return StressReport(findings=findings, executed=executed)
