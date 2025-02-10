@@ -8,7 +8,7 @@ import shlex
 import sys
 import typing
 
-from rbx.box.schema import CodeItem, ExpectedOutcome
+from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
 
 
 import pathlib
@@ -336,8 +336,26 @@ def stress(
 
         testgroup = questionary.select(
             'Choose the testgroup to add the tests to.\nOnly test groups that have a .txt generatorScript are shown below: ',
-            choices=list(groups_by_name) + ['(skip)'],
+            choices=list(groups_by_name) + ['(create new script)', '(skip)'],
         ).ask()
+
+        if testgroup == '(create new script)':
+            new_script_name = questionary.text(
+                'Enter the name of the new .txt generatorScript file: '
+            ).ask()
+            new_script_path = pathlib.Path(new_script_name).with_suffix('.txt')
+            new_script_path.parent.mkdir(parents=True, exist_ok=True)
+            new_script_path.touch()
+
+            # Temporarily create a new testgroup with the new script.
+            testgroup = new_script_path.stem
+            groups_by_name[testgroup] = TestcaseGroup(
+                name=testgroup, generatorScript=CodeItem(path=new_script_path)
+            )
+            console.console.print(
+                f'[warning]A testgroup for [item]{new_script_path}[/item] will not be automatically added to the problem.rbx.yml file for you.\n'
+                'Please add it manually. [/warning]'
+            )
 
         if testgroup not in groups_by_name:
             break
