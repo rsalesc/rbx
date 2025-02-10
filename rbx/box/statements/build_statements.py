@@ -330,7 +330,11 @@ def build(
 ):
     # At most run the validators, only in samples.
     if samples:
-        if not builder.build(verification=verification, groups=set(['samples'])):
+        if not builder.build(
+            verification=verification,
+            groups=set(['samples']),
+            output=None,
+        ):
             console.console.print(
                 '[error]Failed to build statements with samples, aborting.[/error]'
             )

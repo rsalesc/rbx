@@ -19,8 +19,13 @@ from rbx.box.validators import (
 def build(
     verification: environment.VerificationParam,
     groups: Optional[Set[str]] = None,
-    output: bool = True,
+    output: Optional[bool] = True,
 ) -> bool:
+    no_main_solution_report = False
+    if output is None:
+        output = package.get_main_solution() is not None
+        no_main_solution_report = output
+
     with utils.StatusProgress(
         'Building testcases...',
         'Built [item]{processed}[/item] testcases...',
@@ -62,6 +67,12 @@ def build(
         '[success]Problem built.[/success] '
         '[warning]Check the output for verification errors![/warning]'
     )
+
+    if no_main_solution_report:
+        console.console.print(
+            '[warning]No main solution found, skipping generating samples for the statement.[/warning]'
+        )
+
     return True
 
 

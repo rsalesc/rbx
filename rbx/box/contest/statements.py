@@ -51,8 +51,9 @@ def build(
             )
             with utils.new_cd(problem.get_path()):
                 contest_utils.clear_package_cache()
+
                 if not builder.build(
-                    verification=verification, groups=set(['samples'])
+                    verification=verification, groups=set(['samples']), output=None
                 ):
                     console.console.print(
                         '[error]Failed to build statements with samples, aborting.[/error]'
