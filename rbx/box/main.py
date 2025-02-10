@@ -253,7 +253,13 @@ def create(
 @app.command('stress', help='Run a stress test.')
 @package.within_problem
 def stress(
-    name: str,
+    name: Annotated[
+        str,
+        typer.Argument(
+            help='Name of the stress test to run (specified in problem.rbx.yml), '
+            'or the generator to run, in case -g is specified.'
+        ),
+    ],
     generator_args: Annotated[
         Optional[str],
         typer.Option(
