@@ -480,10 +480,14 @@ def get_testcase_markup_verdict(eval: Evaluation) -> str:
 
 
 def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
+    if not evals:
+        return 0
     return max(int((eval.log.time or 0.0) * 1000) for eval in evals)
 
 
 def _get_evals_memory_in_mb(evals: List[Evaluation]) -> int:
+    if not evals:
+        return 0
     return max(int(eval.log.memory or 0) // (1024 * 1024) for eval in evals)
 
 
@@ -788,6 +792,9 @@ def print_run_report(
     print_last_solution()
 
     items.seek(0)
-    _print_timing(console, result.skeleton, list(structured_evaluations)[-1])
+    structured_evaluations_list = list(structured_evaluations)
+
+    if structured_evaluations_list:
+        _print_timing(console, result.skeleton, structured_evaluations_list[-1])
 
     return ok
