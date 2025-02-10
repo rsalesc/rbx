@@ -159,7 +159,7 @@ class RunLog(BaseModel):
             return 'OK'
         time = self.time or 0.0
         memory = self.memory or 0
-        return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory}MB)'
+        return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory//(1024*1024)}MB)'
 
 
 class TestcaseLog(RunLog):
