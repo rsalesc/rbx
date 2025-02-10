@@ -319,8 +319,8 @@ def _maybe_get_bits_stdcpp_for_commands(
 def _try_following_alias_for_exe(exe: str) -> Optional[str]:
     if _is_c_command(exe) and os.environ.get('RBX_C_PATH'):
         return os.environ['RBX_C_PATH']
-    if _is_cpp_command(exe) and os.environ.get('RBX_CPP_PATH'):
-        return os.environ['RBX_CPP_PATH']
+    if _is_cpp_command(exe) and os.environ.get('RBX_CXX_PATH'):
+        return os.environ['RBX_CXX_PATH']
     output = subprocess.run(
         f'which {exe}', shell=True, executable=shutil.which('bash'), capture_output=True
     )
