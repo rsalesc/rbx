@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Annotated, List, Optional, Type, TypeVar
 
 import typer
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from rbx import config, console, utils
 from rbx.box.extensions import Extensions, LanguageExtensions
@@ -192,7 +192,14 @@ def get_environment(env: Optional[str] = None) -> Environment:
             f'Environment file [item]{env_path}[/item] not found.', style='error'
         )
         raise typer.Exit()
-    return utils.model_from_yaml(Environment, env_path.read_text())
+    try:
+        return utils.model_from_yaml(Environment, env_path.read_text())
+    except ValidationError as e:
+        console.console.print(e)
+        console.console.print(
+            f'[error]Error parsing environment file [item]{env_path}[/item].[/error]'
+        )
+        raise typer.Exit(1) from e
 
 
 @functools.cache

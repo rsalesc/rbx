@@ -3,6 +3,7 @@ import pathlib
 from typing import List, Optional
 
 import typer
+from pydantic import ValidationError
 
 from rbx import console, utils
 from rbx.box.contest.schema import Contest
@@ -30,7 +31,12 @@ def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contes
     contest_yaml_path = find_contest_yaml(root)
     if not contest_yaml_path:
         return None
-    return utils.model_from_yaml(Contest, contest_yaml_path.read_text())
+    try:
+        return utils.model_from_yaml(Contest, contest_yaml_path.read_text())
+    except ValidationError as e:
+        console.console.print(e)
+        console.console.print('[error]Error parsing contest.rbx.yml.[/error]')
+        raise typer.Exit(1) from e
 
 
 def find_contest_package_or_die(root: pathlib.Path = pathlib.Path()) -> Contest:
