@@ -509,6 +509,7 @@ def _print_solution_outcome(
 ) -> bool:
     pkg = package.find_problem_package_or_die()
 
+    has_plain_tle = False
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
     for eval in evals:
@@ -519,6 +520,10 @@ def _print_solution_outcome(
             and eval.result.no_tle_outcome != Outcome.ACCEPTED
         ):
             no_tle_bad_verdicts.add(eval.result.no_tle_outcome)
+        has_plain_tle = has_plain_tle or (
+            eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+            and eval.result.no_tle_outcome is None
+        )
 
     unmatched_bad_verdicts = set(
         v for v in bad_verdicts if not solution.outcome.match(v)
@@ -547,16 +552,26 @@ def _print_solution_outcome(
         verification.value >= VerificationLevel.FULL.value
         # Solution expects a TLE.
         and expected_outcome_is_tle
-        # A TLE (or similar) has happened.
-        and matched_bad_verdicts
-        # The solution has no other bad verdicts except for TLEs in double TL.
-        and not ((bad_verdicts | no_tle_bad_verdicts) - {Outcome.TIME_LIMIT_EXCEEDED})
-        # The solution passes in double TL.
+        # Solution does not have a plain TLE.
+        and not has_plain_tle
+        # A TLE has happened.
+        and Outcome.TIME_LIMIT_EXCEEDED in matched_bad_verdicts
+        # The solution runs in double TL.
         and evals_time < pkg.timelimit_for_language(solution.language) * 2
     ):
-        console.print(
-            '[yellow]WARNING[/yellow] The solution still passed in double TL.'
-        )
+        other_verdicts = (bad_verdicts | no_tle_bad_verdicts) - {
+            Outcome.TIME_LIMIT_EXCEEDED
+        }
+        if not other_verdicts:
+            # The solution has no other bad verdicts except for TLEs in double TL.
+            console.print(
+                '[yellow]WARNING[/yellow] The solution still passed in double TL.'
+            )
+        else:
+            other_verdicts_names = ' '.join(v.name for v in other_verdicts)
+            console.print(
+                f'[yellow]WARNING[/yellow] The solution could still run under double TL, but failed with [item]{other_verdicts_names}[/item].'
+            )
     console.print(f'Time: {get_evals_formatted_time(evals)}')
     console.print(f'Memory: {get_evals_formatted_memory(evals)}')
     return len(unmatched_bad_verdicts) == 0

@@ -24,7 +24,7 @@ def build(
     no_main_solution_report = False
     if output is None:
         output = package.get_main_solution() is not None
-        no_main_solution_report = output
+        no_main_solution_report = not output
 
     with utils.StatusProgress(
         'Building testcases...',
