@@ -44,7 +44,6 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.statements import build_statements
-from rbx.box.ui import main as ui_pkg
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 app.add_typer(
@@ -73,10 +72,10 @@ app.add_typer(
 )
 
 
-@app.command('ui', hidden=True)
-@package.within_problem
-def ui():
-    ui_pkg.start()
+# @app.command('ui', hidden=True)
+# @package.within_problem
+# def ui():
+#     ui_pkg.start()
 
 
 @app.command('edit, e', help='Open problem.rbx.yml in your default editor.')
