@@ -114,11 +114,8 @@ def generate_output_for_testcase(
     if main_solution is None:
         return
 
-    timelimit = pkg.timelimit_for_language(main_solution.language)
+    # Obey no limits when generating testcases.
     sandbox = EnvironmentSandbox()
-    sandbox.timeLimit = timelimit * 3
-    sandbox.wallTimeLimit = timelimit * 3
-    sandbox.memoryLimit = pkg.memorylimit_for_language(main_solution.language)
     sandbox.fileSizeLimit = pkg.outputLimit
     extra_config = ExecutionConfig(sandbox=sandbox)
 
