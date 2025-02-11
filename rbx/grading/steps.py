@@ -132,12 +132,6 @@ class TestcaseIO(BaseModel):
     output: Optional[pathlib.Path] = None
 
 
-class PreprocessLog(BaseModel):
-    cmd: List[str]
-    exitcode: int
-    log: str
-
-
 class RunLogMetadata(BaseModel):
     language: Optional[str] = None
 
@@ -160,6 +154,11 @@ class RunLog(BaseModel):
         time = self.time or 0.0
         memory = self.memory or 0
         return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory//(1024*1024)}MB)'
+
+
+class PreprocessLog(RunLog):
+    cmd: List[str]
+    log: str
 
 
 class TestcaseLog(RunLog):
@@ -397,6 +396,9 @@ def compile(
         log = PreprocessLog(
             cmd=cmd,
             exitcode=sandbox.get_exit_code(),
+            exitstatus=sandbox.get_exit_status(),
+            time=sandbox.get_execution_time(),
+            memory=sandbox.get_memory_used(),
             log='\n'.join(std_outputs),
         )
         logs.append(log)
@@ -406,10 +408,10 @@ def compile(
 
     if logs and logs[-1].exitcode != 0:
         console.print(
-            'Preprocessing [error]failed[/error] with command',
+            '[error]FAILED[/error] Preprocessing failed with command',
             utils.highlight_json_obj(logs[-1].cmd),
         )
-        console.print(f'Exit code: [error]{logs[-1].exitcode}[/error]')
+        console.print(f'[error]Summary:[/error] {logs[-1].get_summary()}')
         console.print(Text.from_ansi(logs[-1].log), style='default')
         return False
 
