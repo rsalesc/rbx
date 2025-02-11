@@ -116,8 +116,8 @@ def generate_output_for_testcase(
 
     timelimit = pkg.timelimit_for_language(main_solution.language)
     sandbox = EnvironmentSandbox()
-    sandbox.timeLimit = timelimit * 2
-    sandbox.wallTimeLimit = timelimit * 2
+    sandbox.timeLimit = timelimit * 3
+    sandbox.wallTimeLimit = timelimit * 3
     sandbox.memoryLimit = pkg.memorylimit_for_language(main_solution.language)
     sandbox.fileSizeLimit = pkg.outputLimit
     extra_config = ExecutionConfig(sandbox=sandbox)
@@ -146,9 +146,6 @@ def generate_output_for_testcase(
         if run_log is not None:
             console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
             checker_result = checkers.check_with_no_output(run_log)
-            console.console.print(
-                f'[warning]Time: [item]{run_log.time:.2f}s[/item][/warning]',
-            )
             console.console.print(
                 f'[warning]Verdict: [item]{checker_result.outcome.value}[/item][/warning]',
             )
