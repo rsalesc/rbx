@@ -1,4 +1,5 @@
 import hashlib
+import pathlib
 from typing import IO
 
 import gevent
@@ -33,3 +34,8 @@ def digest_cooperatively(f: IO[bytes], chunk_size: int = 2**20):
     d = Digester()
     digest_cooperatively_into_digester(f, d, chunk_size)
     return d.digest()
+
+
+def digest_file(path: pathlib.Path):
+    with open(path, 'rb') as f:
+        return digest_cooperatively(f)

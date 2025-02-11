@@ -4,6 +4,7 @@ import tempfile
 from typing import Annotated, Iterable, List, Optional, Sequence, Union
 
 import git
+import questionary
 import rich
 import rich.prompt
 import typer
@@ -16,7 +17,7 @@ from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock
 from rbx.box.presets.schema import Preset, TrackedAsset
 from rbx.config import get_default_app_path
-from rbx.grading.judge.digester import digest_cooperatively
+from rbx.grading.judge.digester import digest_cooperatively, digest_file
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -300,10 +301,22 @@ def optionally_install_environment_from_preset(
     if preset.env is None:
         return
     env_path = get_environment_path(preset.name)
+    preset_env_path = root / preset.env
     if env_path.is_file():
-        return
+        if digest_file(preset_env_path) == digest_file(env_path):
+            return
+        overwrite = questionary.confirm(
+            'Preset environment file has changed. Overwrite?',
+            default=False,
+        ).ask()
+        if not overwrite:
+            return
+
+    console.console.print(
+        f'[success]Overwriting the existing environment based on [item]{preset.env}[/item].'
+    )
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(str(root / preset.env), env_path)
+    shutil.copyfile(str(preset_env_path), env_path)
 
 
 def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
