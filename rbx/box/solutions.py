@@ -491,14 +491,24 @@ def _get_evals_memory_in_mb(evals: List[Evaluation]) -> int:
     return max(int(eval.log.memory or 0) // (1024 * 1024) for eval in evals)
 
 
+def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
+    if not evals:
+        return 0
+    return max(int(eval.log.memory or 0) for eval in evals)
+
+
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
     return f'{max_time} ms'
 
 
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
-    max_memory = _get_evals_memory_in_mb(evals)
-    return f'{max_memory} MiB'
+    max_memory = _get_evals_memory_in_bytes(evals)
+    if max_memory < 1024 * 1024:
+        if max_memory < 1024:
+            return f'{max_memory} B'
+        return f'{max_memory // 1024} KiB'
+    return f'{max_memory // (1024 * 1024)} MiB'
 
 
 def _print_solution_outcome(

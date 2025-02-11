@@ -5,7 +5,6 @@ import resource
 import signal
 import stat
 import sys
-from math import ceil
 from time import monotonic
 from typing import List, Optional
 
@@ -58,8 +57,9 @@ def parse_opts() -> Options:
 
 
 def get_memory_usage(ru: resource.struct_rusage) -> int:
-    used = ceil((ru.ru_maxrss + ru.ru_ixrss + ru.ru_idrss + ru.ru_isrss) / 1024)
-    return used
+    if sys.platform == 'darwin':
+        return ru.ru_maxrss // 1024 + ru.ru_ixrss
+    return ru.ru_maxrss + ru.ru_ixrss + ru.ru_idrss + ru.ru_isrss
 
 
 def get_cpu_time(ru: resource.struct_rusage) -> float:
