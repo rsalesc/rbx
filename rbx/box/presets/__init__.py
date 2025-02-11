@@ -34,7 +34,7 @@ def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
     found = find_preset_yaml(root)
     if not found:
         console.console.print(
-            f'[error][item]preset.rbx.yml[/item] not found in [item]{root.absolute()}[/item].[/error]'
+            f'[error][item]preset.rbx.yml[/item] not found in [item]{root.absolute()}[/item][/error]'
         )
         raise typer.Exit(1)
     return utils.model_from_yaml(Preset, found.read_text())
@@ -406,7 +406,7 @@ def _sync(update: bool = False):
             '[error]Package does not have a [item].preset.lock.yml[/item] file and thus cannot be synced.[/error]'
         )
         console.console.print(
-            '[error]Ensure this package was created through a preset, or manually associate one with [item]rbx presets lock [PRESET][/item].[/error]'
+            '[error]Ensure this package was created through a preset, or manually associate one with [item]rbx presets lock [PRESET][/item][/error]'
         )
         raise typer.Exit(1)
 

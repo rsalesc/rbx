@@ -35,7 +35,7 @@ def _compile_finder(finder: CodeItem) -> str:
         digest = compile_item(finder)
     except Exception as e:
         console.console.print(
-            f'[error]Failed compiling checker [item]{finder.path}[/item].[/error]'
+            f'[error]Failed compiling checker [item]{finder.path}[/item][/error]'
         )
         raise typer.Exit(1) from e
     return digest
@@ -214,7 +214,7 @@ def run_stress(
 
         if internal_error_results:
             console.console.print(
-                f'[error]Checkers failed during stress test [item]{name}[/item] with args [info]{expanded_generator_call.name} {expanded_generator_call.args}[/info].[/error]'
+                f'[error]Checkers failed during stress test [item]{name}[/item] with args [info]{expanded_generator_call.name} {expanded_generator_call.args}[/info][/error]'
             )
             for internal_error_result in internal_error_results:
                 assert internal_error_result.checker is not None

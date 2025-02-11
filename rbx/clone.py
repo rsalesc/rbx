@@ -158,7 +158,7 @@ def main(lang: Optional[str] = None):
                 )
             else:
                 console.print(
-                    f'[status][rbx]rbx[/rbx] parsed problem from [item]{problem.url}[/item].[/status]'
+                    f'[status][rbx]rbx[/rbx] parsed problem from [item]{problem.url}[/item][/status]'
                 )
         else:
             batch_to_left[problem.batch.id] -= 1

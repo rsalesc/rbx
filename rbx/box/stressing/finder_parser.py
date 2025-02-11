@@ -300,7 +300,7 @@ def validate(tree: lark.ParseTree):
     for checker in all_checkers:
         if not pathlib.Path(checker).is_file():
             console.console.print(
-                f'[error]Finder expression references non-existing checker [item]{checker}[/item].[/error]'
+                f'[error]Finder expression references non-existing checker [item]{checker}[/item][/error]'
             )
             raise typer.Exit(1)
 
@@ -308,7 +308,7 @@ def validate(tree: lark.ParseTree):
     for solution in all_solutions:
         if not pathlib.Path(solution).is_file():
             console.console.print(
-                f'[error]Finder expression references non-existing solution [item]{solution}[/item].[/error]'
+                f'[error]Finder expression references non-existing solution [item]{solution}[/item][/error]'
             )
             raise typer.Exit(1)
 

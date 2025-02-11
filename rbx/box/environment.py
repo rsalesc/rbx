@@ -197,7 +197,7 @@ def get_environment(env: Optional[str] = None) -> Environment:
     except ValidationError as e:
         console.console.print(e)
         console.console.print(
-            f'[error]Error parsing environment file [item]{env_path}[/item].[/error]'
+            f'[error]Error parsing environment file [item]{env_path}[/item][/error]'
         )
         raise typer.Exit(1) from e
 

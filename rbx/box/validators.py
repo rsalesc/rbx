@@ -35,7 +35,7 @@ def _compile_validator(validator: CodeItem) -> str:
         digest = compile_item(validator)
     except:
         console.console.print(
-            f'[error]Failed compiling validator [item]{validator.path}[/item].[/error]'
+            f'[error]Failed compiling validator [item]{validator.path}[/item][/error]'
         )
         raise
     return digest

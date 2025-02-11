@@ -114,7 +114,7 @@ def compile_solutions(
             compiled_solutions[solution.path] = compile_item(solution)
         except:
             console.console.print(
-                f'[error]Failed compiling solution [item]{solution.path}[/item].[/error]'
+                f'[error]Failed compiling solution [item]{solution.path}[/item][/error]'
             )
             raise
 
