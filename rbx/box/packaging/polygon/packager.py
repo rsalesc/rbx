@@ -106,8 +106,8 @@ class PolygonPackager(BasePackager):
 
         return polygon_schema.Testset(
             name='tests',
-            timelimit=pkg.timeLimit,
-            memorylimit=pkg.memoryLimit * 1024 * 1024,
+            timelimit=pkg.timelimit_for_language(None),
+            memorylimit=pkg.memorylimit_for_language(None) * 1024 * 1024,
             size=len(testcases),
             inputPattern='tests/%03d',
             answerPattern='tests/%03d.a',
