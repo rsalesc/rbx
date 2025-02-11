@@ -778,7 +778,10 @@ def print_run_report(
         is_closing_group = last_group is not None and is_new_group
 
         if is_closing_group:
-            console.print(f'({get_evals_formatted_time(group_evals)})', end='')
+            console.print(
+                f'({get_evals_formatted_time(group_evals)}, {get_evals_formatted_memory(group_evals)})',
+                end='',
+            )
             console.print()
 
         if is_new_solution:
