@@ -137,11 +137,12 @@ def _run_solution_on_testcase(
     output_dir: pathlib.Path,
     testcase_index: int = 0,
     verification: VerificationLevel = VerificationLevel.NONE,
+    timelimit_override: Optional[int] = None,
 ) -> Evaluation:
     pkg = package.find_problem_package_or_die()
     actual_sandbox = package.get_singleton_sandbox()
 
-    timelimit = pkg.timelimit_for_language(solution.language)
+    timelimit = timelimit_override or pkg.timelimit_for_language(solution.language)
 
     sandbox = EnvironmentSandbox()
     sandbox.timeLimit = timelimit
@@ -204,6 +205,7 @@ def _run_solution(
     group_name: str,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
+    timelimit_override: Optional[int] = None,
 ) -> List[Deferred[Evaluation]]:
     runs_dir = package.get_problem_runs_dir()
 
@@ -228,6 +230,7 @@ def _run_solution(
                 output_path,
                 testcase_index=i,
                 verification=verification,
+                timelimit_override=timelimit_override,
             )
 
         res.append(Deferred(run_fn))
@@ -281,6 +284,7 @@ def _produce_solution_items(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
+    timelimit_override: Optional[int] = None,
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
@@ -317,6 +321,7 @@ def _produce_solution_items(
                 group_name,
                 progress=progress,
                 verification=verification,
+                timelimit_override=timelimit_override,
             )
         ):
             res.append(
@@ -345,6 +350,7 @@ def run_solutions(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
+    timelimit_override: Optional[int] = None,
 ) -> RunSolutionResult:
     return RunSolutionResult(
         skeleton=_get_report_skeleton(tracked_solutions, verification=verification),
@@ -353,6 +359,7 @@ def run_solutions(
             tracked_solutions=tracked_solutions,
             verification=verification,
             check=check,
+            timelimit_override=timelimit_override,
         ),
     )
 
@@ -871,7 +878,7 @@ async def estimate_time_limit(
             f'Slowest language: {slowest_language} ({slowest_language_time} ms)'
         )
 
-    estimated_tl = max(fastest_time * 3, slowest_time * 1.5)
+    estimated_tl = int(max(fastest_time * 3, slowest_time * 1.5))
     console.print(f'[success]Estimated time limit:[/success] {estimated_tl} ms')
 
     return estimated_tl

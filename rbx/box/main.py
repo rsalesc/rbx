@@ -125,7 +125,14 @@ def run(
         '-d',
         help='Whether to print a detailed view of the tests using tables.',
     ),
+    timeit: bool = typer.Option(
+        False,
+        '--time',
+        '-t',
+        help='Whether to use estimate a time limit based on accepted solutions.',
+    ),
 ):
+    pkg = package.find_problem_package_or_die()
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
@@ -142,6 +149,12 @@ def run(
         )
         return
 
+    override_tl = None
+    if timeit:
+        override_tl = _time_impl(check=check, detailed=False)
+        if override_tl is None:
+            raise typer.Exit(1)
+
     with utils.StatusProgress('Running solutions...') as s:
         tracked_solutions = None
         if outcome is not None:
@@ -151,11 +164,13 @@ def run(
             }
         if solution:
             tracked_solutions = {solution}
+
         solution_result = run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
             check=check,
             verification=VerificationLevel(verification),
+            timelimit_override=override_tl,
         )
 
     console.console.print()
@@ -168,6 +183,50 @@ def run(
             detailed=detailed,
         )
     )
+
+
+def _time_impl(check: bool, detailed: bool) -> Optional[int]:
+    if package.get_main_solution() is None:
+        console.console.print(
+            '[warning]No main solution found, so cannot estimate a time limit.[/warning]'
+        )
+        return None
+
+    verification = VerificationLevel.ALL_SOLUTIONS.value
+
+    with utils.StatusProgress('Running ACCEPTED solutions...') as s:
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+        }
+        solution_result = run_solutions(
+            progress=s,
+            tracked_solutions=tracked_solutions,
+            check=check,
+            verification=VerificationLevel(verification),
+        )
+
+    console.console.print()
+    console.console.rule(
+        '[status]Run report (for time estimation)[/status]', style='status'
+    )
+    ok = asyncio.run(
+        print_run_report(
+            solution_result,
+            console.console,
+            verification,
+            detailed=detailed,
+        )
+    )
+
+    if not ok:
+        console.console.print(
+            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+        )
+        return None
+
+    console.console.print()
+    return asyncio.run(estimate_time_limit(console.console, solution_result))
 
 
 @app.command(
@@ -198,39 +257,9 @@ def time(
 
     verification = VerificationLevel.ALL_SOLUTIONS.value
     if not builder.build(verification=verification, output=check):
-        return
+        return None
 
-    with utils.StatusProgress('Running ACCEPTED solutions...') as s:
-        tracked_solutions = {
-            str(solution.path)
-            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-        }
-        solution_result = run_solutions(
-            progress=s,
-            tracked_solutions=tracked_solutions,
-            check=check,
-            verification=VerificationLevel(verification),
-        )
-
-    console.console.print()
-    console.console.rule('[status]Run report[/status]', style='status')
-    ok = asyncio.run(
-        print_run_report(
-            solution_result,
-            console.console,
-            verification,
-            detailed=detailed,
-        )
-    )
-
-    if not ok:
-        console.console.print(
-            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
-        )
-        return
-
-    console.console.print()
-    asyncio.run(estimate_time_limit(console.console, solution_result))
+    _time_impl(check, detailed)
 
 
 @app.command(
