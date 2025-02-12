@@ -39,6 +39,8 @@ from rbx.box.contest import main as contest
 from rbx.box.environment import VerificationLevel, get_environment_path
 from rbx.box.packaging import main as packaging
 from rbx.box.solutions import (
+    estimate_time_limit,
+    get_exact_matching_solutions,
     get_matching_solutions,
     print_run_report,
     run_and_print_interactive_solutions,
@@ -166,6 +168,69 @@ def run(
             detailed=detailed,
         )
     )
+
+
+@app.command(
+    'time, t',
+    help='Estimate a time limit for the problem based on a time limit formula and timings of accepted solutions.',
+)
+@package.within_problem
+def time(
+    check: bool = typer.Option(
+        True,
+        '--nocheck',
+        flag_value=False,
+        help='Whether to not build outputs for tests and run checker.',
+    ),
+    detailed: bool = typer.Option(
+        False,
+        '--detailed',
+        '-d',
+        help='Whether to print a detailed view of the tests using tables.',
+    ),
+):
+    main_solution = package.get_main_solution()
+    if check and main_solution is None:
+        console.console.print(
+            '[warning]No main solution found, running without checkers.[/warning]'
+        )
+        check = False
+
+    verification = VerificationLevel.ALL_SOLUTIONS.value
+    if not builder.build(verification=verification, output=check):
+        return
+
+    with utils.StatusProgress('Running ACCEPTED solutions...') as s:
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+        }
+        solution_result = run_solutions(
+            progress=s,
+            tracked_solutions=tracked_solutions,
+            check=check,
+            verification=VerificationLevel(verification),
+        )
+
+    console.console.print()
+    console.console.rule('[status]Run report[/status]', style='status')
+    ok = asyncio.run(
+        print_run_report(
+            solution_result,
+            console.console,
+            verification,
+            detailed=detailed,
+        )
+    )
+
+    if not ok:
+        console.console.print(
+            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+        )
+        return
+
+    console.console.print()
+    asyncio.run(estimate_time_limit(console.console, solution_result))
 
 
 @app.command(

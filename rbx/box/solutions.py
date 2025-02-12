@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import checkers, environment, package
-from rbx.box.code import compile_item, run_item
+from rbx.box.code import compile_item, find_language_name, run_item
 from rbx.box.deferred import Deferred
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.generators import generate_output_for_testcase, generate_standalone
@@ -91,6 +91,14 @@ def get_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solution]:
         if not solution.outcome.intersect(expected_outcome):
             continue
         res.append(solution)
+    return res
+
+
+def get_exact_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solution]:
+    res = []
+    for solution in package.get_solutions():
+        if solution.outcome == expected_outcome:
+            res.append(solution)
     return res
 
 
@@ -804,3 +812,66 @@ async def print_run_report(
     await _print_timing(console, result.skeleton, structured_evaluations)
 
     return ok
+
+
+async def estimate_time_limit(
+    console: rich.console.Console,
+    result: RunSolutionResult,
+) -> Optional[int]:
+    structured_evaluations = _consume_and_key_evaluation_items(
+        result.items, result.skeleton
+    )
+
+    timing_per_solution = {}
+    timing_per_language = {}
+
+    if not result.skeleton.solutions:
+        console.print('[error]No solutions to estimate time limit from.[/error]')
+        return None
+
+    for solution in result.skeleton.solutions:
+        timings = []
+        for evals in structured_evaluations[str(solution.path)].values():
+            for eval in evals:
+                if eval is None:
+                    continue
+                eval = await eval()
+                if eval.log.time is not None:
+                    timings.append(int(eval.log.time * 1000))
+
+        if not timings:
+            console.print(
+                f'[warning]No timings for solution [item]{solution.path}[/item].[/warning]'
+            )
+            continue
+
+        timing_per_solution[str(solution.path)] = max(timings)
+        lang = find_language_name(solution)
+        if lang not in timing_per_language:
+            timing_per_language[lang] = 0
+        timing_per_language[lang] = max(timing_per_language[lang], max(timings))
+
+    console.rule('[status]Time estimation[/status]', style='status')
+
+    fastest_time = min(timing_per_solution.values())
+    slowest_time = max(timing_per_solution.values())
+
+    console.print(f'Fastest solution: {fastest_time} ms')
+    console.print(f'Slowest solution: {slowest_time} ms')
+
+    if len(timing_per_language) > 0:
+        timing_language_list = [(t, lang) for lang, t in timing_per_language.items()]
+        fastest_language_time, fastest_language = min(timing_language_list)
+        slowest_language_time, slowest_language = max(timing_language_list)
+
+        console.print(
+            f'Fastest language: {fastest_language} ({fastest_language_time} ms)'
+        )
+        console.print(
+            f'Slowest language: {slowest_language} ({slowest_language_time} ms)'
+        )
+
+    estimated_tl = max(fastest_time * 3, slowest_time * 1.5)
+    console.print(f'[success]Estimated time limit:[/success] {estimated_tl} ms')
+
+    return estimated_tl
