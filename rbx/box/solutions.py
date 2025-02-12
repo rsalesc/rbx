@@ -556,7 +556,9 @@ def _print_solution_outcome(
 
     console.print()
     evals_time = _get_evals_time_in_ms(evals)
-    expected_outcome_is_tle = solution.outcome.match(Outcome.TIME_LIMIT_EXCEEDED)
+    expected_outcome_is_tle = solution.outcome.match(
+        Outcome.TIME_LIMIT_EXCEEDED
+    ) and not solution.outcome.match(Outcome.ACCEPTED)
     if (
         # Running verification with double TL.
         verification.value >= VerificationLevel.FULL.value

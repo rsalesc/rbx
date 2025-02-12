@@ -54,6 +54,18 @@ class ExpectedOutcome(AutoEnum):
     ACCEPTED = alias('accepted', 'ac', 'correct')  # type: ignore
     """Expected outcome for correct solutions (AC)."""
 
+    ACCEPTED_OR_TLE = alias(
+        'accepted or time limit exceeded',
+        'accepted or tle',
+        'ac or tle',
+        'ac/tle',
+        'ac+tle',
+    )  # type: ignore
+    """Expected outcome for solutions that finish with either AC or TLE.
+    
+    Especially useful when you do not care about the running time of this solution, and
+    want it to not be considered when calculating the timelimit for the problem."""
+
     WRONG_ANSWER = alias('wrong answer', 'wa')  # type: ignore
     """Expected outcome for solutions that finish successfully,
     but the produced output are incorrect (WA)."""
@@ -75,7 +87,7 @@ class ExpectedOutcome(AutoEnum):
 
     TLE_OR_RTE = alias('tle or rte', 'tle/rte', 'tle+rte')  # type: ignore
     """Expected outcome for solutions that finish with either TLE or RTE.
-    
+
     Especially useful for environments where TLE and RTE are indistinguishable."""
 
     def style(self) -> str:
@@ -99,6 +111,8 @@ class ExpectedOutcome(AutoEnum):
     def match(self, outcome: Outcome) -> bool:
         if self == ExpectedOutcome.ACCEPTED:
             return outcome == Outcome.ACCEPTED
+        if self == ExpectedOutcome.ACCEPTED_OR_TLE:
+            return outcome in {Outcome.ACCEPTED, Outcome.TIME_LIMIT_EXCEEDED}
         if self == ExpectedOutcome.WRONG_ANSWER:
             return outcome == Outcome.WRONG_ANSWER
         if self == ExpectedOutcome.INCORRECT:
