@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 
 import pytest
@@ -20,7 +21,7 @@ def test_solutions(pkg_from_testdata: pathlib.Path):
     generate_outputs_for_testcases()
 
     result = run_solutions(verification=VerificationLevel.FULL)
-    res = convert_list_of_solution_evaluations_to_dict(result.items)
+    res = asyncio.run(convert_list_of_solution_evaluations_to_dict(result.items))
 
     # First solution should pass all tests.
     assert all(chk.result.outcome == Outcome.ACCEPTED for chk in res[0]['gen1'])

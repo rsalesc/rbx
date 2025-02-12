@@ -76,7 +76,7 @@ def build(
     return True
 
 
-def verify(verification: environment.VerificationParam) -> bool:
+async def verify(verification: environment.VerificationParam) -> bool:
     if not build(verification=verification):
         return False
 
@@ -100,7 +100,7 @@ def verify(verification: environment.VerificationParam) -> bool:
 
     console.console.print()
     console.console.rule('[status]Run report[/status]', style='status')
-    return print_run_report(
+    return await print_run_report(
         solution_result,
         console.console,
         verification,

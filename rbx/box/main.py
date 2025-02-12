@@ -1,4 +1,5 @@
 # flake8: noqa
+import asyncio
 from gevent import monkey
 
 monkey.patch_all()
@@ -152,17 +153,18 @@ def run(
             progress=s,
             tracked_solutions=tracked_solutions,
             check=check,
-            group_first=detailed,
             verification=VerificationLevel(verification),
         )
 
     console.console.print()
     console.console.rule('[status]Run report[/status]', style='status')
-    print_run_report(
-        solution_result,
-        console.console,
-        verification,
-        detailed=detailed,
+    asyncio.run(
+        print_run_report(
+            solution_result,
+            console.console,
+            verification,
+            detailed=detailed,
+        )
     )
 
 
@@ -225,14 +227,16 @@ def irun(
         }
     if solution:
         tracked_solutions = {solution}
-    run_and_print_interactive_solutions(
-        tracked_solutions=tracked_solutions,
-        check=check,
-        verification=VerificationLevel(verification),
-        generator=generators.get_call_from_string(generator)
-        if generator is not None
-        else None,
-        print=print,
+    asyncio.run(
+        run_and_print_interactive_solutions(
+            tracked_solutions=tracked_solutions,
+            check=check,
+            verification=VerificationLevel(verification),
+            generator=generators.get_call_from_string(generator)
+            if generator is not None
+            else None,
+            print=print,
+        )
     )
 
 

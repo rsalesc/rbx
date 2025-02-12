@@ -5,17 +5,17 @@ import dataclasses
 import pathlib
 import shutil
 from collections.abc import Iterator
-from typing import Dict, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 import rich
 import rich.live
 import rich.table
-from more_itertools import seekable
 from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import checkers, environment, package
 from rbx.box.code import compile_item, run_item
+from rbx.box.deferred import Deferred
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.generators import generate_output_for_testcase, generate_standalone
 from rbx.box.schema import (
@@ -36,14 +36,15 @@ from rbx.grading.steps import (
 )
 from rbx.utils import StatusProgress, model_to_yaml
 
-StructuredEvaluation = Dict[str, Dict[str, List[Optional[Evaluation]]]]
+StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]]
 
 
-class EvaluationItem(BaseModel):
+@dataclasses.dataclass(frozen=True)
+class EvaluationItem:
     solution_index: int
     group_name: str
     testcase_index: int
-    eval: Evaluation
+    eval: Deferred[Evaluation]
 
 
 class GroupSkeleton(BaseModel):
@@ -54,7 +55,6 @@ class GroupSkeleton(BaseModel):
 class SolutionReportSkeleton(BaseModel):
     solutions: List[Solution]
     groups: List[GroupSkeleton]
-    group_first: bool
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -74,7 +74,7 @@ class SolutionReportSkeleton(BaseModel):
 @dataclasses.dataclass
 class RunSolutionResult:
     skeleton: SolutionReportSkeleton
-    items: Iterator[EvaluationItem]
+    items: List[EvaluationItem]
 
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         return self.skeleton.empty_structured_evaluation()
@@ -196,11 +196,12 @@ def _run_solution(
     group_name: str,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
-) -> Iterator[Evaluation]:
+) -> List[Deferred[Evaluation]]:
     runs_dir = package.get_problem_runs_dir()
 
     group = package.get_testgroup(group_name)
     testcases = find_built_testcases(group)
+    res: List[Deferred[Evaluation]] = []
     for i, testcase in enumerate(testcases):
         assert testcase.outputPath is not None
         output_path = runs_dir / f'{solution_index}' / group.name
@@ -210,19 +211,24 @@ def _run_solution(
                 f'Running solution [item]{solution.path}[/item] on test [item]{group.name}[/item] / [item]{i}[/item]...'
             )
 
-        yield _run_solution_on_testcase(
-            solution,
-            compiled_digest,
-            checker_digest,
-            testcase,
-            output_path,
-            testcase_index=i,
-            verification=verification,
-        )
+        async def run_fn(i=i, testcase=testcase, output_path=output_path):
+            return _run_solution_on_testcase(
+                solution,
+                compiled_digest,
+                checker_digest,
+                testcase,
+                output_path,
+                testcase_index=i,
+                verification=verification,
+            )
+
+        res.append(Deferred(run_fn))
+
+    return res
 
 
-def convert_list_of_solution_evaluations_to_dict(
-    items: Iterator[EvaluationItem],
+async def convert_list_of_solution_evaluations_to_dict(
+    items: Iterable[EvaluationItem],
 ) -> List[Dict[str, List[Evaluation]]]:
     pkg = package.find_problem_package_or_die()
     res: List[Dict[str, List[Evaluation]]] = [
@@ -230,14 +236,13 @@ def convert_list_of_solution_evaluations_to_dict(
     ]
 
     for item in items:
-        res[item.solution_index][item.group_name].append(item.eval)
+        res[item.solution_index][item.group_name].append(await item.eval())
 
     return res
 
 
 def _get_report_skeleton(
     tracked_solutions: Optional[Set[str]] = None,
-    group_first: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
@@ -258,7 +263,8 @@ def _get_report_skeleton(
         testcases = find_built_testcases(group)
         groups.append(GroupSkeleton(name=group.name, testcases=testcases))
     return SolutionReportSkeleton(
-        solutions=solutions, groups=groups, group_first=group_first
+        solutions=solutions,
+        groups=groups,
     )
 
 
@@ -267,8 +273,7 @@ def _produce_solution_items(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
-    group_first: bool = False,
-) -> Iterator[EvaluationItem]:
+) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
     checker_digest = checkers.compile_checker() if check else None
@@ -293,7 +298,8 @@ def _produce_solution_items(
 
     def yield_items(
         solution_index: int, solution: Solution, group_name: str
-    ) -> Iterator[EvaluationItem]:
+    ) -> List[EvaluationItem]:
+        res: List[EvaluationItem] = []
         for i, eval in enumerate(
             _run_solution(
                 solution,
@@ -305,23 +311,25 @@ def _produce_solution_items(
                 verification=verification,
             )
         ):
-            yield EvaluationItem(
-                solution_index=solution_index,
-                group_name=group_name,
-                testcase_index=i,
-                eval=eval,
+            res.append(
+                EvaluationItem(
+                    solution_index=solution_index,
+                    group_name=group_name,
+                    testcase_index=i,
+                    eval=eval,
+                )
             )
 
-    groups = pkg.testcases
-    if group_first:
-        for group in groups:
-            for i, solution in solutions:
-                yield from yield_items(i, solution, group.name)
-        return
+        return res
 
+    res: List[EvaluationItem] = []
+
+    groups = pkg.testcases
     for i, solution in solutions:
         for group in groups:
-            yield from yield_items(i, solution, group.name)
+            res.extend(yield_items(i, solution, group.name))
+
+    return res
 
 
 def run_solutions(
@@ -329,18 +337,14 @@ def run_solutions(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
-    group_first: bool = False,
 ) -> RunSolutionResult:
     return RunSolutionResult(
-        skeleton=_get_report_skeleton(
-            tracked_solutions, group_first, verification=verification
-        ),
+        skeleton=_get_report_skeleton(tracked_solutions, verification=verification),
         items=_produce_solution_items(
             progress=progress,
             tracked_solutions=tracked_solutions,
             verification=verification,
             check=check,
-            group_first=group_first,
         ),
     )
 
@@ -399,22 +403,25 @@ def _run_interactive_solutions(
     for i, solution in solutions:
         output_dir = irun_dir / f'{i}'
 
-        yield EvaluationItem(
-            solution_index=i,
-            group_name='irun',
-            testcase_index=0,
-            eval=_run_solution_on_testcase(
+        async def run_fn(solution=solution, output_dir=output_dir):
+            return _run_solution_on_testcase(
                 solution,
                 compiled_solutions[solution.path],
                 checker_digest,
                 testcase,
                 output_dir,
                 verification=verification,
-            ),
+            )
+
+        yield EvaluationItem(
+            solution_index=i,
+            group_name='irun',
+            testcase_index=0,
+            eval=Deferred(run_fn),
         )
 
 
-def run_and_print_interactive_solutions(
+async def run_and_print_interactive_solutions(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
@@ -433,10 +440,12 @@ def run_and_print_interactive_solutions(
         sol = pkg.solutions[item.solution_index]
         _print_solution_header(sol, console.console)
 
-        stdout_path = item.eval.log.stdout_absolute_path
+        eval = await item.eval()
+
+        stdout_path = eval.log.stdout_absolute_path
         if print:
             if (
-                item.eval.testcase.output is not None
+                eval.testcase.output is not None
                 and stdout_path is not None
                 and stdout_path.is_file()
             ):
@@ -483,12 +492,6 @@ def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
     if not evals:
         return 0
     return max(int((eval.log.time or 0.0) * 1000) for eval in evals)
-
-
-def _get_evals_memory_in_mb(evals: List[Evaluation]) -> int:
-    if not evals:
-        return 0
-    return max(int(eval.log.memory or 0) // (1024 * 1024) for eval in evals)
 
 
 def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
@@ -591,9 +594,9 @@ def _print_solution_outcome(
 
 
 def _consume_and_key_evaluation_items(
-    items: Iterator[EvaluationItem],
+    items: Iterable[EvaluationItem],
     skeleton: SolutionReportSkeleton,
-) -> Iterator[StructuredEvaluation]:
+) -> StructuredEvaluation:
     """
     Consumes EvaluationItems from a run_solutions call and build a view
     with them, possibly marking with optional unprocessed items.
@@ -604,7 +607,8 @@ def _consume_and_key_evaluation_items(
     for item in items:
         solution = pkg.solutions[item.solution_index]
         res[str(solution.path)][item.group_name][item.testcase_index] = item.eval
-        yield res
+
+    return res
 
 
 def _print_solution_header(solution: Solution, console: rich.console.Console):
@@ -617,18 +621,17 @@ def _print_solution_header(solution: Solution, console: rich.console.Console):
     console.print(f'({solution_testdir})')
 
 
-def _print_timing(
+async def _print_timing(
     console: rich.console.Console,
     skeleton: SolutionReportSkeleton,
-    structured_evaluation: StructuredEvaluation,
+    evaluations: StructuredEvaluation,
 ):
     slowest_good = None
     fastest_slow = None
     for solution in skeleton.solutions:
-        evals_per_group = structured_evaluation[str(solution.path)]
         all_evals = []
-        for evals in evals_per_group.values():
-            all_evals.extend([eval for eval in evals if eval is not None])
+        for evals in evaluations[str(solution.path)].values():
+            all_evals.extend([await eval() for eval in evals if eval is not None])
         solution_time = _get_evals_time_in_ms(all_evals)
         if solution.outcome.match(Outcome.ACCEPTED):
             if slowest_good is None or solution_time > slowest_good:
@@ -647,16 +650,16 @@ def _print_timing(
         console.print(f'Fastest [error]slow[/error] solution: {fastest_slow} ms')
 
 
-def _render_detailed_group_table(
+async def _render_detailed_group_table(
     group: TestcaseGroup,
     skeleton: SolutionReportSkeleton,
-    structured_evaluations: Iterator[StructuredEvaluation],
+    structured_evaluations: StructuredEvaluation,
     console: rich.console.Console,
 ):
     group_skeleton = skeleton.find_group_skeleton(group.name)
     assert group_skeleton is not None
 
-    def generate_table(
+    async def generate_table(
         structured_evaluation: StructuredEvaluation, group_name: str
     ) -> rich.table.Table:
         table = rich.table.Table()
@@ -668,12 +671,17 @@ def _render_detailed_group_table(
             row = []
             for solution in skeleton.solutions:
                 eval = structured_evaluation[str(solution.path)][group_name][tc]
-                evals_per_solution[str(solution.path)].append(eval)
                 if eval is None:
                     row.append('...')
                     continue
+                eval = eval.peek()
+                if eval is None:
+                    row.append('...')
+                    continue
+
                 verdict = get_testcase_markup_verdict(eval)
                 time = get_evals_formatted_time([eval])
+                evals_per_solution[str(solution.path)].append(eval)
                 row.append(f'{verdict} {time}')
             table.add_row(*row)
 
@@ -691,28 +699,30 @@ def _render_detailed_group_table(
         return table
 
     with rich.live.Live(
-        generate_table(skeleton.empty_structured_evaluation(), group.name),
+        await generate_table(skeleton.empty_structured_evaluation(), group.name),
         refresh_per_second=5,
         console=console,
     ) as live:
-        for _ in skeleton.solutions:
-            for _ in group_skeleton.testcases:
-                structured_evaluation = next(structured_evaluations)
-                live.update(generate_table(structured_evaluation, group.name))
+        for solution in skeleton.solutions:
+            for tc, _ in enumerate(group_skeleton.testcases):
+                eval = structured_evaluations[str(solution.path)][group.name][tc]
+                if eval is None:
+                    continue
+                await eval()
+                live.update(await generate_table(structured_evaluations, group.name))
                 live.refresh()
 
 
-def _print_detailed_run_report(
+async def _print_detailed_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
-    structured_evaluations: Iterator[StructuredEvaluation],
+    structured_evaluations: StructuredEvaluation,
     timing: bool = True,
 ):
-    structured_evaluations = seekable(structured_evaluations)
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
 
-        _render_detailed_group_table(
+        await _render_detailed_group_table(
             package.get_testgroup(group.name),
             result.skeleton,
             structured_evaluations,
@@ -721,12 +731,13 @@ def _print_detailed_run_report(
         continue
 
     ok = True
-    structured_evaluations.seek(-1)
-    structured_evaluation = next(structured_evaluations)
     for solution in result.skeleton.solutions:
         all_evals = []
-        for evals in structured_evaluation[str(solution.path)].values():
+        for evals in structured_evaluations[str(solution.path)].values():
             all_evals.extend(evals)
+
+        # Resolve futures.
+        all_evals = [await eval() for eval in all_evals if eval is not None]
         _print_solution_header(solution, console)
         cur_ok = _print_solution_outcome(
             solution,
@@ -739,93 +750,57 @@ def _print_detailed_run_report(
     console.print()
 
     if timing:
-        _print_timing(console, result.skeleton, structured_evaluation)
+        await _print_timing(console, result.skeleton, structured_evaluations)
     return ok
 
 
-def print_run_report(
+async def print_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
     verification: environment.VerificationParam,
     detailed: bool = False,
     timing: bool = True,
 ) -> bool:
-    pkg = package.find_problem_package_or_die()
-    items = seekable(result.items)
-    structured_evaluations = _consume_and_key_evaluation_items(items, result.skeleton)
+    structured_evaluations = _consume_and_key_evaluation_items(
+        result.items, result.skeleton
+    )
     if detailed:
-        return _print_detailed_run_report(
+        return await _print_detailed_run_report(
             result, console, structured_evaluations, timing=timing
         )
 
-    assert not result.skeleton.group_first
-    # Since we're now streaming the evaluation results, the for-loop is a bit
-    # confusing. We must keep state across the iteration to understand whether
-    # we're seeing a new solution or a new testgroup.
     ok = True
-    last_solution: Optional[Solution] = None
-    last_group: Optional[str] = None
-    test_index = 0
-    all_evals = []
-    group_evals = []
 
-    def print_last_solution():
-        nonlocal ok
-        if last_solution is None:
-            return
-        cur_ok = _print_solution_outcome(
-            last_solution,
-            all_evals,
-            console,
-            verification=VerificationLevel(verification),
-        )
-        console.print()
-        ok = ok and cur_ok
+    for solution in result.skeleton.solutions:
+        _print_solution_header(solution, console)
+        solution_evals = []
+        for group in result.skeleton.groups:
+            console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
+            group_evals = []
+            for i, _ in enumerate(group.testcases):
+                eval = structured_evaluations[str(solution.path)][group.name][i]
+                if eval is None:
+                    continue
+                eval = await eval()
+                console.print(f'{i}/', end='')
+                console.print(get_testcase_markup_verdict(eval), end=' ')
+                group_evals.append(eval)
+                solution_evals.append(eval)
 
-    for item in items:
-        eval = item.eval
-        solution = pkg.solutions[item.solution_index]
-        is_new_solution = last_solution is None or solution.path != last_solution.path
-        is_new_group = is_new_solution or last_group != item.group_name
-        is_closing_group = last_group is not None and is_new_group
-
-        if is_closing_group:
             console.print(
                 f'({get_evals_formatted_time(group_evals)}, {get_evals_formatted_memory(group_evals)})',
                 end='',
             )
             console.print()
 
-        if is_new_solution:
-            print_last_solution()
-            all_evals = []
-            last_solution = solution
-            _print_solution_header(last_solution, console)
+        ok = ok and _print_solution_outcome(
+            solution,
+            solution_evals,
+            console,
+            verification=VerificationLevel(verification),
+        )
+        console.print()
 
-        if is_new_group:
-            group_evals = []
-            last_group = item.group_name
-            test_index = 0
-            console.print(f'[bold][status]{item.group_name}[/status][/bold]', end=' ')
-
-        all_evals.append(eval)
-        group_evals.append(eval)
-        console.print(f'{test_index}/', end='')
-        console.print(get_testcase_markup_verdict(eval), end=' ')
-
-        test_index += 1
-
-    console.print(
-        f'({get_evals_formatted_time(group_evals)}, {get_evals_formatted_memory(group_evals)})',
-        end=' ',
-    )
-    console.print()
-    print_last_solution()
-
-    items.seek(0)
-    structured_evaluations_list = list(structured_evaluations)
-
-    if structured_evaluations_list:
-        _print_timing(console, result.skeleton, structured_evaluations_list[-1])
+    await _print_timing(console, result.skeleton, structured_evaluations)
 
     return ok
