@@ -196,6 +196,7 @@ def run_stress(
                     solution_result.run_log,
                     Testcase(inputPath=input_path, outputPath=expected_output_path),
                     program_output=solution_result.output_path,
+                    program_stderr=solution_result.stderr_path,
                 )
             return finder_parser.FinderResult(
                 solution=solution,

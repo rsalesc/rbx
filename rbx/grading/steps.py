@@ -173,6 +173,7 @@ class CheckerResult(BaseModel):
     outcome: Outcome
     message: str = ''
     no_tle_outcome: Optional[Outcome] = None
+    sanitizer_warnings: bool = False
 
 
 class Evaluation(BaseModel):

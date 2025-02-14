@@ -182,6 +182,7 @@ def _run_solution_on_testcase(
             run_log,
             testcase,
             program_output=output_path,
+            program_stderr=error_path,
         )
     else:
         checker_result = checkers.check_with_no_output(run_log)
@@ -559,6 +560,7 @@ def _print_solution_outcome(
     has_plain_tle = False
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
+    has_sanitizer_warnings = False
     for eval in evals:
         if eval.result.outcome != Outcome.ACCEPTED:
             bad_verdicts.add(eval.result.outcome)
@@ -571,7 +573,9 @@ def _print_solution_outcome(
             eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
             and eval.result.no_tle_outcome is None
         )
-
+        has_sanitizer_warnings = (
+            has_sanitizer_warnings or eval.result.sanitizer_warnings
+        )
     unmatched_bad_verdicts = set(
         v for v in bad_verdicts if not solution.outcome.match(v)
     )
@@ -622,6 +626,12 @@ def _print_solution_outcome(
             console.print(
                 f'[yellow]WARNING[/yellow] The solution could still run under double TL, but failed with [item]{other_verdicts_names}[/item].'
             )
+
+    if has_sanitizer_warnings:
+        console.print(
+            '[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
+        )
+
     console.print(f'Time: {get_evals_formatted_time(evals)}')
     console.print(f'Memory: {get_evals_formatted_memory(evals)}')
     return len(unmatched_bad_verdicts) == 0
@@ -715,6 +725,8 @@ async def _render_detailed_group_table(
 
                 verdict = get_testcase_markup_verdict(eval)
                 time = get_evals_formatted_time([eval])
+                if eval.result.sanitizer_warnings:
+                    time = f'{time} [item]*[/item]'
                 evals_per_solution[str(solution.path)].append(eval)
                 row.append(f'{verdict} {time}')
             table.add_row(*row)
@@ -817,7 +829,10 @@ async def print_run_report(
                     continue
                 eval = await eval()
                 console.print(f'{i}/', end='')
-                console.print(get_testcase_markup_verdict(eval), end=' ')
+                console.print(get_testcase_markup_verdict(eval), end='')
+                if eval.result.sanitizer_warnings:
+                    console.print('[item]*[/item]', end='')
+                console.print('', end=' ')
                 group_evals.append(eval)
                 solution_evals.append(eval)
 
