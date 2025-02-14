@@ -1,4 +1,11 @@
+# Whether sanitizers will be enabled by default
+# when running testlib components.
+# This flag has no effect on running solutions with
+# sanitizers. For this, you have to use the `-s` flag in `rbx run`.
 use_sanitizers: false
+
+# A list of command substitutions to apply to rbx.
+# Useful when replacing compilers in OS such as Mac.
 command_substitutions:
   g++: g++
   gcc: gcc
