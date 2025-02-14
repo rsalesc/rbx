@@ -165,7 +165,8 @@ def run(
     if timeit:
         if sanitized:
             console.console.print(
-                '[error]Sanitizers are known to be time-hungry, so they cannot be used for time estimation.[/error]'
+                '[error]Sanitizers are known to be time-hungry, so they cannot be used for time estimation.\n'
+                'Remove either the [item]-s[/item] flag or the [item]-t[/item] flag to run solutions without sanitizers.[/error]'
             )
             raise typer.Exit(1)
 
