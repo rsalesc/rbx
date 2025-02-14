@@ -175,6 +175,12 @@ def run(
             raise typer.Exit(1)
 
     with utils.StatusProgress('Running solutions...') as s:
+        if sanitized:
+            console.console.print(
+                '[warning]Sanitizers are running, so the time limit for the problem will be dropped, '
+                'and the environment default time limit will be used instead.[/warning]'
+            )
+
         tracked_solutions = None
         if outcome is not None:
             tracked_solutions = {
