@@ -1,17 +1,16 @@
 import pathlib
 import shlex
-import sys
+from enum import Enum
 from pathlib import PosixPath
 from typing import List, Optional
 
 import typer
 
-from rbx.box import download, package
+from rbx.box import download, package, setter_config
 from rbx.box.environment import (
     ExecutionConfig,
     get_compilation_config,
     get_execution_config,
-    get_extension_or_default,
     get_file_mapping,
     get_language,
     get_mapped_command,
@@ -19,7 +18,6 @@ from rbx.box.environment import (
     get_sandbox_params_from_config,
     merge_execution_configs,
 )
-from rbx.box.extensions import MacExtension
 from rbx.box.schema import CodeItem
 from rbx.grading import steps_with_caching
 from rbx.grading.steps import (
@@ -35,14 +33,21 @@ from rbx.grading.steps import (
 )
 
 
-def normalize_for_macos(commands: List[str]) -> List[str]:
-    def normalize(command: str) -> str:
-        extension = get_extension_or_default('mac', MacExtension)
-        if extension.gpp_alternative is None:
-            return command
-        return command.replace('g++', extension.gpp_alternative)
+class SanitizationLevel(Enum):
+    NONE = 0
+    PREFER = 1
+    FORCE = 2
 
-    return [normalize(command) for command in commands]
+    def should_sanitize(self) -> bool:
+        cfg = setter_config.get_setter_config()
+        if cfg.use_sanitizers:
+            return self.value >= SanitizationLevel.PREFER.value
+        return self.value >= SanitizationLevel.FORCE.value
+
+
+def substitute_commands(commands: List[str]) -> List[str]:
+    cfg = setter_config.get_setter_config()
+    return [cfg.substitute_command(command) for command in commands]
 
 
 def get_extension(code: CodeItem) -> str:
@@ -74,7 +79,9 @@ def add_sanitizer_flags(commands: List[str]) -> List[str]:
 
 
 # Compile code item and return its digest in the storage.
-def compile_item(code: CodeItem, sanitized: bool = False) -> str:
+def compile_item(
+    code: CodeItem, sanitized: SanitizationLevel = SanitizationLevel.PREFER
+) -> str:
     generator_path = PosixPath(code.path)
     language = find_language_name(code)
     compilation_options = get_compilation_config(language)
@@ -88,10 +95,9 @@ def compile_item(code: CodeItem, sanitized: bool = False) -> str:
         return sandbox.file_cacher.put_file_from_path(generator_path)
 
     commands = get_mapped_commands(compilation_options.commands, file_mapping)
-    if sys.platform == 'darwin':
-        commands = normalize_for_macos(commands)
+    commands = substitute_commands(commands)
 
-    if sanitized:
+    if sanitized.should_sanitize():
         commands = add_sanitizer_flags(commands)
 
     compiled_digest = DigestHolder()
@@ -127,7 +133,7 @@ def compile_item(code: CodeItem, sanitized: bool = False) -> str:
 
     # Create sentinel to indicate this executable is sanitized.
     storage = package.get_cache_storage()
-    if sanitized:
+    if sanitized.should_sanitize():
         pf = storage.create_file(f'{compiled_digest.value}.san')
         if pf is not None:
             storage.commit_file(pf)
@@ -165,6 +171,7 @@ def run_item(
 
     assert execution_options.command
     command = get_mapped_command(execution_options.command, file_mapping)
+    command = substitute_commands([command])[0]
 
     if extra_args is not None:
         splitted_command = shlex.split(command)

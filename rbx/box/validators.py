@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import package
-from rbx.box.code import compile_item, run_item
+from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.schema import CodeItem, Primitive
 from rbx.box.testcases import find_built_testcase_inputs
 from rbx.grading.judge.sandbox import SandboxBase
@@ -32,7 +32,7 @@ class TestcaseValidationInfo(BaseModel):
 
 def _compile_validator(validator: CodeItem) -> str:
     try:
-        digest = compile_item(validator, sanitized=True)
+        digest = compile_item(validator, sanitized=SanitizationLevel.PREFER)
     except:
         console.console.print(
             f'[error]Failed compiling validator [item]{validator.path}[/item][/error]'

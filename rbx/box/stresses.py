@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import checkers, package, validators
-from rbx.box.code import compile_item, run_item
+from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.generators import generate_standalone
 from rbx.box.schema import CodeItem, GeneratorCall, Stress, Testcase
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
@@ -64,7 +64,7 @@ def run_stress(
     generator = package.get_generator(call.name)
 
     try:
-        generator_digest = compile_item(generator, sanitized=True)
+        generator_digest = compile_item(generator, sanitized=SanitizationLevel.PREFER)
     except:
         console.console.print(
             f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'

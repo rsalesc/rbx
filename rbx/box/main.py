@@ -1,13 +1,13 @@
 # flake8: noqa
-import asyncio
 from gevent import monkey
 
 monkey.patch_all()
 
+
+import asyncio
 import tempfile
 import shlex
 import sys
-import typing
 
 from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
 
@@ -25,6 +25,7 @@ from rbx import annotations, config, console, utils
 from rbx.box import (
     builder,
     cd,
+    setter_config,
     creation,
     download,
     environment,
@@ -49,6 +50,12 @@ from rbx.box.solutions import (
 from rbx.box.statements import build_statements
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+app.add_typer(
+    setter_config.app,
+    name='config, cfg',
+    cls=annotations.AliasGroup,
+    help='Manage setter configuration.',
+)
 app.add_typer(
     build_statements.app,
     name='statements, st',

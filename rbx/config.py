@@ -268,4 +268,7 @@ def edit():
     """
     Open the config in an editor.
     """
+    # Ensure config is created before calling the editor.
+    get_config()
+
     open_editor(get_config_path())

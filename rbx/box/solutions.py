@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import checkers, environment, package
-from rbx.box.code import compile_item, find_language_name, run_item
+from rbx.box.code import SanitizationLevel, compile_item, find_language_name, run_item
 from rbx.box.deferred import Deferred
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.generators import generate_output_for_testcase, generate_standalone
@@ -121,7 +121,10 @@ def compile_solutions(
             progress.update(f'Compiling solution [item]{solution.path}[/item]...')
         try:
             compiled_solutions[solution.path] = compile_item(
-                solution, sanitized=sanitized
+                solution,
+                sanitized=SanitizationLevel.FORCE
+                if sanitized
+                else SanitizationLevel.NONE,
             )
         except:
             console.console.print(
@@ -389,7 +392,12 @@ def _run_interactive_solutions(
     main_solution_digest = None
     if check and main_solution is not None:
         try:
-            main_solution_digest = compile_item(main_solution, sanitized=sanitized)
+            main_solution_digest = compile_item(
+                main_solution,
+                sanitized=SanitizationLevel.FORCE
+                if sanitized
+                else SanitizationLevel.NONE,
+            )
         except:
             console.console.print(
                 '[error]Failed compiling main solution. If you do not want to check against a main solution, run with --nocheck flag.[/error]'

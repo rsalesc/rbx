@@ -8,7 +8,7 @@ import typer
 
 from rbx import console
 from rbx.box import checkers, package, testcases, validators
-from rbx.box.code import compile_item, run_item
+from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.environment import (
     EnvironmentSandbox,
     ExecutionConfig,
@@ -32,7 +32,7 @@ from rbx.utils import StatusProgress
 
 
 def _compile_generator(generator: CodeItem) -> str:
-    return compile_item(generator, sanitized=True)
+    return compile_item(generator, sanitized=SanitizationLevel.PREFER)
 
 
 def _get_group_input(

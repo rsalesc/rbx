@@ -5,7 +5,7 @@ import typer
 
 from rbx import console
 from rbx.box import package
-from rbx.box.code import compile_item, run_item
+from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.schema import Testcase
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
@@ -23,7 +23,7 @@ def compile_checker() -> str:
     checker = package.get_checker()
 
     try:
-        digest = compile_item(checker, sanitized=True)
+        digest = compile_item(checker, sanitized=SanitizationLevel.PREFER)
     except Exception as e:
         console.console.print('[error]Failed compiling checker.[/error]')
         raise typer.Exit(1) from e

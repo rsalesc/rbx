@@ -1,0 +1,10 @@
+use_sanitizers: false
+command_substitutions:
+  g++: g++
+  gcc: gcc
+  java: java
+  javac: javac
+  jar: jar
+  python: python
+  python2: python2
+  python3: python3

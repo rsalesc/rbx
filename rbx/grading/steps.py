@@ -1,5 +1,4 @@
 import functools
-import os
 import pathlib
 import shlex
 import shutil
@@ -260,14 +259,6 @@ def _split_and_expand(command: str, sandbox: SandboxBase) -> List[str]:
     return res
 
 
-def _is_exact_c_command(exe_command: str) -> bool:
-    return exe_command in ('gcc', 'clang')
-
-
-def _is_exact_cpp_command(exe_command: str) -> bool:
-    return exe_command in ('g++', 'clang++')
-
-
 def _is_c_command(exe_command: str) -> bool:
     return 'gcc' in exe_command or 'clang' in exe_command
 
@@ -339,10 +330,6 @@ def _maybe_get_bits_stdcpp_for_commands(
 
 @functools.cache
 def _try_following_alias_for_exe(exe: str) -> Optional[str]:
-    if _is_exact_c_command(exe) and os.environ.get('RBX_C_PATH'):
-        return os.environ['RBX_C_PATH']
-    if _is_exact_cpp_command(exe) and os.environ.get('RBX_CXX_PATH'):
-        return os.environ['RBX_CXX_PATH']
     output = subprocess.run(
         f'which {exe}', shell=True, executable=shutil.which('bash'), capture_output=True
     )
