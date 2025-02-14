@@ -18,9 +18,13 @@ _CONFIG_FILE_NAME = 'default_setter_config.yml'
 class SetterConfig(BaseModel):
     use_sanitizers: bool = False
     command_substitutions: Dict[str, str] = {}
+    sanitizer_command_substitutions: Dict[str, str] = {}
 
-    def substitute_command(self, command: str) -> str:
+    def substitute_command(self, command: str, sanitized: bool = False) -> str:
         exe = shlex.split(command)[0]
+        if sanitized and exe in self.sanitizer_command_substitutions:
+            exe = self.sanitizer_command_substitutions[exe]
+            return ' '.join([exe, *shlex.split(command)[1:]])
         if exe in self.command_substitutions:
             exe = self.command_substitutions[exe]
             return ' '.join([exe, *shlex.split(command)[1:]])

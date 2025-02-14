@@ -45,9 +45,9 @@ class SanitizationLevel(Enum):
         return self.value >= SanitizationLevel.FORCE.value
 
 
-def substitute_commands(commands: List[str]) -> List[str]:
+def substitute_commands(commands: List[str], sanitized: bool = False) -> List[str]:
     cfg = setter_config.get_setter_config()
-    return [cfg.substitute_command(command) for command in commands]
+    return [cfg.substitute_command(command, sanitized) for command in commands]
 
 
 def get_extension(code: CodeItem) -> str:
@@ -95,7 +95,7 @@ def compile_item(
         return sandbox.file_cacher.put_file_from_path(generator_path)
 
     commands = get_mapped_commands(compilation_options.commands, file_mapping)
-    commands = substitute_commands(commands)
+    commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
     if sanitized.should_sanitize():
         commands = add_sanitizer_flags(commands)
@@ -169,15 +169,7 @@ def run_item(
         stderr=PosixPath(file_mapping.error) if stderr is not None else None,
     )
 
-    assert execution_options.command
-    command = get_mapped_command(execution_options.command, file_mapping)
-    command = substitute_commands([command])[0]
-
-    if extra_args is not None:
-        splitted_command = shlex.split(command)
-        splitted_command.extend(shlex.split(extra_args))
-        command = shlex.join(splitted_command)
-
+    # Sanitization parameters.
     sanitized = False
     if is_executable_sanitized(executable):
         # Remove any memory constraints for a sanitized executable.
@@ -194,6 +186,15 @@ def run_item(
                 orig_execution_config.sandbox.wallTimeLimit
             )
         sanitized = True
+
+    assert execution_options.command
+    command = get_mapped_command(execution_options.command, file_mapping)
+    command = substitute_commands([command], sanitized=sanitized)[0]
+
+    if extra_args is not None:
+        splitted_command = shlex.split(command)
+        splitted_command.extend(shlex.split(extra_args))
+        command = shlex.join(splitted_command)
 
     artifacts = GradingArtifacts()
     artifacts.inputs.append(

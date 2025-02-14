@@ -3,9 +3,11 @@ import pathlib
 import shlex
 import shutil
 import subprocess
+import sys
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import typer
 from pydantic import BaseModel
 from rich.text import Text
 
@@ -293,27 +295,35 @@ def _complain_about_clang() -> None:
     )
 
 
-def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
+def _get_cxx_version_output(command: str) -> Optional[str]:
     cmds = shlex.split(command)
     if not cmds:
         return None
     exe = cmds[0]
-
-    if not _is_cpp_command(exe):
+    if not is_cxx_command(exe):
         return None
 
+    exe = cmds[0]
     output = subprocess.run([exe, '-v'], capture_output=True)
     if output.returncode != 0:
-        console.print('[error]Failed to get g++/clang compiler version.[/error]')
+        console.print('[error]Failed to get C/C++ compiler version.[/error]')
         return None
-    lines = output.stderr.decode().splitlines()
+    return output.stderr.decode()
+
+
+def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
+    version_output = _get_cxx_version_output(command)
+    if version_output is None:
+        return None
+    lines = version_output.splitlines()
     if not lines:
         return None
     # Check the first line for `clang`.
     if 'clang' not in lines[0]:
         return None
 
-    _complain_about_clang()
+    if not is_sanitizer_command(command):
+        _complain_about_clang()
     bits = get_bits_stdcpp()
     return GradingFileInput(src=bits, dest=pathlib.Path('bits/stdc++.h'))
 
@@ -356,6 +366,30 @@ def _try_following_alias_for_commands(commands: List[str]) -> List[str]:
     return res
 
 
+@functools.cache
+def _maybe_complain_about_sanitization(command: str) -> None:
+    if not is_sanitizer_command(command):
+        return
+    if sys.platform != 'darwin':
+        return
+
+    version_output = _get_cxx_version_output(command)
+    if version_output is None:
+        return
+    lines = version_output.splitlines()
+    if not lines:
+        return
+    if 'gcc' in lines[-1]:
+        console.print(
+            '[error]Notice you are using sanitizers in [item]MacOS[/item], but your C/C++ compiler is [item]gcc[/item].[/error]'
+        )
+        console.print('[error]GCC does not support sanitization in MacOS.[/error]')
+        console.print(
+            '[warning]See [item]https://rsalesc.github.io/rbx/cpp-on-macos[/item] for instructions on how to use C/C++ sanitizers on MacOS.[/warning]'
+        )
+        raise typer.Exit(1)
+
+
 def compile(
     commands: List[str],
     params: SandboxParams,
@@ -376,6 +410,7 @@ def compile(
     sandbox.set_params(params)
 
     for i, command in enumerate(commands):
+        _maybe_complain_about_sanitization(command)
         cmd = _split_and_expand(command, sandbox)
         stdout_file = pathlib.PosixPath(f'compile-{i}.stdout')
         stderr_file = pathlib.PosixPath(f'compile-{i}.stderr')

@@ -15,3 +15,10 @@ command_substitutions:
   python: python
   python2: python2
   python3: python3
+
+# A list of command substitutions to apply to rbx when
+# sanitizers are enabled.
+#
+# This is useful when replacing compilers in OS such as Mac,
+# since GCC on Mac does not support sanitizers.
+sanitizer_command_substitutions: {}
