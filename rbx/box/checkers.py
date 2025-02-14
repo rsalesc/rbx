@@ -188,7 +188,9 @@ def _check_sanitizer_warnings(
         return False
     if not program_stderr.is_file():
         return False
-    return 'runtime error:' in program_stderr.read_text()
+
+    stderr = program_stderr.read_text()
+    return 'runtime error:' in stderr or '==ERROR' in stderr
 
 
 def check(

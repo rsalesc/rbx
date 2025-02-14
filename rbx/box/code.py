@@ -70,7 +70,7 @@ def is_executable_sanitized(executable: DigestOrSource) -> bool:
 
 def add_sanitizer_flags_to_command(command: str) -> str:
     if is_cxx_command(command):
-        return command + ' -fsanitize=address,undefined'
+        return command + ' -fsanitize=address,undefined -fno-omit-frame-pointer'
     return command
 
 
