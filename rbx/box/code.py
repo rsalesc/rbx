@@ -31,6 +31,7 @@ from rbx.grading.steps import (
     GradingFileOutput,
     RunLog,
     RunLogMetadata,
+    is_cxx_command,
 )
 
 
@@ -55,8 +56,25 @@ def find_language_name(code: CodeItem) -> str:
     return get_language(get_extension(code)).name
 
 
+def is_executable_sanitized(executable: DigestOrSource) -> bool:
+    if executable.digest is None:
+        return False
+    storage = package.get_cache_storage()
+    return storage.exists(f'{executable.digest.value}.san')
+
+
+def add_sanitizer_flags_to_command(command: str) -> str:
+    if is_cxx_command(command):
+        return command + ' -fsanitize=address,undefined'
+    return command
+
+
+def add_sanitizer_flags(commands: List[str]) -> List[str]:
+    return [add_sanitizer_flags_to_command(command) for command in commands]
+
+
 # Compile code item and return its digest in the storage.
-def compile_item(code: CodeItem) -> str:
+def compile_item(code: CodeItem, sanitized: bool = False) -> str:
     generator_path = PosixPath(code.path)
     language = find_language_name(code)
     compilation_options = get_compilation_config(language)
@@ -69,10 +87,12 @@ def compile_item(code: CodeItem) -> str:
         # Language is not compiled.
         return sandbox.file_cacher.put_file_from_path(generator_path)
 
-    # Compile the generator
     commands = get_mapped_commands(compilation_options.commands, file_mapping)
     if sys.platform == 'darwin':
         commands = normalize_for_macos(commands)
+
+    if sanitized:
+        commands = add_sanitizer_flags(commands)
 
     compiled_digest = DigestHolder()
 
@@ -104,6 +124,16 @@ def compile_item(code: CodeItem) -> str:
         raise typer.Exit(1)
 
     assert compiled_digest.value is not None
+
+    # Create sentinel to indicate this executable is sanitized.
+    storage = package.get_cache_storage()
+    if sanitized:
+        pf = storage.create_file(f'{compiled_digest.value}.san')
+        if pf is not None:
+            storage.commit_file(pf)
+    elif storage.exists(f'{compiled_digest.value}.san'):
+        storage.delete(f'{compiled_digest.value}.san')
+
     return compiled_digest.value
 
 
@@ -140,6 +170,23 @@ def run_item(
         splitted_command = shlex.split(command)
         splitted_command.extend(shlex.split(extra_args))
         command = shlex.join(splitted_command)
+
+    sanitized = False
+    if is_executable_sanitized(executable):
+        # Remove any memory constraints for a sanitized executable.
+        # Sanitizers are known to be memory-hungry.
+        sandbox_params.address_space = None
+
+        # Reset timeout configs since sanitizers are known to be time-hungry.
+        sandbox_params.timeout = None
+        sandbox_params.wallclock_timeout = None
+        orig_execution_config = get_execution_config(language)
+        if orig_execution_config.sandbox is not None:
+            sandbox_params.timeout = orig_execution_config.sandbox.timeLimit
+            sandbox_params.wallclock_timeout = (
+                orig_execution_config.sandbox.wallTimeLimit
+            )
+        sanitized = True
 
     artifacts = GradingArtifacts()
     artifacts.inputs.append(
@@ -181,5 +228,5 @@ def run_item(
         sandbox=sandbox,
         artifacts=artifacts,
         dependency_cache=dependency_cache,
-        metadata=RunLogMetadata(language=code.language),
+        metadata=RunLogMetadata(language=code.language, is_sanitized=sanitized),
     )

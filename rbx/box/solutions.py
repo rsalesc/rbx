@@ -105,6 +105,7 @@ def get_exact_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solu
 def compile_solutions(
     progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Set[str]] = None,
+    sanitized: bool = False,
 ) -> Dict[pathlib.Path, str]:
     pkg = package.find_problem_package_or_die()
 
@@ -119,7 +120,9 @@ def compile_solutions(
         if progress:
             progress.update(f'Compiling solution [item]{solution.path}[/item]...')
         try:
-            compiled_solutions[solution.path] = compile_item(solution)
+            compiled_solutions[solution.path] = compile_item(
+                solution, sanitized=sanitized
+            )
         except:
             console.console.print(
                 f'[error]Failed compiling solution [item]{solution.path}[/item][/error]'
@@ -285,12 +288,13 @@ def _produce_solution_items(
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     timelimit_override: Optional[int] = None,
+    sanitized: bool = False,
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
     checker_digest = checkers.compile_checker() if check else None
     compiled_solutions = compile_solutions(
-        progress=progress, tracked_solutions=tracked_solutions
+        progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
     )
 
     # Clear run directory and rely on cache to
@@ -351,6 +355,7 @@ def run_solutions(
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     timelimit_override: Optional[int] = None,
+    sanitized: bool = False,
 ) -> RunSolutionResult:
     return RunSolutionResult(
         skeleton=_get_report_skeleton(tracked_solutions, verification=verification),
@@ -360,6 +365,7 @@ def run_solutions(
             verification=verification,
             check=check,
             timelimit_override=timelimit_override,
+            sanitized=sanitized,
         ),
     )
 
@@ -369,18 +375,21 @@ def _run_interactive_solutions(
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
     check: bool = True,
+    sanitized: bool = False,
 ) -> Iterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
     main_solution = package.get_main_solution()
     check = check and main_solution is not None
 
     checker_digest = checkers.compile_checker() if check else None
-    compiled_solutions = compile_solutions(tracked_solutions=tracked_solutions)
+    compiled_solutions = compile_solutions(
+        tracked_solutions=tracked_solutions, sanitized=sanitized
+    )
 
     main_solution_digest = None
     if check and main_solution is not None:
         try:
-            main_solution_digest = compile_item(main_solution)
+            main_solution_digest = compile_item(main_solution, sanitized=sanitized)
         except:
             console.console.print(
                 '[error]Failed compiling main solution. If you do not want to check against a main solution, run with --nocheck flag.[/error]'
@@ -442,6 +451,7 @@ async def run_and_print_interactive_solutions(
     generator: Optional[GeneratorCall] = None,
     check: bool = True,
     print: bool = False,
+    sanitized: bool = False,
 ):
     pkg = package.find_problem_package_or_die()
     items = _run_interactive_solutions(
@@ -449,6 +459,7 @@ async def run_and_print_interactive_solutions(
         verification=verification,
         check=check,
         generator=generator,
+        sanitized=sanitized,
     )
 
     for item in items:

@@ -32,7 +32,7 @@ from rbx.utils import StatusProgress
 
 
 def _compile_generator(generator: CodeItem) -> str:
-    return compile_item(generator)
+    return compile_item(generator, sanitized=True)
 
 
 def _get_group_input(
@@ -322,7 +322,7 @@ def generate_standalone(
     # Get generator item
     generator = package.get_generator(call.name)
     if generator_digest is None:
-        generator_digest = compile_item(generator)
+        generator_digest = _compile_generator(generator)
 
     generation_log = run_item(
         generator,
@@ -351,7 +351,9 @@ def generate_standalone(
     # Run validator, if it is available.
     if validator is not None and validate:
         if validator_digest is None:
-            validator_digest = compile_item(validator)
+            validator_tp = validators.compile_main_validator()
+            assert validator_tp is not None
+            _, validator_digest = validator_tp
         ok, message, *_ = validators.validate_test(output, validator, validator_digest)
         if not ok:
             console.console.print(

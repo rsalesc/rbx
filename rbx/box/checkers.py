@@ -23,7 +23,7 @@ def compile_checker() -> str:
     checker = package.get_checker()
 
     try:
-        digest = compile_item(checker)
+        digest = compile_item(checker, sanitized=True)
     except Exception as e:
         console.console.print('[error]Failed compiling checker.[/error]')
         raise typer.Exit(1) from e
@@ -33,11 +33,21 @@ def compile_checker() -> str:
 def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
     pkg = package.find_problem_package_or_die()
 
+    is_sanitized = (
+        run_log is not None
+        and run_log.metadata is not None
+        and run_log.metadata.is_sanitized
+    )
+
     if run_log is None:
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
     timelimit = pkg.timelimit_for_language(run_log.get_run_language())
-    if run_log.time is not None and run_log.time * 1000 > timelimit * 2:
+    if (
+        run_log.time is not None
+        and run_log.time * 1000 > timelimit * 2
+        and not is_sanitized
+    ):
         return CheckerResult(outcome=Outcome.TIME_LIMIT_EXCEEDED)
 
     if run_log.exitstatus in [SandboxBase.EXIT_SIGNAL, SandboxBase.EXIT_NONZERO_RETURN]:
@@ -58,11 +68,17 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
         # This already is a TLE outcome.
         return result
     pkg = package.find_problem_package_or_die()
+    is_sanitized = (
+        run_log is not None
+        and run_log.metadata is not None
+        and run_log.metadata.is_sanitized
+    )
     if (
         run_log is not None
         and run_log.time is not None
         and run_log.time * 1000
         >= pkg.timelimit_for_language(run_log.get_run_language())
+        and not is_sanitized
     ):
         # Soft TLE.
         result.no_tle_outcome = result.outcome

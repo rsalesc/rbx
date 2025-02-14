@@ -131,8 +131,13 @@ def run(
         '-t',
         help='Whether to use estimate a time limit based on accepted solutions.',
     ),
+    sanitized: bool = typer.Option(
+        False,
+        '--sanitized',
+        '-s',
+        help='Whether to compile the solutions with sanitizers enabled.',
+    ),
 ):
-    pkg = package.find_problem_package_or_die()
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
@@ -151,6 +156,13 @@ def run(
 
     override_tl = None
     if timeit:
+        if sanitized:
+            console.console.print(
+                '[error]Sanitizers are known to be time-hungry, so they cannot be used for time estimation.[/error]'
+            )
+            raise typer.Exit(1)
+
+        # Never use sanitizers for time estimation.
         override_tl = _time_impl(check=check, detailed=False)
         if override_tl is None:
             raise typer.Exit(1)
@@ -165,12 +177,22 @@ def run(
         if solution:
             tracked_solutions = {solution}
 
+        if sanitized and tracked_solutions is None:
+            console.console.print(
+                '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
+            )
+            tracked_solutions = {
+                str(solution.path)
+                for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+            }
+
         solution_result = run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
             check=check,
             verification=VerificationLevel(verification),
             timelimit_override=override_tl,
+            sanitized=sanitized,
         )
 
     console.console.print()
@@ -295,6 +317,12 @@ def irun(
     print: bool = typer.Option(
         False, '--print', '-p', help='Whether to print outputs to terminal.'
     ),
+    sanitized: bool = typer.Option(
+        False,
+        '--sanitized',
+        '-s',
+        help='Whether to compile the solutions with sanitizers enabled.',
+    ),
 ):
     if not print:
         console.console.print(
@@ -321,6 +349,15 @@ def irun(
         }
     if solution:
         tracked_solutions = {solution}
+    if sanitized and tracked_solutions is None:
+        console.console.print(
+            '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
+        )
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+        }
+
     asyncio.run(
         run_and_print_interactive_solutions(
             tracked_solutions=tracked_solutions,
@@ -330,6 +367,7 @@ def irun(
             if generator is not None
             else None,
             print=print,
+            sanitized=sanitized,
         )
     )
 
@@ -392,6 +430,12 @@ def stress(
         '--verbose',
         help='Whether to print verbose output for checkers and finders.',
     ),
+    sanitized: bool = typer.Option(
+        False,
+        '--sanitized',
+        '-s',
+        help='Whether to compile the solutions with sanitizers enabled.',
+    ),
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
@@ -408,6 +452,7 @@ def stress(
             findingsLimit=findings,
             progress=s,
             verbose=verbose,
+            sanitized=sanitized,
         )
 
     stresses.print_stress_report(report)
@@ -485,8 +530,14 @@ def stress(
 @package.within_problem
 def compile_command(
     path: Annotated[str, typer.Argument(help='Path to the asset to compile.')],
+    sanitized: bool = typer.Option(
+        False,
+        '--sanitized',
+        '-s',
+        help='Whether to compile the asset with sanitizers enabled.',
+    ),
 ):
-    compile.any(path)
+    compile.any(path, sanitized)
 
 
 @app.command('validate', help='Run the validator in a one-off fashion, interactively.')

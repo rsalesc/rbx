@@ -49,6 +49,7 @@ def run_stress(
     findingsLimit: int = 1,
     verbose: bool = False,
     progress: Optional[StatusProgress] = None,
+    sanitized: bool = False,
 ) -> StressReport:
     if finder:
         stress = Stress(
@@ -63,7 +64,7 @@ def run_stress(
     generator = package.get_generator(call.name)
 
     try:
-        generator_digest = compile_item(generator)
+        generator_digest = compile_item(generator, sanitized=True)
     except:
         console.console.print(
             f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'
@@ -79,7 +80,8 @@ def run_stress(
 
     solution_indices = {str(solution.path): i for i, solution in enumerate(solutions)}
     solutions_digest = compile_solutions(
-        tracked_solutions=set(str(solution.path) for solution in solutions)
+        tracked_solutions=set(str(solution.path) for solution in solutions),
+        sanitized=sanitized,
     )
     if progress:
         progress.update('Compiling finders...')

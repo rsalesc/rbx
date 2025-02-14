@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import importlib.resources
 import logging
+import os
 import pathlib
 import shutil
 import signal
@@ -291,6 +292,7 @@ class StupidSandbox(SandboxBase):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            env={**os.environ, **self.params.set_env},
         )
         self.hydrate_logs()
         return self.translate_box_exitcode(self.returncode)

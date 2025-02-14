@@ -32,7 +32,7 @@ class TestcaseValidationInfo(BaseModel):
 
 def _compile_validator(validator: CodeItem) -> str:
     try:
-        digest = compile_item(validator)
+        digest = compile_item(validator, sanitized=True)
     except:
         console.console.print(
             f'[error]Failed compiling validator [item]{validator.path}[/item][/error]'
