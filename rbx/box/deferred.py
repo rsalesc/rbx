@@ -20,7 +20,7 @@ class Deferred(Generic[T]):
     def peek(self) -> Optional[T]:
         return self.cache
 
-    def wrap_with[U](
+    def wrap_with(
         self, wrapper: Callable[[Awaitable[T]], Awaitable[U]]
     ) -> 'Deferred[U]':
         return Deferred(lambda: wrapper(self()))
