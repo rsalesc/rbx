@@ -178,7 +178,7 @@ def _check(
 def _check_sanitizer_warnings(run_log: Optional[RunLog]) -> bool:
     if run_log is None:
         return False
-    return run_log.sanitizer_warnings
+    return run_log.warnings
 
 
 def check(

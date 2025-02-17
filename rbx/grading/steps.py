@@ -37,6 +37,7 @@ class DigestHolder(BaseModel):
 
 class GradingLogsHolder(BaseModel):
     run: Optional['RunLog'] = None
+    preprocess: Optional[List['PreprocessLog']] = None
     cached: bool = False
 
 
@@ -166,7 +167,7 @@ class RunLog(BaseModel):
     exitstatus: str = SandboxBase.EXIT_SANDBOX_ERROR
     time: Optional[float] = 0.0
     memory: Optional[int] = 0
-    sanitizer_warnings: bool = False
+    warnings: bool = False
     metadata: Optional[RunLogMetadata] = None
 
     def get_run_language(self) -> Optional[str]:
@@ -298,7 +299,7 @@ def is_cxx_command(exe_command: str) -> bool:
     return _is_cpp_command(exe_command) or _is_c_command(exe_command)
 
 
-def is_sanitizer_command(command: str) -> bool:
+def is_cxx_sanitizer_command(command: str) -> bool:
     cmds = shlex.split(command)
     if not cmds:
         return False
@@ -347,7 +348,7 @@ def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]
     if 'clang' not in lines[0]:
         return None
 
-    if not is_sanitizer_command(command):
+    if not is_cxx_sanitizer_command(command):
         _complain_about_clang()
     bits = get_bits_stdcpp()
     return GradingFileInput(src=bits, dest=pathlib.Path('bits/stdc++.h'))
@@ -393,7 +394,7 @@ def _try_following_alias_for_commands(commands: List[str]) -> List[str]:
 
 @functools.cache
 def _maybe_complain_about_sanitization(command: str) -> None:
-    if not is_sanitizer_command(command):
+    if not is_cxx_sanitizer_command(command):
         return
     if sys.platform != 'darwin':
         return
@@ -429,6 +430,17 @@ def _check_for_sanitizer_warnings(
         return False
     with sandbox.get_file(stderr_file) as f:
         return any(_check_for_sanitizer_warnings_in_line(line.decode()) for line in f)
+
+
+def _check_for_compilation_warnings(
+    sandbox: SandboxBase, stderr_file: Optional[pathlib.Path]
+) -> bool:
+    if stderr_file is None:
+        return False
+    if not sandbox.file_exists(stderr_file):
+        return False
+    with sandbox.get_file(stderr_file) as f:
+        return any(line.strip() for line in f)
 
 
 def compile(
@@ -485,12 +497,16 @@ def compile(
             exitstatus=sandbox.get_exit_status(),
             time=sandbox.get_execution_time(),
             memory=sandbox.get_memory_used(),
+            warnings=_check_for_compilation_warnings(sandbox, stderr_file),
             log='\n'.join(std_outputs),
         )
         logs.append(log)
 
         if log.exitcode != 0:
             break
+
+    if artifacts.logs is not None:
+        artifacts.logs.preprocess = logs
 
     if logs and logs[-1].exitcode != 0:
         console.print(
@@ -542,7 +558,7 @@ def run(
         metadata=metadata,
     )
     if metadata is not None and metadata.is_sanitized:
-        run_log.sanitizer_warnings = _check_for_sanitizer_warnings(
+        run_log.warnings = _check_for_sanitizer_warnings(
             sandbox,
             params.stderr_file,
         )

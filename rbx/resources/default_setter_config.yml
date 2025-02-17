@@ -4,6 +4,10 @@
 # sanitizers. For this, you have to use the `-s` flag in `rbx run`.
 use_sanitizers: false
 
+# Whether to enable warnings when running solutions.
+warnings:
+  enabled: false
+
 # A list of command substitutions to apply to rbx.
 # Useful when replacing compilers in OS such as Mac.
 command_substitutions:

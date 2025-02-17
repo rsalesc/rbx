@@ -18,6 +18,8 @@ def compile(
     artifacts: GradingArtifacts,
     dependency_cache: DependencyCache,
 ):
+    artifacts.logs = GradingLogsHolder()
+
     ok = True
     with dependency_cache(
         commands, [artifacts], params.get_cacheable_params()

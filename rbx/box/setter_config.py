@@ -6,7 +6,7 @@ import shlex
 from typing import Dict
 
 import typer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rbx import config, console, utils
 
@@ -15,10 +15,31 @@ app = typer.Typer(no_args_is_help=True)
 _CONFIG_FILE_NAME = 'default_setter_config.yml'
 
 
+class WarningsConfig(BaseModel):
+    enabled: bool = Field(
+        False,
+        description='Whether to use warning flags when running solutions.',
+    )
+
+
 class SetterConfig(BaseModel):
-    use_sanitizers: bool = False
-    command_substitutions: Dict[str, str] = {}
-    sanitizer_command_substitutions: Dict[str, str] = {}
+    use_sanitizers: bool = Field(
+        False,
+        description='Whether to use sanitizers when running solutions.',
+    )
+    warnings: WarningsConfig = Field(
+        default_factory=WarningsConfig,  # type: ignore
+        description='Configuration for warnings.',
+    )
+
+    command_substitutions: Dict[str, str] = Field(
+        {},
+        description='Substitutions to apply to commands before running them.',
+    )
+    sanitizer_command_substitutions: Dict[str, str] = Field(
+        {},
+        description='Substitutions to apply to commands before running them with sanitizers.',
+    )
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:
         exe = shlex.split(command)[0]

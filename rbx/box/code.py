@@ -79,6 +79,22 @@ def add_sanitizer_flags(commands: List[str]) -> List[str]:
     return [add_sanitizer_flags_to_command(command) for command in commands]
 
 
+def add_warning_flags_to_command(command: str) -> str:
+    if is_cxx_command(command):
+        return (
+            command
+            + ' -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts'
+        )
+    return command
+
+
+def add_warning_flags(commands: List[str]) -> List[str]:
+    cfg = setter_config.get_setter_config()
+    if cfg.warnings.enabled:
+        return [add_warning_flags_to_command(command) for command in commands]
+    return commands
+
+
 # Compile code item and return its digest in the storage.
 def compile_item(
     code: CodeItem, sanitized: SanitizationLevel = SanitizationLevel.PREFER
@@ -96,6 +112,7 @@ def compile_item(
         return sandbox.file_cacher.put_file_from_path(generator_path)
 
     commands = get_mapped_commands(compilation_options.commands, file_mapping)
+    commands = add_warning_flags(commands)
     commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
     if sanitized.should_sanitize():
@@ -131,6 +148,16 @@ def compile_item(
         raise typer.Exit(1)
 
     assert compiled_digest.value is not None
+
+    cfg = setter_config.get_setter_config()
+    if (
+        cfg.warnings.enabled
+        and artifacts.logs is not None
+        and artifacts.logs.preprocess is not None
+    ):
+        any_warning = any(log.warnings for log in artifacts.logs.preprocess)
+        if any_warning:
+            warning_stack.get_warning_stack().add_warning(code)
 
     # Create sentinel to indicate this executable is sanitized.
     storage = package.get_cache_storage()
@@ -243,7 +270,7 @@ def run_item(
     )
 
     # Find sanitizer logs.
-    if run_log is not None and run_log.sanitizer_warnings:
+    if run_log is not None and run_log.warnings:
         assert sandbox_params.stderr_file is not None
         stderr_output = artifacts.get_output_file_for_src(sandbox_params.stderr_file)
         if stderr_output is not None:

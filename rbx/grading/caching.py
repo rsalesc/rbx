@@ -334,6 +334,10 @@ class DependencyCache:
         for logs, reference_logs in zip(fingerprint.logs, reference_fingerprint.logs):
             if logs.run is not None:
                 reference_logs.run = logs.run.model_copy(deep=True)
+            if logs.preprocess is not None:
+                reference_logs.preprocess = [
+                    log.model_copy(deep=True) for log in logs.preprocess
+                ]
             reference_logs.cached = True
 
         return True
