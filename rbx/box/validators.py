@@ -1,6 +1,6 @@
 import pathlib
 import shlex
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import typer
 from pydantic import BaseModel
@@ -65,7 +65,7 @@ def _process_bounds(log: str) -> HitBounds:
     return bounds
 
 
-def _merge_hit_bounds(hit_bounds: List[HitBounds]) -> HitBounds:
+def _merge_hit_bounds(hit_bounds: Iterable[HitBounds]) -> HitBounds:
     res: HitBounds = {}
     for hb in hit_bounds:
         for k, hit in hb.items():
@@ -241,7 +241,7 @@ def has_validation_errors(infos: List[TestcaseValidationInfo]) -> bool:
 
 def print_validation_report(infos: List[TestcaseValidationInfo]):
     console.console.rule('Validation report', style='status')
-    hit_bounds_per_group: Dict[str, HitBounds] = {}
+    hit_bounds_per_group: Dict[Optional[str], HitBounds] = {}
     for info in infos:
         if not info.ok:
             console.console.print(
