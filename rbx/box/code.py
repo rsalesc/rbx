@@ -88,16 +88,18 @@ def add_warning_flags_to_command(command: str) -> str:
     return command
 
 
-def add_warning_flags(commands: List[str]) -> List[str]:
+def add_warning_flags(commands: List[str], force_warnings: bool) -> List[str]:
     cfg = setter_config.get_setter_config()
-    if cfg.warnings.enabled:
+    if cfg.warnings.enabled or force_warnings:
         return [add_warning_flags_to_command(command) for command in commands]
     return commands
 
 
 # Compile code item and return its digest in the storage.
 def compile_item(
-    code: CodeItem, sanitized: SanitizationLevel = SanitizationLevel.PREFER
+    code: CodeItem,
+    sanitized: SanitizationLevel = SanitizationLevel.PREFER,
+    force_warnings: bool = False,
 ) -> str:
     generator_path = PosixPath(code.path)
     language = find_language_name(code)
@@ -112,7 +114,7 @@ def compile_item(
         return sandbox.file_cacher.put_file_from_path(generator_path)
 
     commands = get_mapped_commands(compilation_options.commands, file_mapping)
-    commands = add_warning_flags(commands)
+    commands = add_warning_flags(commands, force_warnings)
     commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
     if sanitized.should_sanitize():
@@ -151,7 +153,7 @@ def compile_item(
 
     cfg = setter_config.get_setter_config()
     if (
-        cfg.warnings.enabled
+        (cfg.warnings.enabled or force_warnings)
         and artifacts.logs is not None
         and artifacts.logs.preprocess is not None
     ):

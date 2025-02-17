@@ -550,8 +550,14 @@ def compile_command(
         '-s',
         help='Whether to compile the asset with sanitizers enabled.',
     ),
+    warnings: bool = typer.Option(
+        False,
+        '--warnings',
+        '-w',
+        help='Whether to compile the asset with warnings enabled.',
+    ),
 ):
-    compile.any(path, sanitized)
+    compile.any(path, sanitized, warnings)
 
 
 @app.command('validate', help='Run the validator in a one-off fashion, interactively.')

@@ -14,9 +14,9 @@ def _compile_out():
     return package.get_build_path() / 'exe'
 
 
-def _compile(item: CodeItem, sanitized: SanitizationLevel):
+def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
     console.console.print(f'Compiling [item]{item.path}[/item]...')
-    digest = code.compile_item(item, sanitized)
+    digest = code.compile_item(item, sanitized, force_warnings=warnings)
     cacher = package.get_file_cacher()
     out_path = _compile_out()
     cacher.get_file_to_path(digest, out_path)
@@ -27,7 +27,7 @@ def _compile(item: CodeItem, sanitized: SanitizationLevel):
     )
 
 
-def any(path: str, sanitized: bool = False):
+def any(path: str, sanitized: bool = False, warnings: bool = False):
     pkg = package.find_problem_package_or_die()
 
     solution = package.get_solution_or_nil(path)
@@ -35,6 +35,7 @@ def any(path: str, sanitized: bool = False):
         _compile(
             solution,
             sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
+            warnings=warnings,
         )
         return
 
@@ -45,6 +46,7 @@ def any(path: str, sanitized: bool = False):
                 sanitized=SanitizationLevel.FORCE
                 if sanitized
                 else SanitizationLevel.PREFER,
+                warnings=warnings,
             )
             return
 
@@ -54,6 +56,7 @@ def any(path: str, sanitized: bool = False):
             sanitized=SanitizationLevel.FORCE
             if sanitized
             else SanitizationLevel.PREFER,
+            warnings=warnings,
         )
         return
 
@@ -63,10 +66,12 @@ def any(path: str, sanitized: bool = False):
             sanitized=SanitizationLevel.FORCE
             if sanitized
             else SanitizationLevel.PREFER,
+            warnings=warnings,
         )
         return
 
     _compile(
         CodeItem(path=pathlib.Path(path)),
         sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
+        warnings=warnings,
     )
