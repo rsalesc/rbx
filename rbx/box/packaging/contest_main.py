@@ -4,8 +4,8 @@ from typing import Type
 
 import typer
 
-from rbx import annotations, console, utils
-from rbx.box import environment, package
+from rbx import annotations, console
+from rbx.box import cd, environment, package
 from rbx.box.contest import build_contest_statements, contest_package, contest_utils
 from rbx.box.packaging.main import run_packager
 from rbx.box.packaging.packager import (
@@ -32,7 +32,7 @@ def run_contest_packager(
         console.console.print(
             f'Processing problem [item]{problem.short_name}[/item]...'
         )
-        with utils.new_cd(problem.get_path()):
+        with cd.new_package_cd(problem.get_path()):
             contest_utils.clear_package_cache()
             package_path = run_packager(packager_cls, verification=verification)
             built_packages.append(

@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import sys
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import IO, Any, Dict, List, Optional, Tuple, Union
 
 import typer
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ from rbx import utils
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
-from rbx.grading.judge.storage import copyfileobj
+from rbx.grading.judge.storage import Storage, copyfileobj
 
 MAX_STDOUT_LEN = 1024 * 1024 * 128  # 128 MB
 
@@ -115,6 +115,17 @@ class GradingFileOutput(BaseModel):
     # Whether to track file through its hash (disable for optimization).
     hash: bool = True
 
+    def get_file(self, storage: Storage) -> Optional[IO[bytes]]:
+        if self.dest is not None:
+            if self.optional and not self.dest.exists():
+                return None
+            return self.dest.open('rb')
+        if self.digest is not None and self.digest.value is not None:
+            if self.optional and not storage.exists(self.digest.value):
+                return None
+            return storage.get_file(self.digest.value)
+        raise ValueError('No file to get')
+
 
 class GradingArtifacts(BaseModel):
     # Root directory for the produced artifacts.
@@ -125,6 +136,18 @@ class GradingArtifacts(BaseModel):
     outputs: List[GradingFileOutput] = []
     # Capture certain logs of the execution.
     logs: Optional[GradingLogsHolder] = None
+
+    def get_input_file_for_dest(self, dest: pathlib.Path) -> Optional[GradingFileInput]:
+        for input in self.inputs:
+            if input.dest == dest:
+                return input
+        return None
+
+    def get_output_file_for_src(self, src: pathlib.Path) -> Optional[GradingFileOutput]:
+        for output in self.outputs:
+            if output.src == src:
+                return output
+        return None
 
 
 class TestcaseIO(BaseModel):
@@ -143,6 +166,7 @@ class RunLog(BaseModel):
     exitstatus: str = SandboxBase.EXIT_SANDBOX_ERROR
     time: Optional[float] = 0.0
     memory: Optional[int] = 0
+    sanitizer_warnings: bool = False
     metadata: Optional[RunLogMetadata] = None
 
     def get_run_language(self) -> Optional[str]:
@@ -391,6 +415,22 @@ def _maybe_complain_about_sanitization(command: str) -> None:
         raise typer.Exit(1)
 
 
+def _check_for_sanitizer_warnings_in_line(line: str) -> bool:
+    line = line.lower()
+    return 'runtime error:' in line or '==error' in line
+
+
+def _check_for_sanitizer_warnings(
+    sandbox: SandboxBase, stderr_file: Optional[pathlib.Path]
+) -> bool:
+    if stderr_file is None:
+        return False
+    if not sandbox.file_exists(stderr_file):
+        return False
+    with sandbox.get_file(stderr_file) as f:
+        return any(_check_for_sanitizer_warnings_in_line(line.decode()) for line in f)
+
+
 def compile(
     commands: List[str],
     params: SandboxParams,
@@ -501,6 +541,11 @@ def run(
         memory=sandbox.get_memory_used(),
         metadata=metadata,
     )
+    if metadata is not None and metadata.is_sanitized:
+        run_log.sanitizer_warnings = _check_for_sanitizer_warnings(
+            sandbox,
+            params.stderr_file,
+        )
     if artifacts.logs is not None:
         artifacts.logs.run = run_log.model_copy()
     return run_log

@@ -18,6 +18,7 @@ from rbx.box.environment import (
     get_sandbox_params_from_config,
     merge_execution_configs,
 )
+from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 from rbx.grading import steps_with_caching
 from rbx.grading.steps import (
@@ -163,12 +164,6 @@ def run_item(
     sandbox = package.get_singleton_sandbox()
     sandbox_params = get_sandbox_params_from_config(execution_options.sandbox)
 
-    sandbox_params.set_stdall(
-        stdin=PosixPath(file_mapping.input) if stdin is not None else None,
-        stdout=PosixPath(file_mapping.output) if stdout is not None else None,
-        stderr=PosixPath(file_mapping.error) if stderr is not None else None,
-    )
-
     # Sanitization parameters.
     sanitized = False
     if is_executable_sanitized(executable):
@@ -186,6 +181,14 @@ def run_item(
                 orig_execution_config.sandbox.wallTimeLimit
             )
         sanitized = True
+
+    sandbox_params.set_stdall(
+        stdin=PosixPath(file_mapping.input) if stdin is not None else None,
+        stdout=PosixPath(file_mapping.output) if stdout is not None else None,
+        stderr=PosixPath(file_mapping.error)
+        if stderr is not None or sanitized
+        else None,
+    )
 
     assert execution_options.command
     command = get_mapped_command(execution_options.command, file_mapping)
@@ -230,7 +233,7 @@ def run_item(
     if outputs:
         artifacts.outputs.extend(outputs)
 
-    return steps_with_caching.run(
+    run_log = steps_with_caching.run(
         command,
         params=sandbox_params,
         sandbox=sandbox,
@@ -238,3 +241,13 @@ def run_item(
         dependency_cache=dependency_cache,
         metadata=RunLogMetadata(language=code.language, is_sanitized=sanitized),
     )
+
+    # Find sanitizer logs.
+    if run_log is not None and run_log.sanitizer_warnings:
+        assert sandbox_params.stderr_file is not None
+        stderr_output = artifacts.get_output_file_for_src(sandbox_params.stderr_file)
+        if stderr_output is not None:
+            warning_stack.get_warning_stack().add_sanitizer_warning(
+                package.get_cache_storage(), code, stderr_output
+            )
+    return run_log

@@ -6,6 +6,7 @@ import typer
 from pydantic import ValidationError
 
 from rbx import console, utils
+from rbx.box import cd
 from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die, warn_preset_deactivated
 from rbx.box.schema import Package
@@ -58,7 +59,7 @@ def find_contest(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
 def within_contest(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        with utils.new_cd(find_contest()):
+        with cd.new_package_cd(find_contest()):
             return func(*args, **kwargs)
 
     return wrapper

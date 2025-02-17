@@ -1,10 +1,13 @@
+import contextlib
 import functools
 import pathlib
 from typing import Optional
 
 import typer
 
-from rbx import console, utils
+from rbx import console
+from rbx.box.sanitizers import warning_stack
+from rbx.utils import new_cd
 
 
 def find_package(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
@@ -30,7 +33,14 @@ def within_closest_package(func):
             console.console.print('[error]No rbx package found.[/error]')
             raise typer.Exit(1)
         # Get deepest package.
-        with utils.new_cd(package):
+        with new_package_cd(package):
             return func(*args, **kwargs)
 
     return wrapper
+
+
+@contextlib.contextmanager
+def new_package_cd(x: pathlib.Path):
+    with new_cd(x):
+        yield
+        warning_stack.print_warning_stack_report()

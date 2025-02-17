@@ -6,7 +6,7 @@ import typer
 from pydantic import ValidationError
 
 from rbx import config, console, utils
-from rbx.box import environment
+from rbx.box import cd, environment
 from rbx.box.environment import get_sandbox_type
 from rbx.box.presets import get_installed_preset_or_null, get_preset_lock
 from rbx.box.schema import (
@@ -102,7 +102,7 @@ def find_problem(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
 def within_problem(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        with utils.new_cd(find_problem()):
+        with cd.new_package_cd(find_problem()):
             return func(*args, **kwargs)
 
     return wrapper

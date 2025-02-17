@@ -175,22 +175,10 @@ def _check(
     return _convert_tle(result, run_log)
 
 
-def _check_sanitizer_warnings(
-    run_log: Optional[RunLog], program_stderr: Optional[pathlib.Path]
-) -> bool:
+def _check_sanitizer_warnings(run_log: Optional[RunLog]) -> bool:
     if run_log is None:
         return False
-    if run_log.metadata is None:
-        return False
-    if not run_log.metadata.is_sanitized:
-        return False
-    if program_stderr is None:
-        return False
-    if not program_stderr.is_file():
-        return False
-
-    stderr = program_stderr.read_text()
-    return 'runtime error:' in stderr or '==ERROR' in stderr
+    return run_log.sanitizer_warnings
 
 
 def check(
@@ -198,9 +186,8 @@ def check(
     run_log: Optional[RunLog],
     testcase: Testcase,
     program_output: pathlib.Path,
-    program_stderr: Optional[pathlib.Path] = None,
     skip_run_log: bool = False,
 ) -> CheckerResult:
     result = _check(checker_digest, run_log, testcase, program_output, skip_run_log)
-    result.sanitizer_warnings = _check_sanitizer_warnings(run_log, program_stderr)
+    result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
     return result

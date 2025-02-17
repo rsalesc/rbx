@@ -182,7 +182,6 @@ def _run_solution_on_testcase(
             run_log,
             testcase,
             program_output=output_path,
-            program_stderr=error_path,
         )
     else:
         checker_result = checkers.check_with_no_output(run_log)

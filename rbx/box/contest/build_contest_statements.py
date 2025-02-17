@@ -6,7 +6,8 @@ from typing import List, Optional, Tuple
 
 import typer
 
-from rbx import console, testing_utils, utils
+from rbx import console, testing_utils
+from rbx.box import cd
 from rbx.box.contest import contest_utils
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
@@ -58,7 +59,7 @@ class ExtractedProblem:
 
 
 def _get_samples(problem: ContestProblem) -> List[Testcase]:
-    with utils.new_cd(problem.get_path()):
+    with cd.new_package_cd(problem.get_path()):
         contest_utils.clear_package_cache()
         return get_samples()
 
@@ -156,7 +157,7 @@ def _build_problem_statements(
         console.console.print(
             f'Building statement for problem {extracted_problem.problem.short_name}...'
         )
-        with utils.new_cd(extracted_problem.problem.get_path()):
+        with cd.new_package_cd(extracted_problem.problem.get_path()):
             contest_utils.clear_package_cache()
             # TODO: respect steps override
             content, _ = build_statements.build_statement_bytes(
@@ -282,6 +283,7 @@ def build_statement_rooted(
 
     if joiner is None:
         return last_content, last_output
+    assert statement.joiner is not None
 
     # Join statements.
     console.console.print('Joining statements...')

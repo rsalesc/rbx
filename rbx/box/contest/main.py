@@ -7,7 +7,7 @@ import rich.prompt
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import creation, presets
+from rbx.box import cd, creation, presets
 from rbx.box.contest import contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
@@ -111,7 +111,7 @@ def create(
     if local:
         shutil.copytree(str(preset_path), str(dest_path / '.local.rbx'))
 
-    with utils.new_cd(dest_path):
+    with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()
         presets.generate_lock(preset if not local else presets.LOCAL)
 

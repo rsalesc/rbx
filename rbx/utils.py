@@ -113,7 +113,7 @@ def get_open_fds():
 
 
 @contextlib.contextmanager
-def new_cd(x):
+def new_cd(x: pathlib.Path):
     d = os.getcwd()
 
     # This could raise an exception, but it's probably

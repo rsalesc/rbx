@@ -2,8 +2,8 @@ from typing import Annotated, List, Optional
 
 import typer
 
-from rbx import annotations, console, utils
-from rbx.box import builder, environment
+from rbx import annotations, console
+from rbx.box import builder, cd, environment
 from rbx.box.contest import contest_utils
 from rbx.box.contest.build_contest_statements import build_statement
 from rbx.box.contest.contest_package import (
@@ -49,7 +49,7 @@ def build(
             console.console.print(
                 f'Processing problem [item]{problem.short_name}[/item]...'
             )
-            with utils.new_cd(problem.get_path()):
+            with cd.new_package_cd(problem.get_path()):
                 contest_utils.clear_package_cache()
 
                 if not builder.build(
