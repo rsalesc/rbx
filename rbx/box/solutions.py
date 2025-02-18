@@ -722,12 +722,16 @@ async def _render_detailed_group_table(
                     row.append('...')
                     continue
 
+                evals_per_solution[str(solution.path)].append(eval)
+
                 verdict = get_testcase_markup_verdict(eval)
                 time = get_evals_formatted_time([eval])
+                memory = get_evals_formatted_memory([eval])
+                full_item = f'{verdict} {time} / {memory}'
                 if eval.result.sanitizer_warnings:
-                    time = f'{time} [warning]*[/warning]'
-                evals_per_solution[str(solution.path)].append(eval)
-                row.append(f'{verdict} {time}')
+                    full_item = f'{full_item} [warning]*[/warning]'
+
+                row.append(full_item)
             table.add_row(*row)
 
         if table.row_count > 0:
@@ -738,7 +742,9 @@ async def _render_detailed_group_table(
                 if not non_null_evals:
                     summary_row.append('...')
                     continue
-                summary_row.append('  ' + get_evals_formatted_time(non_null_evals))
+                formatted_time = get_evals_formatted_time(non_null_evals)
+                formatted_memory = get_evals_formatted_memory(non_null_evals)
+                summary_row.append(f' {formatted_time} / {formatted_memory}')
             table.add_section()
             table.add_row(*summary_row)
         return table
