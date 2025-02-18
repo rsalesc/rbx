@@ -187,6 +187,9 @@ class PreprocessLog(RunLog):
     cmd: List[str]
     log: str
 
+    def get_command(self) -> str:
+        return ' '.join(self.cmd)
+
 
 class TestcaseLog(RunLog):
     stdout_absolute_path: Optional[pathlib.Path] = None

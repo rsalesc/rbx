@@ -4,8 +4,11 @@ from enum import Enum
 from pathlib import PosixPath
 from typing import List, Optional
 
+import rich
+import rich.text
 import typer
 
+from rbx import console
 from rbx.box import download, package, setter_config
 from rbx.box.environment import (
     ExecutionConfig,
@@ -41,7 +44,7 @@ class SanitizationLevel(Enum):
 
     def should_sanitize(self) -> bool:
         cfg = setter_config.get_setter_config()
-        if cfg.use_sanitizers:
+        if cfg.sanitizers.enabled:
             return self.value >= SanitizationLevel.PREFER.value
         return self.value >= SanitizationLevel.FORCE.value
 
@@ -100,6 +103,7 @@ def compile_item(
     code: CodeItem,
     sanitized: SanitizationLevel = SanitizationLevel.PREFER,
     force_warnings: bool = False,
+    verbose: bool = False,
 ) -> str:
     generator_path = PosixPath(code.path)
     language = find_language_name(code)
@@ -151,6 +155,13 @@ def compile_item(
 
     assert compiled_digest.value is not None
 
+    if verbose and artifacts.logs is not None and artifacts.logs.preprocess is not None:
+        for log in artifacts.logs.preprocess:
+            console.console.print(f'[status]Command:[/status] {log.get_command()}')
+            console.console.print(f'[status]Summary:[/status] {log.get_summary()}')
+            console.console.print(rich.text.Text.from_ansi(log.log), style='default')
+
+    # Write compiler warnings.
     cfg = setter_config.get_setter_config()
     if (
         (cfg.warnings.enabled or force_warnings)

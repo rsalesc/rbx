@@ -3,6 +3,7 @@ import importlib
 import importlib.resources
 import pathlib
 import shlex
+import sys
 from typing import Dict
 
 import typer
@@ -13,6 +14,19 @@ from rbx import config, console, utils
 app = typer.Typer(no_args_is_help=True)
 
 _CONFIG_FILE_NAME = 'default_setter_config.yml'
+_CONFIG_FILE_NAME_MAC = 'default_setter_config.mac.yml'
+
+
+class SanitizersConfig(BaseModel):
+    enabled: bool = Field(
+        False,
+        description='Whether to use sanitizers when running solutions.',
+    )
+
+    command_substitutions: Dict[str, str] = Field(
+        {},
+        description='Substitutions to apply to commands before running them with sanitizers.',
+    )
 
 
 class WarningsConfig(BaseModel):
@@ -23,9 +37,9 @@ class WarningsConfig(BaseModel):
 
 
 class SetterConfig(BaseModel):
-    use_sanitizers: bool = Field(
-        False,
-        description='Whether to use sanitizers when running solutions.',
+    sanitizers: SanitizersConfig = Field(
+        default_factory=SanitizersConfig,  # type: ignore
+        description='Configuration for sanitizers.',
     )
     warnings: WarningsConfig = Field(
         default_factory=WarningsConfig,  # type: ignore
@@ -36,15 +50,11 @@ class SetterConfig(BaseModel):
         {},
         description='Substitutions to apply to commands before running them.',
     )
-    sanitizer_command_substitutions: Dict[str, str] = Field(
-        {},
-        description='Substitutions to apply to commands before running them with sanitizers.',
-    )
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:
         exe = shlex.split(command)[0]
-        if sanitized and exe in self.sanitizer_command_substitutions:
-            exe = self.sanitizer_command_substitutions[exe]
+        if sanitized and exe in self.sanitizers.command_substitutions:
+            exe = self.sanitizers.command_substitutions[exe]
             return ' '.join([exe, *shlex.split(command)[1:]])
         if exe in self.command_substitutions:
             exe = self.command_substitutions[exe]
@@ -53,8 +63,12 @@ class SetterConfig(BaseModel):
 
 
 def get_default_setter_config_path() -> pathlib.Path:
+    cfg_name = _CONFIG_FILE_NAME
+    if sys.platform == 'darwin':
+        cfg_name = _CONFIG_FILE_NAME_MAC
+
     with importlib.resources.as_file(
-        importlib.resources.files('rbx') / 'resources' / _CONFIG_FILE_NAME
+        importlib.resources.files('rbx') / 'resources' / cfg_name
     ) as file:
         return file
 

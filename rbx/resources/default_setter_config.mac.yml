@@ -26,4 +26,6 @@ sanitizers:
   #
   # This is useful when replacing compilers in OS such as Mac,
   # since GCC on Mac does not support sanitizers.
-  command_substitutions: {}
+  command_substitutions:
+    g++: clang++
+    gcc: clang

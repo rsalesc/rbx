@@ -25,6 +25,7 @@ class WarningStack:
         dest_path = _get_warning_runs_dir(self.root).joinpath(
             code.path.with_suffix(code.path.suffix + '.log')
         )
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
         f = reference.get_file(storage)
         if f is None:
             return
@@ -32,6 +33,10 @@ class WarningStack:
             shutil.copyfileobj(f, fout)
         f.close()
         self.sanitizer_warnings[code.path] = dest_path
+
+    def clear(self):
+        self.warnings.clear()
+        self.sanitizer_warnings.clear()
 
 
 @functools.cache
