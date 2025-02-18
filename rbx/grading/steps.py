@@ -1,5 +1,6 @@
 import functools
 import pathlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -435,6 +436,21 @@ def _check_for_sanitizer_warnings(
         return any(_check_for_sanitizer_warnings_in_line(line.decode()) for line in f)
 
 
+_WARNING_RE = re.compile(r'[^:]+:\d+:\d+:[ ]+warning:.*')
+
+
+def _check_for_compilation_warnings_in_line(line: str) -> bool:
+    if line.startswith('./'):
+        return False
+    matched = _WARNING_RE.match(line) is not None
+    # if matched:
+    #     console.print(
+    #         '[warning]Compilation warning:[/warning]',
+    #         utils.highlight_json_obj(line),
+    #     )
+    return matched
+
+
 def _check_for_compilation_warnings(
     sandbox: SandboxBase, stderr_file: Optional[pathlib.Path]
 ) -> bool:
@@ -443,7 +459,9 @@ def _check_for_compilation_warnings(
     if not sandbox.file_exists(stderr_file):
         return False
     with sandbox.get_file(stderr_file) as f:
-        return any(line.strip() for line in f)
+        return any(
+            _check_for_compilation_warnings_in_line(line.strip().decode()) for line in f
+        )
 
 
 def compile(
