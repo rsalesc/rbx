@@ -103,5 +103,5 @@ async def verify(verification: environment.VerificationParam) -> bool:
     return await print_run_report(
         solution_result,
         console.console,
-        verification,
+        VerificationLevel(verification),
     )

@@ -13,7 +13,7 @@ import rich.table
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import checkers, environment, package
+from rbx.box import checkers, package
 from rbx.box.code import SanitizationLevel, compile_item, find_language_name, run_item
 from rbx.box.deferred import Deferred
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
@@ -539,6 +539,24 @@ def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     return f'{max_time} ms'
 
 
+def get_capped_evals_formatted_time(
+    solution: Solution, evals: List[Evaluation], verification: VerificationLevel
+) -> str:
+    pkg = package.find_problem_package_or_die()
+
+    max_time = _get_evals_time_in_ms(evals)
+    has_tle = any(eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED for eval in evals)
+    tl = pkg.timelimit_for_language(solution.language)
+
+    if verification.value >= VerificationLevel.FULL.value:
+        # Using double TL for verification.
+        tl = tl * 2
+
+    if has_tle and max_time > tl:
+        return f'>{tl} ms'
+    return f'{max_time} ms'
+
+
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
     if max_memory < 1024 * 1024:
@@ -631,7 +649,9 @@ def _print_solution_outcome(
             '[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [warning]*[/warning]. See their stderr for more details.'
         )
 
-    console.print(f'Time: {get_evals_formatted_time(evals)}')
+    console.print(
+        f'Time: {get_capped_evals_formatted_time(solution, evals, verification)}'
+    )
     console.print(f'Memory: {get_evals_formatted_memory(evals)}')
     return len(unmatched_bad_verdicts) == 0
 
@@ -698,6 +718,7 @@ async def _render_detailed_group_table(
     skeleton: SolutionReportSkeleton,
     structured_evaluations: StructuredEvaluation,
     console: rich.console.Console,
+    verification: VerificationLevel = VerificationLevel.NONE,
 ):
     group_skeleton = skeleton.find_group_skeleton(group.name)
     assert group_skeleton is not None
@@ -725,7 +746,7 @@ async def _render_detailed_group_table(
                 evals_per_solution[str(solution.path)].append(eval)
 
                 verdict = get_testcase_markup_verdict(eval)
-                time = get_evals_formatted_time([eval])
+                time = get_capped_evals_formatted_time(solution, [eval], verification)
                 memory = get_evals_formatted_memory([eval])
                 full_item = f'{verdict} {time} / {memory}'
                 if eval.result.sanitizer_warnings:
@@ -742,7 +763,9 @@ async def _render_detailed_group_table(
                 if not non_null_evals:
                     summary_row.append('...')
                     continue
-                formatted_time = get_evals_formatted_time(non_null_evals)
+                formatted_time = get_capped_evals_formatted_time(
+                    solution, non_null_evals, verification
+                )
                 formatted_memory = get_evals_formatted_memory(non_null_evals)
                 summary_row.append(f' {formatted_time} / {formatted_memory}')
             table.add_section()
@@ -769,6 +792,7 @@ async def _print_detailed_run_report(
     console: rich.console.Console,
     structured_evaluations: StructuredEvaluation,
     timing: bool = True,
+    verification: VerificationLevel = VerificationLevel.NONE,
 ):
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
@@ -778,6 +802,7 @@ async def _print_detailed_run_report(
             result.skeleton,
             structured_evaluations,
             console,
+            verification=verification,
         )
         continue
 
@@ -794,6 +819,7 @@ async def _print_detailed_run_report(
             solution,
             all_evals,
             console,
+            verification=verification,
         )
         ok = ok and cur_ok
         console.print()
@@ -808,7 +834,7 @@ async def _print_detailed_run_report(
 async def print_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
-    verification: environment.VerificationParam,
+    verification: VerificationLevel,
     detailed: bool = False,
     timing: bool = True,
 ) -> bool:
@@ -817,7 +843,11 @@ async def print_run_report(
     )
     if detailed:
         return await _print_detailed_run_report(
-            result, console, structured_evaluations, timing=timing
+            result,
+            console,
+            structured_evaluations,
+            verification=verification,
+            timing=timing,
         )
 
     ok = True
@@ -842,7 +872,7 @@ async def print_run_report(
                 solution_evals.append(eval)
 
             console.print(
-                f'({get_evals_formatted_time(group_evals)}, {get_evals_formatted_memory(group_evals)})',
+                f'({get_capped_evals_formatted_time(solution, group_evals, verification)}, {get_evals_formatted_memory(group_evals)})',
                 end='',
             )
             console.print()
@@ -851,7 +881,7 @@ async def print_run_report(
             solution,
             solution_evals,
             console,
-            verification=VerificationLevel(verification),
+            verification=verification,
         )
         console.print()
 

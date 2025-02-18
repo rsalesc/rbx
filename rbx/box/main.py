@@ -215,7 +215,7 @@ def run(
         print_run_report(
             solution_result,
             console.console,
-            verification,
+            VerificationLevel(verification),
             detailed=detailed,
         )
     )
@@ -250,7 +250,7 @@ def _time_impl(check: bool, detailed: bool) -> Optional[int]:
         print_run_report(
             solution_result,
             console.console,
-            verification,
+            VerificationLevel(verification),
             detailed=detailed,
         )
     )
