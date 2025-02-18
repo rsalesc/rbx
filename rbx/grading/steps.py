@@ -436,19 +436,21 @@ def _check_for_sanitizer_warnings(
         return any(_check_for_sanitizer_warnings_in_line(line.decode()) for line in f)
 
 
-_WARNING_RE = re.compile(r'[^:]+:\d+:\d+:[ ]+warning:.*')
+_WARNING_RE = re.compile(r'([^:]+):\d+:\d+:[ ]+warning:.*')
 
 
 def _check_for_compilation_warnings_in_line(line: str) -> bool:
     if line.startswith('./'):
         return False
-    matched = _WARNING_RE.match(line) is not None
-    # if matched:
-    #     console.print(
-    #         '[warning]Compilation warning:[/warning]',
-    #         utils.highlight_json_obj(line),
-    #     )
-    return matched
+    match = _WARNING_RE.match(line)
+    if match is None:
+        return False
+    file = match.group(1).strip().lower()
+    if 'testlib' in file or 'jngen' in file or 'stresslib' in file:
+        return False
+    if file.endswith('.h'):
+        return False
+    return True
 
 
 def _check_for_compilation_warnings(
