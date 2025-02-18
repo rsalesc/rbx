@@ -124,6 +124,14 @@ def compile_item(
     if sanitized.should_sanitize():
         commands = add_sanitizer_flags(commands)
 
+        # Remove any memory constraints for a sanitized executable.
+        # Sanitizers are known to be memory-hungry.
+        sandbox_params.address_space = None
+
+        # Reset timeout configs since sanitizers are known to be time-hungry.
+        sandbox_params.timeout = None
+        sandbox_params.wallclock_timeout = None
+
     compiled_digest = DigestHolder()
 
     artifacts = GradingArtifacts()
@@ -214,12 +222,6 @@ def run_item(
         # Reset timeout configs since sanitizers are known to be time-hungry.
         sandbox_params.timeout = None
         sandbox_params.wallclock_timeout = None
-        orig_execution_config = get_execution_config(language)
-        if orig_execution_config.sandbox is not None:
-            sandbox_params.timeout = orig_execution_config.sandbox.timeLimit
-            sandbox_params.wallclock_timeout = (
-                orig_execution_config.sandbox.wallTimeLimit
-            )
         sanitized = True
 
     sandbox_params.set_stdall(
