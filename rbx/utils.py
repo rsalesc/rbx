@@ -9,6 +9,7 @@ from typing import Any, Optional, Type, TypeVar
 import rich
 import rich.prompt
 import rich.status
+import ruyaml
 import typer
 import yaml
 from fastapi.encoders import jsonable_encoder
@@ -89,6 +90,12 @@ def validate_field(model: Type[T], field: str, value: Any):
     model.__pydantic_validator__.validate_assignment(
         model.model_construct(), field, value
     )
+
+
+def save_ruyaml(path: pathlib.Path, yml: ruyaml.YAML, data: ruyaml.Any):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('w') as f:
+        yml.dump(data, f)
 
 
 def confirm_on_status(status: Optional[rich.status.Status], *args, **kwargs) -> bool:

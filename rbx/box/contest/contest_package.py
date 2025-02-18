@@ -1,7 +1,8 @@
 import functools
 import pathlib
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
+import ruyaml
 import typer
 from pydantic import ValidationError
 
@@ -81,3 +82,14 @@ def get_problems(contest: Contest) -> List[Package]:
     for problem in contest.problems:
         problems.append(find_problem_package_or_die(problem.get_path()))
     return problems
+
+
+def get_ruyaml() -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    contest_yaml_path = find_contest_yaml()
+    if contest_yaml_path is None:
+        console.console.print(
+            f'Contest not found in {pathlib.Path().absolute()}', style='error'
+        )
+        raise typer.Exit(1)
+    res = ruyaml.YAML()
+    return res, res.load(contest_yaml_path.read_text())

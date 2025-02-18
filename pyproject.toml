@@ -30,6 +30,7 @@ pyte = "^0.8.2"
 questionary = "^2.1.0"
 lark = "^1.2.2"
 chardet = "^5.2.0"
+ruyaml = "^0.91.0"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"

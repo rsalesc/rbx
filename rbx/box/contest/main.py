@@ -8,12 +8,11 @@ import typer
 
 from rbx import annotations, console, utils
 from rbx.box import cd, creation, presets
-from rbx.box.contest import contest_utils, statements
+from rbx.box.contest import contest_package, contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
     find_contest_package_or_die,
     find_contest_yaml,
-    save_contest,
     within_contest,
 )
 from rbx.box.contest.schema import ContestProblem
@@ -145,16 +144,19 @@ def add(path: str, short_name: str, preset: Optional[str] = None):
     creation.create(name, preset=preset, path=pathlib.Path(path))
 
     contest = find_contest_package_or_die()
-    # Reassign mutable object before saving.
-    contest.problems = sorted(
-        [
-            *contest.problems,
-            ContestProblem(short_name=short_name, path=pathlib.Path(path)),
-        ],
-        key=lambda p: p.short_name,
-    )
 
-    save_contest(contest)
+    ru, contest = contest_package.get_ruyaml()
+
+    contest['problems'].append(
+        {
+            'short_name': short_name,
+            'path': path,
+        }
+    )
+    dest = find_contest_yaml()
+    assert dest is not None
+    utils.save_ruyaml(dest, ru, contest)
+
     console.console.print(
         f'Problem [item]{name} ({short_name})[/item] added to contest at [item]{path}[/item].'
     )
@@ -165,25 +167,34 @@ def add(path: str, short_name: str, preset: Optional[str] = None):
 def remove(path_or_short_name: str):
     contest = find_contest_package_or_die()
 
-    kept_problems = []
-    removed_problems = []
-    for problem in contest.problems:
+    removed_problem_idx = None
+    removed_problem = None
+    for i, problem in enumerate(contest.problems):
         if (
             problem.path == pathlib.Path(path_or_short_name)
             or problem.short_name == path_or_short_name
         ):
-            removed_problems.append(problem)
-        else:
-            kept_problems.append(problem)
+            removed_problem_idx = i
+            removed_problem = problem
+            break
 
-    contest.problems = kept_problems
-    save_contest(contest)
-
-    for problem in removed_problems:
-        shutil.rmtree(str(problem.path), ignore_errors=True)
+    if removed_problem_idx is None or removed_problem is None:
         console.console.print(
-            f'Problem [item]{problem.short_name}[/item] removed from contest at [item]{problem.path}[/item].'
+            f'[error]Problem [item]{path_or_short_name}[/item] not found in contest.[/error]'
         )
+        raise typer.Exit(1)
+
+    ru, contest = contest_package.get_ruyaml()
+
+    del contest['problems'][removed_problem_idx]
+    dest = find_contest_yaml()
+    assert dest is not None
+    utils.save_ruyaml(dest, ru, contest)
+
+    shutil.rmtree(str(removed_problem.path), ignore_errors=True)
+    console.console.print(
+        f'Problem [item]{removed_problem.short_name}[/item] removed from contest at [item]{removed_problem.path}[/item].'
+    )
 
 
 @app.command(
