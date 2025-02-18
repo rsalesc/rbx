@@ -540,7 +540,7 @@ def stress(
                 f.write(f'\n{stress_text}\n{finding_text}\n')
 
             console.console.print(
-                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at [item]{subgroup.generatorScript.path}[/item]."
+                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at [item]{subgroup.generatorScript.path}[/item]"
             )
         except typer.Exit:
             continue

@@ -149,13 +149,11 @@ def generate_output_for_testcase(
             console.console.print(
                 f'[warning]Message: [info]{checker_result.message}[/info][/warning]',
             )
+            console.console.print(f'Input written at [item]{testcase.inputPath}[/item]')
             console.console.print(
-                f'Input written at [item]{testcase.inputPath}[/item].'
+                f'Output written at [item]{testcase.outputPath}[/item]'
             )
-            console.console.print(
-                f'Output written at [item]{testcase.outputPath}[/item].'
-            )
-            console.console.print(f'Stderr written at [item]{stderr_path}[/item].')
+            console.console.print(f'Stderr written at [item]{stderr_path}[/item]')
         raise typer.Exit(1)
 
 

@@ -50,7 +50,7 @@ def run_packager(
     console.console.print(
         f'[success]Problem packaged for [item]{packager.name()}[/item]![/success]'
     )
-    console.console.print(f'Package was saved at [item]{result_path}[/item].')
+    console.console.print(f'Package was saved at [item]{result_path.resolve()}[/item]')
     return result_path
 
 

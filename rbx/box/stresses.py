@@ -161,12 +161,12 @@ def run_stress(
                 console.console.print(
                     '[error]Error while generating main solution output.[/error]'
                 )
-                console.console.print(f'Input written at [item]{input_path}[/item].')
+                console.console.print(f'Input written at [item]{input_path}[/item]')
                 console.console.print(
-                    f'Output written at [item]{main_result.output_path}[/item].'
+                    f'Output written at [item]{main_result.output_path}[/item]'
                 )
                 console.console.print(
-                    f'Stderr written at [item]{main_result.stderr_path}[/item].'
+                    f'Stderr written at [item]{main_result.stderr_path}[/item]'
                 )
                 console.console.print()
                 console.console.print(

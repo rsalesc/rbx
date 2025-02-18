@@ -59,7 +59,7 @@ def create(
     fetch_info = get_preset_fetch_info(preset)
     if fetch_info is None:
         console.console.print(
-            f'[error]Invalid preset name/URI [item]{preset}[/item].[/error]'
+            f'[error]Invalid preset name/URI [item]{preset}[/item][/error]'
         )
         raise typer.Exit(1)
 

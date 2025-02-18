@@ -343,6 +343,6 @@ def build_statement(
     console.console.print(
         f'Statement built successfully for language '
         f'[item]{statement.language}[/item] at '
-        f'[item]{statement_path}[/item].'
+        f'[item]{statement_path.resolve()}[/item]'
     )
     return statement_path

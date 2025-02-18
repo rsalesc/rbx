@@ -221,7 +221,7 @@ def install_environment(name: str, file: pathlib.Path):
     get_environment_path(name).parent.mkdir(parents=True, exist_ok=True)
     get_environment_path(name).write_bytes(file.read_bytes())
     console.console.print(
-        f'[success]Environment [item]{name}[/item] was installed from [item]{file}[/item].'
+        f'[success]Environment [item]{name}[/item] was installed from [item]{file}[/item]'
     )
 
 
