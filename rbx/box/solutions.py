@@ -628,7 +628,7 @@ def _print_solution_outcome(
 
     if has_sanitizer_warnings:
         console.print(
-            '[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
+            '[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [warning]*[/warning]. See their stderr for more details.'
         )
 
     console.print(f'Time: {get_evals_formatted_time(evals)}')
@@ -725,7 +725,7 @@ async def _render_detailed_group_table(
                 verdict = get_testcase_markup_verdict(eval)
                 time = get_evals_formatted_time([eval])
                 if eval.result.sanitizer_warnings:
-                    time = f'{time} [item]*[/item]'
+                    time = f'{time} [warning]*[/warning]'
                 evals_per_solution[str(solution.path)].append(eval)
                 row.append(f'{verdict} {time}')
             table.add_row(*row)
@@ -830,7 +830,7 @@ async def print_run_report(
                 console.print(f'{i}/', end='')
                 console.print(get_testcase_markup_verdict(eval), end='')
                 if eval.result.sanitizer_warnings:
-                    console.print('[item]*[/item]', end='')
+                    console.print('[warning]*[/warning]', end='')
                 console.print('', end=' ')
                 group_evals.append(eval)
                 solution_evals.append(eval)
