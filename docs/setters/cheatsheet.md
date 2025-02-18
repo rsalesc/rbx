@@ -5,11 +5,15 @@
 | Task                                            | Command                                        |
 | ----------------------------------------------- | ---------------------------------------------- |
 | Show help message                               | `rbx --help`                                   |
+| Open {{rbx}} configuration for editing          | `rbx config edit`                              |
 | Create a new package in folder `package`        | `rbx create package`                           |
-| Compile a file given its path                   | `rbx compile any my/file.cpp`                  |
+| Compile a file given its path                   | `rbx compile my/file.cpp`                      |
 | Open the problem configuration in a text editor | `rbx edit`                                     |
 | Generate all testcases                          | `rbx build`                                    |
+| Use dynamic timing to estimate time limits      | `rbx time`                                     |
 | Run all solutions and check their tags          | `rbx run`                                      |
+| Run all solutions with sanitizer                | `rbx run -s`                                   |
+| Run all solutions with dynamic timing           | `rbx run -t`                                   |
 | Run all solutions except the slow ones          | `rbx run -v2`                                  |
 | Run all solutions without checking              | `rbx run --nocheck`                            |
 | Run all solutions interactively                 | `rbx irun`                                     |
