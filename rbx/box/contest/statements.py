@@ -3,8 +3,7 @@ from typing import Annotated, List, Optional
 import typer
 
 from rbx import annotations, console
-from rbx.box import builder, cd, environment
-from rbx.box.contest import contest_utils
+from rbx.box import builder, cd, environment, package
 from rbx.box.contest.build_contest_statements import build_statement
 from rbx.box.contest.contest_package import (
     find_contest_package_or_die,
@@ -50,7 +49,7 @@ def build(
                 f'Processing problem [item]{problem.short_name}[/item]...'
             )
             with cd.new_package_cd(problem.get_path()):
-                contest_utils.clear_package_cache()
+                package.clear_package_cache()
 
                 if not builder.build(
                     verification=verification, groups=set(['samples']), output=None

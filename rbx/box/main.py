@@ -508,10 +508,17 @@ def stress(
             groups_by_name[testgroup] = TestcaseGroup(
                 name=testgroup, generatorScript=CodeItem(path=new_script_path)
             )
-            console.console.print(
-                f'[warning]A testgroup for [item]{new_script_path}[/item] will not be automatically added to the problem.rbx.yml file for you.\n'
-                'Please add it manually. [/warning]'
+            ru, problem_yml = package.get_ruyaml()
+            problem_yml['testcases'].append(
+                {
+                    'name': testgroup,
+                    'generatorScript': new_script_path.name,
+                }
             )
+            dest = package.find_problem_yaml()
+            assert dest is not None
+            utils.save_ruyaml(dest, ru, problem_yml)
+            package.clear_package_cache()
 
         if testgroup not in groups_by_name:
             break

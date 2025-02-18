@@ -2,15 +2,6 @@ from rbx.box import environment, package
 from rbx.box.contest import contest_package
 
 
-def clear_package_cache():
-    pkgs = [package]
-
-    for pkg in pkgs:
-        for fn in pkg.__dict__.values():
-            if hasattr(fn, 'cache_clear'):
-                fn.cache_clear()
-
-
 def clear_all_caches():
     pkgs = [package, environment, contest_package]
 

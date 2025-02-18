@@ -1,7 +1,9 @@
 import functools
 import pathlib
+import sys
 from typing import Dict, List, Optional, Tuple
 
+import ruyaml
 import typer
 from pydantic import ValidationError
 
@@ -117,6 +119,17 @@ def save_package(
         console.console.print(f'[error]Problem not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
     problem_yaml_path.write_text(utils.model_to_yaml(package))
+
+
+def get_ruyaml() -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    problem_yaml_path = find_problem_yaml()
+    if problem_yaml_path is None:
+        console.console.print(
+            f'Problem not found in {pathlib.Path().absolute()}', style='error'
+        )
+        raise typer.Exit(1)
+    res = ruyaml.YAML()
+    return res, res.load(problem_yaml_path.read_text())
 
 
 @functools.cache
@@ -328,3 +341,12 @@ def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Pa
             )
         )
     return res
+
+
+def clear_package_cache():
+    pkgs = [sys.modules[__name__]]
+
+    for pkg in pkgs:
+        for fn in pkg.__dict__.values():
+            if hasattr(fn, 'cache_clear'):
+                fn.cache_clear()
