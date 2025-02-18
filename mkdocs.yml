@@ -15,8 +15,10 @@ nav:
           - "Contest":
               - "setters/reference/contest/index.md"
               - "Schema": "setters/reference/contest/schema.md"
-        # - 'setters/reference/environment.md'
-        # - 'setters/reference/cli.md'
+          # - "Environment": "setters/reference/environment.md"
+          # - "CLI": "setters/reference/cli.md"
+      - "Troubleshooting":
+          - "cpp-on-macos.md"
 theme:
   name: material
   palette:

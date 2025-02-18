@@ -21,19 +21,21 @@ Installing gcc 14.2.0
 
 This means that `g++-14` is probably available as a command to run in your terminal.
 
-To tell {{rbx}} to use it, you can run (replace `g++-14` with whatever version you have installed):
+To tell {{rbx}} to use it, you can run `rbx config edit` and add the following to the file (replace `g++-14` with whatever version you have installed):
 
-```sh
-export RBX_C_PATH=$(which gcc-14)
-export RBX_CXX_PATH=$(which g++-14)
+```yaml
+command_substitutions:
+  g++: g++-14
+  gcc: gcc-14
 ```
 
 This will tell {{rbx}} to use `gcc-14` and `g++-14` as the C and C++ compilers.
 
-You can also set these environment variables in your `.zshrc` or `.bashrc` file to make it permanent.
+A caveat to this is that GNU GCC sanitizers do not work on MacOS. If you need sanitizers in MacOS, you will need to tell {{rbx}} to fall back to Clang when sanitizing.
 
-```sh
-echo 'export RBX_C_PATH=$(which gcc-14)' >> ~/.bashrc
-echo 'export RBX_CXX_PATH=$(which g++-14)' >> ~/.bashrc
+```yaml
+sanitizers:
+  command_substitutions:
+    g++: clang++
+    gcc: clang
 ```
-
