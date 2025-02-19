@@ -109,7 +109,7 @@ def compile_item(
 
     if not generator_path.is_file():
         console.console.print(
-            f'[error]Generator file not found: [item]{generator_path}[/item][/error]'
+            f'[error]Compilation file not found: [item]{generator_path}[/item][/error]'
         )
         raise typer.Exit(1)
 

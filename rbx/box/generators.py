@@ -204,6 +204,13 @@ def generate_outputs_for_testcases(
 
 def _run_generator_script(testcase: TestcaseSubgroup, cacher: FileCacher) -> str:
     assert testcase.generatorScript is not None
+
+    if not testcase.generatorScript.path.is_file():
+        console.console.print(
+            f'[error]Generator script not found: [item]{testcase.generatorScript.path}[/item][/error]'
+        )
+        raise typer.Exit(1)
+
     script_digest = DigestHolder()
     if testcase.generatorScript.path.suffix == '.txt':
         script_digest.value = cacher.put_file_from_path(testcase.generatorScript.path)
