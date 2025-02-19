@@ -955,9 +955,16 @@ def _print_limits(limits: Dict[str, Limits]):
     )
     for lang, limit in limits.items():
         console.console.print(f'[bold][status]{lang}[/status][/bold]')
-        console.console.print(f'Time: {get_formatted_time(limit.time or int('+inf'))}')
-        memory = limit.memory * 1024 * 1024 if limit.memory is not None else int('+inf')
-        console.console.print(f'Memory: {get_formatted_memory(memory)}')
+        time = (
+            '<No time limit>' if limit.time is None else get_formatted_time(limit.time)
+        )
+        memory = (
+            '<No memory limit>'
+            if limit.memory is None
+            else get_formatted_memory(limit.memory * 1024 * 1024)
+        )
+        console.console.print(f'Time: {time}')
+        console.console.print(f'Memory: {memory}')
         if limit.isDoubleTL:
             console.console.print('[warning]Running with 2*TL[/warning]')
     console.console.print()
