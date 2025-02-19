@@ -410,6 +410,7 @@ def run_solutions(
 
 
 def _run_interactive_solutions(
+    progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
@@ -423,7 +424,7 @@ def _run_interactive_solutions(
 
     checker_digest = checkers.compile_checker() if check else None
     compiled_solutions = compile_solutions(
-        tracked_solutions=tracked_solutions, sanitized=sanitized
+        progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
     )
 
     main_solution_digest = None
@@ -498,6 +499,7 @@ def _run_interactive_solutions(
 
 
 async def run_and_print_interactive_solutions(
+    progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
@@ -507,6 +509,7 @@ async def run_and_print_interactive_solutions(
 ):
     pkg = package.find_problem_package_or_die()
     items = _run_interactive_solutions(
+        progress=progress,
         tracked_solutions=tracked_solutions,
         verification=verification,
         check=check,

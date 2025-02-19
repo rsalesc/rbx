@@ -356,35 +356,36 @@ def irun(
         )
         check = False
 
-    tracked_solutions = None
-    if outcome is not None:
-        tracked_solutions = {
-            str(solution.path)
-            for solution in get_matching_solutions(ExpectedOutcome(outcome))
-        }
-    if solution:
-        tracked_solutions = {solution}
-    if sanitized and tracked_solutions is None:
-        console.console.print(
-            '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
-        )
-        tracked_solutions = {
-            str(solution.path)
-            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-        }
+    with utils.StatusProgress('Running solutions...') as s:
+        tracked_solutions = None
+        if outcome is not None:
+            tracked_solutions = {
+                str(solution.path)
+                for solution in get_matching_solutions(ExpectedOutcome(outcome))
+            }
+        if solution:
+            tracked_solutions = {solution}
+        if sanitized and tracked_solutions is None:
+            console.console.print(
+                '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
+            )
+            tracked_solutions = {
+                str(solution.path)
+                for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+            }
 
-    asyncio.run(
-        run_and_print_interactive_solutions(
-            tracked_solutions=tracked_solutions,
-            check=check,
-            verification=VerificationLevel(verification),
-            generator=generators.get_call_from_string(generator)
-            if generator is not None
-            else None,
-            print=print,
-            sanitized=sanitized,
+        asyncio.run(
+            run_and_print_interactive_solutions(
+                tracked_solutions=tracked_solutions,
+                check=check,
+                verification=VerificationLevel(verification),
+                generator=generators.get_call_from_string(generator)
+                if generator is not None
+                else None,
+                print=print,
+                sanitized=sanitized,
+            )
         )
-    )
 
 
 @app.command('create, c', help='Create a new problem package.')
