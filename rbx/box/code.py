@@ -1,7 +1,6 @@
 import pathlib
 import re
 import shlex
-import tempfile
 from enum import Enum
 from pathlib import PosixPath
 from typing import List, Optional
@@ -126,9 +125,9 @@ def _add_warning_pragmas(code: str) -> str:
 def _ignore_warning_in_cxx_input(input: GradingFileInput):
     if input.src is None or input.src.suffix not in ('.cpp', '.c', '.cc', '.cxx'):
         return
-    tmp_path = PosixPath(tempfile.mkstemp()[1])
-    tmp_path.write_text(_add_warning_pragmas(input.src.read_text()))
-    input.src = tmp_path
+    preprocessed_path = package.get_problem_preprocessed_path(input.src)
+    preprocessed_path.write_text(_add_warning_pragmas(input.src.read_text()))
+    input.src = preprocessed_path
 
 
 # Compile code item and return its digest in the storage.

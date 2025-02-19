@@ -158,6 +158,25 @@ def get_problem_iruns_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     return iruns_dir
 
 
+def get_problem_preprocessed_path(
+    item: pathlib.Path, root: pathlib.Path = pathlib.Path()
+) -> pathlib.Path:
+    root_resolved = root.resolve()
+    item_resolved = item.resolve()
+    if not item_resolved.is_relative_to(root_resolved):
+        console.console.print(
+            f'[error]Item [item]{item}[/item] is not under the root [item]{root}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+    path = (
+        get_problem_cache_dir(root)
+        / '.preprocessed'
+        / item_resolved.relative_to(root_resolved)
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 @functools.cache
 def get_cache_storage(root: pathlib.Path = pathlib.Path()) -> Storage:
     return FilesystemStorage(get_problem_storage_dir(root))
