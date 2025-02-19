@@ -414,6 +414,7 @@ def _run_interactive_solutions(
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
     check: bool = True,
+    print: bool = False,
     sanitized: bool = False,
 ) -> Iterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
@@ -446,7 +447,7 @@ def _run_interactive_solutions(
             (i, sol) for i, sol in solutions if str(sol.path) in tracked_solutions
         ]
 
-    irun_dir = package.get_problem_runs_dir() / '.irun'
+    irun_dir = package.get_problem_iruns_dir()
     shutil.rmtree(str(irun_dir), ignore_errors=True)
     irun_dir.mkdir(parents=True, exist_ok=True)
     inputs_dir = irun_dir / 'inputs'
@@ -459,6 +460,13 @@ def _run_interactive_solutions(
         console.console.print(
             f'Using input from generator call [item]{expanded_call.name} {expanded_call.args}[/item].'
         )
+        if print:
+            console.console.print(input_path.read_text())
+        else:
+            console.console.print(
+                f'Input was written to [item]{input_path.resolve()}[/item]'
+            )
+        console.console.print()
     else:
         input = console.multiline_prompt('Testcase input')
         input_path.write_text(input)
@@ -504,11 +512,12 @@ async def run_and_print_interactive_solutions(
         check=check,
         generator=generator,
         sanitized=sanitized,
+        print=print,
     )
 
     for item in items:
         sol = pkg.solutions[item.solution_index]
-        _print_solution_header(sol, console.console)
+        _print_solution_header(sol, console.console, is_irun=True)
 
         eval = await item.eval()
 
@@ -523,7 +532,11 @@ async def run_and_print_interactive_solutions(
             else:
                 console.console.print('[warning]Solution produced no output.[/warning]')
         elif stdout_path is not None:
-            console.console.print(f'Output: {stdout_path}.')
+            console.console.print(f'[status]Output:[/status] {stdout_path}')
+            if eval.log.stderr_absolute_path is not None:
+                console.console.print(
+                    f'[status]Stderr:[/status] {eval.log.stderr_absolute_path}'
+                )
             console.console.print()
 
 
@@ -727,12 +740,18 @@ def _consume_and_key_evaluation_items(
     return res
 
 
-def _print_solution_header(solution: Solution, console: rich.console.Console):
+def _print_solution_header(
+    solution: Solution, console: rich.console.Console, is_irun: bool = False
+):
     solutions = package.get_solutions()
     solution_index = [
         i for i, sol in enumerate(solutions) if sol.path == solution.path
     ][0]
-    solution_testdir = package.get_problem_runs_dir() / f'{solution_index}'
+    solution_testdir = (
+        package.get_problem_iruns_dir() / f'{solution_index}'
+        if is_irun
+        else package.get_problem_runs_dir() / f'{solution_index}'
+    )
     console.print(f'[item]{solution.path}[/item]', end=' ')
     console.print(f'({solution_testdir})')
 

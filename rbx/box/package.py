@@ -152,6 +152,12 @@ def get_problem_runs_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     return runs_dir
 
 
+def get_problem_iruns_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    iruns_dir = get_problem_runs_dir(root) / '.irun'
+    iruns_dir.mkdir(parents=True, exist_ok=True)
+    return iruns_dir
+
+
 @functools.cache
 def get_cache_storage(root: pathlib.Path = pathlib.Path()) -> Storage:
     return FilesystemStorage(get_problem_storage_dir(root))
