@@ -552,7 +552,7 @@ def get_capped_evals_formatted_time(
         # Using double TL for verification.
         tl = tl * 2
 
-    if has_tle and max_time > tl:
+    if has_tle and max_time >= tl:
         return f'>{tl} ms'
     return f'{max_time} ms'
 
