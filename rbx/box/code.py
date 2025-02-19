@@ -122,11 +122,31 @@ def _add_warning_pragmas(code: str) -> str:
     )
 
 
+def _add_warning_pragmas_around(code: str) -> str:
+    flags = CXX_WARNING_FLAGS.split()
+    pragma_lines = '\n'.join(
+        [
+            f'#pragma GCC diagnostic ignored "{flag}"'
+            for flag in flags
+            if not flag.startswith('-Wno-')
+        ]
+    )
+
+    return (
+        '#pragma GCC diagnostic push\n'
+        + pragma_lines
+        + '\n'
+        + code
+        + '\n'
+        + '#pragma GCC diagnostic pop\n'
+    )
+
+
 def _ignore_warning_in_cxx_input(input: GradingFileInput):
-    if input.src is None or input.src.suffix not in ('.cpp', '.c', '.cc', '.cxx'):
+    if input.src is None or input.src.suffix not in ('.h', '.hpp'):
         return
     preprocessed_path = package.get_problem_preprocessed_path(input.src)
-    preprocessed_path.write_text(_add_warning_pragmas(input.src.read_text()))
+    preprocessed_path.write_text(_add_warning_pragmas_around(input.src.read_text()))
     input.src = preprocessed_path
 
 
@@ -185,9 +205,6 @@ def compile_item(
         GradingFileInput(src=generator_path, dest=PosixPath(file_mapping.compilable))
     )
 
-    for input in artifacts.inputs:
-        _ignore_warning_in_cxx_input(input)
-
     artifacts.outputs.append(
         GradingFileOutput(
             src=PosixPath(file_mapping.executable),
@@ -195,6 +212,9 @@ def compile_item(
             executable=True,
         )
     )
+
+    for input in artifacts.inputs:
+        _ignore_warning_in_cxx_input(input)
 
     if not steps_with_caching.compile(
         commands,
