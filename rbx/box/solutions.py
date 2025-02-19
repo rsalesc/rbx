@@ -18,11 +18,16 @@ from rbx import console
 from rbx.box import checkers, package
 from rbx.box.code import SanitizationLevel, compile_item, find_language_name, run_item
 from rbx.box.deferred import Deferred
-from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
+from rbx.box.environment import (
+    EnvironmentSandbox,
+    ExecutionConfig,
+    VerificationLevel,
+)
 from rbx.box.generators import generate_output_for_testcase, generate_standalone
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
+    Limits,
     Solution,
     Testcase,
     TestcaseGroup,
@@ -57,6 +62,7 @@ class GroupSkeleton(BaseModel):
 class SolutionReportSkeleton(BaseModel):
     solutions: List[Solution]
     groups: List[GroupSkeleton]
+    limits: Dict[str, Limits]
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -137,6 +143,20 @@ def compile_solutions(
     return compiled_solutions
 
 
+def get_limits_for_language(
+    lang: Optional[str],
+    verification: VerificationLevel,
+    timelimit_override: Optional[int],
+) -> Limits:
+    pkg = package.find_problem_package_or_die()
+    time = timelimit_override or pkg.timelimit_for_language(lang)
+    isDoubleTL = verification.value >= VerificationLevel.FULL.value
+    memory = pkg.memorylimit_for_language(lang)
+    return Limits(
+        time=time, memory=memory, output=pkg.outputLimit, isDoubleTL=isDoubleTL
+    )
+
+
 def _run_solution_on_testcase(
     solution: Solution,
     compiled_digest: str,
@@ -147,21 +167,22 @@ def _run_solution_on_testcase(
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
 ) -> Evaluation:
-    pkg = package.find_problem_package_or_die()
     actual_sandbox = package.get_singleton_sandbox()
 
-    timelimit = timelimit_override or pkg.timelimit_for_language(solution.language)
+    limits = get_limits_for_language(
+        solution.language, verification, timelimit_override
+    )
 
     sandbox = EnvironmentSandbox()
-    sandbox.timeLimit = timelimit
-    if verification.value >= VerificationLevel.FULL.value:
-        # Use double TL.
+    sandbox.timeLimit = limits.time
+    if limits.isDoubleTL and sandbox.timeLimit is not None:
+        # Double TL.
         sandbox.timeLimit = sandbox.timeLimit * 2
-    sandbox.wallTimeLimit = (
-        timelimit * 2 if actual_sandbox.use_soft_timeout() else sandbox.timeLimit
-    )
-    sandbox.memoryLimit = pkg.memorylimit_for_language(solution.language)
-    sandbox.fileSizeLimit = pkg.outputLimit
+    sandbox.wallTimeLimit = sandbox.timeLimit
+    if sandbox.timeLimit is not None and actual_sandbox.use_soft_timeout():
+        sandbox.wallTimeLimit = sandbox.timeLimit * 2
+    sandbox.memoryLimit = limits.memory
+    sandbox.fileSizeLimit = limits.output
     extra_config = ExecutionConfig(sandbox=sandbox)
 
     output_path = output_dir / testcase.inputPath.with_suffix('.out').name
@@ -263,6 +284,7 @@ async def convert_list_of_solution_evaluations_to_dict(
 def _get_report_skeleton(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
+    timelimit_override: Optional[int] = None,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
     solutions = [
@@ -277,6 +299,13 @@ def _get_report_skeleton(
             if str(solution.path) in tracked_solutions
         ]
 
+    langs = set(find_language_name(solution) for solution in solutions)
+    limits = {
+        lang: get_limits_for_language(lang, verification, timelimit_override)
+        for lang in langs
+        if lang is not None
+    }
+
     groups = []
     for group in pkg.testcases:
         testcases = find_built_testcases(group)
@@ -284,6 +313,7 @@ def _get_report_skeleton(
     return SolutionReportSkeleton(
         solutions=solutions,
         groups=groups,
+        limits=limits,
     )
 
 
@@ -363,7 +393,11 @@ def run_solutions(
     sanitized: bool = False,
 ) -> RunSolutionResult:
     return RunSolutionResult(
-        skeleton=_get_report_skeleton(tracked_solutions, verification=verification),
+        skeleton=_get_report_skeleton(
+            tracked_solutions,
+            verification=verification,
+            timelimit_override=timelimit_override,
+        ),
         items=_produce_solution_items(
             progress=progress,
             tracked_solutions=tracked_solutions,
@@ -536,9 +570,13 @@ def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
     return max(int(eval.log.memory or 0) for eval in evals)
 
 
+def get_formatted_time(time_in_ms: int) -> str:
+    return f'{time_in_ms} ms'
+
+
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
-    return f'{max_time} ms'
+    return get_formatted_time(max_time)
 
 
 def get_capped_evals_formatted_time(
@@ -548,11 +586,14 @@ def get_capped_evals_formatted_time(
 
     max_time = _get_evals_time_in_ms(evals)
     has_tle = any(eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED for eval in evals)
-    tl = min(
+    timelimits = [
         eval.log.metadata.timeLimit
         for eval in evals
         if eval.log.metadata is not None and eval.log.metadata.timeLimit is not None
-    )
+    ]
+    tl = None
+    if timelimits:
+        tl = min(timelimits)
     if tl is None:
         tl = pkg.timelimit_for_language(solution.language)
 
@@ -565,13 +606,17 @@ def get_capped_evals_formatted_time(
     return f'{max_time} ms'
 
 
+def get_formatted_memory(memory_in_bytes: int) -> str:
+    if memory_in_bytes < 1024 * 1024:
+        if memory_in_bytes < 1024:
+            return f'{memory_in_bytes} B'
+        return f'{memory_in_bytes // 1024} KiB'
+    return f'{memory_in_bytes // (1024 * 1024)} MiB'
+
+
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
-    if max_memory < 1024 * 1024:
-        if max_memory < 1024:
-            return f'{max_memory} B'
-        return f'{max_memory // 1024} KiB'
-    return f'{max_memory // (1024 * 1024)} MiB'
+    return get_formatted_memory(max_memory)
 
 
 def _print_solution_outcome(
@@ -885,13 +930,31 @@ async def _print_detailed_run_report(
     return ok
 
 
+def _print_limits(limits: Dict[str, Limits]):
+    console.console.print(
+        '[bold][success]Running with the following limits (per language):[/success][/bold]'
+    )
+    for lang, limit in limits.items():
+        console.console.print(f'[bold][status]{lang}[/status][/bold]')
+        console.console.print(f'Time: {get_formatted_time(limit.time or int('+inf'))}')
+        memory = limit.memory * 1024 * 1024 if limit.memory is not None else int('+inf')
+        console.console.print(f'Memory: {get_formatted_memory(memory)}')
+        if limit.isDoubleTL:
+            console.console.print('[warning]Running with 2*TL[/warning]')
+    console.console.print()
+
+
 async def print_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
     verification: VerificationLevel,
     detailed: bool = False,
     timing: bool = True,
+    skip_printing_limits: bool = False,
 ) -> bool:
+    if not skip_printing_limits:
+        _print_limits(result.skeleton.limits)
+
     structured_evaluations = _consume_and_key_evaluation_items(
         result.items, result.skeleton
     )

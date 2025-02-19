@@ -293,6 +293,22 @@ class Stress(BaseModel):
     )
 
 
+class Limits(BaseModel):
+    time: Optional[int] = Field(
+        None, description='Value to override time limit with, in milliseconds.'
+    )
+    memory: Optional[int] = Field(
+        None, description='Value to override memory limit with, in MB.'
+    )
+    output: Optional[int] = Field(
+        None, description='Value to override output limit with, in KB.'
+    )
+
+    isDoubleTL: bool = Field(
+        False, description='Whether to use double TL for this language.'
+    )
+
+
 class LimitModifiers(BaseModel):
     timeMultiplier: Optional[float] = Field(
         None, description='Multiplier for time limit.'

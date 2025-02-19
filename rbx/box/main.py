@@ -217,6 +217,7 @@ def run(
             console.console,
             VerificationLevel(verification),
             detailed=detailed,
+            skip_printing_limits=sanitized,
         )
     )
 
@@ -252,6 +253,7 @@ def _time_impl(check: bool, detailed: bool) -> Optional[int]:
             console.console,
             VerificationLevel(verification),
             detailed=detailed,
+            skip_printing_limits=True,
         )
     )
 
