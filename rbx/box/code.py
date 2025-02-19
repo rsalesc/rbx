@@ -106,6 +106,13 @@ def compile_item(
     verbose: bool = False,
 ) -> str:
     generator_path = PosixPath(code.path)
+
+    if not generator_path.is_file():
+        console.console.print(
+            f'[error]Generator file not found: [item]{generator_path}[/item][/error]'
+        )
+        raise typer.Exit(1)
+
     language = find_language_name(code)
     compilation_options = get_compilation_config(language)
     file_mapping = get_file_mapping(language)
