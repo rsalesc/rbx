@@ -556,9 +556,9 @@ def get_capped_evals_formatted_time(
     if tl is None:
         tl = pkg.timelimit_for_language(solution.language)
 
-    if verification.value >= VerificationLevel.FULL.value:
-        # Using double TL for verification.
-        tl = tl * 2
+        if verification.value >= VerificationLevel.FULL.value:
+            # Using double TL for verification.
+            tl = tl * 2
 
     if has_tle and max_time >= tl:
         return f'>{tl} ms'
