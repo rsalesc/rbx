@@ -281,7 +281,12 @@ def run_item(
         sandbox=sandbox,
         artifacts=artifacts,
         dependency_cache=dependency_cache,
-        metadata=RunLogMetadata(language=code.language, is_sanitized=sanitized),
+        metadata=RunLogMetadata(
+            language=code.language,
+            is_sanitized=sanitized,
+            timeLimit=sandbox_params.timeout,
+            memoryLimit=sandbox_params.address_space,
+        ),
     )
 
     # Find sanitizer logs.

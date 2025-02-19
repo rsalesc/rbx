@@ -161,6 +161,8 @@ class TestcaseIO(BaseModel):
 class RunLogMetadata(BaseModel):
     language: Optional[str] = None
     is_sanitized: bool = False
+    timeLimit: Optional[int] = None
+    memoryLimit: Optional[int] = None
 
 
 class RunLog(BaseModel):

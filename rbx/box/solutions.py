@@ -548,7 +548,13 @@ def get_capped_evals_formatted_time(
 
     max_time = _get_evals_time_in_ms(evals)
     has_tle = any(eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED for eval in evals)
-    tl = pkg.timelimit_for_language(solution.language)
+    tl = min(
+        eval.log.metadata.timeLimit
+        for eval in evals
+        if eval.log.metadata is not None and eval.log.metadata.timeLimit is not None
+    )
+    if tl is None:
+        tl = pkg.timelimit_for_language(solution.language)
 
     if verification.value >= VerificationLevel.FULL.value:
         # Using double TL for verification.
