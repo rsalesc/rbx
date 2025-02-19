@@ -1020,12 +1020,13 @@ async def print_run_report(
             )
             console.print()
 
-        ok = ok and _print_solution_outcome(
+        cur_ok = _print_solution_outcome(
             solution,
             solution_evals,
             console,
             verification=verification,
         )
+        ok = ok and cur_ok
         console.print()
 
     await _print_timing(console, result.skeleton, structured_evaluations)
