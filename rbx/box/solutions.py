@@ -518,6 +518,9 @@ async def run_and_print_interactive_solutions(
         print=print,
     )
 
+    if progress:
+        progress.stop()
+
     for item in items:
         sol = pkg.solutions[item.solution_index]
         _print_solution_header(sol, console.console, is_irun=True)

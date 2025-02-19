@@ -376,6 +376,7 @@ def irun(
 
         asyncio.run(
             run_and_print_interactive_solutions(
+                progress=s,
                 tracked_solutions=tracked_solutions,
                 check=check,
                 verification=VerificationLevel(verification),
