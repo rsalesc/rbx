@@ -5,11 +5,13 @@ import dataclasses
 import pathlib
 import shutil
 from collections.abc import Iterator
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import rich
 import rich.live
+import rich.markup
 import rich.table
+import rich.text
 from pydantic import BaseModel
 
 from rbx import console
@@ -713,6 +715,45 @@ async def _print_timing(
         console.print(f'Fastest [error]slow[/error] solution: {fastest_slow} ms')
 
 
+def _length_markup(markup: str) -> int:
+    text = rich.markup.render(markup)
+    return text.cell_len
+
+
+def _length_pointwise(ls: Iterable[str]) -> Tuple[int, ...]:
+    return tuple(_length_markup(x) for x in ls)
+
+
+def _max_pointwise(ls: Iterable[Tuple[int, ...]]) -> Tuple[int, ...]:
+    return tuple(max(x) for x in zip(*ls))
+
+
+def _get_indented_text(s: str, width: int):
+    text = rich.markup.render(s)
+    text.align('right', width=width)
+    return text
+
+
+def _render_padded_rows(
+    rows: List[List[Tuple[str, ...]]],
+) -> List[List[rich.text.Text]]:
+    max_widths_per_column = [
+        _max_pointwise(_length_pointwise(cell) for cell in col) for col in zip(*rows)
+    ]
+    res = []
+    for row in rows:
+        acc_row = []
+        for i, cell in enumerate(row):
+            acc_row.append(
+                rich.text.Text(' ').join(
+                    _get_indented_text(item, width)
+                    for item, width in zip(cell, max_widths_per_column[i])
+                )
+            )
+        res.append(acc_row)
+    return res
+
+
 async def _render_detailed_group_table(
     group: TestcaseGroup,
     skeleton: SolutionReportSkeleton,
@@ -730,17 +771,19 @@ async def _render_detailed_group_table(
         for solution in skeleton.solutions:
             table.add_column(f'[item]{solution.path}[/item]', justify='full')
 
+        padded_rows = []
+
         evals_per_solution = collections.defaultdict(list)
         for tc, _ in enumerate(group_skeleton.testcases):
             row = []
             for solution in skeleton.solutions:
                 eval = structured_evaluation[str(solution.path)][group_name][tc]
                 if eval is None:
-                    row.append('...')
+                    row.append((f'[info]#{tc}[/info]', '', '...', '', '', ''))
                     continue
                 eval = eval.peek()
                 if eval is None:
-                    row.append('...')
+                    row.append((f'[info]#{tc}[/info]', '', '...', '', '', ''))
                     continue
 
                 evals_per_solution[str(solution.path)].append(eval)
@@ -748,14 +791,14 @@ async def _render_detailed_group_table(
                 verdict = get_testcase_markup_verdict(eval)
                 time = get_capped_evals_formatted_time(solution, [eval], verification)
                 memory = get_evals_formatted_memory([eval])
-                full_item = f'{verdict} {time} / {memory}'
+                full_item = (f'[info]#{tc}[/info]', verdict, time, '/', memory, '')
                 if eval.result.sanitizer_warnings:
-                    full_item = f'{full_item} [warning]*[/warning]'
+                    full_item = (*full_item[:-1], '[warning]*[/warning]')
 
                 row.append(full_item)
-            table.add_row(*row)
+            padded_rows.append(row)
 
-        if table.row_count > 0:
+        if padded_rows:
             summary_row = []
             for solution in skeleton.solutions:
                 evals = evals_per_solution[str(solution.path)]
@@ -767,9 +810,14 @@ async def _render_detailed_group_table(
                     solution, non_null_evals, verification
                 )
                 formatted_memory = get_evals_formatted_memory(non_null_evals)
-                summary_row.append(f' {formatted_time} / {formatted_memory}')
-            table.add_section()
-            table.add_row(*summary_row)
+                summary_row.append(('', '', formatted_time, '/', formatted_memory, ''))
+            padded_rows.append(summary_row)
+
+        for row in _render_padded_rows(padded_rows):
+            table.add_row(*row)
+
+        if padded_rows:
+            table.rows[-2].end_section = True
         return table
 
     with rich.live.Live(
