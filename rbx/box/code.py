@@ -1,5 +1,7 @@
 import pathlib
+import re
 import shlex
+import tempfile
 from enum import Enum
 from pathlib import PosixPath
 from typing import List, Optional
@@ -82,12 +84,14 @@ def add_sanitizer_flags(commands: List[str]) -> List[str]:
     return [add_sanitizer_flags_to_command(command) for command in commands]
 
 
+CXX_WARNING_FLAGS = (
+    '-Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts'
+)
+
+
 def add_warning_flags_to_command(command: str) -> str:
     if is_cxx_command(command):
-        return (
-            command
-            + ' -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts'
-        )
+        return command + ' ' + CXX_WARNING_FLAGS
     return command
 
 
@@ -96,6 +100,35 @@ def add_warning_flags(commands: List[str], force_warnings: bool) -> List[str]:
     if cfg.warnings.enabled or force_warnings:
         return [add_warning_flags_to_command(command) for command in commands]
     return commands
+
+
+def _add_warning_pragmas(code: str) -> str:
+    flags = CXX_WARNING_FLAGS.split()
+    pragma_lines = '\n'.join(
+        [
+            f'#pragma GCC diagnostic ignored "{flag}"'
+            for flag in flags
+            if not flag.startswith('-Wno-')
+        ]
+    )
+
+    return re.sub(
+        r'^(#include[^\n]*)',
+        '#pragma GCC diagnostic push\n'
+        + pragma_lines
+        + '\n\\1'
+        + '\n#pragma GCC diagnostic pop\n',
+        code,
+        flags=re.MULTILINE,
+    )
+
+
+def _ignore_warning_in_cxx_input(input: GradingFileInput):
+    if input.src is None or input.src.suffix not in ('.cpp', '.c', '.cc', '.cxx'):
+        return
+    tmp_path = PosixPath(tempfile.mkstemp()[1])
+    tmp_path.write_text(_add_warning_pragmas(input.src.read_text()))
+    input.src = tmp_path
 
 
 # Compile code item and return its digest in the storage.
@@ -146,11 +179,16 @@ def compile_item(
         GradingFileInput(src=src, dest=dest)
         for src, dest in package.get_compilation_files(code)
     )
+
     download.maybe_add_testlib(code, artifacts)
     download.maybe_add_jngen(code, artifacts)
     artifacts.inputs.append(
         GradingFileInput(src=generator_path, dest=PosixPath(file_mapping.compilable))
     )
+
+    for input in artifacts.inputs:
+        _ignore_warning_in_cxx_input(input)
+
     artifacts.outputs.append(
         GradingFileOutput(
             src=PosixPath(file_mapping.executable),
