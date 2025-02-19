@@ -163,16 +163,12 @@ def get_problem_preprocessed_path(
 ) -> pathlib.Path:
     root_resolved = root.resolve()
     item_resolved = item.resolve()
+
     if not item_resolved.is_relative_to(root_resolved):
-        console.console.print(
-            f'[error]Item [item]{item}[/item] is not under the root [item]{root}[/item].[/error]'
-        )
-        raise typer.Exit(1)
-    path = (
-        get_problem_cache_dir(root)
-        / '.preprocessed'
-        / item_resolved.relative_to(root_resolved)
-    )
+        final_path = pathlib.Path('remote') / item_resolved.name
+    else:
+        final_path = item_resolved.relative_to(root_resolved)
+    path = get_problem_cache_dir(root) / '.preprocessed' / final_path
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
