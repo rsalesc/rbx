@@ -580,7 +580,10 @@ def stress(
 @app.command('compile', help='Compile an asset given its path.')
 @package.within_problem
 def compile_command(
-    path: Annotated[str, typer.Argument(help='Path to the asset to compile.')],
+    path: Annotated[
+        Optional[str],
+        typer.Argument(help='Path to the asset to compile.'),
+    ] = None,
     sanitized: bool = typer.Option(
         False,
         '--sanitized',
@@ -594,6 +597,12 @@ def compile_command(
         help='Whether to compile the asset with warnings enabled.',
     ),
 ):
+    if path is None:
+        path = questionary.path("What's the path to your asset?").ask()
+        if path is None:
+            console.console.print('[error]No path specified.[/error]')
+            raise typer.Exit(1)
+
     compile.any(path, sanitized, warnings)
 
 
