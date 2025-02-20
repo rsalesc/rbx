@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 from enum import Enum
-from typing import IO, Any, Dict, List, Optional, Tuple, Union
+from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import typer
 from pydantic import BaseModel
@@ -24,12 +24,19 @@ MAX_STDOUT_LEN = 1024 * 1024 * 128  # 128 MB
 class Outcome(Enum):
     ACCEPTED = 'accepted'
     WRONG_ANSWER = 'wrong-answer'
-    JUDGE_FAILED = 'judge-failed'
-    RUNTIME_ERROR = 'runtime-error'
-    TIME_LIMIT_EXCEEDED = 'time-limit-exceeded'
     MEMORY_LIMIT_EXCEEDED = 'memory-limit-exceeded'
+    TIME_LIMIT_EXCEEDED = 'time-limit-exceeded'
+    RUNTIME_ERROR = 'runtime-error'
     OUTPUT_LIMIT_EXCEEDED = 'output-limit-exceeded'
+    JUDGE_FAILED = 'judge-failed'
     INTERNAL_ERROR = 'internal-error'
+
+    @classmethod
+    def worst_outcome(cls, outcomes: Iterable['Outcome']) -> 'Outcome':
+        def _outcome_to_int(o: 'Outcome') -> int:
+            return cls._member_names_.index(o.name)
+
+        return max(outcomes, key=_outcome_to_int)
 
 
 class DigestHolder(BaseModel):

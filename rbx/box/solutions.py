@@ -571,21 +571,25 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
     return 'magenta'
 
 
-def get_testcase_markup_verdict(eval: Evaluation) -> str:
+def get_outcome_markup_verdict(outcome: Outcome) -> str:
     res = '✓'
-    if eval.result.outcome != Outcome.ACCEPTED:
+    if outcome != Outcome.ACCEPTED:
         res = '✗'
-    if eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED:
+    if outcome == Outcome.TIME_LIMIT_EXCEEDED:
         res = '⧖'
-    if eval.result.outcome == Outcome.RUNTIME_ERROR:
+    if outcome == Outcome.RUNTIME_ERROR:
         res = '✗'
-    style = get_outcome_style_verdict(eval.result.outcome)
+    style = get_outcome_style_verdict(outcome)
     res = f'[{style}]{res}[/{style}]'
+    return res
+
+
+def get_testcase_markup_verdict(eval: Evaluation) -> str:
     # if eval.log.stdout_absolute_path:
     #     output_path = eval.log.stdout_absolute_path.resolve()
     #     output_link = f'file://{output_path}'
     #     res = f'[link={output_link}]{res}[/link]'
-    return res
+    return get_outcome_markup_verdict(eval.result.outcome)
 
 
 def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
@@ -647,6 +651,10 @@ def get_formatted_memory(memory_in_bytes: int) -> str:
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
     return get_formatted_memory(max_memory)
+
+
+def get_worst_outcome(evals: List[Evaluation]) -> Outcome:
+    return Outcome.worst_outcome(eval.result.outcome for eval in evals)
 
 
 def _print_solution_outcome(
@@ -897,7 +905,11 @@ async def _render_detailed_group_table(
                     solution, non_null_evals, verification
                 )
                 formatted_memory = get_evals_formatted_memory(non_null_evals)
-                summary_row.append(('', '', formatted_time, '/', formatted_memory, ''))
+                worst_outcome = get_worst_outcome(non_null_evals)
+                verdict = get_outcome_markup_verdict(worst_outcome)
+                summary_row.append(
+                    ('', verdict, formatted_time, '/', formatted_memory, '')
+                )
             padded_rows.append(summary_row)
 
         for row in _render_padded_rows(padded_rows):
