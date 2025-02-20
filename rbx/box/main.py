@@ -42,6 +42,7 @@ from rbx.box.solutions import (
     estimate_time_limit,
     get_exact_matching_solutions,
     get_matching_solutions,
+    pick_solutions,
     print_run_report,
     run_and_print_interactive_solutions,
     run_solutions,
@@ -143,6 +144,13 @@ def run(
         '-s',
         help='Whether to compile the solutions with sanitizers enabled.',
     ),
+    choice: bool = typer.Option(
+        False,
+        '--choice',
+        '--choose',
+        '-c',
+        help='Whether to pick solutions interactively.',
+    ),
 ):
     main_solution = package.get_main_solution()
     if check and main_solution is None:
@@ -174,31 +182,37 @@ def run(
         if override_tl is None:
             raise typer.Exit(1)
 
+    if sanitized:
+        console.console.print(
+            '[warning]Sanitizers are running, so the time limit for the problem will be dropped, '
+            'and the environment default time limit will be used instead.[/warning]'
+        )
+
+    tracked_solutions = None
+    if outcome is not None:
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_matching_solutions(ExpectedOutcome(outcome))
+        }
+    if solution:
+        tracked_solutions = {solution}
+
+    if sanitized and tracked_solutions is None:
+        console.console.print(
+            '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
+        )
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+        }
+
+    if choice:
+        tracked_solutions = set(pick_solutions(tracked_solutions))
+        if not tracked_solutions:
+            console.console.print('[error]No solutions selected. Exiting.[/error]')
+            raise typer.Exit(1)
+
     with utils.StatusProgress('Running solutions...') as s:
-        if sanitized:
-            console.console.print(
-                '[warning]Sanitizers are running, so the time limit for the problem will be dropped, '
-                'and the environment default time limit will be used instead.[/warning]'
-            )
-
-        tracked_solutions = None
-        if outcome is not None:
-            tracked_solutions = {
-                str(solution.path)
-                for solution in get_matching_solutions(ExpectedOutcome(outcome))
-            }
-        if solution:
-            tracked_solutions = {solution}
-
-        if sanitized and tracked_solutions is None:
-            console.console.print(
-                '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
-            )
-            tracked_solutions = {
-                str(solution.path)
-                for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-            }
-
         solution_result = run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
@@ -338,6 +352,13 @@ def irun(
         '-s',
         help='Whether to compile the solutions with sanitizers enabled.',
     ),
+    choice: bool = typer.Option(
+        False,
+        '--choice',
+        '--choose',
+        '-c',
+        help='Whether to pick solutions interactively.',
+    ),
 ):
     if not print:
         console.console.print(
@@ -356,24 +377,30 @@ def irun(
         )
         check = False
 
-    with utils.StatusProgress('Running solutions...') as s:
-        tracked_solutions = None
-        if outcome is not None:
-            tracked_solutions = {
-                str(solution.path)
-                for solution in get_matching_solutions(ExpectedOutcome(outcome))
-            }
-        if solution:
-            tracked_solutions = {solution}
-        if sanitized and tracked_solutions is None:
-            console.console.print(
-                '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
-            )
-            tracked_solutions = {
-                str(solution.path)
-                for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-            }
+    tracked_solutions = None
+    if outcome is not None:
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_matching_solutions(ExpectedOutcome(outcome))
+        }
+    if solution:
+        tracked_solutions = {solution}
+    if sanitized and tracked_solutions is None:
+        console.console.print(
+            '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
+        )
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
+        }
 
+    if choice:
+        tracked_solutions = set(pick_solutions(tracked_solutions))
+        if not tracked_solutions:
+            console.console.print('[error]No solutions selected. Exiting.[/error]')
+            raise typer.Exit(1)
+
+    with utils.StatusProgress('Running solutions...') as s:
         asyncio.run(
             run_and_print_interactive_solutions(
                 progress=s,

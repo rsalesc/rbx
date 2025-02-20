@@ -7,6 +7,7 @@ import shutil
 from collections.abc import Iterator
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
+import questionary
 import rich
 import rich.live
 import rich.markup
@@ -544,6 +545,16 @@ async def run_and_print_interactive_solutions(
                     f'[status]Stderr:[/status] {eval.log.stderr_absolute_path}'
                 )
             console.console.print()
+
+
+def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
+    pkg = package.find_problem_package_or_die()
+    if tracked_solutions is None:
+        tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
+
+    return questionary.checkbox(
+        'Select solutions', choices=list(tracked_solutions)
+    ).ask()
 
 
 def get_outcome_style_verdict(outcome: Outcome) -> str:
