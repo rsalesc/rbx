@@ -552,9 +552,12 @@ def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
     if tracked_solutions is None:
         tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
 
-    return questionary.checkbox(
-        'Select solutions', choices=list(tracked_solutions)
-    ).ask()
+    # Store in a separate list to maintain order with the package declaration.
+    solution_list = [
+        str(sol.path) for sol in pkg.solutions if str(sol.path) in tracked_solutions
+    ]
+
+    return questionary.checkbox('Select solutions', choices=solution_list).ask()
 
 
 def get_outcome_style_verdict(outcome: Outcome) -> str:
