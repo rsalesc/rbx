@@ -68,13 +68,14 @@ def _find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
 
 
 def _find_local_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
+    original_root = root
     root = root.resolve()
     problem_yaml_path = root / '.local.rbx' / 'preset.rbx.yml'
     while root != pathlib.PosixPath('/') and not problem_yaml_path.is_file():
         root = root.parent
         problem_yaml_path = root / '.local.rbx' / 'preset.rbx.yml'
     if not problem_yaml_path.is_file():
-        return _find_nested_preset(root)
+        return _find_nested_preset(original_root)
     return problem_yaml_path.parent
 
 
@@ -326,6 +327,13 @@ def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
         console.console.print('[error]Naming a preset "local" is prohibited.[/error]')
 
     console.console.print(f'Installing preset [item]{preset.name}[/item]...')
+    installation_path = get_preset_installation_path(preset.name)
+
+    if root.resolve().is_relative_to(installation_path.resolve()):
+        console.console.print(
+            '[error]Current folder is nested into the preset installation path, cannot install it.[/error]'
+        )
+        raise typer.Exit(1)
 
     if preset.env is not None:
         console.console.print(
@@ -346,7 +354,6 @@ def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
             shutil.copyfile(str(root / preset.env), get_environment_path(preset.name))
 
     console.console.print(f'[item]{preset.name}[/item]: Copying preset folder...')
-    installation_path = get_preset_installation_path(preset.name)
     installation_path.parent.mkdir(parents=True, exist_ok=True)
     if installation_path.exists():
         res = force or rich.prompt.Confirm.ask(
