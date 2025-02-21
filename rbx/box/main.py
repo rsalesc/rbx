@@ -540,6 +540,8 @@ def stress(
                 name=testgroup, generatorScript=CodeItem(path=new_script_path)
             )
             ru, problem_yml = package.get_ruyaml()
+            if 'testcases' not in problem_yml:
+                problem_yml['testcases'] = []
             problem_yml['testcases'].append(
                 {
                     'name': testgroup,

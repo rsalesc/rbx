@@ -147,12 +147,15 @@ def add(path: str, short_name: str, preset: Optional[str] = None):
 
     ru, contest = contest_package.get_ruyaml()
 
-    contest['problems'].append(
-        {
-            'short_name': short_name,
-            'path': path,
-        }
-    )
+    item = {
+        'short_name': short_name,
+        'path': path,
+    }
+    if 'problems' not in contest:
+        contest['problems'] = [item]
+    else:
+        contest['problems'].append(item)
+
     dest = find_contest_yaml()
     assert dest is not None
     utils.save_ruyaml(dest, ru, contest)
