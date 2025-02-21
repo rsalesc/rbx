@@ -13,6 +13,7 @@ import rich.live
 import rich.markup
 import rich.table
 import rich.text
+import typer
 from pydantic import BaseModel
 
 from rbx import console
@@ -557,7 +558,10 @@ def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
         str(sol.path) for sol in pkg.solutions if str(sol.path) in tracked_solutions
     ]
 
-    return questionary.checkbox('Select solutions', choices=solution_list).ask()
+    picked = questionary.checkbox('Select solutions', choices=solution_list).ask()
+    if picked is None:
+        raise typer.Abort()
+    return picked
 
 
 def get_outcome_style_verdict(outcome: Outcome) -> str:
