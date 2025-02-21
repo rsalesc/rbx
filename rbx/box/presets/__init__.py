@@ -419,7 +419,7 @@ def generate_lock(
     )
 
 
-def _sync(update: bool = False):
+def _sync(try_update: bool = False):
     preset_lock = get_preset_lock()
     if preset_lock is None:
         console.console.print(
@@ -430,18 +430,17 @@ def _sync(update: bool = False):
         )
         raise typer.Exit(1)
 
-    should_update = update and preset_lock.uri is not None
+    should_update = try_update and preset_lock.uri is not None
     installed_preset = get_installed_preset_or_null(preset_lock.preset_name)
     if installed_preset is None:
-        if not update or preset_lock.uri is None:
+        if not try_update or preset_lock.uri is None:
             console.console.print(
                 f'[error]Preset [item]{preset_lock.preset_name}[/item] is not installed. Install it before trying to update.'
             )
             raise typer.Exit(1)
-        should_update = True
-
-    if should_update:
-        install(uri=preset_lock.uri)
+        install(preset_lock.uri)
+    elif should_update:
+        update(preset_lock.name)
 
     _copy_updated_assets(
         preset_lock.preset_name,
@@ -484,6 +483,13 @@ def update(
         presets = [name]
 
     for preset_name in presets:
+        if preset_name == LOCAL:
+            if not questionary.confirm(
+                'Updating local preset will remove all custom changes you made to the preset.',
+                default=False,
+            ).ask():
+                continue
+
         preset = get_installed_preset_or_null(preset_name)
         if preset is None:
             console.console.print(
@@ -496,6 +502,20 @@ def update(
             )
             continue
         install_from_remote(preset.fetch_info, force=True)
+
+        if preset_name == LOCAL:
+            # Get global path to the preset.
+            preset_path = get_preset_installation_path(preset.name)
+            dest_path = '.local.rbx'
+            shutil.rmtree(dest_path, ignore_errors=True)
+            shutil.copytree(preset_path, dest_path)
+            console.console.print(
+                '[success]Local preset updated successfully.[/success]'
+            )
+        else:
+            console.console.print(
+                f'[success]Preset [item]{preset_name}[/item] updated successfully.[/success]'
+            )
 
 
 @app.command(
@@ -514,7 +534,7 @@ def sync(
     ] = False,
 ):
     _check_is_valid_package()
-    _sync(update=update)
+    _sync(try_update=update)
 
 
 @app.command(
