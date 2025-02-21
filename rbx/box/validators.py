@@ -262,10 +262,22 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
     if not _has_group_specific_validator():
         hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
 
+    def _is_hit_bound_good(hit_bounds: HitBounds) -> bool:
+        return any(not v[0] or not v[1] for v in hit_bounds.values())
+
+    # Cleanup entries in hit bounds per group that are totally empty.
+    # Also skip samples.
+    hit_bounds_per_group = {
+        k: v
+        for k, v in hit_bounds_per_group.items()
+        if _is_hit_bound_good(v) and k != 'samples'
+    }
+
+    if not hit_bounds_per_group:
+        console.console.print('[info]No validation issues found.[/info]')
+        return
+
     for group, hit_bounds in hit_bounds_per_group.items():
-        if group == 'samples':
-            # Skip samples.
-            continue
         if group is None:
             console.console.print('Hit bounds:')
         else:
