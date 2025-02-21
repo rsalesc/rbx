@@ -197,6 +197,12 @@ def run(
     if solution:
         tracked_solutions = {solution}
 
+    if choice:
+        tracked_solutions = set(pick_solutions(tracked_solutions))
+        if not tracked_solutions:
+            console.console.print('[error]No solutions selected. Exiting.[/error]')
+            raise typer.Exit(1)
+
     if sanitized and tracked_solutions is None:
         console.console.print(
             '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
@@ -205,12 +211,6 @@ def run(
             str(solution.path)
             for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
         }
-
-    if choice:
-        tracked_solutions = set(pick_solutions(tracked_solutions))
-        if not tracked_solutions:
-            console.console.print('[error]No solutions selected. Exiting.[/error]')
-            raise typer.Exit(1)
 
     with utils.StatusProgress('Running solutions...') as s:
         solution_result = run_solutions(
@@ -385,6 +385,13 @@ def irun(
         }
     if solution:
         tracked_solutions = {solution}
+
+    if choice:
+        tracked_solutions = set(pick_solutions(tracked_solutions))
+        if not tracked_solutions:
+            console.console.print('[error]No solutions selected. Exiting.[/error]')
+            raise typer.Exit(1)
+
     if sanitized and tracked_solutions is None:
         console.console.print(
             '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
@@ -393,12 +400,6 @@ def irun(
             str(solution.path)
             for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
         }
-
-    if choice:
-        tracked_solutions = set(pick_solutions(tracked_solutions))
-        if not tracked_solutions:
-            console.console.print('[error]No solutions selected. Exiting.[/error]')
-            raise typer.Exit(1)
 
     with utils.StatusProgress('Running solutions...') as s:
         asyncio.run(
