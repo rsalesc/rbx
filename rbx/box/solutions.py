@@ -548,17 +548,26 @@ async def run_and_print_interactive_solutions(
             console.console.print()
 
 
+def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
+    return [
+        ('', f'{str(sol.path)} '),
+        (f'fg:{sol.outcome.style().replace('lnumber', 'cyan')}', sol.outcome.name),
+    ]
+
+
 def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
     pkg = package.find_problem_package_or_die()
     if tracked_solutions is None:
         tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
 
     # Store in a separate list to maintain order with the package declaration.
-    solution_list = [
-        str(sol.path) for sol in pkg.solutions if str(sol.path) in tracked_solutions
+    choices = [
+        questionary.Choice(title=_get_solution_repr(sol), value=str(sol.path))
+        for sol in pkg.solutions
+        if str(sol.path) in tracked_solutions
     ]
 
-    picked = questionary.checkbox('Select solutions', choices=solution_list).ask()
+    picked = questionary.checkbox('Select solutions', choices=choices).ask()
     if picked is None:
         raise typer.Abort()
     return picked

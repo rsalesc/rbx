@@ -1,5 +1,7 @@
 import sys
 
+import rich
+import rich.markup
 from rich.console import Console
 from rich.theme import Theme
 
@@ -25,3 +27,13 @@ def multiline_prompt(text: str) -> str:
     lines = sys.stdin.readlines()
     console.print()
     return ''.join(lines)
+
+
+def render_from(r: rich.console.RenderableType) -> str:
+    with console.capture() as capture:
+        console.print(r)
+    return capture.get()
+
+
+def render_from_markup(markup: str) -> str:
+    return render_from(rich.markup.render(markup))
