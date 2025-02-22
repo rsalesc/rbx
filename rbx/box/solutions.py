@@ -26,6 +26,7 @@ from rbx.box.environment import (
     VerificationLevel,
 )
 from rbx.box.generators import generate_output_for_testcase, generate_standalone
+from rbx.box.retries import Retrier
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
@@ -169,63 +170,70 @@ def _run_solution_on_testcase(
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
 ) -> Evaluation:
-    actual_sandbox = package.get_singleton_sandbox()
+    def run_fn(retry_index: int) -> Evaluation:
+        actual_sandbox = package.get_singleton_sandbox()
 
-    limits = get_limits_for_language(
-        solution.language, verification, timelimit_override
-    )
-
-    sandbox = EnvironmentSandbox()
-    sandbox.timeLimit = limits.time
-    if limits.isDoubleTL and sandbox.timeLimit is not None:
-        # Double TL.
-        sandbox.timeLimit = sandbox.timeLimit * 2
-    sandbox.wallTimeLimit = sandbox.timeLimit
-    if sandbox.timeLimit is not None and actual_sandbox.use_soft_timeout():
-        sandbox.wallTimeLimit = sandbox.timeLimit * 2
-    sandbox.memoryLimit = limits.memory
-    sandbox.fileSizeLimit = limits.output
-    extra_config = ExecutionConfig(sandbox=sandbox)
-
-    output_path = output_dir / testcase.inputPath.with_suffix('.out').name
-    error_path = output_path.with_suffix('.err')
-    log_path = output_path.with_suffix('.log')
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    run_log = run_item(
-        solution,
-        DigestOrSource.create(compiled_digest),
-        stdin=DigestOrSource.create(testcase.inputPath),
-        stdout=DigestOrDest.create(output_path),
-        stderr=DigestOrDest.create(error_path),
-        extra_config=extra_config,
-    )
-
-    if checker_digest is not None:
-        checker_result = checkers.check(
-            checker_digest,
-            run_log,
-            testcase,
-            program_output=output_path,
+        limits = get_limits_for_language(
+            solution.language, verification, timelimit_override
         )
-    else:
-        checker_result = checkers.check_with_no_output(run_log)
 
-    eval = Evaluation(
-        result=checker_result,
-        testcase=TestcaseIO(
-            index=testcase_index, input=testcase.inputPath, output=testcase.outputPath
-        ),
-        log=TestcaseLog(
-            **(run_log.model_dump() if run_log is not None else {}),
-            stdout_absolute_path=output_path.absolute(),
-            stderr_absolute_path=error_path.absolute(),
-            log_absolute_path=log_path.absolute(),
-        ),
-    )
+        sandbox = EnvironmentSandbox()
+        sandbox.timeLimit = limits.time
+        if limits.isDoubleTL and sandbox.timeLimit is not None:
+            # Double TL.
+            sandbox.timeLimit = sandbox.timeLimit * 2
+        sandbox.wallTimeLimit = sandbox.timeLimit
+        if sandbox.timeLimit is not None and actual_sandbox.use_soft_timeout():
+            sandbox.wallTimeLimit = sandbox.timeLimit * 2
+        sandbox.memoryLimit = limits.memory
+        sandbox.fileSizeLimit = limits.output
+        extra_config = ExecutionConfig(sandbox=sandbox)
 
-    log_path.write_text(model_to_yaml(eval))
-    return eval
+        output_path = output_dir / testcase.inputPath.with_suffix('.out').name
+        error_path = output_path.with_suffix('.err')
+        log_path = output_path.with_suffix('.log')
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        run_log = run_item(
+            solution,
+            DigestOrSource.create(compiled_digest),
+            stdin=DigestOrSource.create(testcase.inputPath),
+            stdout=DigestOrDest.create(output_path),
+            stderr=DigestOrDest.create(error_path),
+            extra_config=extra_config,
+            retry_index=retry_index,
+        )
+
+        if checker_digest is not None:
+            checker_result = checkers.check(
+                checker_digest,
+                run_log,
+                testcase,
+                program_output=output_path,
+            )
+        else:
+            checker_result = checkers.check_with_no_output(run_log)
+
+        eval = Evaluation(
+            result=checker_result,
+            testcase=TestcaseIO(
+                index=testcase_index,
+                input=testcase.inputPath,
+                output=testcase.outputPath,
+            ),
+            log=TestcaseLog(
+                **(run_log.model_dump() if run_log is not None else {}),
+                stdout_absolute_path=output_path.absolute(),
+                stderr_absolute_path=error_path.absolute(),
+                log_absolute_path=log_path.absolute(),
+            ),
+        )
+
+        log_path.write_text(model_to_yaml(eval))
+        return eval
+
+    retrier = Retrier()
+    return retrier.repeat(run_fn)
 
 
 def _run_solution(

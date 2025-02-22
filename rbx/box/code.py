@@ -266,6 +266,7 @@ def run_item(
     outputs: Optional[List[GradingFileOutput]] = None,
     extra_args: Optional[str] = None,
     extra_config: Optional[ExecutionConfig] = None,
+    retry_index: Optional[int] = None,
 ) -> Optional[RunLog]:
     language = find_language_name(code)
     execution_options = get_execution_config(language)
@@ -350,6 +351,7 @@ def run_item(
             is_sanitized=sanitized,
             timeLimit=sandbox_params.timeout,
             memoryLimit=sandbox_params.address_space,
+            retryIndex=retry_index,
         ),
     )
 

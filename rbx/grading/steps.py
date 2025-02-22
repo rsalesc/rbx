@@ -170,6 +170,7 @@ class RunLogMetadata(BaseModel):
     is_sanitized: bool = False
     timeLimit: Optional[int] = None
     memoryLimit: Optional[int] = None
+    retryIndex: Optional[int] = None
 
 
 class RunLog(BaseModel):

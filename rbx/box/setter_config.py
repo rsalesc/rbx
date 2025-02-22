@@ -36,6 +36,23 @@ class WarningsConfig(BaseModel):
     )
 
 
+class RepeatsConfig(BaseModel):
+    reps: int = Field(
+        1,
+        description='Number of times to repeat the solution.',
+    )
+
+    retries: int = Field(
+        0,
+        description='Number of times to retry if the solution TLs.',
+    )
+
+    retries_for_stress: int = Field(
+        0,
+        description='Number of times to retry in stress mode if the solution TLs.',
+    )
+
+
 class SetterConfig(BaseModel):
     sanitizers: SanitizersConfig = Field(
         default_factory=SanitizersConfig,  # type: ignore
@@ -44,6 +61,11 @@ class SetterConfig(BaseModel):
     warnings: WarningsConfig = Field(
         default_factory=WarningsConfig,  # type: ignore
         description='Configuration for warnings.',
+    )
+
+    repeats: RepeatsConfig = Field(
+        default_factory=RepeatsConfig,  # type: ignore
+        description='Configuration for repeats.',
     )
 
     command_substitutions: Dict[str, str] = Field(

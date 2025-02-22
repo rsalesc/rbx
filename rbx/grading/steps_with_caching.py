@@ -46,9 +46,11 @@ def run(
 ) -> Optional[RunLog]:
     artifacts.logs = GradingLogsHolder()
 
-    with dependency_cache(
-        [command], [artifacts], params.get_cacheable_params()
-    ) as is_cached:
+    cacheable_params = params.get_cacheable_params()
+    if metadata is not None and metadata.retryIndex is not None:
+        cacheable_params['__retry_index__'] = metadata.retryIndex
+
+    with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
         if not is_cached:
             steps.run(
                 command=command,

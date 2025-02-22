@@ -10,13 +10,17 @@ from rbx import console
 from rbx.box import checkers, package, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.generators import generate_standalone
+from rbx.box.retries import Retrier
 from rbx.box.schema import CodeItem, GeneratorCall, Stress, Testcase
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
 from rbx.box.stressing import finder_parser
 from rbx.grading.steps import (
     DigestOrDest,
     DigestOrSource,
+    Evaluation,
     Outcome,
+    TestcaseIO,
+    TestcaseLog,
 )
 from rbx.utils import StatusProgress
 
@@ -131,8 +135,9 @@ def run_stress(
         @functools.cache
         def run_solution_fn(
             solution: str,
+            retry_index: Optional[int] = None,
             input_path=input_path,
-        ) -> finder_parser.FinderSolutionResult:
+        ) -> TestcaseLog:
             index = solution_indices[solution]
             sol = solutions[index]
             output_path = input_path.with_stem(f'{index}').with_suffix('.out')
@@ -144,29 +149,30 @@ def run_stress(
                 stdin=DigestOrSource.create(input_path),
                 stdout=DigestOrDest.create(output_path),
                 stderr=DigestOrDest.create(stderr_path),
+                retry_index=retry_index,
             )
 
-            return finder_parser.FinderSolutionResult(
-                output_path=output_path,
-                stderr_path=stderr_path,
-                run_log=run_log,
+            return TestcaseLog(
+                **(run_log.model_dump() if run_log is not None else {}),
+                stdout_absolute_path=output_path.absolute(),
+                stderr_absolute_path=stderr_path.absolute(),
             )
 
         # Get main solution output.
         expected_output_path = empty_path
         if needs_expected_output:
-            main_result = run_solution_fn(str(solutions[0].path))
-            main_checker_result = checkers.check_with_no_output(main_result.run_log)
+            main_testcase_log = run_solution_fn(str(solutions[0].path))
+            main_checker_result = checkers.check_with_no_output(main_testcase_log)
             if main_checker_result.outcome != Outcome.ACCEPTED:
                 console.console.print(
                     '[error]Error while generating main solution output.[/error]'
                 )
                 console.console.print(f'Input written at [item]{input_path}[/item]')
                 console.console.print(
-                    f'Output written at [item]{main_result.output_path}[/item]'
+                    f'Output written at [item]{main_testcase_log.stdout_absolute_path}[/item]'
                 )
                 console.console.print(
-                    f'Stderr written at [item]{main_result.stderr_path}[/item]'
+                    f'Stderr written at [item]{main_testcase_log.stderr_absolute_path}[/item]'
                 )
                 console.console.print()
                 console.console.print(
@@ -174,7 +180,7 @@ def run_stress(
                     "use the two-way modifier in your finder expression (':2')."
                 )
                 raise typer.Exit(1)
-            expected_output_path = main_result.output_path
+            expected_output_path = main_testcase_log.stdout_absolute_path
 
         @functools.cache
         def run_solution_and_checker_fn(
@@ -182,27 +188,43 @@ def run_stress(
             input_path=input_path,
             expected_output_path=expected_output_path,
         ) -> finder_parser.FinderResult:
-            solution = call.solution
-            checker = call.checker
+            def run_fn(retry_index: int) -> Evaluation:
+                solution = call.solution
+                checker = call.checker
 
-            solution_result = run_solution_fn(solution)
+                testcase_log = run_solution_fn(solution, retry_index=retry_index)
+                assert testcase_log.stdout_absolute_path is not None
 
-            if checker is None:
-                checker_result = checkers.check_with_no_output(solution_result.run_log)
-            else:
-                checker_digest = finders_digest[checker.path]
-                checker_result = checkers.check(
-                    checker_digest,
-                    solution_result.run_log,
-                    Testcase(inputPath=input_path, outputPath=expected_output_path),
-                    program_output=solution_result.output_path,
+                if checker is None:
+                    checker_result = checkers.check_with_no_output(testcase_log)
+                else:
+                    checker_digest = finders_digest[checker.path]
+                    checker_result = checkers.check(
+                        checker_digest,
+                        testcase_log,
+                        Testcase(inputPath=input_path, outputPath=expected_output_path),
+                        program_output=testcase_log.stdout_absolute_path,
+                    )
+
+                return Evaluation(
+                    result=checker_result,
+                    testcase=TestcaseIO(
+                        index=0,
+                        input=input_path,
+                        output=expected_output_path,
+                    ),
+                    log=testcase_log,
                 )
+
+            retrier = Retrier(is_stress=True)
+            eval = retrier.repeat(run_fn)
+
             return finder_parser.FinderResult(
-                solution=solution,
-                outcome=checker_result.outcome,
-                checker=checker,
-                solution_result=solution_result,
-                checker_result=checker_result,
+                solution=call.solution,
+                outcome=eval.result.outcome,
+                checker=call.checker,
+                solution_log=eval.log,
+                checker_result=eval.result,
             )
 
         runner = finder_parser.FinderTreeRunner(runner=run_solution_and_checker_fn)

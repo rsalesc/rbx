@@ -10,7 +10,7 @@ import typer
 from rbx import console
 from rbx.box import package
 from rbx.box.schema import CodeItem, ExpectedOutcome
-from rbx.grading.steps import CheckerResult, Outcome, RunLog
+from rbx.grading.steps import CheckerResult, Outcome, RunLog, TestcaseLog
 
 LARK_GRAMMAR = r"""
 // A bunch of words
@@ -102,7 +102,7 @@ class FinderResult:
     checker: Optional[FinderChecker]
 
     # Auxiliary information.
-    solution_result: Optional[FinderSolutionResult] = None
+    solution_log: Optional[TestcaseLog] = None
     checker_result: Optional[CheckerResult] = None
 
 
