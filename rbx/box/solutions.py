@@ -549,9 +549,10 @@ async def run_and_print_interactive_solutions(
 
 
 def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
+    fg_color = sol.outcome.style().replace('lnumber', 'cyan')
     return [
         ('', f'{str(sol.path)} '),
-        (f'fg:{sol.outcome.style().replace('lnumber', 'cyan')}', sol.outcome.name),
+        (f'fg:{fg_color}', sol.outcome.name),
     ]
 
 
