@@ -49,11 +49,11 @@ def build(
                 infos = validate_testcases(s, groups=groups)
                 print_validation_report(infos)
 
-        if has_validation_errors(infos):
-            console.console.print(
-                '[error]Validation failed, check the report above.[/error]'
-            )
-            return False
+            if has_validation_errors(infos):
+                console.console.print(
+                    '[error]Validation failed, check the report above.[/error]'
+                )
+                return False
 
     with utils.StatusProgress(
         'Building outputs for testcases...',
