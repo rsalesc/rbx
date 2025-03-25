@@ -1,7 +1,4 @@
 <p align="center">
-   <img src="docs/rbx_transparent.png" width="240px">
-</p>
-<p align="center">
     <em>The go-to CLI tool for competitive programmers and setters.</em>
 </p>
 <p align="center">
