@@ -1,12 +1,5 @@
 # Getting started
 
-<figure markdown="span">
-  ![Image title](rbx_transparent.png){ width="300" }
-  <figcaption>The go-to CLI tool for competitive programmers and setters.</figcaption>
-</figure>
-
----
-
 {{rbx}} is a CLI tool and library that aims to help setters and contestants from the competitive programming community to have an easier time.
 
 Although trying to solve the issues of these two audiences seems to be too much for a single tool to handle, we exploit the fact that the journeys of setters and contestants have a lot in common.
