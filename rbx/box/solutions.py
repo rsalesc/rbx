@@ -419,58 +419,22 @@ def run_solutions(
     )
 
 
-def _run_interactive_solutions(
+def _generate_testcase_interactively(
     progress: Optional[StatusProgress] = None,
-    tracked_solutions: Optional[Set[str]] = None,
-    verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
     check: bool = True,
-    print: bool = False,
     sanitized: bool = False,
-) -> Iterator[EvaluationItem]:
-    pkg = package.find_problem_package_or_die()
-    main_solution = package.get_main_solution()
-    check = check and main_solution is not None
-
-    if check and progress:
-        progress.update('Compiling checker...')
-    checker_digest = checkers.compile_checker() if check else None
-    compiled_solutions = compile_solutions(
-        progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
-    )
-
-    main_solution_digest = None
-    if check and main_solution is not None:
-        if progress:
-            progress.update('Compiling main solution...')
-        try:
-            main_solution_digest = compile_item(
-                main_solution,
-                sanitized=SanitizationLevel.FORCE
-                if sanitized
-                else SanitizationLevel.NONE,
-            )
-        except:
-            console.console.print(
-                '[error]Failed compiling main solution. If you do not want to check against a main solution, run with --nocheck flag.[/error]'
-            )
-            raise
-
-    solutions = list(enumerate(pkg.solutions))
-    if tracked_solutions is not None:
-        solutions = [
-            (i, sol) for i, sol in solutions if str(sol.path) in tracked_solutions
-        ]
-
+    print: bool = False,
+) -> Testcase:
     irun_dir = package.get_problem_iruns_dir()
-    shutil.rmtree(str(irun_dir), ignore_errors=True)
-    irun_dir.mkdir(parents=True, exist_ok=True)
     inputs_dir = irun_dir / 'inputs'
     inputs_dir.mkdir(parents=True, exist_ok=True)
     input_path = inputs_dir / '000.in'
     output_path = input_path.with_suffix('.out')
+
     already_validated = False
 
+    # 1. Generate testcase
     if generator is not None:
         expanded_call = generate_standalone(generator, input_path, progress=progress)
         console.console.print(
@@ -490,6 +454,7 @@ def _run_interactive_solutions(
         input_path.write_text(input)
     testcase = Testcase(inputPath=input_path, outputPath=output_path if check else None)
 
+    # 2. Validate testcase if not already validated
     if not already_validated:
         validator = package.get_validator_or_nil()
         # Run validator, if it is available.
@@ -515,11 +480,61 @@ def _run_interactive_solutions(
                 )
                 raise typer.Exit(1)
 
+    # 3. Generate test output from reference
+    main_solution = package.get_main_solution()
+    main_solution_digest = None
+    if check:
+        assert main_solution
+        if progress:
+            progress.update('Compiling main solution...')
+        try:
+            main_solution_digest = compile_item(
+                main_solution,
+                sanitized=SanitizationLevel.FORCE
+                if sanitized
+                else SanitizationLevel.NONE,
+            )
+        except:
+            console.console.print(
+                '[error]Failed compiling main solution. If you do not want to check against a main solution, run with --nocheck flag.[/error]'
+            )
+            raise
+
     if main_solution_digest is not None:
         if progress:
             progress.update('Generating output for test...')
         # TODO: Add stderr path
         generate_output_for_testcase(main_solution_digest, testcase)
+
+    return testcase
+
+
+def _run_interactive_solutions(
+    testcase: Testcase,
+    progress: Optional[StatusProgress] = None,
+    tracked_solutions: Optional[Set[str]] = None,
+    verification: VerificationLevel = VerificationLevel.NONE,
+    check: bool = True,
+    sanitized: bool = False,
+) -> Iterator[EvaluationItem]:
+    pkg = package.find_problem_package_or_die()
+    main_solution = package.get_main_solution()
+    check = check and main_solution is not None
+
+    if check and progress:
+        progress.update('Compiling checker...')
+    checker_digest = checkers.compile_checker() if check else None
+    compiled_solutions = compile_solutions(
+        progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
+    )
+
+    solutions = list(enumerate(pkg.solutions))
+    if tracked_solutions is not None:
+        solutions = [
+            (i, sol) for i, sol in solutions if str(sol.path) in tracked_solutions
+        ]
+
+    irun_dir = package.get_problem_iruns_dir()
 
     if progress:
         progress.update('Running solutions...')
@@ -554,15 +569,28 @@ async def run_and_print_interactive_solutions(
     print: bool = False,
     sanitized: bool = False,
 ):
+    check = check and package.get_main_solution() is not None
+
+    # Ensure path is new.
+    irun_dir = package.get_problem_iruns_dir()
+    shutil.rmtree(str(irun_dir), ignore_errors=True)
+    irun_dir.mkdir(parents=True, exist_ok=True)
+
     pkg = package.find_problem_package_or_die()
+    testcase = _generate_testcase_interactively(
+        progress=progress,
+        generator=generator,
+        check=check,
+        sanitized=sanitized,
+        print=print,
+    )
     items = _run_interactive_solutions(
+        testcase,
         progress=progress,
         tracked_solutions=tracked_solutions,
         verification=verification,
         check=check,
-        generator=generator,
         sanitized=sanitized,
-        print=print,
     )
 
     for item in items:
