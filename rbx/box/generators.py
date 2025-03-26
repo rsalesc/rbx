@@ -109,6 +109,11 @@ def generate_output_for_testcase(
     stderr_path: Optional[pathlib.Path] = None,
 ):
     assert testcase.outputPath is not None
+
+    if testcase.outputPath.is_file():
+        # Output file was already copied over from manual tests.
+        return
+
     pkg = package.find_problem_package_or_die()
     main_solution = package.get_main_solution()
     if main_solution is None:
