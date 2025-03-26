@@ -197,12 +197,15 @@ def generate_outputs_for_testcases(
             stderr_path = gen_runs_dir / 'main.stderr'
 
             assert testcase.outputPath is not None
-            if main_solution is None or solution_digest is None:
+            if (
+                main_solution is None or solution_digest is None
+            ) and not testcase.outputPath.is_file():
                 console.console.print(
                     '[error]No main solution found to generate outputs for testcases.[/error]',
                 )
                 raise typer.Exit(1)
 
+            assert solution_digest is not None
             generate_output_for_testcase(solution_digest, testcase, stderr_path)
             step()
 
