@@ -592,7 +592,7 @@ async def run_and_print_interactive_solutions(
 
 
 def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
-    fg_color = sol.outcome.style().replace('lnumber', 'cyan')
+    fg_color = sol.outcome.style()
     return [
         ('', f'{str(sol.path)} '),
         (f'fg:{fg_color}', sol.outcome.name),
@@ -625,9 +625,9 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
     if outcome == Outcome.TIME_LIMIT_EXCEEDED:
         return 'yellow'
     if outcome == Outcome.RUNTIME_ERROR:
-        return 'lnumber'
+        return 'blue'
     if outcome == Outcome.MEMORY_LIMIT_EXCEEDED:
-        return 'cyan'
+        return 'yellow'
     return 'magenta'
 
 

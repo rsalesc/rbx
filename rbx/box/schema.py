@@ -100,9 +100,9 @@ class ExpectedOutcome(AutoEnum):
         if self.match(Outcome.TIME_LIMIT_EXCEEDED):
             return 'yellow'
         if self.match(Outcome.RUNTIME_ERROR):
-            return 'lnumber'
+            return 'blue'
         if self.match(Outcome.MEMORY_LIMIT_EXCEEDED):
-            return 'cyan'
+            return 'yellow'
         return 'magenta'
 
     def is_slow(self) -> bool:
