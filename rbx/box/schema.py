@@ -20,6 +20,12 @@ def NameField(**kwargs):
     )
 
 
+def FNameField(**kwargs):
+    return Field(
+        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$', min_length=3, max_length=128, **kwargs
+    )
+
+
 def _check_oneof(model_obj: BaseModel, fields: List[str]):
     has = []
     for field in fields:
@@ -180,7 +186,7 @@ class Testcase(BaseModel):
 class GeneratorCall(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = NameField(description='The name of the generator to call.')
+    name: str = FNameField(description='The name of the generator to call.')
 
     args: Optional[str] = Field(
         None, description='The arguments to pass to the generator.'
