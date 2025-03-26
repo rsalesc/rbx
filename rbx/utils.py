@@ -98,12 +98,18 @@ def save_ruyaml(path: pathlib.Path, yml: ruyaml.YAML, data: ruyaml.Any):
         yml.dump(data, f)
 
 
-def confirm_on_status(status: Optional[rich.status.Status], *args, **kwargs) -> bool:
+@contextlib.contextmanager
+def no_progress(status: Optional[rich.status.Status]):
     if status:
         status.stop()
-    res = rich.prompt.Confirm.ask(*args, **kwargs, console=console)
+    yield
     if status:
         status.start()
+
+
+def confirm_on_status(status: Optional[rich.status.Status], *args, **kwargs) -> bool:
+    with no_progress(status):
+        res = rich.prompt.Confirm.ask(*args, **kwargs, console=console)
     return res
 
 

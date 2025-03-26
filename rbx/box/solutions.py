@@ -16,8 +16,8 @@ import rich.text
 import typer
 from pydantic import BaseModel
 
-from rbx import console
-from rbx.box import checkers, package
+from rbx import console, utils
+from rbx.box import checkers, package, validators
 from rbx.box.code import SanitizationLevel, compile_item, find_language_name, run_item
 from rbx.box.deferred import Deferred
 from rbx.box.environment import (
@@ -432,6 +432,8 @@ def _run_interactive_solutions(
     main_solution = package.get_main_solution()
     check = check and main_solution is not None
 
+    if check and progress:
+        progress.update('Compiling checker...')
     checker_digest = checkers.compile_checker() if check else None
     compiled_solutions = compile_solutions(
         progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
@@ -439,6 +441,8 @@ def _run_interactive_solutions(
 
     main_solution_digest = None
     if check and main_solution is not None:
+        if progress:
+            progress.update('Compiling main solution...')
         try:
             main_solution_digest = compile_item(
                 main_solution,
@@ -465,9 +469,10 @@ def _run_interactive_solutions(
     inputs_dir.mkdir(parents=True, exist_ok=True)
     input_path = inputs_dir / '000.in'
     output_path = input_path.with_suffix('.out')
+    already_validated = False
 
     if generator is not None:
-        expanded_call = generate_standalone(generator, input_path)
+        expanded_call = generate_standalone(generator, input_path, progress=progress)
         console.console.print(
             f'Using input from generator call [item]{expanded_call.name} {expanded_call.args}[/item].'
         )
@@ -478,14 +483,46 @@ def _run_interactive_solutions(
                 f'Input was written to [item]{input_path.resolve()}[/item]'
             )
         console.console.print()
+        already_validated = True
     else:
-        input = console.multiline_prompt('Testcase input')
+        with utils.no_progress(progress):
+            input = console.multiline_prompt('Testcase input')
         input_path.write_text(input)
     testcase = Testcase(inputPath=input_path, outputPath=output_path if check else None)
 
+    if not already_validated:
+        validator = package.get_validator_or_nil()
+        # Run validator, if it is available.
+        if validator is not None:
+            if progress:
+                progress.update('Compiling validator...')
+
+            validator_tp = validators.compile_main_validator()
+            assert validator_tp is not None
+            _, validator_digest = validator_tp
+            if progress:
+                progress.update('Validating test...')
+            ok, message, *_ = validators.validate_test(
+                testcase.inputPath,
+                validator,
+                validator_digest,
+            )
+            if not ok:
+                console.console.print('[error]Failed validating testcase.[/error]')
+                console.console.print(f'[error]Message:[/error] {message}')
+                console.console.print(
+                    f'Testcase written at [item]{testcase.inputPath}[/item]'
+                )
+                raise typer.Exit(1)
+
     if main_solution_digest is not None:
+        if progress:
+            progress.update('Generating output for test...')
         # TODO: Add stderr path
         generate_output_for_testcase(main_solution_digest, testcase)
+
+    if progress:
+        progress.update('Running solutions...')
 
     for i, solution in solutions:
         output_dir = irun_dir / f'{i}'
@@ -528,12 +565,10 @@ async def run_and_print_interactive_solutions(
         print=print,
     )
 
-    if progress:
-        progress.stop()
-
     for item in items:
         sol = pkg.solutions[item.solution_index]
-        _print_solution_header(sol, console.console, is_irun=True)
+        with utils.no_progress(progress):
+            _print_solution_header(sol, console.console, is_irun=True)
 
         eval = await item.eval()
 
