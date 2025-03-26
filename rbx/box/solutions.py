@@ -465,18 +465,9 @@ async def _generate_testcase_interactively(
             and main_solution is None
         ):
             with utils.no_progress(progress):
-                provide_output = await questionary.confirm(
-                    'No reference output is available for this test. Do you want to provide one?',
-                    default=False,
-                ).ask_async()
-
-                if provide_output:
-                    output = console.multiline_prompt('Testcase output')
-                    testcase.outputPath.write_text(output)
-                    console.console.print()
-                else:
-                    # Provide an empty output.
-                    testcase.outputPath.touch()
+                output = console.multiline_prompt('Testcase output')
+                testcase.outputPath.write_text(output)
+                console.console.print()
 
     # 2. Validate testcase if not already validated
     if not already_validated:
