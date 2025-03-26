@@ -409,12 +409,15 @@ that is correct and used as reference -- and should have the `accepted` outcome.
         return res
 
     @model_validator(mode='after')
-    def check_first_solution_is_main(self):
+    def check_first_solution_is_main_if_there_is_ac(self):
+        if all(sol.outcome != Outcome.ACCEPTED for sol in self.solutions):
+            # No main solution.
+            return self
         if self.solutions:
             if self.solutions[0].outcome != ExpectedOutcome.ACCEPTED:
                 raise PydanticCustomError(
                     'MISSING_MAIN_SOLUTION',
-                    'The first solution in the package must have the "ACCEPTED" outcome.',
+                    'The first solution in the package must have the "ACCEPTED" outcome if there are ACCEPTED solutions.',
                 )
         return self
 

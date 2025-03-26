@@ -419,40 +419,64 @@ def run_solutions(
     )
 
 
-def _generate_testcase_interactively(
+async def _generate_testcase_interactively(
     progress: Optional[StatusProgress] = None,
     generator: Optional[GeneratorCall] = None,
     check: bool = True,
     sanitized: bool = False,
     print: bool = False,
 ) -> Testcase:
+    main_solution = package.get_main_solution()
     irun_dir = package.get_problem_iruns_dir()
     inputs_dir = irun_dir / 'inputs'
     inputs_dir.mkdir(parents=True, exist_ok=True)
-    input_path = inputs_dir / '000.in'
-    output_path = input_path.with_suffix('.out')
+    testcase = Testcase(
+        inputPath=inputs_dir / '000.in',
+        outputPath=(inputs_dir / '000.out') if check else None,
+    )
 
     already_validated = False
 
     # 1. Generate testcase
     if generator is not None:
-        expanded_call = generate_standalone(generator, input_path, progress=progress)
+        expanded_call = generate_standalone(
+            generator, testcase.inputPath, progress=progress
+        )
         console.console.print(
             f'Using input from generator call [item]{expanded_call.name} {expanded_call.args}[/item].'
         )
         if print:
-            console.console.print(input_path.read_text())
+            console.console.print(testcase.inputPath.read_text())
         else:
             console.console.print(
-                f'Input was written to [item]{input_path.resolve()}[/item]'
+                f'Input was written to [item]{testcase.inputPath.resolve()}[/item]'
             )
         console.console.print()
         already_validated = True
     else:
         with utils.no_progress(progress):
             input = console.multiline_prompt('Testcase input')
-        input_path.write_text(input)
-    testcase = Testcase(inputPath=input_path, outputPath=output_path if check else None)
+        testcase.inputPath.write_text(input)
+        console.console.print()
+
+        if (
+            testcase.outputPath is not None
+            and not testcase.outputPath.is_file()
+            and main_solution is None
+        ):
+            with utils.no_progress(progress):
+                provide_output = await questionary.confirm(
+                    'No reference output is available for this test. Do you want to provide one?',
+                    default=False,
+                ).ask_async()
+
+                if provide_output:
+                    output = console.multiline_prompt('Testcase output')
+                    testcase.outputPath.write_text(output)
+                    console.console.print()
+                else:
+                    # Provide an empty output.
+                    testcase.outputPath.touch()
 
     # 2. Validate testcase if not already validated
     if not already_validated:
@@ -481,10 +505,16 @@ def _generate_testcase_interactively(
                 raise typer.Exit(1)
 
     # 3. Generate test output from reference
-    main_solution = package.get_main_solution()
     main_solution_digest = None
-    if check:
-        assert main_solution
+    if check and not (
+        testcase.outputPath is not None and testcase.outputPath.is_file()
+    ):
+        if main_solution is None:
+            console.console.print(
+                '[error]Checking is enabled but no main solution or custom output was specified.[/error]'
+            )
+            raise typer.Exit(1)
+
         if progress:
             progress.update('Compiling main solution...')
         try:
@@ -506,6 +536,16 @@ def _generate_testcase_interactively(
         # TODO: Add stderr path
         generate_output_for_testcase(main_solution_digest, testcase)
 
+    if check and testcase.outputPath is not None and not testcase.outputPath.is_file():
+        # Output was not created, throw an error.
+        console.console.print(
+            '[error]Checking is enabled but no output could be generated for this testcase.[/error]'
+        )
+        console.console.print(
+            '[error]Either specify it explicitly or provide a main solution.[/error]'
+        )
+        raise typer.Exit(1)
+
     return testcase
 
 
@@ -518,8 +558,6 @@ def _run_interactive_solutions(
     sanitized: bool = False,
 ) -> Iterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
-    main_solution = package.get_main_solution()
-    check = check and main_solution is not None
 
     if check and progress:
         progress.update('Compiling checker...')
@@ -569,15 +607,13 @@ async def run_and_print_interactive_solutions(
     print: bool = False,
     sanitized: bool = False,
 ):
-    check = check and package.get_main_solution() is not None
-
     # Ensure path is new.
     irun_dir = package.get_problem_iruns_dir()
     shutil.rmtree(str(irun_dir), ignore_errors=True)
     irun_dir.mkdir(parents=True, exist_ok=True)
 
     pkg = package.find_problem_package_or_die()
-    testcase = _generate_testcase_interactively(
+    testcase = await _generate_testcase_interactively(
         progress=progress,
         generator=generator,
         check=check,

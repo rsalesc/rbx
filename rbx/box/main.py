@@ -370,13 +370,6 @@ def irun(
         )
         return
 
-    main_solution = package.get_main_solution()
-    if check and main_solution is None:
-        console.console.print(
-            '[warning]No main solution found, running without checkers.[/warning]'
-        )
-        check = False
-
     tracked_solutions = None
     if outcome is not None:
         tracked_solutions = {
