@@ -47,11 +47,11 @@ def _get_group_output(
     return group_path / f'{subgroup_prefix}{i:03d}.out'
 
 
-def _fill_output_for_testcase(testcase: Testcase) -> Testcase:
+def _fill_output_for_defined_testcase(testcase: Testcase) -> Testcase:
     res = testcase.model_copy()
     if res.outputPath is not None:
         return res
-    output_path = res.inputPath.with_suffix('.out')
+    output_path = res.inputPath.with_suffix('.ans')
     if output_path.is_file():
         res.outputPath = output_path
     return res
@@ -61,7 +61,7 @@ def _copy_testcase_over(
     testcase: Testcase,
     dest: Testcase,
 ):
-    testcase = _fill_output_for_testcase(testcase)
+    testcase = _fill_output_for_defined_testcase(testcase)
     dest.inputPath.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(
         str(testcase.inputPath),
@@ -228,7 +228,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                     group_entry=_entry(i),
                     subgroup_entry=_sub_entry(i),
                     metadata=GenerationMetadata(
-                        copied_from=_fill_output_for_testcase(tc),
+                        copied_from=_fill_output_for_defined_testcase(tc),
                         copied_to=_copied_to(i),
                     ),
                 )
@@ -249,7 +249,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                         group_entry=_entry(i),
                         subgroup_entry=_sub_entry(i),
                         metadata=GenerationMetadata(
-                            copied_from=_fill_output_for_testcase(tc),
+                            copied_from=_fill_output_for_defined_testcase(tc),
                             copied_to=_copied_to(i),
                         ),
                     )

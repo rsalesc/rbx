@@ -211,7 +211,7 @@ in the order they're defined.""",
 A Python glob that matches input file paths relative to the
 package directory. The globbed files should end with the extension
 ".in", and their corresponding outputs, if defined, should have the same file name,
-but ending with ".out".
+but ending with ".ans".
 """,
     )
 

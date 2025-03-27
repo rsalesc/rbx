@@ -138,7 +138,7 @@ You can define multiple testgroups for you problem. For each testgroup, you can 
       - name: "group-1"
         testcases:
           - inputPath: "manual-tests/1.in"
-            outputPath: "manual-tests/1.out"
+            outputPath: "manual-tests/1.ans"
           - inputPath: "manual-tests/1.in"
     ```
 
