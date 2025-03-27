@@ -11,6 +11,16 @@ from rbx.box.package import get_build_testgroup_path, get_build_tests_path
 from rbx.box.schema import Testcase, TestcaseGroup
 
 
+class TestcaseEntry(BaseModel):
+    group: str
+    index: int
+
+    @classmethod
+    def parse(cls, spec: str) -> 'TestcaseEntry':
+        group, index = spec.split('/')
+        return TestcaseEntry(group=group.strip(), index=int(index))
+
+
 class TestcaseData(BaseModel):
     input: str
     output: str

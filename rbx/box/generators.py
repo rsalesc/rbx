@@ -1,10 +1,12 @@
+import abc
 import pathlib
 import shlex
 import shutil
 from pathlib import PosixPath
-from typing import Callable, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 import typer
+from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import checkers, package, testcases, validators
@@ -15,14 +17,12 @@ from rbx.box.environment import (
 )
 from rbx.box.schema import (
     CodeItem,
-    Generator,
     GeneratorCall,
     Testcase,
     TestcaseSubgroup,
 )
 from rbx.box.stressing import generator_parser
-from rbx.box.testcases import find_built_testcases
-from rbx.grading.judge.cacher import FileCacher
+from rbx.box.testcases import TestcaseEntry, find_built_testcases
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -47,49 +47,36 @@ def _get_group_output(
     return group_path / f'{subgroup_prefix}{i:03d}.out'
 
 
+def _fill_output_for_testcase(testcase: Testcase) -> Testcase:
+    res = testcase.model_copy()
+    if res.outputPath is not None:
+        return res
+    output_path = res.inputPath.with_suffix('.out')
+    if output_path.is_file():
+        res.outputPath = output_path
+    return res
+
+
 def _copy_testcase_over(
-    testcase: Testcase, group_path: pathlib.Path, subgroup_prefix: str, i: int
+    testcase: Testcase,
+    dest: Testcase,
 ):
+    testcase = _fill_output_for_testcase(testcase)
+    dest.inputPath.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(
         str(testcase.inputPath),
-        _get_group_input(group_path, subgroup_prefix, i),
+        str(dest.inputPath),
     )
-    if testcase.outputPath is not None and testcase.outputPath.is_file():
+    if (
+        testcase.outputPath is not None
+        and testcase.outputPath.is_file()
+        and dest.outputPath is not None
+    ):
+        dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(
             str(testcase.outputPath),
-            _get_group_output(group_path, subgroup_prefix, i),
+            str(dest.outputPath),
         )
-
-
-def _run_generator(
-    generator: Generator,
-    args: Optional[str],
-    compiled_digest: str,
-    group_path: pathlib.Path,
-    subgroup_prefix: str,
-    i: int = 0,
-):
-    generation_stderr = DigestHolder()
-    run_log = run_item(
-        generator,
-        DigestOrSource.create(compiled_digest),
-        stdout=DigestOrDest.create(_get_group_input(group_path, subgroup_prefix, i)),
-        stderr=DigestOrDest.create(generation_stderr),
-        extra_args=args or None,
-    )
-
-    if not run_log or run_log.exitcode != 0:
-        console.console.print(
-            f'[error]Failed generating test {i} from group path {group_path}[/error]',
-        )
-        if run_log is not None:
-            console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
-        if generation_stderr.value is not None:
-            console.console.print('[error]Stderr:[/error]')
-            console.console.print(
-                package.get_digest_as_string(generation_stderr.value) or ''
-            )
-        raise typer.Exit(1)
 
 
 def get_all_built_testcases() -> Dict[str, List[Testcase]]:
@@ -101,6 +88,393 @@ def get_all_built_testcases() -> Dict[str, List[Testcase]]:
 def get_call_from_string(call_str: str) -> GeneratorCall:
     name, args = call_str.split(None, 1)
     return GeneratorCall(name=name, args=args)
+
+
+def _run_generator_script(testcase: TestcaseSubgroup) -> str:
+    assert testcase.generatorScript is not None
+
+    cacher = package.get_file_cacher()
+
+    if not testcase.generatorScript.path.is_file():
+        console.console.print(
+            f'[error]Generator script not found: [item]{testcase.generatorScript.path}[/item][/error]'
+        )
+        raise typer.Exit(1)
+
+    script_digest = DigestHolder()
+    if testcase.generatorScript.path.suffix == '.txt':
+        script_digest.value = cacher.put_file_from_path(testcase.generatorScript.path)
+    else:
+        try:
+            compiled_digest = compile_item(testcase.generatorScript)
+        except:
+            console.console.print(
+                f'[error]Failed compiling generator script for group [item]{testcase.name}[/item].[/error]'
+            )
+            raise
+
+        run_stderr = DigestHolder()
+        run_log = run_item(
+            testcase.generatorScript,
+            DigestOrSource.create(compiled_digest),
+            stdout=DigestOrDest.create(script_digest),
+            stderr=DigestOrDest.create(run_stderr),
+        )
+
+        if run_log is None or run_log.exitcode != 0:
+            console.console.print(
+                f'Could not run generator script for group {testcase.name}'
+            )
+            if run_log is not None:
+                console.console.print(
+                    f'[error]Summary:[/error] {run_log.get_summary()}'
+                )
+            if run_stderr.value is not None:
+                console.console.print('[error]Stderr:[/error]')
+                console.console.print(
+                    package.get_digest_as_string(run_stderr.value) or ''
+                )
+            raise typer.Exit(1)
+
+    assert script_digest.value
+    script = cacher.get_file_content(script_digest.value).decode()
+    return script
+
+
+def _extract_script_lines(script: str):
+    lines = script.splitlines()
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('#'):
+            continue
+        yield shlex.split(line)[0], shlex.join(shlex.split(line)[1:])
+
+
+class GenerationMetadata(BaseModel):
+    copied_to: Testcase
+
+    copied_from: Optional[Testcase] = None
+    generator_call: Optional[GeneratorCall] = None
+
+
+class GenerationTestcaseEntry(BaseModel):
+    group_entry: TestcaseEntry
+    subgroup_entry: TestcaseEntry
+
+    metadata: GenerationMetadata
+
+
+class TestcaseVisitor(abc.ABC):
+    @abc.abstractmethod
+    def visit(self, entry: GenerationTestcaseEntry):
+        pass
+
+    def should_visit_group(self, group_name: str) -> bool:
+        return True
+
+    def should_visit_subgroup(self, subgroup_path: str) -> bool:
+        return True
+
+    def should_visit_generator_scripts(
+        self, group_name: str, subgroup_path: str
+    ) -> bool:
+        return True
+
+
+class TestcaseGroupVisitor(TestcaseVisitor):
+    def __init__(self, groups: Optional[Set[str]] = None):
+        self.groups = groups
+
+    def should_visit_group(self, group_name: str) -> bool:
+        return self.groups is None or group_name in self.groups
+
+
+def run_testcase_visitor(visitor: TestcaseVisitor):
+    pkg = package.find_problem_package_or_die()
+
+    def _explore_subgroup(
+        subgroup: TestcaseSubgroup, subgroup_index: int, prefix: List[str]
+    ):
+        assert prefix and len(prefix) >= 1 and len(prefix) <= 2
+        group_path = prefix[0]
+        subgroup_path = '/'.join(prefix)
+        if not visitor.should_visit_subgroup(subgroup_path):
+            return
+
+        def _entry(i: int) -> TestcaseEntry:
+            return TestcaseEntry(group=group_path, index=i)
+
+        def _sub_entry(i: int) -> TestcaseEntry:
+            return TestcaseEntry(group=subgroup_path, index=i)
+
+        def _copied_to(i: int) -> Testcase:
+            group_fs_path = package.get_build_testgroup_path(group_path)
+            group_prefix = ''
+            if len(prefix) == 2:
+                group_prefix = f'{subgroup_index}-{prefix[1]}-'
+            return Testcase(
+                inputPath=_get_group_input(group_fs_path, group_prefix, i),
+                outputPath=_get_group_output(group_fs_path, group_prefix, i),
+            )
+
+        # Go through testcases.
+        i = 0
+        # Individual testcases.
+        for tc in subgroup.testcases or []:
+            visitor.visit(
+                GenerationTestcaseEntry(
+                    group_entry=_entry(i),
+                    subgroup_entry=_sub_entry(i),
+                    metadata=GenerationMetadata(
+                        copied_from=_fill_output_for_testcase(tc),
+                        copied_to=_copied_to(i),
+                    ),
+                )
+            )
+            i += 1
+
+        # Glob testcases.
+        if subgroup.testcaseGlob:
+            matched_inputs = sorted(PosixPath().glob(subgroup.testcaseGlob))
+
+            for input_path in matched_inputs:
+                if not input_path.is_file() or input_path.suffix != '.in':
+                    continue
+
+                tc = Testcase(inputPath=input_path)
+                visitor.visit(
+                    GenerationTestcaseEntry(
+                        group_entry=_entry(i),
+                        subgroup_entry=_sub_entry(i),
+                        metadata=GenerationMetadata(
+                            copied_from=_fill_output_for_testcase(tc),
+                            copied_to=_copied_to(i),
+                        ),
+                    )
+                )
+                i += 1
+
+        # Single generators.
+        for generator_call in subgroup.generators:
+            visitor.visit(
+                GenerationTestcaseEntry(
+                    group_entry=_entry(i),
+                    subgroup_entry=_sub_entry(i),
+                    metadata=GenerationMetadata(
+                        generator_call=generator_call,
+                        copied_to=_copied_to(i),
+                    ),
+                )
+            )
+            i += 1
+
+        if not visitor.should_visit_generator_scripts(group_path, subgroup_path):
+            return
+
+        # Run generator script.
+        if subgroup.generatorScript is not None:
+            script = _run_generator_script(subgroup)
+
+            # Run each line from generator script.
+            for generator_name, args in _extract_script_lines(script):
+                call = GeneratorCall(name=generator_name, args=args)
+                visitor.visit(
+                    GenerationTestcaseEntry(
+                        group_entry=_entry(i),
+                        subgroup_entry=_sub_entry(i),
+                        metadata=GenerationMetadata(
+                            generator_call=call,
+                            copied_to=_copied_to(i),
+                        ),
+                    )
+                )
+                i += 1
+
+    for group in pkg.testcases:
+        if not visitor.should_visit_group(group.name):
+            continue
+
+        _explore_subgroup(group, 0, [group.name])
+
+        for i, subgroup in enumerate(group.subgroups):
+            _explore_subgroup(subgroup, i, [group.name, subgroup.name])
+
+
+def _get_necessary_generators_for_groups(
+    groups: Optional[Set[str]] = None,
+) -> Set[str]:
+    pkg = package.find_problem_package_or_die()
+    existing_generators = set(generator.name for generator in pkg.generators)
+    necessary_generators = set()
+
+    class NecessaryGeneratorsVisitor(TestcaseGroupVisitor):
+        def visit(self, entry: GenerationTestcaseEntry):
+            if entry.metadata.generator_call is not None:
+                necessary_generators.add(entry.metadata.generator_call.name)
+
+    run_testcase_visitor(NecessaryGeneratorsVisitor(groups))
+
+    return existing_generators.intersection(necessary_generators)
+
+
+def compile_generators(
+    progress: Optional[StatusProgress] = None,
+    tracked_generators: Optional[Set[str]] = None,
+) -> Dict[str, str]:
+    def update_status(text: str):
+        if progress is not None:
+            progress.update(text)
+
+    pkg = package.find_problem_package_or_die()
+
+    generator_to_compiled_digest = {}
+
+    for generator in pkg.generators:
+        if tracked_generators is not None and generator.name not in tracked_generators:
+            continue
+        update_status(f'Compiling generator [item]{generator.name}[/item]')
+        try:
+            generator_to_compiled_digest[generator.name] = _compile_generator(generator)
+        except:
+            console.console.print(
+                f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'
+            )
+            raise
+
+    return generator_to_compiled_digest
+
+
+def generate_standalone(
+    call: GeneratorCall,
+    output: pathlib.Path,
+    validate: bool = True,
+    expand: bool = True,
+    group_entry: Optional[TestcaseEntry] = None,
+    generator_digest: Optional[str] = None,
+    validator_digest: Optional[str] = None,
+    progress: Optional[StatusProgress] = None,
+) -> GeneratorCall:
+    # Generator args parser
+    expanded_args_str = call.args or ''
+
+    if expand:
+        parsed_args = generator_parser.parse(call.args or '')
+        vars = package.find_problem_package_or_die().expanded_vars
+        generator_for_args = generator_parser.Generator(vars)
+        expanded_args_str = generator_for_args.generate(parsed_args)
+
+    def _print_error_header(text: Optional[str] = None):
+        prefix = 'Failed generating test'
+        if group_entry is not None:
+            prefix += (
+                f' [item]{group_entry.group}[/item]/[item]{group_entry.index}[/item]'
+            )
+        suffix = '.'
+        if text:
+            suffix = f': {text}'
+        console.console.print(
+            f'[error]{prefix} using generator call [info]{call.name} {expanded_args_str}[/info]{suffix}[/error]'
+        )
+
+    generation_stderr = DigestHolder()
+
+    # Get generator item
+    generator = package.get_generator(call.name)
+    if generator_digest is None:
+        if progress:
+            progress.update(f'Compiling generator {generator.name}...')
+        generator_digest = _compile_generator(generator)
+
+    if progress:
+        progress.update(
+            f'Generating testcase [status]{generator.name} {expanded_args_str}[/status]...'
+        )
+    generation_log = run_item(
+        generator,
+        DigestOrSource.create(generator_digest),
+        stdout=DigestOrDest.create(output),
+        stderr=DigestOrDest.create(generation_stderr),
+        extra_args=expanded_args_str or None,
+    )
+    if not generation_log or generation_log.exitcode != 0:
+        _print_error_header()
+        if generation_log is not None:
+            console.console.print(
+                f'[error]Summary:[/error] {generation_log.get_summary()}'
+            )
+        if generation_stderr.value is not None:
+            console.console.print('[error]Stderr:[/error]')
+            console.console.print(
+                package.get_digest_as_string(generation_stderr.value) or ''
+            )
+
+        raise typer.Exit(1)
+
+    validator = package.get_validator_or_nil()
+    # Run validator, if it is available.
+    if validator is not None and validate:
+        if validator_digest is None:
+            if progress:
+                progress.update('Compiling validator...')
+            validator_tp = validators.compile_main_validator()
+            assert validator_tp is not None
+            _, validator_digest = validator_tp
+        if progress:
+            progress.update('Validating test...')
+        ok, message, *_ = validators.validate_test(
+            output,
+            validator,
+            validator_digest,
+        )
+        if not ok:
+            _print_error_header('Failed validating testcase.')
+            console.console.print(f'[error]Message:[/error] {message}')
+            console.console.print(f'Testcase written at [item]{output}[/item]')
+            raise typer.Exit(1)
+
+    return call.model_copy(update={'args': expanded_args_str})
+
+
+def generate_testcases(
+    progress: Optional[StatusProgress] = None, groups: Optional[Set[str]] = None
+):
+    def step():
+        if progress is not None:
+            progress.step()
+
+    compiled_generators = compile_generators(
+        progress=progress,
+        tracked_generators=_get_necessary_generators_for_groups(groups)
+        if groups is not None
+        else None,
+    )
+
+    testcases.clear_built_testcases()
+
+    class BuildTestcaseVisitor(TestcaseGroupVisitor):
+        def visit(self, entry: GenerationTestcaseEntry):
+            if entry.metadata.copied_from is not None:
+                _copy_testcase_over(
+                    entry.metadata.copied_from,
+                    entry.metadata.copied_to,
+                )
+
+            if entry.metadata.generator_call is not None:
+                generate_standalone(
+                    entry.metadata.generator_call,
+                    entry.metadata.copied_to.inputPath,
+                    group_entry=entry.group_entry,
+                    validate=False,
+                    expand=False,
+                    generator_digest=compiled_generators[
+                        entry.metadata.generator_call.name
+                    ],
+                )
+            step()
+
+    run_testcase_visitor(BuildTestcaseVisitor(groups))
 
 
 def generate_output_for_testcase(
@@ -169,9 +543,6 @@ def generate_outputs_for_testcases(
         if progress is not None:
             progress.step()
 
-    pkg = package.find_problem_package_or_die()
-
-    built_testcases = get_all_built_testcases()
     main_solution = package.get_main_solution()
     solution_digest: Optional[str] = None
 
@@ -188,319 +559,27 @@ def generate_outputs_for_testcases(
     shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
     gen_runs_dir.mkdir(parents=True, exist_ok=True)
 
-    for group in pkg.testcases:
-        if groups is not None and group.name not in groups:
-            continue
-        group_testcases = built_testcases[group.name]
+    class GenerateOutputsVisitor(TestcaseGroupVisitor):
+        def visit(self, entry: GenerationTestcaseEntry):
+            tc = entry.metadata.copied_to
+            if not tc.inputPath.is_file():
+                return
+            assert tc.outputPath is not None
 
-        for testcase in group_testcases:
-            stderr_path = gen_runs_dir / 'main.stderr'
-
-            assert testcase.outputPath is not None
             if (
                 main_solution is None or solution_digest is None
-            ) and not testcase.outputPath.is_file():
+            ) and not tc.outputPath.is_file():
                 console.console.print(
                     '[error]No main solution found to generate outputs for testcases.[/error]',
                 )
                 raise typer.Exit(1)
 
             assert solution_digest is not None
-            generate_output_for_testcase(solution_digest, testcase, stderr_path)
+            generate_output_for_testcase(
+                solution_digest,
+                tc,
+                gen_runs_dir / 'main.stderr',
+            )
             step()
 
-
-def _run_generator_script(testcase: TestcaseSubgroup, cacher: FileCacher) -> str:
-    assert testcase.generatorScript is not None
-
-    if not testcase.generatorScript.path.is_file():
-        console.console.print(
-            f'[error]Generator script not found: [item]{testcase.generatorScript.path}[/item][/error]'
-        )
-        raise typer.Exit(1)
-
-    script_digest = DigestHolder()
-    if testcase.generatorScript.path.suffix == '.txt':
-        script_digest.value = cacher.put_file_from_path(testcase.generatorScript.path)
-    else:
-        try:
-            compiled_digest = compile_item(testcase.generatorScript)
-        except:
-            console.console.print(
-                f'[error]Failed compiling generator script for group [item]{testcase.name}[/item].[/error]'
-            )
-            raise
-
-        run_stderr = DigestHolder()
-        run_log = run_item(
-            testcase.generatorScript,
-            DigestOrSource.create(compiled_digest),
-            stdout=DigestOrDest.create(script_digest),
-            stderr=DigestOrDest.create(run_stderr),
-        )
-
-        if run_log is None or run_log.exitcode != 0:
-            console.console.print(
-                f'Could not run generator script for group {testcase.name}'
-            )
-            if run_log is not None:
-                console.console.print(
-                    f'[error]Summary:[/error] {run_log.get_summary()}'
-                )
-            if run_stderr.value is not None:
-                console.console.print('[error]Stderr:[/error]')
-                console.console.print(
-                    package.get_digest_as_string(run_stderr.value) or ''
-                )
-            raise typer.Exit(1)
-
-    assert script_digest.value
-    script = cacher.get_file_content(script_digest.value).decode()
-    return script
-
-
-def _extract_script_lines(script: str):
-    lines = script.splitlines()
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('#'):
-            continue
-        yield shlex.split(line)[0], shlex.join(shlex.split(line)[1:])
-
-
-def _get_necessary_generators(groups: Set[str], cacher: FileCacher) -> Set[str]:
-    pkg = package.find_problem_package_or_die()
-    existing_generators = set(generator.name for generator in pkg.generators)
-
-    necessary_generators = set()
-    for group in pkg.testcases:
-        if groups is not None and group.name not in groups:
-            continue
-
-        for generator_call in group.generators:
-            necessary_generators.add(generator_call.name)
-
-        if group.generatorScript is not None:
-            script = _run_generator_script(group, cacher)
-            for generator_name, _ in _extract_script_lines(script):
-                necessary_generators.add(generator_name)
-
-    return existing_generators.intersection(necessary_generators)
-
-
-def compile_generators(
-    progress: Optional[StatusProgress] = None,
-    tracked_generators: Optional[Set[str]] = None,
-) -> Dict[str, str]:
-    def update_status(text: str):
-        if progress is not None:
-            progress.update(text)
-
-    pkg = package.find_problem_package_or_die()
-
-    generator_to_compiled_digest = {}
-
-    for generator in pkg.generators:
-        if tracked_generators is not None and generator.name not in tracked_generators:
-            continue
-        update_status(f'Compiling generator [item]{generator.name}[/item]')
-        try:
-            generator_to_compiled_digest[generator.name] = _compile_generator(generator)
-        except:
-            console.console.print(
-                f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'
-            )
-            raise
-
-    return generator_to_compiled_digest
-
-
-def generate_standalone(
-    call: GeneratorCall,
-    output: pathlib.Path,
-    validate: bool = True,
-    generator_digest: Optional[str] = None,
-    validator_digest: Optional[str] = None,
-    progress: Optional[StatusProgress] = None,
-) -> GeneratorCall:
-    # Generator args parser
-    parsed_args = generator_parser.parse(call.args or '')
-    vars = package.find_problem_package_or_die().expanded_vars
-    generator_for_args = generator_parser.Generator(vars)
-    expanded_args_str = generator_for_args.generate(parsed_args)
-
-    generation_stderr = DigestHolder()
-
-    # Get generator item
-    generator = package.get_generator(call.name)
-    if generator_digest is None:
-        if progress:
-            progress.update(f'Compiling generator {generator.name}...')
-        generator_digest = _compile_generator(generator)
-
-    if progress:
-        progress.update(
-            f'Generating testcase [status]{generator.name} {expanded_args_str}[/status]...'
-        )
-    generation_log = run_item(
-        generator,
-        DigestOrSource.create(generator_digest),
-        stdout=DigestOrDest.create(output),
-        stderr=DigestOrDest.create(generation_stderr),
-        extra_args=expanded_args_str or None,
-    )
-    if not generation_log or generation_log.exitcode != 0:
-        console.console.print(
-            f'[error]Failed generating test using generator call [info]{call.name} {expanded_args_str}[/info][/error]',
-        )
-        if generation_log is not None:
-            console.console.print(
-                f'[error]Summary:[/error] {generation_log.get_summary()}'
-            )
-        if generation_stderr.value is not None:
-            console.console.print('[error]Stderr:[/error]')
-            console.console.print(
-                package.get_digest_as_string(generation_stderr.value) or ''
-            )
-
-        raise typer.Exit(1)
-
-    validator = package.get_validator_or_nil()
-    # Run validator, if it is available.
-    if validator is not None and validate:
-        if validator_digest is None:
-            if progress:
-                progress.update('Compiling validator...')
-            validator_tp = validators.compile_main_validator()
-            assert validator_tp is not None
-            _, validator_digest = validator_tp
-        if progress:
-            progress.update('Validating test...')
-        ok, message, *_ = validators.validate_test(
-            output,
-            validator,
-            validator_digest,
-        )
-        if not ok:
-            console.console.print(
-                f'[error]Failed validating testcase generated by call [info]{call.name} {expanded_args_str}[/info][/error]'
-            )
-            console.console.print(f'[error]Message:[/error] {message}')
-            console.console.print(f'Testcase written at [item]{output}[/item]')
-            raise typer.Exit(1)
-
-    return call.model_copy(update={'args': expanded_args_str})
-
-
-def _generate_testcases_for_subgroup(
-    subgroup: TestcaseSubgroup,
-    group_path: pathlib.Path,
-    subgroup_prefix: str,
-    compiled_generators: Dict[str, str],
-    step: Callable,
-):
-    cacher = package.get_file_cacher()
-
-    group_path.mkdir(parents=True, exist_ok=True)
-
-    i = 0
-    # Individual testcases.
-    for tc in subgroup.testcases or []:
-        _copy_testcase_over(tc, group_path, subgroup_prefix, i)
-        i += 1
-        step()
-
-    # Glob testcases.
-    if subgroup.testcaseGlob:
-        matched_inputs = sorted(PosixPath().glob(subgroup.testcaseGlob))
-
-        for input_path in matched_inputs:
-            if not input_path.is_file() or input_path.suffix != '.in':
-                continue
-            output_path = input_path.parent / f'{input_path.stem}.out'
-            tc = Testcase(inputPath=input_path, outputPath=output_path)
-            _copy_testcase_over(tc, group_path, subgroup_prefix, i)
-            i += 1
-            step()
-
-    # Run single generators.
-    for generator_call in subgroup.generators:
-        generator = package.get_generator(generator_call.name)
-        if generator.name not in compiled_generators:
-            console.console.print(f'Generator {generator.name} not compiled')
-            raise typer.Exit(1)
-
-        _run_generator(
-            generator,
-            generator_call.args,
-            compiled_generators[generator.name],
-            group_path,
-            subgroup_prefix,
-            i,
-        )
-        i += 1
-        step()
-
-    # Run generator script.
-    if subgroup.generatorScript is not None:
-        script = _run_generator_script(subgroup, cacher)
-
-        # Run each line from generator script.
-        for generator_name, args in _extract_script_lines(script):
-            generator = package.get_generator(generator_name)
-            if generator.name not in compiled_generators:
-                console.console.print(f'Generator {generator.name} not compiled')
-                raise typer.Exit(1)
-
-            _run_generator(
-                generator,
-                args,
-                compiled_generators[generator.name],
-                group_path,
-                subgroup_prefix,
-                i,
-            )
-            i += 1
-            step()
-
-
-def generate_testcases(
-    progress: Optional[StatusProgress] = None, groups: Optional[Set[str]] = None
-):
-    def step():
-        if progress is not None:
-            progress.step()
-
-    pkg = package.find_problem_package_or_die()
-    cacher = package.get_file_cacher()
-
-    compiled_generators = compile_generators(
-        progress=progress,
-        tracked_generators=_get_necessary_generators(groups, cacher)
-        if groups is not None
-        else None,
-    )
-
-    testcases.clear_built_testcases()
-
-    for testcase in pkg.testcases:
-        if groups is not None and testcase.name not in groups:
-            continue
-        group_path = package.get_build_testgroup_path(testcase.name)
-
-        if not testcase.subgroups:
-            # Testcase group is itself a test subgroup.
-            _generate_testcases_for_subgroup(
-                testcase, group_path, '', compiled_generators, step
-            )
-            continue
-
-        renamed_testcase = testcase.model_copy(update={'name': 'main'})
-        subgroups = [renamed_testcase] + testcase.subgroups
-        for i, subgroup in enumerate(subgroups):
-            # Test subgroups were specified, use them.
-            _generate_testcases_for_subgroup(
-                subgroup, group_path, f'{i}-{subgroup.name}-', compiled_generators, step
-            )
+    run_testcase_visitor(GenerateOutputsVisitor(groups))

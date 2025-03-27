@@ -179,7 +179,7 @@ class Testcase(BaseModel):
     inputPath: pathlib.Path = Field(description="""The path of the input file.""")
 
     outputPath: Optional[pathlib.Path] = Field(
-        None, description="""The path of the output file."""
+        default=None, description="""The path of the output file."""
     )
 
 
