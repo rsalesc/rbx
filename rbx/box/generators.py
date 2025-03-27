@@ -435,7 +435,7 @@ def generate_standalone(
             validator_digest,
         )
         if not ok:
-            _print_error_header('Failed validating testcase.')
+            _print_error_header('failed validating testcase.')
             console.console.print(f'[error]Message:[/error] {message}')
             console.console.print(
                 f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
