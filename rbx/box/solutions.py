@@ -25,6 +25,7 @@ from rbx.box.environment import (
     ExecutionConfig,
     VerificationLevel,
 )
+from rbx.box.formatting import get_formatted_memory, get_formatted_time
 from rbx.box.generators import (
     GenerationMetadata,
     expand_generator_call,
@@ -729,10 +730,6 @@ def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
     return max(int(eval.log.memory or 0) for eval in evals)
 
 
-def get_formatted_time(time_in_ms: int) -> str:
-    return f'{time_in_ms} ms'
-
-
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
     return get_formatted_time(max_time)
@@ -763,14 +760,6 @@ def get_capped_evals_formatted_time(
     if has_tle and max_time >= tl:
         return f'>{tl} ms'
     return f'{max_time} ms'
-
-
-def get_formatted_memory(memory_in_bytes: int) -> str:
-    if memory_in_bytes < 1024 * 1024:
-        if memory_in_bytes < 1024:
-            return f'{memory_in_bytes} B'
-        return f'{memory_in_bytes // 1024} KiB'
-    return f'{memory_in_bytes // (1024 * 1024)} MiB'
 
 
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:

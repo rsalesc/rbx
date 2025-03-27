@@ -1,5 +1,6 @@
 import pathlib
 import re
+import resource
 import shlex
 from enum import Enum
 from pathlib import PosixPath
@@ -22,6 +23,7 @@ from rbx.box.environment import (
     get_sandbox_params_from_config,
     merge_execution_configs,
 )
+from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 from rbx.grading import steps_with_caching
@@ -150,6 +152,47 @@ def _ignore_warning_in_cxx_input(input: GradingFileInput):
     input.src = preprocessed_path
 
 
+def _check_stack_limit():
+    soft, hard = None, None
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    except Exception:
+        pass
+
+    if (
+        soft is not None
+        and hard is not None
+        and soft < hard
+        and soft < 256 * 1024 * 1024  # 256 MiB
+    ):
+        soft_fmt = get_formatted_memory(soft)
+        hard_fmt = get_formatted_memory(hard)
+        console.console.print(
+            f'[error]Stack limit is too low (limit is set as [item]{soft_fmt}[/item], but configured user capacity is [item]{hard_fmt}[/item]).[/error]'
+        )
+        console.console.print(
+            '[error]It is not safe to develop problems in [item]rbx[/item] with this configuration.[/error]'
+        )
+        console.console.print(
+            'To solve this, add the following lines to the end of your [item]~/.bashrc[/item] or [item]~/.zshrc[/item] file (or equivalent shell configuration file):'
+        )
+        console.console.print(
+            """
+```
+export RBX_BIN_PATH=`which rbx`
+function rbx() {
+        ulimit -s unlimited && $RBX_BIN_PATH $@
+}
+```
+            """
+        )
+        console.console.print()
+        console.console.print(
+            'You can read more about this in [item]https://rsalesc.github.io/rbx/stack-limit/[/item].'
+        )
+        raise typer.Exit(1)
+
+
 # Compile code item and return its digest in the storage.
 def compile_item(
     code: CodeItem,
@@ -157,6 +200,8 @@ def compile_item(
     force_warnings: bool = False,
     verbose: bool = False,
 ) -> str:
+    _check_stack_limit()
+
     generator_path = PosixPath(code.path)
 
     if not generator_path.is_file():
@@ -268,6 +313,8 @@ def run_item(
     extra_config: Optional[ExecutionConfig] = None,
     retry_index: Optional[int] = None,
 ) -> Optional[RunLog]:
+    _check_stack_limit()
+
     language = find_language_name(code)
     execution_options = get_execution_config(language)
     if extra_config is not None:

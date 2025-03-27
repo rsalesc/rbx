@@ -267,7 +267,6 @@ class StupidSandbox(SandboxBase):
             (caused by the sandbox itself), False otherwise
 
         """
-
         self.exec_num += 1
 
         logger.debug(
