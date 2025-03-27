@@ -19,7 +19,7 @@ class ProblemStatementOverride(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     configure: List[ConversionStep] = Field(
-        [],
+        default=[],
         discriminator='type',
         description="""
 Configure how certain conversion steps should happen when applied to the statement file.
@@ -33,7 +33,7 @@ configure them in case they are applied.
 class ContestStatement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    language: str = Field('en', description='Language code for this statement.')
+    language: str = Field(default='en', description='Language code for this statement.')
 
     title: str = Field(description='Title of the contest in this language.')
 
@@ -50,7 +50,7 @@ class ContestStatement(BaseModel):
     type: StatementType = Field(description='Type of the input statement file.')
 
     joiner: Optional[Joiner] = Field(
-        None,
+        default=None,
         description="""
 Joiner to be used to build the statement.
                            
@@ -98,7 +98,7 @@ Can be glob pattern as well, such as `imgs/*.png`.
     # Vars to be re-used in the statement.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
     vars: Dict[str, Primitive] = Field(
-        {}, description='Variables to be re-used across the package.'
+        default={}, description='Variables to be re-used across the package.'
     )
 
     @property
@@ -147,7 +147,7 @@ class Contest(BaseModel):
     # Vars to be re-used in the statements.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
     vars: Dict[str, Primitive] = Field(
-        {}, description='Variables to be re-used across the package.'
+        default={}, description='Variables to be re-used across the package.'
     )
 
     @property

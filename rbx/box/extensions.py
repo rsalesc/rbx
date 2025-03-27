@@ -8,11 +8,11 @@ from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtensio
 # Extension abstractions.
 class Extensions(BaseModel):
     boca: Optional[BocaExtension] = Field(
-        None, description='Environment-level extensions for BOCA packaging.'
+        default=None, description='Environment-level extensions for BOCA packaging.'
     )
 
 
 class LanguageExtensions(BaseModel):
     boca: Optional[BocaLanguageExtension] = Field(
-        None, description='Language-level extensions for BOCA packaging.'
+        default=None, description='Language-level extensions for BOCA packaging.'
     )

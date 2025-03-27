@@ -104,7 +104,7 @@ class Statement(BaseModel):
     type: StatementType = Field(description='Type of the input statement file.')
 
     steps: List[ConversionStep] = Field(
-        [],
+        default=[],
         discriminator='type',
         description="""
 Describes a sequence of conversion steps that should be applied to the statement file.
@@ -116,7 +116,7 @@ certain conversion steps to happen.
     )
 
     configure: List[ConversionStep] = Field(
-        [],
+        default=[],
         discriminator='type',
         description="""
 Configure how certain conversion steps should happen when applied to the statement file.
@@ -127,7 +127,7 @@ configure them in case they are applied.
     )
 
     assets: List[str] = Field(
-        [],
+        default=[],
         description="""
 Assets relative to the package directory that should be included while building
 the statement. Files will be included in the same folder as the statement file, preserving
@@ -135,4 +135,6 @@ their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
 """,
     )
 
-    language: str = Field('en', description='Language this is statement is written in.')
+    language: str = Field(
+        default='en', description='Language this is statement is written in.'
+    )

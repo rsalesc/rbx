@@ -156,11 +156,11 @@ class CodeItem(BaseModel):
     )
 
     language: Optional[str] = Field(
-        None, description="""The language of the code file."""
+        default=None, description="""The language of the code file."""
     )
 
     compilationFiles: Optional[List[str]] = Field(
-        [],
+        default=[],
         description="""
 Extra files that should be placed alongside the code file during its compilation,
 such as testlib.h, jngen.h, etc.
@@ -189,7 +189,7 @@ class GeneratorCall(BaseModel):
     name: str = FNameField(description='The name of the generator to call.')
 
     args: Optional[str] = Field(
-        None, description='The arguments to pass to the generator.'
+        default=None, description='The arguments to pass to the generator.'
     )
 
 
@@ -199,14 +199,14 @@ class TestcaseSubgroup(BaseModel):
     name: str = NameField(description='The name of the test group.')
 
     testcases: List[Testcase] = Field(
-        [],
+        default=[],
         description="""
 The path of testcases to add to this group,
 in the order they're defined.""",
     )
 
     testcaseGlob: Optional[str] = Field(
-        None,
+        default=None,
         description="""
 A Python glob that matches input file paths relative to the
 package directory. The globbed files should end with the extension
@@ -216,14 +216,14 @@ but ending with ".out".
     )
 
     generators: List[GeneratorCall] = Field(
-        [],
+        default=[],
         description="""
 A list of generators to call to generate testcases for this group.
 """,
     )
 
     generatorScript: Optional[CodeItem] = Field(
-        None,
+        default=None,
         description="""
 A generator script to call to generate testcases for this group.
 """,
@@ -247,14 +247,14 @@ class TestcaseGroup(TestcaseSubgroup):
     model_config = ConfigDict(extra='forbid')
 
     subgroups: List[TestcaseSubgroup] = Field(
-        [],
+        default=[],
         description="""
 A list of test subgroups to define for this group.
         """,
     )
 
     validator: Optional[CodeItem] = Field(
-        None,
+        default=None,
         description="""
 A validator to use to validate the testcases of this group.
 If not specified, will use the package-level validator.
@@ -263,7 +263,7 @@ Useful in cases where the constraints vary across test groups.
     )
 
     weight: Optional[float] = Field(
-        1.0,
+        default=1.0,
         description="""
 The weight of this group in the final score. Useful for
 problems that have points.
@@ -301,29 +301,29 @@ class Stress(BaseModel):
 
 class Limits(BaseModel):
     time: Optional[int] = Field(
-        None, description='Value to override time limit with, in milliseconds.'
+        default=None, description='Value to override time limit with, in milliseconds.'
     )
     memory: Optional[int] = Field(
-        None, description='Value to override memory limit with, in MB.'
+        default=None, description='Value to override memory limit with, in MB.'
     )
     output: Optional[int] = Field(
-        None, description='Value to override output limit with, in KB.'
+        default=None, description='Value to override output limit with, in KB.'
     )
 
     isDoubleTL: bool = Field(
-        False, description='Whether to use double TL for this language.'
+        default=False, description='Whether to use double TL for this language.'
     )
 
 
 class LimitModifiers(BaseModel):
     timeMultiplier: Optional[float] = Field(
-        None, description='Multiplier for time limit.'
+        default=None, description='Multiplier for time limit.'
     )
     time: Optional[int] = Field(
-        None, description='Value to override time limit with, in milliseconds.'
+        default=None, description='Value to override time limit with, in milliseconds.'
     )
     memory: Optional[int] = Field(
-        None, description='Value to override memory limit with, in MB.'
+        default=None, description='Value to override memory limit with, in MB.'
     )
 
 
@@ -338,28 +338,30 @@ class Package(BaseModel):
     memoryLimit: int = Field(description='Memory limit of the problem, in MB.')
 
     outputLimit: int = Field(
-        4 * 1024, description='Output limit of the problem, in KB.'
+        default=4 * 1024, description='Output limit of the problem, in KB.'
     )
 
     modifiers: Dict[str, LimitModifiers] = Field(
-        {},
+        default={},
         description="""
     Limit modifiers that can be specified per language.
     """,
     )
 
     checker: Optional[CodeItem] = Field(
-        None, description='The checker for this problem.'
+        default=None, description='The checker for this problem.'
     )
 
     validator: Optional[CodeItem] = Field(
-        None, description='The validator for this problem.'
+        default=None, description='The validator for this problem.'
     )
 
-    generators: List[Generator] = Field([], description='Generators for this problem.')
+    generators: List[Generator] = Field(
+        default=[], description='Generators for this problem.'
+    )
 
     solutions: List[Solution] = Field(
-        [],
+        default=[],
         description="""
 All tested solutions for this problem.
 
@@ -368,17 +370,23 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 """,
     )
 
-    testcases: List[TestcaseGroup] = Field([], description='Testcases for the problem.')
+    testcases: List[TestcaseGroup] = Field(
+        default=[], description='Testcases for the problem.'
+    )
 
-    stresses: List[Stress] = Field([], description='Stress tests for the problem.')
+    stresses: List[Stress] = Field(
+        default=[], description='Stress tests for the problem.'
+    )
 
-    statements: List[Statement] = Field([], description='Statements for the problem.')
+    statements: List[Statement] = Field(
+        default=[], description='Statements for the problem.'
+    )
 
     # Vars to be re-used across the package.
     #   - It will be passed as --key=value arguments to the validator.
     #   - It will be available as \VAR{key} variables in the rbx statement.
     vars: Dict[str, Primitive] = Field(
-        {}, description='Variables to be re-used across the package.'
+        default={}, description='Variables to be re-used across the package.'
     )
 
     @property

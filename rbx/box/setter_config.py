@@ -19,36 +19,36 @@ _CONFIG_FILE_NAME_MAC = 'default_setter_config.mac.yml'
 
 class SanitizersConfig(BaseModel):
     enabled: bool = Field(
-        False,
+        default=False,
         description='Whether to use sanitizers when running solutions.',
     )
 
     command_substitutions: Dict[str, str] = Field(
-        {},
+        default={},
         description='Substitutions to apply to commands before running them with sanitizers.',
     )
 
 
 class WarningsConfig(BaseModel):
     enabled: bool = Field(
-        False,
+        default=False,
         description='Whether to use warning flags when running solutions.',
     )
 
 
 class RepeatsConfig(BaseModel):
     reps: int = Field(
-        1,
+        default=1,
         description='Number of times to repeat the solution.',
     )
 
     retries: int = Field(
-        0,
+        default=0,
         description='Number of times to retry if the solution TLs.',
     )
 
     retries_for_stress: int = Field(
-        0,
+        default=0,
         description='Number of times to retry in stress mode if the solution TLs.',
     )
 
@@ -69,7 +69,7 @@ class SetterConfig(BaseModel):
     )
 
     command_substitutions: Dict[str, str] = Field(
-        {},
+        default={},
         description='Substitutions to apply to commands before running them.',
     )
 
