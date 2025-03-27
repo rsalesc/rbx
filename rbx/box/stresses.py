@@ -9,7 +9,11 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import checkers, package, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
-from rbx.box.generators import generate_standalone
+from rbx.box.generators import (
+    GenerationMetadata,
+    expand_generator_call,
+    generate_standalone,
+)
 from rbx.box.retries import Retrier
 from rbx.box.schema import CodeItem, GeneratorCall, Stress, Testcase
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
@@ -123,9 +127,12 @@ def run_stress(
         input_path = runs_dir / '.stress' / 'input'
         input_path.parent.mkdir(parents=True, exist_ok=True)
 
-        expanded_generator_call = generate_standalone(
-            stress.generator,
-            input_path,
+        expanded_generator_call = expand_generator_call(stress.generator)
+        generate_standalone(
+            GenerationMetadata(
+                generator_call=expanded_generator_call,
+                copied_to=Testcase(inputPath=input_path),
+            ),
             generator_digest=generator_digest,
             validator_digest=compiled_validator[1]
             if compiled_validator is not None

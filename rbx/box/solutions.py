@@ -17,7 +17,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, package, validators
+from rbx.box import checkers, package
 from rbx.box.code import SanitizationLevel, compile_item, find_language_name, run_item
 from rbx.box.deferred import Deferred
 from rbx.box.environment import (
@@ -25,7 +25,13 @@ from rbx.box.environment import (
     ExecutionConfig,
     VerificationLevel,
 )
-from rbx.box.generators import generate_output_for_testcase, generate_standalone
+from rbx.box.generators import (
+    GenerationMetadata,
+    expand_generator_call,
+    extract_generation_testcases,
+    generate_output_for_testcase,
+    generate_standalone,
+)
 from rbx.box.retries import Retrier
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -35,7 +41,7 @@ from rbx.box.schema import (
     Testcase,
     TestcaseGroup,
 )
-from rbx.box.testcases import find_built_testcases
+from rbx.box.testcases import TestcaseEntry, find_built_testcases
 from rbx.grading.steps import (
     DigestOrDest,
     DigestOrSource,
@@ -422,6 +428,7 @@ def run_solutions(
 async def _generate_testcase_interactively(
     progress: Optional[StatusProgress] = None,
     generator: Optional[GeneratorCall] = None,
+    testcase_entry: Optional[TestcaseEntry] = None,
     check: bool = True,
     sanitized: bool = False,
     print: bool = False,
@@ -435,24 +442,23 @@ async def _generate_testcase_interactively(
         outputPath=(inputs_dir / '000.out') if check else None,
     )
 
-    already_validated = False
-
-    # 1. Generate testcase
+    is_manual = False
+    generation_metadata = None
     if generator is not None:
-        expanded_call = generate_standalone(
-            generator, testcase.inputPath, progress=progress
+        generation_metadata = GenerationMetadata(
+            generator_call=expand_generator_call(generator),
+            copied_to=testcase,
         )
-        console.console.print(
-            f'Using input from generator call [item]{expanded_call.name} {expanded_call.args}[/item].'
-        )
-        if print:
-            console.console.print(testcase.inputPath.read_text())
-        else:
+    elif testcase_entry is not None:
+        extracted = extract_generation_testcases([testcase_entry])
+        if not extracted:
             console.console.print(
-                f'Input was written to [item]{testcase.inputPath.resolve()}[/item]'
+                f'[error]Failed searching for testcase [item]{testcase_entry}[/item].[/error]'
             )
-        console.console.print()
-        already_validated = True
+            raise typer.Exit(1)
+        generation_metadata = extracted[0].metadata
+        # Replace destination with the irun testcase we're using.
+        generation_metadata.copied_to = testcase
     else:
         with utils.no_progress(progress):
             input = console.multiline_prompt('Testcase input')
@@ -469,33 +475,35 @@ async def _generate_testcase_interactively(
                 testcase.outputPath.write_text(output)
                 console.console.print()
 
-    # 2. Validate testcase if not already validated
-    if not already_validated:
-        validator = package.get_validator_or_nil()
-        # Run validator, if it is available.
-        if validator is not None:
-            if progress:
-                progress.update('Compiling validator...')
+        generation_metadata = GenerationMetadata(
+            copied_to=testcase,
+        )
+        is_manual = True
 
-            validator_tp = validators.compile_main_validator()
-            assert validator_tp is not None
-            _, validator_digest = validator_tp
-            if progress:
-                progress.update('Validating test...')
-            ok, message, *_ = validators.validate_test(
-                testcase.inputPath,
-                validator,
-                validator_digest,
+    # 1. Generate testcase.
+    if generation_metadata is not None:
+        generate_standalone(
+            generation_metadata,
+            progress=progress,
+            validate=True,
+        )
+        if testcase_entry is not None:
+            console.console.print(
+                f'Using input from testcase [item]{testcase_entry}[/item].'
             )
-            if not ok:
-                console.console.print('[error]Failed validating testcase.[/error]')
-                console.console.print(f'[error]Message:[/error] {message}')
-                console.console.print(
-                    f'Testcase written at [item]{testcase.inputPath}[/item]'
-                )
-                raise typer.Exit(1)
+        elif generation_metadata.generator_call is not None:
+            console.console.print(
+                f'Using input from generator call [item]{generation_metadata.generator_call.name} {generation_metadata.generator_call.args}[/item].'
+            )
+        if print and not is_manual:
+            console.console.print(testcase.inputPath.read_text())
+        else:
+            console.console.print(
+                f'Input was written to [item]{testcase.inputPath.resolve()}[/item]'
+            )
+        console.console.print()
 
-    # 3. Generate test output from reference
+    # 2. Generate test output from reference
     main_solution_digest = None
     if check and not (
         testcase.outputPath is not None and testcase.outputPath.is_file()
@@ -594,6 +602,7 @@ async def run_and_print_interactive_solutions(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
+    testcase_entry: Optional[TestcaseEntry] = None,
     check: bool = True,
     print: bool = False,
     sanitized: bool = False,
@@ -607,6 +616,7 @@ async def run_and_print_interactive_solutions(
     testcase = await _generate_testcase_interactively(
         progress=progress,
         generator=generator,
+        testcase_entry=testcase_entry,
         check=check,
         sanitized=sanitized,
         print=print,

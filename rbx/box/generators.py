@@ -346,25 +346,21 @@ def compile_generators(
     return generator_to_compiled_digest
 
 
+def expand_generator_call(call: GeneratorCall) -> GeneratorCall:
+    vars = package.find_problem_package_or_die().expanded_vars
+    generator_for_args = generator_parser.Generator(vars)
+    parsed_args = generator_parser.parse(call.args or '')
+    return call.model_copy(update={'args': generator_for_args.generate(parsed_args)})
+
+
 def generate_standalone(
-    call: GeneratorCall,
-    output: pathlib.Path,
+    spec: GenerationMetadata,
     validate: bool = True,
-    expand: bool = True,
     group_entry: Optional[TestcaseEntry] = None,
     generator_digest: Optional[str] = None,
     validator_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
-) -> GeneratorCall:
-    # Generator args parser
-    expanded_args_str = call.args or ''
-
-    if expand:
-        parsed_args = generator_parser.parse(call.args or '')
-        vars = package.find_problem_package_or_die().expanded_vars
-        generator_for_args = generator_parser.Generator(vars)
-        expanded_args_str = generator_for_args.generate(parsed_args)
-
+):
     def _print_error_header(text: Optional[str] = None):
         prefix = 'Failed generating test'
         if group_entry is not None:
@@ -374,43 +370,51 @@ def generate_standalone(
         suffix = '.'
         if text:
             suffix = f': {text}'
-        console.console.print(
-            f'[error]{prefix} using generator call [info]{call.name} {expanded_args_str}[/info]{suffix}[/error]'
-        )
+        if spec.generator_call is not None:
+            console.console.print(
+                f'[error]{prefix} using generator call [info]{spec.generator_call.name} {spec.generator_call.args}[/info]{suffix}[/error]'
+            )
+        else:
+            console.console.print(f'[error]{prefix}{suffix}[/error]')
 
-    generation_stderr = DigestHolder()
+    if spec.generator_call is not None:
+        call = spec.generator_call
 
-    # Get generator item
-    generator = package.get_generator(call.name)
-    if generator_digest is None:
+        generation_stderr = DigestHolder()
+
+        # Get generator item
+        generator = package.get_generator(call.name)
+        if generator_digest is None:
+            if progress:
+                progress.update(f'Compiling generator {generator.name}...')
+            generator_digest = _compile_generator(generator)
+
         if progress:
-            progress.update(f'Compiling generator {generator.name}...')
-        generator_digest = _compile_generator(generator)
-
-    if progress:
-        progress.update(
-            f'Generating testcase [status]{generator.name} {expanded_args_str}[/status]...'
+            progress.update(
+                f'Generating testcase [status]{generator.name} {call.args}[/status]...'
+            )
+        generation_log = run_item(
+            generator,
+            DigestOrSource.create(generator_digest),
+            stdout=DigestOrDest.create(spec.copied_to.inputPath),
+            stderr=DigestOrDest.create(generation_stderr),
+            extra_args=call.args or None,
         )
-    generation_log = run_item(
-        generator,
-        DigestOrSource.create(generator_digest),
-        stdout=DigestOrDest.create(output),
-        stderr=DigestOrDest.create(generation_stderr),
-        extra_args=expanded_args_str or None,
-    )
-    if not generation_log or generation_log.exitcode != 0:
-        _print_error_header()
-        if generation_log is not None:
-            console.console.print(
-                f'[error]Summary:[/error] {generation_log.get_summary()}'
-            )
-        if generation_stderr.value is not None:
-            console.console.print('[error]Stderr:[/error]')
-            console.console.print(
-                package.get_digest_as_string(generation_stderr.value) or ''
-            )
+        if not generation_log or generation_log.exitcode != 0:
+            _print_error_header()
+            if generation_log is not None:
+                console.console.print(
+                    f'[error]Summary:[/error] {generation_log.get_summary()}'
+                )
+            if generation_stderr.value is not None:
+                console.console.print('[error]Stderr:[/error]')
+                console.console.print(
+                    package.get_digest_as_string(generation_stderr.value) or ''
+                )
 
-        raise typer.Exit(1)
+            raise typer.Exit(1)
+    elif spec.copied_from is not None:
+        _copy_testcase_over(spec.copied_from, spec.copied_to)
 
     validator = package.get_validator_or_nil()
     # Run validator, if it is available.
@@ -424,17 +428,17 @@ def generate_standalone(
         if progress:
             progress.update('Validating test...')
         ok, message, *_ = validators.validate_test(
-            output,
+            spec.copied_to.inputPath,
             validator,
             validator_digest,
         )
         if not ok:
             _print_error_header('Failed validating testcase.')
             console.console.print(f'[error]Message:[/error] {message}')
-            console.console.print(f'Testcase written at [item]{output}[/item]')
+            console.console.print(
+                f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
+            )
             raise typer.Exit(1)
-
-    return call.model_copy(update={'args': expanded_args_str})
 
 
 def generate_testcases(
@@ -463,11 +467,9 @@ def generate_testcases(
 
             if entry.metadata.generator_call is not None:
                 generate_standalone(
-                    entry.metadata.generator_call,
-                    entry.metadata.copied_to.inputPath,
+                    entry.metadata,
                     group_entry=entry.group_entry,
                     validate=False,
-                    expand=False,
                     generator_digest=compiled_generators[
                         entry.metadata.generator_call.name
                     ],
@@ -583,3 +585,26 @@ def generate_outputs_for_testcases(
             step()
 
     run_testcase_visitor(GenerateOutputsVisitor(groups))
+
+
+def extract_generation_testcases(
+    entries: List[TestcaseEntry],
+) -> List[GenerationTestcaseEntry]:
+    # TODO: support subgroups.
+    groups = set(entry.group for entry in entries)
+    entry_keys = set(entry.key() for entry in entries)
+
+    res: List[GenerationTestcaseEntry] = []
+
+    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
+        def should_visit_group(self, group_name: str) -> bool:
+            return group_name in groups
+
+        def visit(self, entry: GenerationTestcaseEntry):
+            # TODO: support subgroups.
+            if entry.group_entry.key() not in entry_keys:
+                return
+            res.append(entry)
+
+    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
+    return res

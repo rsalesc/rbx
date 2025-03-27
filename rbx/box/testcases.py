@@ -1,6 +1,6 @@
 import pathlib
 import shutil
-from typing import List
+from typing import List, Tuple
 
 import typer
 from pydantic import BaseModel
@@ -14,6 +14,12 @@ from rbx.box.schema import Testcase, TestcaseGroup
 class TestcaseEntry(BaseModel):
     group: str
     index: int
+
+    def key(self) -> Tuple[str, int]:
+        return self.group, self.index
+
+    def __str__(self) -> str:
+        return f'{self.group}/{self.index}'
 
     @classmethod
     def parse(cls, spec: str) -> 'TestcaseEntry':

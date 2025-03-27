@@ -48,6 +48,7 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.statements import build_statements
+from rbx.box.testcases import TestcaseEntry
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 app.add_typer(
@@ -343,6 +344,14 @@ def irun(
         '-g',
         help='Generator call to use to generate a single test for execution.',
     ),
+    testcase: Optional[str] = typer.Option(
+        None,
+        '--testcase',
+        '--test',
+        '-tc',
+        '-t',
+        help='Testcase to run, in the format "[group]/[index]". If not specified, will run interactively.',
+    ),
     print: bool = typer.Option(
         False, '--print', '-p', help='Whether to print outputs to terminal.'
     ),
@@ -404,6 +413,7 @@ def irun(
                 generator=generators.get_call_from_string(generator)
                 if generator is not None
                 else None,
+                testcase_entry=TestcaseEntry.parse(testcase) if testcase else None,
                 print=print,
                 sanitized=sanitized,
             )
