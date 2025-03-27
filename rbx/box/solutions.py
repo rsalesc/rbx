@@ -431,6 +431,7 @@ async def _generate_testcase_interactively(
     generator: Optional[GeneratorCall] = None,
     testcase_entry: Optional[TestcaseEntry] = None,
     check: bool = True,
+    custom_output: bool = False,
     sanitized: bool = False,
     print: bool = False,
 ) -> Testcase:
@@ -469,7 +470,7 @@ async def _generate_testcase_interactively(
         if (
             testcase.outputPath is not None
             and not testcase.outputPath.is_file()
-            and main_solution is None
+            and (main_solution is None or custom_output)
         ):
             with utils.no_progress(progress):
                 output = console.multiline_prompt('Testcase output')
@@ -605,6 +606,7 @@ async def run_and_print_interactive_solutions(
     generator: Optional[GeneratorCall] = None,
     testcase_entry: Optional[TestcaseEntry] = None,
     check: bool = True,
+    custom_output: bool = False,
     print: bool = False,
     sanitized: bool = False,
 ):
@@ -619,6 +621,7 @@ async def run_and_print_interactive_solutions(
         generator=generator,
         testcase_entry=testcase_entry,
         check=check,
+        custom_output=custom_output,
         sanitized=sanitized,
         print=print,
     )

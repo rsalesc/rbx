@@ -359,6 +359,12 @@ def irun(
         '-t',
         help='Testcase to run, in the format "[group]/[index]". If not specified, will run interactively.',
     ),
+    output: bool = typer.Option(
+        False,
+        '--output',
+        '-o',
+        help='Whether to ask user for custom output.',
+    ),
     print: bool = typer.Option(
         False, '--print', '-p', help='Whether to print outputs to terminal.'
     ),
@@ -421,6 +427,7 @@ def irun(
                 if generator is not None
                 else None,
                 testcase_entry=TestcaseEntry.parse(testcase) if testcase else None,
+                custom_output=output,
                 print=print,
                 sanitized=sanitized,
             )
