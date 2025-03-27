@@ -25,6 +25,7 @@ from rbx.box import (
     builder,
     cd,
     setter_config,
+    state,
     creation,
     download,
     environment,
@@ -81,6 +82,11 @@ app.add_typer(
 app.add_typer(
     contest.app, name='contest', cls=annotations.AliasGroup, help='Contest management.'
 )
+
+
+@app.callback()
+def main():
+    state.STATE.run_through_cli = True
 
 
 # @app.command('ui', hidden=True)

@@ -11,7 +11,7 @@ import rich.text
 import typer
 
 from rbx import console
-from rbx.box import download, package, setter_config
+from rbx.box import download, package, setter_config, state
 from rbx.box.environment import (
     ExecutionConfig,
     get_compilation_config,
@@ -153,6 +153,8 @@ def _ignore_warning_in_cxx_input(input: GradingFileInput):
 
 
 def _check_stack_limit():
+    if not state.STATE.run_through_cli:
+        return
     soft, hard = None, None
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_STACK)

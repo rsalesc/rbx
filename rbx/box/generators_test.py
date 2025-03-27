@@ -19,7 +19,7 @@ def test_generator_works(pkg_from_testdata: pathlib.Path):
     print_directory_tree(pkg_from_testdata)
 
     assert (
-        package.get_build_testgroup_path('gen1') / '0-main-000.in'
+        package.get_build_testgroup_path('gen1') / '0-000.in'
     ).read_text() == '777\n'
     assert (
         package.get_build_testgroup_path('gen1') / '1-gen-000.in'

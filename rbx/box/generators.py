@@ -195,7 +195,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
     pkg = package.find_problem_package_or_die()
 
     def _explore_subgroup(
-        subgroup: TestcaseSubgroup, subgroup_index: int, prefix: List[str]
+        subgroup: TestcaseSubgroup, subgroup_index: Optional[int], prefix: List[str]
     ):
         assert prefix and len(prefix) >= 1 and len(prefix) <= 2
         group_path = prefix[0]
@@ -212,8 +212,10 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
         def _copied_to(i: int) -> Testcase:
             group_fs_path = package.get_build_testgroup_path(group_path)
             group_prefix = ''
+            if subgroup_index is not None:
+                group_prefix = f'{subgroup_index}-'
             if len(prefix) == 2:
-                group_prefix = f'{subgroup_index}-{prefix[1]}-'
+                group_prefix += f'{prefix[1]}-'
             return Testcase(
                 inputPath=_get_group_input(group_fs_path, group_prefix, i),
                 outputPath=_get_group_output(group_fs_path, group_prefix, i),
@@ -296,10 +298,10 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
         if not visitor.should_visit_group(group.name):
             continue
 
-        _explore_subgroup(group, 0, [group.name])
+        _explore_subgroup(group, 0 if group.subgroups else None, [group.name])
 
         for i, subgroup in enumerate(group.subgroups):
-            _explore_subgroup(subgroup, i, [group.name, subgroup.name])
+            _explore_subgroup(subgroup, i + 1, [group.name, subgroup.name])
 
 
 def _get_necessary_generators_for_groups(
