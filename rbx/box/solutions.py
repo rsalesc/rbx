@@ -981,9 +981,11 @@ async def _print_timing(
 
     # Otherwise, print per language.
     for lang in sorted(all_languages):
+        console.print(f'[status]{lang}[/status]')
         summary_per_language[lang].print(
             console, tl=tls_per_language.get(lang) or all_tl
         )
+        console.print()
 
 
 def _length_markup(markup: str) -> int:
