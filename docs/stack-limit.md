@@ -38,15 +38,6 @@ while your soft stack limit is less than your hard stack limit.
 
 Do not worry, the fix is really simple and will be shown along the error message.
 
-To fix the issue, add the following lines to the end of your `~/.bashrc` or `~/.zshrc` file (or equivalent shell configuration file):
-
-```
-export RBX_BIN_PATH=`which rbx`
-function rbx() {
-        ulimit -s unlimited && $RBX_BIN_PATH $@
-}
-```
-
 !!! tip
     You should ensure the lines added to the file are definitely after the lines where `pipx` paths are added to `$PATH$`, otherwise the `rbx` command will not be found.
 

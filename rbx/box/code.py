@@ -186,15 +186,14 @@ def _check_stack_limit():
         if hard != resource.RLIM_INFINITY:
             target_text = min(hard, TARGET)
         console.console.print(
-            """
+            f"""
 ```
-export RBX_BIN_PATH=`which rbx`
-function rbx() {
-        ulimit -s %s && $RBX_BIN_PATH $@
-}
+function rbx() {{
+    local rbx_bin=`sh -c "type -P rbx"`
+    ulimit -s {target_text} && $rbx_bin $@
+}}
 ```
-            """
-            % target_text
+        """
         )
         console.console.print()
         console.console.print(

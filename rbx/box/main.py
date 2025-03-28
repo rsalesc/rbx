@@ -760,8 +760,3 @@ def clear():
     console.console.print('Cleaning cache and build directories...')
     shutil.rmtree('.box', ignore_errors=True)
     shutil.rmtree('build', ignore_errors=True)
-
-
-@app.callback()
-def callback():
-    pass
