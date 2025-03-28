@@ -169,7 +169,7 @@ def _check_stack_limit():
     except Exception:
         pass
 
-    if soft != hard or (soft != resource.RLIM_INFINITY and soft < TARGET):
+    if soft != hard and soft != resource.RLIM_INFINITY and soft < TARGET:
         soft_fmt = _format_stack_limit(soft)
         hard_fmt = _format_stack_limit(hard)
         console.console.print(
