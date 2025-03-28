@@ -189,7 +189,7 @@ def _check_stack_limit():
             f"""
 ```
 function rbx() {{
-    local rbx_bin=`sh -c "type -P rbx"`
+    local rbx_bin=`bash -c "type -P rbx"`
     ulimit -s {target_text} && $rbx_bin $@
 }}
 ```
