@@ -116,7 +116,7 @@ def view(
         items = _generate_for_editing(
             testcase, input=not output_only, output=not input_only, progress=s
         )
-    config.edit_multiple(items)
+    config.edit_multiple(items, readonly=True)
 
 
 @app.command('info, i', help='Show information about testcases.')

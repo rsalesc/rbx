@@ -5,6 +5,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -227,10 +228,23 @@ def open_editor(path: Any, *args):
     subprocess.run([editor, str(path), *[str(arg) for arg in args]])
 
 
-def edit_multiple(paths: List[pathlib.Path]):
+def _readonly_copy(path: pathlib.Path) -> pathlib.Path:
+    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    shutil.copy(str(path), temp_file.name)
+    temp_file.close()
+    return pathlib.Path(temp_file.name)
+
+
+def edit_multiple(paths: List[pathlib.Path], readonly: bool = False):
     if is_vim_editor():
-        open_editor('-O', *paths)
+        if readonly:
+            open_editor('-R', '-O', *paths)
+        else:
+            open_editor('-O', *paths)
         return
+
+    if readonly:
+        paths = [_readonly_copy(path) for path in paths]
     open_editor(*paths)
 
 
