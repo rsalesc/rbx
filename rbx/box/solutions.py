@@ -898,33 +898,92 @@ def _print_solution_header(
     console.print(f'({solution_testdir})')
 
 
+@dataclasses.dataclass
+class TimingSummary:
+    slowest_good: Optional[int] = None
+    fastest_slow: Optional[int] = None
+
+    def add_good(self, time: int):
+        if self.slowest_good is None or time > self.slowest_good:
+            self.slowest_good = time
+
+    def add_slow(self, time: int):
+        if self.fastest_slow is None or time < self.fastest_slow:
+            self.fastest_slow = time
+
+    def print(self, console: rich.console.Console, tl: Optional[int] = None):
+        if self.slowest_good is not None:
+            console.print(
+                f'Slowest [success]OK[/success] solution: {self.slowest_good} ms'
+            )
+        if self.fastest_slow is not None:
+            fastest_slow = self.fastest_slow
+            if tl is not None and self.fastest_slow > tl:
+                fastest_slow = f'>{tl}'
+            console.print(f'Fastest [error]slow[/error] solution: {fastest_slow} ms')
+
+
 async def _print_timing(
     console: rich.console.Console,
     skeleton: SolutionReportSkeleton,
     evaluations: StructuredEvaluation,
+    verification: VerificationLevel,
 ):
-    slowest_good = None
-    fastest_slow = None
+    pkg = package.find_problem_package_or_die()
+    summary = TimingSummary()
+    summary_per_language = collections.defaultdict(TimingSummary)
+    tls_per_language = {}
+    all_tls = set()
     for solution in skeleton.solutions:
-        all_evals = []
+        all_evals: List[Evaluation] = []
         for evals in evaluations[str(solution.path)].values():
             all_evals.extend([await eval() for eval in evals if eval is not None])
-        solution_time = _get_evals_time_in_ms(all_evals)
-        if solution.outcome.match(Outcome.ACCEPTED):
-            if slowest_good is None or solution_time > slowest_good:
-                slowest_good = solution_time
-        if solution.outcome.is_slow():
-            if fastest_slow is None or solution_time < fastest_slow:
-                fastest_slow = solution_time
+        if not all_evals:
+            continue
 
-    if slowest_good is None and fastest_slow is None:
+        # Get solution TL.
+        solution_time = _get_evals_time_in_ms(all_evals)
+        solution_tls = [
+            eval.log.metadata.timeLimit
+            for eval in all_evals
+            if eval.log.metadata is not None and eval.log.metadata.timeLimit is not None
+        ]
+        solution_tl = 0
+        if solution_tls:
+            solution_tl = min(solution_tls)
+        else:
+            solution_tl = pkg.timelimit_for_language(solution.language)
+            if verification.value >= VerificationLevel.FULL.value:
+                solution_tl = solution_tl * 2
+        all_tls.add(solution_tl)
+        for eval in all_evals:
+            if eval.log.get_run_language() is not None:
+                tls_per_language[eval.log.get_run_language()] = solution_tl
+
+        # Get solution timings.
+        if solution.outcome.match(Outcome.ACCEPTED):
+            summary.add_good(solution_time)
+            summary_per_language[solution.language].add_good(solution_time)
+        if solution.outcome.is_slow():
+            summary.add_slow(solution_time)
+            summary_per_language[solution.language].add_slow(solution_time)
+
+    if summary.slowest_good is None and summary.fastest_slow is None:
         return
 
+    all_languages = set(summary_per_language)
+    all_tl = min(all_tls) if all_tls else None
     console.print('[status]Timing summary:[/status]')
-    if slowest_good is not None:
-        console.print(f'Slowest [success]OK[/success] solution: {slowest_good} ms')
-    if fastest_slow is not None:
-        console.print(f'Fastest [error]slow[/error] solution: {fastest_slow} ms')
+
+    if len(all_languages) <= 1 or len(all_tls) <= 1:
+        summary.print(console, tl=all_tl)
+        return
+
+    # Otherwise, print per language.
+    for lang in sorted(all_languages):
+        summary_per_language[lang].print(
+            console, tl=tls_per_language.get(lang) or all_tl
+        )
 
 
 def _length_markup(markup: str) -> int:
@@ -1091,7 +1150,9 @@ async def _print_detailed_run_report(
     console.print()
 
     if timing:
-        await _print_timing(console, result.skeleton, structured_evaluations)
+        await _print_timing(
+            console, result.skeleton, structured_evaluations, verification=verification
+        )
     return ok
 
 
@@ -1175,7 +1236,9 @@ async def print_run_report(
         ok = ok and cur_ok
         console.print()
 
-    await _print_timing(console, result.skeleton, structured_evaluations)
+    await _print_timing(
+        console, result.skeleton, structured_evaluations, verification=verification
+    )
 
     return ok
 
