@@ -273,6 +273,11 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
         if _is_hit_bound_good(v) and k != 'samples'
     }
 
+    all_groups = set(info.group for info in infos)
+    if len(all_groups) == 1 and 'samples' in all_groups:
+        # If there's only the samples group, do not check for hit bounds.
+        hit_bounds_per_group = {}
+
     if not hit_bounds_per_group:
         console.console.print('[info]No validation issues found.[/info]')
         return
