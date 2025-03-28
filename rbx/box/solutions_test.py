@@ -5,6 +5,7 @@ import pytest
 
 from rbx.box.environment import VerificationLevel
 from rbx.box.generators import (
+    extract_generation_testcases_from_groups,
     generate_outputs_for_testcases,
     generate_testcases,
 )
@@ -18,7 +19,10 @@ from rbx.grading.steps import Outcome
 @pytest.mark.test_pkg('box1')
 def test_solutions(pkg_from_testdata: pathlib.Path):
     generate_testcases()
-    generate_outputs_for_testcases()
+    entries = [
+        entry.group_entry for entry in extract_generation_testcases_from_groups()
+    ]
+    generate_outputs_for_testcases(entries)
 
     result = run_solutions(verification=VerificationLevel.FULL)
     res = asyncio.run(convert_list_of_solution_evaluations_to_dict(result.items))

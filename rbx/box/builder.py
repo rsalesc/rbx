@@ -3,7 +3,11 @@ from typing import Optional, Set
 from rbx import console, utils
 from rbx.box import environment, package
 from rbx.box.environment import VerificationLevel
-from rbx.box.generators import generate_outputs_for_testcases, generate_testcases
+from rbx.box.generators import (
+    extract_generation_testcases_from_groups,
+    generate_outputs_for_testcases,
+    generate_testcases,
+)
 from rbx.box.solutions import (
     is_fast,
     print_run_report,
@@ -61,7 +65,11 @@ def build(
         keep=True,
     ) as s:
         if output:
-            generate_outputs_for_testcases(s, groups=groups)
+            entries = [
+                entry.group_entry
+                for entry in extract_generation_testcases_from_groups(groups)
+            ]
+            generate_outputs_for_testcases(entries, s)
 
     console.console.print(
         '[success]Problem built.[/success] '

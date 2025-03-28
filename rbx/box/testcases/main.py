@@ -54,7 +54,7 @@ def _generate_output_for_editing(
         return entry.metadata.copied_from.outputPath
     if not _should_generate_output(entry):
         return None
-    generate_outputs_for_testcases()
+    generate_outputs_for_testcases([entry.group_entry])
     return entry.metadata.copied_to.outputPath
 
 

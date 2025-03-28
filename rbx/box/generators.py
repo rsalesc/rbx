@@ -542,55 +542,6 @@ def generate_output_for_testcase(
         raise typer.Exit(1)
 
 
-def generate_outputs_for_testcases(
-    progress: Optional[StatusProgress] = None, groups: Optional[Set[str]] = None
-):
-    def step():
-        if progress is not None:
-            progress.step()
-
-    main_solution = package.get_main_solution()
-    solution_digest: Optional[str] = None
-
-    if main_solution is not None:
-        if progress:
-            progress.update('Compiling main solution...')
-        try:
-            solution_digest = compile_item(main_solution)
-        except:
-            console.console.print('[error]Failed compiling main solution.[/error]')
-            raise
-
-    gen_runs_dir = package.get_problem_runs_dir() / '.gen'
-    shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
-    gen_runs_dir.mkdir(parents=True, exist_ok=True)
-
-    class GenerateOutputsVisitor(TestcaseGroupVisitor):
-        def visit(self, entry: GenerationTestcaseEntry):
-            tc = entry.metadata.copied_to
-            if not tc.inputPath.is_file():
-                return
-            assert tc.outputPath is not None
-
-            if (
-                main_solution is None or solution_digest is None
-            ) and not tc.outputPath.is_file():
-                console.console.print(
-                    '[error]No main solution found to generate outputs for testcases.[/error]',
-                )
-                raise typer.Exit(1)
-
-            assert solution_digest is not None
-            generate_output_for_testcase(
-                solution_digest,
-                tc,
-                gen_runs_dir / 'main.stderr',
-            )
-            step()
-
-    run_testcase_visitor(GenerateOutputsVisitor(groups))
-
-
 def extract_generation_testcases(
     entries: List[TestcaseEntry],
 ) -> List[GenerationTestcaseEntry]:
@@ -612,3 +563,65 @@ def extract_generation_testcases(
 
     run_testcase_visitor(ExtractGenerationTestcasesVisitor())
     return res
+
+
+def extract_generation_testcases_from_groups(
+    groups: Optional[Set[str]] = None,
+) -> List[GenerationTestcaseEntry]:
+    res: List[GenerationTestcaseEntry] = []
+
+    class ExtractGenerationTestcasesVisitor(TestcaseGroupVisitor):
+        def visit(self, entry: GenerationTestcaseEntry):
+            res.append(entry)
+
+    run_testcase_visitor(ExtractGenerationTestcasesVisitor(groups))
+    return res
+
+
+def generate_outputs_for_testcases(
+    entries: List[TestcaseEntry],
+    progress: Optional[StatusProgress] = None,
+):
+    def step():
+        if progress is not None:
+            progress.step()
+
+    main_solution = package.get_main_solution()
+    solution_digest: Optional[str] = None
+
+    if main_solution is not None:
+        if progress:
+            progress.update('Compiling main solution...')
+        try:
+            solution_digest = compile_item(main_solution)
+        except:
+            console.console.print('[error]Failed compiling main solution.[/error]')
+            raise
+
+    gen_runs_dir = package.get_problem_runs_dir() / '.gen'
+    shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
+    gen_runs_dir.mkdir(parents=True, exist_ok=True)
+
+    generation_entries = extract_generation_testcases(entries)
+
+    for entry in generation_entries:
+        tc = entry.metadata.copied_to
+        if not tc.inputPath.is_file():
+            return
+        assert tc.outputPath is not None
+
+        if (
+            main_solution is None or solution_digest is None
+        ) and not tc.outputPath.is_file():
+            console.console.print(
+                '[error]No main solution found to generate outputs for testcases.[/error]',
+            )
+            raise typer.Exit(1)
+
+        assert solution_digest is not None
+        generate_output_for_testcase(
+            solution_digest,
+            tc,
+            gen_runs_dir / 'main.stderr',
+        )
+        step()

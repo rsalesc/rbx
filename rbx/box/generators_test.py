@@ -4,6 +4,7 @@ import pytest
 
 from rbx.box import package
 from rbx.box.generators import (
+    extract_generation_testcases_from_groups,
     generate_outputs_for_testcases,
     generate_testcases,
 )
@@ -13,7 +14,10 @@ from rbx.testing_utils import print_directory_tree
 @pytest.mark.test_pkg('box1')
 def test_generator_works(pkg_from_testdata: pathlib.Path):
     generate_testcases()
-    generate_outputs_for_testcases()
+    entries = [
+        entry.group_entry for entry in extract_generation_testcases_from_groups()
+    ]
+    generate_outputs_for_testcases(entries)
 
     # Debug when fail.
     print_directory_tree(pkg_from_testdata)
