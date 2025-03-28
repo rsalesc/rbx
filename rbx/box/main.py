@@ -39,6 +39,7 @@ from rbx.box import (
 from rbx.box.contest import main as contest
 from rbx.box.environment import VerificationLevel, get_environment_path
 from rbx.box.packaging import main as packaging
+from rbx.box.testcases import main as testcases
 from rbx.box.solutions import (
     estimate_time_limit,
     get_exact_matching_solutions,
@@ -49,7 +50,7 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.statements import build_statements
-from rbx.box.testcases import TestcaseEntry
+from rbx.box.testcase_utils import TestcaseEntry
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 app.add_typer(
@@ -81,6 +82,12 @@ app.add_typer(
 )
 app.add_typer(
     contest.app, name='contest', cls=annotations.AliasGroup, help='Contest management.'
+)
+app.add_typer(
+    testcases.app,
+    name='testcases, tc, t',
+    cls=annotations.AliasGroup,
+    help='Testcase management.',
 )
 
 

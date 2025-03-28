@@ -24,7 +24,7 @@ from rbx.box.statements.schema import (
     Statement,
     StatementType,
 )
-from rbx.box.testcases import get_samples
+from rbx.box.testcase_utils import get_samples
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 

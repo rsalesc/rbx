@@ -9,7 +9,7 @@ from rbx import console
 from rbx.box import package
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.schema import CodeItem, Primitive
-from rbx.box.testcases import find_built_testcase_inputs
+from rbx.box.testcase_utils import find_built_testcase_inputs
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     DigestHolder,

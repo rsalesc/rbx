@@ -31,7 +31,7 @@ from rbx.box.statements.joiners import (
     StatementJoinerContext,
 )
 from rbx.box.statements.schema import Statement, StatementType
-from rbx.box.testcases import get_samples
+from rbx.box.testcase_utils import get_samples
 
 
 @dataclasses.dataclass

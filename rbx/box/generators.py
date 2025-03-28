@@ -9,7 +9,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import checkers, package, testcases, validators
+from rbx.box import checkers, package, testcase_utils, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.environment import (
     EnvironmentSandbox,
@@ -22,7 +22,7 @@ from rbx.box.schema import (
     TestcaseSubgroup,
 )
 from rbx.box.stressing import generator_parser
-from rbx.box.testcases import TestcaseEntry, find_built_testcases
+from rbx.box.testcase_utils import TestcaseEntry, find_built_testcases
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -457,7 +457,7 @@ def generate_testcases(
         else None,
     )
 
-    testcases.clear_built_testcases()
+    testcase_utils.clear_built_testcases()
 
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
         def visit(self, entry: GenerationTestcaseEntry):
@@ -487,6 +487,8 @@ def generate_output_for_testcase(
     stderr_path: Optional[pathlib.Path] = None,
 ):
     assert testcase.outputPath is not None
+    testcase.inputPath.parent.mkdir(parents=True, exist_ok=True)
+    testcase.outputPath.parent.mkdir(parents=True, exist_ok=True)
 
     if testcase.outputPath.is_file():
         # Output file was already copied over from manual tests.

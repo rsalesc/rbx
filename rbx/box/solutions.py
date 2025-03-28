@@ -42,7 +42,7 @@ from rbx.box.schema import (
     Testcase,
     TestcaseGroup,
 )
-from rbx.box.testcases import TestcaseEntry, find_built_testcases
+from rbx.box.testcase_utils import TestcaseEntry, find_built_testcases
 from rbx.grading.steps import (
     DigestOrDest,
     DigestOrSource,

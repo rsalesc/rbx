@@ -213,11 +213,25 @@ def get_editor():
     return get_config().editor or os.environ.get('EDITOR', None)
 
 
-def open_editor(path: pathlib.Path, *args):
+def is_vim_editor() -> bool:
+    editor = get_editor()
+    if editor is None:
+        return False
+    return editor.endswith('vim')
+
+
+def open_editor(path: Any, *args):
     editor = get_editor()
     if editor is None:
         raise Exception('No editor found. Please set the EDITOR environment variable.')
     subprocess.run([editor, str(path), *[str(arg) for arg in args]])
+
+
+def edit_multiple(paths: List[pathlib.Path]):
+    if is_vim_editor():
+        open_editor('-O', *paths)
+        return
+    open_editor(*paths)
 
 
 @functools.cache
