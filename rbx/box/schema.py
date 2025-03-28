@@ -192,6 +192,9 @@ class GeneratorCall(BaseModel):
         default=None, description='The arguments to pass to the generator.'
     )
 
+    def __str__(self) -> str:
+        return f'{self.name} {self.args}'
+
 
 class TestcaseSubgroup(BaseModel):
     model_config = ConfigDict(extra='forbid')

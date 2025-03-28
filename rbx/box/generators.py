@@ -3,7 +3,7 @@ import pathlib
 import shlex
 import shutil
 from pathlib import PosixPath
-from typing import Dict, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import typer
 from pydantic import BaseModel
@@ -141,15 +141,20 @@ def _run_generator_script(testcase: TestcaseSubgroup) -> str:
     return script
 
 
-def _extract_script_lines(script: str):
+def _extract_script_lines(script: str) -> Iterable[Tuple[str, str, int]]:
     lines = script.splitlines()
-    for line in lines:
+    for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
         if line.startswith('#'):
             continue
-        yield shlex.split(line)[0], shlex.join(shlex.split(line)[1:])
+        yield shlex.split(line)[0], shlex.join(shlex.split(line)[1:]), i + 1
+
+
+class GeneratorScriptEntry(BaseModel):
+    path: pathlib.Path
+    line: int
 
 
 class GenerationMetadata(BaseModel):
@@ -157,6 +162,7 @@ class GenerationMetadata(BaseModel):
 
     copied_from: Optional[Testcase] = None
     generator_call: Optional[GeneratorCall] = None
+    generator_script: Optional[GeneratorScriptEntry] = None
 
 
 class GenerationTestcaseEntry(BaseModel):
@@ -280,7 +286,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
             script = _run_generator_script(subgroup)
 
             # Run each line from generator script.
-            for generator_name, args in _extract_script_lines(script):
+            for generator_name, args, line_number in _extract_script_lines(script):
                 call = GeneratorCall(name=generator_name, args=args)
                 visitor.visit(
                     GenerationTestcaseEntry(
@@ -288,6 +294,10 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                         subgroup_entry=_sub_entry(i),
                         metadata=GenerationMetadata(
                             generator_call=call,
+                            generator_script=GeneratorScriptEntry(
+                                path=subgroup.generatorScript.path,
+                                line=line_number,
+                            ),
                             copied_to=_copied_to(i),
                         ),
                     )

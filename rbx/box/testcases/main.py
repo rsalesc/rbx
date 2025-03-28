@@ -83,7 +83,7 @@ def _generate_for_editing(
     return res
 
 
-@app.command('view, v')
+@app.command('view, v', help='View a testcase in your default editor.')
 def view(
     tc: Annotated[
         str,
@@ -116,3 +116,33 @@ def view(
             testcase, input=not output_only, output=not input_only, progress=s
         )
     config.edit_multiple(items)
+
+
+@app.command('info, i', help='Show information about a testcase.')
+def info(
+    tc: Annotated[
+        str,
+        typer.Argument(help='Testcase to view. Format: [group]/[index].'),
+    ],
+):
+    entry = TestcaseEntry.parse(tc)
+    testcase = _find_testcase(entry)
+
+    console.print(f'[status]Identifier:[/status] {testcase.group_entry}')
+    if testcase.metadata.generator_call is not None:
+        console.print(
+            f'[status]Generator call:[/status] {testcase.metadata.generator_call}'
+        )
+    if testcase.metadata.copied_from is not None:
+        console.print(
+            f'[status]Input file:[/status] {testcase.metadata.copied_from.inputPath}'
+        )
+        if testcase.metadata.copied_from.outputPath is not None:
+            console.print(
+                f'[status]Output file:[/status] {testcase.metadata.copied_from.outputPath}'
+            )
+
+    if testcase.metadata.generator_script is not None:
+        console.print(
+            f'[status]Generator script:[/status] {testcase.metadata.generator_script.path}, line {testcase.metadata.generator_script.line}'
+        )
