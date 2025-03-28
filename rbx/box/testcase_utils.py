@@ -70,20 +70,20 @@ class TestcasePattern(BaseModel):
 
     def __str__(self) -> str:
         prefix = '/'.join(self.group_prefix)
+        if not prefix:
+            return '*'
         if self.index is None:
             return f'{prefix}/'
         return f'{prefix}/{self.index}'
 
     @classmethod
     def parse(cls, spec: str) -> 'TestcasePattern':
-        parts = spec.split('/')
-        if not parts:
-            console.console.print(
-                f'[error]Invalid testcase pattern [item]{spec}[/item].[/error]',
-            )
-            raise typer.Exit(1)
+        spec = spec.strip()
+        if spec == '*':
+            return cls(group_prefix=[], index=None)
 
-        if len(parts) == 1:
+        parts = spec.split('/')
+        if len(parts) <= 1:
             return cls(group_prefix=parts, index=None)
 
         if parts[-1].isdigit():

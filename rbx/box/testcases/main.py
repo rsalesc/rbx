@@ -122,13 +122,13 @@ def view(
 @app.command('info, i', help='Show information about testcases.')
 def info(
     pattern: Annotated[
-        str,
+        Optional[str],
         typer.Argument(
             help='Testcases to detail, as a pattern. Might be a group, or a specific test in the format [group]/[index].'
         ),
-    ],
+    ] = None,
 ):
-    tc_pattern = TestcasePattern.parse(pattern)
+    tc_pattern = TestcasePattern.parse(pattern or '*')
     testcases = extract_generation_testcases_from_patterns([tc_pattern])
     if not testcases:
         console.print(
