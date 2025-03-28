@@ -166,6 +166,21 @@ def run(
         )
         check = False
 
+    tracked_solutions = None
+    if outcome is not None:
+        tracked_solutions = {
+            str(solution.path)
+            for solution in get_matching_solutions(ExpectedOutcome(outcome))
+        }
+    if solution:
+        tracked_solutions = {solution}
+
+    if choice:
+        tracked_solutions = set(pick_solutions(tracked_solutions))
+        if not tracked_solutions:
+            console.console.print('[error]No solutions selected. Exiting.[/error]')
+            raise typer.Exit(1)
+
     if not builder.build(verification=verification, output=check):
         return
 
@@ -194,21 +209,6 @@ def run(
             '[warning]Sanitizers are running, so the time limit for the problem will be dropped, '
             'and the environment default time limit will be used instead.[/warning]'
         )
-
-    tracked_solutions = None
-    if outcome is not None:
-        tracked_solutions = {
-            str(solution.path)
-            for solution in get_matching_solutions(ExpectedOutcome(outcome))
-        }
-    if solution:
-        tracked_solutions = {solution}
-
-    if choice:
-        tracked_solutions = set(pick_solutions(tracked_solutions))
-        if not tracked_solutions:
-            console.console.print('[error]No solutions selected. Exiting.[/error]')
-            raise typer.Exit(1)
 
     if sanitized and tracked_solutions is None:
         console.console.print(
