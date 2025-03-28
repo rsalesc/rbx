@@ -152,23 +152,26 @@ def _ignore_warning_in_cxx_input(input: GradingFileInput):
     input.src = preprocessed_path
 
 
+def _format_stack_limit(limit: int) -> str:
+    if limit == resource.RLIM_INFINITY:
+        return 'unlimited'
+    return get_formatted_memory(limit)
+
+
 def _check_stack_limit():
     if not state.STATE.run_through_cli:
         return
-    soft, hard = None, None
+    soft, hard = resource.RLIM_INFINITY, resource.RLIM_INFINITY
+
+    TARGET = 256 * 1024 * 1024  # 256 MiB
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
     except Exception:
         pass
 
-    if (
-        soft is not None
-        and hard is not None
-        and soft < hard
-        and soft < 256 * 1024 * 1024  # 256 MiB
-    ):
-        soft_fmt = get_formatted_memory(soft)
-        hard_fmt = get_formatted_memory(hard)
+    if soft != hard or (soft != resource.RLIM_INFINITY and soft < TARGET):
+        soft_fmt = _format_stack_limit(soft)
+        hard_fmt = _format_stack_limit(hard)
         console.console.print(
             f'[error]Stack limit is too low (limit is set as [item]{soft_fmt}[/item], but configured user capacity is [item]{hard_fmt}[/item]).[/error]'
         )
@@ -178,15 +181,20 @@ def _check_stack_limit():
         console.console.print(
             'To solve this, add the following lines to the end of your [item]~/.bashrc[/item] or [item]~/.zshrc[/item] file (or equivalent shell configuration file):'
         )
+
+        target_text = TARGET
+        if hard != resource.RLIM_INFINITY:
+            target_text = min(hard, TARGET)
         console.console.print(
             """
 ```
 export RBX_BIN_PATH=`which rbx`
 function rbx() {
-        ulimit -s unlimited && $RBX_BIN_PATH $@
+        ulimit -s %s && $RBX_BIN_PATH $@
 }
 ```
             """
+            % target_text
         )
         console.console.print()
         console.console.print(
