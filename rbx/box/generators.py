@@ -22,7 +22,7 @@ from rbx.box.schema import (
     TestcaseSubgroup,
 )
 from rbx.box.stressing import generator_parser
-from rbx.box.testcase_utils import TestcaseEntry, find_built_testcases
+from rbx.box.testcase_utils import TestcaseEntry, TestcasePattern, find_built_testcases
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -585,6 +585,31 @@ def extract_generation_testcases_from_groups(
             res.append(entry)
 
     run_testcase_visitor(ExtractGenerationTestcasesVisitor(groups))
+    return res
+
+
+def extract_generation_testcases_from_patterns(
+    patterns: List[TestcasePattern],
+) -> List[GenerationTestcaseEntry]:
+    res: List[GenerationTestcaseEntry] = []
+
+    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
+        def should_visit_group(self, group_name: str) -> bool:
+            return any(pattern.intersecting_group(group_name) for pattern in patterns)
+
+        def should_visit_subgroup(self, subgroup_path: str) -> bool:
+            return any(
+                pattern.intersecting_group(subgroup_path) for pattern in patterns
+            )
+
+        def visit(self, entry: GenerationTestcaseEntry):
+            if not any(
+                pattern.match(entry.group_entry) for pattern in patterns
+            ) and not any(pattern.match(entry.subgroup_entry) for pattern in patterns):
+                return
+            res.append(entry)
+
+    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
     return res
 
 

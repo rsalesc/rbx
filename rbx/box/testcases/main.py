@@ -8,10 +8,11 @@ from rbx.box import package
 from rbx.box.generators import (
     GenerationTestcaseEntry,
     extract_generation_testcases,
+    extract_generation_testcases_from_patterns,
     generate_outputs_for_testcases,
     generate_standalone,
 )
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_utils import TestcaseEntry, TestcasePattern
 from rbx.console import console
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -118,31 +119,40 @@ def view(
     config.edit_multiple(items)
 
 
-@app.command('info, i', help='Show information about a testcase.')
+@app.command('info, i', help='Show information about testcases.')
 def info(
-    tc: Annotated[
+    pattern: Annotated[
         str,
-        typer.Argument(help='Testcase to view. Format: [group]/[index].'),
+        typer.Argument(
+            help='Testcases to detail, as a pattern. Might be a group, or a specific test in the format [group]/[index].'
+        ),
     ],
 ):
-    entry = TestcaseEntry.parse(tc)
-    testcase = _find_testcase(entry)
+    tc_pattern = TestcasePattern.parse(pattern)
+    testcases = extract_generation_testcases_from_patterns([tc_pattern])
+    if not testcases:
+        console.print(
+            f'[error]No testcases found matching pattern [item]{pattern}[/item].[/error]'
+        )
+        raise typer.Exit(1)
 
-    console.print(f'[status]Identifier:[/status] {testcase.group_entry}')
-    if testcase.metadata.generator_call is not None:
-        console.print(
-            f'[status]Generator call:[/status] {testcase.metadata.generator_call}'
-        )
-    if testcase.metadata.copied_from is not None:
-        console.print(
-            f'[status]Input file:[/status] {testcase.metadata.copied_from.inputPath}'
-        )
-        if testcase.metadata.copied_from.outputPath is not None:
+    for testcase in testcases:
+        console.print(f'[status]Identifier:[/status] {testcase.group_entry}')
+        if testcase.metadata.generator_call is not None:
             console.print(
-                f'[status]Output file:[/status] {testcase.metadata.copied_from.outputPath}'
+                f'[status]Generator call:[/status] {testcase.metadata.generator_call}'
             )
+        if testcase.metadata.copied_from is not None:
+            console.print(
+                f'[status]Input file:[/status] {testcase.metadata.copied_from.inputPath}'
+            )
+            if testcase.metadata.copied_from.outputPath is not None:
+                console.print(
+                    f'[status]Output file:[/status] {testcase.metadata.copied_from.outputPath}'
+                )
 
-    if testcase.metadata.generator_script is not None:
-        console.print(
-            f'[status]Generator script:[/status] {testcase.metadata.generator_script.path}, line {testcase.metadata.generator_script.line}'
-        )
+        if testcase.metadata.generator_script is not None:
+            console.print(
+                f'[status]Generator script:[/status] {testcase.metadata.generator_script.path}, line {testcase.metadata.generator_script.line}'
+            )
+        console.print()
