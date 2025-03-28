@@ -22,6 +22,7 @@ from rbx.box.statements.builders import (
     StatementBuilderContest,
     StatementBuilderContext,
     StatementBuilderProblem,
+    StatementSample,
     prepare_assets,
 )
 from rbx.box.statements.joiners import (
@@ -51,7 +52,7 @@ class ExtractedProblem:
         return StatementBuilderProblem(
             package=self.package,
             statement=self.statement,
-            samples=self.samples,
+            samples=StatementSample.from_testcases(self.samples),
             io_path=self.built_statement,
             short_name=self.problem.short_name,
         )
@@ -124,7 +125,7 @@ def get_builder_problems(
         StatementBuilderProblem(
             package=ex.package,
             statement=ex.statement,
-            samples=ex.samples,
+            samples=StatementSample.from_testcases(ex.samples),
         )
         for ex in extracted_problems
     ]

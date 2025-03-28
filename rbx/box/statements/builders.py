@@ -7,8 +7,9 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 import typer
+from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box.schema import Package, Primitive, Testcase
 from rbx.box.statements.latex import (
     MAX_PDFLATEX_RUNS,
@@ -64,7 +65,25 @@ class StatementBuilderItem(ABC):
         pass
 
 
-class StatementSample(Testcase):
+class StatementSample(BaseModel):
+    inputPath: pathlib.Path
+    outputPath: pathlib.Path
+    hasOutput: bool = True
+
+    @staticmethod
+    def from_testcase(testcase: Testcase) -> 'StatementSample':
+        return StatementSample(
+            inputPath=testcase.inputPath,
+            outputPath=testcase.outputPath or utils.get_empty_sentinel_path(),
+            hasOutput=testcase.outputPath is not None,
+        )
+
+    @staticmethod
+    def from_testcases(testcases: List[Testcase]) -> List['StatementSample']:
+        return [StatementSample.from_testcase(testcase) for testcase in testcases]
+
+
+class ExplainedStatementSample(StatementSample):
     explanation: Optional[str] = None
 
 
@@ -72,7 +91,7 @@ class StatementSample(Testcase):
 class StatementBuilderProblem(StatementBuilderItem):
     package: Package
     statement: Statement
-    samples: List[Testcase] = dataclasses.field(default_factory=list)
+    samples: List[StatementSample] = dataclasses.field(default_factory=list)
     short_name: Optional[str] = None
 
     # Will only be filled by contests.
@@ -301,8 +320,8 @@ class rbxTeXBuilder(StatementBuilder):
         problem_kwargs['problem']['blocks'] = blocks
         if statement_blocks.explanations is not None:
             problem_kwargs['problem']['samples'] = [
-                StatementSample(
-                    **typing.cast(Testcase, sample).model_dump(),
+                ExplainedStatementSample(
+                    **typing.cast(StatementSample, sample).model_dump(),
                     explanation=statement_blocks.explanations.get(i),
                 )
                 for i, sample in enumerate(problem_kwargs['problem']['samples'])

@@ -364,6 +364,13 @@ def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Pa
     return res
 
 
+@functools.cache
+def get_empty_sentinel_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    path = get_problem_cache_dir(root) / '.empty'
+    path.write_text('')
+    return path
+
+
 def clear_package_cache():
     pkgs = [sys.modules[__name__]]
 

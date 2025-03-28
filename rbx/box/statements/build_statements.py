@@ -15,6 +15,7 @@ from rbx.box.statements.builders import (
     StatementBuilderContext,
     StatementBuilderProblem,
     StatementCodeLanguage,
+    StatementSample,
     prepare_assets,
 )
 from rbx.box.statements.schema import (
@@ -263,7 +264,9 @@ def build_statement_bytes(
                 item=StatementBuilderProblem(
                     package=pkg,
                     statement=statement,
-                    samples=get_samples() if use_samples else [],
+                    samples=StatementSample.from_testcases(
+                        get_samples() if use_samples else []
+                    ),
                     short_name=short_name,
                 ),
                 verbose=False,

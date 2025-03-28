@@ -1,5 +1,6 @@
 import contextlib
 import fcntl
+import functools
 import json
 import os
 import pathlib
@@ -96,6 +97,13 @@ def save_ruyaml(path: pathlib.Path, yml: ruyaml.YAML, data: ruyaml.Any):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('w') as f:
         yml.dump(data, f)
+
+
+@functools.cache
+def get_empty_sentinel_path() -> pathlib.Path:
+    path = get_app_path() / '.empty'
+    path.write_text('')
+    return path
 
 
 @contextlib.contextmanager
