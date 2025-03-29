@@ -7,7 +7,7 @@ import rich.prompt
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import cd, creation, package, presets
+from rbx.box import cd, creation, presets
 from rbx.box.contest import contest_package, contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
@@ -160,11 +160,6 @@ def add(path: str, short_name: str, preset: Optional[str] = None):
     dest = find_contest_yaml()
     assert dest is not None
     utils.save_ruyaml(dest, ru, contest)
-
-    # Change problem name.
-    ru, problem = package.get_ruyaml(problem_path)
-    problem['name'] = name
-    utils.save_ruyaml(problem_path / 'problem.rbx.yml', ru, problem)
 
     console.console.print(
         f'Problem [item]{name} ({short_name})[/item] added to contest at [item]{path}[/item].'

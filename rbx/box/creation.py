@@ -4,8 +4,8 @@ from typing import Annotated, Optional
 
 import typer
 
-from rbx import console
-from rbx.box import presets
+from rbx import console, utils
+from rbx.box import package, presets
 from rbx.box.presets.fetch import get_preset_fetch_info
 
 
@@ -69,5 +69,10 @@ def create(
     shutil.rmtree(str(dest_path / '.box'), ignore_errors=True)
     for lock in dest_path.rglob('.preset-lock.yml'):
         lock.unlink(missing_ok=True)
+
+    # Change problem name.
+    ru, problem = package.get_ruyaml(dest_path)
+    problem['name'] = name
+    utils.save_ruyaml(dest_path / 'problem.rbx.yml', ru, problem)
 
     presets.generate_lock(preset, root=dest_path)
