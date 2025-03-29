@@ -133,3 +133,13 @@ def get_samples() -> List[Testcase]:
         )
         for tc in tcs
     ]
+
+
+def fill_output_for_defined_testcase(testcase: Testcase) -> Testcase:
+    res = testcase.model_copy()
+    if res.outputPath is not None:
+        return res
+    output_path = res.inputPath.with_suffix('.ans')
+    if output_path.is_file():
+        res.outputPath = output_path
+    return res
