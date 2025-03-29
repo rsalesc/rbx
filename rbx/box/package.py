@@ -121,8 +121,8 @@ def save_package(
     problem_yaml_path.write_text(utils.model_to_yaml(package))
 
 
-def get_ruyaml() -> Tuple[ruyaml.YAML, ruyaml.Any]:
-    problem_yaml_path = find_problem_yaml()
+def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    problem_yaml_path = find_problem_yaml(root)
     if problem_yaml_path is None:
         console.console.print(
             f'Problem not found in {pathlib.Path().absolute()}', style='error'

@@ -6,7 +6,6 @@ import typer
 
 from rbx import console
 from rbx.box import presets
-from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.presets.fetch import get_preset_fetch_info
 
 
@@ -27,15 +26,6 @@ def create(
     ] = None,
     path: Optional[pathlib.Path] = None,
 ):
-    if find_contest_yaml() is not None:
-        console.console.print(
-            '[error]Cannot [item]rbx create[/item] a problem inside a contest.[/error]'
-        )
-        console.console.print(
-            '[error]Instead, use [item]rbx contest add[/item] to add a problem to a contest.[/error]'
-        )
-        raise typer.Exit(1)
-
     preset = preset or 'default'
     console.console.print(f'Creating new problem [item]{name}[/item]...')
 

@@ -37,6 +37,7 @@ from rbx.box import (
     validators,
 )
 from rbx.box.contest import main as contest
+from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.environment import VerificationLevel, get_environment_path
 from rbx.box.packaging import main as packaging
 from rbx.box.testcases import main as testcases
@@ -448,6 +449,15 @@ def create(
         Optional[str], typer.Option(help='Preset to use when creating the problem.')
     ] = None,
 ):
+    if find_contest_yaml() is not None:
+        console.console.print(
+            '[error]Cannot [item]rbx create[/item] a problem inside a contest.[/error]'
+        )
+        console.console.print(
+            '[error]Instead, use [item]rbx contest add[/item] to add a problem to a contest.[/error]'
+        )
+        raise typer.Exit(1)
+
     if preset is not None:
         creation.create(name, preset=preset)
         return
