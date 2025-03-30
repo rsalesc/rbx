@@ -29,7 +29,6 @@ from rbx.box.formatting import get_formatted_memory, get_formatted_time
 from rbx.box.generators import (
     GenerationMetadata,
     expand_generator_call,
-    extract_generation_testcases,
     generate_output_for_testcase,
     generate_standalone,
 )
@@ -42,6 +41,7 @@ from rbx.box.schema import (
     Testcase,
     TestcaseGroup,
 )
+from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_utils import TestcaseEntry, find_built_testcases
 from rbx.grading.steps import (
     DigestOrDest,

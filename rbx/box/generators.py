@@ -21,12 +21,11 @@ from rbx.box.testcase_extractors import (
     GenerationMetadata,
     GenerationTestcaseEntry,
     TestcaseGroupVisitor,
-    TestcaseVisitor,
+    extract_generation_testcases,
     run_testcase_visitor,
 )
 from rbx.box.testcase_utils import (
     TestcaseEntry,
-    TestcasePattern,
     fill_output_for_defined_testcase,
     find_built_testcases,
 )
@@ -311,67 +310,6 @@ def generate_output_for_testcase(
             )
             console.console.print(f'Stderr written at [item]{stderr_path}[/item]')
         raise typer.Exit(1)
-
-
-def extract_generation_testcases(
-    entries: List[TestcaseEntry],
-) -> List[GenerationTestcaseEntry]:
-    # TODO: support subgroups.
-    groups = set(entry.group for entry in entries)
-    entry_keys = set(entry.key() for entry in entries)
-
-    res: List[GenerationTestcaseEntry] = []
-
-    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
-        def should_visit_group(self, group_name: str) -> bool:
-            return group_name in groups
-
-        def visit(self, entry: GenerationTestcaseEntry):
-            # TODO: support subgroups.
-            if entry.group_entry.key() not in entry_keys:
-                return
-            res.append(entry)
-
-    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
-    return res
-
-
-def extract_generation_testcases_from_groups(
-    groups: Optional[Set[str]] = None,
-) -> List[GenerationTestcaseEntry]:
-    res: List[GenerationTestcaseEntry] = []
-
-    class ExtractGenerationTestcasesVisitor(TestcaseGroupVisitor):
-        def visit(self, entry: GenerationTestcaseEntry):
-            res.append(entry)
-
-    run_testcase_visitor(ExtractGenerationTestcasesVisitor(groups))
-    return res
-
-
-def extract_generation_testcases_from_patterns(
-    patterns: List[TestcasePattern],
-) -> List[GenerationTestcaseEntry]:
-    res: List[GenerationTestcaseEntry] = []
-
-    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
-        def should_visit_group(self, group_name: str) -> bool:
-            return any(pattern.intersecting_group(group_name) for pattern in patterns)
-
-        def should_visit_subgroup(self, subgroup_path: str) -> bool:
-            return any(
-                pattern.intersecting_group(subgroup_path) for pattern in patterns
-            )
-
-        def visit(self, entry: GenerationTestcaseEntry):
-            if not any(
-                pattern.match(entry.group_entry) for pattern in patterns
-            ) and not any(pattern.match(entry.subgroup_entry) for pattern in patterns):
-                return
-            res.append(entry)
-
-    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
-    return res
 
 
 def generate_outputs_for_testcases(

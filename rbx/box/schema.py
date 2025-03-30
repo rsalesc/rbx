@@ -232,6 +232,13 @@ A generator script to call to generate testcases for this group.
 """,
     )
 
+    extraValidators: List[CodeItem] = Field(
+        default=[],
+        description="""
+A list of extra validators to use to validate the testcases of this subgroup.
+""",
+    )
+
     @model_validator(mode='after')
     def check_oneof(self) -> 'TestcaseSubgroup':
         _check_oneof(
@@ -260,7 +267,7 @@ A list of test subgroups to define for this group.
         default=None,
         description="""
 A validator to use to validate the testcases of this group.
-If not specified, will use the package-level validator.
+If specified, will use this validator instead of the package-level validator.
 Useful in cases where the constraints vary across test groups.
 """,
     )

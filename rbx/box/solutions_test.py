@@ -5,7 +5,6 @@ import pytest
 
 from rbx.box.environment import VerificationLevel
 from rbx.box.generators import (
-    extract_generation_testcases_from_groups,
     generate_outputs_for_testcases,
     generate_testcases,
 )
@@ -13,6 +12,7 @@ from rbx.box.solutions import (
     convert_list_of_solution_evaluations_to_dict,
     run_solutions,
 )
+from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.grading.steps import Outcome
 
 

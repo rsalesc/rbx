@@ -4,10 +4,10 @@ import pytest
 
 from rbx.box import package
 from rbx.box.generators import (
-    extract_generation_testcases_from_groups,
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.testing_utils import print_directory_tree
 
 

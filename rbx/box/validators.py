@@ -9,7 +9,10 @@ from rbx import console
 from rbx.box import package
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.schema import CodeItem, Primitive
-from rbx.box.testcase_utils import find_built_testcase_inputs
+from rbx.box.testcase_extractors import (
+    GenerationTestcaseEntry,
+    extract_generation_testcases_from_groups,
+)
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     DigestHolder,
@@ -23,6 +26,7 @@ HitBounds = Dict[str, Tuple[bool, bool]]
 
 
 class TestcaseValidationInfo(BaseModel):
+    validator: CodeItem
     group: str
     path: pathlib.Path
     ok: bool
@@ -162,6 +166,7 @@ def validate_one_off(
 ) -> TestcaseValidationInfo:
     ok, message, _ = validate_test(testcase, validator, validator_digest)
     info = TestcaseValidationInfo(
+        validator=validator,
         group='interactive',
         path=testcase,
         ok=ok,
@@ -172,23 +177,29 @@ def validate_one_off(
 
 
 def compile_validators(
+    validation_entries: List[GenerationTestcaseEntry],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
-    pkg = package.find_problem_package_or_die()
+    validators = []
 
-    group_to_compiled_digest = {}
+    for entry in validation_entries:
+        if entry.validator is not None:
+            validators.append(entry.validator)
+        validators.extend(entry.extra_validators)
 
-    for group in pkg.testcases:
-        validator = group.validator or pkg.validator
-        if validator is None:
+    validator_to_compiled_digest = {}
+
+    for validator in validators:
+        if str(validator.path) in validator_to_compiled_digest:
             continue
-        if progress:
-            progress.update(
-                f'Compiling validator for group [item]{group.name}[/item]...'
-            )
-        group_to_compiled_digest[group.name] = _compile_validator(validator)
 
-    return group_to_compiled_digest
+        if progress:
+            progress.update(f'Compiling validator [item]{validator.path}[/item]...')
+        validator_to_compiled_digest[str(validator.path)] = _compile_validator(
+            validator
+        )
+
+    return validator_to_compiled_digest
 
 
 def validate_testcases(
@@ -199,38 +210,52 @@ def validate_testcases(
         if progress is not None:
             progress.step()
 
-    pkg = package.find_problem_package_or_die()
-
-    group_to_compiled_digest = compile_validators(progress)
+    validation_entries = extract_generation_testcases_from_groups(groups)
+    validator_to_compiled_digest = compile_validators(
+        validation_entries, progress=progress
+    )
 
     validation_info = []
 
-    for group in pkg.testcases:
-        validator = group.validator or pkg.validator
-        if validator is None:
+    for entry in validation_entries:
+        input_path = entry.metadata.copied_to.inputPath
+        if not input_path.is_file():
             continue
-        if group.name not in group_to_compiled_digest:
-            continue
-        if groups is not None and group.name not in groups:
-            continue
-        compiled_digest = group_to_compiled_digest[group.name]
 
-        testcases = find_built_testcase_inputs(group)
-
-        for testcase in testcases:
+        # Main validation.
+        if entry.validator is not None:
+            compiled_digest = validator_to_compiled_digest[str(entry.validator.path)]
             ok, message, hit_bounds = validate_test(
-                testcase, validator, compiled_digest
+                input_path, entry.validator, compiled_digest
             )
             validation_info.append(
                 TestcaseValidationInfo(
-                    group=group.name,
-                    path=testcase,
+                    validator=entry.validator,
+                    group=entry.group_entry.group,
+                    path=input_path,
                     ok=ok,
                     hit_bounds=hit_bounds,
                     message=message,
                 )
             )
-            step()
+
+        for extra_validator in entry.extra_validators:
+            compiled_digest = validator_to_compiled_digest[str(extra_validator.path)]
+            ok, message, hit_bounds = validate_test(
+                input_path, extra_validator, compiled_digest
+            )
+            validation_info.append(
+                TestcaseValidationInfo(
+                    validator=extra_validator,
+                    group=entry.group_entry.group,
+                    path=input_path,
+                    ok=ok,
+                    hit_bounds=hit_bounds,
+                    message=message,
+                )
+            )
+
+        step()
 
     return validation_info
 
@@ -242,11 +267,14 @@ def has_validation_errors(infos: List[TestcaseValidationInfo]) -> bool:
 def print_validation_report(infos: List[TestcaseValidationInfo]):
     console.console.rule('Validation report', style='status')
     hit_bounds_per_group: Dict[Optional[str], HitBounds] = {}
+    any_failure = False
     for info in infos:
         if not info.ok:
             console.console.print(
-                f'[error]Testcase [item]{info.path}[/item] failed verification:[/error]\n{info.message}'
+                f'[error]Testcase [item]{info.path}[/item] failed verification on validator [item]{info.validator.path}[/item]:[/error]'
             )
+            console.console.print(info.message)
+            any_failure = True
             continue
 
         if info.group not in hit_bounds_per_group:
@@ -278,7 +306,7 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
         # If there's only the samples group, do not check for hit bounds.
         hit_bounds_per_group = {}
 
-    if not hit_bounds_per_group:
+    if not hit_bounds_per_group and not any_failure:
         console.console.print('[info]No validation issues found.[/info]')
         return
 

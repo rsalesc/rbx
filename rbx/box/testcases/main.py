@@ -7,10 +7,12 @@ from rbx import annotations, config, utils
 from rbx.box import package
 from rbx.box.generators import (
     GenerationTestcaseEntry,
-    extract_generation_testcases,
-    extract_generation_testcases_from_patterns,
     generate_outputs_for_testcases,
     generate_standalone,
+)
+from rbx.box.testcase_extractors import (
+    extract_generation_testcases,
+    extract_generation_testcases_from_patterns,
 )
 from rbx.box.testcase_utils import TestcaseEntry, TestcasePattern
 from rbx.console import console

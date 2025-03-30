@@ -9,8 +9,12 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import package
 from rbx.box.code import compile_item, run_item
-from rbx.box.schema import GeneratorCall, Testcase, TestcaseSubgroup
-from rbx.box.testcase_utils import TestcaseEntry, fill_output_for_defined_testcase
+from rbx.box.schema import CodeItem, GeneratorCall, Testcase, TestcaseSubgroup
+from rbx.box.testcase_utils import (
+    TestcaseEntry,
+    TestcasePattern,
+    fill_output_for_defined_testcase,
+)
 from rbx.grading.steps import DigestHolder, DigestOrDest, DigestOrSource
 
 
@@ -106,6 +110,8 @@ class GenerationTestcaseEntry(BaseModel):
     subgroup_entry: TestcaseEntry
 
     metadata: GenerationMetadata
+    validator: Optional[CodeItem] = None
+    extra_validators: List[CodeItem] = []
 
 
 class TestcaseVisitor(abc.ABC):
@@ -137,8 +143,14 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
     pkg = package.find_problem_package_or_die()
 
     def _explore_subgroup(
-        subgroup: TestcaseSubgroup, subgroup_index: Optional[int], prefix: List[str]
+        subgroup: TestcaseSubgroup,
+        subgroup_index: Optional[int],
+        prefix: List[str],
+        validator: Optional[CodeItem] = None,
+        extra_validators: Optional[List[CodeItem]] = None,
     ):
+        extra_validators = extra_validators or []
+
         assert prefix and len(prefix) >= 1 and len(prefix) <= 2
         group_path = prefix[0]
         subgroup_path = '/'.join(prefix)
@@ -175,6 +187,8 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                         copied_from=fill_output_for_defined_testcase(tc),
                         copied_to=_copied_to(i),
                     ),
+                    validator=validator,
+                    extra_validators=extra_validators,
                 )
             )
             i += 1
@@ -196,6 +210,8 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                             copied_from=fill_output_for_defined_testcase(tc),
                             copied_to=_copied_to(i),
                         ),
+                        validator=validator,
+                        extra_validators=extra_validators,
                     )
                 )
                 i += 1
@@ -210,6 +226,8 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                         generator_call=generator_call,
                         copied_to=_copied_to(i),
                     ),
+                    validator=validator,
+                    extra_validators=extra_validators,
                 )
             )
             i += 1
@@ -236,6 +254,8 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                             ),
                             copied_to=_copied_to(i),
                         ),
+                        validator=validator,
+                        extra_validators=extra_validators,
                     )
                 )
                 i += 1
@@ -244,7 +264,85 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
         if not visitor.should_visit_group(group.name):
             continue
 
-        _explore_subgroup(group, 0 if group.subgroups else None, [group.name])
+        group_validator = pkg.validator
+        if group.validator is not None:
+            group_validator = group.validator
+
+        extra_validators = group.extraValidators
+        _explore_subgroup(
+            group,
+            0 if group.subgroups else None,
+            [group.name],
+            validator=group_validator,
+            extra_validators=extra_validators,
+        )
 
         for i, subgroup in enumerate(group.subgroups):
-            _explore_subgroup(subgroup, i + 1, [group.name, subgroup.name])
+            _explore_subgroup(
+                subgroup,
+                i + 1,
+                [group.name, subgroup.name],
+                validator=group_validator,
+                extra_validators=extra_validators + subgroup.extraValidators,
+            )
+
+
+def extract_generation_testcases(
+    entries: List[TestcaseEntry],
+) -> List[GenerationTestcaseEntry]:
+    # TODO: support subgroups.
+    groups = set(entry.group for entry in entries)
+    entry_keys = set(entry.key() for entry in entries)
+
+    res: List[GenerationTestcaseEntry] = []
+
+    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
+        def should_visit_group(self, group_name: str) -> bool:
+            return group_name in groups
+
+        def visit(self, entry: GenerationTestcaseEntry):
+            # TODO: support subgroups.
+            if entry.group_entry.key() not in entry_keys:
+                return
+            res.append(entry)
+
+    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
+    return res
+
+
+def extract_generation_testcases_from_groups(
+    groups: Optional[Set[str]] = None,
+) -> List[GenerationTestcaseEntry]:
+    res: List[GenerationTestcaseEntry] = []
+
+    class ExtractGenerationTestcasesVisitor(TestcaseGroupVisitor):
+        def visit(self, entry: GenerationTestcaseEntry):
+            res.append(entry)
+
+    run_testcase_visitor(ExtractGenerationTestcasesVisitor(groups))
+    return res
+
+
+def extract_generation_testcases_from_patterns(
+    patterns: List[TestcasePattern],
+) -> List[GenerationTestcaseEntry]:
+    res: List[GenerationTestcaseEntry] = []
+
+    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
+        def should_visit_group(self, group_name: str) -> bool:
+            return any(pattern.intersecting_group(group_name) for pattern in patterns)
+
+        def should_visit_subgroup(self, subgroup_path: str) -> bool:
+            return any(
+                pattern.intersecting_group(subgroup_path) for pattern in patterns
+            )
+
+        def visit(self, entry: GenerationTestcaseEntry):
+            if not any(
+                pattern.match(entry.group_entry) for pattern in patterns
+            ) and not any(pattern.match(entry.subgroup_entry) for pattern in patterns):
+                return
+            res.append(entry)
+
+    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
+    return res

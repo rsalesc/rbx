@@ -4,7 +4,6 @@ from rbx import console, utils
 from rbx.box import environment, package
 from rbx.box.environment import VerificationLevel
 from rbx.box.generators import (
-    extract_generation_testcases_from_groups,
     generate_outputs_for_testcases,
     generate_testcases,
 )
@@ -13,6 +12,7 @@ from rbx.box.solutions import (
     print_run_report,
     run_solutions,
 )
+from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.validators import (
     has_validation_errors,
     print_validation_report,
@@ -50,7 +50,10 @@ def build(
                 'Validated [item]{processed}[/item] testcases...',
                 keep=True,
             ) as s:
-                infos = validate_testcases(s, groups=groups)
+                infos = validate_testcases(
+                    s,
+                    groups=groups,
+                )
                 print_validation_report(infos)
 
             if has_validation_errors(infos):
