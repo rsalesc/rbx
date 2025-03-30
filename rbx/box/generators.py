@@ -199,14 +199,14 @@ def generate_standalone(
             _, validator_digest = validator_tp
         if progress:
             progress.update('Validating test...')
-        ok, message, *_ = validators.validate_test(
+        validation_info = validators.validate_one_off(
             spec.copied_to.inputPath,
             validator,
             validator_digest,
         )
-        if not ok:
+        if not validation_info.ok:
             _print_error_header('failed validating testcase.')
-            console.console.print(f'[error]Message:[/error] {message}')
+            console.console.print(f'[error]Message:[/error] {validation_info.message}')
             console.console.print(
                 f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
             )

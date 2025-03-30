@@ -140,7 +140,7 @@ def _validate_testcase(
     )
 
 
-def validate_test(
+def _validate_test(
     testcase: pathlib.Path,
     validator: CodeItem,
     validator_digest: str,
@@ -164,7 +164,7 @@ def validate_one_off(
     validator: CodeItem,
     validator_digest: str,
 ) -> TestcaseValidationInfo:
-    ok, message, _ = validate_test(testcase, validator, validator_digest)
+    ok, message, _ = _validate_test(testcase, validator, validator_digest)
     info = TestcaseValidationInfo(
         validator=validator,
         group='interactive',
@@ -225,7 +225,7 @@ def validate_testcases(
         # Main validation.
         if entry.validator is not None:
             compiled_digest = validator_to_compiled_digest[str(entry.validator.path)]
-            ok, message, hit_bounds = validate_test(
+            ok, message, hit_bounds = _validate_test(
                 input_path, entry.validator, compiled_digest
             )
             validation_info.append(
@@ -241,7 +241,7 @@ def validate_testcases(
 
         for extra_validator in entry.extra_validators:
             compiled_digest = validator_to_compiled_digest[str(extra_validator.path)]
-            ok, message, hit_bounds = validate_test(
+            ok, message, hit_bounds = _validate_test(
                 input_path, extra_validator, compiled_digest
             )
             validation_info.append(
