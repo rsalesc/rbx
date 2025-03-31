@@ -55,37 +55,50 @@ app.add_typer(
     setter_config.app,
     name='config, cfg',
     cls=annotations.AliasGroup,
-    help='Manage setter configuration.',
+    help='Manage setter configuration (sub-command).',
+    rich_help_panel='Configuration',
 )
 app.add_typer(
     build_statements.app,
     name='statements, st',
     cls=annotations.AliasGroup,
-    help='Manage statements.',
+    help='Manage statements (sub-command).',
+    rich_help_panel='Deploying',
 )
 app.add_typer(
     download.app,
     name='download',
     cls=annotations.AliasGroup,
-    help='Download an asset from supported repositories.',
+    help='Download an asset from supported repositories (sub-command).',
+    rich_help_panel='Management',
 )
 app.add_typer(
-    presets.app, name='presets', cls=annotations.AliasGroup, help='Manage presets.'
+    presets.app,
+    name='presets',
+    cls=annotations.AliasGroup,
+    help='Manage presets (sub-command).',
+    rich_help_panel='Configuration',
 )
 app.add_typer(
     packaging.app,
     name='package, pkg',
     cls=annotations.AliasGroup,
-    help='Build problem packages.',
+    help='Build problem packages (sub-command).',
+    rich_help_panel='Deploying',
 )
 app.add_typer(
-    contest.app, name='contest', cls=annotations.AliasGroup, help='Contest management.'
+    contest.app,
+    name='contest',
+    cls=annotations.AliasGroup,
+    help='Manage contests (sub-command).',
+    rich_help_panel='Management',
 )
 app.add_typer(
     testcases.app,
     name='testcases, tc, t',
     cls=annotations.AliasGroup,
-    help='Testcase management.',
+    help='Manage testcases (sub-command).',
+    rich_help_panel='Management',
 )
 
 
@@ -100,7 +113,11 @@ def main():
 #     ui_pkg.start()
 
 
-@app.command('edit, e', help='Open problem.rbx.yml in your default editor.')
+@app.command(
+    'edit, e',
+    rich_help_panel='Configuration',
+    help='Open problem.rbx.yml in your default editor.',
+)
 @package.within_problem
 def edit():
     console.console.print('Opening problem definition in editor...')
@@ -110,7 +127,9 @@ def edit():
     config.open_editor(package.find_problem_yaml() or pathlib.Path())
 
 
-@app.command('build, b', help='Build all tests for the problem.')
+@app.command(
+    'build, b', rich_help_panel='Deploying', help='Build all tests for the problem.'
+)
 @package.within_problem
 def build(verification: environment.VerificationParam):
     from rbx.box import builder
@@ -118,7 +137,11 @@ def build(verification: environment.VerificationParam):
     builder.build(verification=verification)
 
 
-@app.command('run, r', help='Build and run solution(s).')
+@app.command(
+    'run, r',
+    rich_help_panel='Testing',
+    help='Build and run solution(s).',
+)
 @package.within_problem
 def run(
     verification: environment.VerificationParam,
@@ -299,6 +322,7 @@ def _time_impl(check: bool, detailed: bool) -> Optional[int]:
 
 @app.command(
     'time, t',
+    rich_help_panel='Testing',
     help='Estimate a time limit for the problem based on a time limit formula and timings of accepted solutions.',
 )
 @package.within_problem
@@ -333,7 +357,9 @@ def time(
 
 
 @app.command(
-    'irun, ir', help='Build and run solution(s) by passing testcases in the CLI.'
+    'irun, ir',
+    rich_help_panel='Testing',
+    help='Build and run solution(s) by passing testcases in the CLI.',
 )
 @package.within_problem
 def irun(
@@ -445,7 +471,11 @@ def irun(
         )
 
 
-@app.command('create, c', help='Create a new problem package.')
+@app.command(
+    'create, c',
+    rich_help_panel='Management',
+    help='Create a new problem package.',
+)
 def create(
     name: str,
     preset: Annotated[
@@ -467,7 +497,11 @@ def create(
     creation.create(name)
 
 
-@app.command('stress', help='Run a stress test.')
+@app.command(
+    'stress',
+    rich_help_panel='Testing',
+    help='Run a stress test.',
+)
 @package.within_problem
 def stress(
     name: Annotated[
@@ -621,7 +655,11 @@ def stress(
         break
 
 
-@app.command('compile', help='Compile an asset given its path.')
+@app.command(
+    'compile',
+    rich_help_panel='Testing',
+    help='Compile an asset given its path.',
+)
 @package.within_problem
 def compile_command(
     path: Annotated[
@@ -652,7 +690,11 @@ def compile_command(
     compile.any(path, sanitized, warnings)
 
 
-@app.command('validate', help='Run the validator in a one-off fashion, interactively.')
+@app.command(
+    'validate',
+    rich_help_panel='Testing',
+    help='Run the validator in a one-off fashion, interactively.',
+)
 @package.within_problem
 def validate(
     path: Annotated[
@@ -685,7 +727,11 @@ def validate(
     validators.print_validation_report([info])
 
 
-@app.command('environment, env', help='Set or show the current box environment.')
+@app.command(
+    'environment, env',
+    rich_help_panel='Configuration',
+    help='Set or show the current box environment.',
+)
 def environment_command(
     env: Annotated[Optional[str], typer.Argument()] = None,
     install_from: Annotated[
@@ -730,6 +776,7 @@ def environment_command(
 
 @app.command(
     'activate',
+    rich_help_panel='Configuration',
     help='Activate the environment of the current preset used by the package.',
 )
 @cd.within_closest_package
@@ -764,7 +811,11 @@ def activate():
     console.console.print(f'[success]Preset [item]{preset.name}[/item] is activated.')
 
 
-@app.command('languages', help='List the languages available in this environment')
+@app.command(
+    'languages',
+    rich_help_panel='Configuration',
+    help='List the languages available in this environment',
+)
 def languages():
     env = environment.get_environment()
 
@@ -780,7 +831,11 @@ def languages():
         console.console.print()
 
 
-@app.command('clear, clean', help='Clears cache and build directories.')
+@app.command(
+    'clear, clean',
+    rich_help_panel='Management',
+    help='Clears cache and build directories.',
+)
 @cd.within_closest_package
 def clear():
     console.console.print('Cleaning cache and build directories...')
