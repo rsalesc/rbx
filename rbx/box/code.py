@@ -47,7 +47,7 @@ class SanitizationLevel(Enum):
 
     def should_sanitize(self) -> bool:
         cfg = setter_config.get_setter_config()
-        if cfg.sanitizers.enabled:
+        if cfg.sanitizers.enabled or state.STATE.sanitized:
             return self.value >= SanitizationLevel.PREFER.value
         return self.value >= SanitizationLevel.FORCE.value
 

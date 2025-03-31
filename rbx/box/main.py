@@ -103,8 +103,22 @@ app.add_typer(
 
 
 @app.callback()
-def main():
+def main(
+    sanitized: bool = typer.Option(
+        False,
+        '--sanitized',
+        '-s',
+        help='Whether to compile and run testlib components with sanitizers enabled. '
+        'If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command.',
+    ),
+):
     state.STATE.run_through_cli = True
+    state.STATE.sanitized = sanitized
+    if sanitized:
+        console.console.print(
+            '[warning]Sanitizers are running just for testlib components.\n'
+            'If you want to run the solutions with sanitizers enabled, use the [item]-s[/item] flag in the corresponding run command.[/warning]'
+        )
 
 
 # @app.command('ui', hidden=True)
