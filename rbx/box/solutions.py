@@ -635,13 +635,22 @@ async def run_and_print_interactive_solutions(
 
     for item in items:
         sol = pkg.solutions[item.solution_index]
-        with utils.no_progress(progress):
-            _print_solution_header(sol, console.console, is_irun=True)
+
+        if progress:
+            progress.update(f'Running [item]{sol.path}[/item]...')
 
         eval = await item.eval()
 
+        with utils.no_progress(progress):
+            console.console.print(get_testcase_markup_verdict(eval), end=' ')
+            _print_solution_header(sol, console.console, is_irun=True)
+            _print_solution_outcome(
+                sol, [eval], console.console, verification, subset=True
+            )
+
         stdout_path = eval.log.stdout_absolute_path
         if print:
+            console.console.rule('Output', style='status')
             if (
                 eval.testcase.output is not None
                 and stdout_path is not None
@@ -780,14 +789,17 @@ def _print_solution_outcome(
     evals: List[Evaluation],
     console: rich.console.Console,
     verification: VerificationLevel = VerificationLevel.NONE,
+    subset: bool = False,
 ) -> bool:
     pkg = package.find_problem_package_or_die()
 
     has_plain_tle = False
+    all_verdicts = set()
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
     has_sanitizer_warnings = False
     for eval in evals:
+        all_verdicts.add(eval.result.outcome)
         if eval.result.outcome != Outcome.ACCEPTED:
             bad_verdicts.add(eval.result.outcome)
         if (
@@ -808,18 +820,27 @@ def _print_solution_outcome(
     matched_bad_verdicts = bad_verdicts - unmatched_bad_verdicts
     expected_outcome_is_bad = not solution.outcome.match(Outcome.ACCEPTED)
 
-    if unmatched_bad_verdicts or (expected_outcome_is_bad and not matched_bad_verdicts):
+    has_failed = unmatched_bad_verdicts or (
+        expected_outcome_is_bad and not matched_bad_verdicts and not subset
+    )
+    if has_failed:
         console.print('[error]FAILED[/error]', end=' ')
     else:
         console.print('[success]OK[/success]', end=' ')
 
-    console.print(f'Expected: {solution.outcome}', end='')
+    if has_failed or not subset:
+        console.print(f'Expected: {solution.outcome}', end='')
+    elif subset:
+        all_verdicts_names = ' '.join(v.name for v in all_verdicts)
+        console.print(f'Got: {all_verdicts_names}', end='')
 
-    if unmatched_bad_verdicts:
-        unmatched_bad_verdicts_names = set(v.name for v in unmatched_bad_verdicts)
-        console.print(f', got: {" ".join(unmatched_bad_verdicts_names)}', end='')
-    elif expected_outcome_is_bad and not matched_bad_verdicts:
-        console.print(f', got: {Outcome.ACCEPTED.name}', end='')
+    if has_failed or not subset:
+        # Only print verdicts if not subset.
+        if unmatched_bad_verdicts:
+            unmatched_bad_verdicts_names = set(v.name for v in unmatched_bad_verdicts)
+            console.print(f', got: {" ".join(unmatched_bad_verdicts_names)}', end='')
+        elif expected_outcome_is_bad and not matched_bad_verdicts and not subset:
+            console.print(f', got: {Outcome.ACCEPTED.name}', end='')
 
     console.print()
     evals_time = _get_evals_time_in_ms(evals)
