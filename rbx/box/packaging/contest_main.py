@@ -14,7 +14,6 @@ from rbx.box.packaging.packager import (
     BuiltContestStatement,
     BuiltProblemPackage,
 )
-from rbx.box.packaging.polygon.packager import PolygonContestPackager, PolygonPackager
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -77,6 +76,11 @@ def run_contest_packager(
 def polygon(
     verification: environment.VerificationParam,
 ):
+    from rbx.box.packaging.polygon.packager import (
+        PolygonContestPackager,
+        PolygonPackager,
+    )
+
     run_contest_packager(
         PolygonContestPackager, PolygonPackager, verification=verification
     )

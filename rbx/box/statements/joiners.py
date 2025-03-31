@@ -10,12 +10,6 @@ from rbx.box.statements.builders import (
     StatementBuilderContest,
     StatementCodeLanguage,
 )
-from rbx.box.statements.latex import (
-    MAX_PDFLATEX_RUNS,
-    Latex,
-    decode_latex_output,
-    should_rerun,
-)
 from rbx.box.statements.schema import Joiner, JoinerType, JoinTexToPDF, StatementType
 
 
@@ -84,6 +78,13 @@ class TeX2PDFJoiner(StatementJoiner):
         contest: StatementBuilderContest,
         verbose: bool = False,
     ) -> bytes:
+        from rbx.box.statements.latex import (
+            MAX_PDFLATEX_RUNS,
+            Latex,
+            decode_latex_output,
+            should_rerun,
+        )
+
         latex = Latex(input.decode())
         latex_result = latex.build_pdf(context.root)
         pdf = latex_result.pdf

@@ -7,7 +7,6 @@ import shutil
 from collections.abc import Iterator
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-import questionary
 import rich
 import rich.live
 import rich.markup
@@ -674,6 +673,8 @@ def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
         tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
 
     # Store in a separate list to maintain order with the package declaration.
+    import questionary
+
     choices = [
         questionary.Choice(title=_get_solution_repr(sol), value=str(sol.path))
         for sol in pkg.solutions

@@ -1,5 +1,4 @@
 import functools
-import importlib
 import importlib.resources
 import os
 import pathlib
@@ -8,7 +7,6 @@ import subprocess
 import tempfile
 from typing import Any, Dict, List, Optional
 
-import requests
 import typer
 from pydantic import BaseModel
 
@@ -109,6 +107,8 @@ def get_app_file(path: pathlib.Path) -> pathlib.Path:
 
 
 def _download_checker(name: str, save_at: pathlib.Path):
+    import requests
+
     console.print(f'Downloading checker {name}...')
     r = requests.get(
         f'https://raw.githubusercontent.com/MikeMirzayanov/testlib/master/checkers/{name}'
@@ -121,6 +121,8 @@ def _download_checker(name: str, save_at: pathlib.Path):
 
 
 def _download_testlib(save_at: pathlib.Path):
+    import requests
+
     console.print('Downloading testlib.h...')
     r = requests.get(
         'https://raw.githubusercontent.com/MikeMirzayanov/testlib/master/testlib.h'
@@ -136,6 +138,8 @@ def _download_testlib(save_at: pathlib.Path):
 
 
 def _download_jngen(save_at: pathlib.Path):
+    import requests
+
     console.print('Downloading jngen.h...')
     r = requests.get('https://raw.githubusercontent.com/ifsmirnov/jngen/master/jngen.h')
 
@@ -149,6 +153,8 @@ def _download_jngen(save_at: pathlib.Path):
 
 
 def _download_bits_stdcpp(save_at: pathlib.Path):
+    import requests
+
     console.print('Downloading bits/stdc++.h...')
     r = requests.get(
         'https://raw.githubusercontent.com/tekfyl/bits-stdc-.h-for-mac/master/stdc%2B%2B.h'

@@ -13,7 +13,6 @@ import rich.status
 import ruyaml
 import typer
 import yaml
-from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from rich import text
 from rich.highlighter import JSONHighlighter
@@ -74,9 +73,7 @@ def model_json(model: BaseModel) -> str:
 def model_to_yaml(model: BaseModel) -> str:
     path = ensure_schema(model.__class__)
     return f'# yaml-language-server: $schema={path}\n\n' + yaml.dump(
-        jsonable_encoder(
-            model.model_dump(mode='json', exclude_unset=True, exclude_none=True)
-        ),
+        model.model_dump(mode='json', exclude_unset=True, exclude_none=True),
         sort_keys=False,
         allow_unicode=True,
     )

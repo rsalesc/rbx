@@ -16,7 +16,6 @@ from rbx.box.schema import (
     GeneratorCall,
     Testcase,
 )
-from rbx.box.stressing import generator_parser
 from rbx.box.testcase_extractors import (
     GenerationMetadata,
     GenerationTestcaseEntry,
@@ -119,6 +118,8 @@ def compile_generators(
 
 
 def expand_generator_call(call: GeneratorCall) -> GeneratorCall:
+    from rbx.box.stressing import generator_parser
+
     vars = package.find_problem_package_or_die().expanded_vars
     generator_for_args = generator_parser.Generator(vars)
     parsed_args = generator_parser.parse(call.args or '')

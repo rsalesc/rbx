@@ -1,5 +1,4 @@
 import functools
-import importlib
 import importlib.resources
 import pathlib
 import shlex

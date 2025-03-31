@@ -3,8 +3,6 @@ import shutil
 import tempfile
 from typing import Annotated, Iterable, List, Optional, Sequence, Union
 
-import git
-import questionary
 import rich
 import rich.prompt
 import typer
@@ -306,6 +304,8 @@ def optionally_install_environment_from_preset(
     if env_path.is_file():
         if digest_file(preset_env_path) == digest_file(env_path):
             return
+        import questionary
+
         overwrite = questionary.confirm(
             'Preset environment file has changed. Overwrite?',
             default=False,
@@ -371,6 +371,8 @@ def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
 
 
 def install_from_remote(fetch_info: PresetFetchInfo, force: bool = False) -> str:
+    import git
+
     assert fetch_info.fetch_uri is not None
     with tempfile.TemporaryDirectory() as d:
         console.console.print(
@@ -484,6 +486,8 @@ def update(
 
     for preset_name in presets:
         if preset_name == LOCAL:
+            import questionary
+
             if not questionary.confirm(
                 'Updating local preset will remove all custom changes you made to the preset.',
                 default=False,

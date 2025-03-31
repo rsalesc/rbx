@@ -3,7 +3,7 @@ from typing import Annotated, List, Optional
 import typer
 
 from rbx import annotations, console
-from rbx.box import builder, cd, environment, package
+from rbx.box import cd, environment, package
 from rbx.box.contest.build_contest_statements import build_statement
 from rbx.box.contest.contest_package import (
     find_contest_package_or_die,
@@ -44,6 +44,8 @@ def build(
     contest = find_contest_package_or_die()
     # At most run the validators, only in samples.
     if samples:
+        from rbx.box import builder
+
         for problem in contest.problems:
             console.console.print(
                 f'Processing problem [item]{problem.short_name}[/item]...'

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import importlib.resources
 import logging
 import os

@@ -5,11 +5,9 @@ from typing import Type
 import typer
 
 from rbx import annotations, console
-from rbx.box import builder, environment, package
+from rbx.box import environment, package
 from rbx.box.package import get_build_path
-from rbx.box.packaging.boca.packager import BocaPackager
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
-from rbx.box.packaging.polygon.packager import PolygonPackager
 from rbx.box.statements.build_statements import build_statement
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -19,6 +17,8 @@ def run_packager(
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
 ) -> pathlib.Path:
+    from rbx.box import builder
+
     if not builder.verify(verification=verification):
         console.console.print(
             '[error]Build or verification failed, check the report.[/error]'
@@ -58,6 +58,8 @@ def run_packager(
 def polygon(
     verification: environment.VerificationParam,
 ):
+    from rbx.box.packaging.polygon.packager import PolygonPackager
+
     run_packager(PolygonPackager, verification=verification)
 
 
@@ -65,4 +67,6 @@ def polygon(
 def boca(
     verification: environment.VerificationParam,
 ):
+    from rbx.box.packaging.boca.packager import BocaPackager
+
     run_packager(BocaPackager, verification=verification)

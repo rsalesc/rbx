@@ -11,12 +11,6 @@ from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box.schema import Package, Primitive, Testcase
-from rbx.box.statements.latex import (
-    MAX_PDFLATEX_RUNS,
-    Latex,
-    decode_latex_output,
-    should_rerun,
-)
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
     render_latex_template,
@@ -355,6 +349,13 @@ class TeX2PDFBuilder(StatementBuilder):
         item: StatementBuilderItem,
         verbose: bool = False,
     ) -> bytes:
+        from rbx.box.statements.latex import (
+            MAX_PDFLATEX_RUNS,
+            Latex,
+            decode_latex_output,
+            should_rerun,
+        )
+
         latex = Latex(input.decode())
         latex_result = latex.build_pdf(context.root)
         pdf = latex_result.pdf

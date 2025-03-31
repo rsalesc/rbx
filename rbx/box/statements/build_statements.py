@@ -6,7 +6,7 @@ from typing import Annotated, Dict, List, Optional, Tuple
 import typer
 
 from rbx import annotations, console
-from rbx.box import builder, environment, package
+from rbx.box import environment, package
 from rbx.box.schema import Package
 from rbx.box.statements.builders import (
     BUILDER_LIST,
@@ -333,6 +333,8 @@ def build(
 ):
     # At most run the validators, only in samples.
     if samples:
+        from rbx.box import builder
+
         if not builder.build(
             verification=verification,
             groups=set(['samples']),

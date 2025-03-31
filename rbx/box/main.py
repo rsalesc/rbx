@@ -18,11 +18,9 @@ from typing import Annotated, List, Optional
 import rich
 import rich.prompt
 import typer
-import questionary
 
 from rbx import annotations, config, console, utils
 from rbx.box import (
-    builder,
     cd,
     setter_config,
     state,
@@ -33,7 +31,6 @@ from rbx.box import (
     package,
     compile,
     presets,
-    stresses,
     validators,
 )
 from rbx.box.contest import main as contest
@@ -116,6 +113,8 @@ def edit():
 @app.command('build, b', help='Build all tests for the problem.')
 @package.within_problem
 def build(verification: environment.VerificationParam):
+    from rbx.box import builder
+
     builder.build(verification=verification)
 
 
@@ -188,6 +187,8 @@ def run(
         if not tracked_solutions:
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
+
+    from rbx.box import builder
 
     if not builder.build(verification=verification, output=check):
         return
@@ -321,6 +322,8 @@ def time(
             '[warning]No main solution found, running without checkers.[/warning]'
         )
         check = False
+
+    from rbx.box import builder
 
     verification = VerificationLevel.ALL_SOLUTIONS.value
     if not builder.build(verification=verification, output=check):
@@ -522,6 +525,8 @@ def stress(
         )
         raise typer.Exit(1)
 
+    from rbx.box import stresses
+
     with utils.StatusProgress('Running stress...') as s:
         report = stresses.run_stress(
             name,
@@ -554,6 +559,8 @@ def stress(
             if group.generatorScript is not None
             and group.generatorScript.path.suffix == '.txt'
         }
+
+        import questionary
 
         testgroup = questionary.select(
             'Choose the testgroup to add the tests to.\nOnly test groups that have a .txt generatorScript are shown below: ',
@@ -635,6 +642,8 @@ def compile_command(
     ),
 ):
     if path is None:
+        import questionary
+
         path = questionary.path("What's the path to your asset?").ask()
         if path is None:
             console.console.print('[error]No path specified.[/error]')
