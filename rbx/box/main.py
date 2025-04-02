@@ -742,6 +742,18 @@ def validate(
 
 
 @app.command(
+    'unit',
+    rich_help_panel='Testing',
+    help='Run unit tests for the validator and checker.',
+)
+def unit_tests():
+    from rbx.box import unit
+
+    with utils.StatusProgress('Running unit tests...') as s:
+        unit.run_unit_tests(s)
+
+
+@app.command(
     'environment, env',
     rich_help_panel='Configuration',
     help='Set or show the current box environment.',

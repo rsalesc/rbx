@@ -148,6 +148,14 @@ class ExpectedOutcome(AutoEnum):
         return bool(set(self.get_matches()) & set(rhs.get_matches()))
 
 
+class ValidatorOutcome(AutoEnum):
+    VALID = alias('valid')  # type: ignore
+    """Expected outcome for valid tests."""
+
+    INVALID = alias('invalid')  # type: ignore
+    """Expected outcome for invalid tests."""
+
+
 class CodeItem(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -337,6 +345,59 @@ class LimitModifiers(BaseModel):
     )
 
 
+class ValidatorTest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    input: pathlib.Path = Field(
+        description='The input file to be used as unit test input for the validator.'
+    )
+    outcome: ValidatorOutcome = Field(
+        default=ValidatorOutcome.VALID,
+        description='The expected outcome of the validator.',
+    )
+
+    validator: Optional[CodeItem] = Field(
+        default=None,
+        description='The validator to use for this test. If not specified, will use the package-level validator.',
+    )
+
+
+class CheckerTest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    input: Optional[pathlib.Path] = Field(
+        default=None,
+        description='The input file to be used as unit test input for the checker. If not specified, will pass an empty file.',
+    )
+    output: Optional[pathlib.Path] = Field(
+        default=None,
+        description='The solution output file to be used as unit test output for the checker. If not specified, will pass an empty file.',
+    )
+    answer: Optional[pathlib.Path] = Field(
+        default=None,
+        description='The answer file to be used as unit test answer for the checker. If not specified, will pass an empty file.',
+    )
+
+    outcome: ExpectedOutcome = Field(
+        default=ExpectedOutcome.ACCEPTED,
+        description='The expected outcome of the checker.',
+    )
+
+
+class UnitTests(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    validator: List[ValidatorTest] = Field(
+        default=[],
+        description='Unit tests for the validator.',
+    )
+
+    checker: List[CheckerTest] = Field(
+        default=[],
+        description='Unit tests for the checker.',
+    )
+
+
 class Package(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -397,6 +458,11 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     #   - It will be available as \VAR{key} variables in the rbx statement.
     vars: Dict[str, Primitive] = Field(
         default={}, description='Variables to be re-used across the package.'
+    )
+
+    unitTests: UnitTests = Field(
+        default_factory=UnitTests,
+        description='Unit tests for components of this problem.',
     )
 
     @property

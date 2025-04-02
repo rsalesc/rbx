@@ -177,15 +177,10 @@ def validate_one_off(
 
 
 def compile_validators(
-    validation_entries: List[GenerationTestcaseEntry],
+    validators: List[CodeItem],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
-    validators = []
-
-    for entry in validation_entries:
-        if entry.validator is not None:
-            validators.append(entry.validator)
-        validators.extend(entry.extra_validators)
+    validator_to_compiled_digest = {}
 
     validator_to_compiled_digest = {}
 
@@ -202,6 +197,20 @@ def compile_validators(
     return validator_to_compiled_digest
 
 
+def compile_validators_for_entries(
+    validation_entries: List[GenerationTestcaseEntry],
+    progress: Optional[StatusProgress] = None,
+) -> Dict[str, str]:
+    validators = []
+
+    for entry in validation_entries:
+        if entry.validator is not None:
+            validators.append(entry.validator)
+        validators.extend(entry.extra_validators)
+
+    return compile_validators(validators, progress=progress)
+
+
 def validate_testcases(
     progress: Optional[StatusProgress] = None,
     groups: Optional[Set[str]] = None,
@@ -211,7 +220,7 @@ def validate_testcases(
             progress.step()
 
     validation_entries = extract_generation_testcases_from_groups(groups)
-    validator_to_compiled_digest = compile_validators(
+    validator_to_compiled_digest = compile_validators_for_entries(
         validation_entries, progress=progress
     )
 

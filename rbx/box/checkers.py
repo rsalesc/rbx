@@ -17,10 +17,14 @@ from rbx.grading.steps import (
     Outcome,
     RunLog,
 )
+from rbx.utils import StatusProgress
 
 
-def compile_checker() -> str:
+def compile_checker(progress: Optional[StatusProgress] = None) -> str:
     checker = package.get_checker()
+
+    if progress:
+        progress.update('Compiling checker...')
 
     try:
         digest = compile_item(checker, sanitized=SanitizationLevel.PREFER)
