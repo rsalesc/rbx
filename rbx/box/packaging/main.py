@@ -70,3 +70,12 @@ def boca(
     from rbx.box.packaging.boca.packager import BocaPackager
 
     run_packager(BocaPackager, verification=verification)
+
+
+@app.command('moj', help='Build a package for MOJ.')
+def moj(
+    verification: environment.VerificationParam,
+):
+    from rbx.box.packaging.moj.packager import MojPackager
+
+    run_packager(MojPackager, verification=verification)
