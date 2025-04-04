@@ -393,6 +393,13 @@ class SandboxBase(abc.ABC):
             return None
         return real_path
 
+    def create_fifo(self, path: pathlib.Path, override: bool = False):
+        real_path = self.relative_path(path)
+        if override:
+            real_path.unlink(missing_ok=True)
+        os.mkfifo(str(real_path))
+        return real_path
+
     def create_file_from_storage(
         self,
         path: pathlib.Path,

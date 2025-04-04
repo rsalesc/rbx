@@ -136,6 +136,15 @@ class GradingFileOutput(BaseModel):
         raise ValueError('No file to get')
 
 
+class GradingFifo(BaseModel):
+    # Destination path relative to the sandbox.
+    path: pathlib.Path
+    # Symlink to the FIFO outside the sandbox.
+    symlink: Optional[pathlib.Path] = None
+    # Whether to create the FIFO if it does not exist.
+    create: bool = True
+
+
 class GradingArtifacts(BaseModel):
     # Root directory for the produced artifacts.
     root: pathlib.Path = pathlib.PosixPath('.')
@@ -143,6 +152,8 @@ class GradingArtifacts(BaseModel):
     inputs: List[GradingFileInput] = []
     # List of output files to copy from the sandbox.
     outputs: List[GradingFileOutput] = []
+    # List of FIFOs
+    fifos: List[GradingFifo] = []
     # Capture certain logs of the execution.
     logs: Optional[GradingLogsHolder] = None
 
@@ -276,6 +287,16 @@ def _process_output_artifacts(
         if output_artifact.executable:
             dst.chmod(0o755)
     return True
+
+
+def _process_fifos(artifacts: GradingArtifacts, sandbox: SandboxBase):
+    for fifo in artifacts.fifos:
+        if not fifo.create:
+            continue
+        if fifo.symlink is not None:
+            sandbox.create_symlink(fifo.path, fifo.symlink, override=True)
+        else:
+            sandbox.create_fifo(fifo.path, override=True)
 
 
 def testlib_grading_input() -> GradingFileInput:
@@ -561,6 +582,7 @@ def run(
     metadata: Optional[RunLogMetadata] = None,
 ) -> Optional[RunLog]:
     _process_input_artifacts(artifacts, sandbox)
+    _process_fifos(artifacts, sandbox)
     cmd = _split_and_expand(command, sandbox)
     sandbox.set_params(params)
 
