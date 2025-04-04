@@ -169,7 +169,8 @@ class BocaPackager(BasePackager):
             compile_text = compile_text.replace('{{rbxFlags}}', flags[language])
         return compile_text
 
-    def _copy_solutions(self, into_path: pathlib.Path):
+    def _copy_solutions(self, into_path: pathlib.Path, fix_java: bool = True):
+        into_path = into_path / 'solutions'
         for solution in package.get_solutions():
             dest_path = (
                 into_path

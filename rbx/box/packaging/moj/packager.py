@@ -10,11 +10,16 @@ from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension
 from rbx.box.packaging.boca.packager import BocaPackager
 from rbx.box.packaging.packager import BuiltStatement
-from rbx.config import get_default_app_path
+from rbx.box.schema import ExpectedOutcome
+from rbx.config import get_default_app_path, get_testlib
 from rbx.grading.judge.digester import digest_cooperatively
 
 
 class MojPackager(BocaPackager):
+    def __init__(self, for_boca: bool = False):
+        super().__init__()
+        self.for_boca = for_boca
+
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()
         return (
@@ -23,17 +28,20 @@ class MojPackager(BocaPackager):
             f'descfile={self._get_problem_name()}.pdf\n'
         )
 
-    def _get_limits(self) -> str:
+    def _get_tl(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
 
         pkg = package.find_problem_package_or_die()
-        tl = pkg.timeLimit
+        res = f'TL[default]={pkg.timeLimit / 1000}\n'
+        for language in extension.languages:
+            res += f'TL[{language}]={self._get_pkg_timelimit(language) / 1000}\n'
+        return res
+
+    def _get_limits(self) -> str:
+        pkg = package.find_problem_package_or_die()
         ml = pkg.memoryLimit
         ol = pkg.outputLimit
-        conf = f'ULIMITS[-f]={ol}\n' f'ULIMITS[-v]={ml}\n' f'TL[default]={tl / 1000}\n'
-        for language in extension.languages:
-            conf += f'TL[{language}]={self._get_pkg_timelimit(language) / 1000}\n'
-        return conf
+        return f'ULIMITS[-f]={ol}\n' f'ULIMITS[-v]={ml * 1024}\n'
 
     def _get_compare(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
@@ -56,6 +64,24 @@ class MojPackager(BocaPackager):
 
     def _get_checker(self) -> str:
         return package.get_checker().path.read_text()
+
+    def _copy_solutions_moj(self, into_path: pathlib.Path):
+        into_path = into_path / 'sols'
+        has_good = False
+        for solution in package.get_solutions():
+            tag = 'wrong'
+            if solution.outcome == ExpectedOutcome.ACCEPTED:
+                tag = 'good'
+                has_good = True
+            elif solution.outcome.is_slow():
+                tag = 'slow'
+            dest_path = into_path / tag / solution.path.name
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(str(solution.path), dest_path)
+
+        if not has_good:
+            console.console.print('[error]No good solution found.[/error]')
+            raise typer.Exit(1)
 
     def name(self) -> str:
         return 'moj'
@@ -80,10 +106,22 @@ class MojPackager(BocaPackager):
         limits_path.parent.mkdir(parents=True, exist_ok=True)
         limits_path.write_text(self._get_limits())
 
+        # Prepare TL
+        if self.for_boca:
+            tl_path = into_path / 'tl'
+            tl_path.parent.mkdir(parents=True, exist_ok=True)
+            tl_path.write_text(self._get_tl())
+
         # Prepare compare
         compare_path = into_path / 'scripts' / 'compare.sh'
         compare_path.parent.mkdir(parents=True, exist_ok=True)
         compare_path.write_text(self._get_compare())
+        compare_path.chmod(0o755)
+
+        # Prepare testlib
+        testlib_path = into_path / 'scripts' / 'testlib.h'
+        testlib_path.parent.mkdir(parents=True, exist_ok=True)
+        testlib_path.write_text(get_testlib().read_text())
 
         # Prepare checker
         checker_path = into_path / 'scripts' / 'checker.cpp'
@@ -99,9 +137,10 @@ class MojPackager(BocaPackager):
         )
 
         # Copy solutions
-        solutions_path = into_path / 'solutions'
-        solutions_path.mkdir(parents=True, exist_ok=True)
-        self._copy_solutions(solutions_path)
+        if self.for_boca:
+            self._copy_solutions(into_path, fix_java=False)
+        else:
+            self._copy_solutions_moj(into_path)
 
         # Prepare IO
         inputs_path = into_path / 'tests' / 'input'

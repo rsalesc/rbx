@@ -37,12 +37,28 @@ if [ ! -r "$CHECKERSOURCE" ]; then
   exit 47
 fi
 
+WORKDIR=$(dirname "$1")
 CHECKERHASH={{checkerHash}}
-CHECKERPATH=/tmp/boca-chk/$CHECKERHASH
+CHECKERPATH=$WORKDIR/$CHECKERHASH
+
+lock() {
+  MAX_ATTEMPTS=100
+  ATTEMPTS=0
+  while ! ln -s $CHECKERSOURCE $CHECKERPATH.lock; do
+    sleep 1
+    ATTEMPTS=$((ATTEMPTS + 1))
+    if [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; then
+      echo "Failed to retrieve checker lock"
+      exit 47
+    fi
+  done
+}
+
+unlock() {
+  rm -rf $CHECKERPATH.lock
+}
 
 compile_checker() {
-  mkdir -p /tmp/boca-chk
-
   cc=$(which g++)
   [ -x "$cc" ] || cc=/usr/bin/g++
   if [ ! -x "$cc" ]; then
@@ -50,9 +66,12 @@ compile_checker() {
     exit 47
   fi
 
-  $cc {{rbxFlags}} $CHECKERSOURCE -o $CHECKERPATH
-
-  chmod 0755 "$CHECKERPATH"
+  lock
+  if [ ! -x "$CHECKERPATH" ]; then
+    $cc {{rbxFlags}} $CHECKERSOURCE -o $CHECKERPATH
+    chmod 0755 "$CHECKERPATH"
+  fi
+  unlock
 }
 
 if [ ! -x "$CHECKERPATH" ]; then
