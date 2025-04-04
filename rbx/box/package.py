@@ -1,3 +1,4 @@
+import atexit
 import functools
 import pathlib
 import sys
@@ -201,7 +202,9 @@ def get_digest_as_string(
 
 
 def get_new_sandbox(root: pathlib.Path = pathlib.Path()) -> SandboxBase:
-    return get_sandbox_type()(file_cacher=get_file_cacher(root), temp_dir=TEMP_DIR)
+    sandbox = get_sandbox_type()(file_cacher=get_file_cacher(root), temp_dir=TEMP_DIR)
+    atexit.register(lambda: sandbox.cleanup(delete=True))
+    return sandbox
 
 
 @functools.cache
