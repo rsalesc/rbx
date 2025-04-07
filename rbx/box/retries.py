@@ -3,7 +3,7 @@ import pathlib
 import shutil
 import tempfile
 from contextlib import contextmanager
-from typing import Callable, List, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from rbx.box import package
 from rbx.box.setter_config import RepeatsConfig, get_setter_config
@@ -104,18 +104,18 @@ class Retrier:
         self.retries_for_stress = self.config.retries_for_stress
         self.retry_index = 0
 
-    def repeat(
+    async def repeat(
         self,
-        func: Callable[[int], Evaluation],
+        func: Callable[[int], Awaitable[Evaluation]],
     ) -> Evaluation:
         self.retry_index += 1
-        eval = func(self.retry_index)
+        eval = await func(self.retry_index)
         if self.should_repeat(eval):
             with _temp_retry_dir() as temp_dir:
                 # Move files to temp dir to open run for repeat.
                 recover = _move_logs_to_temp_dir(eval, temp_dir)
                 # Actually repeat and choose the best evaluation.
-                next_eval = self.repeat(func)
+                next_eval = await self.repeat(func)
                 chosen_eval = _merge_evaluations(eval, next_eval)
 
                 if id(chosen_eval) == id(eval):

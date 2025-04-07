@@ -20,7 +20,7 @@ from rbx.box.validators import (
 )
 
 
-def build(
+async def build(
     verification: environment.VerificationParam,
     groups: Optional[Set[str]] = None,
     output: Optional[bool] = True,
@@ -35,7 +35,7 @@ def build(
         'Built [item]{processed}[/item] testcases...',
         keep=True,
     ) as s:
-        generate_testcases(s, groups=groups)
+        await generate_testcases(s, groups=groups)
 
     if verification > 0:
         validator = package.get_validator_or_nil()
@@ -50,7 +50,7 @@ def build(
                 'Validated [item]{processed}[/item] testcases...',
                 keep=True,
             ) as s:
-                infos = validate_testcases(
+                infos = await validate_testcases(
                     s,
                     groups=groups,
                 )
@@ -70,9 +70,9 @@ def build(
         if output:
             entries = [
                 entry.group_entry
-                for entry in extract_generation_testcases_from_groups(groups)
+                for entry in await extract_generation_testcases_from_groups(groups)
             ]
-            generate_outputs_for_testcases(entries, s)
+            await generate_outputs_for_testcases(entries, s)
 
     console.console.print(
         '[success]Problem built.[/success] '
@@ -88,7 +88,7 @@ def build(
 
 
 async def verify(verification: environment.VerificationParam) -> bool:
-    if not build(verification=verification):
+    if not await build(verification=verification):
         return False
 
     if verification < VerificationLevel.FAST_SOLUTIONS.value:

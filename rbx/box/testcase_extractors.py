@@ -30,7 +30,7 @@ def _get_group_output(
     return group_path / f'{subgroup_prefix}{i:03d}.out'
 
 
-def _run_generator_script(testcase: TestcaseSubgroup) -> str:
+async def _run_generator_script(testcase: TestcaseSubgroup) -> str:
     assert testcase.generatorScript is not None
 
     cacher = package.get_file_cacher()
@@ -54,7 +54,7 @@ def _run_generator_script(testcase: TestcaseSubgroup) -> str:
             raise
 
         run_stderr = DigestHolder()
-        run_log = run_item(
+        run_log = await run_item(
             testcase.generatorScript,
             DigestOrSource.create(compiled_digest),
             stdout=DigestOrDest.create(script_digest),
@@ -116,7 +116,7 @@ class GenerationTestcaseEntry(BaseModel):
 
 class TestcaseVisitor(abc.ABC):
     @abc.abstractmethod
-    def visit(self, entry: GenerationTestcaseEntry):
+    async def visit(self, entry: GenerationTestcaseEntry):
         pass
 
     def should_visit_group(self, group_name: str) -> bool:
@@ -139,10 +139,10 @@ class TestcaseGroupVisitor(TestcaseVisitor):
         return self.groups is None or group_name in self.groups
 
 
-def run_testcase_visitor(visitor: TestcaseVisitor):
+async def run_testcase_visitor(visitor: TestcaseVisitor):
     pkg = package.find_problem_package_or_die()
 
-    def _explore_subgroup(
+    async def _explore_subgroup(
         subgroup: TestcaseSubgroup,
         subgroup_index: Optional[int],
         prefix: List[str],
@@ -179,7 +179,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
         i = 0
         # Individual testcases.
         for tc in subgroup.testcases or []:
-            visitor.visit(
+            await visitor.visit(
                 GenerationTestcaseEntry(
                     group_entry=_entry(i),
                     subgroup_entry=_sub_entry(i),
@@ -202,7 +202,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
                     continue
 
                 tc = Testcase(inputPath=input_path)
-                visitor.visit(
+                await visitor.visit(
                     GenerationTestcaseEntry(
                         group_entry=_entry(i),
                         subgroup_entry=_sub_entry(i),
@@ -218,7 +218,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
 
         # Single generators.
         for generator_call in subgroup.generators:
-            visitor.visit(
+            await visitor.visit(
                 GenerationTestcaseEntry(
                     group_entry=_entry(i),
                     subgroup_entry=_sub_entry(i),
@@ -237,12 +237,12 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
 
         # Run generator script.
         if subgroup.generatorScript is not None:
-            script = _run_generator_script(subgroup)
+            script = await _run_generator_script(subgroup)
 
             # Run each line from generator script.
             for generator_name, args, line_number in _extract_script_lines(script):
                 call = GeneratorCall(name=generator_name, args=args)
-                visitor.visit(
+                await visitor.visit(
                     GenerationTestcaseEntry(
                         group_entry=_entry(i),
                         subgroup_entry=_sub_entry(i),
@@ -269,7 +269,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
             group_validator = group.validator
 
         extra_validators = group.extraValidators
-        _explore_subgroup(
+        await _explore_subgroup(
             group,
             0 if group.subgroups else None,
             [group.name],
@@ -278,7 +278,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
         )
 
         for i, subgroup in enumerate(group.subgroups):
-            _explore_subgroup(
+            await _explore_subgroup(
                 subgroup,
                 i + 1,
                 [group.name, subgroup.name],
@@ -287,7 +287,7 @@ def run_testcase_visitor(visitor: TestcaseVisitor):
             )
 
 
-def extract_generation_testcases(
+async def extract_generation_testcases(
     entries: List[TestcaseEntry],
 ) -> List[GenerationTestcaseEntry]:
     # TODO: support subgroups.
@@ -300,30 +300,30 @@ def extract_generation_testcases(
         def should_visit_group(self, group_name: str) -> bool:
             return group_name in groups
 
-        def visit(self, entry: GenerationTestcaseEntry):
+        async def visit(self, entry: GenerationTestcaseEntry):
             # TODO: support subgroups.
             if entry.group_entry.key() not in entry_keys:
                 return
             res.append(entry)
 
-    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
+    await run_testcase_visitor(ExtractGenerationTestcasesVisitor())
     return res
 
 
-def extract_generation_testcases_from_groups(
+async def extract_generation_testcases_from_groups(
     groups: Optional[Set[str]] = None,
 ) -> List[GenerationTestcaseEntry]:
     res: List[GenerationTestcaseEntry] = []
 
     class ExtractGenerationTestcasesVisitor(TestcaseGroupVisitor):
-        def visit(self, entry: GenerationTestcaseEntry):
+        async def visit(self, entry: GenerationTestcaseEntry):
             res.append(entry)
 
-    run_testcase_visitor(ExtractGenerationTestcasesVisitor(groups))
+    await run_testcase_visitor(ExtractGenerationTestcasesVisitor(groups))
     return res
 
 
-def extract_generation_testcases_from_patterns(
+async def extract_generation_testcases_from_patterns(
     patterns: List[TestcasePattern],
 ) -> List[GenerationTestcaseEntry]:
     res: List[GenerationTestcaseEntry] = []
@@ -337,12 +337,12 @@ def extract_generation_testcases_from_patterns(
                 pattern.intersecting_group(subgroup_path) for pattern in patterns
             )
 
-        def visit(self, entry: GenerationTestcaseEntry):
+        async def visit(self, entry: GenerationTestcaseEntry):
             if not any(
                 pattern.match(entry.group_entry) for pattern in patterns
             ) and not any(pattern.match(entry.subgroup_entry) for pattern in patterns):
                 return
             res.append(entry)
 
-    run_testcase_visitor(ExtractGenerationTestcasesVisitor())
+    await run_testcase_visitor(ExtractGenerationTestcasesVisitor())
     return res

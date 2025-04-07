@@ -1,8 +1,8 @@
-import asyncio
 import pathlib
 import tempfile
 from typing import Type
 
+import syncer
 import typer
 
 from rbx import annotations, console
@@ -57,25 +57,28 @@ async def run_packager(
 
 
 @app.command('polygon', help='Build a package for Polygon.')
-def polygon(
+@syncer.sync
+async def polygon(
     verification: environment.VerificationParam,
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
-    asyncio.run(run_packager(PolygonPackager, verification=verification))
+    await run_packager(PolygonPackager, verification=verification)
 
 
 @app.command('boca', help='Build a package for BOCA.')
-def boca(
+@syncer.sync
+async def boca(
     verification: environment.VerificationParam,
 ):
     from rbx.box.packaging.boca.packager import BocaPackager
 
-    asyncio.run(run_packager(BocaPackager, verification=verification))
+    await run_packager(BocaPackager, verification=verification)
 
 
 @app.command('moj', help='Build a package for MOJ.')
-def moj(
+@syncer.sync
+async def moj(
     verification: environment.VerificationParam,
     for_boca: bool = typer.Option(
         False, help='Build a package for BOCA instead of MOJ.'
@@ -83,4 +86,4 @@ def moj(
 ):
     from rbx.box.packaging.moj.packager import MojPackager
 
-    asyncio.run(run_packager(MojPackager, verification=verification, for_boca=for_boca))
+    await run_packager(MojPackager, verification=verification, for_boca=for_boca)

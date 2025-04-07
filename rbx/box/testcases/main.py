@@ -1,6 +1,7 @@
 import pathlib
 from typing import Annotated, List, Optional
 
+import syncer
 import typer
 
 from rbx import annotations, config, utils
@@ -20,8 +21,8 @@ from rbx.console import console
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
 
-def _find_testcase(entry: TestcaseEntry) -> GenerationTestcaseEntry:
-    extracted = extract_generation_testcases([entry])
+async def _find_testcase(entry: TestcaseEntry) -> GenerationTestcaseEntry:
+    extracted = await extract_generation_testcases([entry])
     if not extracted:
         console.print(f'[error]Testcase [item]{entry}[/item] not found.[/error]')
         raise typer.Exit(1)
@@ -35,7 +36,7 @@ def _should_generate_output(entry: GenerationTestcaseEntry) -> bool:
     ) and package.get_main_solution() is not None
 
 
-def _generate_input_for_editing(
+async def _generate_input_for_editing(
     entry: GenerationTestcaseEntry,
     output: bool = True,
     progress: Optional[utils.StatusProgress] = None,
@@ -43,7 +44,7 @@ def _generate_input_for_editing(
     if (
         output and _should_generate_output(entry)
     ) or entry.metadata.copied_from is None:
-        generate_standalone(
+        await generate_standalone(
             entry.metadata,
             validate=False,
             group_entry=entry.group_entry,
@@ -54,7 +55,7 @@ def _generate_input_for_editing(
     return entry.metadata.copied_to.inputPath
 
 
-def _generate_output_for_editing(
+async def _generate_output_for_editing(
     entry: GenerationTestcaseEntry,
     progress: Optional[utils.StatusProgress] = None,
 ) -> Optional[pathlib.Path]:
@@ -65,29 +66,32 @@ def _generate_output_for_editing(
         return entry.metadata.copied_from.outputPath
     if not _should_generate_output(entry):
         return None
-    generate_outputs_for_testcases([entry.group_entry], progress=progress)
+    await generate_outputs_for_testcases([entry.group_entry], progress=progress)
     return entry.metadata.copied_to.outputPath
 
 
-def _generate_for_editing(
+async def _generate_for_editing(
     entry: GenerationTestcaseEntry,
     input: bool,
     output: bool,
     progress: Optional[utils.StatusProgress] = None,
 ) -> List[pathlib.Path]:
     res = []
-    input_path = _generate_input_for_editing(entry, output=output, progress=progress)
+    input_path = await _generate_input_for_editing(
+        entry, output=output, progress=progress
+    )
     if input:
         res.append(input_path)
     if output:
-        output_path = _generate_output_for_editing(entry, progress=progress)
+        output_path = await _generate_output_for_editing(entry, progress=progress)
         if output_path is not None:
             res.append(output_path)
     return res
 
 
 @app.command('view, v', help='View a testcase in your default editor.')
-def view(
+@syncer.sync
+async def view(
     tc: Annotated[
         str,
         typer.Argument(help='Testcase to view. Format: [group]/[index].'),
@@ -112,17 +116,18 @@ def view(
         raise typer.Exit(1)
 
     entry = TestcaseEntry.parse(tc)
-    testcase = _find_testcase(entry)
+    testcase = await _find_testcase(entry)
 
     with utils.StatusProgress('Preparing testcase...') as s:
-        items = _generate_for_editing(
+        items = await _generate_for_editing(
             testcase, input=not output_only, output=not input_only, progress=s
         )
     config.edit_multiple(items, readonly=True)
 
 
 @app.command('info, i', help='Show information about testcases.')
-def info(
+@syncer.sync
+async def info(
     pattern: Annotated[
         Optional[str],
         typer.Argument(
@@ -131,7 +136,7 @@ def info(
     ] = None,
 ):
     tc_pattern = TestcasePattern.parse(pattern or '*')
-    testcases = extract_generation_testcases_from_patterns([tc_pattern])
+    testcases = await extract_generation_testcases_from_patterns([tc_pattern])
     if not testcases:
         console.print(
             f'[error]No testcases found matching pattern [item]{pattern}[/item].[/error]'

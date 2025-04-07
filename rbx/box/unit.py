@@ -1,5 +1,7 @@
 from typing import List, Optional
 
+import syncer
+
 from rbx import console
 from rbx.box import checkers, package, validators
 from rbx.box.schema import CodeItem, Testcase, ValidatorOutcome, ValidatorTest
@@ -13,7 +15,7 @@ def _get_validator_for_test(test: ValidatorTest) -> Optional[CodeItem]:
     return pkg.validator
 
 
-def run_validator_unit_tests(progress: StatusProgress):
+async def run_validator_unit_tests(progress: StatusProgress):
     pkg = package.find_problem_package_or_die()
 
     vals: List[CodeItem] = []
@@ -38,7 +40,7 @@ def run_validator_unit_tests(progress: StatusProgress):
             continue
 
         compiled_digest = compiled_validators[str(val.path)]
-        info = validators.validate_one_off(
+        info = await validators.validate_one_off(
             test.input,
             val,
             compiled_digest,
@@ -61,7 +63,7 @@ def run_validator_unit_tests(progress: StatusProgress):
                 console.console.print(f'  [status]Actual[/status] {info.message}')
 
 
-def run_checker_unit_tests(progress: StatusProgress):
+async def run_checker_unit_tests(progress: StatusProgress):
     pkg = package.find_problem_package_or_die()
     if not pkg.unitTests.checker:
         return
@@ -82,7 +84,7 @@ def run_checker_unit_tests(progress: StatusProgress):
     empty_file = package.get_empty_sentinel_path()
 
     for i, test in enumerate(pkg.unitTests.checker):
-        result = checkers.check(
+        result = await checkers.check(
             compiled_digest,
             run_log=None,
             testcase=Testcase(
@@ -108,6 +110,7 @@ def run_checker_unit_tests(progress: StatusProgress):
                 console.console.print(f'  [status]Message[/status] {result.message}')
 
 
-def run_unit_tests(progress: StatusProgress):
-    run_validator_unit_tests(progress)
-    run_checker_unit_tests(progress)
+@syncer.sync
+async def run_unit_tests(progress: StatusProgress):
+    await run_validator_unit_tests(progress)
+    await run_checker_unit_tests(progress)

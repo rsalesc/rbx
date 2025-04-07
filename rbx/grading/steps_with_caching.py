@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rbx.grading import steps
 from rbx.grading.caching import DependencyCache, NoCacheException
@@ -9,6 +9,12 @@ from rbx.grading.steps import (
     RunLog,
     RunLogMetadata,
 )
+
+
+def _get_prefixed_cacheable_params(
+    params: Dict[str, Any], prefix: str
+) -> Dict[str, Any]:
+    return {f'{prefix}.{k}': v for k, v in params.items()}
 
 
 def compile(
@@ -36,7 +42,7 @@ def compile(
     return ok
 
 
-def run(
+async def run(
     command: str,
     params: SandboxParams,
     sandbox: SandboxBase,
@@ -52,7 +58,7 @@ def run(
 
     with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
         if not is_cached:
-            steps.run(
+            await steps.run(
                 command=command,
                 params=params,
                 artifacts=artifacts,
@@ -61,3 +67,39 @@ def run(
             )
 
     return artifacts.logs.run
+
+
+async def run_coordinated(
+    interactor: steps.CoordinatedRunParams,
+    solution: steps.CoordinatedRunParams,
+    dependency_cache: DependencyCache,
+) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+    interactor.artifacts.logs = GradingLogsHolder()
+    solution.artifacts.logs = GradingLogsHolder()
+
+    cacheable_params = {
+        **_get_prefixed_cacheable_params(
+            interactor.params.get_cacheable_params(), 'interactor'
+        ),
+        **_get_prefixed_cacheable_params(
+            solution.params.get_cacheable_params(), 'solution'
+        ),
+    }
+
+    if interactor.metadata is not None and interactor.metadata.retryIndex is not None:
+        cacheable_params['interactor.__retry_index__'] = interactor.metadata.retryIndex
+    if solution.metadata is not None and solution.metadata.retryIndex is not None:
+        cacheable_params['solution.__retry_index__'] = solution.metadata.retryIndex
+
+    with dependency_cache(
+        [interactor.command, solution.command],
+        [interactor.artifacts, solution.artifacts],
+        cacheable_params,
+    ) as is_cached:
+        if not is_cached:
+            await steps.run_coordinated(interactor, solution)
+
+    return (
+        interactor.artifacts.logs.run,
+        solution.artifacts.logs.run,
+    )

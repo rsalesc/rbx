@@ -86,7 +86,7 @@ def _has_group_specific_validator() -> bool:
     return any(group.validator is not None for group in pkg.testcases)
 
 
-def _validate_testcase(
+async def _validate_testcase(
     testcase: pathlib.Path,
     validator: CodeItem,
     validator_digest: str,
@@ -103,7 +103,7 @@ def _validate_testcase(
 
     message_digest = DigestHolder()
     log_digest = DigestHolder()
-    run_log = run_item(
+    run_log = await run_item(
         validator,
         DigestOrSource.create(validator_digest),
         stdin=DigestOrSource.create(testcase),
@@ -140,13 +140,13 @@ def _validate_testcase(
     )
 
 
-def _validate_test(
+async def _validate_test(
     testcase: pathlib.Path,
     validator: CodeItem,
     validator_digest: str,
 ) -> Tuple[bool, Optional[str], HitBounds]:
     pkg = package.find_problem_package_or_die()
-    return _validate_testcase(
+    return await _validate_testcase(
         testcase, validator, validator_digest, vars=pkg.expanded_vars
     )
 
@@ -159,12 +159,12 @@ def compile_main_validator() -> Optional[Tuple[CodeItem, str]]:
     return pkg.validator, _compile_validator(pkg.validator)
 
 
-def validate_one_off(
+async def validate_one_off(
     testcase: pathlib.Path,
     validator: CodeItem,
     validator_digest: str,
 ) -> TestcaseValidationInfo:
-    ok, message, _ = _validate_test(testcase, validator, validator_digest)
+    ok, message, _ = await _validate_test(testcase, validator, validator_digest)
     info = TestcaseValidationInfo(
         validator=validator,
         group='interactive',
@@ -211,7 +211,7 @@ def compile_validators_for_entries(
     return compile_validators(validators, progress=progress)
 
 
-def validate_testcases(
+async def validate_testcases(
     progress: Optional[StatusProgress] = None,
     groups: Optional[Set[str]] = None,
 ) -> List[TestcaseValidationInfo]:
@@ -219,7 +219,7 @@ def validate_testcases(
         if progress is not None:
             progress.step()
 
-    validation_entries = extract_generation_testcases_from_groups(groups)
+    validation_entries = await extract_generation_testcases_from_groups(groups)
     validator_to_compiled_digest = compile_validators_for_entries(
         validation_entries, progress=progress
     )
@@ -234,7 +234,7 @@ def validate_testcases(
         # Main validation.
         if entry.validator is not None:
             compiled_digest = validator_to_compiled_digest[str(entry.validator.path)]
-            ok, message, hit_bounds = _validate_test(
+            ok, message, hit_bounds = await _validate_test(
                 input_path, entry.validator, compiled_digest
             )
             validation_info.append(
@@ -250,7 +250,7 @@ def validate_testcases(
 
         for extra_validator in entry.extra_validators:
             compiled_digest = validator_to_compiled_digest[str(extra_validator.path)]
-            ok, message, hit_bounds = _validate_test(
+            ok, message, hit_bounds = await _validate_test(
                 input_path, extra_validator, compiled_digest
             )
             validation_info.append(

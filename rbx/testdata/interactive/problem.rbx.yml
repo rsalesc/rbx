@@ -1,0 +1,40 @@
+---
+name: "test-problem"
+type: communication
+timeLimit: 1000
+memoryLimit: 256
+outputLimit: 100 # 100 kb
+checker:
+  path: "checker.cpp"
+interactor:
+  path: "interactor.cpp"
+generators:
+  - name: "gen"
+    path: "gen.cpp"
+validator:
+  path: "validator.cpp"
+testcases:
+  - name: "tests"
+    generatorScript:
+      path: "testplan.txt"
+solutions:
+  - path: "sols/main.cpp"
+    outcome: AC
+  - path: "sols/interactive-binary-search_mm_naive_cin.cpp"
+    outcome: INCORRECT
+  - path: "sols/af_tl_after_ans.cpp"
+    outcome: TLE
+  - path: "sols/af_wa.cpp"
+    outcome: WA
+  - path: "sols/af_ac_pe.cpp"
+    outcome: WA
+  - path: "sols/af_ac_re.cpp"
+    outcome: RE
+  - path: "sols/af_ml.cpp"
+    outcome: ML
+  - path: "sols/af_inf_cout_without_flush.cpp"
+    outcome: TLE
+  - path: "sols/af_inf_cout_with_flush.cpp"
+    outcome: TLE
+  - path: "sols/af_ac_too_many_iter.cpp"
+    outcome: INCORRECT

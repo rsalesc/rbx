@@ -1,6 +1,8 @@
 import atexit
 import functools
+import os
 import pathlib
+import shutil
 import sys
 from typing import Dict, List, Optional, Tuple
 
@@ -213,6 +215,13 @@ def get_singleton_sandbox(root: pathlib.Path = pathlib.Path()) -> SandboxBase:
 
 
 @functools.cache
+def get_singleton_interactor_sandbox(
+    root: pathlib.Path = pathlib.Path(),
+) -> SandboxBase:
+    return get_new_sandbox(root)
+
+
+@functools.cache
 def get_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     return find_problem(root) / 'build'
 
@@ -267,6 +276,23 @@ def get_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
     return package.checker or CodeItem(
         path=get_builtin_checker(_DEFAULT_CHECKER).absolute()
     )
+
+
+@functools.cache
+def get_interactor_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeItem]:
+    package = find_problem_package_or_die(root)
+    return package.interactor
+
+
+@functools.cache
+def get_interactor(root: pathlib.Path = pathlib.Path()) -> CodeItem:
+    interactor = get_interactor_or_nil(root)
+    if interactor is None:
+        console.console.print(
+            '[error]Problem does not have an interactor configured.[/error]'
+        )
+        raise typer.Exit(1)
+    return interactor
 
 
 @functools.cache
@@ -372,6 +398,18 @@ def get_empty_sentinel_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path
     path = get_problem_cache_dir(root) / '.empty'
     path.write_text('')
     return path
+
+
+@functools.cache
+def get_fifos(root: pathlib.Path = pathlib.Path()) -> Tuple[pathlib.Path, pathlib.Path]:
+    path = get_problem_cache_dir(root) / '.fifos'
+    shutil.rmtree(path, ignore_errors=True)
+    path.mkdir(parents=True, exist_ok=True)
+    fifo_in = path / 'fifo.in'
+    fifo_out = path / 'fifo.out'
+    os.mkfifo(fifo_in)
+    os.mkfifo(fifo_out)
+    return fifo_in, fifo_out
 
 
 def clear_package_cache():

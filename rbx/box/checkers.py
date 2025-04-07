@@ -34,6 +34,24 @@ def compile_checker(progress: Optional[StatusProgress] = None) -> str:
     return digest
 
 
+def compile_interactor(progress: Optional[StatusProgress] = None) -> str:
+    interactor = package.get_interactor()
+
+    if interactor is None:
+        console.console.print('[error]No interactor found for this problem.[/error]')
+        raise typer.Exit(1)
+
+    if progress:
+        progress.update('Compiling interactor...')
+
+    try:
+        digest = compile_item(interactor, sanitized=SanitizationLevel.PREFER)
+    except Exception as e:
+        console.console.print('[error]Failed compiling interactor.[/error]')
+        raise typer.Exit(1) from e
+    return digest
+
+
 def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
     pkg = package.find_problem_package_or_die()
 
@@ -90,12 +108,39 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
     return result
 
 
+def process_checker_run_log(
+    checker_run_log: Optional[RunLog], message: str
+) -> Optional[CheckerResult]:
+    if (
+        checker_run_log is not None
+        and checker_run_log.exitcode != 0
+        and (
+            checker_run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
+            or checker_run_log.exitcode not in [0, 1, 2, 3]
+        )
+    ):
+        return None
+
+    if checker_run_log is None:
+        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
+    if checker_run_log.exitcode not in [0, 1, 2, 3]:
+        return None
+
+    result = CheckerResult(outcome=Outcome.ACCEPTED, message=message)
+
+    if checker_run_log.exitcode in [1, 2]:
+        result = CheckerResult(outcome=Outcome.WRONG_ANSWER, message=message)
+    if checker_run_log.exitcode == 3:
+        result = CheckerResult(outcome=Outcome.JUDGE_FAILED, message=message)
+    return result
+
+
 def check_with_no_output(run_log: Optional[RunLog]) -> CheckerResult:
     result = _check_pre_output(run_log)
     return _convert_tle(result, run_log)
 
 
-def _check(
+async def _check(
     checker_digest: str,
     run_log: Optional[RunLog],
     testcase: Testcase,
@@ -122,7 +167,7 @@ def _check(
             dest=pathlib.PosixPath('input.txt'),
         ),
         GradingFileInput(
-            src=testcase.outputPath,
+            src=testcase.outputPath or package.get_empty_sentinel_path(),
             dest=pathlib.PosixPath('expected.txt'),
         ),
         GradingFileInput(
@@ -130,7 +175,7 @@ def _check(
             dest=pathlib.PosixPath('output.txt'),
         ),
     ]
-    checker_run_log = run_item(
+    checker_run_log = await run_item(
         package.get_checker(),
         DigestOrSource.create(checker_digest),
         stderr=DigestOrDest.create(error),
@@ -139,20 +184,15 @@ def _check(
     )
     message = package.get_digest_as_string(error.value or '') or ''
 
-    if (
-        checker_run_log is not None
-        and checker_run_log.exitcode != 0
-        and (
-            checker_run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
-            or checker_run_log.exitcode not in [0, 1, 2, 3]
-        )
-    ):
+    processed_checker_result = process_checker_run_log(checker_run_log, message)
+    if processed_checker_result is None:
         console.console.print(
             f'[error]Checker [item]{package.get_checker().path}[/item] failed unexpectedly.[/error]'
         )
-        console.console.print(
-            f'[error]Summary:[/error] {checker_run_log.get_summary()}'
-        )
+        if checker_run_log is not None:
+            console.console.print(
+                f'[error]Summary:[/error] {checker_run_log.get_summary()}'
+            )
         console.console.print(
             f'[error]Testcase input:[/error] [item]{testcase.inputPath}[/item]'
         )
@@ -164,15 +204,7 @@ def _check(
         )
         raise typer.Exit(1)
 
-    if checker_run_log is None or checker_run_log.exitcode not in [0, 1, 2, 3]:
-        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
-
-    result = CheckerResult(outcome=Outcome.ACCEPTED, message=message)
-
-    if checker_run_log.exitcode in [1, 2]:
-        result = CheckerResult(outcome=Outcome.WRONG_ANSWER, message=message)
-    if checker_run_log.exitcode == 3:
-        result = CheckerResult(outcome=Outcome.JUDGE_FAILED, message=message)
+    result = processed_checker_result
 
     if skip_run_log:
         return result
@@ -185,13 +217,56 @@ def _check_sanitizer_warnings(run_log: Optional[RunLog]) -> bool:
     return run_log.warnings
 
 
-def check(
+async def check(
     checker_digest: str,
     run_log: Optional[RunLog],
     testcase: Testcase,
     program_output: pathlib.Path,
     skip_run_log: bool = False,
 ) -> CheckerResult:
-    result = _check(checker_digest, run_log, testcase, program_output, skip_run_log)
+    result = await _check(
+        checker_digest, run_log, testcase, program_output, skip_run_log
+    )
     result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
+    return result
+
+
+async def check_communication(
+    checker_digest: Optional[str],
+    run_log: Optional[RunLog],
+    interactor_run_log: Optional[RunLog],
+    interactor_stderr: pathlib.Path,
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    skip_run_log: bool = False,
+) -> CheckerResult:
+    sanitizer_warnings = _check_sanitizer_warnings(run_log)
+
+    result = check_with_no_output(run_log)
+    result.sanitizer_warnings = sanitizer_warnings
+    if result.outcome != Outcome.ACCEPTED:
+        return result
+
+    result = process_checker_run_log(
+        interactor_run_log,
+        interactor_stderr.read_text(),
+    )
+
+    if result is None:
+        result = check_with_no_output(interactor_run_log)
+        result.sanitizer_warnings = sanitizer_warnings
+        if result.outcome != Outcome.ACCEPTED:
+            result.outcome = Outcome.JUDGE_FAILED
+            return result
+
+    result.sanitizer_warnings = sanitizer_warnings
+    if result.outcome != Outcome.ACCEPTED:
+        return result
+
+    if checker_digest is not None:
+        result = await check(
+            checker_digest, run_log, testcase, program_output, skip_run_log
+        )
+        result.sanitizer_warnings = sanitizer_warnings
+
     return result

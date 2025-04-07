@@ -3,6 +3,7 @@ import tempfile
 import typing
 from typing import Annotated, Dict, List, Optional, Tuple
 
+import syncer
 import typer
 
 from rbx import annotations, console
@@ -307,7 +308,8 @@ def build_statement(
 
 @app.command('build, b', help='Build statements.')
 @package.within_problem
-def build(
+@syncer.sync
+async def build(
     verification: environment.VerificationParam,
     languages: Annotated[
         Optional[List[str]],
@@ -335,7 +337,7 @@ def build(
     if samples:
         from rbx.box import builder
 
-        if not builder.build(
+        if not await builder.build(
             verification=verification,
             groups=set(['samples']),
             output=None,

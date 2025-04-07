@@ -17,11 +17,13 @@ from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box import checkers, package
-from rbx.box.code import SanitizationLevel, compile_item, find_language_name, run_item
+from rbx.box.code import (
+    SanitizationLevel,
+    compile_item,
+    find_language_name,
+)
 from rbx.box.deferred import Deferred
 from rbx.box.environment import (
-    EnvironmentSandbox,
-    ExecutionConfig,
     VerificationLevel,
 )
 from rbx.box.formatting import get_formatted_memory, get_formatted_time
@@ -31,26 +33,26 @@ from rbx.box.generators import (
     generate_output_for_testcase,
     generate_standalone,
 )
-from rbx.box.retries import Retrier
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
     Limits,
     Solution,
+    TaskType,
     Testcase,
     TestcaseGroup,
+)
+from rbx.box.tasks import (
+    get_limits_for_language,
+    run_solution_on_testcase,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_utils import TestcaseEntry, find_built_testcases
 from rbx.grading.steps import (
-    DigestOrDest,
-    DigestOrSource,
     Evaluation,
     Outcome,
-    TestcaseIO,
-    TestcaseLog,
 )
-from rbx.utils import StatusProgress, model_to_yaml
+from rbx.utils import StatusProgress
 
 StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]]
 
@@ -152,102 +154,13 @@ def compile_solutions(
     return compiled_solutions
 
 
-def get_limits_for_language(
-    lang: Optional[str],
-    verification: VerificationLevel,
-    timelimit_override: Optional[int],
-) -> Limits:
-    pkg = package.find_problem_package_or_die()
-    time = timelimit_override or pkg.timelimit_for_language(lang)
-    isDoubleTL = verification.value >= VerificationLevel.FULL.value
-    memory = pkg.memorylimit_for_language(lang)
-    return Limits(
-        time=time, memory=memory, output=pkg.outputLimit, isDoubleTL=isDoubleTL
-    )
-
-
-def _run_solution_on_testcase(
-    solution: Solution,
-    compiled_digest: str,
-    checker_digest: Optional[str],
-    testcase: Testcase,
-    output_dir: pathlib.Path,
-    testcase_index: int = 0,
-    verification: VerificationLevel = VerificationLevel.NONE,
-    timelimit_override: Optional[int] = None,
-) -> Evaluation:
-    def run_fn(retry_index: int) -> Evaluation:
-        actual_sandbox = package.get_singleton_sandbox()
-
-        limits = get_limits_for_language(
-            solution.language, verification, timelimit_override
-        )
-
-        sandbox = EnvironmentSandbox()
-        sandbox.timeLimit = limits.time
-        if limits.isDoubleTL and sandbox.timeLimit is not None:
-            # Double TL.
-            sandbox.timeLimit = sandbox.timeLimit * 2
-        sandbox.wallTimeLimit = sandbox.timeLimit
-        if sandbox.timeLimit is not None and actual_sandbox.use_soft_timeout():
-            sandbox.wallTimeLimit = sandbox.timeLimit * 2
-        sandbox.memoryLimit = limits.memory
-        sandbox.fileSizeLimit = limits.output
-        extra_config = ExecutionConfig(sandbox=sandbox)
-
-        output_path = output_dir / testcase.inputPath.with_suffix('.out').name
-        error_path = output_path.with_suffix('.err')
-        log_path = output_path.with_suffix('.log')
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        run_log = run_item(
-            solution,
-            DigestOrSource.create(compiled_digest),
-            stdin=DigestOrSource.create(testcase.inputPath),
-            stdout=DigestOrDest.create(output_path),
-            stderr=DigestOrDest.create(error_path),
-            extra_config=extra_config,
-            retry_index=retry_index,
-        )
-
-        if checker_digest is not None:
-            checker_result = checkers.check(
-                checker_digest,
-                run_log,
-                testcase,
-                program_output=output_path,
-            )
-        else:
-            checker_result = checkers.check_with_no_output(run_log)
-
-        eval = Evaluation(
-            result=checker_result,
-            testcase=TestcaseIO(
-                index=testcase_index,
-                input=testcase.inputPath,
-                output=testcase.outputPath,
-            ),
-            log=TestcaseLog(
-                **(run_log.model_dump() if run_log is not None else {}),
-                stdout_absolute_path=output_path.absolute(),
-                stderr_absolute_path=error_path.absolute(),
-                log_absolute_path=log_path.absolute(),
-            ),
-        )
-
-        log_path.write_text(model_to_yaml(eval))
-        return eval
-
-    retrier = Retrier()
-    return retrier.repeat(run_fn)
-
-
 def _run_solution(
     solution: Solution,
     compiled_digest: str,
     checker_digest: Optional[str],
     solution_index: int,
     group_name: str,
+    interactor_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
@@ -267,12 +180,13 @@ def _run_solution(
             )
 
         async def run_fn(i=i, testcase=testcase, output_path=output_path):
-            return _run_solution_on_testcase(
+            return await run_solution_on_testcase(
                 solution,
                 compiled_digest,
                 checker_digest,
                 testcase,
                 output_path,
+                interactor_digest=interactor_digest,
                 testcase_index=i,
                 verification=verification,
                 timelimit_override=timelimit_override,
@@ -343,7 +257,15 @@ def _produce_solution_items(
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
-    checker_digest = checkers.compile_checker() if check else None
+    if pkg.type == TaskType.COMMUNICATION:
+        checker_digest = (
+            checkers.compile_checker() if check and pkg.checker is not None else None
+        )
+        interactor_digest = checkers.compile_interactor()
+    else:
+        checker_digest = checkers.compile_checker() if check else None
+        interactor_digest = None
+
     compiled_solutions = compile_solutions(
         progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
     )
@@ -374,6 +296,7 @@ def _produce_solution_items(
                 checker_digest,
                 solution_index,
                 group_name,
+                interactor_digest=interactor_digest,
                 progress=progress,
                 verification=verification,
                 timelimit_override=timelimit_override,
@@ -451,7 +374,7 @@ async def _generate_testcase_interactively(
             copied_to=testcase,
         )
     elif testcase_entry is not None:
-        extracted = extract_generation_testcases([testcase_entry])
+        extracted = await extract_generation_testcases([testcase_entry])
         if not extracted:
             console.console.print(
                 f'[error]Failed searching for testcase [item]{testcase_entry}[/item].[/error]'
@@ -483,7 +406,7 @@ async def _generate_testcase_interactively(
 
     # 1. Generate testcase.
     if generation_metadata is not None:
-        generate_standalone(
+        await generate_standalone(
             generation_metadata,
             progress=progress,
             validate=True,
@@ -531,10 +454,20 @@ async def _generate_testcase_interactively(
             raise
 
     if main_solution_digest is not None:
+        pkg = package.find_problem_package_or_die()
+        if pkg.type == TaskType.COMMUNICATION:
+            interactor_digest = checkers.compile_interactor(progress)
+        else:
+            interactor_digest = None
+
         if progress:
             progress.update('Generating output for test...')
         # TODO: Add stderr path
-        generate_output_for_testcase(main_solution_digest, testcase)
+        await generate_output_for_testcase(
+            main_solution_digest,
+            testcase,
+            interactor_digest=interactor_digest,
+        )
 
     if check and testcase.outputPath is not None and not testcase.outputPath.is_file():
         # Output was not created, throw an error.
@@ -559,9 +492,13 @@ def _run_interactive_solutions(
 ) -> Iterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
-    if check and progress:
-        progress.update('Compiling checker...')
-    checker_digest = checkers.compile_checker() if check else None
+    if pkg.type == TaskType.COMMUNICATION:
+        checker_digest = checkers.compile_checker() if check else None
+        interactor_digest = checkers.compile_interactor()
+    else:
+        checker_digest = checkers.compile_checker() if check else None
+        interactor_digest = None
+
     compiled_solutions = compile_solutions(
         progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
     )
@@ -581,12 +518,13 @@ def _run_interactive_solutions(
         output_dir = irun_dir / f'{i}'
 
         async def run_fn(solution=solution, output_dir=output_dir):
-            return _run_solution_on_testcase(
+            return await run_solution_on_testcase(
                 solution,
                 compiled_solutions[solution.path],
                 checker_digest,
                 testcase,
                 output_dir,
+                interactor_digest=interactor_digest,
                 verification=verification,
             )
 

@@ -82,16 +82,16 @@ class ExpectedOutcome(AutoEnum):
     RUNTIME_ERROR = alias('runtime error', 'rte', 're')  # type: ignore
     """Expected outcome solutions that finish with non-zero code (RTE)."""
 
-    TIME_LIMIT_EXCEEDED = alias('time limit exceeded', 'timeout', 'tle')  # type: ignore
+    TIME_LIMIT_EXCEEDED = alias('time limit exceeded', 'timeout', 'tle', 'tl')  # type: ignore
     """Expected outcome for solutions that do not finish in time."""
 
-    MEMORY_LIMIT_EXCEEDED = alias('memory limit exceeded', 'mle')  # type: ignore
+    MEMORY_LIMIT_EXCEEDED = alias('memory limit exceeded', 'mle', 'ml')  # type: ignore
     """Expected outcome for solutions that use more memory than allowed."""
 
-    OUTPUT_LIMIT_EXCEEDED = alias('output limit exceeded', 'ole')  # type: ignore
+    OUTPUT_LIMIT_EXCEEDED = alias('output limit exceeded', 'ole', 'ol')  # type: ignore
     """Expected outcome for solutions that use more output than allowed."""
 
-    TLE_OR_RTE = alias('tle or rte', 'tle/rte', 'tle+rte')  # type: ignore
+    TLE_OR_RTE = alias('tle or rte', 'tle/rte', 'tle+rte', 'tle or re', 'tle+re')  # type: ignore
     """Expected outcome for solutions that finish with either TLE or RTE.
 
     Especially useful for environments where TLE and RTE are indistinguishable."""
@@ -154,6 +154,14 @@ class ValidatorOutcome(AutoEnum):
 
     INVALID = alias('invalid')  # type: ignore
     """Expected outcome for invalid tests."""
+
+
+class TaskType(AutoEnum):
+    BATCH = alias('batch')  # type: ignore
+    """Batch task."""
+
+    COMMUNICATION = alias('communication')  # type: ignore
+    """Communication task."""
 
 
 class CodeItem(BaseModel):
@@ -404,6 +412,10 @@ class Package(BaseModel):
     # Name of the problem.
     name: str = NameField(description='The name of the problem.')
 
+    type: TaskType = Field(
+        default=TaskType.BATCH, description='The type of the problem.'
+    )
+
     timeLimit: int = Field(description='Time limit of the problem, in milliseconds.')
 
     memoryLimit: int = Field(description='Memory limit of the problem, in MB.')
@@ -421,6 +433,10 @@ class Package(BaseModel):
 
     checker: Optional[CodeItem] = Field(
         default=None, description='The checker for this problem.'
+    )
+
+    interactor: Optional[CodeItem] = Field(
+        default=None, description='The interactor for this problem.'
     )
 
     validator: Optional[CodeItem] = Field(

@@ -3,6 +3,7 @@ import pathlib
 import tempfile
 from typing import Dict, List, Optional
 
+import syncer
 from rich.columns import Columns
 from rich.panel import Panel
 from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
@@ -46,7 +47,7 @@ def get_testcases_io(
     return sorted(testcases_per_index.values(), key=lambda x: x.index)
 
 
-def _run_testcases(
+async def _run_testcases(
     problem: Problem,
     lang: Language,
     lang_name: Optional[str],
@@ -73,7 +74,7 @@ def _run_testcases(
             artifacts = grading_utils.build_run_grading_artifacts(
                 testcase, persist_root
             )
-            run_log = steps.run(
+            run_log = await steps.run(
                 lang.exec,
                 params,
                 sandbox,
@@ -234,7 +235,8 @@ def pretty_print_evaluation_results(
         _pretty_print_evaluation_result(problem, eval, interactive=interactive)
 
 
-def main(
+@syncer.sync
+async def main(
     problem: annotations.Problem,
     language: annotations.LanguageWithDefault = None,
     keep_sandbox: bool = False,
@@ -322,7 +324,7 @@ def main(
             )
             return
 
-    testcase_logs = _run_testcases(
+    testcase_logs = await _run_testcases(
         dumped_problem, lang, language, box, testcases, persist_root
     )
 

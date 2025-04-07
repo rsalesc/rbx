@@ -3,6 +3,7 @@ import time
 from shutil import rmtree
 from typing import List, Optional
 
+import syncer
 import typer
 from pydantic import BaseModel
 
@@ -15,7 +16,7 @@ from rbx.box.generators import (
     generate_standalone,
 )
 from rbx.box.retries import Retrier
-from rbx.box.schema import CodeItem, GeneratorCall, Stress, Testcase
+from rbx.box.schema import CodeItem, GeneratorCall, Stress, TaskType, Testcase
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
 from rbx.box.stressing import finder_parser
 from rbx.grading.steps import (
@@ -49,7 +50,8 @@ def _compile_finder(finder: CodeItem) -> str:
     return digest
 
 
-def run_stress(
+@syncer.sync
+async def run_stress(
     name: str,
     timeoutInSeconds: int,
     finder: Optional[str] = None,
@@ -59,6 +61,13 @@ def run_stress(
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
 ) -> StressReport:
+    pkg = package.find_problem_package_or_die()
+    if pkg.type == TaskType.COMMUNICATION:
+        console.console.print(
+            '[error]Communication problems do not support stress testing.[/error]'
+        )
+        raise typer.Exit(1)
+
     if finder:
         stress = Stress(
             name=f'{name}',
@@ -128,7 +137,7 @@ def run_stress(
         input_path.parent.mkdir(parents=True, exist_ok=True)
 
         expanded_generator_call = expand_generator_call(stress.generator)
-        generate_standalone(
+        await generate_standalone(
             GenerationMetadata(
                 generator_call=expanded_generator_call,
                 copied_to=Testcase(inputPath=input_path),
@@ -140,7 +149,7 @@ def run_stress(
         )
 
         @functools.cache
-        def run_solution_fn(
+        async def run_solution_fn(
             solution: str,
             retry_index: Optional[int] = None,
             input_path=input_path,
@@ -150,7 +159,7 @@ def run_stress(
             output_path = input_path.with_stem(f'{index}').with_suffix('.out')
             stderr_path = output_path.with_suffix('.err')
 
-            run_log = run_item(
+            run_log = await run_item(
                 sol,
                 DigestOrSource.create(solutions_digest[sol.path]),
                 stdin=DigestOrSource.create(input_path),
@@ -168,7 +177,7 @@ def run_stress(
         # Get main solution output.
         expected_output_path = empty_path
         if needs_expected_output:
-            main_testcase_log = run_solution_fn(str(solutions[0].path))
+            main_testcase_log = await run_solution_fn(str(solutions[0].path))
             main_checker_result = checkers.check_with_no_output(main_testcase_log)
             if main_checker_result.outcome != Outcome.ACCEPTED:
                 console.console.print(
@@ -190,23 +199,23 @@ def run_stress(
             expected_output_path = main_testcase_log.stdout_absolute_path
 
         @functools.cache
-        def run_solution_and_checker_fn(
+        async def run_solution_and_checker_fn(
             call: finder_parser.FinderCall,
             input_path=input_path,
             expected_output_path=expected_output_path,
         ) -> finder_parser.FinderResult:
-            def run_fn(retry_index: int) -> Evaluation:
+            async def run_fn(retry_index: int) -> Evaluation:
                 solution = call.solution
                 checker = call.checker
 
-                testcase_log = run_solution_fn(solution, retry_index=retry_index)
+                testcase_log = await run_solution_fn(solution, retry_index=retry_index)
                 assert testcase_log.stdout_absolute_path is not None
 
                 if checker is None:
                     checker_result = checkers.check_with_no_output(testcase_log)
                 else:
                     checker_digest = finders_digest[checker.path]
-                    checker_result = checkers.check(
+                    checker_result = await checkers.check(
                         checker_digest,
                         testcase_log,
                         Testcase(inputPath=input_path, outputPath=expected_output_path),
@@ -224,7 +233,7 @@ def run_stress(
                 )
 
             retrier = Retrier(is_stress=True)
-            eval = retrier.repeat(run_fn)
+            eval = await retrier.repeat(run_fn)
 
             return finder_parser.FinderResult(
                 solution=call.solution,
@@ -234,7 +243,9 @@ def run_stress(
                 checker_result=eval.result,
             )
 
-        runner = finder_parser.FinderTreeRunner(runner=run_solution_and_checker_fn)
+        runner = finder_parser.FinderTreeRunner(
+            runner=syncer.sync(run_solution_and_checker_fn)
+        )
         finder_outcome: finder_parser.FinderOutcome = runner.transform(parsed_finder)
 
         internal_error_results = [

@@ -31,6 +31,7 @@ questionary = "^2.1.0"
 lark = "^1.2.2"
 chardet = "^5.2.0"
 ruyaml = "^0.91.0"
+syncer = "^2.0.3"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"
@@ -49,6 +50,7 @@ mkdocstrings = {extras = ["python"], version = "^0.25.1"}
 griffe-fieldz = ">=0.1.2, <1.0.0"
 pytest-cov = "^5.0.0"
 textual-dev = "^1.6.1"
+pytest-asyncio = "^0.26.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -9,7 +9,7 @@ from time import monotonic
 from typing import List, Optional
 
 
-@dataclasses.dataclass()
+@dataclasses.dataclass
 class Options:
     output_file: str
     argv: List[str]
@@ -21,6 +21,7 @@ class Options:
     wall_time_limit: Optional[float] = None  # seconds
     memory_limit: Optional[int] = None  # kb, but passed in args as mb
     fs_limit: Optional[int] = None  # kb
+    files_to_open: List[int] = dataclasses.field(default_factory=list)
 
 
 def exit_with(code: int):
@@ -29,6 +30,7 @@ def exit_with(code: int):
 
 def parse_opts() -> Options:
     options = Options(output_file=sys.argv[1], argv=[])
+    options.files_to_open = []
     num_opts = 0
     while num_opts + 2 < len(sys.argv) and sys.argv[num_opts + 2].startswith('-'):
         # Process option
@@ -41,10 +43,13 @@ def parse_opts() -> Options:
             options.memory_limit = int(opt[2:]) * 1024
         elif opt.startswith('-i'):
             options.stdin_file = opt[2:]
+            options.files_to_open.append(0)
         elif opt.startswith('-o'):
             options.stdout_file = opt[2:]
+            options.files_to_open.append(1)
         elif opt.startswith('-e'):
             options.stderr_file = opt[2:]
+            options.files_to_open.append(2)
         elif opt.startswith('-c'):
             options.chdir = opt[2:]
         elif opt.startswith('-f'):
@@ -92,7 +97,8 @@ def set_rlimits(options: Options):
 def redirect_fds(options: Options):
     files = [options.stdin_file, options.stdout_file, options.stderr_file]
 
-    for i, file in enumerate(files):
+    for i in options.files_to_open:
+        file = files[i]
         if file is None:
             continue
         open_args = [

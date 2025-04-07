@@ -1,10 +1,16 @@
+import asyncio
+import contextlib
+import dataclasses
 import functools
+import os
 import pathlib
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import typing
 from enum import Enum
 from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -123,6 +129,8 @@ class GradingFileOutput(BaseModel):
     intermediate: bool = False
     # Whether to track file through its hash (disable for optimization).
     hash: bool = True
+    # Whether to touch the file before the command runs.
+    touch: bool = False
 
     def get_file(self, storage: Storage) -> Optional[IO[bytes]]:
         if self.dest is not None:
@@ -252,6 +260,14 @@ def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: SandboxBase):
             override=True,
             try_symlink=True,
         )
+    for output_artifact in artifacts.outputs:
+        if output_artifact.touch:
+            sandbox.create_file_from_string(
+                output_artifact.src,
+                '',
+                executable=output_artifact.executable,
+                override=True,
+            )
 
 
 def _process_output_artifacts(
@@ -291,8 +307,6 @@ def _process_output_artifacts(
 
 def _process_fifos(artifacts: GradingArtifacts, sandbox: SandboxBase):
     for fifo in artifacts.fifos:
-        if not fifo.create:
-            continue
         if fifo.symlink is not None:
             sandbox.create_symlink(fifo.path, fifo.symlink, override=True)
         else:
@@ -574,7 +588,7 @@ def compile(
     return _process_output_artifacts(artifacts, sandbox)
 
 
-def run(
+async def run(
     command: str,
     params: SandboxParams,
     sandbox: SandboxBase,
@@ -586,7 +600,7 @@ def run(
     cmd = _split_and_expand(command, sandbox)
     sandbox.set_params(params)
 
-    if not sandbox.execute_without_std(cmd):
+    if not await asyncio.to_thread(sandbox.execute_without_std, cmd):
         console.print(
             '[error]Sandbox crashed while processing command:[/error]',
             utils.highlight_json_obj(cmd),
@@ -620,6 +634,34 @@ def run(
     if artifacts.logs is not None:
         artifacts.logs.run = run_log.model_copy()
     return run_log
+
+
+@dataclasses.dataclass
+class CoordinatedRunParams:
+    command: str
+    params: SandboxParams
+    sandbox: SandboxBase
+    artifacts: GradingArtifacts
+    metadata: Optional[RunLogMetadata] = None
+
+
+async def run_coordinated(
+    interactor: CoordinatedRunParams,
+    solution: CoordinatedRunParams,
+) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+    runs = tuple(
+        run(
+            params.command,
+            params.params,
+            params.sandbox,
+            params.artifacts,
+            params.metadata,
+        )
+        for params in [interactor, solution]
+    )
+    return typing.cast(
+        Tuple[Optional[RunLog], Optional[RunLog]], tuple(await asyncio.gather(*runs))
+    )
 
 
 def _normalize_checked_words(s: str) -> Tuple[str, ...]:
@@ -744,3 +786,13 @@ def evaluate(
         log=log,
         result=checker_result,
     )
+
+
+@contextlib.contextmanager
+def make_fifos():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        fifo_in = pathlib.PosixPath(temp_dir) / 'fifo.in'
+        fifo_out = pathlib.PosixPath(temp_dir) / 'fifo.out'
+        os.mkfifo(fifo_in)
+        os.mkfifo(fifo_out)
+        yield fifo_in, fifo_out

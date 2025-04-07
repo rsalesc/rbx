@@ -112,6 +112,7 @@ class SandboxParams(pydantic.BaseModel):
     timeout: Optional[int] = None  # ms
     wallclock_timeout: Optional[int] = None  # ms
     extra_timeout: Optional[int] = None  # ms
+    reverse_io: bool = False
 
     def get_cacheable_params(self) -> Dict[str, Any]:
         return self.model_dump(mode='json', exclude_unset=True, exclude_none=True)

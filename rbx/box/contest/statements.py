@@ -1,5 +1,6 @@
 from typing import Annotated, List, Optional
 
+import syncer
 import typer
 
 from rbx import annotations, console
@@ -16,7 +17,8 @@ app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
 @app.command('build, b', help='Build statements.')
 @within_contest
-def build(
+@syncer.sync
+async def build(
     verification: environment.VerificationParam,
     languages: Annotated[
         Optional[List[str]],
@@ -53,7 +55,7 @@ def build(
             with cd.new_package_cd(problem.get_path()):
                 package.clear_package_cache()
 
-                if not builder.build(
+                if not await builder.build(
                     verification=verification, groups=set(['samples']), output=None
                 ):
                     console.console.print(

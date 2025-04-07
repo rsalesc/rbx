@@ -1,4 +1,3 @@
-import asyncio
 import pathlib
 
 import pytest
@@ -17,15 +16,15 @@ from rbx.grading.steps import Outcome
 
 
 @pytest.mark.test_pkg('box1')
-def test_solutions(pkg_from_testdata: pathlib.Path):
-    generate_testcases()
+async def test_solutions(pkg_from_testdata: pathlib.Path):
+    await generate_testcases()
     entries = [
-        entry.group_entry for entry in extract_generation_testcases_from_groups()
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
     ]
-    generate_outputs_for_testcases(entries)
+    await generate_outputs_for_testcases(entries)
 
     result = run_solutions(verification=VerificationLevel.FULL)
-    res = asyncio.run(convert_list_of_solution_evaluations_to_dict(result.items))
+    res = await convert_list_of_solution_evaluations_to_dict(result.items)
 
     # First solution should pass all tests.
     assert all(chk.result.outcome == Outcome.ACCEPTED for chk in res[0]['gen1'])

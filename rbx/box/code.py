@@ -1,3 +1,4 @@
+import dataclasses
 import pathlib
 import re
 import resource
@@ -14,6 +15,7 @@ from rbx import console
 from rbx.box import download, package, setter_config, state
 from rbx.box.environment import (
     ExecutionConfig,
+    FileMapping,
     get_compilation_config,
     get_execution_config,
     get_file_mapping,
@@ -26,7 +28,8 @@ from rbx.box.environment import (
 from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
-from rbx.grading import steps_with_caching
+from rbx.grading import steps, steps_with_caching
+from rbx.grading.judge.sandbox import SandboxParams
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -202,6 +205,117 @@ function rbx() {{
         raise typer.Exit(1)
 
 
+@dataclasses.dataclass
+class PreparedRun:
+    command: str
+    sandbox_params: SandboxParams
+    artifacts: GradingArtifacts
+    sanitized: bool
+
+    file_mapping: FileMapping
+    metadata: RunLogMetadata
+
+
+def _prepare_run(
+    code: CodeItem,
+    executable: DigestOrSource,
+    stdin: Optional[DigestOrSource] = None,
+    stdout: Optional[DigestOrDest] = None,
+    stderr: Optional[DigestOrDest] = None,
+    inputs: Optional[List[GradingFileInput]] = None,
+    outputs: Optional[List[GradingFileOutput]] = None,
+    extra_args: Optional[str] = None,
+    extra_config: Optional[ExecutionConfig] = None,
+    retry_index: Optional[int] = None,
+):
+    language = find_language_name(code)
+    execution_options = get_execution_config(language)
+    if extra_config is not None:
+        execution_options = merge_execution_configs([execution_options, extra_config])
+    file_mapping = get_file_mapping(language)
+    sandbox_params = get_sandbox_params_from_config(execution_options.sandbox)
+
+    # Sanitization parameters.
+    sanitized = False
+    if is_executable_sanitized(executable):
+        # Remove any memory constraints for a sanitized executable.
+        # Sanitizers are known to be memory-hungry.
+        sandbox_params.address_space = None
+
+        # Reset timeout configs since sanitizers are known to be time-hungry.
+        sandbox_params.timeout = None
+        sandbox_params.wallclock_timeout = None
+        sanitized = True
+
+    sandbox_params.set_stdall(
+        stdin=PosixPath(file_mapping.input) if stdin is not None else None,
+        stdout=PosixPath(file_mapping.output) if stdout is not None else None,
+        stderr=PosixPath(file_mapping.error)
+        if stderr is not None or sanitized
+        else None,
+    )
+
+    assert execution_options.command
+    command = get_mapped_command(execution_options.command, file_mapping)
+    command = substitute_commands([command], sanitized=sanitized)[0]
+
+    if extra_args is not None:
+        splitted_command = shlex.split(command)
+        splitted_command.extend(shlex.split(extra_args))
+        command = shlex.join(splitted_command)
+
+    artifacts = GradingArtifacts()
+    artifacts.inputs.append(
+        GradingFileInput(
+            **executable.expand(),
+            dest=PosixPath(file_mapping.executable),
+            executable=True,
+        )
+    )
+    if stdin is not None:
+        artifacts.inputs.append(
+            GradingFileInput(
+                **stdin.expand(),
+                dest=PosixPath(file_mapping.input),
+            )
+        )
+    if stdout is not None:
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=PosixPath(file_mapping.output),
+                **stdout.expand(),
+                touch=True,
+            )
+        )
+    if stderr is not None:
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=PosixPath(file_mapping.error),
+                **stderr.expand(),
+                touch=True,
+            )
+        )
+    if inputs:
+        artifacts.inputs.extend(inputs)
+    if outputs:
+        artifacts.outputs.extend(outputs)
+
+    return PreparedRun(
+        command=command,
+        sandbox_params=sandbox_params,
+        artifacts=artifacts,
+        sanitized=sanitized,
+        file_mapping=file_mapping,
+        metadata=RunLogMetadata(
+            language=code.language,
+            is_sanitized=sanitized,
+            timeLimit=sandbox_params.timeout,
+            memoryLimit=sandbox_params.address_space,
+            retryIndex=retry_index,
+        ),
+    )
+
+
 # Compile code item and return its digest in the storage.
 def compile_item(
     code: CodeItem,
@@ -310,7 +424,7 @@ def compile_item(
     return compiled_digest.value
 
 
-def run_item(
+async def run_item(
     code: CodeItem,
     executable: DigestOrSource,
     stdin: Optional[DigestOrSource] = None,
@@ -324,99 +438,100 @@ def run_item(
 ) -> Optional[RunLog]:
     _check_stack_limit()
 
-    language = find_language_name(code)
-    execution_options = get_execution_config(language)
-    if extra_config is not None:
-        execution_options = merge_execution_configs([execution_options, extra_config])
-    file_mapping = get_file_mapping(language)
     dependency_cache = package.get_dependency_cache()
-    sandbox = package.get_singleton_sandbox()
-    sandbox_params = get_sandbox_params_from_config(execution_options.sandbox)
 
-    # Sanitization parameters.
-    sanitized = False
-    if is_executable_sanitized(executable):
-        # Remove any memory constraints for a sanitized executable.
-        # Sanitizers are known to be memory-hungry.
-        sandbox_params.address_space = None
-
-        # Reset timeout configs since sanitizers are known to be time-hungry.
-        sandbox_params.timeout = None
-        sandbox_params.wallclock_timeout = None
-        sanitized = True
-
-    sandbox_params.set_stdall(
-        stdin=PosixPath(file_mapping.input) if stdin is not None else None,
-        stdout=PosixPath(file_mapping.output) if stdout is not None else None,
-        stderr=PosixPath(file_mapping.error)
-        if stderr is not None or sanitized
-        else None,
+    prepared = _prepare_run(
+        code,
+        executable,
+        stdin,
+        stdout,
+        stderr,
+        inputs,
+        outputs,
+        extra_args,
+        extra_config,
+        retry_index,
     )
 
-    assert execution_options.command
-    command = get_mapped_command(execution_options.command, file_mapping)
-    command = substitute_commands([command], sanitized=sanitized)[0]
-
-    if extra_args is not None:
-        splitted_command = shlex.split(command)
-        splitted_command.extend(shlex.split(extra_args))
-        command = shlex.join(splitted_command)
-
-    artifacts = GradingArtifacts()
-    artifacts.inputs.append(
-        GradingFileInput(
-            **executable.expand(),
-            dest=PosixPath(file_mapping.executable),
-            executable=True,
-        )
-    )
-    if stdin is not None:
-        artifacts.inputs.append(
-            GradingFileInput(
-                **stdin.expand(),
-                dest=PosixPath(file_mapping.input),
-            )
-        )
-    if stdout is not None:
-        artifacts.outputs.append(
-            GradingFileOutput(
-                src=PosixPath(file_mapping.output),
-                **stdout.expand(),
-            )
-        )
-    if stderr is not None:
-        artifacts.outputs.append(
-            GradingFileOutput(
-                src=PosixPath(file_mapping.error),
-                **stderr.expand(),
-            )
-        )
-    if inputs:
-        artifacts.inputs.extend(inputs)
-    if outputs:
-        artifacts.outputs.extend(outputs)
-
-    run_log = steps_with_caching.run(
-        command,
-        params=sandbox_params,
-        sandbox=sandbox,
-        artifacts=artifacts,
+    run_log = await steps_with_caching.run(
+        prepared.command,
+        params=prepared.sandbox_params,
+        sandbox=package.get_singleton_sandbox(),
+        artifacts=prepared.artifacts,
         dependency_cache=dependency_cache,
-        metadata=RunLogMetadata(
-            language=code.language,
-            is_sanitized=sanitized,
-            timeLimit=sandbox_params.timeout,
-            memoryLimit=sandbox_params.address_space,
-            retryIndex=retry_index,
-        ),
+        metadata=prepared.metadata,
     )
 
     # Find sanitizer logs.
     if run_log is not None and run_log.warnings:
-        assert sandbox_params.stderr_file is not None
-        stderr_output = artifacts.get_output_file_for_src(sandbox_params.stderr_file)
+        assert prepared.sandbox_params.stderr_file is not None
+        stderr_output = prepared.artifacts.get_output_file_for_src(
+            prepared.sandbox_params.stderr_file
+        )
         if stderr_output is not None:
             warning_stack.get_warning_stack().add_sanitizer_warning(
                 package.get_cache_storage(), code, stderr_output
             )
     return run_log
+
+
+@dataclasses.dataclass
+class CommunicationItem:
+    code: CodeItem
+    executable: DigestOrSource
+    stderr: Optional[DigestOrDest] = None
+    inputs: Optional[List[GradingFileInput]] = None
+    outputs: Optional[List[GradingFileOutput]] = None
+    extra_args: Optional[str] = None
+    extra_config: Optional[ExecutionConfig] = None
+
+    def prepare(self) -> PreparedRun:
+        return _prepare_run(
+            self.code,
+            self.executable,
+            stderr=self.stderr,
+            inputs=self.inputs,
+            outputs=self.outputs,
+            extra_args=self.extra_args,
+            extra_config=self.extra_config,
+        )
+
+
+async def run_communication(
+    interactor: CommunicationItem,
+    solution: CommunicationItem,
+    retry_index: Optional[int] = None,
+):
+    fifo_in, fifo_out = package.get_fifos()
+    interactor_prepared = interactor.prepare()
+    solution_prepared = solution.prepare()
+
+    # Prepare retry index.
+    interactor_prepared.metadata.retryIndex = retry_index
+    solution_prepared.metadata.retryIndex = retry_index
+
+    interactor_prepared.sandbox_params.set_stdio(stdin=fifo_out, stdout=fifo_in)
+    solution_prepared.sandbox_params.set_stdio(stdin=fifo_in, stdout=fifo_out)
+
+    solution_prepared.sandbox_params.reverse_io = True
+
+    interactor_run_params = steps.CoordinatedRunParams(
+        command=interactor_prepared.command,
+        params=interactor_prepared.sandbox_params,
+        sandbox=package.get_singleton_interactor_sandbox(),
+        artifacts=interactor_prepared.artifacts,
+        metadata=interactor_prepared.metadata,
+    )
+    solution_run_params = steps.CoordinatedRunParams(
+        command=solution_prepared.command,
+        params=solution_prepared.sandbox_params,
+        sandbox=package.get_singleton_sandbox(),
+        artifacts=solution_prepared.artifacts,
+        metadata=solution_prepared.metadata,
+    )
+
+    return await steps_with_caching.run_coordinated(
+        interactor_run_params,
+        solution_run_params,
+        dependency_cache=package.get_dependency_cache(),
+    )

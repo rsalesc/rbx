@@ -91,17 +91,22 @@ class StupidSandbox(SandboxBase):
             args.append(f'-w{walltimeout_in_s:.3f}')
         if self.params.address_space:
             args.append(f'-m{self.params.address_space}')
-        if self.params.stdin_file:
-            args.append(f'-i{self.params.stdin_file}')
-        if self.params.stdout_file:
-            args.append(f'-o{self.params.stdout_file}')
-        if self.params.stderr_file:
-            args.append(f'-e{self.params.stderr_file}')
         if self.params.fsize:
             args.append(f'-f{self.params.fsize}')
         if self.chdir:
             args.append(f'-c{self.chdir}')
-        return args
+
+        file_args = []
+        if self.params.stdin_file:
+            file_args.append(f'-i{self.params.stdin_file}')
+        if self.params.stdout_file:
+            file_args.append(f'-o{self.params.stdout_file}')
+        if self.params.stderr_file:
+            file_args.append(f'-e{self.params.stderr_file}')
+        if self.params.reverse_io:
+            file_args.reverse()
+
+        return args + file_args
 
     def get_root_path(self) -> pathlib.Path:
         """Return the toplevel path of the sandbox.

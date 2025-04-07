@@ -12,12 +12,12 @@ from rbx.testing_utils import print_directory_tree
 
 
 @pytest.mark.test_pkg('box1')
-def test_generator_works(pkg_from_testdata: pathlib.Path):
-    generate_testcases()
+async def test_generator_works(pkg_from_testdata: pathlib.Path):
+    await generate_testcases()
     entries = [
-        entry.group_entry for entry in extract_generation_testcases_from_groups()
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
     ]
-    generate_outputs_for_testcases(entries)
+    await generate_outputs_for_testcases(entries)
 
     # Debug when fail.
     print_directory_tree(pkg_from_testdata)
@@ -37,11 +37,11 @@ def test_generator_works(pkg_from_testdata: pathlib.Path):
 
 
 @pytest.mark.test_pkg('box1')
-def test_generator_cache_works(
+async def test_generator_cache_works(
     pkg_from_testdata: pathlib.Path,
 ):
     # Run the first time.
-    generate_testcases()
+    await generate_testcases()
     assert (
         package.get_build_testgroup_path('gen1') / '1-gen-000.in'
     ).read_text() == '123\n'
@@ -54,7 +54,7 @@ def test_generator_cache_works(
     gen_path.write_text(gen_path.read_text().replace('123', '4567'))
 
     # Run the second time.
-    generate_testcases()
+    await generate_testcases()
 
     # Debug when fail.
     print_directory_tree(pkg_from_testdata)

@@ -1,5 +1,6 @@
 import pathlib
 import shutil
+import tempfile
 from typing import Dict, List, Optional, Set
 
 import typer
@@ -7,15 +8,13 @@ import typer
 from rbx import console
 from rbx.box import checkers, package, testcase_utils, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
-from rbx.box.environment import (
-    EnvironmentSandbox,
-    ExecutionConfig,
-)
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
+    TaskType,
     Testcase,
 )
+from rbx.box.tasks import run_solution_on_testcase
 from rbx.box.testcase_extractors import (
     GenerationMetadata,
     GenerationTestcaseEntry,
@@ -32,6 +31,8 @@ from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
     DigestOrSource,
+    Evaluation,
+    Outcome,
 )
 from rbx.utils import StatusProgress
 
@@ -73,7 +74,7 @@ def get_call_from_string(call_str: str) -> GeneratorCall:
     return GeneratorCall(name=name, args=args)
 
 
-def _get_necessary_generators_for_groups(
+async def _get_necessary_generators_for_groups(
     groups: Optional[Set[str]] = None,
 ) -> Set[str]:
     pkg = package.find_problem_package_or_die()
@@ -81,11 +82,11 @@ def _get_necessary_generators_for_groups(
     necessary_generators = set()
 
     class NecessaryGeneratorsVisitor(TestcaseGroupVisitor):
-        def visit(self, entry: GenerationTestcaseEntry):
+        async def visit(self, entry: GenerationTestcaseEntry):
             if entry.metadata.generator_call is not None:
                 necessary_generators.add(entry.metadata.generator_call.name)
 
-    run_testcase_visitor(NecessaryGeneratorsVisitor(groups))
+    await run_testcase_visitor(NecessaryGeneratorsVisitor(groups))
 
     return existing_generators.intersection(necessary_generators)
 
@@ -126,7 +127,7 @@ def expand_generator_call(call: GeneratorCall) -> GeneratorCall:
     return call.model_copy(update={'args': generator_for_args.generate(parsed_args)})
 
 
-def generate_standalone(
+async def generate_standalone(
     spec: GenerationMetadata,
     validate: bool = True,
     group_entry: Optional[TestcaseEntry] = None,
@@ -166,7 +167,7 @@ def generate_standalone(
             progress.update(
                 f'Generating testcase [status]{generator.name} {call.args}[/status]...'
             )
-        generation_log = run_item(
+        generation_log = await run_item(
             generator,
             DigestOrSource.create(generator_digest),
             stdout=DigestOrDest.create(spec.copied_to.inputPath),
@@ -200,7 +201,7 @@ def generate_standalone(
             _, validator_digest = validator_tp
         if progress:
             progress.update('Validating test...')
-        validation_info = validators.validate_one_off(
+        validation_info = await validators.validate_one_off(
             spec.copied_to.inputPath,
             validator,
             validator_digest,
@@ -214,7 +215,7 @@ def generate_standalone(
             raise typer.Exit(1)
 
 
-def generate_testcases(
+async def generate_testcases(
     progress: Optional[StatusProgress] = None, groups: Optional[Set[str]] = None
 ):
     def step():
@@ -223,7 +224,7 @@ def generate_testcases(
 
     compiled_generators = compile_generators(
         progress=progress,
-        tracked_generators=_get_necessary_generators_for_groups(groups)
+        tracked_generators=await _get_necessary_generators_for_groups(groups)
         if groups is not None
         else None,
     )
@@ -231,7 +232,7 @@ def generate_testcases(
     testcase_utils.clear_built_testcases()
 
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
-        def visit(self, entry: GenerationTestcaseEntry):
+        async def visit(self, entry: GenerationTestcaseEntry):
             if entry.metadata.copied_from is not None:
                 _copy_testcase_over(
                     entry.metadata.copied_from,
@@ -239,7 +240,7 @@ def generate_testcases(
                 )
 
             if entry.metadata.generator_call is not None:
-                generate_standalone(
+                await generate_standalone(
                     entry.metadata,
                     group_entry=entry.group_entry,
                     validate=False,
@@ -249,13 +250,14 @@ def generate_testcases(
                 )
             step()
 
-    run_testcase_visitor(BuildTestcaseVisitor(groups))
+    await run_testcase_visitor(BuildTestcaseVisitor(groups))
 
 
-def generate_output_for_testcase(
+async def generate_output_for_testcase(
     main_solution_digest: str,
     testcase: Testcase,
     stderr_path: Optional[pathlib.Path] = None,
+    interactor_digest: Optional[str] = None,
 ):
     assert testcase.outputPath is not None
     testcase.inputPath.parent.mkdir(parents=True, exist_ok=True)
@@ -265,55 +267,51 @@ def generate_output_for_testcase(
         # Output file was already copied over from manual tests.
         return
 
-    pkg = package.find_problem_package_or_die()
     main_solution = package.get_main_solution()
     if main_solution is None:
         return
 
-    # Obey no limits when generating testcases.
-    sandbox = EnvironmentSandbox()
-    sandbox.fileSizeLimit = pkg.outputLimit
-    extra_config = ExecutionConfig(sandbox=sandbox)
+    with tempfile.TemporaryDirectory() as dir:
+        output_dir = pathlib.Path(dir)
 
-    try:
-        run_log = run_item(
+        eval: Evaluation = await run_solution_on_testcase(
             main_solution,
-            DigestOrSource.create(main_solution_digest),
-            stdin=DigestOrSource.create(testcase.inputPath),
-            stdout=DigestOrDest.create(testcase.outputPath),
-            stderr=DigestOrDest.create(stderr_path)
-            if stderr_path is not None
-            else None,
-            extra_config=extra_config,
+            main_solution_digest,
+            None,
+            testcase,
+            output_dir,
+            interactor_digest=interactor_digest,
+            use_retries=False,
+            use_timelimit=False,
         )
-    except:
-        console.console.print(
-            '[error]Failed running main solution to generate testcase.[/error]'
-        )
-        raise
 
-    if run_log is None or run_log.exitcode != 0:
-        console.console.print(
-            f'[error]Failed generating output for [item]{testcase.inputPath}[/item][/error]',
-        )
-        if run_log is not None:
-            console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
-            checker_result = checkers.check_with_no_output(run_log)
+        if eval.log.stdout_absolute_path is not None:
+            shutil.copy(eval.log.stdout_absolute_path, testcase.outputPath)
+        if eval.log.stderr_absolute_path is not None and stderr_path is not None:
+            shutil.copy(eval.log.stderr_absolute_path, stderr_path)
+
+        if eval.result.outcome != Outcome.ACCEPTED:
             console.console.print(
-                f'[warning]Verdict: [item]{checker_result.outcome.value}[/item][/warning]',
+                f'[error]Failed generating output for [item]{testcase.inputPath}[/item][/error]',
+            )
+            console.console.print(f'[error]Summary:[/error] {eval.log.get_summary()}')
+            console.console.print(
+                f'[warning]Verdict: [item]{eval.result.outcome.value}[/item][/warning]',
             )
             console.console.print(
-                f'[warning]Message: [info]{checker_result.message}[/info][/warning]',
+                f'[warning]Message: [info]{eval.result.message}[/info][/warning]',
             )
             console.console.print(f'Input written at [item]{testcase.inputPath}[/item]')
             console.console.print(
                 f'Output written at [item]{testcase.outputPath}[/item]'
             )
-            console.console.print(f'Stderr written at [item]{stderr_path}[/item]')
-        raise typer.Exit(1)
+            if stderr_path is not None:
+                console.console.print(f'Stderr written at [item]{stderr_path}[/item]')
+
+            raise typer.Exit(1)
 
 
-def generate_outputs_for_testcases(
+async def generate_outputs_for_testcases(
     entries: List[TestcaseEntry],
     progress: Optional[StatusProgress] = None,
 ):
@@ -323,6 +321,13 @@ def generate_outputs_for_testcases(
 
     main_solution = package.get_main_solution()
     solution_digest: Optional[str] = None
+
+    pkg = package.find_problem_package_or_die()
+
+    if pkg.type == TaskType.COMMUNICATION:
+        interactor_digest = checkers.compile_interactor(progress)
+    else:
+        interactor_digest = None
 
     if main_solution is not None:
         if progress:
@@ -337,7 +342,7 @@ def generate_outputs_for_testcases(
     shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
     gen_runs_dir.mkdir(parents=True, exist_ok=True)
 
-    generation_entries = extract_generation_testcases(entries)
+    generation_entries = await extract_generation_testcases(entries)
 
     for entry in generation_entries:
         tc = entry.metadata.copied_to
@@ -354,9 +359,10 @@ def generate_outputs_for_testcases(
             raise typer.Exit(1)
 
         assert solution_digest is not None
-        generate_output_for_testcase(
+        await generate_output_for_testcase(
             solution_digest,
             tc,
             gen_runs_dir / 'main.stderr',
+            interactor_digest=interactor_digest,
         )
         step()
