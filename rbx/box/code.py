@@ -216,6 +216,52 @@ class PreparedRun:
     metadata: RunLogMetadata
 
 
+@dataclasses.dataclass
+class CaptureSpec:
+    prefix: str
+    output: Optional[DigestOrDest] = None
+    merged_capture: Optional[pathlib.Path] = None
+
+
+def _prepare_for_communication(
+    run: PreparedRun,
+    stdin: pathlib.Path,
+    stdout: pathlib.Path,
+    reverse_io: bool = False,
+    capture: Optional[CaptureSpec] = None,
+):
+    run.sandbox_params.set_stdio(
+        stdin=stdin,
+        stdout=stdout,
+    )
+    run.sandbox_params.reverse_io = reverse_io
+    if capture is not None:
+        run.sandbox_params.timeit_prefix = capture.prefix
+
+        if capture.output is not None:
+            output_path = PosixPath('capture')
+            run.sandbox_params.timeit_dups['do'].append(output_path)
+
+            run.artifacts.outputs.append(
+                GradingFileOutput(
+                    src=output_path,
+                    **capture.output.expand(),
+                    touch=True,
+                )
+            )
+
+        if capture.merged_capture is not None:
+            merged_output_path = package.get_merged_capture_path().resolve()
+            run.sandbox_params.timeit_dups['Do'].append(merged_output_path)
+
+            run.artifacts.outputs.append(
+                GradingFileOutput(
+                    src=merged_output_path,
+                    dest=capture.merged_capture,
+                )
+            )
+
+
 def _prepare_run(
     code: CodeItem,
     executable: DigestOrSource,
@@ -484,6 +530,7 @@ class CommunicationItem:
     outputs: Optional[List[GradingFileOutput]] = None
     extra_args: Optional[str] = None
     extra_config: Optional[ExecutionConfig] = None
+    capture: Optional[DigestOrDest] = None
 
     def prepare(self) -> PreparedRun:
         return _prepare_run(
@@ -500,6 +547,7 @@ class CommunicationItem:
 async def run_communication(
     interactor: CommunicationItem,
     solution: CommunicationItem,
+    merged_capture: Optional[pathlib.Path] = None,
     retry_index: Optional[int] = None,
 ):
     fifo_in, fifo_out = package.get_fifos()
@@ -510,10 +558,35 @@ async def run_communication(
     interactor_prepared.metadata.retryIndex = retry_index
     solution_prepared.metadata.retryIndex = retry_index
 
-    interactor_prepared.sandbox_params.set_stdio(stdin=fifo_out, stdout=fifo_in)
-    solution_prepared.sandbox_params.set_stdio(stdin=fifo_in, stdout=fifo_out)
+    interactor_prefix = 'INTERACTOR:'
+    solution_prefix = 'SOLUTION:'
 
-    solution_prepared.sandbox_params.reverse_io = True
+    if merged_capture is not None:
+        package.get_merged_capture_path().write_text(
+            f'{interactor_prefix}\n{solution_prefix}\n'
+        )
+
+    _prepare_for_communication(
+        interactor_prepared,
+        fifo_out,
+        fifo_in,
+        capture=CaptureSpec(
+            prefix=interactor_prefix,
+            output=interactor.capture,
+            merged_capture=merged_capture,
+        ),
+    )
+    _prepare_for_communication(
+        solution_prepared,
+        fifo_in,
+        fifo_out,
+        reverse_io=True,
+        capture=CaptureSpec(
+            prefix=solution_prefix,
+            output=solution.capture,
+            merged_capture=merged_capture,
+        ),
+    )
 
     interactor_run_params = steps.CoordinatedRunParams(
         command=interactor_prepared.command,

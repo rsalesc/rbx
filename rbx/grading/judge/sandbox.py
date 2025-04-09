@@ -1,4 +1,5 @@
 import abc
+import collections
 import dataclasses
 import io
 import logging
@@ -113,6 +114,12 @@ class SandboxParams(pydantic.BaseModel):
     wallclock_timeout: Optional[int] = None  # ms
     extra_timeout: Optional[int] = None  # ms
     reverse_io: bool = False
+
+    # For timeit
+    timeit_dups: Dict[str, List[pathlib.Path]] = dataclasses.field(
+        default_factory=lambda: collections.defaultdict(list)
+    )
+    timeit_prefix: Optional[str] = None
 
     def get_cacheable_params(self) -> Dict[str, Any]:
         return self.model_dump(mode='json', exclude_unset=True, exclude_none=True)

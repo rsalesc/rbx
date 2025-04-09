@@ -6,7 +6,7 @@ import signal
 import stat
 import sys
 from time import monotonic
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Set, Union
 
 
 @dataclasses.dataclass
@@ -22,10 +22,94 @@ class Options:
     memory_limit: Optional[int] = None  # kb, but passed in args as mb
     fs_limit: Optional[int] = None  # kb
     files_to_open: List[int] = dataclasses.field(default_factory=list)
+    file_duplicates: Dict[int, List[str]] = dataclasses.field(default_factory=dict)
+    prefixed: Set[str] = dataclasses.field(default_factory=set)
+    prefix: str = ''
 
 
 def exit_with(code: int):
     sys.exit(code)
+
+
+def get_tee_command(files: List[str]) -> str:
+    path = (
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), 'tee.py')
+        + ' '
+        + ' '.join(files)
+    )
+    return sys.executable + ' ' + path
+
+
+valid_modes = ['a', 'w']
+
+
+@dataclasses.dataclass
+class Tee:
+    file: Any
+    prefix: Union[str, bytes] = ''
+
+
+def create_tee(files, mode, buffer_size=4096, prefix=''):
+    """Get a file object that will mirror writes across multiple files objs
+
+    Options:
+        files     A list of files and/or file objects. All strings will be
+                  treated as file paths and opened for writing. Everything
+                  else is assumed to be a file-like object that implements
+                  both the write() and flush() methods.
+
+        mode      Which mode to use when opening new files. Valid values
+                  are 'a' (append) and 'w' (overwrite).
+
+        buffer_size
+                Control the size of the buffer between writes to the
+                resulting file object and the list of files.
+    """
+    if mode not in valid_modes:
+        raise IOError(
+            'Only valid modes to create_tee() are: %s' % ', '.join(valid_modes)
+        )
+
+    tee_list = []
+    for file in files:
+        if isinstance(file, Tee):
+            tee_list.append(file)
+        else:
+            tee_list.append(Tee(file))
+    for tee in tee_list:
+        if isinstance(tee.file, str):
+            tee.file = open(tee.file, f'{mode}b')
+        if isinstance(tee.prefix, str):
+            tee.prefix = tee.prefix.encode()
+
+    pipe_read, pipe_write = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        # Child -- Read bytes from the pipe and write them to the specified
+        #          files.
+        try:
+            # Close parent's end of the pipe
+            os.close(pipe_write)
+
+            bytes = os.read(pipe_read, buffer_size)
+            while bytes:
+                for tee in tee_list:
+                    if tee.prefix:
+                        tee.file.write(tee.prefix)
+                    tee.file.write(bytes)
+                    tee.file.flush()
+                    # TODO maybe add in fsync() here if the fileno() method
+                    # exists on file
+
+                bytes = os.read(pipe_read, buffer_size)
+        except Exception:
+            pass
+        finally:
+            os._exit(255)
+    else:
+        # Parent -- Return a file object wrapper around the pipe to the
+        #           child.
+        return os.fdopen(pipe_write, 'w', closefd=False)
 
 
 def parse_opts() -> Options:
@@ -50,10 +134,21 @@ def parse_opts() -> Options:
         elif opt.startswith('-e'):
             options.stderr_file = opt[2:]
             options.files_to_open.append(2)
+        elif opt.startswith('-d') or opt.startswith('-D'):
+            is_prefixed = opt.startswith('-D')
+            possibilities = [None, 'o', 'e']
+            index = possibilities.index(opt[2])
+            if index not in options.file_duplicates:
+                options.file_duplicates[index] = []
+            options.file_duplicates[index].append(opt[3:])
+            if is_prefixed:
+                options.prefixed.add(opt[3:])
         elif opt.startswith('-c'):
             options.chdir = opt[2:]
         elif opt.startswith('-f'):
             options.fs_limit = int(opt[2:])
+        elif opt.startswith('-P'):
+            options.prefix = opt[2:]
         else:
             raise Exception(f'Invalid option {opt}')
         num_opts += 1
@@ -108,10 +203,18 @@ def redirect_fds(options: Options):
         if i == 0:
             # stdin
             open_args = [os.O_RDONLY]
-        fd = os.open(
-            file,
-            *open_args,
-        )
+        if i in options.file_duplicates:
+            dups = [
+                Tee(f, prefix=options.prefix if f in options.prefixed else '')
+                for f in options.file_duplicates[i]
+            ]
+            tee = create_tee(dups + [file], 'a', prefix=options.prefix)
+            fd = tee.fileno()
+        else:
+            fd = os.open(
+                file,
+                *open_args,
+            )
         os.dup2(fd, i)
         os.close(fd)
 
@@ -221,3 +324,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+# type: ignore

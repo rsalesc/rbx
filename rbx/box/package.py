@@ -394,15 +394,22 @@ def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Pa
 
 
 @functools.cache
+def get_shared_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    shared_dir = get_problem_cache_dir(root) / '.shared'
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    return shared_dir
+
+
+@functools.cache
 def get_empty_sentinel_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    path = get_problem_cache_dir(root) / '.empty'
+    path = get_shared_dir(root) / '.empty'
     path.write_text('')
     return path
 
 
 @functools.cache
 def get_fifos(root: pathlib.Path = pathlib.Path()) -> Tuple[pathlib.Path, pathlib.Path]:
-    path = get_problem_cache_dir(root) / '.fifos'
+    path = get_shared_dir(root) / '.fifos'
     shutil.rmtree(path, ignore_errors=True)
     path.mkdir(parents=True, exist_ok=True)
     fifo_in = path / 'fifo.in'
@@ -410,6 +417,13 @@ def get_fifos(root: pathlib.Path = pathlib.Path()) -> Tuple[pathlib.Path, pathli
     os.mkfifo(fifo_in)
     os.mkfifo(fifo_out)
     return fifo_in, fifo_out
+
+
+@functools.cache
+def get_merged_capture_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    path = get_shared_dir(root) / '.merged_capture'
+    path.write_text('')
+    return path
 
 
 def clear_package_cache():

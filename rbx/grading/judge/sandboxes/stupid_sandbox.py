@@ -105,8 +105,17 @@ class StupidSandbox(SandboxBase):
             file_args.append(f'-e{self.params.stderr_file}')
         if self.params.reverse_io:
             file_args.reverse()
+        args.extend(file_args)
 
-        return args + file_args
+        if self.params.timeit_dups:
+            for i, files in self.params.timeit_dups.items():
+                assert i.lower() in ['di', 'do', 'de']
+                for file in files:
+                    args.append(f'-{i}{file}')
+        if self.params.timeit_prefix:
+            args.append(f'-P{self.params.timeit_prefix}')
+
+        return args
 
     def get_root_path(self) -> pathlib.Path:
         """Return the toplevel path of the sandbox.

@@ -103,6 +103,13 @@ def main(
         help='Whether to compile and run testlib components with sanitizers enabled. '
         'If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command.',
     ),
+    debug_logs: bool = typer.Option(
+        False,
+        '--debug-logs',
+        '--debug',
+        '-d',
+        help='Whether to save extra debug logs along with the evaluation results.',
+    ),
 ):
     state.STATE.run_through_cli = True
     state.STATE.sanitized = sanitized
@@ -111,6 +118,7 @@ def main(
             '[warning]Sanitizers are running just for testlib components.\n'
             'If you want to run the solutions with sanitizers enabled, use the [item]-s[/item] flag in the corresponding run command.[/warning]'
         )
+    state.STATE.debug_logs = debug_logs
 
 
 # @app.command('ui', hidden=True)

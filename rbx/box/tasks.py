@@ -1,7 +1,7 @@
 import pathlib
 from typing import Optional
 
-from rbx.box import checkers, package
+from rbx.box import checkers, package, state
 from rbx.box.code import CommunicationItem, run_communication, run_item
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier
@@ -49,6 +49,7 @@ async def run_solution_on_testcase(
     timelimit_override: Optional[int] = None,
     use_retries: bool = True,
     use_timelimit: bool = True,
+    capture_pipes: bool = False,
 ) -> Evaluation:
     if interactor_digest is not None:
         return await _run_communication_solution_on_testcase(
@@ -63,6 +64,7 @@ async def run_solution_on_testcase(
             timelimit_override=timelimit_override,
             use_retries=use_retries,
             use_timelimit=use_timelimit,
+            capture_pipes=capture_pipes,
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
@@ -155,7 +157,10 @@ async def _run_communication_solution_on_testcase(
     timelimit_override: Optional[int] = None,
     use_retries: bool = True,
     use_timelimit: bool = True,
+    capture_pipes: bool = False,
 ) -> Evaluation:
+    capture_pipes = capture_pipes or state.STATE.debug_logs
+
     async def run_fn(retry_index: int) -> Evaluation:
         actual_sandbox = package.get_singleton_sandbox()
         interactor_sandbox = package.get_singleton_interactor_sandbox()
@@ -185,6 +190,9 @@ async def _run_communication_solution_on_testcase(
         log_path = output_path.with_suffix('.log')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        interactor_capture_path = (
+            output_path.with_suffix('.pin') if capture_pipes else None
+        )
         interactor_item = CommunicationItem(
             code=package.get_interactor(),
             executable=DigestOrSource.create(interactor_digest),
@@ -204,17 +212,28 @@ async def _run_communication_solution_on_testcase(
                     touch=True,
                 )
             ],
+            capture=DigestOrDest.create(interactor_capture_path)
+            if interactor_capture_path
+            else None,
+        )
+        solution_capture_path = (
+            output_path.with_suffix('.pout') if capture_pipes else None
         )
         solution_item = CommunicationItem(
             code=solution,
             executable=DigestOrSource.create(compiled_digest),
             extra_config=extra_config,
+            capture=DigestOrDest.create(solution_capture_path)
+            if solution_capture_path
+            else None,
         )
 
+        merged_capture_path = output_path.with_suffix('.pio') if capture_pipes else None
         interactor_run_log, run_log = await run_communication(
             interactor=interactor_item,
             solution=solution_item,
             retry_index=retry_index,
+            merged_capture=merged_capture_path,
         )
 
         checker_result = await checkers.check_communication(
