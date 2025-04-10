@@ -2,8 +2,6 @@ import hashlib
 import pathlib
 from typing import IO
 
-import gevent
-
 
 class Digester:
     """Simple wrapper of hashlib using our preferred hasher."""
@@ -26,7 +24,6 @@ def digest_cooperatively_into_digester(
     buf = f.read(chunk_size)
     while len(buf) > 0:
         digester.update(buf)
-        gevent.sleep(0)
         buf = f.read(chunk_size)
 
 

@@ -1,8 +1,4 @@
 # flake8: noqa
-from gevent import monkey
-
-monkey.patch_all()
-
 import typer
 from typing_extensions import Annotated
 

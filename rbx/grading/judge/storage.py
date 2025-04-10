@@ -6,8 +6,6 @@ import tempfile
 from abc import ABC, abstractmethod
 from typing import IO, AnyStr, List, Optional
 
-import gevent
-
 logger = logging.getLogger(__name__)
 
 TOMBSTONE = 'x'
@@ -40,11 +38,9 @@ def copyfileobj(
         if maxlen > 0 and maxlen < len(buffer):
             buffer = buffer[:maxlen]
         while len(buffer) > 0:
-            gevent.sleep(0)
             written = destination_fobj.write(buffer)
             buffer = buffer[written:]
             maxlen -= written
-        gevent.sleep(0)
 
 
 @dataclasses.dataclass

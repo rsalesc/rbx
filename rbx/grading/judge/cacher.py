@@ -9,8 +9,6 @@ import tempfile
 import typing
 from typing import IO, List, Optional
 
-import gevent
-
 from rbx.grading.judge import digester, storage
 
 logger = logging.getLogger(__name__)
@@ -318,8 +316,6 @@ class FileCacher:
                 d.update(buf)
                 while len(buf) > 0:
                     written = dst.write(buf)
-                    # Cooperative yield.
-                    gevent.sleep(0)
                     if written is None:
                         break
                     buf = buf[written:]
