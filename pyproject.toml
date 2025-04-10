@@ -1,12 +1,15 @@
 [tool.poetry]
 name = "rbx.cp"
-version = "0.5.43"
+version = "0.5.45"
 description = ""
 packages = [
   {include = "rbx"}
 ]
 authors = ["Roberto Sales"]
 readme = "README.md"
+exclude = [
+  "rbx/testdata/",
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
