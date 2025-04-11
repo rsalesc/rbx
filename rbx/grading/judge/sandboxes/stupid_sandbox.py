@@ -321,4 +321,4 @@ class StupidSandbox(SandboxBase):
         # This sandbox doesn't have any cleanup, but we might want to delete.
         if delete:
             logger.debug('Deleting sandbox in %s.', self._path)
-            shutil.rmtree(str(self._path))
+            shutil.rmtree(str(self._path), ignore_errors=True)

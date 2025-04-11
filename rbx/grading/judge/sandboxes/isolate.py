@@ -556,7 +556,7 @@ class IsolateSandbox(SandboxBase):
             )
         except OSError:
             logger.critical(
-                'Failed to execute program in sandbox ' 'with command: %s',
+                'Failed to execute program in sandbox with command: %s',
                 str(args),
                 exc_info=True,
             )
@@ -680,4 +680,4 @@ class IsolateSandbox(SandboxBase):
         if delete:
             logger.debug('Deleting sandbox in %s.', self._outer_dir)
             # Delete the working directory.
-            shutil.rmtree(str(self._outer_dir))
+            shutil.rmtree(str(self._outer_dir), ignore_errors=True)
