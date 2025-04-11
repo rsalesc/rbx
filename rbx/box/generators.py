@@ -272,6 +272,7 @@ async def generate_output_for_testcase(
         interactor_digest=interactor_digest,
         use_retries=False,
         use_timelimit=False,
+        capture_pipes=True,
     )
 
     if eval.result.outcome != Outcome.ACCEPTED:
