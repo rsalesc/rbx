@@ -1,6 +1,4 @@
-import pathlib
 import shutil
-import tempfile
 from typing import Dict, List, Optional, Set
 
 import typer
@@ -256,59 +254,45 @@ async def generate_testcases(
 async def generate_output_for_testcase(
     main_solution_digest: str,
     testcase: Testcase,
-    stderr_path: Optional[pathlib.Path] = None,
     interactor_digest: Optional[str] = None,
 ):
     assert testcase.outputPath is not None
     testcase.inputPath.parent.mkdir(parents=True, exist_ok=True)
     testcase.outputPath.parent.mkdir(parents=True, exist_ok=True)
 
-    if testcase.outputPath.is_file():
-        # Output file was already copied over from manual tests.
-        return
-
     main_solution = package.get_main_solution()
     if main_solution is None:
         return
 
-    with tempfile.TemporaryDirectory() as dir:
-        output_dir = pathlib.Path(dir)
+    eval: Evaluation = await run_solution_on_testcase(
+        main_solution,
+        main_solution_digest,
+        None,
+        testcase,
+        interactor_digest=interactor_digest,
+        use_retries=False,
+        use_timelimit=False,
+    )
 
-        eval: Evaluation = await run_solution_on_testcase(
-            main_solution,
-            main_solution_digest,
-            None,
-            testcase,
-            output_dir,
-            interactor_digest=interactor_digest,
-            use_retries=False,
-            use_timelimit=False,
+    if eval.result.outcome != Outcome.ACCEPTED:
+        console.console.print(
+            f'[error]Failed generating output for [item]{testcase.inputPath}[/item][/error]',
         )
+        console.console.print(f'[error]Summary:[/error] {eval.log.get_summary()}')
+        console.console.print(
+            f'[warning]Verdict: [item]{eval.result.outcome.value}[/item][/warning]',
+        )
+        console.console.print(
+            f'[warning]Message: [info]{eval.result.message}[/info][/warning]',
+        )
+        console.console.print(f'Input written at [item]{testcase.inputPath}[/item]')
+        console.console.print(f'Output written at [item]{testcase.outputPath}[/item]')
+        if eval.log.stderr_absolute_path is not None:
+            console.console.print(
+                f'Stderr written at [item]{eval.log.stderr_absolute_path}[/item]'
+            )
 
-        if eval.log.stdout_absolute_path is not None:
-            shutil.copy(eval.log.stdout_absolute_path, testcase.outputPath)
-        if eval.log.stderr_absolute_path is not None and stderr_path is not None:
-            shutil.copy(eval.log.stderr_absolute_path, stderr_path)
-
-        if eval.result.outcome != Outcome.ACCEPTED:
-            console.console.print(
-                f'[error]Failed generating output for [item]{testcase.inputPath}[/item][/error]',
-            )
-            console.console.print(f'[error]Summary:[/error] {eval.log.get_summary()}')
-            console.console.print(
-                f'[warning]Verdict: [item]{eval.result.outcome.value}[/item][/warning]',
-            )
-            console.console.print(
-                f'[warning]Message: [info]{eval.result.message}[/info][/warning]',
-            )
-            console.console.print(f'Input written at [item]{testcase.inputPath}[/item]')
-            console.console.print(
-                f'Output written at [item]{testcase.outputPath}[/item]'
-            )
-            if stderr_path is not None:
-                console.console.print(f'Stderr written at [item]{stderr_path}[/item]')
-
-            raise typer.Exit(1)
+        raise typer.Exit(1)
 
 
 async def generate_outputs_for_testcases(
@@ -351,6 +335,16 @@ async def generate_outputs_for_testcases(
         assert tc.outputPath is not None
 
         if (
+            entry.metadata.copied_from is not None
+            and entry.metadata.copied_from.outputPath is not None
+            and entry.metadata.copied_from.outputPath.is_file()
+        ):
+            # Copy manual output over.
+            shutil.copy(entry.metadata.copied_from.outputPath, tc.outputPath)
+            step()
+            continue
+
+        if (
             main_solution is None or solution_digest is None
         ) and not tc.outputPath.is_file():
             console.console.print(
@@ -362,7 +356,6 @@ async def generate_outputs_for_testcases(
         await generate_output_for_testcase(
             solution_digest,
             tc,
-            gen_runs_dir / 'main.stderr',
             interactor_digest=interactor_digest,
         )
         step()

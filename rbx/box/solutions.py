@@ -185,7 +185,7 @@ def _run_solution(
                 compiled_digest,
                 checker_digest,
                 testcase,
-                output_path,
+                output_dir=output_path,
                 interactor_digest=interactor_digest,
                 testcase_index=i,
                 verification=verification,
@@ -367,6 +367,7 @@ async def _generate_testcase_interactively(
     )
 
     is_manual = False
+    is_output_manual = False
     generation_metadata = None
     if generator is not None:
         generation_metadata = GenerationMetadata(
@@ -398,6 +399,7 @@ async def _generate_testcase_interactively(
                 output = console.multiline_prompt('Testcase output')
                 testcase.outputPath.write_text(output)
                 console.console.print()
+            is_output_manual = True
 
         generation_metadata = GenerationMetadata(
             copied_to=testcase,
@@ -453,7 +455,7 @@ async def _generate_testcase_interactively(
             )
             raise
 
-    if main_solution_digest is not None:
+    if main_solution_digest is not None and not is_output_manual:
         pkg = package.find_problem_package_or_die()
         if pkg.type == TaskType.COMMUNICATION:
             interactor_digest = checkers.compile_interactor(progress)
@@ -523,7 +525,7 @@ def _run_interactive_solutions(
                 compiled_solutions[solution.path],
                 checker_digest,
                 testcase,
-                output_dir,
+                output_dir=output_dir,
                 interactor_digest=interactor_digest,
                 verification=verification,
             )

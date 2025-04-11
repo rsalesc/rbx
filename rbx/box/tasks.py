@@ -42,7 +42,7 @@ async def run_solution_on_testcase(
     compiled_digest: str,
     checker_digest: Optional[str],
     testcase: Testcase,
-    output_dir: pathlib.Path,
+    output_dir: Optional[pathlib.Path] = None,
     interactor_digest: Optional[str] = None,
     testcase_index: int = 0,
     verification: VerificationLevel = VerificationLevel.NONE,
@@ -78,7 +78,11 @@ async def run_solution_on_testcase(
         )
         extra_config = _get_execution_config(limits, actual_sandbox)
 
-        output_path = output_dir / testcase.inputPath.with_suffix('.out').name
+        if output_dir is None:
+            assert testcase.outputPath is not None
+            output_path = testcase.outputPath
+        else:
+            output_path = output_dir / testcase.inputPath.with_suffix('.out').name
         error_path = output_path.with_suffix('.err')
         log_path = output_path.with_suffix('.log')
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,7 +155,7 @@ async def _run_communication_solution_on_testcase(
     interactor_digest: str,
     checker_digest: Optional[str],
     testcase: Testcase,
-    output_dir: pathlib.Path,
+    output_dir: Optional[pathlib.Path] = None,
     testcase_index: int = 0,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
@@ -185,7 +189,11 @@ async def _run_communication_solution_on_testcase(
             )
         # TODO: maybe combine wall time limits?
 
-        output_path = output_dir / testcase.inputPath.with_suffix('.out').name
+        if output_dir is None:
+            assert testcase.outputPath is not None
+            output_path = testcase.outputPath
+        else:
+            output_path = output_dir / testcase.inputPath.with_suffix('.out').name
         error_path = output_path.with_suffix('.err')
         log_path = output_path.with_suffix('.log')
         output_path.parent.mkdir(parents=True, exist_ok=True)
