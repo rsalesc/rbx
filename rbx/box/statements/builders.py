@@ -25,6 +25,7 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
+from rbx.box.testcase_utils import TestcaseInteraction, parse_interaction
 
 
 @dataclasses.dataclass
@@ -63,13 +64,31 @@ class StatementSample(BaseModel):
     inputPath: pathlib.Path
     outputPath: pathlib.Path
     hasOutput: bool = True
+    interaction: Optional[TestcaseInteraction] = None
 
     @staticmethod
     def from_testcase(testcase: Testcase) -> 'StatementSample':
+        input_path = testcase.inputPath
+        output_path = testcase.outputPath
+
+        pin_path = input_path.with_suffix('.pin')
+        pout_path = input_path.with_suffix('.pout')
+        pio_path = input_path.with_suffix('.pio')
+
+        if pin_path.is_file():
+            input_path = pin_path
+        if pout_path.is_file():
+            output_path = pout_path
+
+        interaction = None
+        if pio_path.is_file():
+            interaction = parse_interaction(pio_path)
+
         return StatementSample(
-            inputPath=testcase.inputPath,
-            outputPath=testcase.outputPath or utils.get_empty_sentinel_path(),
-            hasOutput=testcase.outputPath is not None,
+            inputPath=input_path,
+            outputPath=output_path or utils.get_empty_sentinel_path(),
+            hasOutput=output_path is not None,
+            interaction=interaction,
         )
 
     @staticmethod

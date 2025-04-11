@@ -1,3 +1,4 @@
+import pathlib
 import shutil
 from typing import Dict, List, Optional, Set
 
@@ -59,6 +60,47 @@ def _copy_testcase_over(
             str(testcase.outputPath),
             str(dest.outputPath),
         )
+
+
+def _copy_testcase_output_over(
+    src_output_path: pathlib.Path, dest_output_path: pathlib.Path, suffix: str
+) -> bool:
+    dest_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    src_path = src_output_path.with_suffix(suffix)
+    if not src_path.is_file():
+        return False
+
+    shutil.copy(str(src_path), str(dest_output_path.with_suffix(suffix)))
+    return True
+
+
+def _copy_testcase_outputs_over(
+    testcase: Testcase, dest: Testcase, pipes: bool = False
+):
+    assert dest.outputPath is not None
+    dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
+
+    has_copied = False
+
+    if testcase.outputPath is not None and testcase.outputPath.is_file():
+        shutil.copy(str(testcase.outputPath), str(dest.outputPath))
+        has_copied = True
+
+    if not pipes:
+        return has_copied
+
+    reference_path = testcase.outputPath or testcase.inputPath
+    if _copy_testcase_output_over(reference_path, dest.outputPath, '.pin'):
+        has_copied = True
+
+    if _copy_testcase_output_over(reference_path, dest.outputPath, '.pout'):
+        has_copied = True
+
+    if _copy_testcase_output_over(reference_path, dest.outputPath, '.pio'):
+        has_copied = True
+
+    return has_copied
 
 
 def get_all_built_testcases() -> Dict[str, List[Testcase]]:
@@ -335,13 +377,11 @@ async def generate_outputs_for_testcases(
             return
         assert tc.outputPath is not None
 
-        if (
-            entry.metadata.copied_from is not None
-            and entry.metadata.copied_from.outputPath is not None
-            and entry.metadata.copied_from.outputPath.is_file()
+        if entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
+            entry.metadata.copied_from, tc
         ):
-            # Copy manual output over.
-            shutil.copy(entry.metadata.copied_from.outputPath, tc.outputPath)
+            # Copy remaining pipe files.
+            _copy_testcase_outputs_over(entry.metadata.copied_from, tc, pipes=True)
             step()
             continue
 
@@ -359,4 +399,7 @@ async def generate_outputs_for_testcases(
             tc,
             interactor_digest=interactor_digest,
         )
+        if entry.metadata.copied_from is not None:
+            # Copy remaining pipe files.
+            _copy_testcase_outputs_over(entry.metadata.copied_from, tc, pipes=True)
         step()
