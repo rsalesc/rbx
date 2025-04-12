@@ -7,10 +7,10 @@ import typer
 from rbx import console
 from rbx.box import package
 from rbx.box.environment import get_extension_or_default
-from rbx.box.packaging.boca.extension import BocaExtension
+from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.boca.packager import BocaPackager
 from rbx.box.packaging.packager import BuiltStatement
-from rbx.box.schema import ExpectedOutcome
+from rbx.box.schema import ExpectedOutcome, TaskType
 from rbx.config import get_default_app_path, get_testlib
 from rbx.grading.judge.digester import digest_cooperatively
 
@@ -19,6 +19,10 @@ class MojPackager(BocaPackager):
     def __init__(self, for_boca: bool = False):
         super().__init__()
         self.for_boca = for_boca
+
+    @classmethod
+    def task_types(cls) -> List[TaskType]:
+        return [TaskType.COMMUNICATION, TaskType.BATCH]
 
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()
@@ -40,8 +44,12 @@ class MojPackager(BocaPackager):
     def _get_limits(self) -> str:
         pkg = package.find_problem_package_or_die()
         ml = pkg.memoryLimit
-        ol = pkg.outputLimit
-        return f'ULIMITS[-f]={ol}\n' f'ULIMITS[-v]={ml * 1024}\n'
+        # ol = pkg.outputLimit
+        limits = [
+            f'ULIMITS[-v]={ml * 1024}',
+            # f'ULIMITS[-f]={ol}',
+        ]
+        return '\n'.join(limits) + '\n'
 
     def _get_compare(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
@@ -65,6 +73,30 @@ class MojPackager(BocaPackager):
     def _get_checker(self) -> str:
         return package.get_checker().path.read_text()
 
+    def _get_interactor(self) -> str:
+        return package.get_interactor().path.read_text()
+
+    def _expand_language_vars(self, language: BocaLanguage, dir: pathlib.Path):
+        extension = get_extension_or_default('boca', BocaExtension)
+
+        for path in dir.glob('**/*'):
+            if not path.is_file():
+                continue
+
+            replaced = path.read_text()
+            replaced = replaced.replace(
+                '{{rbxMaxMemory}}', f'{self._get_pkg_memorylimit(language)}'
+            )
+
+            flags = extension.flags_with_defaults()
+            if language in flags:
+                replaced = replaced.replace('{{rbxFlags}}', flags[language])
+
+            path.write_text(replaced)
+
+            if path.suffix == '.sh':
+                path.chmod(0o755)
+
     def _copy_solutions_moj(self, into_path: pathlib.Path):
         into_path = into_path / 'sols'
         has_good = False
@@ -83,7 +115,8 @@ class MojPackager(BocaPackager):
             console.console.print('[error]No good solution found.[/error]')
             raise typer.Exit(1)
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return 'moj'
 
     def package(
@@ -92,6 +125,8 @@ class MojPackager(BocaPackager):
         into_path: pathlib.Path,
         built_statements: List[BuiltStatement],
     ) -> pathlib.Path:
+        pkg = package.find_problem_package_or_die()
+
         # Prepare dummy files
         author_path = into_path / 'author'
         author_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,6 +163,48 @@ class MojPackager(BocaPackager):
         checker_path.parent.mkdir(parents=True, exist_ok=True)
         checker_path.write_text(self._get_checker())
 
+        # Prepare interactor
+        if pkg.type == TaskType.COMMUNICATION:
+            interactor_path = into_path / 'scripts' / 'interactor.cpp'
+            interactor_path.parent.mkdir(parents=True, exist_ok=True)
+            interactor_path.write_text(self._get_interactor())
+
+            interactor_prep_path = into_path / 'scripts' / 'interactor_prep.sh'
+            interactor_prep_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(
+                get_default_app_path()
+                / 'packagers'
+                / 'moj'
+                / 'scripts'
+                / 'interactor_prep.sh',
+                interactor_prep_path,
+            )
+            interactor_prep_path.chmod(0o755)
+
+            interactor_run_path = into_path / 'scripts' / 'interactor_run.sh'
+            interactor_run_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(
+                get_default_app_path()
+                / 'packagers'
+                / 'moj'
+                / 'scripts'
+                / 'interactor_run.sh',
+                interactor_run_path,
+            )
+            interactor_run_path.chmod(0o755)
+
+        # Prepare language scripts
+        extension = get_extension_or_default('boca', BocaExtension)
+        for language in extension.languages:
+            language_path = into_path / 'scripts' / language
+            language_path.parent.mkdir(parents=True, exist_ok=True)
+            src_path = (
+                get_default_app_path() / 'packagers' / 'moj' / 'scripts' / language
+            )
+            if src_path.exists():
+                shutil.copytree(src_path, language_path)
+                self._expand_language_vars(language, language_path)
+
         # Problem statement
         enunciado_path = into_path / 'docs' / 'enunciado.pdf'
         enunciado_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,11 +227,11 @@ class MojPackager(BocaPackager):
 
         testcases = self.get_flattened_built_testcases()
         for i, testcase in enumerate(testcases):
-            shutil.copyfile(testcase.inputPath, inputs_path / f'{i+1:03d}')
+            shutil.copyfile(testcase.inputPath, inputs_path / f'{i + 1:03d}')
             if testcase.outputPath is not None:
-                shutil.copyfile(testcase.outputPath, outputs_path / f'{i+1:03d}')
+                shutil.copyfile(testcase.outputPath, outputs_path / f'{i + 1:03d}')
             else:
-                (outputs_path / f'{i+1:03d}').touch()
+                (outputs_path / f'{i + 1:03d}').touch()
 
         # Zip all.
         shutil.make_archive(

@@ -1,30 +1,4 @@
 #!/bin/bash
-# ////////////////////////////////////////////////////////////////////////////////
-# //BOCA Online Contest Administrator
-# //    Copyright (C) 2003-2012 by BOCA Development Team (bocasystem@gmail.com)
-# //
-# //    This program is free software: you can redistribute it and/or modify
-# //    it under the terms of the GNU General Public License as published by
-# //    the Free Software Foundation, either version 3 of the License, or
-# //    (at your option) any later version.
-# //
-# //    This program is distributed in the hope that it will be useful,
-# //    but WITHOUT ANY WARRANTY; without even the implied warranty of
-# //    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# //    GNU General Public License for more details.
-# //    You should have received a copy of the GNU General Public License
-# //    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# ////////////////////////////////////////////////////////////////////////////////
-# // Last modified 21/jul/2012 by cassio@ime.usp.br
-#
-# This script receives:
-# $1 team_output
-# $2 sol_output
-# $3 problem_input (might be used by some specific checkers, here it is not)
-#
-# BOCA reads the last line of the standard output
-# and pass it to judges
-#
 if [ ! -r "$1" -o ! -r "$2" ]; then
   echo "Parameter problem"
   exit 43
@@ -45,9 +19,9 @@ elif [ $EC -eq 1 ]; then
   echo "checker found differences"
   exit 6
 elif [ $EC -eq 2 ]; then
-  echo "checker failed"
-  exit 5
+  echo "checker found invalid output"
+  exit 6
 elif [ $EC -ne 3 ]; then
-  echo "unkown compare error $EC"
+  echo "judge failed with $EC"
   exit 43
 fi

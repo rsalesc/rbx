@@ -28,6 +28,13 @@ async def run_packager(
         raise typer.Exit(1)
 
     pkg = package.find_problem_package_or_die()
+
+    if pkg.type not in packager_cls.task_types():
+        console.console.print(
+            f'[error]Packager [item]{packager_cls.name()}[/item] does not support task type [item]{pkg.type}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+
     packager = packager_cls(**kwargs)
 
     statement_types = packager.statement_types()

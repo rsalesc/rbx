@@ -37,14 +37,37 @@ if [ ! -r "$CHECKERSOURCE" ]; then
   exit 47
 fi
 
-WORKDIR=$(dirname "$1")
+WORKDIRBASE=$(dirname "$1")
+WORKDIR=$WORKDIRBASE/cagefiles/
 CHECKERHASH={{checkerHash}}
-CHECKERPATH=$WORKDIR/$CHECKERHASH
+CHECKERPATH=$WORKDIRBASE/$CHECKERHASH
+
+# Get basename of the input file.
+FILE=$(basename $3)
+STDERRLOG=$WORKDIR/$FILE-stderr
+
+echo "input stderr $STDERRLOG "
+if [[ -e $STDERRLOG ]]; then
+  INTERACTOREXITCODE=$(grep '^interactor exitcode' $STDERRLOG | awk '{print $NF}')
+  echo "interactor exitcode = $INTERACTOREXITCODE"
+  if [[ -n $INTERACTOREXITCODE ]]; then
+    if [[ $INTERACTOREXITCODE -eq 1 ]]; then
+      echo "interactor return wrong answer"
+      exit 6
+    elif [[ $INTERACTOREXITCODE -eq 2 ]]; then
+      echo "interactor invalid input"
+      exit 6
+    elif [[ $INTERACTOREXITCODE -eq 3 ]]; then
+      echo "interactor failure with exit code $EC"
+      exit 43
+    fi
+  fi
+fi
 
 lock() {
   MAX_ATTEMPTS=100
   ATTEMPTS=0
-  while ! ln -s $CHECKERSOURCE $CHECKERPATH.lock; do
+  while ! ln -s $CHECKERSOURCE $CHECKERPATH.lock 2>/dev/null; do
     sleep 1
     ATTEMPTS=$((ATTEMPTS + 1))
     if [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; then
@@ -93,9 +116,9 @@ elif [ $EC -eq 1 ]; then
   echo "checker found differences"
   exit 6
 elif [ $EC -eq 2 ]; then
-  echo "checker failed"
-  exit 5
+  echo "checker found invalid output"
+  exit 6
 elif [ $EC -ne 3 ]; then
-  echo "unkown compare error $EC"
+  echo "judge failed with $EC"
   exit 43
 fi

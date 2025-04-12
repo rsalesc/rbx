@@ -7,7 +7,7 @@ from rbx.box import package
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.generators import get_all_built_testcases
-from rbx.box.schema import Package, Testcase, TestcaseGroup
+from rbx.box.schema import Package, TaskType, Testcase, TestcaseGroup
 from rbx.box.statements.schema import Statement, StatementType
 
 
@@ -33,9 +33,14 @@ class BuiltProblemPackage:
 
 
 class BasePackager(ABC):
+    @classmethod
     @abstractmethod
-    def name(self) -> str:
+    def name(cls) -> str:
         pass
+
+    @classmethod
+    def task_types(cls) -> List[TaskType]:
+        return [TaskType.BATCH]
 
     def languages(self):
         pkg = package.find_problem_package_or_die()

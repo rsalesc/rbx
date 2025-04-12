@@ -197,7 +197,8 @@ class BocaPackager(BasePackager):
                     )
                 )
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return 'boca'
 
     def package(
@@ -268,11 +269,11 @@ class BocaPackager(BasePackager):
 
         testcases = self.get_flattened_built_testcases()
         for i, testcase in enumerate(testcases):
-            shutil.copyfile(testcase.inputPath, inputs_path / f'{i+1:03d}')
+            shutil.copyfile(testcase.inputPath, inputs_path / f'{i + 1:03d}')
             if testcase.outputPath is not None:
-                shutil.copyfile(testcase.outputPath, outputs_path / f'{i+1:03d}')
+                shutil.copyfile(testcase.outputPath, outputs_path / f'{i + 1:03d}')
             else:
-                (outputs_path / f'{i+1:03d}').touch()
+                (outputs_path / f'{i + 1:03d}').touch()
 
         # Zip all.
         shutil.make_archive(

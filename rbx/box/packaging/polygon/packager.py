@@ -188,15 +188,15 @@ class PolygonPackager(BasePackager):
         for i, testcase in enumerate(testcases):
             shutil.copyfile(
                 testcase.inputPath,
-                into_path / f'tests/{i+1:03d}',
+                into_path / f'tests/{i + 1:03d}',
             )
             if testcase.outputPath is not None:
                 shutil.copyfile(
                     testcase.outputPath,
-                    into_path / f'tests/{i+1:03d}.a',
+                    into_path / f'tests/{i + 1:03d}.a',
                 )
             else:
-                (into_path / f'tests/{i+1:03d}.a').touch()
+                (into_path / f'tests/{i + 1:03d}.a').touch()
 
         # Write problem.xml
         (into_path / 'problem.xml').write_text(descriptor)
@@ -208,7 +208,8 @@ class PolygonPackager(BasePackager):
 
 
 class PolygonContestPackager(BaseContestPackager):
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return 'polygon'
 
     def _get_names(self) -> List[polygon_schema.Name]:
