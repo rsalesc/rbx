@@ -194,7 +194,8 @@ async def _run_communication_solution_on_testcase(
             output_path = testcase.outputPath
         else:
             output_path = output_dir / testcase.inputPath.with_suffix('.out').name
-        error_path = output_path.with_suffix('.err')
+        solution_error_path = output_path.with_suffix('.sol.err')
+        interactor_error_path = output_path.with_suffix('.int.err')
         log_path = output_path.with_suffix('.log')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -204,7 +205,7 @@ async def _run_communication_solution_on_testcase(
         interactor_item = CommunicationItem(
             code=package.get_interactor(),
             executable=DigestOrSource.create(interactor_digest),
-            stderr=DigestOrDest.create(error_path),
+            stderr=DigestOrDest.create(interactor_error_path),
             extra_config=interactor_extra_config,
             extra_args='interactor.in interactor.out',
             inputs=[
@@ -230,6 +231,7 @@ async def _run_communication_solution_on_testcase(
         solution_item = CommunicationItem(
             code=solution,
             executable=DigestOrSource.create(compiled_digest),
+            stderr=DigestOrDest.create(solution_error_path),
             extra_config=extra_config,
             capture=DigestOrDest.create(solution_capture_path)
             if solution_capture_path
@@ -248,7 +250,7 @@ async def _run_communication_solution_on_testcase(
             checker_digest,
             run_log,
             interactor_run_log,
-            error_path,
+            interactor_error_path,
             testcase,
             output_path,
         )
@@ -263,7 +265,7 @@ async def _run_communication_solution_on_testcase(
             log=TestcaseLog(
                 **(run_log.model_dump() if run_log is not None else {}),
                 stdout_absolute_path=output_path.absolute(),
-                stderr_absolute_path=error_path.absolute(),
+                stderr_absolute_path=solution_error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
             ),
         )
