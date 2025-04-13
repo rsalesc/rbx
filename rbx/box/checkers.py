@@ -295,7 +295,7 @@ async def check_communication(
         )
     ):
         result = _check_interactor()
-        if result is not None:
+        if result is not None and result.outcome != Outcome.ACCEPTED:
             return _extra_check_and_sanitize(result)
 
     # 2. Check if the solution failed without looking at its output (TLE, MLE, RTE, etc).
@@ -306,7 +306,7 @@ async def check_communication(
     # 3. Now check interactor return code regardless of what happened to the
     # solution.
     result = _check_interactor()
-    if result is not None:
+    if result is not None and result.outcome != Outcome.ACCEPTED:
         return _extra_check_and_sanitize(result)
 
     # Just a defensive pattern to ensure result is not None, should never happen.
