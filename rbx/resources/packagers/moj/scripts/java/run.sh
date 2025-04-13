@@ -8,7 +8,7 @@ cd /tmp/dir
 source binfile.sh
 
 export CLASSPATH=$PWD
-CMD="java -Xms{{rbxMaxMemory}}M -Xmx{{rbxMaxMemory}}M -Xss256M $(basename $BIN .class)"
+CMD="java -Xmx{{rbxMaxMemory}}M -Xss256M $(basename $BIN .class)"
 
 if [[ -e interactor_run.sh ]]; then
   source interactor_run.sh

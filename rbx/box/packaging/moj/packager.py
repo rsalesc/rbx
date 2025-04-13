@@ -86,6 +86,9 @@ class MojPackager(BocaPackager):
             replaced = path.read_text()
             replaced = replaced.replace(
                 '{{rbxMaxMemory}}', f'{self._get_pkg_memorylimit(language)}'
+            ).replace(
+                '{{rbxInitialMemory}}',
+                f'{min(512, int(self._get_pkg_memorylimit(language) * 0.9))}',
             )
 
             flags = extension.flags_with_defaults()
