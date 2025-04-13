@@ -1,4 +1,5 @@
 import pathlib
+import signal
 from typing import Optional
 
 import typer
@@ -108,23 +109,31 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
     return result
 
 
+def _is_checker_exitcode(exitcode: int) -> bool:
+    return exitcode in [0, 1, 2, 3]
+
+
 def process_checker_run_log(
     checker_run_log: Optional[RunLog], message: str
-) -> Optional[CheckerResult]:
+) -> CheckerResult:
     if (
         checker_run_log is not None
-        and checker_run_log.exitcode != 0
-        and (
-            checker_run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
-            or checker_run_log.exitcode not in [0, 1, 2, 3]
-        )
+        and checker_run_log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR
     ):
-        return None
+        # When the sandbox fails, it means the checker failed to run.
+        # We don't know what happened.
+        return CheckerResult(
+            outcome=Outcome.INTERNAL_ERROR,
+            message='sandbox failed to run checker',
+        )
 
     if checker_run_log is None:
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
-    if checker_run_log.exitcode not in [0, 1, 2, 3]:
-        return None
+    if not _is_checker_exitcode(checker_run_log.exitcode):
+        return CheckerResult(
+            outcome=Outcome.JUDGE_FAILED,
+            message=f'checker failed with unknown exit code {checker_run_log.exitcode}: {message}',
+        )
 
     result = CheckerResult(outcome=Outcome.ACCEPTED, message=message)
 
@@ -185,7 +194,7 @@ async def _check(
     message = package.get_digest_as_string(error.value or '') or ''
 
     processed_checker_result = process_checker_run_log(checker_run_log, message)
-    if processed_checker_result is None:
+    if processed_checker_result.outcome == Outcome.INTERNAL_ERROR:
         console.console.print(
             f'[error]Checker [item]{package.get_checker().path}[/item] failed unexpectedly.[/error]'
         )
@@ -240,33 +249,77 @@ async def check_communication(
     program_output: pathlib.Path,
     skip_run_log: bool = False,
 ) -> CheckerResult:
-    sanitizer_warnings = _check_sanitizer_warnings(run_log)
+    def _extra_check_and_sanitize(result: CheckerResult) -> CheckerResult:
+        result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
+        return result
 
+    def _check_interactor(reinterpret_rte: bool = True) -> Optional[CheckerResult]:
+        result = process_checker_run_log(
+            interactor_run_log, interactor_stderr.read_text()
+        )
+        if result.outcome in [Outcome.JUDGE_FAILED, Outcome.WRONG_ANSWER]:
+            # Only return testlib errors (exit code 2 and 3), skip other types of RTEs and verdicts.
+            if (
+                interactor_run_log is not None
+                and _is_checker_exitcode(interactor_run_log.exitcode)
+                and interactor_run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
+            ):
+                return _extra_check_and_sanitize(result)
+            else:
+                # Check for other verdicts, but potentially reinterpret RTEs as JUDGE_FAILED.
+                result = check_with_no_output(interactor_run_log)
+                if result.outcome == Outcome.RUNTIME_ERROR and reinterpret_rte:
+                    result.outcome = Outcome.JUDGE_FAILED
+                if result.outcome != Outcome.ACCEPTED:
+                    return _extra_check_and_sanitize(result)
+        else:
+            # Return any other checker/interactor errors, such as INTERNAL_ERRORs.
+            return _extra_check_and_sanitize(result)
+
+        # No relevant error was found.
+        return None
+
+    # 1. If the solution received SIGPIPE or was terminated, it means the
+    # interactor exited before it. Thus, check the interactor, as it might have
+    # returned a checker verdict.
+    #
+    # Also, do the same if the solution returned a non-zero exit code. Checker verdict
+    # should usually supersede a solution's RTE verdict.
+    if (
+        interactor_run_log is not None
+        and run_log is not None
+        and (
+            run_log.exitcode == -signal.SIGPIPE
+            or run_log.exitstatus == SandboxBase.EXIT_TERMINATED
+            or run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
+        )
+    ):
+        result = _check_interactor()
+        if result is not None:
+            return _extra_check_and_sanitize(result)
+
+    # 2. Check if the solution failed without looking at its output (TLE, MLE, RTE, etc).
     result = check_with_no_output(run_log)
-    result.sanitizer_warnings = sanitizer_warnings
     if result.outcome != Outcome.ACCEPTED:
-        return result
+        return _extra_check_and_sanitize(result)
 
-    result = process_checker_run_log(
-        interactor_run_log,
-        interactor_stderr.read_text(),
-    )
+    # 3. Now check interactor return code regardless of what happened to the
+    # solution.
+    result = _check_interactor()
+    if result is not None:
+        return _extra_check_and_sanitize(result)
 
-    if result is None:
-        result = check_with_no_output(interactor_run_log)
-        result.sanitizer_warnings = sanitizer_warnings
-        if result.outcome != Outcome.ACCEPTED:
+    # Just a defensive pattern to ensure result is not None, should never happen.
+    result = check_with_no_output(interactor_run_log)
+    if result.outcome != Outcome.ACCEPTED:
+        if result.outcome == Outcome.RUNTIME_ERROR:
             result.outcome = Outcome.JUDGE_FAILED
-            return result
+        return _extra_check_and_sanitize(result)
 
-    result.sanitizer_warnings = sanitizer_warnings
-    if result.outcome != Outcome.ACCEPTED:
-        return result
-
+    # 4. Now actually check the output with a checker.
     if checker_digest is not None:
         result = await check(
             checker_digest, run_log, testcase, program_output, skip_run_log
         )
-        result.sanitizer_warnings = sanitizer_warnings
 
-    return result
+    return _extra_check_and_sanitize(result)

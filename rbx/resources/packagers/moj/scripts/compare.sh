@@ -58,8 +58,11 @@ if [[ -e $STDERRLOG ]]; then
       echo "interactor invalid input"
       exit 6
     elif [[ $INTERACTOREXITCODE -eq 3 ]]; then
-      echo "interactor failure with exit code $EC"
+      echo "interactor failed with exit code 3"
       exit 43
+    else
+      echo "interactor failed with exit code $INTERACTOREXITCODE"
+      exit 47
     fi
   fi
 fi

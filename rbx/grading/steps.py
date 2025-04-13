@@ -21,6 +21,7 @@ from rich.text import Text
 from rbx import utils
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
+from rbx.grading import processing_context
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.storage import Storage, copyfileobj
 
@@ -197,6 +198,7 @@ class RunLog(BaseModel):
     exitstatus: str = SandboxBase.EXIT_SANDBOX_ERROR
     time: Optional[float] = 0.0
     memory: Optional[int] = 0
+    sandbox: str = ''
     warnings: bool = False
     metadata: Optional[RunLogMetadata] = None
 
@@ -210,7 +212,7 @@ class RunLog(BaseModel):
             return 'OK'
         time = self.time or 0.0
         memory = self.memory or 0
-        return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory//(1024*1024)}MB)'
+        return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory // (1024 * 1024)}MB)'
 
 
 class PreprocessLog(RunLog):
@@ -567,6 +569,7 @@ def compile(
             memory=sandbox.get_memory_used(),
             warnings=_check_for_compilation_warnings(sandbox, stderr_file),
             log='\n'.join(std_outputs),
+            sandbox=sandbox.get_detailed_logs(),
         )
         logs.append(log)
 
@@ -594,6 +597,7 @@ async def run(
     sandbox: SandboxBase,
     artifacts: GradingArtifacts,
     metadata: Optional[RunLogMetadata] = None,
+    kill_on_processing_context_exit: bool = False,
 ) -> Optional[RunLog]:
     _process_input_artifacts(artifacts, sandbox)
     _process_fifos(artifacts, sandbox)
@@ -608,6 +612,9 @@ async def run(
             sandbox.debug_message(),
         )
         return None
+
+    if sandbox.get_exit_code() != 0 and kill_on_processing_context_exit:
+        processing_context.terminate_all_processes_in_context()
 
     if not _process_output_artifacts(artifacts, sandbox):
         return None
@@ -625,6 +632,7 @@ async def run(
         time=sandbox.get_execution_time(),
         memory=sandbox.get_memory_used(),
         metadata=metadata,
+        sandbox=sandbox.get_detailed_logs(),
     )
     if metadata is not None and metadata.is_sanitized:
         run_log.warnings = _check_for_sanitizer_warnings(
@@ -649,19 +657,22 @@ async def run_coordinated(
     interactor: CoordinatedRunParams,
     solution: CoordinatedRunParams,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
-    runs = tuple(
-        run(
-            params.command,
-            params.params,
-            params.sandbox,
-            params.artifacts,
-            params.metadata,
+    with processing_context.new_processing_context():
+        runs = tuple(
+            run(
+                params.command,
+                params.params,
+                params.sandbox,
+                params.artifacts,
+                params.metadata,
+                kill_on_processing_context_exit=True,
+            )
+            for params in [interactor, solution]
         )
-        for params in [interactor, solution]
-    )
-    return typing.cast(
-        Tuple[Optional[RunLog], Optional[RunLog]], tuple(await asyncio.gather(*runs))
-    )
+        return typing.cast(
+            Tuple[Optional[RunLog], Optional[RunLog]],
+            tuple(await asyncio.gather(*runs)),
+        )
 
 
 def _normalize_checked_words(s: str) -> Tuple[str, ...]:

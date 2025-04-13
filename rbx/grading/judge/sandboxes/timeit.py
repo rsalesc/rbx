@@ -223,6 +223,7 @@ def wait_and_finish(
     pid: int,
     options: Options,
     start_time: float,
+    status_holder: Set[str],
     alarm_msg: Optional[List[Optional[str]]] = None,
 ):
     _, exitstatus, ru = os.wait4(pid, 0)
@@ -237,7 +238,7 @@ def wait_and_finish(
     if exitcode < 0:
         entries.append(f'exit-sig: {-exitcode}')
 
-    status = set()
+    status = status_holder
     if exitcode > 0:
         status.add('RE')
     if exitcode < 0:
@@ -284,9 +285,11 @@ def main():
             os.chdir(options.chdir)
         set_rlimits(options)
         redirect_fds(options)
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
         os.execvp(options.argv[0], options.argv)
 
     alarm_msg: List[Optional[str]] = [None]
+    status_holder: Set[str] = set()
 
     def handle_alarm(*args, **kwargs):
         nonlocal alarm_msg
@@ -311,15 +314,21 @@ def main():
 
         signal.setitimer(signal.ITIMER_REAL, 0.3)
 
+    def handle_sub_term(*args, **kwargs):
+        nonlocal status_holder
+        status_holder.add('TE')
+        os.kill(sub_pid, 9)
+
     signal.setitimer(signal.ITIMER_REAL, 0.3)
     signal.signal(signal.SIGALRM, handle_alarm)
-    wait_and_finish(sub_pid, options, start_time, alarm_msg=alarm_msg)
+    signal.signal(signal.SIGTERM, handle_sub_term)
 
+    wait_and_finish(sub_pid, options, start_time, status_holder, alarm_msg=alarm_msg)
     # Cancel alarm before exiting to avoid surprises.
     signal.setitimer(signal.ITIMER_REAL, 0)
 
     # Exit gracefully.
-    sys.exit()
+    sys.exit(0)
 
 
 if __name__ == '__main__':

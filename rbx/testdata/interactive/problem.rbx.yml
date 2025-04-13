@@ -38,3 +38,28 @@ solutions:
     outcome: TLE
   - path: "sols/af_ac_too_many_iter.cpp"
     outcome: INCORRECT
+  # Interactor failure sols.
+  - path: "sols/int_halt_pe_hangs_before.cpp"
+    outcome: WA
+  - path: "sols/int_halt_pe_hangs_after.cpp"
+    outcome: WA
+  - path: "sols/int_halt_pe_hangs_sigpipe.cpp"
+    outcome: WA
+  - path: "sols/int_halt_pe_hangs_tle.cpp"
+    outcome: WA
+  - path: "sols/ac_slow_under_2tl.cpp"
+    outcome: TLE
+  # Python solutions.
+  - path: "sols/ac.py"
+    outcome: AC
+  - path: "sols/ac_invalid_format.py"
+    outcome: WA
+  - path: "sols/ac_invalid_format_sigpipe.py"
+    outcome: WA
+  # Java solutions.
+  - path: "sols/ac.java"
+    outcome: AC
+  - path: "sols/ac_invalid_format.java"
+    outcome: WA
+  - path: "sols/ac_invalid_format_sigpipe.java"
+    outcome: WA

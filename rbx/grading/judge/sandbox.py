@@ -6,6 +6,7 @@ import logging
 import os
 import pathlib
 import select
+import signal
 import stat
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from typing import IO, Any, Dict, List, Optional
 
 import pydantic
 
+from rbx.grading import processing_context
 from rbx.grading.judge import cacher, storage
 
 logger = logging.getLogger(__name__)
@@ -187,6 +189,7 @@ class SandboxBase(abc.ABC):
 
     EXIT_SANDBOX_ERROR = 'sandbox error'
     EXIT_OK = 'ok'
+    EXIT_TERMINATED = 'terminated'
     EXIT_SIGNAL = 'signal'
     EXIT_TIMEOUT = 'timeout'
     EXIT_TIMEOUT_WALL = 'wall timeout'
@@ -225,6 +228,7 @@ class SandboxBase(abc.ABC):
         self.cmd_file = pathlib.PosixPath('commands.log')
 
         self.params = params or SandboxParams()
+        self.pid = None
 
         # Set common environment variables.
         # Specifically needed by Python, that searches the home for
@@ -320,6 +324,28 @@ class SandboxBase(abc.ABC):
         """Return the exit code of the sandboxed process.
 
         return (int): exitcode, or 0.
+
+        """
+        pass
+
+    def set_pid(self, pid: int):
+        processing_context.add_to_processing_context(pid)
+        self.pid = pid
+
+    def get_pid(self) -> Optional[int]:
+        """Return the PID of the sandboxed process.
+
+        return (int|None): the PID of the sandboxed process, or None if
+            the sandboxed process is not running.
+
+        """
+        return self.pid
+
+    @abc.abstractmethod
+    def get_detailed_logs(self) -> str:
+        """Return the detailed logs of the sandbox.
+
+        return (string): the detailed logs of the sandbox.
 
         """
         pass
@@ -667,7 +693,9 @@ class SandboxBase(abc.ABC):
             did).
 
         """
-        return exitcode == 0
+        # SIGTERM can be safely ignored, just in case it leaks away from
+        # the sandbox.
+        return exitcode == 0 or exitcode == -signal.SIGTERM
 
     @abc.abstractmethod
     def initialize(self):

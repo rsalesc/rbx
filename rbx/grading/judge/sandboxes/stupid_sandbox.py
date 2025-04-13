@@ -57,7 +57,6 @@ class StupidSandbox(SandboxBase):
         self.initialize()
 
         self.exec_num = -1
-        self.popen = None
         self.log = None
         self.returncode = None
 
@@ -192,9 +191,13 @@ class StupidSandbox(SandboxBase):
         return (string): the main reason why the sandbox terminated.
 
         """
-        if self.returncode != 0:
+        if self.returncode is not None and not self.translate_box_exitcode(
+            self.returncode
+        ):
             return self.EXIT_SANDBOX_ERROR
         status_list = self.get_status_list()
+        if 'TE' in status_list:
+            return self.EXIT_TERMINATED
         if 'WT' in status_list:
             return self.EXIT_TIMEOUT_WALL
         if 'TO' in status_list:
@@ -217,6 +220,9 @@ class StupidSandbox(SandboxBase):
         """
         assert self.log is not None
         return int(self.log['exit-code'])
+
+    def get_detailed_logs(self) -> str:
+        return str(self.log)
 
     def get_human_exit_description(self) -> str:
         """Get the status of the sandbox and return a human-readable
@@ -299,13 +305,19 @@ class StupidSandbox(SandboxBase):
             + self.get_timeit_args()
             + command
         )
-        self.returncode = subprocess.call(
+        with subprocess.Popen(
             real_command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env={**os.environ, **self.params.set_env},
-        )
+        ) as p:
+            self.set_pid(p.pid)
+            try:
+                self.returncode = p.wait()
+            except Exception:
+                p.kill()
+                raise
         self.hydrate_logs()
         return self.translate_box_exitcode(self.returncode)
 

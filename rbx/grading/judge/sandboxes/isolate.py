@@ -420,6 +420,7 @@ class IsolateSandbox(SandboxBase):
         return (string): the main reason why the sandbox terminated.
 
         """
+        # TODO: figure out EXIT_TERMINATED
         assert self.log is not None
         status_list = self.get_status_list()
         if 'XX' in status_list:
@@ -461,6 +462,14 @@ class IsolateSandbox(SandboxBase):
         elif status == self.EXIT_NONZERO_RETURN:
             return 'Execution failed because the return code was nonzero'
         return ''
+
+    def get_detailed_logs(self) -> str:
+        """Return the detailed logs of the sandbox.
+
+        return (string): the detailed logs of the sandbox.
+
+        """
+        return str(self.log)
 
     def inner_absolute_path(self, path: pathlib.Path) -> pathlib.Path:
         """Translate from a relative path inside the sandbox to an
@@ -602,6 +611,7 @@ class IsolateSandbox(SandboxBase):
         # std*** to interfere with command. Otherwise we let the
         # caller handle these issues.
         with popen as p:
+            self.set_pid(p.pid)
             exitcode = self.translate_box_exitcode(
                 wait_without_std([p], actually_pipe_to_stdout=self.debug)[0]
             )
