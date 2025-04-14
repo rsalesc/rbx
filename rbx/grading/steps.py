@@ -332,7 +332,7 @@ def _expand_part(part: str, sandbox: SandboxBase) -> List[str]:
 
 def _split_and_expand(command: str, sandbox: SandboxBase) -> List[str]:
     res = []
-    parts = shlex.split(command.format(memory=sandbox.params.address_space))
+    parts = shlex.split(command.format(memory=sandbox.params.address_space or 2048))
     for part in parts:
         res.extend(_expand_part(part, sandbox))
     return res
