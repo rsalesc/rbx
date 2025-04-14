@@ -1,14 +1,79 @@
-from typing import List, Optional
+import pathlib
+from typing import List, Optional, Set
 
 import syncer
+from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import checkers, package, validators
-from rbx.box.schema import CodeItem, Testcase, ValidatorOutcome, ValidatorTest
+from rbx.box.schema import (
+    CheckerTest,
+    CodeItem,
+    ExpectedOutcome,
+    Testcase,
+    ValidatorOutcome,
+    ValidatorTest,
+)
 from rbx.utils import StatusProgress
 
 
-def _get_validator_for_test(test: ValidatorTest) -> Optional[CodeItem]:
+class ValidatorTestEntry(BaseModel):
+    input: pathlib.Path
+    outcome: ValidatorOutcome
+    validator: Optional[CodeItem]
+
+
+class CheckerTestEntry(BaseModel):
+    input: Optional[pathlib.Path] = None
+    output: Optional[pathlib.Path] = None
+    answer: Optional[pathlib.Path] = None
+    outcome: ExpectedOutcome
+
+
+def _extract_validator_test_entries(
+    tests: List[ValidatorTest],
+) -> List[ValidatorTestEntry]:
+    res: List[ValidatorTestEntry] = []
+    for test in tests:
+        for input in pathlib.Path().glob(str(test.glob)):
+            if not input.is_file():
+                continue
+            res.append(
+                ValidatorTestEntry(
+                    input=input, outcome=test.outcome, validator=test.validator
+                )
+            )
+    return sorted(res, key=lambda x: x.input.name)
+
+
+def _extract_checker_test_entries(tests: List[CheckerTest]) -> List[CheckerTestEntry]:
+    res: List[CheckerTestEntry] = []
+    seen: Set[pathlib.Path] = set()
+    for test in tests:
+        for file in pathlib.Path().glob(str(test.glob)):
+            if not file.is_file():
+                continue
+            if file.suffix not in ['.in', '.out', '.ans']:
+                continue
+            basefile = file.with_suffix('')
+            if basefile in seen:
+                continue
+            seen.add(basefile)
+            input = basefile.with_suffix('.in')
+            output = basefile.with_suffix('.out')
+            answer = basefile.with_suffix('.ans')
+            res.append(
+                CheckerTestEntry(
+                    input=input if input.is_file() else None,
+                    output=output if output.is_file() else None,
+                    answer=answer if answer.is_file() else None,
+                    outcome=test.outcome,
+                )
+            )
+    return res
+
+
+def _get_validator_for_test(test: ValidatorTestEntry) -> Optional[CodeItem]:
     pkg = package.find_problem_package_or_die()
     if test.validator is not None:
         return test.validator
@@ -18,8 +83,10 @@ def _get_validator_for_test(test: ValidatorTest) -> Optional[CodeItem]:
 async def run_validator_unit_tests(progress: StatusProgress):
     pkg = package.find_problem_package_or_die()
 
+    entries = _extract_validator_test_entries(pkg.unitTests.validator)
+
     vals: List[CodeItem] = []
-    for test in pkg.unitTests.validator:
+    for test in entries:
         val = _get_validator_for_test(test)
         if val is not None:
             vals.append(val)
@@ -31,7 +98,7 @@ async def run_validator_unit_tests(progress: StatusProgress):
 
     console.console.rule('Validator tests', style='info')
 
-    for i, test in enumerate(pkg.unitTests.validator):
+    for i, test in enumerate(entries):
         val = _get_validator_for_test(test)
         if val is None:
             console.console.print(
@@ -82,8 +149,9 @@ async def run_checker_unit_tests(progress: StatusProgress):
     console.console.rule('Checker tests', style='info')
 
     empty_file = package.get_empty_sentinel_path()
+    entries = _extract_checker_test_entries(pkg.unitTests.checker)
 
-    for i, test in enumerate(pkg.unitTests.checker):
+    for i, test in enumerate(entries):
         result = await checkers.check(
             compiled_digest,
             run_log=None,

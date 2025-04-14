@@ -356,8 +356,8 @@ class LimitModifiers(BaseModel):
 class ValidatorTest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    input: pathlib.Path = Field(
-        description='The input file to be used as unit test input for the validator.'
+    glob: str = Field(
+        description='A glob pattern for the input files to be used as unit test input for the validator.'
     )
     outcome: ValidatorOutcome = Field(
         default=ValidatorOutcome.VALID,
@@ -373,17 +373,12 @@ class ValidatorTest(BaseModel):
 class CheckerTest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    input: Optional[pathlib.Path] = Field(
-        default=None,
-        description='The input file to be used as unit test input for the checker. If not specified, will pass an empty file.',
-    )
-    output: Optional[pathlib.Path] = Field(
-        default=None,
-        description='The solution output file to be used as unit test output for the checker. If not specified, will pass an empty file.',
-    )
-    answer: Optional[pathlib.Path] = Field(
-        default=None,
-        description='The answer file to be used as unit test answer for the checker. If not specified, will pass an empty file.',
+    glob: str = Field(
+        description="""
+A glob pattern for the files to be used as unit test input for the checker.
+This glob should simultaneously match the input, output, and answer files (.in, .out, .ans).
+If one of them is not present, an empty file will be used instead.
+""",
     )
 
     outcome: ExpectedOutcome = Field(
