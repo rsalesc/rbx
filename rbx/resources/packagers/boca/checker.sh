@@ -1,9 +1,10 @@
 ### START OF CHECKER COMPILATION
+CDIR=$(pwd)
 CHECKER_PATH="checker.cpp"
-CHECKER_OUT="../checker.exe"
+CHECKER_OUT="checker.exe"
 
 # find compiler
-cc=`which g++`
+cc=$(which g++)
 [ -x "$cc" ] || cc=/usr/bin/g++
 if [ ! -x "$cc" ]; then
     echo "$cc not found or it's not executable"
@@ -12,25 +13,26 @@ fi
 read -r -d '' TestlibContent <<"EOF"
 {{testlib_content}}
 EOF
-  
+
 read -r -d '' CheckerContent <<"EOF"
 {{checker_content}}
 EOF
 
-printf "%s" "${TestlibContent}" > testlib.h
-printf "%s" "${CheckerContent}" > $CHECKER_PATH
+printf "%s" "${TestlibContent}" >testlib.h
+printf "%s" "${CheckerContent}" >$CHECKER_PATH
 
 checker_hash=($(md5sum $CHECKER_PATH))
 checker_cache="/tmp/boca-chk-${checker_hash}"
 
 echo "Polygon checker hash: $checker_hash"
+echo "Copying polygon checker to $CDIR/$CHECKER_OUT"
 if [ -f "$checker_cache" ]; then
     echo "Recovering polygon checker from cache: $checker_cache"
     cp "$checker_cache" $CHECKER_OUT -f
 else
     echo "Compiling polygon checker: $CHECKER_PATH"
     $cc {{rbxFlags}} $CHECKER_PATH -o $CHECKER_OUT
-    
+
     if [ $? -ne 0 ]; then
         echo "Checker could not be compiled"
         exit 47

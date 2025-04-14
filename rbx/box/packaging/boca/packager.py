@@ -10,6 +10,7 @@ from rbx.box import package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
+from rbx.box.schema import TaskType
 from rbx.box.statements.schema import Statement
 from rbx.config import get_default_app_path, get_testlib
 
@@ -24,6 +25,10 @@ def test_time(time):
 
 
 class BocaPackager(BasePackager):
+    @classmethod
+    def task_types(cls) -> List[TaskType]:
+        return [TaskType.BATCH, TaskType.COMMUNICATION]
+
     def _get_main_statement(self) -> Statement:
         pkg = package.find_problem_package_or_die()
 
@@ -119,7 +124,7 @@ class BocaPackager(BasePackager):
         )
 
     def _get_compare(self) -> str:
-        compare_path = get_default_app_path() / 'packagers' / 'boca' / 'compare'
+        compare_path = get_default_app_path() / 'packagers' / 'boca' / 'compare.sh'
         if not compare_path.exists():
             console.console.print(
                 '[error]BOCA template compare script not found.[/error]'
@@ -145,7 +150,26 @@ class BocaPackager(BasePackager):
             .replace('{{checker_content}}', checker)
         )
 
+    def _get_interactor(self) -> str:
+        extension = get_extension_or_default('boca', BocaExtension)
+
+        interactor_path = (
+            get_default_app_path() / 'packagers' / 'boca' / 'interactor_compile.sh'
+        )
+        if not interactor_path.exists():
+            console.console.print(
+                '[error]BOCA template interactor compile script not found.[/error]'
+            )
+            raise typer.Exit(1)
+
+        interactor_text = interactor_path.read_text()
+        interactor = package.get_interactor().path.read_text()
+        return interactor_text.replace(
+            '{{rbxFlags}}', extension.flags_with_defaults()['cc']
+        ).replace('{{interactor_content}}', interactor)
+
     def _get_compile(self, language: BocaLanguage) -> str:
+        pkg = package.find_problem_package_or_die()
         extension = get_extension_or_default('boca', BocaExtension)
 
         compile_path = (
@@ -160,6 +184,10 @@ class BocaPackager(BasePackager):
         compile_text = compile_path.read_text()
 
         assert 'umask 0022' in compile_text
+        if pkg.type == TaskType.COMMUNICATION:
+            compile_text = compile_text.replace(
+                'umask 0022', 'umask 0022\n\n' + self._get_interactor()
+            )
         compile_text = compile_text.replace(
             'umask 0022', 'umask 0022\n\n' + self._get_checker()
         )
@@ -208,7 +236,7 @@ class BocaPackager(BasePackager):
         built_statements: List[BuiltStatement],
     ) -> pathlib.Path:
         extension = get_extension_or_default('boca', BocaExtension)
-
+        pkg = package.find_problem_package_or_die()
         # Prepare limits
         limits_path = into_path / 'limits'
         limits_path.mkdir(parents=True, exist_ok=True)
@@ -228,9 +256,17 @@ class BocaPackager(BasePackager):
             run_orig_path = (
                 get_default_app_path() / 'packagers' / 'boca' / 'run' / language
             )
+            if pkg.type == TaskType.COMMUNICATION:
+                run_orig_path = (
+                    get_default_app_path()
+                    / 'packagers'
+                    / 'boca'
+                    / 'interactive'
+                    / language
+                )
             if not run_orig_path.is_file():
                 console.console.print(
-                    f'[error]Run script for language [item]{language}[/item] not found.[/error]'
+                    f'[error]Run script for language [item]{language}[/item] not found for task of type [item]{pkg.type}[/item].[/error]'
                 )
                 raise typer.Exit(1)
             shutil.copyfile(run_orig_path, run_path / language)

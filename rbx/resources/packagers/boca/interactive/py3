@@ -15,10 +15,10 @@
 # //    You should have received a copy of the GNU General Public License
 # //    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # ////////////////////////////////////////////////////////////////////////////////
-#Last modified: 04/nov/2014 by cassio@ime.usp.br
+#Last modified: 21/aug/2014 by cassio@ime.usp.br
 #
 # parameters are:
-# $1 main_class
+# $1 exe_file
 # $2 input_file
 # $3 timelimit (limit to run all the repetitions, by default only one repetition)
 # $4 number_of_repetitions_to_run (optional, can be used for better tuning the timelimit)
@@ -66,28 +66,7 @@ if [ "$1" == "" -o "$2" == "" -o "$3" == "" ]; then
   echo "parameter problem"
   exit 43
 fi
-if [ -r run.exe ]; then
-  rm -f run.jar
-  cp run.exe run.jar
-fi
-if [ -r "$1" ]; then
-  rm -f run.jar
-  cp "$1" run.jar
-fi
-if [ ! -r run.jar ]; then
-  echo "ERROR: file run.jar not found - possible error during compilation"
-  exit 1
-fi
 name=$(basename "$1")
-if [ "${name##*.}" == "class" -a "${name##*.}" == "CLASS" ]; then
-  echo "WARNING: removing .class file extension"
-fi
-if [ "${name##*.}" == "class" ]; then
-  name=$(basename "$1" .class)
-fi
-if [ "${name##*.}" == "CLASS" ]; then
-  name=$(basename "$1" .CLASS)
-fi
 if [ ! -r "$2" ]; then
   echo "$2 not found (or is not in the current dir) or it's not readable"
   exit 45
@@ -117,7 +96,6 @@ if [ "$5" != "" ]; then
     maxm=${5}000
   fi
 fi
-let "maxms = $maxm / 10"
 maxf=1024
 if [ "$6" != "" ]; then
   if [ "$6" -gt "0" ]; then
@@ -125,40 +103,82 @@ if [ "$6" != "" ]; then
   fi
 fi
 
-rm -f runit.retcode 2>/dev/null
 cp "$2" stdin0 2>/dev/null
+cp "$1" run.exe 2>/dev/null
+cp ../interactor.exe interactor.exe 2>/dev/null
 
 cdir=$(pwd)
-echo "Current directory is $cdir" >&2
-echo $cdir | grep -q "/bocajail"
-if [ $? == 0 ]; then
-  cdir=$(echo $cdir | sed "s/.*\/bocajail//")
-  cat <<EOF >runit.sh
+echo "Current directory is $cdir -- chrooting on it" >&2
+
+### START OF BOCA RUN COMMAND
+cat <<EOF >runit.sh
 #!/bin/bash
-cd "$cdir"
-[ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
-#/bin/mount --bind /dev /dev
-[ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
-java=$(which java)
-[ -x "\$java" ] || java=/usr/bin/java
-if [ ! -x "\$java" ]; then
-    echo "\$java not found or it's not executable"
-    exit 47
+mkfifo fifo.in fifo.out
+
+echo "Running solution as \$@" >&2
+
+"\$@" >fifo.out <fifo.in 2>/dev/null &
+SFPID=\$!
+
+./interactor.exe "stdin0" "stdout0" <fifo.out >fifo.in 2>stderr0 &
+INTPID=\$!
+
+wait \$SFPID
+ECSF=\$?
+
+wait \$INTPID
+ECINT=\$?
+
+rm -rf fifo.in fifo.out
+
+echo "interactor \$INTPID -> \$ECINT" >&2
+echo "solution \$SFPID -> \$ECSF" >&2
+
+echo "interactor exitcode \$ECINT" >&2
+echo "solution exitcode \$ECSF" >&2
+
+ret=0
+if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]]; then
+  echo "testlib exitcode \$ECINT" >stdout0
+  ret=0
+elif [[ \$ECSF -ne 0 ]]; then
+  ret=\$ECSF
+elif [[ \$ECINT -ne 0 ]]; then
+  ret=9
 fi
-export CLASSPATH=.:./run.jar:$CLASSPATH
-"$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -ostdout0 -estderr0 -U$bocau -G$bocag -n0 -C. -f20000 -d20000000 -m20000000 -- "\$java" -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K "$name"
-retval=\$?
-echo \$retval > runit.retcode
-if [ ! -d /bocajail ]; then
-  /bin/umount /proc 2>/dev/null
-  #/bin/umount /dev
-  /bin/umount /sys 2>/dev/null
-fi
+
+exit \$ret
 EOF
-  chmod 755 runit.sh
-  chroot /bocajail "$cdir/runit.sh"
-  if [ -r runit.retcode ]; then
-    ret=$(cat runit.retcode)
+
+chmod 755 runit.sh
+
+ret=0
+echo $cdir | grep -q "/bocajail"
+if [ $? -eq 0 ]; then
+  cdir=$(echo $cdir | sed "s/.*\/bocajail//")
+  cat <<EOF >runch.sh
+  #!/bin/bash
+  cd "$cdir"
+  [ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
+  [ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
+  python3=$(which python3)
+  [ -x "\$python3" ] || python3=/usr/bin/python3
+  if [ ! -x "\$python3" ]; then
+      echo "\$python3 not found or it's not executable"
+      exit 47
+  fi
+  "$sf" -F256 -u256 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -ostdout0 -estderr0 -- ./runit.sh "\$python3" "$name"
+  retval=\$?
+  echo \$retval > runch.exitcode
+  if [ ! -d /bocajail ]; then
+    /bin/umount /proc 2>/dev/null
+    /bin/umount /sys 2>/dev/null
+  fi
+EOF
+  chmod 755 runch.sh
+  chroot /bocajail $cdir/runch.sh
+  if [ -r runch.exitcode ]; then
+    ret=$(cat runch.exitcode)
   fi
   if [ "$ret" == "" ]; then
     echo "Execution error - check autojudging"
@@ -168,25 +188,20 @@ else
   echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
   echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
   echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  java=$(which java)
-  [ -x "$java" ] || java=/usr/bin/java
-  if [ ! -x "$java" ]; then
-    echo "$java not found or it's not executable"
+  python3=$(which python3)
+  [ -x "$python3" ] || python3=/usr/bin/python3
+  if [ ! -x "$python3" ]; then
+    echo "$python3 not found or it's not executable"
     exit 47
   fi
-  "$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -U$bocau -G$bocag -ostdout0 -estderr0 -n0 -C. -d20000000 -m20000000 -- "$java" -cp run.jar -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K "$name"
+  "$sf" -F256 -u256 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -ostdout0 -estderr0 -- ./runit.sh "$python3" "$name"
   ret=$?
 fi
+### END OF BOCA RUN COMMAND
+
 if [ $ret -gt 10 ]; then
-  if [ -r stderr0 ]; then
-    grep -q "not find or load main class" stderr0
-    if [ $? == 0 ]; then
-      echo "> > > Nonzero return code - possible class name mismatch - do check < < <"
-    else
-      echo "> > > Nonzero return code - possible runtime error - do check < < <"
-    fi
-    ret=9
-  fi
+  echo "execution error with code $ret" >&2
+  ret=0
 fi
 if [ -f stdout0 ]; then
   cat stdout0
