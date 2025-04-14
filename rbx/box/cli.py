@@ -222,7 +222,7 @@ async def run(
         tracked_solutions = {solution}
 
     if choice:
-        tracked_solutions = set(pick_solutions(tracked_solutions))
+        tracked_solutions = set(await pick_solutions(tracked_solutions))
         if not tracked_solutions:
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
@@ -453,7 +453,7 @@ async def irun(
         tracked_solutions = {solution}
 
     if choice:
-        tracked_solutions = set(pick_solutions(tracked_solutions))
+        tracked_solutions = set(await pick_solutions(tracked_solutions))
         if not tracked_solutions:
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
@@ -515,7 +515,8 @@ def create(
     help='Run a stress test.',
 )
 @package.within_problem
-def stress(
+@syncer.sync
+async def stress(
     name: Annotated[
         str,
         typer.Argument(
@@ -574,7 +575,7 @@ def stress(
     from rbx.box import stresses
 
     with utils.StatusProgress('Running stress...') as s:
-        report = stresses.run_stress(
+        report = await stresses.run_stress(
             name,
             timeout,
             args=generator_args,
@@ -608,15 +609,15 @@ def stress(
 
         import questionary
 
-        testgroup = questionary.select(
+        testgroup = await questionary.select(
             'Choose the testgroup to add the tests to.\nOnly test groups that have a .txt generatorScript are shown below: ',
             choices=list(groups_by_name) + ['(create new script)', '(skip)'],
-        ).ask()
+        ).ask_async()
 
         if testgroup == '(create new script)':
-            new_script_name = questionary.text(
+            new_script_name = await questionary.text(
                 'Enter the name of the new .txt generatorScript file: '
-            ).ask()
+            ).ask_async()
             new_script_path = pathlib.Path(new_script_name).with_suffix('.txt')
             new_script_path.parent.mkdir(parents=True, exist_ok=True)
             new_script_path.touch()
@@ -673,7 +674,8 @@ def stress(
     help='Compile an asset given its path.',
 )
 @package.within_problem
-def compile_command(
+@syncer.sync
+async def compile_command(
     path: Annotated[
         Optional[str],
         typer.Argument(help='Path to the asset to compile.'),
@@ -694,7 +696,7 @@ def compile_command(
     if path is None:
         import questionary
 
-        path = questionary.path("What's the path to your asset?").ask()
+        path = await questionary.path("What's the path to your asset?").ask_async()
         if path is None:
             console.console.print('[error]No path specified.[/error]')
             raise typer.Exit(1)

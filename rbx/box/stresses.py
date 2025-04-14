@@ -50,7 +50,6 @@ def _compile_finder(finder: CodeItem) -> str:
     return digest
 
 
-@syncer.sync
 async def run_stress(
     name: str,
     timeoutInSeconds: int,

@@ -616,7 +616,7 @@ def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
     ]
 
 
-def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
+async def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
     pkg = package.find_problem_package_or_die()
     if tracked_solutions is None:
         tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
@@ -630,7 +630,7 @@ def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
         if str(sol.path) in tracked_solutions
     ]
 
-    picked = questionary.checkbox('Select solutions', choices=choices).ask()
+    picked = await questionary.checkbox('Select solutions', choices=choices).ask_async()
     if picked is None:
         raise typer.Abort()
     return picked
