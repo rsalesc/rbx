@@ -3,7 +3,7 @@ import pathlib
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
-from rbx.box import package
+from rbx.box import naming, package
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.generators import get_all_built_testcases
@@ -49,6 +49,13 @@ class BasePackager(ABC):
         for statement in pkg.statements:
             res.add(statement.language)
         return list(res)
+
+    def package_basename(self):
+        pkg = package.find_problem_package_or_die()
+        shortname = naming.get_problem_shortname()
+        if shortname is not None:
+            return f'{shortname}-{pkg.name}'
+        return pkg.name
 
     def statement_types(self) -> List[StatementType]:
         return [StatementType.PDF]

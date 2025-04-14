@@ -11,6 +11,7 @@ class BocaExtension(BaseModel):
     languages: typing.List[BocaLanguage] = list(typing.get_args(BocaLanguage))
     flags: typing.Dict[BocaLanguage, str] = {}
     maximumTimeError: float = _MAX_REP_ERROR
+    preferContestLetter: bool = False
 
     def flags_with_defaults(self) -> typing.Dict[BocaLanguage, str]:
         res: typing.Dict[BocaLanguage, str] = {

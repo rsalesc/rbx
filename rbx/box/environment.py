@@ -343,7 +343,7 @@ def get_extension(name: str, _: Type[T]) -> Optional[T]:
     pkg = get_environment()
     if pkg.extensions is None:
         return None
-    if hasattr(pkg.extensions, name):
+    if not hasattr(pkg.extensions, name):
         return None
     return getattr(pkg.extensions, name)
 

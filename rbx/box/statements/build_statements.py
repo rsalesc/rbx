@@ -7,7 +7,7 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import environment, package
+from rbx.box import environment, naming, package
 from rbx.box.schema import Package
 from rbx.box.statements.builders import (
     BUILDER_LIST,
@@ -291,6 +291,7 @@ def build_statement(
         output_type=output_type,
         use_samples=use_samples,
         is_editorial=is_editorial,
+        short_name=naming.get_problem_shortname(),
     )
     statement_path = (
         package.get_build_path()

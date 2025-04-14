@@ -6,7 +6,7 @@ from typing import List
 import typer
 
 from rbx import console
-from rbx.box import package
+from rbx.box import naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
@@ -52,14 +52,20 @@ class BocaPackager(BasePackager):
         raise typer.Exit(1)
 
     def _get_problem_name(self) -> str:
-        pkg = package.find_problem_package_or_die()
         # BOCA forces Java class names to be the name of the problem.
-        return pkg.name.replace('-', '_')
+        return self.package_basename().replace('-', '_')
+
+    def _get_problem_basename(self) -> str:
+        extension = get_extension_or_default('boca', BocaExtension)
+        shortname = naming.get_problem_shortname()
+        if extension.preferContestLetter and shortname is not None:
+            return shortname
+        return self._get_problem_name()
 
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()
         return (
-            f'basename={self._get_problem_name()}\n'
+            f'basename={self._get_problem_basename()}\n'
             f'fullname={statement.title}\n'
             f'descfile={self._get_problem_name()}.pdf\n'
         )

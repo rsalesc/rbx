@@ -24,14 +24,6 @@ class MojPackager(BocaPackager):
     def task_types(cls) -> List[TaskType]:
         return [TaskType.COMMUNICATION, TaskType.BATCH]
 
-    def _get_problem_info(self) -> str:
-        statement = self._get_main_statement()
-        return (
-            f'basename={self._get_problem_name()}\n'
-            f'fullname={statement.title}\n'
-            f'descfile={self._get_problem_name()}.pdf\n'
-        )
-
     def _get_tl(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
 
@@ -237,8 +229,6 @@ class MojPackager(BocaPackager):
                 (outputs_path / f'{i + 1:03d}').touch()
 
         # Zip all.
-        shutil.make_archive(
-            str(build_path / self._get_problem_name()), 'zip', into_path
-        )
+        shutil.make_archive(str(build_path / self.package_basename()), 'zip', into_path)
 
-        return (build_path / self._get_problem_name()).with_suffix('.zip')
+        return (build_path / self.package_basename()).with_suffix('.zip')
