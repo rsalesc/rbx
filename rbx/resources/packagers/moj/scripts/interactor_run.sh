@@ -32,7 +32,7 @@ fi
 
 if [[ $EXITCODEINTERACTOR -ne 0 ]]; then
   echo "interactor exitcode $EXITCODEINTERACTOR" >&2
-  exit 0
+  exit $EXITCODEINTERACTOR
 fi
 
 exit 0
