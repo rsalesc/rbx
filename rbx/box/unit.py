@@ -29,6 +29,16 @@ class CheckerTestEntry(BaseModel):
     answer: Optional[pathlib.Path] = None
     outcome: ExpectedOutcome
 
+    def running_tests_formatted_string(self) -> str:
+        res = []
+        if self.input:
+            res.append(f'[item]{self.input}[/item]')
+        if self.output:
+            res.append(f'[item]{self.output}[/item]')
+        if self.answer:
+            res.append(f'[item]{self.answer}[/item]')
+        return ', '.join(res)
+
 
 def _extract_validator_test_entries(
     tests: List[ValidatorTest],
@@ -179,7 +189,9 @@ async def run_checker_unit_tests(progress: StatusProgress):
             else '[error]FAIL[/error]'
         )
 
-        console.console.print(f'{markup} Unit test [item]#{i + 1}[/item]')
+        console.console.print(
+            f'{markup} Unit test [item]#{i + 1}[/item] ({test.running_tests_formatted_string()})'
+        )
         console.console.print(f'  [status]Expected[/status] {test.outcome.name}')
 
         if not test.outcome.match(result.outcome):
