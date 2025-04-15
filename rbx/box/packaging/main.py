@@ -64,6 +64,7 @@ async def run_packager(
 
 
 @app.command('polygon', help='Build a package for Polygon.')
+@package.within_problem
 @syncer.sync
 async def polygon(
     verification: environment.VerificationParam,
@@ -74,6 +75,7 @@ async def polygon(
 
 
 @app.command('boca', help='Build a package for BOCA.')
+@package.within_problem
 @syncer.sync
 async def boca(
     verification: environment.VerificationParam,
@@ -84,6 +86,7 @@ async def boca(
 
 
 @app.command('moj', help='Build a package for MOJ.')
+@package.within_problem
 @syncer.sync
 async def moj(
     verification: environment.VerificationParam,

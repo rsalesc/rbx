@@ -90,6 +90,7 @@ async def _generate_for_editing(
 
 
 @app.command('view, v', help='View a testcase in your default editor.')
+@package.within_problem
 @syncer.sync
 async def view(
     tc: Annotated[
@@ -126,6 +127,7 @@ async def view(
 
 
 @app.command('info, i', help='Show information about testcases.')
+@package.within_problem
 @syncer.sync
 async def info(
     pattern: Annotated[
