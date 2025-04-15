@@ -91,12 +91,15 @@ async def run_validator_unit_tests(progress: StatusProgress):
         if val is not None:
             vals.append(val)
 
+    console.console.rule('Validator tests', style='info')
+    if not entries:
+        console.console.print(']No validator unit tests found.')
+        return
+
     compiled_validators = validators.compile_validators(vals, progress=progress)
 
     if progress:
         progress.update('Running validator unit tests...')
-
-    console.console.rule('Validator tests', style='info')
 
     for i, test in enumerate(entries):
         val = _get_validator_for_test(test)
@@ -141,15 +144,19 @@ async def run_checker_unit_tests(progress: StatusProgress):
         )
         return
 
+    console.console.rule('Checker tests', style='info')
+
+    entries = _extract_checker_test_entries(pkg.unitTests.checker)
+    if not entries:
+        console.console.print('No checker unit tests found.')
+        return
+
     compiled_digest = checkers.compile_checker(progress=progress)
 
     if progress:
         progress.update('Running checker unit tests...')
 
-    console.console.rule('Checker tests', style='info')
-
     empty_file = package.get_empty_sentinel_path()
-    entries = _extract_checker_test_entries(pkg.unitTests.checker)
 
     for i, test in enumerate(entries):
         result = await checkers.check(

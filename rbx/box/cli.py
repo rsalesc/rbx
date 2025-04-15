@@ -747,6 +747,7 @@ async def validate(
     rich_help_panel='Testing',
     help='Run unit tests for the validator and checker.',
 )
+@package.within_problem
 def unit_tests():
     from rbx.box import unit
 
