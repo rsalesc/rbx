@@ -42,6 +42,7 @@ plugins:
   - search
   - macros
   - termynal
+  - autorefs
   - mkdocstrings:
       handlers:
         python:
