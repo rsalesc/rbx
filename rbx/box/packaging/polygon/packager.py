@@ -1,7 +1,7 @@
 import functools
 import pathlib
 import shutil
-from typing import List
+from typing import List, Optional
 
 import iso639
 import typer
@@ -16,6 +16,7 @@ from rbx.box.packaging.packager import (
     BuiltStatement,
 )
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
+from rbx.box.schema import TaskType
 from rbx.config import get_testlib
 
 DAT_TEMPLATE = """
@@ -49,6 +50,10 @@ def _is_valid_lang_code(lang: str) -> bool:
 
 
 class PolygonPackager(BasePackager):
+    @classmethod
+    def task_types(cls) -> List[TaskType]:
+        return [TaskType.BATCH, TaskType.COMMUNICATION]
+
     def _validate(self):
         langs = self.languages()
         pkg = package.find_problem_package_or_die()
@@ -81,6 +86,14 @@ class PolygonPackager(BasePackager):
             type='testlib',
             source=polygon_schema.File(path='files/check.cpp', type='cpp.g++17'),
             cpy=polygon_schema.File(path='check.cpp'),
+        )
+
+    def _get_interactor(self) -> Optional[polygon_schema.Interactor]:
+        pkg = package.find_problem_package_or_die()
+        if pkg.interactor is None:
+            return None
+        return polygon_schema.Interactor(
+            source=polygon_schema.File(path='files/interactor.cpp', type='cpp.g++17'),
         )
 
     def _get_manual_test(self) -> polygon_schema.Test:
@@ -148,7 +161,8 @@ class PolygonPackager(BasePackager):
             for built_statement in built_statements
         ]
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return 'polygon'
 
     def package(
@@ -157,11 +171,14 @@ class PolygonPackager(BasePackager):
         into_path: pathlib.Path,
         built_statements: List[BuiltStatement],
     ):
+        pkg = package.find_problem_package_or_die()
+
         problem = polygon_schema.Problem(
             names=self._get_names(),
             checker=self._get_checker(),
             judging=self._get_judging(),
             files=self._get_files(),
+            interactor=self._get_interactor(),
             # TODO: revisit polygon problem statements
             # statements=self._process_statements(built_statements, into_path),
         )
@@ -181,6 +198,8 @@ class PolygonPackager(BasePackager):
         shutil.copyfile(get_testlib(), files_path / 'testlib.h')
         shutil.copyfile(package.get_checker().path, files_path / 'check.cpp')
         shutil.copyfile(package.get_checker().path, into_path / 'check.cpp')
+        if pkg.interactor is not None:
+            shutil.copyfile(pkg.interactor.path, files_path / 'interactor.cpp')
 
         # Copy all testcases
         (into_path / 'tests').mkdir(parents=True, exist_ok=True)

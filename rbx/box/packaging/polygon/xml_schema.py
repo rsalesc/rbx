@@ -65,6 +65,10 @@ class Checker(BaseXmlModel):
     testset: Optional[Testset] = element(default=None)
 
 
+class Interactor(BaseXmlModel):
+    source: File = element()
+
+
 class Problem(BaseXmlModel, tag='problem'):
     names: List[Name] = wrapped('names', element(tag='name'), default_factory=list)
 
@@ -83,6 +87,8 @@ class Problem(BaseXmlModel, tag='problem'):
     )
 
     checker: Checker = wrapped('assets', element(tag='checker'))
+
+    interactor: Optional[Interactor] = wrapped('assets', element(tag='interactor'))
 
 
 class ContestProblem(BaseXmlModel):

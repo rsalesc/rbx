@@ -103,7 +103,7 @@ async def run_validator_unit_tests(progress: StatusProgress):
 
     console.console.rule('Validator tests', style='info')
     if not entries:
-        console.console.print(']No validator unit tests found.')
+        console.console.print('No validator unit tests found.')
         return
 
     compiled_validators = validators.compile_validators(vals, progress=progress)
