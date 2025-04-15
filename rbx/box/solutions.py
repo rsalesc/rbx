@@ -47,7 +47,12 @@ from rbx.box.tasks import (
     run_solution_on_testcase,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases
-from rbx.box.testcase_utils import TestcaseEntry, find_built_testcases
+from rbx.box.testcase_utils import (
+    TestcaseEntry,
+    find_built_testcases,
+    parse_interaction,
+    print_interaction,
+)
 from rbx.grading.steps import (
     Evaluation,
     Outcome,
@@ -323,6 +328,19 @@ def _produce_solution_items(
     return res
 
 
+def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = False):
+    for output_file in output_files:
+        if not output_file.is_file():
+            continue
+        if output_file.suffix == '.pio':
+            print_interaction(parse_interaction(output_file))
+        else:
+            console.console.print(output_file.read_text())
+        return
+    if empty_warning:
+        console.console.print('[warning]Solution produced no output.[/warning]')
+
+
 def run_solutions(
     progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Set[str]] = None,
@@ -528,6 +546,7 @@ def _run_interactive_solutions(
                 output_dir=output_dir,
                 interactor_digest=interactor_digest,
                 verification=verification,
+                capture_pipes=True,
             )
 
         yield EvaluationItem(
@@ -589,18 +608,28 @@ async def run_and_print_interactive_solutions(
             )
 
         stdout_path = eval.log.stdout_absolute_path
-        if print:
+        if print and stdout_path is not None:
+            if pkg.type == TaskType.COMMUNICATION:
+                console.console.rule('Interaction', style='status')
+                output_files = [
+                    stdout_path.with_suffix('.pio'),
+                    stdout_path.with_suffix('.pout'),
+                ]
+                print_best_output(output_files, empty_warning=True)
+
             console.console.rule('Output', style='status')
-            if (
-                eval.testcase.output is not None
-                and stdout_path is not None
-                and stdout_path.is_file()
-            ):
-                console.console.print(stdout_path.read_text())
-            else:
-                console.console.print('[warning]Solution produced no output.[/warning]')
+            output_files = [stdout_path]
+            print_best_output(output_files, empty_warning=True)
         elif stdout_path is not None:
-            console.console.print(f'[status]Output:[/status] {stdout_path}')
+            if stdout_path.with_suffix('.pout').is_file():
+                stdout_path = stdout_path.with_suffix('.pout')
+
+            if stdout_path.is_file():
+                console.console.print(f'[status]Output:[/status] {stdout_path}')
+            if stdout_path.with_suffix('.pio').is_file():
+                console.console.print(
+                    f'[status]Interaction:[/status] {stdout_path.with_suffix(".pio")}'
+                )
             if eval.log.stderr_absolute_path is not None:
                 console.console.print(
                     f'[status]Stderr:[/status] {eval.log.stderr_absolute_path}'

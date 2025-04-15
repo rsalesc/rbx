@@ -2,6 +2,8 @@ import pathlib
 import shutil
 from typing import List, Optional, Tuple
 
+import rich
+import rich.text
 import typer
 from pydantic import BaseModel
 
@@ -209,3 +211,13 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
         prefixes=(interactor_prefix, solution_prefix),
         entries=entries,
     )
+
+
+def print_interaction(interaction: TestcaseInteraction):
+    for entry in interaction.entries:
+        text = rich.text.Text(entry.data)
+        if entry.pipe == 0:
+            text.stylize('status')
+        else:
+            text.stylize('info')
+        console.console.print(text, end='')
