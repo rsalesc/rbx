@@ -130,7 +130,10 @@ async def run_validator_unit_tests(progress: StatusProgress):
             if info.ok:
                 console.console.print('  [status]Actual[/status] VALID')
             else:
-                console.console.print(f'  [status]Actual[/status] {info.message}')
+                console.console.print('  [status]Actual[/status] INVALID')
+
+        if info.message:
+            console.console.print(f'  [status]Message[/status] {info.message}')
 
 
 async def run_checker_unit_tests(progress: StatusProgress):
@@ -181,8 +184,8 @@ async def run_checker_unit_tests(progress: StatusProgress):
 
         if not test.outcome.match(result.outcome):
             console.console.print(f'  [status]Actual[/status] {result.outcome.name}')
-            if result.message:
-                console.console.print(f'  [status]Message[/status] {result.message}')
+        if result.message:
+            console.console.print(f'  [status]Message[/status] {result.message}')
 
 
 @syncer.sync
