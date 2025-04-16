@@ -5,7 +5,7 @@ from typing import Optional
 import typer
 
 from rbx import annotations, console
-from rbx.box import package
+from rbx.box import header, package
 from rbx.box.schema import CodeItem
 from rbx.config import get_builtin_checker, get_jngen, get_testlib
 from rbx.grading import steps
@@ -18,6 +18,16 @@ def get_local_artifact(name: str) -> Optional[steps.GradingFileInput]:
     if path.is_file():
         return steps.GradingFileInput(src=path, dest=path)
     return None
+
+
+def maybe_add_rbx_header(code: CodeItem, artifacts: steps.GradingArtifacts):
+    header.get_header()
+    artifact = get_local_artifact('rbx.h')
+    assert artifact is not None
+    compilation_files = package.get_compilation_files(code)
+    if any(dest == artifact.dest for _, dest in compilation_files):
+        return
+    artifacts.inputs.append(artifact)
 
 
 def maybe_add_testlib(code: CodeItem, artifacts: steps.GradingArtifacts):

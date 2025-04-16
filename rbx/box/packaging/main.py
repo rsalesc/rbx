@@ -6,7 +6,7 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import environment, package
+from rbx.box import environment, header, package
 from rbx.box.naming import get_problem_name_with_contest_info
 from rbx.box.package import get_build_path
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
@@ -21,6 +21,8 @@ async def run_packager(
     **kwargs,
 ) -> pathlib.Path:
     from rbx.box import builder
+
+    header.generate_header()
 
     if not await builder.verify(verification=verification):
         console.console.print(

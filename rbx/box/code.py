@@ -415,6 +415,7 @@ def compile_item(
 
     download.maybe_add_testlib(code, artifacts)
     download.maybe_add_jngen(code, artifacts)
+    download.maybe_add_rbx_header(code, artifacts)
     artifacts.inputs.append(
         GradingFileInput(src=generator_path, dest=PosixPath(file_mapping.compilable))
     )

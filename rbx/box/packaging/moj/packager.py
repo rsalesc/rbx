@@ -5,7 +5,7 @@ from typing import List
 import typer
 
 from rbx import console
-from rbx.box import package
+from rbx.box import header, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.boca.packager import BocaPackager
@@ -152,6 +152,11 @@ class MojPackager(BocaPackager):
         testlib_path = into_path / 'scripts' / 'testlib.h'
         testlib_path.parent.mkdir(parents=True, exist_ok=True)
         testlib_path.write_text(get_testlib().read_text())
+
+        # Prepare rbx.h
+        rbx_header_path = into_path / 'scripts' / 'rbx.h'
+        rbx_header_path.parent.mkdir(parents=True, exist_ok=True)
+        rbx_header_path.write_text(header.get_header().read_text())
 
         # Prepare checker
         checker_path = into_path / 'scripts' / 'checker.cpp'

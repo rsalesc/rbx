@@ -27,6 +27,7 @@ from rbx.box import (
 from rbx.box.contest import main as contest
 from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.environment import VerificationLevel, get_environment_path
+from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
 from rbx.box.solutions import (
@@ -753,6 +754,16 @@ def unit_tests():
 
     with utils.StatusProgress('Running unit tests...') as s:
         unit.run_unit_tests(s)
+
+
+@app.command(
+    'header',
+    rich_help_panel='Configuration',
+    help='Generate the rbx.h header file.',
+)
+@package.within_problem
+def header():
+    generate_header()
 
 
 @app.command(

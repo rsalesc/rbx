@@ -9,7 +9,7 @@ import typer
 from polygon_api import api
 
 from rbx import console
-from rbx.box import package
+from rbx.box import header, package
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.packaging.polygon.packager import code_to_langs, is_valid_lang_code
 from rbx.box.schema import CodeItem, ExpectedOutcome, Solution, TaskType, Testcase
@@ -88,6 +88,17 @@ def _get_interactor_name() -> str:
 def _get_validator_name() -> str:
     validator = package.get_validator()
     return validator.path.with_stem('validator').name
+
+
+def _update_rbx_header(problem: api.Problem):
+    console.console.print('Uploading rbx.h...')
+    rbx_header = header.get_header()
+    problem.save_file(
+        type=api.FileType.RESOURCE,
+        name='rbx.h',
+        file=rbx_header.read_bytes(),
+        source_type=None,
+    )
 
 
 def _update_checker(problem: api.Problem):
@@ -301,6 +312,7 @@ async def upload_problem(name: str):
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
     _update_checker(problem)
+    _update_rbx_header(problem)
 
     if (
         pkg.type == TaskType.COMMUNICATION

@@ -14,11 +14,16 @@ read -r -d '' TestlibContent <<"EOF"
 {{testlib_content}}
 EOF
 
+read -r -d '' RbxHeaderContent <<"EOF"
+{{rbx_header_content}}
+EOF
+
 read -r -d '' CheckerContent <<"EOF"
 {{checker_content}}
 EOF
 
 printf "%s" "${TestlibContent}" >testlib.h
+printf "%s" "${RbxHeaderContent}" >rbx.h
 printf "%s" "${CheckerContent}" >$CHECKER_PATH
 
 checker_hash=($(md5sum $CHECKER_PATH))

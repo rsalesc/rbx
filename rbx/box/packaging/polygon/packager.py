@@ -7,7 +7,7 @@ import iso639
 import typer
 
 from rbx import console
-from rbx.box import package
+from rbx.box import header, package
 from rbx.box.packaging.packager import (
     BaseContestPackager,
     BasePackager,
@@ -131,7 +131,10 @@ class PolygonPackager(BasePackager):
         return polygon_schema.Judging(testsets=[self._get_single_testset()])
 
     def _get_files(self) -> List[polygon_schema.File]:
-        return [polygon_schema.File(path='files/testlib.h', type='h.g++')]
+        return [
+            polygon_schema.File(path='files/testlib.h', type='h.g++'),
+            polygon_schema.File(path='files/rbx.h', type='h.g++'),
+        ]
 
     def _statement_application_type(self, statement: BuiltStatement) -> str:
         return 'application/pdf'
@@ -196,6 +199,7 @@ class PolygonPackager(BasePackager):
         files_path = into_path / 'files'
         files_path.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(get_testlib(), files_path / 'testlib.h')
+        shutil.copyfile(header.get_header(), files_path / 'rbx.h')
         shutil.copyfile(package.get_checker().path, files_path / 'check.cpp')
         shutil.copyfile(package.get_checker().path, into_path / 'check.cpp')
         if pkg.interactor is not None:

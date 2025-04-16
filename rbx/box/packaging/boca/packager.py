@@ -6,7 +6,7 @@ from typing import List
 import typer
 
 from rbx import console
-from rbx.box import naming, package
+from rbx.box import header, naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
@@ -150,9 +150,11 @@ class BocaPackager(BasePackager):
         checker_text = checker_path.read_text()
         testlib = get_testlib().read_text()
         checker = package.get_checker().path.read_text()
+        rbx_header = header.get_header().read_text()
         return (
             checker_text.replace('{{rbxFlags}}', extension.flags_with_defaults()['cc'])
             .replace('{{testlib_content}}', testlib)
+            .replace('{{rbx_header_content}}', rbx_header)
             .replace('{{checker_content}}', checker)
         )
 
