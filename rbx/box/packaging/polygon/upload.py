@@ -316,4 +316,5 @@ async def upload_problem(name: str):
     _upload_statement(problem)
 
     # Commit.
+    console.console.print('Committing changes...')
     problem.commit_changes()
