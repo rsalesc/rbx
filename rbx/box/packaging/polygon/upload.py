@@ -318,3 +318,7 @@ async def upload_problem(name: str):
     # Commit.
     console.console.print('Committing changes...')
     problem.commit_changes()
+
+    console.console.print(
+        f'[success]Problem [item]{name}[/item] uploaded successfully![/success]'
+    )
