@@ -1760,25 +1760,6 @@ dev = ["pre-commit", "tox"]
 testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
-name = "polygon_api"
-version = "1.0.0"
-description = "Python wrapper for Polygon API (polygon.codeforces.com)"
-optional = false
-python-versions = ">=3.5"
-groups = ["main"]
-files = []
-develop = false
-
-[package.dependencies]
-requests = "*"
-
-[package.source]
-type = "git"
-url = "https://github.com/citxx/polygon-py.git"
-reference = "HEAD"
-resolved_reference = "473c5ce0247d41d6db610df536ced5a77940ac6c"
-
-[[package]]
 name = "pre-commit"
 version = "3.8.0"
 description = "A framework for managing and maintaining multi-language pre-commit hooks."
@@ -2918,4 +2899,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9"
-content-hash = "47aec7f80a30f032961cf87dcaf07b1f55dd815ff497e2c40b91ec5535d16764"
+content-hash = "a9f0804c07350b4a53893dcaa3870b88201533cb7744a224d6ec0ce65d226350"
