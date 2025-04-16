@@ -890,28 +890,36 @@ def _print_solution_header(
 
 
 @dataclasses.dataclass
+class SolutionTiming:
+    time: int
+    solution: Solution
+
+
+@dataclasses.dataclass
 class TimingSummary:
-    slowest_good: Optional[int] = None
-    fastest_slow: Optional[int] = None
+    slowest_good: Optional[SolutionTiming] = None
+    fastest_slow: Optional[SolutionTiming] = None
 
-    def add_good(self, time: int):
-        if self.slowest_good is None or time > self.slowest_good:
-            self.slowest_good = time
+    def add_good(self, time: int, solution: Solution):
+        if self.slowest_good is None or time > self.slowest_good.time:
+            self.slowest_good = SolutionTiming(time, solution)
 
-    def add_slow(self, time: int):
-        if self.fastest_slow is None or time < self.fastest_slow:
-            self.fastest_slow = time
+    def add_slow(self, time: int, solution: Solution):
+        if self.fastest_slow is None or time < self.fastest_slow.time:
+            self.fastest_slow = SolutionTiming(time, solution)
 
     def print(self, console: rich.console.Console, tl: Optional[int] = None):
         if self.slowest_good is not None:
             console.print(
-                f'Slowest [success]OK[/success] solution: {self.slowest_good} ms'
+                f'Slowest [success]OK[/success] solution: {self.slowest_good.time} ms, [item]{self.slowest_good.solution.path}[/item]'
             )
         if self.fastest_slow is not None:
-            fastest_slow = self.fastest_slow
-            if tl is not None and self.fastest_slow > tl:
+            fastest_slow = self.fastest_slow.time
+            if tl is not None and self.fastest_slow.time > tl:
                 fastest_slow = f'>{tl}'
-            console.print(f'Fastest [error]slow[/error] solution: {fastest_slow} ms')
+            console.print(
+                f'Fastest [error]slow[/error] solution: {fastest_slow} ms, [item]{self.fastest_slow.solution.path}[/item]'
+            )
 
 
 async def _print_timing(
@@ -953,11 +961,11 @@ async def _print_timing(
 
         # Get solution timings.
         if solution.outcome.match(Outcome.ACCEPTED):
-            summary.add_good(solution_time)
-            summary_per_language[solution.language].add_good(solution_time)
+            summary.add_good(solution_time, solution)
+            summary_per_language[solution.language].add_good(solution_time, solution)
         if solution.outcome.is_slow():
-            summary.add_slow(solution_time)
-            summary_per_language[solution.language].add_slow(solution_time)
+            summary.add_slow(solution_time, solution)
+            summary_per_language[solution.language].add_slow(solution_time, solution)
 
     if summary.slowest_good is None and summary.fastest_slow is None:
         return
