@@ -213,6 +213,21 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     )
 
 
+def get_alternate_interaction_texts(
+    interaction: TestcaseInteraction,
+) -> Tuple[str, str]:
+    interactor_entries = []
+    solution_entries = []
+    for entry in interaction.entries:
+        if entry.pipe == 1:
+            solution_entries.append(entry.data)
+            interactor_entries.extend(['\n'] * entry.data.count('\n'))
+        else:
+            interactor_entries.append(entry.data)
+            solution_entries.extend(['\n'] * entry.data.count('\n'))
+    return ''.join(interactor_entries), ''.join(solution_entries)
+
+
 def print_interaction(interaction: TestcaseInteraction):
     for entry in interaction.entries:
         text = rich.text.Text(entry.data)

@@ -2,6 +2,7 @@ import pathlib
 import tempfile
 from typing import Type
 
+import syncer
 import typer
 
 from rbx import annotations, console
@@ -18,7 +19,7 @@ from rbx.box.packaging.packager import (
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
 
-def run_contest_packager(
+async def run_contest_packager(
     contest_packager_cls: Type[BaseContestPackager],
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
@@ -33,7 +34,7 @@ def run_contest_packager(
         )
         with cd.new_package_cd(problem.get_path()):
             package.clear_package_cache()
-            package_path = run_packager(packager_cls, verification=verification)
+            package_path = await run_packager(packager_cls, verification=verification)
             built_packages.append(
                 BuiltProblemPackage(
                     path=problem.get_path() / package_path,
@@ -73,7 +74,8 @@ def run_contest_packager(
 
 @app.command('polygon', help='Build a contest package for Polygon.')
 @contest_package.within_contest
-def polygon(
+@syncer.sync
+async def polygon(
     verification: environment.VerificationParam,
 ):
     from rbx.box.packaging.polygon.packager import (
@@ -81,6 +83,6 @@ def polygon(
         PolygonPackager,
     )
 
-    run_contest_packager(
+    await run_contest_packager(
         PolygonContestPackager, PolygonPackager, verification=verification
     )

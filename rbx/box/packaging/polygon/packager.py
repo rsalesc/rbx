@@ -37,7 +37,7 @@ def code_to_langs(langs: List[str]) -> List[str]:
 
 
 @functools.cache
-def _is_valid_lang_code(lang: str) -> bool:
+def is_valid_lang_code(lang: str) -> bool:
     try:
         code_to_langs([lang])
     except iso639.LanguageNotFoundError:
@@ -238,7 +238,7 @@ class PolygonContestPackager(BaseContestPackager):
                 value=self.get_statement_for_language(lang).title,
             )
             for lang in self.languages()
-            if _is_valid_lang_code(lang)
+            if is_valid_lang_code(lang)
         ]
         if names:
             names[0].main = True
@@ -303,7 +303,7 @@ class PolygonContestPackager(BaseContestPackager):
     ) -> pathlib.Path:
         filtered_statements = []
         for built_statement in built_statements:
-            if not _is_valid_lang_code(built_statement.statement.language):
+            if not is_valid_lang_code(built_statement.statement.language):
                 continue
             filtered_statements.append(built_statement)
 

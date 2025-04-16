@@ -7,6 +7,7 @@ import typer
 
 from rbx import annotations, console
 from rbx.box import environment, package
+from rbx.box.naming import get_problem_name_with_contest_info
 from rbx.box.package import get_build_path
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.statements.build_statements import build_statement
@@ -68,10 +69,21 @@ async def run_packager(
 @syncer.sync
 async def polygon(
     verification: environment.VerificationParam,
+    upload: bool = typer.Option(
+        False,
+        '--upload',
+        '-u',
+        help='If set, will upload the package to Polygon.',
+    ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
     await run_packager(PolygonPackager, verification=verification)
+
+    if upload:
+        from rbx.box.packaging.polygon.upload import upload_problem
+
+        await upload_problem(name=get_problem_name_with_contest_info())
 
 
 @app.command('boca', help='Build a package for BOCA.')

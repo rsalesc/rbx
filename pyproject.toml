@@ -34,6 +34,7 @@ lark = "^1.2.2"
 chardet = "^5.2.0"
 ruyaml = "^0.91.0"
 syncer = "^2.0.3"
+polygon-api = {git = "https://github.com/citxx/polygon-py.git"}
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"
