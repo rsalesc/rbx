@@ -17,9 +17,9 @@ def get_testdata_path() -> pathlib.Path:
 
 
 def clear_all_functools_cache():
-    from rbx.box import environment, package
+    from rbx.box import environment, header, package
 
-    pkgs = [environment, package]
+    pkgs = [environment, package, header]
 
     for pkg in pkgs:
         for fn in pkg.__dict__.values():
