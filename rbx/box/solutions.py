@@ -5,7 +5,7 @@ import dataclasses
 import pathlib
 import shutil
 from collections.abc import Iterator
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import rich
 import rich.live
@@ -16,7 +16,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, package
+from rbx.box import checkers, environment, package
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -1244,6 +1244,16 @@ async def print_run_report(
     return ok
 
 
+def _step_up(x: Any, step: int) -> int:
+    x = int(x)
+    return (x + step - 1) // step * step
+
+
+def _step_down(x: Any, step: int) -> int:
+    x = int(x)
+    return x // step * step
+
+
 async def estimate_time_limit(
     console: rich.console.Console,
     result: RunSolutionResult,
@@ -1262,12 +1272,12 @@ async def estimate_time_limit(
     for solution in result.skeleton.solutions:
         timings = []
         for evals in structured_evaluations[str(solution.path)].values():
-            for eval in evals:
-                if eval is None:
+            for ev in evals:
+                if ev is None:
                     continue
-                eval = await eval()
-                if eval.log.time is not None:
-                    timings.append(int(eval.log.time * 1000))
+                ev = await ev()
+                if ev.log.time is not None:
+                    timings.append(int(ev.log.time * 1000))
 
         if not timings:
             console.print(
@@ -1301,7 +1311,19 @@ async def estimate_time_limit(
             f'Slowest language: {slowest_language} ({slowest_language_time} ms)'
         )
 
-    estimated_tl = int(max(fastest_time * 3, slowest_time * 1.5))
-    console.print(f'[success]Estimated time limit:[/success] {estimated_tl} ms')
+    env = environment.get_environment()
+    estimated_tl = int(
+        eval(
+            env.timing.formula,
+            {
+                'fastest': fastest_time,
+                'slowest': slowest_time,
+                'step_up': _step_up,
+                'step_down': _step_down,
+            },
+        )
+    )
 
+    console.print(f'Using formula: {env.timing.formula}')
+    console.print(f'[success]Estimated time limit:[/success] {estimated_tl} ms')
     return estimated_tl

@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Annotated, List, Optional, Type, TypeVar
 
 import typer
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rbx import config, console, utils
 from rbx.box.extensions import Extensions, LanguageExtensions
@@ -143,6 +143,13 @@ class EnvironmentLanguage(BaseModel):
         return self.get_extension(name, cls) or cls()
 
 
+class TimingConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    # Formula to use to calculate the time limit for the environment.
+    formula: str = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
+
+
 class Environment(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -166,6 +173,9 @@ class Environment(BaseModel):
 
     # Identifier of the preset that should be used when creating new problems.
     preset: str = 'default'
+
+    # Timing configuration for the environment.
+    timing: TimingConfig = Field(default_factory=TimingConfig)
 
     # Extensions to be added to the environment.
     extensions: Optional[Extensions] = None
