@@ -57,21 +57,28 @@ def get_app_path() -> pathlib.Path:
     return pathlib.Path(app_dir)
 
 
-def ensure_schema(model: Type[BaseModel]) -> pathlib.Path:
-    path = get_app_path() / 'schemas' / f'{model.__name__}.json'
+def dump_schema(model: Type[BaseModel], path: pathlib.Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     schema = json.dumps(model.model_json_schema(), indent=4)
     path.write_text(schema)
+
+
+def ensure_schema(model: Type[BaseModel]) -> pathlib.Path:
+    path = get_app_path() / 'schemas' / f'{model.__name__}.json'
+    dump_schema(model, path)
     return path.resolve()
 
 
 def model_json(model: BaseModel) -> str:
-    ensure_schema(model.__class__)
     return model.model_dump_json(indent=4, exclude_unset=True, exclude_none=True)
 
 
+def uploaded_schema_path(model: Type[BaseModel]) -> str:
+    return f'https://rsalesc.github.io/rbx/schemas/{model.__name__}.json'
+
+
 def model_to_yaml(model: BaseModel) -> str:
-    path = ensure_schema(model.__class__)
+    path = uploaded_schema_path(model.__class__)
     return f'# yaml-language-server: $schema={path}\n\n' + yaml.dump(
         model.model_dump(mode='json', exclude_unset=True, exclude_none=True),
         sort_keys=False,
@@ -80,7 +87,6 @@ def model_to_yaml(model: BaseModel) -> str:
 
 
 def model_from_yaml(model: Type[T], s: str) -> T:
-    ensure_schema(model)
     return model(**yaml.safe_load(s))
 
 

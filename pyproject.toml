@@ -55,6 +55,7 @@ griffe-fieldz = ">=0.1.2, <1.0.0"
 pytest-cov = "^5.0.0"
 textual-dev = "^1.6.1"
 pytest-asyncio = "^0.26.0"
+mkdocs-gen-files = "^0.5.0"
 
 [build-system]
 requires = ["poetry-core"]

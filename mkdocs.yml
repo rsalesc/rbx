@@ -43,6 +43,9 @@ plugins:
   - macros
   - termynal
   - autorefs
+  - gen-files:
+      scripts:
+        - rbx/box/dump_schemas.py
   - mkdocstrings:
       handlers:
         python:
