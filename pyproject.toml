@@ -34,6 +34,8 @@ lark = "^1.2.2"
 chardet = "^5.2.0"
 ruyaml = "^0.91.0"
 syncer = "^2.0.3"
+async-lru = "^2.0.5"
+nest-asyncio = "^1.6.0"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"

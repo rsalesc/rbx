@@ -1,8 +1,8 @@
-import functools
 import time
 from shutil import rmtree
 from typing import List, Optional
 
+import async_lru
 import syncer
 import typer
 from pydantic import BaseModel
@@ -147,7 +147,7 @@ async def run_stress(
             else None,
         )
 
-        @functools.cache
+        @async_lru.alru_cache
         async def run_solution_fn(
             solution: str,
             retry_index: Optional[int] = None,
@@ -197,7 +197,7 @@ async def run_stress(
                 raise typer.Exit(1)
             expected_output_path = main_testcase_log.stdout_absolute_path
 
-        @functools.cache
+        @async_lru.alru_cache
         async def run_solution_and_checker_fn(
             call: finder_parser.FinderCall,
             input_path=input_path,
@@ -242,9 +242,12 @@ async def run_stress(
                 checker_result=eval.result,
             )
 
-        runner = finder_parser.FinderTreeRunner(
-            runner=syncer.sync(run_solution_and_checker_fn)
-        )
+        @syncer.sync
+        async def run_fn(*args, **kwargs):
+            # Wrap the runner in a syncer.sync to make it work with the finder parser.
+            return await run_solution_and_checker_fn(*args, **kwargs)
+
+        runner = finder_parser.FinderTreeRunner(runner=run_fn)
         finder_outcome: finder_parser.FinderOutcome = runner.transform(parsed_finder)
 
         internal_error_results = [
