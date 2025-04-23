@@ -57,9 +57,13 @@ def get_app_path() -> pathlib.Path:
     return pathlib.Path(app_dir)
 
 
+def dump_schema_str(model: Type[BaseModel]) -> str:
+    return json.dumps(model.model_json_schema(), indent=4)
+
+
 def dump_schema(model: Type[BaseModel], path: pathlib.Path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    schema = json.dumps(model.model_json_schema(), indent=4)
+    schema = dump_schema_str(model)
     path.write_text(schema)
 
 
