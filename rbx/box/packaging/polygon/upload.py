@@ -250,6 +250,24 @@ def _get_statement_blocks(statement: Statement) -> StatementBlocks:
         )
 
 
+def _get_explanations(explanations: Dict[int, str]) -> str:
+    entries = []
+    for i in sorted(explanations):
+        explanation = explanations[i]
+        entries.append(f'\\textbf{{Explanation for example {i + 1}}}\n\n{explanation}')
+    return '\n\n'.join(entries)
+
+
+def _get_notes_with_explanations(blocks: StatementBlocks) -> Optional[str]:
+    notes = blocks.blocks.get('notes')
+    explanations = blocks.explanations
+    if notes is None and not explanations:
+        return None
+    if notes is None:
+        return _get_explanations(blocks.explanations)
+    return notes + '\n\n' + _get_explanations(blocks.explanations)
+
+
 def _upload_statement_resources(problem: api.Problem, statement: Statement):
     assets = get_relative_assets(statement.path, statement.assets)
     for asset, relative_asset in assets:
@@ -293,7 +311,7 @@ def _upload_statement(problem: api.Problem):
             input=blocks.blocks.get('input'),
             output=blocks.blocks.get('output'),
             interaction=blocks.blocks.get('interaction'),
-            notes=blocks.blocks.get('notes'),
+            notes=_get_notes_with_explanations(blocks),
         )
         problem.save_statement(
             lang=code_to_langs([language])[0], problem_statement=polygon_statement
