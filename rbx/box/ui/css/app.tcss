@@ -3,7 +3,7 @@ Screen {
         color: $text;
 }
 
-rbxApp > Screen {
+Screen {
         align: center middle;
 }
 

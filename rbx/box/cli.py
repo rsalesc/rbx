@@ -122,10 +122,12 @@ def main(
     state.STATE.debug_logs = debug_logs
 
 
-# @app.command('ui', hidden=True)
-# @package.within_problem
-# def ui():
-#     ui_pkg.start()
+@app.command('ui', hidden=True)
+@package.within_problem
+def ui():
+    from rbx.box.ui import main as ui_pkg
+
+    ui_pkg.start()
 
 
 @app.command(

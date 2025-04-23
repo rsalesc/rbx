@@ -8,7 +8,7 @@ import re
 import signal
 import struct
 import termios
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import pyte
 import textual
@@ -321,10 +321,14 @@ class LogDisplay(ScrollView, can_focus=True):
                 loop.remove_reader(pout)
             event.set()
 
-        async def cleanup():
+        async def cleanup(wait_tp: Optional[Tuple[int, int]] = None):
+            if self.exitcode is not None:
+                return
             try:
                 loop.remove_reader(pout)
-                _, exitstatus = os.waitpid(pid, os.WNOHANG)
+                if wait_tp is None:
+                    wait_tp = os.waitpid(pid, os.WNOHANG)
+                _, exitstatus = wait_tp
                 exitcode = os.waitstatus_to_exitcode(exitstatus)
                 self.exitcode = exitcode
             except ChildProcessError:
@@ -352,8 +356,8 @@ class LogDisplay(ScrollView, can_focus=True):
         async def wait():
             while True:
                 try:
-                    if os.waitpid(pid, os.WNOHANG) != (0, 0):
-                        await cleanup()
+                    if (wait_tp := os.waitpid(pid, os.WNOHANG)) != (0, 0):
+                        await cleanup(wait_tp)
                 except ChildProcessError:
                     break
                 await asyncio.sleep(0.5)

@@ -4,7 +4,7 @@ from typing import Optional, Set
 import textual
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Center, Container, Grid
+from textual.containers import Center, Grid
 from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, SelectionList
@@ -57,12 +57,12 @@ class SolutionReportScreen(Screen):
                     cursor_type='row', cursor_foreground_priority='renderable'
                 )
         if self.log_display_state is not None:
-            yield LogDisplay()
+            yield LogDisplay(id='build-output')
 
     def on_mount(self):
-        self.query_one(
-            '#build-output', Container
-        ).border_title = 'Test generation and validation'
+        # self.query_one(
+        #     '#build-output', Container
+        # ).border_title = 'Test generation and validation'
         for solution, table in zip(
             self.skeleton.solutions,
             self.query(DataTable),
@@ -86,8 +86,7 @@ class SolutionReportScreen(Screen):
                 return i
         raise
 
-    def process(self, item: EvaluationItem):
-        textual.log(item)
+    async def process(self, item: EvaluationItem):
         pkg = package.find_problem_package_or_die()
         sol_idx_in_skeleton = self._find_solution_index_in_skeleton(
             pkg.solutions[item.solution_index]
@@ -102,12 +101,12 @@ class SolutionReportScreen(Screen):
 
         table.update_cell_at(
             Coordinate(row=row_idx, column=2),
-            get_testcase_markup_verdict(item.eval),
+            get_testcase_markup_verdict(await item.eval()),
             update_width=True,
         )
         table.update_cell_at(
             Coordinate(row=row_idx, column=3),
-            get_evals_formatted_time([item.eval]),
+            get_evals_formatted_time([await item.eval()]),
             update_width=True,
         )
 
@@ -158,11 +157,11 @@ class RunScreen(Screen):
     def on_screen_resume(self):
         self.query_one('#run-sols', SelectionList).focus()
 
-    def on_button_pressed(self, _: Button.Pressed):
-        self.action_run()
+    async def on_button_pressed(self, _: Button.Pressed):
+        await self.action_run()
 
     @textual.work(thread=True)
-    def _run_solutions(self, tracked_solutions: Set[str], check: bool):
+    async def _run_solutions(self, tracked_solutions: Set[str], check: bool):
         main_solution = package.get_main_solution()
         if check and main_solution is None:
             console.console.print(
@@ -176,8 +175,10 @@ class RunScreen(Screen):
         exitcode = self.app.call_from_thread(build)
 
         if exitcode != 0:
-            textual.log('early quit')
+            textual.log(f'early quit: {exitcode}')
             return
+
+        textual.log('build finished ok, running solutions')
 
         res = run_solutions(tracked_solutions=tracked_solutions, check=check)
 
@@ -191,15 +192,15 @@ class RunScreen(Screen):
             )
             return screen
 
-        new_screen = self.app.call_from_thread(mount_report_widget)
+        new_screen = await mount_report_widget()
 
-        def process(item: EvaluationItem):
-            new_screen.process(item)
+        async def process_item(item: EvaluationItem):
+            await new_screen.process(item)
 
         for item in res.items:
-            self.app.call_from_thread(process, item)
+            self.app.call_from_thread(process_item, item)
 
-    def action_run(self):
+    async def action_run(self):
         sols = self.query_one('#run-sols', SelectionList)
         config = self.query_one('#run-config', SelectionList)
 
