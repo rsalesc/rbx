@@ -311,8 +311,8 @@ async def upload_problem(name: str):
     name = _normalize_problem_name(name)
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
-    _update_checker(problem)
     _update_rbx_header(problem)
+    _update_checker(problem)
 
     if (
         pkg.type == TaskType.COMMUNICATION
