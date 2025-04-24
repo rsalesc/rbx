@@ -291,7 +291,7 @@ async def check_communication(
         and (
             run_log.exitcode == -signal.SIGPIPE
             or run_log.exitstatus == SandboxBase.EXIT_TERMINATED
-            or run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
+            # or run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
         )
     ):
         result = _check_interactor()

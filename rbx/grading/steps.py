@@ -330,12 +330,27 @@ def _expand_part(part: str, sandbox: SandboxBase) -> List[str]:
     return [part]
 
 
+def _get_java_memory_limits(sandbox: SandboxBase) -> Tuple[int, int]:
+    max_memory = sandbox.params.address_space
+    if max_memory is None:
+        max_memory = 2048
+    return max_memory, min(512, int(max_memory * 0.9))
+
+
 def _split_and_expand(command: str, sandbox: SandboxBase) -> List[str]:
     res = []
-    parts = shlex.split(command.format(memory=sandbox.params.address_space or 2048))
+    max_mem, init_mem = _get_java_memory_limits(sandbox)
+    parts = shlex.split(command.format(memory=max_mem, initialMemory=init_mem))
     for part in parts:
         res.extend(_expand_part(part, sandbox))
     return res
+
+
+def get_exe_from_command(command: str) -> str:
+    cmds = shlex.split(command)
+    if not cmds:
+        return command
+    return cmds[0]
 
 
 def _is_c_command(exe_command: str) -> bool:
@@ -351,13 +366,24 @@ def is_cxx_command(exe_command: str) -> bool:
 
 
 def is_cxx_sanitizer_command(command: str) -> bool:
-    cmds = shlex.split(command)
-    if not cmds:
+    exe = get_exe_from_command(command)
+    if not exe:
         return False
-    exe = cmds[0]
     if not is_cxx_command(exe):
         return False
     return 'fsanitize' in command
+
+
+def is_java_command(exe_command: str) -> bool:
+    return 'javac' in exe_command or 'java' in exe_command
+
+
+def is_kotlin_command(exe_command: str) -> bool:
+    return 'kotlinc' in exe_command or 'kotlin' in exe_command
+
+
+def is_java_like_command(exe_command: str) -> bool:
+    return is_java_command(exe_command) or is_kotlin_command(exe_command)
 
 
 @functools.cache
@@ -539,6 +565,10 @@ def compile(
         stderr_file = pathlib.PosixPath(f'compile-{i}.stderr')
         sandbox.params.set_stdall(stdout=stdout_file, stderr=stderr_file)
 
+        # Remove memory constraints for Java.
+        if is_java_like_command(get_exe_from_command(command)):
+            sandbox.params.address_space = None
+
         if bits_artifact is not None and _is_cpp_command(cmd[0]):
             # Include from sandbox directory to import bits/stdc++.h.
             cmd.append('-I.')
@@ -603,6 +633,10 @@ async def run(
     _process_fifos(artifacts, sandbox)
     cmd = _split_and_expand(command, sandbox)
     sandbox.set_params(params)
+
+    # Remove memory constraints for Java.
+    if is_java_like_command(get_exe_from_command(command)):
+        sandbox.params.address_space = None
 
     if not await asyncio.to_thread(sandbox.execute_without_std, cmd):
         console.print(
