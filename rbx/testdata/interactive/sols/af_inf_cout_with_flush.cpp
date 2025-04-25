@@ -62,7 +62,7 @@ void solve() {
       lf = mid;
     if (it > 5) {
       while (true) {
-        cout << rand() % n + 1;
+        cout << rand() % n + 1 << endl;
         fflush(stdout);
       }
     }
