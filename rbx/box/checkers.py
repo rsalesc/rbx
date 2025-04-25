@@ -282,16 +282,12 @@ async def check_communication(
     # 1. If the solution received SIGPIPE or was terminated, it means the
     # interactor exited before it. Thus, check the interactor, as it might have
     # returned a checker verdict.
-    #
-    # Also, do the same if the solution returned a non-zero exit code. Checker verdict
-    # should usually supersede a solution's RTE verdict.
     if (
         interactor_run_log is not None
         and run_log is not None
         and (
             run_log.exitcode == -signal.SIGPIPE
             or run_log.exitstatus == SandboxBase.EXIT_TERMINATED
-            # or run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
         )
     ):
         result = _check_interactor()
