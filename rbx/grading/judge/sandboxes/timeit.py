@@ -109,7 +109,8 @@ def create_tee(files, mode, buffer_size=4096, prefix=''):
     else:
         # Parent -- Return a file object wrapper around the pipe to the
         #           child.
-        return os.fdopen(pipe_write, 'w', closefd=False)
+        # Preserve line buffering (buffering=1).
+        return os.fdopen(pipe_write, 'w', buffering=1, closefd=False)
 
 
 def parse_opts() -> Options:
