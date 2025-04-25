@@ -193,6 +193,11 @@ class RunLogMetadata(BaseModel):
     retryIndex: Optional[int] = None
 
 
+class ProcessingContextLog(BaseModel):
+    pid: int = -1
+    exitindex: int = -1
+
+
 class RunLog(BaseModel):
     exitcode: int = 0
     exitstatus: str = SandboxBase.EXIT_SANDBOX_ERROR
@@ -648,7 +653,7 @@ async def run(
         return None
 
     if sandbox.get_exit_code() != 0 and kill_on_processing_context_exit:
-        processing_context.terminate_all_processes_in_context()
+        processing_context.terminate_all_processes_in_context(clear=False)
 
     if not _process_output_artifacts(artifacts, sandbox):
         return None
@@ -691,22 +696,27 @@ async def run_coordinated(
     interactor: CoordinatedRunParams,
     solution: CoordinatedRunParams,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
-    with processing_context.new_processing_context():
+    with processing_context.new_processing_context(terminate_all_on_error=True):
+        # Schedule both runs to execute immediately.
         runs = tuple(
-            run(
-                params.command,
-                params.params,
-                params.sandbox,
-                params.artifacts,
-                params.metadata,
-                kill_on_processing_context_exit=True,
+            asyncio.create_task(
+                run(
+                    params.command,
+                    params.params,
+                    params.sandbox,
+                    params.artifacts,
+                    params.metadata,
+                    kill_on_processing_context_exit=True,
+                )
             )
             for params in [interactor, solution]
         )
-        return typing.cast(
+        await processing_context.wait_all_processes_in_context(wait_for=2)
+        logs = typing.cast(
             Tuple[Optional[RunLog], Optional[RunLog]],
             tuple(await asyncio.gather(*runs)),
         )
+        return logs
 
 
 def _normalize_checked_words(s: str) -> Tuple[str, ...]:

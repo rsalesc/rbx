@@ -36,6 +36,7 @@ ruyaml = "^0.91.0"
 syncer = "^2.0.3"
 async-lru = "^2.0.5"
 nest-asyncio = "^1.6.0"
+psutil = "^7.0.0"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"
