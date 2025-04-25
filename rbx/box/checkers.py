@@ -283,21 +283,18 @@ async def check_communication(
     # interactor exited before it. Thus, check the interactor, as it might have
     # returned a checker verdict.
     #
-    # Also, consider the case where the interactor has obviously finished first, but
-    # solution has a non-zero exit code. In this case, the non-zero exit code was probably
-    # caused by the interactor early termination, so we should check the interactor (usually,
-    # the early termination should cause a SIGTERM or SIGPIPE, but a few languages ignore that).
+    # Also, treat the case where the solution has a non-zero exit code similarly.
+    # This is aligned with what Polygon/Codeforces does: for some languages, we don't
+    # get a SIGPIPE. Instead, we get a non-zero exit code which we can't distinguish
+    # from a normal RTE. Thus, we decide that we should prioritize the interactor verdict
+    # over the solution's exit code in these cases.
     if (
         interactor_run_log is not None
         and run_log is not None
         and (
             run_log.exitcode == -signal.SIGPIPE
             or run_log.exitstatus == SandboxBase.EXIT_TERMINATED
-            # or (
-            #     run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
-            #     and interactor_run_log.processing_context.exitindex
-            #     < run_log.processing_context.exitindex
-            # )
+            or run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
         )
     ):
         result = _check_interactor()
