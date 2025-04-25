@@ -226,6 +226,10 @@ def _check_sanitizer_warnings(run_log: Optional[RunLog]) -> bool:
     return run_log.warnings
 
 
+def _is_testlib_eof(stderr: str) -> bool:
+    return 'wrong output format Unexpected end of file' in stderr
+
+
 async def check(
     checker_digest: str,
     run_log: Optional[RunLog],
@@ -294,7 +298,10 @@ async def check_communication(
         and (
             run_log.exitcode == -signal.SIGPIPE
             or run_log.exitstatus == SandboxBase.EXIT_TERMINATED
-            or run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
+            or (
+                run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
+                and not _is_testlib_eof(interactor_stderr.read_text())
+            )
         )
     ):
         result = _check_interactor()

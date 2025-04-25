@@ -56,6 +56,8 @@ solutions:
     outcome: WA
   - path: "sols/ac_invalid_format_sigpipe.py"
     outcome: WA
+  - path: "sols/rte_no_import.py"
+    outcome: RTE
   # Java solutions.
   - path: "sols/ac.java"
     outcome: AC
