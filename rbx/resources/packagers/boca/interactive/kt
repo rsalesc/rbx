@@ -150,8 +150,15 @@ echo "solution \$SFPID -> \$ECSF" >&2
 echo "interactor exitcode \$ECINT" >&2
 echo "solution exitcode \$ECSF" >&2
 
+RTE=0
+if [[ \$ECSF -eq -13 ]]; then
+  RTE=0
+elif [[ \$ECSF -ne 0 ]] && cat stderr0 | grep -q "wrong output format Unexpected end of file"; then
+  RTE=1
+fi
+
 ret=0
-if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]]; then
+if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]] && [[ \$RTE -eq 0 ]]; then
   echo "testlib exitcode \$ECINT" >stdout0
   ret=0
 elif [[ \$ECSF -ne 0 ]]; then
