@@ -21,6 +21,7 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.ui.captured_log import LogDisplay, LogDisplayState
+from rbx.grading.steps import Evaluation
 
 
 def _build_solution_selection_label(sol: Solution) -> Text:
@@ -86,7 +87,7 @@ class SolutionReportScreen(Screen):
                 return i
         raise
 
-    async def process(self, item: EvaluationItem):
+    async def process(self, item: EvaluationItem, eval: Evaluation):
         pkg = package.find_problem_package_or_die()
         sol_idx_in_skeleton = self._find_solution_index_in_skeleton(
             pkg.solutions[item.solution_index]
@@ -101,12 +102,12 @@ class SolutionReportScreen(Screen):
 
         table.update_cell_at(
             Coordinate(row=row_idx, column=2),
-            get_testcase_markup_verdict(await item.eval()),
+            get_testcase_markup_verdict(eval),
             update_width=True,
         )
         table.update_cell_at(
             Coordinate(row=row_idx, column=3),
-            get_evals_formatted_time([await item.eval()]),
+            get_evals_formatted_time([eval]),
             update_width=True,
         )
 
@@ -183,8 +184,8 @@ class RunScreen(Screen):
         res = run_solutions(tracked_solutions=tracked_solutions, check=check)
 
         async def mount_report_widget() -> SolutionReportScreen:
-            # log_display_state = self.query_one(LogDisplay).export()
-            log_display_state = None
+            log_display_state = self.query_one(LogDisplay).export()
+            # log_display_state = None
             await self.app.push_screen(
                 screen := SolutionReportScreen(
                     res.skeleton, log_display_state=log_display_state
@@ -192,13 +193,13 @@ class RunScreen(Screen):
             )
             return screen
 
-        new_screen = await mount_report_widget()
+        new_screen = self.app.call_from_thread(mount_report_widget)
 
-        async def process_item(item: EvaluationItem):
-            await new_screen.process(item)
+        async def process_item(item: EvaluationItem, eval: Evaluation):
+            await new_screen.process(item, eval)
 
         for item in res.items:
-            self.app.call_from_thread(process_item, item)
+            self.app.call_from_thread(process_item, item, await item.eval())
 
     async def action_run(self):
         sols = self.query_one('#run-sols', SelectionList)

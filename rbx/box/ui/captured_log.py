@@ -95,6 +95,13 @@ class LogDisplay(ScrollView, can_focus=True):
         self.send_queue = asyncio.Queue()
         self.exitcode = None
 
+    def _resize(self):
+        self.virtual_size = Size(
+            width=self.size.width - 2,  # Account for scroll bar.
+            height=self.virtual_size.height,
+        )
+        self._screen.resize(self._max_lines, self.virtual_size.width)
+
     async def on_resize(self, _event: events.Resize):
         if self.emulator is None:
             return
@@ -311,6 +318,8 @@ class LogDisplay(ScrollView, can_focus=True):
 
         pout = os.fdopen(fd, 'w+b', 0)
         data: Optional[str] = None
+
+        self._resize()
 
         def on_output():
             nonlocal data

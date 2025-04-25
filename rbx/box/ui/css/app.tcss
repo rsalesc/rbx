@@ -18,7 +18,7 @@ Button {
 
 #report-grid {
         layout: grid;
-        grid-size: 2 2;
+        grid-size: 2;
 }
 
 DataTable {
