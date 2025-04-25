@@ -130,6 +130,14 @@ def ui():
     ui_pkg.start()
 
 
+@app.command('serve', hidden=True)
+def serve():
+    from textual_serve.server import Server
+
+    server = Server('rbx ui', port=8081)
+    server.serve()
+
+
 @app.command(
     'edit, e',
     rich_help_panel='Configuration',
