@@ -5,11 +5,13 @@ from textual.containers import Center
 from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
 
+from rbx.box.ui.screens.build import BuildScreen
 from rbx.box.ui.screens.run import RunScreen
 from rbx.box.ui.screens.test_explorer import TestExplorerScreen
 
 SCREEN_OPTIONS = [
     ('Run solutions against define testsets.', RunScreen),
+    ('Build tests.', BuildScreen),
     ('Explore tests.', TestExplorerScreen),
 ]
 

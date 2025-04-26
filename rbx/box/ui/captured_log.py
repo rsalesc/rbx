@@ -168,6 +168,9 @@ class LogDisplay(ScrollView, can_focus=True):
             cb()
         self.recv_task.cancel()
 
+    def on_unmount(self):
+        self.disconnect()
+
     async def recv(self):
         while True:
             msg = await self.recv_queue.get()
