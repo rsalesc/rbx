@@ -27,6 +27,7 @@ class FileLog(Widget, can_focus=False):
 
     def on_mount(self):
         self.query_one(Log).auto_scroll = False
+        self.query_one(Log).can_focus = False
 
     @work(exclusive=True)
     async def _load_file(self, path: pathlib.Path):

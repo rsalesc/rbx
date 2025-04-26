@@ -27,7 +27,7 @@ pydantic-xml = {extras = ["lxml"], version = "^2.11.0"}
 python-iso639 = "^2024.4.27"
 more-itertools = "^10.5.0"
 gitpython = "^3.1.43"
-textual = "^0.79.1"
+textual = "^3.1.1"
 pyte = "^0.8.2"
 questionary = "^2.1.0"
 lark = "^1.2.2"

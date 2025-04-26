@@ -96,6 +96,9 @@ class GeneratorScriptEntry(BaseModel):
     path: pathlib.Path
     line: int
 
+    def __str__(self) -> str:
+        return f'{self.path}:{self.line}'
+
 
 class GenerationMetadata(BaseModel):
     copied_to: Testcase

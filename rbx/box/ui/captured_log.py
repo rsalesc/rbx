@@ -18,8 +18,6 @@ from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text
 from textual import events
-from textual.app import DEFAULT_COLORS
-from textual.design import ColorSystem
 from textual.geometry import Size
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
@@ -280,12 +278,7 @@ class LogDisplay(ScrollView, can_focus=True):
     def detect_textual_colors(self) -> dict:
         """Returns the currently used colors of textual depending on dark-mode."""
 
-        if self.app.dark:
-            color_system: ColorSystem = DEFAULT_COLORS['dark']
-        else:
-            color_system: ColorSystem = DEFAULT_COLORS['light']
-
-        return color_system.generate()
+        return self.app.current_theme.to_color_system().generate()
 
     def render_line(self, y: int) -> Strip:
         scroll_x, scroll_y = self.scroll_offset

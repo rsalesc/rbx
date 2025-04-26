@@ -17,9 +17,14 @@ SelectionList {
         border-title-color: $accent;
 }
 
+OptionList {
+        border: solid $accent;
+}
+
 Button {
         width: 1fr;
         background: $accent;
+        color: $secondary;
 }
 
 #report-grid {
@@ -46,7 +51,7 @@ DataTable {
 
 DataTable > .datatable--cursor {
         color: $text;
-        background: $accent;
+        background-tint: $accent 10%;
 }
 
 DataTable:blur > .datatable--cursor {
@@ -59,11 +64,23 @@ FileLog > Log {
 }
 
 TestExplorerScreen {
-        #test-list {
+        #test-metadata {
+                min-height: 3;
+                height: auto;
+        }
+        #test-list-container {
                 min-width: 20;
                 max-width: 40;
+                height: 1fr;
+        }
+        #test-list {
+                width: 1fr;
         }
         FileLog {
+                border: solid $accent;
+                padding: 0 1;
+        }
+        RichLog {
                 border: solid $accent;
                 padding: 0 1;
         }
