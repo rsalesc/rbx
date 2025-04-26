@@ -7,6 +7,12 @@ Screen {
         align: center middle;
 }
 
+ListView {
+        border: solid $accent 100%;
+        padding: 0 1;
+        background: transparent;
+}
+
 SelectionList {
         border-title-color: $accent;
 }
@@ -19,6 +25,19 @@ Button {
 #report-grid {
         layout: grid;
         grid-size: 2;
+}
+
+RunScreen {
+        align: center middle;
+        #run-settings {
+                border: thick $background 40%;
+        }
+}
+
+LogDisplay {
+        width: 1fr;
+        padding: 0 1;
+        border: solid $accent;
 }
 
 DataTable {
@@ -35,14 +54,17 @@ DataTable:blur > .datatable--cursor {
         background: transparent;
 }
 
-RunScreen {
-        align: center middle;
-        #run-settings {
-                border: thick $background 40%;
+FileLog > Log {
+        background: transparent;
+}
+
+TestExplorerScreen {
+        #test-list {
+                min-width: 20;
+                max-width: 40;
         }
-        LogDisplay {
-                width: 1fr;
-                padding: 0 1;
+        FileLog {
                 border: solid $accent;
+                padding: 0 1;
         }
 }

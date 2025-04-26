@@ -18,9 +18,9 @@ from rbx.box.solutions import (
     SolutionReportSkeleton,
     get_evals_formatted_time,
     get_testcase_markup_verdict,
-    run_solutions,
 )
 from rbx.box.ui.captured_log import LogDisplay, LogDisplayState
+from rbx.box.ui.screens.command import CommandScreen
 from rbx.grading.steps import Evaluation
 
 
@@ -37,7 +37,7 @@ def _build_solution_selection_label(sol: Solution) -> Text:
 class SolutionReportScreen(Screen):
     skeleton: SolutionReportSkeleton
 
-    BINDINGS = [('q', 'app.pop_screen', 'Quit')]
+    BINDINGS = [('q', 'app.pop_screen', 'Back')]
 
     def __init__(
         self,
@@ -113,6 +113,8 @@ class SolutionReportScreen(Screen):
 
 
 class RunScreen(Screen):
+    BINDINGS = [('q', 'app.pop_screen', 'Back')]
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
@@ -142,7 +144,6 @@ class RunScreen(Screen):
                 id='run-config',
             )
             yield Button('Run')
-            yield LogDisplay()
 
     def on_mount(self):
         sols = self.query_one('#run-sols', SelectionList)
@@ -161,7 +162,6 @@ class RunScreen(Screen):
     async def on_button_pressed(self, _: Button.Pressed):
         await self.action_run()
 
-    @textual.work(thread=True)
     async def _run_solutions(self, tracked_solutions: Set[str], check: bool):
         main_solution = package.get_main_solution()
         if check and main_solution is None:
@@ -170,36 +170,7 @@ class RunScreen(Screen):
             )
             check = False
 
-        async def build():
-            return await self.query_one(LogDisplay).capture(['rbx', 'build'])
-
-        exitcode = self.app.call_from_thread(build)
-
-        if exitcode != 0:
-            textual.log(f'early quit: {exitcode}')
-            return
-
-        textual.log('build finished ok, running solutions')
-
-        res = run_solutions(tracked_solutions=tracked_solutions, check=check)
-
-        async def mount_report_widget() -> SolutionReportScreen:
-            log_display_state = self.query_one(LogDisplay).export()
-            # log_display_state = None
-            await self.app.push_screen(
-                screen := SolutionReportScreen(
-                    res.skeleton, log_display_state=log_display_state
-                )
-            )
-            return screen
-
-        new_screen = self.app.call_from_thread(mount_report_widget)
-
-        async def process_item(item: EvaluationItem, eval: Evaluation):
-            await new_screen.process(item, eval)
-
-        for item in res.items:
-            self.app.call_from_thread(process_item, item, await item.eval())
+        self.app.switch_screen(CommandScreen(['rbx', 'run']))
 
     async def action_run(self):
         sols = self.query_one('#run-sols', SelectionList)
@@ -208,4 +179,4 @@ class RunScreen(Screen):
         tracked_solutions = set(str(sol) for sol in sols.selected)
         check = 'check' in config.selected
 
-        self._run_solutions(tracked_solutions, check)
+        await self._run_solutions(tracked_solutions, check)
