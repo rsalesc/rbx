@@ -77,6 +77,7 @@ class GroupSkeleton(BaseModel):
 
 class SolutionReportSkeleton(BaseModel):
     solutions: List[Solution]
+    entries: List[TestcaseEntry]
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
 
@@ -245,10 +246,16 @@ def _get_report_skeleton(
     for group in pkg.testcases:
         testcases = find_built_testcases(group)
         groups.append(GroupSkeleton(name=group.name, testcases=testcases))
+    entries = [
+        TestcaseEntry(group=group.name, index=i)
+        for group in groups
+        for i in range(len(group.testcases))
+    ]
     return SolutionReportSkeleton(
         solutions=solutions,
         groups=groups,
         limits=limits,
+        entries=entries,
     )
 
 
@@ -349,7 +356,7 @@ def run_solutions(
     timelimit_override: Optional[int] = None,
     sanitized: bool = False,
 ) -> RunSolutionResult:
-    return RunSolutionResult(
+    result = RunSolutionResult(
         skeleton=_get_report_skeleton(
             tracked_solutions,
             verification=verification,
@@ -364,6 +371,10 @@ def run_solutions(
             sanitized=sanitized,
         ),
     )
+    skeleton_file = package.get_problem_runs_dir() / 'skeleton.yml'
+    skeleton_file.parent.mkdir(parents=True, exist_ok=True)
+    skeleton_file.write_text(utils.model_to_yaml(result.skeleton))
+    return result
 
 
 async def _generate_testcase_interactively(
