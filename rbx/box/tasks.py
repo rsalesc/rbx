@@ -272,11 +272,13 @@ async def _run_communication_solution_on_testcase(
 
         log_path.write_text(model_to_yaml(eval))
 
+        interactor_log_path = output_path.with_suffix('.int.log')
+        interactor_log_path.unlink(missing_ok=True)
         if interactor_run_log is not None:
-            interactor_log_path = output_path.with_suffix('.int.log')
             interactor_log_path.write_text(model_to_yaml(interactor_run_log))
+        solution_log_path = output_path.with_suffix('.sol.log')
+        solution_log_path.unlink(missing_ok=True)
         if run_log is not None:
-            solution_log_path = output_path.with_suffix('.sol.log')
             solution_log_path.write_text(model_to_yaml(run_log))
         return eval
 
