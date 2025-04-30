@@ -1,6 +1,6 @@
 import pathlib
 import signal
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -51,6 +51,12 @@ def compile_interactor(progress: Optional[StatusProgress] = None) -> str:
         console.console.print('[error]Failed compiling interactor.[/error]')
         raise typer.Exit(1) from e
     return digest
+
+
+def _any_failed(logs: List[Optional[RunLog]]) -> bool:
+    return any(
+        log is None or log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR for log in logs
+    )
 
 
 def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
@@ -282,6 +288,10 @@ async def check_communication(
 
         # No relevant error was found.
         return None
+
+    # 0. If any of the sandboxes failed, we should return an error.
+    if _any_failed([run_log, interactor_run_log]):
+        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
     # 1. If the solution received SIGPIPE or was terminated, it means the
     # interactor exited before it. Thus, check the interactor, as it might have

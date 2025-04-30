@@ -322,7 +322,11 @@ class StupidSandbox(SandboxBase):
         return self.translate_box_exitcode(self.returncode)
 
     def translate_box_exitcode(self, exitcode: int) -> bool:
-        # SIGALRM can be safely ignored, just in case it leaks away.
+        # SIGALRM can be safely ignored, just in case it leaks away. SIGTERM also.
+        if self.log is None:
+            return False
+        if 'TE' in self.get_status_list():
+            return True
         return super().translate_box_exitcode(exitcode) or -exitcode == signal.SIGALRM
 
     def debug_message(self) -> Any:
