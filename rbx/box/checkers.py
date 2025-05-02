@@ -72,10 +72,18 @@ def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
     timelimit = pkg.timelimit_for_language(run_log.get_run_language())
+    is_tl_unbounded = (
+        run_log is not None
+        and run_log.metadata is not None
+        and run_log.metadata.timeLimit is None
+    )
+
     if (
         run_log.time is not None
+        and timelimit is not None
         and run_log.time * 1000 > timelimit * 2
         and not is_sanitized
+        and not is_tl_unbounded
     ):
         return CheckerResult(outcome=Outcome.TIME_LIMIT_EXCEEDED)
 
@@ -102,12 +110,18 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
         and run_log.metadata is not None
         and run_log.metadata.is_sanitized
     )
+    is_tl_unbounded = (
+        run_log is not None
+        and run_log.metadata is not None
+        and run_log.metadata.timeLimit is None
+    )
     if (
         run_log is not None
         and run_log.time is not None
         and run_log.time * 1000
         >= pkg.timelimit_for_language(run_log.get_run_language())
         and not is_sanitized
+        and not is_tl_unbounded
     ):
         # Soft TLE.
         result.no_tle_outcome = result.outcome

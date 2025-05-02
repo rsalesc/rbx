@@ -318,7 +318,7 @@ async def _time_impl(check: bool, detailed: bool) -> Optional[int]:
             tracked_solutions=tracked_solutions,
             check=check,
             verification=VerificationLevel(verification),
-            timelimit_override=600,  # 10 minute time limit for estimation
+            timelimit_override=-1,  # Unlimited for time limit estimation
         )
 
     console.console.print()

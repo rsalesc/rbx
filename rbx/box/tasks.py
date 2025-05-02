@@ -30,7 +30,7 @@ def get_limits_for_language(
     isDoubleTL = verification.value >= VerificationLevel.FULL.value
     memory = pkg.memorylimit_for_language(lang)
     return Limits(
-        time=time if use_timelimit else None,
+        time=time if use_timelimit and time > 0 else None,
         memory=memory,
         output=pkg.outputLimit,
         isDoubleTL=isDoubleTL,
