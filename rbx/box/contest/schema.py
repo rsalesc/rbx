@@ -1,7 +1,7 @@
 import pathlib
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rbx.box.schema import NameField, Primitive, expand_var
 from rbx.box.statements.schema import (
@@ -121,10 +121,59 @@ If not specified, will expect the problem to be in ./{short_name}/ folder.""",
 
     color: Optional[str] = Field(
         default=None,
-        description="""Hex-based color that represents this problem in the contest.""",
-        pattern=r'^[A-Za-z0-9]+$',
-        max_length=6,
+        description="""
+Color that represents this problem in the contest.
+
+Can be a hex color (#abcdef or #abc format), or a color name among available X11 colors.
+
+See https://en.wikipedia.org/wiki/X11_color_names for the list of supported color names.
+""",
     )
+
+    colorName: Optional[str] = Field(
+        default=None,
+        description="""
+A custom color name for the color provided by this problem.
+
+If not provided, will try to infer a color name from the color provided.
+""",
+        pattern=r'^[a-zA-Z]+$',
+    )
+
+    @model_validator(mode='after')
+    def check_color(self):
+        from colour import Color
+
+        if self.color is None:
+            return self
+
+        Color(self.color)
+        return self
+
+    @property
+    def hex_color(self) -> Optional[str]:
+        from colour import Color
+
+        if self.color is None:
+            return None
+
+        return Color(self.color).hex_l
+
+    @property
+    def color_name(self) -> Optional[str]:
+        if self.colorName is not None:
+            return self.colorName
+
+        if self.color is None:
+            return None
+
+        from colour import Color
+
+        color = Color(self.color)
+        web_color = color.web
+        if web_color.startswith('#'):
+            return 'unknown'
+        return web_color
 
     def get_path(self) -> pathlib.Path:
         return self.path or pathlib.Path(self.short_name)

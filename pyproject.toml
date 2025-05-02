@@ -39,6 +39,9 @@ nest-asyncio = "^1.6.0"
 psutil = "^7.0.0"
 textual-serve = "^1.1.2"
 aiofiles = "^24.1.0"
+colour = "^0.1.5"
+beautifulsoup4 = "^4.13.4"
+dateparser = "^1.2.1"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"

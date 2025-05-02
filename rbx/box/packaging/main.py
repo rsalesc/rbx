@@ -93,10 +93,22 @@ async def polygon(
 @syncer.sync
 async def boca(
     verification: environment.VerificationParam,
+    upload: bool = typer.Option(
+        False,
+        '--upload',
+        '-u',
+        help='If set, will upload the package to BOCA.',
+    ),
 ):
     from rbx.box.packaging.boca.packager import BocaPackager
 
-    await run_packager(BocaPackager, verification=verification)
+    result_path = await run_packager(BocaPackager, verification=verification)
+
+    if upload:
+        from rbx.box.packaging.boca.upload import BocaUploader
+
+        uploader = BocaUploader('http://137.184.1.39/boca', 'admin', 'boca')
+        uploader.login_and_upload(result_path)
 
 
 @app.command('moj', help='Build a package for MOJ.')
