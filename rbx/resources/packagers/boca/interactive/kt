@@ -144,16 +144,15 @@ ECINT=\$?
 
 rm -rf fifo.in fifo.out
 
-echo "interactor \$INTPID -> \$ECINT" >&2
-echo "solution \$SFPID -> \$ECSF" >&2
-
-echo "interactor exitcode \$ECINT" >&2
-echo "solution exitcode \$ECSF" >&2
+echo "Ran solution as \$@" &>>stderr0
+echo "interactor exitcode \$ECINT" &>>stderr0
+echo "solution exitcode \$ECSF" &>>stderr0
 
 RTE=0
 if [[ \$ECSF -eq -13 ]]; then
   RTE=0
 elif [[ \$ECSF -ne 0 ]] && cat stderr0 | grep -q "wrong output format Unexpected end of file"; then
+  echo "Found EOF RTE" &>>stderr0
   RTE=1
 fi
 
@@ -167,6 +166,7 @@ elif [[ \$ECINT -ne 0 ]]; then
   ret=9
 fi
 
+echo "exitting from runit.sh with exit code \$ret" &>>stderr0
 exit \$ret
 EOF
 

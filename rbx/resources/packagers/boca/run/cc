@@ -120,7 +120,8 @@ echo "Current directory is $cdir -- chrooting on it" >&2
 "$sf" -F10 -f$maxf -r$nruns -n1 -R$cdir -C. -U$bocau -G$bocag -ostdout0 -estderr0 -d$maxm -m$maxm -t$time -T$ttime -istdin0 ./run.exe
 ret=$?
 if [ $ret -gt 10 ]; then
-  ret=0
+  echo "> > > > > > > Nonzero return code - possible runtime error - I'M GUESSING IT IS RUNTIME ERROR < < < < < < < <"
+  ret=9
 fi
 if [ -f stdout0 ]; then
   cat stdout0
