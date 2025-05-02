@@ -101,7 +101,7 @@ class BocaUploader:
                 raise typer.Exit(1)
             if parsed_date < datetime.datetime.now(
                 datetime.timezone.utc
-            ) - datetime.timedelta(minutes=5):
+            ) - datetime.timedelta(minutes=1):
                 continue
 
             # Check if the log line contains the problem id.
