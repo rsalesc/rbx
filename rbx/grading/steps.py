@@ -19,12 +19,12 @@ from pydantic import BaseModel, Field
 from rich.text import Text
 
 from rbx import utils
-from rbx.box.limits import Limits
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import processing_context
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.storage import Storage, copyfileobj
+from rbx.grading.limits import Limits
 
 MAX_STDOUT_LEN = 1024 * 1024 * 128  # 128 MB
 

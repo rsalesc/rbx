@@ -8,10 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rbx import config, console, utils
 from rbx.box.extensions import Extensions, LanguageExtensions
-from rbx.box.limits import Limits
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.isolate import IsolateSandbox
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
+from rbx.grading.limits import Limits
 
 T = TypeVar('T', bound=BaseModel)
 

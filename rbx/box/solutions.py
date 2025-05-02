@@ -33,7 +33,6 @@ from rbx.box.generators import (
     generate_output_for_testcase,
     generate_standalone,
 )
-from rbx.box.limits import Limits
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
@@ -53,6 +52,7 @@ from rbx.box.testcase_utils import (
     parse_interaction,
     print_interaction,
 )
+from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     Evaluation,
     Outcome,
