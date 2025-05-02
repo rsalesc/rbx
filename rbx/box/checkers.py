@@ -60,8 +60,6 @@ def _any_failed(logs: List[Optional[RunLog]]) -> bool:
 
 
 def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
-    pkg = package.find_problem_package_or_die()
-
     is_sanitized = (
         run_log is not None
         and run_log.metadata is not None
@@ -71,7 +69,11 @@ def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
     if run_log is None:
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
-    timelimit = pkg.timelimit_for_language(run_log.get_run_language())
+    timelimit = (
+        run_log.metadata.limits.get_expanded_tl()
+        if run_log.metadata is not None
+        else None
+    )
     is_tl_unbounded = (
         run_log is not None
         and run_log.metadata is not None
@@ -81,7 +83,7 @@ def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
     if (
         run_log.time is not None
         and timelimit is not None
-        and run_log.time * 1000 > timelimit * 2
+        and run_log.time * 1000 > timelimit
         and not is_sanitized
         and not is_tl_unbounded
     ):
@@ -104,11 +106,15 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
     if result.outcome == Outcome.TIME_LIMIT_EXCEEDED:
         # This already is a TLE outcome.
         return result
-    pkg = package.find_problem_package_or_die()
     is_sanitized = (
         run_log is not None
         and run_log.metadata is not None
         and run_log.metadata.is_sanitized
+    )
+    timelimit = (
+        run_log.metadata.limits.time
+        if run_log is not None and run_log.metadata is not None
+        else None
     )
     is_tl_unbounded = (
         run_log is not None
@@ -118,8 +124,8 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
     if (
         run_log is not None
         and run_log.time is not None
-        and run_log.time * 1000
-        >= pkg.timelimit_for_language(run_log.get_run_language())
+        and timelimit is not None
+        and run_log.time * 1000 >= timelimit
         and not is_sanitized
         and not is_tl_unbounded
     ):

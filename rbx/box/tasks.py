@@ -4,8 +4,9 @@ from typing import Optional
 from rbx.box import checkers, package, state
 from rbx.box.code import CommunicationItem, run_communication, run_item
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
+from rbx.box.limits import Limits
 from rbx.box.retries import Retrier
-from rbx.box.schema import Limits, Solution, Testcase
+from rbx.box.schema import Solution, Testcase
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     DigestOrDest,
@@ -146,7 +147,7 @@ def _get_execution_config(
         sandbox.wallTimeLimit = sandbox.timeLimit * 2
     sandbox.memoryLimit = limits.memory
     sandbox.fileSizeLimit = limits.output
-    return ExecutionConfig(sandbox=sandbox)
+    return ExecutionConfig(sandbox=sandbox, problemLimits=limits)
 
 
 async def _run_communication_solution_on_testcase(

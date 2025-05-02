@@ -15,10 +15,11 @@ from enum import Enum
 from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import typer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from rich.text import Text
 
 from rbx import utils
+from rbx.box.limits import Limits
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import processing_context
@@ -188,6 +189,7 @@ class TestcaseIO(BaseModel):
 class RunLogMetadata(BaseModel):
     language: Optional[str] = None
     is_sanitized: bool = False
+    limits: Limits = Field(default_factory=Limits)
     timeLimit: Optional[int] = None
     memoryLimit: Optional[int] = None
     retryIndex: Optional[int] = None

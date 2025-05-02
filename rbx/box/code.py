@@ -357,6 +357,7 @@ def _prepare_run(
             is_sanitized=sanitized,
             timeLimit=sandbox_params.timeout,
             memoryLimit=sandbox_params.address_space,
+            limits=execution_options.problemLimits,
             retryIndex=retry_index,
         ),
     )

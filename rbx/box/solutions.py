@@ -33,10 +33,10 @@ from rbx.box.generators import (
     generate_output_for_testcase,
     generate_standalone,
 )
+from rbx.box.limits import Limits
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
-    Limits,
     Solution,
     TaskType,
     Testcase,
@@ -736,10 +736,12 @@ def get_capped_evals_formatted_time(
     max_time = _get_evals_time_in_ms(evals)
     has_tle = any(eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED for eval in evals)
     timelimits = [
-        eval.log.metadata.timeLimit
+        eval.log.metadata.limits.get_expanded_tl()
         for eval in evals
-        if eval.log.metadata is not None and eval.log.metadata.timeLimit is not None
+        if eval.log.metadata is not None
     ]
+    timelimits = [tl for tl in timelimits if tl is not None]
+
     tl = None
     if timelimits:
         tl = min(timelimits)
@@ -954,10 +956,12 @@ async def _print_timing(
         # Get solution TL.
         solution_time = _get_evals_time_in_ms(all_evals)
         solution_tls = [
-            eval.log.metadata.timeLimit
+            eval.log.metadata.limits.get_expanded_tl()
             for eval in all_evals
-            if eval.log.metadata is not None and eval.log.metadata.timeLimit is not None
+            if eval.log.metadata is not None
         ]
+        solution_tls = [tl for tl in solution_tls if tl is not None]
+
         solution_tl = 0
         if solution_tls:
             solution_tl = min(solution_tls)

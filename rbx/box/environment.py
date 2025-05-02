@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rbx import config, console, utils
 from rbx.box.extensions import Extensions, LanguageExtensions
+from rbx.box.limits import Limits
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.isolate import IsolateSandbox
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
@@ -103,6 +104,9 @@ class ExecutionConfig(BaseModel):
 
     # Sandbox configuration to use when executing for this language.
     sandbox: Optional[EnvironmentSandbox] = None
+
+    # Original limits of the problem.
+    problemLimits: Limits = Field(default_factory=Limits)
 
 
 class EnvironmentLanguage(BaseModel):
@@ -280,6 +284,7 @@ def merge_execution_configs(
 ) -> ExecutionConfig:
     merged_cfg = ExecutionConfig()
     merged_cfg.sandbox = EnvironmentSandbox()
+    merged_cfg.problemLimits = Limits()
     for cfg in execution_configs:
         if cfg is None:
             continue
@@ -287,6 +292,10 @@ def merge_execution_configs(
         if cfg.sandbox is not None:
             merged_cfg.sandbox = _merge_shallow_models(
                 EnvironmentSandbox, merged_cfg.sandbox, cfg.sandbox
+            )
+        if cfg.problemLimits is not None:
+            merged_cfg.problemLimits = _merge_shallow_models(
+                Limits, merged_cfg.problemLimits, cfg.problemLimits
             )
     return merged_cfg
 
