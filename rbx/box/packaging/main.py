@@ -107,7 +107,7 @@ async def boca(
     if upload:
         from rbx.box.packaging.boca.upload import BocaUploader
 
-        uploader = BocaUploader('http://137.184.1.39/boca', 'admin', 'boca')
+        uploader = BocaUploader()
         uploader.login_and_upload(result_path)
 
 
