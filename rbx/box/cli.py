@@ -112,6 +112,12 @@ def main(
         help='Whether to save extra debug logs along with the evaluation results.',
     ),
 ):
+    if cd.is_problem_package() and not package.is_cache_valid():
+        console.console.print(
+            '[warning]Cache is incompatible with the current version of [item]rbx[/item], so it will be cleared.[/warning]'
+        )
+        clear()
+
     state.STATE.run_through_cli = True
     state.STATE.sanitized = sanitized
     if sanitized:

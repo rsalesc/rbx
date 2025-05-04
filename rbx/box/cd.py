@@ -25,6 +25,20 @@ def find_package(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     return root
 
 
+def is_problem_package(root: pathlib.Path = pathlib.Path()) -> bool:
+    dir = find_package(root)
+    if dir is None:
+        return False
+    return (dir / 'problem.rbx.yml').is_file()
+
+
+def is_contest_package(root: pathlib.Path = pathlib.Path()) -> bool:
+    dir = find_package(root)
+    if dir is None:
+        return False
+    return (dir / 'contest.rbx.yml').is_file()
+
+
 def within_closest_package(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):

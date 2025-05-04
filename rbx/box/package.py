@@ -33,6 +33,7 @@ from rbx.grading.judge.storage import FilesystemStorage, Storage
 YAML_NAME = 'problem.rbx.yml'
 _DEFAULT_CHECKER = 'wcmp.cpp'
 TEMP_DIR = None
+CACHE_STEP_VERSION = 1
 
 
 def warn_preset_deactivated(root: pathlib.Path = pathlib.Path()):
@@ -135,10 +136,17 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
     return res, res.load(problem_yaml_path.read_text())
 
 
+def _get_fingerprint() -> str:
+    return f'{CACHE_STEP_VERSION}'
+
+
 @functools.cache
 def get_problem_cache_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     cache_dir = find_problem(root) / '.box'
     cache_dir.mkdir(parents=True, exist_ok=True)
+    fingerprint_file = cache_dir / 'fingerprint'
+    if not fingerprint_file.is_file():
+        fingerprint_file.write_text(_get_fingerprint())
     return cache_dir
 
 
@@ -424,6 +432,21 @@ def get_merged_capture_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path
     path = get_shared_dir(root) / '.merged_capture'
     path.write_text('')
     return path
+
+
+@functools.cache
+def is_cache_valid(root: pathlib.Path = pathlib.Path()):
+    cache_dir = find_problem(root) / '.box'
+    if not cache_dir.is_dir():
+        return
+
+    fingerprint_file = cache_dir / 'fingerprint'
+    if not fingerprint_file.is_file():
+        return False
+    fingerprint = fingerprint_file.read_text()
+    if fingerprint.strip() != _get_fingerprint():
+        return False
+    return True
 
 
 def clear_package_cache():
