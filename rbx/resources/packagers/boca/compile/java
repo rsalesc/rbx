@@ -105,13 +105,10 @@ jarfile=run.jar
 
 cdir=$(pwd)
 echo "Current directory is $cdir" >&2
-mainname=$(echo $name | cut -d'.' -f1)
-if [ "$mainname" == "" ]; then
-  mainname=Main
-fi
 
-# Make sure the class name is $mainname.F
-sed -i -E "s/public[[:space:]]+class[[:space:]]+[A-Za-z0-9_\\$]+[[:space:]]*\{/public class $mainname \{/" "$name"
+# Make sure the class name is Main.
+mv "src/$name" "src/Main.java"
+sed -i -E "s/public[[:space:]]+class[[:space:]]+[A-Za-z0-9_\\$]+([^A-Za-z0-9_\\$])/public class Main\1/" src/Main.java
 
 cat <<EOF >compileit.sh
 #!/bin/bash
@@ -129,8 +126,8 @@ if [ ! -x \$jar ]; then
 fi
 export CLASSPATH=.:\$CLASSPATH
 cd src
-if [ -r "$name" ]; then
-  \$javac "$name"
+if [ -r "Main.java" ]; then
+  \$javac Main.java
   echo \$? > ../compileit.retcode
 fi
 find . -name "*.java" | while read lin; do
@@ -138,7 +135,7 @@ find . -name "*.java" | while read lin; do
   echo \$? > ../compileit.retcode
 done
 rm -f ../$jarfile
-\$jar cvfe ../$jarfile $mainname *
+\$jar cvfe ../$jarfile Main *
 exit 0
 EOF
 chmod 755 compileit.sh

@@ -197,7 +197,7 @@ if [ $? -eq 0 ]; then
       exit 47
   fi
   export CLASSPATH=.:./run.jar:$CLASSPATH
-  "$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -ostdout0 -estderr0 -U$bocau -G$bocag -n0 -C. -f20000 -d20000000 -m20000000 -- ./runit.sh "\$java" -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K "$name"
+  "$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -ostdout0 -estderr0 -U$bocau -G$bocag -n0 -C. -f20000 -d20000000 -m20000000 -- ./runit.sh "\$java" -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K Main
   retval=\$?
   echo \$retval > runch.exitcode
   if [ ! -d /bocajail ]; then
@@ -224,7 +224,7 @@ else
     echo "$java not found or it's not executable"
     exit 47
   fi
-  "$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -U$bocau -G$bocag -ostdout0 -estderr0 -n0 -C. -d20000000 -m20000000 -- ./runit.sh "$java" -cp run.jar -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K "$name"
+  "$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -U$bocau -G$bocag -ostdout0 -estderr0 -n0 -C. -d20000000 -m20000000 -- ./runit.sh "$java" -cp run.jar -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K Main
   ret=$?
 fi
 ### END OF BOCA RUN COMMAND
