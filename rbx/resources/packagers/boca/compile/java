@@ -110,6 +110,9 @@ if [ "$mainname" == "" ]; then
   mainname=Main
 fi
 
+# Make sure the class name is $mainname.F
+sed -i -E "s/public[[:space:]]+class[[:space:]]+[A-Za-z0-9_\\$]+[[:space:]]*\{/public class $mainname \{/" "$name"
+
 cat <<EOF >compileit.sh
 #!/bin/bash
 javac=$(which javac)
