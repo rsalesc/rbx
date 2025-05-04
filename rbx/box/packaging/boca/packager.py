@@ -67,7 +67,7 @@ class BocaPackager(BasePackager):
         return (
             f'basename={self._get_problem_basename()}\n'
             f'fullname={statement.title}\n'
-            f'descfile={self._get_problem_name()}.pdf\n'
+            f'descfile={self._get_problem_basename()}.pdf\n'
         )
 
     def _get_pkg_timelimit(self, language: BocaLanguage) -> int:
@@ -297,7 +297,7 @@ class BocaPackager(BasePackager):
         (description_path / 'problem.info').write_text(self._get_problem_info())
         shutil.copyfile(
             self._get_main_built_statement(built_statements).path,
-            (description_path / self._get_problem_name()).with_suffix('.pdf'),
+            (description_path / self._get_problem_basename()).with_suffix('.pdf'),
         )
 
         # Copy solutions
