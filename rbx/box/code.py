@@ -155,6 +155,34 @@ def _ignore_warning_in_cxx_input(input: GradingFileInput):
     input.src = preprocessed_path
 
 
+def _maybe_rename_java_class(
+    compilable_path: pathlib.Path, file_mapping: FileMapping
+) -> pathlib.Path:
+    mapped_path = PosixPath(file_mapping.compilable)
+    if mapped_path.suffix != '.java':
+        return compilable_path
+    import re
+
+    cls_name = mapped_path.stem
+
+    java_content = compilable_path.read_text()
+    regex = re.compile(r'public\s+class\s+[A-Za-z0-9_$]+([^A-Za-z0-9_$])')
+    match = regex.search(java_content)
+    if match is None:
+        console.console.print(
+            f'[error]Java public class not found in file: [item]{compilable_path}[/item][/error]'
+        )
+        raise typer.Exit(1)
+
+    new_content = regex.sub(f'public class {cls_name}\\1', java_content)
+    if new_content == java_content:
+        return compilable_path
+
+    preprocessed_path = package.get_problem_preprocessed_path(compilable_path)
+    preprocessed_path.write_text(new_content)
+    return preprocessed_path
+
+
 def _format_stack_limit(limit: int) -> str:
     if limit == resource.RLIM_INFINITY:
         return 'unlimited'
@@ -372,11 +400,11 @@ def compile_item(
 ) -> str:
     _check_stack_limit()
 
-    generator_path = PosixPath(code.path)
+    compilable_path = PosixPath(code.path)
 
-    if not generator_path.is_file():
+    if not compilable_path.is_file():
         console.console.print(
-            f'[error]Compilation file not found: [item]{generator_path}[/item][/error]'
+            f'[error]Compilation file not found: [item]{compilable_path}[/item][/error]'
         )
         raise typer.Exit(1)
 
@@ -389,7 +417,7 @@ def compile_item(
 
     if not compilation_options.commands:
         # Language is not compiled.
-        return sandbox.file_cacher.put_file_from_path(generator_path)
+        return sandbox.file_cacher.put_file_from_path(compilable_path)
 
     commands = get_mapped_commands(compilation_options.commands, file_mapping)
     commands = add_warning_flags(commands, force_warnings)
@@ -417,8 +445,9 @@ def compile_item(
     download.maybe_add_testlib(code, artifacts)
     download.maybe_add_jngen(code, artifacts)
     download.maybe_add_rbx_header(code, artifacts)
+    compilable_path = _maybe_rename_java_class(compilable_path, file_mapping)
     artifacts.inputs.append(
-        GradingFileInput(src=generator_path, dest=PosixPath(file_mapping.compilable))
+        GradingFileInput(src=compilable_path, dest=PosixPath(file_mapping.compilable))
     )
 
     artifacts.outputs.append(
