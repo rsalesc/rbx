@@ -215,7 +215,7 @@ class MojPackager(BocaPackager):
 
         # Copy solutions
         if self.for_boca:
-            self._copy_solutions(into_path, fix_java=False)
+            self._copy_solutions(into_path)
         else:
             self._copy_solutions_moj(into_path)
 

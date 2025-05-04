@@ -205,7 +205,7 @@ class BocaPackager(BasePackager):
             compile_text = compile_text.replace('{{rbxFlags}}', flags[language])
         return compile_text
 
-    def _copy_solutions(self, into_path: pathlib.Path, fix_java: bool = True):
+    def _copy_solutions(self, into_path: pathlib.Path):
         into_path = into_path / 'solutions'
         for solution in package.get_solutions():
             dest_path = (
@@ -217,21 +217,6 @@ class BocaPackager(BasePackager):
             )
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(str(solution.path), dest_path)
-
-            if solution.path.suffix == '.java':
-                java_content = dest_path.read_text()
-                if (
-                    'class Main ' not in java_content
-                    and f'class {self._get_problem_name()} ' not in java_content
-                ):
-                    console.console.print(
-                        '[error]For BOCA packaging, Java solutions must be named `class Main` or `class <ProblemName>`.[/error]'
-                    )
-                dest_path.write_text(
-                    java_content.replace(
-                        'class Main ', f'class {self._get_problem_name()} '
-                    )
-                )
 
     @classmethod
     def name(cls) -> str:
