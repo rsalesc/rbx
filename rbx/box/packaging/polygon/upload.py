@@ -307,11 +307,13 @@ def _upload_statement(problem: api.Problem):
         polygon_statement = api.Statement(
             encoding='utf-8',
             name=statement.title,
-            legend=blocks.blocks.get('legend'),
-            input=blocks.blocks.get('input'),
-            output=blocks.blocks.get('output'),
-            interaction=blocks.blocks.get('interaction'),
-            notes=_get_notes_with_explanations(blocks),
+            legend=blocks.blocks.get('legend') or '',
+            input=blocks.blocks.get('input') or '',
+            output=blocks.blocks.get('output') or '',
+            interaction=(blocks.blocks.get('interaction') or '')
+            if pkg.type == TaskType.COMMUNICATION
+            else None,
+            notes=_get_notes_with_explanations(blocks) or '',
         )
         problem.save_statement(
             lang=code_to_langs([language])[0], problem_statement=polygon_statement
