@@ -76,6 +76,9 @@ TestExplorerScreen {
         #test-list {
                 width: 1fr;
         }
+        TestBoxWidget {
+                height: 1fr;
+        }
         FileLog {
                 border: solid $accent;
                 padding: 0 1;

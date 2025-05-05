@@ -54,10 +54,12 @@ class FileLog(Widget, can_focus=False):
         log.clear()
 
         if path is None:
+            self.border_subtitle = '(no file selected)'
             return
 
         if not path.is_file():
-            self.query_one(Log).write(f'File {path} does not exist')
+            path_str = str(path.relative_to(pathlib.Path.cwd()))
+            self.border_subtitle = f'{path_str} (does not exist)'
             return
 
         self._load_file(path)

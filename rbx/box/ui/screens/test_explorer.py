@@ -11,12 +11,16 @@ from rbx.box.testcase_extractors import (
 )
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
+from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
 
 
 class TestExplorerScreen(Screen):
     BINDINGS = [
         ('q', 'app.pop_screen', 'Quit'),
         ('m', 'toggle_metadata', 'Toggle metadata'),
+        ('1', 'show_output', 'Show output'),
+        ('2', 'show_stderr', 'Show stderr'),
+        ('3', 'show_log', 'Show log'),
     ]
 
     def __init__(self):
@@ -31,13 +35,12 @@ class TestExplorerScreen(Screen):
                 yield ListView(id='test-list')
             with Vertical(id='test-details'):
                 yield FileLog(id='test-input')
-                yield FileLog(id='test-output')
+                yield TestBoxWidget(id='test-output')
                 yield RichLogBox(id='test-metadata')
 
     async def on_mount(self):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
-        self.query_one('#test-output').border_title = 'Output'
 
         metadata = self.query_one('#test-metadata', RichLogBox)
         metadata.display = False
@@ -53,17 +56,20 @@ class TestExplorerScreen(Screen):
 
     def _update_selected_test(self, index: Optional[int]):
         input = self.query_one('#test-input', FileLog)
-        output = self.query_one('#test-output', FileLog)
+        output = self.query_one('#test-output', TestBoxWidget)
         metadata = self.query_one('#test-metadata', RichLog)
 
         if index is None:
             input.path = None
-            output.path = None
+            output.reset()
             metadata.clear().write('No test selected')
             return
         entry = self._entries[index]
         input.path = entry.metadata.copied_to.inputPath
-        output.path = entry.metadata.copied_to.outputPath
+
+        output.data = TestcaseRenderingData.from_one_path(
+            entry.metadata.copied_to.outputPath
+        )
 
         metadata.clear()
         metadata.write(
@@ -98,3 +104,12 @@ class TestExplorerScreen(Screen):
         await self.query_one('#test-list', ListView).extend(
             [ListItem(Label(name)) for name in test_names]
         )
+
+    def action_show_output(self):
+        self.query_one('#test-output', TestBoxWidget).show_output()
+
+    def action_show_stderr(self):
+        self.query_one('#test-output', TestBoxWidget).show_stderr()
+
+    def action_show_log(self):
+        self.query_one('#test-output', TestBoxWidget).show_log()
