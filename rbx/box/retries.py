@@ -88,6 +88,8 @@ def _move_logs_to_temp_dir(
         recover.append(_move_to_temp_dir(eval.log.stderr_absolute_path, temp_dir))
     if eval.log.log_absolute_path is not None and eval.log.log_absolute_path.exists():
         recover.append(_move_to_temp_dir(eval.log.log_absolute_path, temp_dir))
+    if eval.log.eval_absolute_path is not None and eval.log.eval_absolute_path.exists():
+        recover.append(_move_to_temp_dir(eval.log.eval_absolute_path, temp_dir))
     return recover
 
 

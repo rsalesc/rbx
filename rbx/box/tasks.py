@@ -86,6 +86,7 @@ async def run_solution_on_testcase(
             output_path = output_dir / testcase.inputPath.with_suffix('.out').name
         error_path = output_path.with_suffix('.err')
         log_path = output_path.with_suffix('.log')
+        eval_path = output_path.with_suffix('.eval')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         run_log = await run_item(
@@ -120,10 +121,12 @@ async def run_solution_on_testcase(
                 stdout_absolute_path=output_path.absolute(),
                 stderr_absolute_path=error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
+                eval_absolute_path=eval_path.absolute(),
             ),
         )
 
         log_path.write_text(model_to_yaml(eval))
+        eval_path.write_text(model_to_yaml(eval))
         return eval
 
     if not use_retries:
@@ -198,6 +201,7 @@ async def _run_communication_solution_on_testcase(
         solution_error_path = output_path.with_suffix('.sol.err')
         interactor_error_path = output_path.with_suffix('.int.err')
         log_path = output_path.with_suffix('.log')
+        eval_path = output_path.with_suffix('.eval')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         interactor_capture_path = (
@@ -268,11 +272,12 @@ async def _run_communication_solution_on_testcase(
                 stdout_absolute_path=output_path.absolute(),
                 stderr_absolute_path=solution_error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
+                eval_absolute_path=eval_path.absolute(),
             ),
         )
 
         log_path.write_text(model_to_yaml(eval))
-
+        eval_path.write_text(model_to_yaml(eval))
         interactor_log_path = output_path.with_suffix('.int.log')
         interactor_log_path.unlink(missing_ok=True)
         if interactor_run_log is not None:
