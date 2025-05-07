@@ -64,9 +64,8 @@ StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]
 
 @dataclasses.dataclass(frozen=True)
 class EvaluationItem:
-    solution_index: int
-    group_name: str
-    testcase_index: int
+    solution: Solution
+    testcase_entry: TestcaseEntry
     eval: Deferred[Evaluation]
 
 
@@ -75,8 +74,12 @@ class GroupSkeleton(BaseModel):
     testcases: List[Testcase]
 
 
+class SolutionSkeleton(Solution):
+    runs_dir: pathlib.Path
+
+
 class SolutionReportSkeleton(BaseModel):
-    solutions: List[Solution]
+    solutions: List[SolutionSkeleton]
     entries: List[TestcaseEntry]
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
@@ -86,6 +89,21 @@ class SolutionReportSkeleton(BaseModel):
         if not groups:
             return None
         return groups[0]
+
+    def find_solution_skeleton(self, solution: Solution) -> Optional[SolutionSkeleton]:
+        for sol in self.solutions:
+            if sol.path == solution.path:
+                return sol
+        return None
+
+    def find_solution_skeleton_index(self, solution: Solution) -> Optional[int]:
+        for i, sol in enumerate(self.solutions):
+            if sol.path == solution.path:
+                return i
+        return None
+
+    def get_solution_path_set(self) -> Set[str]:
+        return set(str(sol.path) for sol in self.solutions)
 
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         res: StructuredEvaluation = {}
@@ -164,21 +182,20 @@ def _run_solution(
     solution: Solution,
     compiled_digest: str,
     checker_digest: Optional[str],
-    solution_index: int,
+    runs_dir: pathlib.Path,
     group_name: str,
     interactor_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
 ) -> List[Deferred[Evaluation]]:
-    runs_dir = package.get_problem_runs_dir()
-
     group = package.get_testgroup(group_name)
     testcases = find_built_testcases(group)
     res: List[Deferred[Evaluation]] = []
     for i, testcase in enumerate(testcases):
         assert testcase.outputPath is not None
-        output_path = runs_dir / f'{solution_index}' / group.name
+        output_path = runs_dir / group.name
+        output_path.mkdir(parents=True, exist_ok=True)
 
         if progress:
             progress.update(
@@ -204,6 +221,7 @@ def _run_solution(
 
 
 async def convert_list_of_solution_evaluations_to_dict(
+    skeleton: SolutionReportSkeleton,
     items: Iterable[EvaluationItem],
 ) -> List[Dict[str, List[Evaluation]]]:
     pkg = package.find_problem_package_or_die()
@@ -212,16 +230,18 @@ async def convert_list_of_solution_evaluations_to_dict(
     ]
 
     for item in items:
-        res[item.solution_index][item.group_name].append(await item.eval())
+        sol_idx = skeleton.find_solution_skeleton_index(item.solution)
+        if sol_idx is not None:
+            to_append = await item.eval()
+            res[sol_idx][item.testcase_entry.group].append(to_append)
 
     return res
 
 
-def _get_report_skeleton(
+def _get_solutions_for_skeleton(
     tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
-    timelimit_override: Optional[int] = None,
-) -> SolutionReportSkeleton:
+) -> List[Solution]:
     pkg = package.find_problem_package_or_die()
     solutions = [
         sol
@@ -234,6 +254,16 @@ def _get_report_skeleton(
             for solution in solutions
             if str(solution.path) in tracked_solutions
         ]
+    return solutions
+
+
+def _get_report_skeleton(
+    tracked_solutions: Optional[Set[str]] = None,
+    verification: VerificationLevel = VerificationLevel.NONE,
+    timelimit_override: Optional[int] = None,
+) -> SolutionReportSkeleton:
+    pkg = package.find_problem_package_or_die()
+    solutions = _get_solutions_for_skeleton(tracked_solutions, verification)
 
     langs = set(find_language_name(solution) for solution in solutions)
     limits = {
@@ -251,17 +281,34 @@ def _get_report_skeleton(
         for group in groups
         for i in range(len(group.testcases))
     ]
-    return SolutionReportSkeleton(
-        solutions=solutions,
+
+    # Prepare directory.
+    runs_dir = package.get_problem_runs_dir()
+    shutil.rmtree(str(runs_dir), ignore_errors=True)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    skeleton = SolutionReportSkeleton(
+        solutions=[
+            SolutionSkeleton(
+                **solution.model_dump(),
+                runs_dir=package.get_problem_runs_dir() / f'{i}',
+            )
+            for i, solution in enumerate(solutions)
+        ],
         groups=groups,
         limits=limits,
         entries=entries,
     )
 
+    skeleton_file = runs_dir / 'skeleton.yml'
+    skeleton_file.write_text(utils.model_to_yaml(skeleton))
+
+    return skeleton
+
 
 def _produce_solution_items(
+    skeleton: SolutionReportSkeleton,
     progress: Optional[StatusProgress] = None,
-    tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     timelimit_override: Optional[int] = None,
@@ -279,26 +326,13 @@ def _produce_solution_items(
         interactor_digest = None
 
     compiled_solutions = compile_solutions(
-        progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
+        progress=progress,
+        tracked_solutions=skeleton.get_solution_path_set(),
+        sanitized=sanitized,
     )
-
-    # Clear run directory and rely on cache to
-    # repopulate it.
-    runs_dir = package.get_problem_runs_dir()
-    shutil.rmtree(str(runs_dir), ignore_errors=True)
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    solutions = list(
-        (i, sol)
-        for i, sol in enumerate(pkg.solutions)
-        if verification.value >= VerificationLevel.ALL_SOLUTIONS.value or is_fast(sol)
-    )
-    if tracked_solutions is not None:
-        solutions = [
-            (i, sol) for i, sol in solutions if str(sol.path) in tracked_solutions
-        ]
 
     def yield_items(
-        solution_index: int, solution: Solution, group_name: str
+        solution: SolutionSkeleton, group_name: str
     ) -> List[EvaluationItem]:
         res: List[EvaluationItem] = []
         for i, eval in enumerate(
@@ -306,7 +340,7 @@ def _produce_solution_items(
                 solution,
                 compiled_solutions[solution.path],
                 checker_digest,
-                solution_index,
+                solution.runs_dir,
                 group_name,
                 interactor_digest=interactor_digest,
                 progress=progress,
@@ -316,9 +350,8 @@ def _produce_solution_items(
         ):
             res.append(
                 EvaluationItem(
-                    solution_index=solution_index,
-                    group_name=group_name,
-                    testcase_index=i,
+                    solution=solution,
+                    testcase_entry=TestcaseEntry(group=group_name, index=i),
                     eval=eval,
                 )
             )
@@ -328,9 +361,9 @@ def _produce_solution_items(
     res: List[EvaluationItem] = []
 
     groups = pkg.testcases
-    for i, solution in solutions:
+    for solution in skeleton.solutions:
         for group in groups:
-            res.extend(yield_items(i, solution, group.name))
+            res.extend(yield_items(solution, group.name))
 
     return res
 
@@ -356,24 +389,22 @@ def run_solutions(
     timelimit_override: Optional[int] = None,
     sanitized: bool = False,
 ) -> RunSolutionResult:
+    skeleton = _get_report_skeleton(
+        tracked_solutions,
+        verification=verification,
+        timelimit_override=timelimit_override,
+    )
     result = RunSolutionResult(
-        skeleton=_get_report_skeleton(
-            tracked_solutions,
-            verification=verification,
-            timelimit_override=timelimit_override,
-        ),
+        skeleton=skeleton,
         items=_produce_solution_items(
+            skeleton=skeleton,
             progress=progress,
-            tracked_solutions=tracked_solutions,
             verification=verification,
             check=check,
             timelimit_override=timelimit_override,
             sanitized=sanitized,
         ),
     )
-    skeleton_file = package.get_problem_runs_dir() / 'skeleton.yml'
-    skeleton_file.parent.mkdir(parents=True, exist_ok=True)
-    skeleton_file.write_text(utils.model_to_yaml(result.skeleton))
     return result
 
 
@@ -515,8 +546,8 @@ async def _generate_testcase_interactively(
 
 def _run_interactive_solutions(
     testcase: Testcase,
+    skeleton: SolutionReportSkeleton,
     progress: Optional[StatusProgress] = None,
-    tracked_solutions: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     sanitized: bool = False,
@@ -531,22 +562,16 @@ def _run_interactive_solutions(
         interactor_digest = None
 
     compiled_solutions = compile_solutions(
-        progress=progress, tracked_solutions=tracked_solutions, sanitized=sanitized
+        progress=progress,
+        tracked_solutions=skeleton.get_solution_path_set(),
+        sanitized=sanitized,
     )
-
-    solutions = list(enumerate(pkg.solutions))
-    if tracked_solutions is not None:
-        solutions = [
-            (i, sol) for i, sol in solutions if str(sol.path) in tracked_solutions
-        ]
-
-    irun_dir = package.get_problem_iruns_dir()
 
     if progress:
         progress.update('Running solutions...')
 
-    for i, solution in solutions:
-        output_dir = irun_dir / f'{i}'
+    for solution in skeleton.solutions:
+        output_dir = solution.runs_dir
 
         async def run_fn(solution=solution, output_dir=output_dir):
             return await run_solution_on_testcase(
@@ -561,11 +586,47 @@ def _run_interactive_solutions(
             )
 
         yield EvaluationItem(
-            solution_index=i,
-            group_name='irun',
-            testcase_index=0,
+            solution=solution,
+            testcase_entry=TestcaseEntry(group='irun', index=0),
             eval=Deferred(run_fn),
         )
+
+
+def _get_interactive_skeleton(
+    tracked_solutions: Optional[Set[str]] = None,
+    verification: VerificationLevel = VerificationLevel.NONE,
+) -> SolutionReportSkeleton:
+    solutions = _get_solutions_for_skeleton(tracked_solutions, verification)
+
+    langs = set(find_language_name(solution) for solution in solutions)
+    limits = {
+        lang: get_limits_for_language(lang, verification, timelimit_override=None)
+        for lang in langs
+        if lang is not None
+    }
+
+    # Ensure path is new.
+    irun_dir = package.get_problem_iruns_dir()
+    shutil.rmtree(str(irun_dir), ignore_errors=True)
+    irun_dir.mkdir(parents=True, exist_ok=True)
+
+    skeleton = SolutionReportSkeleton(
+        solutions=[
+            SolutionSkeleton(
+                **solution.model_dump(),
+                runs_dir=irun_dir / f'{i}',
+            )
+            for i, solution in enumerate(solutions)
+        ],
+        groups=[],
+        limits=limits,
+        entries=[],
+    )
+
+    skeleton_file = irun_dir / 'skeleton.yml'
+    skeleton_file.write_text(utils.model_to_yaml(skeleton))
+
+    return skeleton
 
 
 async def run_and_print_interactive_solutions(
@@ -579,12 +640,11 @@ async def run_and_print_interactive_solutions(
     print: bool = False,
     sanitized: bool = False,
 ):
-    # Ensure path is new.
-    irun_dir = package.get_problem_iruns_dir()
-    shutil.rmtree(str(irun_dir), ignore_errors=True)
-    irun_dir.mkdir(parents=True, exist_ok=True)
-
     pkg = package.find_problem_package_or_die()
+    skeleton = _get_interactive_skeleton(
+        tracked_solutions,
+        verification=verification,
+    )
     testcase = await _generate_testcase_interactively(
         progress=progress,
         generator=generator,
@@ -596,15 +656,16 @@ async def run_and_print_interactive_solutions(
     )
     items = _run_interactive_solutions(
         testcase,
+        skeleton=skeleton,
         progress=progress,
-        tracked_solutions=tracked_solutions,
         verification=verification,
         check=check,
         sanitized=sanitized,
     )
 
     for item in items:
-        sol = pkg.solutions[item.solution_index]
+        sol = skeleton.find_solution_skeleton(item.solution)
+        assert sol is not None
 
         if progress:
             progress.update(f'Running [item]{sol.path}[/item]...')
@@ -613,7 +674,7 @@ async def run_and_print_interactive_solutions(
 
         with utils.no_progress(progress):
             console.console.print(get_testcase_markup_verdict(eval), end=' ')
-            _print_solution_header(sol, console.console, is_irun=True)
+            _print_solution_header(sol, console.console)
             _print_solution_outcome(
                 sol, [eval], console.console, verification, subset=True
             )
@@ -876,30 +937,22 @@ def _consume_and_key_evaluation_items(
     Consumes EvaluationItems from a run_solutions call and build a view
     with them, possibly marking with optional unprocessed items.
     """
-    pkg = package.find_problem_package_or_die()
     res = skeleton.empty_structured_evaluation()
 
     for item in items:
-        solution = pkg.solutions[item.solution_index]
-        res[str(solution.path)][item.group_name][item.testcase_index] = item.eval
+        res[str(item.solution.path)][item.testcase_entry.group][
+            item.testcase_entry.index
+        ] = item.eval
 
     return res
 
 
 def _print_solution_header(
-    solution: Solution, console: rich.console.Console, is_irun: bool = False
+    solution: SolutionSkeleton,
+    console: rich.console.Console,
 ):
-    solutions = package.get_solutions()
-    solution_index = [
-        i for i, sol in enumerate(solutions) if sol.path == solution.path
-    ][0]
-    solution_testdir = (
-        package.get_problem_iruns_dir() / f'{solution_index}'
-        if is_irun
-        else package.get_problem_runs_dir() / f'{solution_index}'
-    )
     console.print(f'[item]{solution.path}[/item]', end=' ')
-    console.print(f'({solution_testdir})')
+    console.print(f'({solution.runs_dir})')
 
 
 @dataclasses.dataclass

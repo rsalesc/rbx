@@ -81,20 +81,12 @@ class SolutionReportScreen(Screen):
         if self.log_display_state is not None:
             self.query_one(LogDisplay).load(self.log_display_state)
 
-    def _find_solution_index_in_skeleton(self, sol: Solution) -> int:
-        for i, solution in enumerate(self.skeleton.solutions):
-            if solution.path == sol.path:
-                return i
-        raise
-
     async def process(self, item: EvaluationItem, eval: Evaluation):
-        pkg = package.find_problem_package_or_die()
-        sol_idx_in_skeleton = self._find_solution_index_in_skeleton(
-            pkg.solutions[item.solution_index]
-        )
-        group = self.skeleton.find_group_skeleton(item.group_name)
+        sol_idx_in_skeleton = self.skeleton.find_solution_skeleton_index(item.solution)
+        assert sol_idx_in_skeleton is not None
+        group = self.skeleton.find_group_skeleton(item.testcase_entry.group)
         assert group is not None
-        tc = group.testcases[item.testcase_index]
+        tc = group.testcases[item.testcase_entry.index]
 
         textual.log(len(list(self.query(DataTable))), sol_idx_in_skeleton)
         table = self.query(DataTable)[sol_idx_in_skeleton]
