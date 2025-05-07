@@ -11,7 +11,6 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases,
 )
 from rbx.box.ui.widgets.file_log import FileLog
-from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
 
 
@@ -21,6 +20,7 @@ class RunTestExplorerScreen(Screen):
         ('1', 'show_output', 'Show output'),
         ('2', 'show_stderr', 'Show stderr'),
         ('3', 'show_log', 'Show log'),
+        ('m', 'toggle_metadata', 'Toggle metadata'),
     ]
 
     def __init__(self, skeleton: SolutionReportSkeleton, solution: SolutionSkeleton):
@@ -44,10 +44,6 @@ class RunTestExplorerScreen(Screen):
         self.query_one('#test-input').border_title = 'Input'
 
         await self._update_tests()
-
-    def action_toggle_metadata(self):
-        metadata = self.query_one('#test-metadata', RichLogBox)
-        metadata.display = not metadata.display
 
     def _update_selected_test(self, index: Optional[int]):
         input = self.query_one('#test-input', FileLog)
@@ -91,3 +87,6 @@ class RunTestExplorerScreen(Screen):
 
     def action_show_log(self):
         self.query_one('#test-output', TestBoxWidget).show_log()
+
+    def action_toggle_metadata(self):
+        self.query_one('#test-output', TestBoxWidget).toggle_metadata()

@@ -64,7 +64,10 @@ FileLog > Log {
 }
 
 TestExplorerScreen, RunTestExplorerScreen {
-        #test-metadata {
+        #test-box-switcher {
+                height: 1fr;
+        }
+        #test-metadata, #test-box-metadata {
                 min-height: 3;
                 height: auto;
         }
