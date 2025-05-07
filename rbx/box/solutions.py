@@ -77,6 +77,9 @@ class GroupSkeleton(BaseModel):
 class SolutionSkeleton(Solution):
     runs_dir: pathlib.Path
 
+    def get_entry_prefix(self, entry: TestcaseEntry) -> pathlib.Path:
+        return self.runs_dir / entry.group / f'{entry.index:03d}'
+
 
 class SolutionReportSkeleton(BaseModel):
     solutions: List[SolutionSkeleton]

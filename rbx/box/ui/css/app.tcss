@@ -63,7 +63,7 @@ FileLog > Log {
         background: transparent;
 }
 
-TestExplorerScreen {
+TestExplorerScreen, RunTestExplorerScreen {
         #test-metadata {
                 min-height: 3;
                 height: auto;
