@@ -24,7 +24,9 @@ async def test_solutions(pkg_from_testdata: pathlib.Path):
     await generate_outputs_for_testcases(entries)
 
     result = run_solutions(verification=VerificationLevel.FULL)
-    res = await convert_list_of_solution_evaluations_to_dict(result.items)
+    res = await convert_list_of_solution_evaluations_to_dict(
+        result.skeleton, result.items
+    )
 
     # First solution should pass all tests.
     assert all(chk.result.outcome == Outcome.ACCEPTED for chk in res[0]['gen1'])
