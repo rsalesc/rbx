@@ -830,13 +830,58 @@ def get_worst_outcome(evals: List[Evaluation]) -> Outcome:
     return Outcome.worst_outcome(eval.result.outcome for eval in evals)
 
 
-def _print_solution_outcome(
+class SolutionOutcomeReport(BaseModel):
+    solution: Solution
+    evals: List[Evaluation]
+    ok: bool
+    expectedOutcome: Optional[ExpectedOutcome]
+    gotVerdicts: Set[Outcome]
+    runUnderDoubleTl: bool
+    doubleTlVerdicts: Set[Outcome]
+    sanitizerWarnings: bool
+    verification: VerificationLevel
+
+    def get_verdict_markup(self) -> str:
+        success_str = '[success]OK[/success]'
+        if not self.ok:
+            success_str = '[error]FAILED[/error]'
+
+        got_verdict_names = ' '.join(v.name for v in self.gotVerdicts)
+        verdict_str = ''
+        if self.expectedOutcome is not None:
+            verdict_str = f'Expected: {self.expectedOutcome}'
+            if self.gotVerdicts:
+                verdict_str += f', got: {got_verdict_names}'
+        elif self.gotVerdicts:
+            verdict_str = f'Got: {got_verdict_names}'
+        return f'{success_str} {verdict_str}'
+
+    def get_verdict_markup_with_warnings(self) -> str:
+        res = self.get_verdict_markup()
+        if self.runUnderDoubleTl:
+            if self.doubleTlVerdicts:
+                res += f'\n[yellow]WARNING[/yellow] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
+            else:
+                res += (
+                    '\n[yellow]WARNING[/yellow] The solution still passed in double TL.'
+                )
+        if self.sanitizerWarnings:
+            res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [warning]*[/warning]. See their stderr for more details.'
+        return res
+
+    def get_outcome_markup(self) -> str:
+        res = self.get_verdict_markup_with_warnings()
+        res += f'\nTime: {get_capped_evals_formatted_time(self.solution, self.evals, self.verification)}'
+        res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
+        return res
+
+
+def get_solution_outcome_report(
     solution: Solution,
     evals: List[Evaluation],
-    console: rich.console.Console,
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
-) -> bool:
+) -> SolutionOutcomeReport:
     pkg = package.find_problem_package_or_die()
 
     has_plain_tle = False
@@ -869,26 +914,24 @@ def _print_solution_outcome(
     has_failed = unmatched_bad_verdicts or (
         expected_outcome_is_bad and not matched_bad_verdicts and not subset
     )
-    if has_failed:
-        console.print('[error]FAILED[/error]', end=' ')
-    else:
-        console.print('[success]OK[/success]', end=' ')
 
+    report_expected_outcome = None
+    report_got_verdicts = set()
+    report_run_under_double_tl = False
+    report_double_tl_verdicts = set()
+    report_sanitizer_warnings = False
     if has_failed or not subset:
-        console.print(f'Expected: {solution.outcome}', end='')
+        report_expected_outcome = solution.outcome
     elif subset:
-        all_verdicts_names = ' '.join(v.name for v in all_verdicts)
-        console.print(f'Got: {all_verdicts_names}', end='')
+        report_got_verdicts = all_verdicts
 
     if has_failed or not subset:
         # Only print verdicts if not subset.
         if unmatched_bad_verdicts:
-            unmatched_bad_verdicts_names = set(v.name for v in unmatched_bad_verdicts)
-            console.print(f', got: {" ".join(unmatched_bad_verdicts_names)}', end='')
+            report_got_verdicts = unmatched_bad_verdicts
         elif expected_outcome_is_bad and not matched_bad_verdicts and not subset:
-            console.print(f', got: {Outcome.ACCEPTED.name}', end='')
+            report_got_verdicts = {Outcome.ACCEPTED}
 
-    console.print()
     evals_time = _get_evals_time_in_ms(evals)
     expected_outcome_is_tle = solution.outcome.match(
         Outcome.TIME_LIMIT_EXCEEDED
@@ -910,26 +953,37 @@ def _print_solution_outcome(
         }
         if not other_verdicts:
             # The solution has no other bad verdicts except for TLEs in double TL.
-            console.print(
-                '[yellow]WARNING[/yellow] The solution still passed in double TL.'
-            )
+            report_run_under_double_tl = True
         elif not (bad_verdicts - {Outcome.TIME_LIMIT_EXCEEDED}):
             # The solution has other bad soft TLE outcomes.
-            other_verdicts_names = ' '.join(v.name for v in other_verdicts)
-            console.print(
-                f'[yellow]WARNING[/yellow] The solution could still run under double TL, but failed with [item]{other_verdicts_names}[/item].'
-            )
+            report_double_tl_verdicts = other_verdicts
 
     if has_sanitizer_warnings:
-        console.print(
-            '[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [warning]*[/warning]. See their stderr for more details.'
-        )
+        report_sanitizer_warnings = True
 
-    console.print(
-        f'Time: {get_capped_evals_formatted_time(solution, evals, verification)}'
+    return SolutionOutcomeReport(
+        solution=solution,
+        evals=evals,
+        ok=not has_failed,
+        expectedOutcome=report_expected_outcome,
+        gotVerdicts=report_got_verdicts,
+        runUnderDoubleTl=report_run_under_double_tl,
+        doubleTlVerdicts=report_double_tl_verdicts,
+        sanitizerWarnings=report_sanitizer_warnings,
+        verification=verification,
     )
-    console.print(f'Memory: {get_evals_formatted_memory(evals)}')
-    return len(unmatched_bad_verdicts) == 0
+
+
+def _print_solution_outcome(
+    solution: Solution,
+    evals: List[Evaluation],
+    console: rich.console.Console,
+    verification: VerificationLevel = VerificationLevel.NONE,
+    subset: bool = False,
+) -> bool:
+    report = get_solution_outcome_report(solution, evals, verification, subset)
+    console.print(report.get_outcome_markup())
+    return report.ok
 
 
 def _consume_and_key_evaluation_items(
