@@ -36,10 +36,18 @@ class RunTestExplorerScreen(Screen):
         default=None,
     )
 
-    def __init__(self, skeleton: SolutionReportSkeleton, solution: SolutionSkeleton):
+    def __init__(
+        self,
+        skeleton: SolutionReportSkeleton,
+        solution: SolutionSkeleton,
+        diff_solution: Optional[SolutionSkeleton] = None,
+    ):
         super().__init__()
         self.skeleton = skeleton
         self.solution = solution
+        self.diff_solution = diff_solution
+        self.set_reactive(RunTestExplorerScreen.side_by_side, diff_solution is not None)
+
         self._entries: List[GenerationTestcaseEntry] = []
 
     def compose(self) -> ComposeResult:
@@ -58,6 +66,17 @@ class RunTestExplorerScreen(Screen):
 
         await self._update_tests()
 
+    def _get_rendering_data(
+        self, solution: SolutionSkeleton, entry: GenerationTestcaseEntry
+    ) -> TestcaseRenderingData:
+        rendering_data = TestcaseRenderingData.from_one_path(
+            solution.get_entry_prefix(entry.group_entry)
+        )
+        rendering_data.rich_content = get_run_testcase_metadata_markup(
+            self.skeleton, solution, entry.group_entry
+        )
+        return rendering_data
+
     def _update_selected_test(self, index: Optional[int]):
         input = self.query_one('#test-input', FileLog)
         output = self.query_one('#test-output', TwoSidedTestBoxWidget)
@@ -68,18 +87,14 @@ class RunTestExplorerScreen(Screen):
             return
         entry = self._entries[index]
         input.path = entry.metadata.copied_to.inputPath
+        output.data = self._get_rendering_data(self.solution, entry)
 
-        rendering_data = TestcaseRenderingData.from_one_path(
-            self.solution.get_entry_prefix(entry.group_entry)
-        )
-        rendering_data.rich_content = get_run_testcase_metadata_markup(
-            self.skeleton, self.solution, entry.group_entry
-        )
-        output.data = rendering_data
-
-        self.diff_with_data = TestcaseRenderingData.from_one_path(
-            entry.group_entry.get_prefix_path()
-        )
+        if self.diff_solution is not None:
+            self.diff_with_data = self._get_rendering_data(self.diff_solution, entry)
+        else:
+            self.diff_with_data = TestcaseRenderingData.from_one_path(
+                entry.group_entry.get_prefix_path()
+            )
 
     async def _update_tests(self):
         self.watch(
@@ -101,7 +116,7 @@ class RunTestExplorerScreen(Screen):
         )
 
     def has_diffable_solution(self) -> bool:
-        return package.get_main_solution() is not None
+        return self.diff_solution is not None or package.get_main_solution() is not None
 
     def action_show_output(self):
         self.query_one('#test-output', TwoSidedTestBoxWidget).show_output()

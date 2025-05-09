@@ -8,10 +8,13 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView
 from rbx.box.solutions import SolutionReportSkeleton
 from rbx.box.ui.screens.error import ErrorScreen
 from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
+from rbx.box.ui.screens.selector import SelectorScreen
 from rbx.box.ui.utils.run_ui import get_skeleton, get_solution_markup, has_run
 
 
 class RunExplorerScreen(Screen):
+    BINDINGS = [('s', 'compare_with', 'Compare with')]
+
     skeleton: reactive[Optional[SolutionReportSkeleton]] = reactive(
         None, recompose=True
     )
@@ -47,4 +50,32 @@ class RunExplorerScreen(Screen):
             RunTestExplorerScreen(
                 self.skeleton, self.skeleton.solutions[selected_index]
             )
+        )
+
+    def action_compare_with(self):
+        if self.skeleton is None:
+            return
+        list_view = self.query_one('#run-list', ListView)
+        if list_view.index is None:
+            return
+        test_solution = self.skeleton.solutions[list_view.index]
+
+        options = [
+            ListItem(Label(f'{sol.path}', markup=False))
+            for sol in self.skeleton.solutions
+        ]
+
+        def on_selected(index: Optional[int]):
+            if index is None:
+                return
+            if self.skeleton is None:
+                return
+            base_solution = self.skeleton.solutions[index]
+            self.app.push_screen(
+                RunTestExplorerScreen(self.skeleton, test_solution, base_solution)
+            )
+
+        self.app.push_screen(
+            SelectorScreen(options, title='Select a solution to compare against'),
+            callback=on_selected,
         )
