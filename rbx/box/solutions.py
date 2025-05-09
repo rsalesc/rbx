@@ -86,6 +86,7 @@ class SolutionReportSkeleton(BaseModel):
     entries: List[TestcaseEntry]
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
+    verification: VerificationLevel
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -301,6 +302,7 @@ def _get_report_skeleton(
         groups=groups,
         limits=limits,
         entries=entries,
+        verification=verification,
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
@@ -624,6 +626,7 @@ def _get_interactive_skeleton(
         groups=[],
         limits=limits,
         entries=[],
+        verification=verification,
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
@@ -841,18 +844,22 @@ class SolutionOutcomeReport(BaseModel):
     sanitizerWarnings: bool
     verification: VerificationLevel
 
-    def get_verdict_markup(self) -> str:
-        success_str = '[success]OK[/success]'
+    def get_verdict_markup(self, incomplete: bool = False) -> str:
+        success_str = '[bold green]OK[/bold green]'
         if not self.ok:
-            success_str = '[error]FAILED[/error]'
+            success_str = '[bold red]FAILED[/bold red]'
+        if incomplete:
+            success_str = '[bold yellow]INCOMPLETE[/bold yellow]'
+
+        gotVerdicts = self.gotVerdicts if not incomplete else {}
 
         got_verdict_names = ' '.join(v.name for v in self.gotVerdicts)
         verdict_str = ''
         if self.expectedOutcome is not None:
             verdict_str = f'Expected: {self.expectedOutcome}'
-            if self.gotVerdicts:
+            if gotVerdicts:
                 verdict_str += f', got: {got_verdict_names}'
-        elif self.gotVerdicts:
+        elif gotVerdicts:
             verdict_str = f'Got: {got_verdict_names}'
         return f'{success_str} {verdict_str}'
 
@@ -860,13 +867,11 @@ class SolutionOutcomeReport(BaseModel):
         res = self.get_verdict_markup()
         if self.runUnderDoubleTl:
             if self.doubleTlVerdicts:
-                res += f'\n[yellow]WARNING[/yellow] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
+                res += f'\n[bold yellow]WARNING[/bold yellow] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
             else:
-                res += (
-                    '\n[yellow]WARNING[/yellow] The solution still passed in double TL.'
-                )
+                res += '\n[bold yellow]WARNING[/bold yellow] The solution still passed in double TL.'
         if self.sanitizerWarnings:
-            res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [warning]*[/warning]. See their stderr for more details.'
+            res += '\n[bold yellow]WARNING[/bold yellow] The solution had sanitizer errors or warnings, marked with [bold yellow]*[/bold yellow]. See their stderr for more details.'
         return res
 
     def get_outcome_markup(self) -> str:
