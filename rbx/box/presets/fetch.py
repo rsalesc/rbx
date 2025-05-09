@@ -43,7 +43,7 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
         )
 
     def get_short_github_fetch_info(s: str) -> Optional[PresetFetchInfo]:
-        pattern = r'\@gh/([\w\-]+\/[\w\.\-]+)(?:\/(.*))?'
+        pattern = r'(?:\@gh/)?([\w\-]+\/[\w\.\-]+)(?:\/(.*))?'
         compiled = re.compile(pattern)
         match = compiled.match(s)
         if match is None:

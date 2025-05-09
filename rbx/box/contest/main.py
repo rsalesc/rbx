@@ -110,7 +110,9 @@ def create(
         lock.unlink(missing_ok=True)
 
     if local:
-        shutil.copytree(str(preset_path), str(dest_path / '.local.rbx'))
+        presets.copy_local_preset(
+            preset_path, dest_path, remote_uri=fetch_info.uri or preset_cfg.uri
+        )
 
     with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()

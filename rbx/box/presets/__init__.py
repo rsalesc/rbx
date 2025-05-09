@@ -3,13 +3,14 @@ import shutil
 import tempfile
 from typing import Annotated, Iterable, List, Optional, Sequence, Union
 
+import questionary
 import rich
 import rich.prompt
 import typer
 from iso639.language import functools
 
 from rbx import console, utils
-from rbx.box import cd
+from rbx.box import cd, git_utils
 from rbx.box.environment import get_environment_path
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock
@@ -363,11 +364,10 @@ def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
         if not res:
             raise typer.Exit(1)
     shutil.rmtree(str(installation_path), ignore_errors=True)
-    shutil.copytree(str(root), str(installation_path))
+    copy_tree_normalizing_gitdir(root, installation_path)
     shutil.rmtree(str(installation_path / 'build'), ignore_errors=True)
     shutil.rmtree(str(installation_path / '.box'), ignore_errors=True)
     shutil.rmtree(str(installation_path / '.local.rbx'), ignore_errors=True)
-    shutil.rmtree(str(installation_path / '.git'), ignore_errors=True)
 
 
 def install_from_local_dir(fetch_info: PresetFetchInfo, force: bool = False) -> str:
@@ -457,6 +457,68 @@ def _sync(try_update: bool = False):
         is_contest=_is_contest(),
     )
     generate_lock(preset_lock.preset_name)
+
+
+def copy_tree_normalizing_gitdir(src_path: pathlib.Path, dst_path: pathlib.Path):
+    shutil.copytree(str(src_path), str(dst_path))
+    if not (src_path / '.git').is_file():
+        return
+
+    src_repo = git_utils.get_repo_or_nil(src_path)
+    if src_repo is None:
+        return
+
+    gitdir_dst = dst_path / '.git'
+    shutil.rmtree(str(gitdir_dst), ignore_errors=True)
+    gitdir_dst.unlink(missing_ok=True)
+
+    shutil.copytree(str(src_repo.git_dir), str(gitdir_dst))
+
+
+def copy_local_preset(
+    preset_path: pathlib.Path, dest_path: pathlib.Path, remote_uri: Optional[str] = None
+):
+    copy_tree_normalizing_gitdir(preset_path, dest_path / '.local.rbx')
+
+    from rbx.box import git_utils
+
+    preset_repo = git_utils.get_repo_or_nil(preset_path)
+    current_repo = git_utils.get_repo_or_nil(
+        pathlib.Path.cwd(), search_parent_directories=True
+    )
+
+    if preset_repo is None or current_repo is None:
+        return
+
+    fetch_info = get_preset_fetch_info(remote_uri)
+    remote_uri = fetch_info.fetch_uri if fetch_info is not None else None
+
+    preset_remote = git_utils.get_any_remote(preset_repo)
+    preset_remote_uri = preset_remote.url if preset_remote is not None else remote_uri
+    if preset_remote_uri is None:
+        return
+
+    add_submodule = questionary.confirm(
+        'The preset is installed from a remote Git repository. Do you want to add it as a submodule of your project?',
+        default=False,
+    ).ask()
+    if not add_submodule:
+        return
+
+    dest_path_rel = dest_path.resolve().relative_to(pathlib.Path.cwd().resolve())
+    path_str = str(dest_path_rel / '.local.rbx')
+    try:
+        current_repo.git.submodule('add', preset_remote_uri, path_str)
+    except Exception as e:
+        console.console.print('[error]Failed to add preset as a submodule.[/error]')
+        console.console.print(f'[error]Error:[/error] {e}')
+        console.console.print(
+            '[error]You might want to do this manually with the [item]git submodule add[/item] command.[/error]'
+        )
+        raise typer.Exit(1) from None
+    console.console.print(
+        f'[success]Preset [item]{preset_remote_uri}[/item] was added as a submodule to your project at [item]{path_str}[/item].[/success]'
+    )
 
 
 @app.command(
