@@ -26,14 +26,15 @@ class RunExplorerScreen(Screen):
                 Label(get_solution_markup(self.skeleton, sol), markup=True)
                 for i, sol in enumerate(self.skeleton.solutions)
             ]
-        yield ListView(*[ListItem(item) for item in items], id='run-list')
+        run_list = ListView(*[ListItem(item) for item in items], id='run-list')
+        run_list.border_title = 'Runs'
+        yield run_list
 
     def on_mount(self):
         if not has_run():
             self.app.switch_screen(ErrorScreen('No runs found. Run `rbx run` first.'))
             return
 
-        self.query_one('#run-list', ListView).border_title = 'Runs'
         self.skeleton = get_skeleton()
 
     def on_list_view_selected(self, event: ListView.Selected):
