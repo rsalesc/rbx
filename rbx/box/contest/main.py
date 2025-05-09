@@ -63,8 +63,10 @@ def create(
         )
         raise typer.Exit(1)
 
-    if fetch_info.fetch_uri is not None:
+    if fetch_info.is_remote():
         preset = presets.install_from_remote(fetch_info)
+    elif fetch_info.is_local_dir():
+        preset = presets.install_from_local_dir(fetch_info)
 
     preset_cfg = presets.get_installed_preset(preset)
     preset_path = (

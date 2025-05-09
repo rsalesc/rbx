@@ -370,6 +370,13 @@ def _install(root: pathlib.Path = pathlib.Path(), force: bool = False):
     shutil.rmtree(str(installation_path / '.git'), ignore_errors=True)
 
 
+def install_from_local_dir(fetch_info: PresetFetchInfo, force: bool = False) -> str:
+    pd = pathlib.Path(fetch_info.inner_dir)
+    preset = get_preset_yaml(pd)
+    _install(pd, force=force)
+    return preset.name
+
+
 def install_from_remote(fetch_info: PresetFetchInfo, force: bool = False) -> str:
     import git
 
@@ -457,7 +464,8 @@ def _sync(try_update: bool = False):
 )
 def install(
     uri: Optional[str] = typer.Argument(
-        None, help='GitHub URI for the preset to install.'
+        None,
+        help='URI for the preset to install. Might be a Github repository, or even a local path.',
     ),
 ):
     if uri is None:
@@ -468,9 +476,13 @@ def install(
     if fetch_info is None:
         console.console.print(f'[error] Preset with URI {uri} not found.[/error]')
         raise typer.Exit(1)
-    if fetch_info.fetch_uri is None:
+    if not fetch_info.is_local_dir() and not fetch_info.is_remote():
         console.console.print(f'[error]URI {uri} is invalid.[/error]')
-    install_from_remote(fetch_info)
+        raise typer.Exit(1)
+    if fetch_info.is_remote():
+        install_from_remote(fetch_info)
+    else:
+        install_from_local_dir(fetch_info)
 
 
 @app.command('update', help='Update installed remote presets')

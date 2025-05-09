@@ -1,3 +1,4 @@
+import pathlib
 import re
 from typing import Optional
 
@@ -16,6 +17,12 @@ class PresetFetchInfo(BaseModel):
 
     # Inner directory from where to pull the preset.
     inner_dir: str = ''
+
+    def is_remote(self) -> bool:
+        return self.fetch_uri is not None
+
+    def is_local_dir(self) -> bool:
+        return bool(self.inner_dir) and not self.is_remote()
 
 
 def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
@@ -36,7 +43,7 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
         )
 
     def get_short_github_fetch_info(s: str) -> Optional[PresetFetchInfo]:
-        pattern = r'([\w\-]+\/[\w\.\-]+)(?:\/(.*))?'
+        pattern = r'\@gh/([\w\-]+\/[\w\.\-]+)(?:\/(.*))?'
         compiled = re.compile(pattern)
         match = compiled.match(s)
         if match is None:
@@ -47,6 +54,15 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
             fetch_uri=f'https://github.com/{match.group(1)}',
             inner_dir=match.group(2) or '',
         )
+
+    def get_local_dir_fetch_info(s: str) -> Optional[PresetFetchInfo]:
+        try:
+            path = pathlib.Path(s)
+            if not path.exists():
+                return None
+        except Exception:
+            return None
+        return PresetFetchInfo(name=path.name, inner_dir=str(path))
 
     def get_local_fetch_info(s: str) -> Optional[PresetFetchInfo]:
         pattern = r'[\w\-]+'
@@ -59,6 +75,7 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
     extractors = [
         get_github_fetch_info,
         get_short_github_fetch_info,
+        get_local_dir_fetch_info,
         get_local_fetch_info,
     ]
 
