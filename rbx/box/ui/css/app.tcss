@@ -79,8 +79,14 @@ TestExplorerScreen, RunTestExplorerScreen {
         #test-list {
                 width: 1fr;
         }
-        TestBoxWidget {
+        TestBoxWidget, TwoSidedTestBoxWidget {
                 height: 1fr;
+                #test-box-1 {
+                        width: 1fr;
+                }
+                #test-box-2 {
+                        width: 1fr;
+                }
         }
         FileLog {
                 border: solid $accent;

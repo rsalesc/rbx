@@ -33,6 +33,9 @@ class TestcaseEntry(BaseModel):
         group, index = spec.split('/')
         return TestcaseEntry(group=group.strip(), index=int(index))
 
+    def get_prefix_path(self) -> pathlib.Path:
+        return package.get_build_testgroup_path(self.group) / f'{self.index:03d}'
+
 
 class TestcasePattern(BaseModel):
     group_prefix: List[str]
