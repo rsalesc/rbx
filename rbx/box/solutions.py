@@ -770,12 +770,22 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
     return res
 
 
+def get_full_outcome_markup_verdict(outcome: Outcome) -> str:
+    style = get_outcome_style_verdict(outcome)
+    res = f'[{style}]{outcome.name}[/{style}]'
+    return res
+
+
 def get_testcase_markup_verdict(eval: Evaluation) -> str:
     # if eval.log.stdout_absolute_path:
     #     output_path = eval.log.stdout_absolute_path.resolve()
     #     output_link = f'file://{output_path}'
     #     res = f'[link={output_link}]{res}[/link]'
     return get_outcome_markup_verdict(eval.result.outcome)
+
+
+def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
+    return get_full_outcome_markup_verdict(eval.result.outcome)
 
 
 def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:

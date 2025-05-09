@@ -10,7 +10,10 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases,
 )
-from rbx.box.ui.utils.run_ui import get_run_testcase_markup
+from rbx.box.ui.utils.run_ui import (
+    get_run_testcase_markup,
+    get_run_testcase_metadata_markup,
+)
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
 
@@ -57,9 +60,13 @@ class RunTestExplorerScreen(Screen):
         entry = self._entries[index]
         input.path = entry.metadata.copied_to.inputPath
 
-        output.data = TestcaseRenderingData.from_one_path(
+        rendering_data = TestcaseRenderingData.from_one_path(
             self.solution.get_entry_prefix(entry.group_entry)
         )
+        rendering_data.rich_content = get_run_testcase_metadata_markup(
+            self.skeleton, self.solution, entry.group_entry
+        )
+        output.data = rendering_data
 
     async def _update_tests(self):
         self.watch(

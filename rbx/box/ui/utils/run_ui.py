@@ -64,3 +64,32 @@ def get_run_testcase_markup(solution: SolutionSkeleton, entry: TestcaseEntry) ->
         return f'{entry}'
     testcase_markup = solutions.get_testcase_markup_verdict(eval)
     return f'{testcase_markup} {entry}'
+
+
+def _get_checker_msg_last_line(eval: Evaluation) -> Optional[str]:
+    if eval.result.message is None:
+        return None
+    return eval.result.message.rstrip().split('\n')[-1]
+
+
+def get_run_testcase_metadata_markup(
+    skeleton: SolutionReportSkeleton, solution: SolutionSkeleton, entry: TestcaseEntry
+) -> Optional[str]:
+    eval = get_solution_eval(solution, entry)
+    if eval is None:
+        return None
+    time_str = solutions.get_capped_evals_formatted_time(
+        solution, [eval], skeleton.verification
+    )
+    memory_str = solutions.get_evals_formatted_memory([eval])
+
+    checker_msg = _get_checker_msg_last_line(eval)
+
+    lines = []
+    lines.append(
+        f'[b]{solutions.get_full_outcome_markup_verdict(eval.result.outcome)}[/b]'
+    )
+    lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
+    if checker_msg is not None:
+        lines.append(f'[b]Checker:[/b] {checker_msg}')
+    return '\n'.join(lines)
