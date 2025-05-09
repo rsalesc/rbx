@@ -10,6 +10,7 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases,
 )
+from rbx.box.ui.utils.run_ui import get_run_testcase_markup
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
 
@@ -69,14 +70,14 @@ class RunTestExplorerScreen(Screen):
 
         self._entries = await extract_generation_testcases(self.skeleton.entries)
 
-        test_names = [
-            f'{entry.group_entry.group}/{entry.group_entry.index}'
+        test_markups = [
+            get_run_testcase_markup(self.solution, entry.group_entry)
             for entry in self._entries
         ]
 
         await self.query_one('#test-list', ListView).clear()
         await self.query_one('#test-list', ListView).extend(
-            [ListItem(Label(name)) for name in test_names]
+            [ListItem(Label(name, markup=True)) for name in test_markups]
         )
 
     def action_show_output(self):
