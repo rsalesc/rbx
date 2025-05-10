@@ -20,7 +20,11 @@ def href(url: os.PathLike[str], text: Optional[str] = None, style: str = 'item')
 
     if isinstance(url, pathlib.Path):
         url = url.resolve()
-    return f'[{style}][link={url}]{text}[/link][/{style}]'
+
+    url_str = str(url)
+    if pathlib.Path(url_str).exists():
+        url_str = f'file://{url_str}'
+    return f'[{style}][link={url_str}]{text}[/link][/{style}]'
 
 
 def get_formatted_memory(memory_in_bytes: int, mib_decimal_places: int = 0) -> str:
