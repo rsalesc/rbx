@@ -148,8 +148,6 @@ async def run_validator_unit_tests(progress: StatusProgress):
 
 async def run_checker_unit_tests(progress: StatusProgress):
     pkg = package.find_problem_package_or_die()
-    if not pkg.unitTests.checker:
-        return
 
     if not package.get_checker():
         console.console.print(
