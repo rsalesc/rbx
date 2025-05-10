@@ -172,6 +172,7 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
             )
             raise typer.Exit(1) from None
 
+        # Crop file.
         rest = f.read()
         start = 0
 
@@ -202,13 +203,17 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
             nxt_start, _ = nxt
             return (pipe, (prefix_end, nxt_start))
 
-        while True:
+        # TODO: optimize
+        blocks = 0
+        MAX_BLOCKS = 1024
+        while blocks < MAX_BLOCKS:
             block = _find_next_block()
             if block is None:
                 break
             pipe, (st, nd) = block
             entries.append(TestcaseInteractionEntry(data=rest[st:nd], pipe=pipe))
             start = nd
+            blocks += 1
 
     return TestcaseInteraction(
         prefixes=(interactor_prefix, solution_prefix),
