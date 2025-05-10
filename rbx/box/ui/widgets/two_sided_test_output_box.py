@@ -51,6 +51,10 @@ class TwoSidedTestBoxWidget(Widget, can_focus=False):
         self.query_one('#test-box-1', TestBoxWidget).show_log()
         self.query_one('#test-box-2', TestBoxWidget).show_log()
 
+    def show_interaction(self):
+        self.query_one('#test-box-1', TestBoxWidget).show_interaction()
+        self.query_one('#test-box-2', TestBoxWidget).show_interaction()
+
     def toggle_metadata(self):
         self.query_one('#test-box-1', TestBoxWidget).toggle_metadata()
         self.query_one('#test-box-2', TestBoxWidget).toggle_metadata()

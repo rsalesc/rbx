@@ -5,6 +5,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog
 
+from rbx.box import package
+from rbx.box.schema import TaskType
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases_from_groups,
@@ -42,6 +44,9 @@ class TestExplorerScreen(Screen):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
 
+        # Ensure either output or interaction is visible.
+        self.action_show_output()
+
         metadata = self.query_one('#test-metadata', RichLogBox)
         metadata.display = False
         metadata.border_title = 'Metadata'
@@ -67,6 +72,7 @@ class TestExplorerScreen(Screen):
         entry = self._entries[index]
         input.path = entry.metadata.copied_to.inputPath
 
+        assert entry.metadata.copied_to.outputPath is not None
         output.data = TestcaseRenderingData.from_one_path(
             entry.metadata.copied_to.outputPath
         )
@@ -105,8 +111,15 @@ class TestExplorerScreen(Screen):
             [ListItem(Label(name)) for name in test_names]
         )
 
+    def is_interactive(self) -> bool:
+        pkg = package.find_problem_package_or_die()
+        return pkg.type == TaskType.COMMUNICATION
+
     def action_show_output(self):
-        self.query_one('#test-output', TestBoxWidget).show_output()
+        if self.is_interactive():
+            self.query_one('#test-output', TestBoxWidget).show_interaction()
+        else:
+            self.query_one('#test-output', TestBoxWidget).show_output()
 
     def action_show_stderr(self):
         self.query_one('#test-output', TestBoxWidget).show_stderr()

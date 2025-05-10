@@ -16,7 +16,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, environment, package
+from rbx.box import checkers, environment, package, state
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -87,6 +87,7 @@ class SolutionReportSkeleton(BaseModel):
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
     verification: VerificationLevel
+    capture_pipes: bool = False
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -303,6 +304,7 @@ def _get_report_skeleton(
         limits=limits,
         entries=entries,
         verification=verification,
+        capture_pipes=state.STATE.debug_logs,
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
@@ -627,6 +629,7 @@ def _get_interactive_skeleton(
         limits=limits,
         entries=[],
         verification=verification,
+        capture_pipes=True,
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'

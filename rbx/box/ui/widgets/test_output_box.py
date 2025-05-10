@@ -9,6 +9,7 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
 from rbx.box.ui.widgets.file_log import FileLog
+from rbx.box.ui.widgets.interaction_box import InteractionBox
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 
 
@@ -17,6 +18,7 @@ class TestcaseRenderingData:
     input_path: Optional[pathlib.Path] = None
     output_path: Optional[pathlib.Path] = None
     stderr_path: Optional[pathlib.Path] = None
+    interaction_path: Optional[pathlib.Path] = None
     log_path: Optional[pathlib.Path] = None
     rich_content: Optional[str] = None
 
@@ -27,6 +29,7 @@ class TestcaseRenderingData:
             output_path=path.with_suffix('.out'),
             stderr_path=path.with_suffix('.err'),
             log_path=path.with_suffix('.log'),
+            interaction_path=path.with_suffix('.pio'),
         )
 
 
@@ -41,12 +44,14 @@ class TestBoxWidget(Widget, can_focus=False):
         output: FileLog
         stderr: FileLog
         log: FileLog
+        interaction: FileLog
 
     def logs(self) -> Logs:
         return self.Logs(
             output=self.query_one('#test-box-output', FileLog),
             stderr=self.query_one('#test-box-stderr', FileLog),
             log=self.query_one('#test-box-log', FileLog),
+            interaction=self.query_one('#test-box-interaction', InteractionBox),
         )
 
     def compose(self) -> ComposeResult:
@@ -55,6 +60,7 @@ class TestBoxWidget(Widget, can_focus=False):
                 yield FileLog(id='test-box-output')
                 yield FileLog(id='test-box-stderr')
                 yield FileLog(id='test-box-log')
+                yield InteractionBox(id='test-box-interaction')
             yield RichLogBox(id='test-box-metadata')
 
     def on_mount(self):
@@ -62,7 +68,7 @@ class TestBoxWidget(Widget, can_focus=False):
         logs.output.border_title = 'Output'
         logs.stderr.border_title = 'Stderr'
         logs.log.border_title = 'Log'
-
+        logs.interaction.border_title = 'Interaction'
         metadata = self.query_one('#test-box-metadata', RichLogBox)
         metadata.display = False
         metadata.border_title = 'Metadata'
@@ -78,7 +84,7 @@ class TestBoxWidget(Widget, can_focus=False):
         logs.output.path = data.output_path
         logs.stderr.path = data.stderr_path
         logs.log.path = data.log_path
-
+        logs.interaction.path = data.interaction_path
         metadata = self.query_one('#test-box-metadata', RichLogBox)
         metadata.clear()
         if data.rich_content is not None:
@@ -97,6 +103,9 @@ class TestBoxWidget(Widget, can_focus=False):
 
     def show_log(self):
         self.query_one(ContentSwitcher).current = 'test-box-log'
+
+    def show_interaction(self):
+        self.query_one(ContentSwitcher).current = 'test-box-interaction'
 
     def toggle_metadata(self):
         metadata = self.query_one('#test-box-metadata', RichLogBox)

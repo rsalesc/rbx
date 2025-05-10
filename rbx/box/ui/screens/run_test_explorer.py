@@ -7,6 +7,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
 from rbx.box import package
+from rbx.box.schema import TaskType
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
@@ -64,6 +65,9 @@ class RunTestExplorerScreen(Screen):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
 
+        # Ensure the output is show, even for interactive tests
+        self.action_show_output()
+
         await self._update_tests()
 
     def _get_rendering_data(
@@ -118,8 +122,15 @@ class RunTestExplorerScreen(Screen):
     def has_diffable_solution(self) -> bool:
         return self.diff_solution is not None or package.get_main_solution() is not None
 
+    def should_show_interaction(self) -> bool:
+        pkg = package.find_problem_package_or_die()
+        return pkg.type == TaskType.COMMUNICATION and self.skeleton.capture_pipes
+
     def action_show_output(self):
-        self.query_one('#test-output', TwoSidedTestBoxWidget).show_output()
+        if self.should_show_interaction():
+            self.query_one('#test-output', TwoSidedTestBoxWidget).show_interaction()
+        else:
+            self.query_one('#test-output', TwoSidedTestBoxWidget).show_output()
 
     def action_show_stderr(self):
         self.query_one('#test-output', TwoSidedTestBoxWidget).show_stderr()
