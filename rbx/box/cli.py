@@ -32,7 +32,6 @@ from rbx.box.packaging import main as packaging
 from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
 from rbx.box.solutions import (
     estimate_time_limit,
-    expand_solutions,
     get_exact_matching_solutions,
     get_matching_solutions,
     pick_solutions,
@@ -135,6 +134,13 @@ def ui():
     from rbx.box.ui import main as ui_pkg
 
     ui_pkg.start()
+
+
+@app.command('diff', hidden=True)
+def diff(path1: pathlib.Path, path2: pathlib.Path):
+    from rbx.box.ui import main as ui_pkg
+
+    ui_pkg.start_differ(path1, path2)
 
 
 @app.command('serve', hidden=True)
@@ -243,7 +249,7 @@ async def run(
         tracked_solutions = set(
             await pick_solutions(
                 tracked_solutions,
-                extra_solutions=await expand_solutions(solutions or []),
+                extra_solutions=solutions,
             )
         )
         if not tracked_solutions:
@@ -479,7 +485,7 @@ async def irun(
         tracked_solutions = set(
             await pick_solutions(
                 tracked_solutions,
-                extra_solutions=await expand_solutions(solutions or []),
+                extra_solutions=solutions,
             )
         )
         if not tracked_solutions:

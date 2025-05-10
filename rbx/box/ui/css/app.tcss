@@ -21,6 +21,20 @@ OptionList {
         border: solid $accent;
 }
 
+DiffBox {
+        border: solid $accent;
+        height: 1fr;
+        width: 1fr;
+        Markdown {
+                height: 1fr;
+                width: 1fr;
+
+                .code_inline {
+                        background: $background;
+                }
+        }
+}
+
 Button {
         width: 1fr;
         background: $accent;

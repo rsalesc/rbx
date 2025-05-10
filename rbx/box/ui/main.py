@@ -1,3 +1,4 @@
+import pathlib
 from typing import Type
 
 from textual.app import App, ComposeResult
@@ -5,6 +6,7 @@ from textual.containers import Center
 from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
 
+from rbx.box.ui.screens.differ import DifferScreen
 from rbx.box.ui.screens.run_explorer import RunExplorerScreen
 from rbx.box.ui.screens.test_explorer import TestExplorerScreen
 
@@ -35,6 +37,25 @@ class rbxApp(App):
         self.push_screen(screen_cls())
 
 
+class rbxDifferApp(App):
+    TITLE = 'rbx differ'
+    CSS_PATH = 'css/app.tcss'
+    BINDINGS = [('q', 'quit', 'Quit')]
+
+    def __init__(self, path1: pathlib.Path, path2: pathlib.Path):
+        super().__init__()
+        self.path1 = path1
+        self.path2 = path2
+
+    def on_mount(self):
+        self.push_screen(DifferScreen(self.path1, self.path2))
+
+
 def start():
     app = rbxApp()
+    app.run()
+
+
+def start_differ(path1: pathlib.Path, path2: pathlib.Path):
+    app = rbxDifferApp(path1, path2)
     app.run()
