@@ -726,19 +726,52 @@ def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
     ]
 
 
-async def pick_solutions(tracked_solutions: Optional[Set[str]]) -> List[str]:
+async def expand_solutions(sols: List[str]) -> List[Solution]:
     pkg = package.find_problem_package_or_die()
-    if tracked_solutions is None:
-        tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
+    seen_sols = set(str(sol.path) for sol in pkg.solutions)
 
+    # Dedup sols.
+    sols = [sol for sol in sols if str(sol) not in seen_sols]
+
+    # Ensure sols exist.
+    sols = [sol for sol in sols if pathlib.Path(sol).is_file()]
+
+    return [
+        Solution(path=pathlib.Path(sol), outcome=ExpectedOutcome.ACCEPTED)
+        for sol in sols
+    ]
+
+
+async def pick_solutions(
+    tracked_solutions: Optional[Set[str]],
+    extra_solutions: Optional[Iterable[Solution]] = None,
+) -> List[str]:
+    extra_sols = set(extra_solutions) if extra_solutions is not None else set()
+
+    pkg = package.find_problem_package_or_die()
     # Store in a separate list to maintain order with the package declaration.
     import questionary
 
     choices = [
-        questionary.Choice(title=_get_solution_repr(sol), value=str(sol.path))
+        questionary.Choice(
+            title=_get_solution_repr(sol),
+            value=str(sol.path),
+            checked=tracked_solutions is None or str(sol.path) in tracked_solutions,
+        )
         for sol in pkg.solutions
-        if str(sol.path) in tracked_solutions
     ]
+
+    seen_sols = set(str(sol.path) for sol in pkg.solutions)
+
+    if extra_sols:
+        # Add only new solutions.
+        choices.extend(
+            questionary.Choice(
+                title=_get_solution_repr(sol), value=str(sol.path), checked=True
+            )
+            for sol in extra_sols
+            if str(sol.path) not in seen_sols
+        )
 
     picked = await questionary.checkbox('Select solutions', choices=choices).ask_async()
     if picked is None:

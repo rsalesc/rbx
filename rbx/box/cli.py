@@ -3,7 +3,7 @@ import shlex
 import shutil
 import sys
 import tempfile
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 import rich
 import rich.prompt
@@ -32,6 +32,7 @@ from rbx.box.packaging import main as packaging
 from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
 from rbx.box.solutions import (
     estimate_time_limit,
+    expand_solutions,
     get_exact_matching_solutions,
     get_matching_solutions,
     pick_solutions,
@@ -178,10 +179,10 @@ async def build(verification: environment.VerificationParam):
 @syncer.sync
 async def run(
     verification: environment.VerificationParam,
-    solution: Annotated[
-        Optional[str],
+    solutions: Annotated[
+        Optional[List[str]],
         typer.Argument(
-            help='Path to solution to run. If not specified, will run all solutions.'
+            help='Path to solutions to run. If not specified, will run all solutions.'
         ),
     ] = None,
     outcome: Optional[str] = typer.Option(
@@ -235,11 +236,16 @@ async def run(
             str(solution.path)
             for solution in get_matching_solutions(ExpectedOutcome(outcome))
         }
-    if solution:
-        tracked_solutions = {solution}
+    if solutions:
+        tracked_solutions = set(solutions)
 
     if choice:
-        tracked_solutions = set(await pick_solutions(tracked_solutions))
+        tracked_solutions = set(
+            await pick_solutions(
+                tracked_solutions,
+                extra_solutions=await expand_solutions(solutions or []),
+            )
+        )
         if not tracked_solutions:
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
@@ -395,10 +401,10 @@ async def time(
 @syncer.sync
 async def irun(
     verification: environment.VerificationParam,
-    solution: Annotated[
-        Optional[str],
+    solutions: Annotated[
+        Optional[List[str]],
         typer.Argument(
-            help='Path to solution to run. If not specified, will run all solutions.'
+            help='Path to solutions to run. If not specified, will run all solutions.'
         ),
     ] = None,
     outcome: Optional[str] = typer.Option(
@@ -466,11 +472,16 @@ async def irun(
             str(solution.path)
             for solution in get_matching_solutions(ExpectedOutcome(outcome))
         }
-    if solution:
-        tracked_solutions = {solution}
+    if solutions:
+        tracked_solutions = set(solutions)
 
     if choice:
-        tracked_solutions = set(await pick_solutions(tracked_solutions))
+        tracked_solutions = set(
+            await pick_solutions(
+                tracked_solutions,
+                extra_solutions=await expand_solutions(solutions or []),
+            )
+        )
         if not tracked_solutions:
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
