@@ -71,6 +71,10 @@ class SetterConfig(BaseModel):
         default={},
         description='Substitutions to apply to commands before running them.',
     )
+    hyperlinks: bool = Field(
+        default=True,
+        description='Whether to use hyperlinks in the terminal output.',
+    )
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:
         exe = shlex.split(command)[0]

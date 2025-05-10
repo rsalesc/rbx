@@ -2,10 +2,22 @@ import os
 import pathlib
 from typing import Optional
 
+from rbx.box import setter_config
+
 
 def href(url: os.PathLike[str], text: Optional[str] = None, style: str = 'item') -> str:
+    custom_text = False
     if text is None:
         text = str(url)
+    else:
+        custom_text = True
+
+    if not custom_text:
+        if not setter_config.get_setter_config().hyperlinks:
+            return f'[{style}]{text}[/{style}]'
+        if os.environ.get('TERM') in ['vscode']:
+            return f'[{style}]{text}[/{style}]'
+
     if isinstance(url, pathlib.Path):
         url = url.resolve()
     return f'[{style}][link={url}]{text}[/link][/{style}]'
