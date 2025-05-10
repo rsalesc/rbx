@@ -1,4 +1,5 @@
 import datetime
+import functools
 import hashlib
 import os
 import pathlib
@@ -40,6 +41,8 @@ class BocaUploader:
         self.base_url = _parse_env_var('BOCA_BASE_URL', base_url)
         self.username = _parse_env_var('BOCA_USERNAME', username)
         self.password = _parse_env_var('BOCA_PASSWORD', password)
+
+        self.loggedIn = False
 
         self.br = mechanize.Browser()
         self.br.set_handle_robots(False)
@@ -140,6 +143,9 @@ class BocaUploader:
         return self.log_response_alert(response, error_msg)
 
     def login(self):
+        if self.loggedIn:
+            return
+
         _, html = self.open(
             f'{self.base_url}', error_msg='Error while opening BOCA login page'
         )
@@ -156,6 +162,8 @@ class BocaUploader:
 
         login_url = f'{self.base_url}?name={self.username}&password={pwd_hash}'
         self.open(login_url, error_msg='Error while logging in to BOCA')
+
+        self.loggedIn = True
 
     def upload(self, file: pathlib.Path) -> bool:
         self.open(
@@ -226,6 +234,7 @@ class BocaUploader:
                 console.console.print(
                     f'[warning]Potentially transient error while uploading problem to BOCA. Retrying ({tries}/{RETRIES})...[/warning]'
                 )
+                self.loggedIn = False
                 continue
 
             ok = True
@@ -245,3 +254,12 @@ class BocaUploader:
                 '[warning]Check [item]https://www.php.net/manual/en/ini.core.php#ini.sect.file-uploads[/item] for more information.[/warning]'
             )
             raise typer.Exit(1)
+
+
+@functools.lru_cache
+def get_boca_uploader(
+    base_url: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+) -> BocaUploader:
+    return BocaUploader(base_url, username, password)
