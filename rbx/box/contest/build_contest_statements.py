@@ -10,6 +10,7 @@ from rbx import console, testing_utils
 from rbx.box import cd, package
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
+from rbx.box.formatting import href
 from rbx.box.schema import Package, Testcase
 from rbx.box.statements import build_statements
 from rbx.box.statements.build_statements import (
@@ -344,6 +345,6 @@ def build_statement(
     console.console.print(
         f'Statement built successfully for language '
         f'[item]{statement.language}[/item] at '
-        f'[item]{statement_path.resolve()}[/item]'
+        f'{href(statement_path)}'
     )
     return statement_path

@@ -8,6 +8,7 @@ import typer
 
 from rbx import annotations, console
 from rbx.box import environment, naming, package
+from rbx.box.formatting import href
 from rbx.box.schema import Package
 from rbx.box.statements.builders import (
     BUILDER_LIST,
@@ -302,7 +303,7 @@ def build_statement(
     console.console.print(
         f'Statement built successfully for language '
         f'[item]{statement.language}[/item] at '
-        f'[item]{statement_path.resolve()}[/item]'
+        f'{href(statement_path)}'
     )
     return statement_path
 

@@ -26,7 +26,7 @@ from rbx.box.deferred import Deferred
 from rbx.box.environment import (
     VerificationLevel,
 )
-from rbx.box.formatting import get_formatted_memory, get_formatted_time
+from rbx.box.formatting import get_formatted_memory, get_formatted_time, href
 from rbx.box.generators import (
     GenerationMetadata,
     expand_generator_call,
@@ -166,7 +166,7 @@ def compile_solutions(
         ):
             continue
         if progress:
-            progress.update(f'Compiling solution [item]{solution.path}[/item]...')
+            progress.update(f'Compiling solution {href(solution.path)}...')
         try:
             compiled_solutions[solution.path] = compile_item(
                 solution,
@@ -176,7 +176,7 @@ def compile_solutions(
             )
         except:
             console.console.print(
-                f'[error]Failed compiling solution [item]{solution.path}[/item][/error]'
+                f'[error]Failed compiling solution {href(solution.path)}.[/error]'
             )
             raise
 
@@ -204,7 +204,7 @@ def _run_solution(
 
         if progress:
             progress.update(
-                f'Running solution [item]{solution.path}[/item] on test [item]{group.name}[/item] / [item]{i}[/item]...'
+                f'Running solution {href(solution.path)} on test [item]{group.name}[/item] / [item]{i}[/item]...'
             )
 
         async def run_fn(i=i, testcase=testcase, output_path=output_path):
@@ -1026,8 +1026,8 @@ def _print_solution_header(
     solution: SolutionSkeleton,
     console: rich.console.Console,
 ):
-    console.print(f'[item]{solution.path}[/item]', end=' ')
-    console.print(f'({solution.runs_dir})')
+    console.print(f'{href(solution.path)}', end=' ')
+    console.print(f'({href(solution.runs_dir, style="info")})')
 
 
 @dataclasses.dataclass
@@ -1052,14 +1052,14 @@ class TimingSummary:
     def print(self, console: rich.console.Console, tl: Optional[int] = None):
         if self.slowest_good is not None:
             console.print(
-                f'Slowest [success]OK[/success] solution: {self.slowest_good.time} ms, [item]{self.slowest_good.solution.path}[/item]'
+                f'Slowest [success]OK[/success] solution: {self.slowest_good.time} ms, {href(self.slowest_good.solution.path)}'
             )
         if self.fastest_slow is not None:
             fastest_slow = self.fastest_slow.time
             if tl is not None and self.fastest_slow.time > tl:
                 fastest_slow = f'>{tl}'
             console.print(
-                f'Fastest [error]slow[/error] solution: {fastest_slow} ms, [item]{self.fastest_slow.solution.path}[/item]'
+                f'Fastest [error]slow[/error] solution: {fastest_slow} ms, {href(self.fastest_slow.solution.path)}'
             )
 
 
@@ -1184,7 +1184,7 @@ async def _render_detailed_group_table(
     ) -> rich.table.Table:
         table = rich.table.Table()
         for solution in skeleton.solutions:
-            table.add_column(f'[item]{solution.path}[/item]', justify='full')
+            table.add_column(f'{href(solution.path)}', justify='full')
 
         padded_rows = []
 
@@ -1424,7 +1424,7 @@ async def estimate_time_limit(
 
         if not timings:
             console.print(
-                f'[warning]No timings for solution [item]{solution.path}[/item].[/warning]'
+                f'[warning]No timings for solution {href(solution.path)}.[/warning]'
             )
             continue
 

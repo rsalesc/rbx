@@ -7,6 +7,7 @@ import typer
 
 from rbx import annotations, console
 from rbx.box import environment, header, package
+from rbx.box.formatting import href
 from rbx.box.naming import get_problem_name_with_contest_info
 from rbx.box.package import get_build_path
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
@@ -62,7 +63,7 @@ async def run_packager(
     console.console.print(
         f'[success]Problem packaged for [item]{packager.name()}[/item]![/success]'
     )
-    console.console.print(f'Package was saved at [item]{result_path.resolve()}[/item]')
+    console.console.print(f'Package was saved at {href(result_path)}')
     return result_path
 
 
