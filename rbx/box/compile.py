@@ -3,7 +3,7 @@ import pathlib
 import typer
 
 from rbx import annotations, console
-from rbx.box import code, package
+from rbx.box import code, package, remote
 from rbx.box.code import SanitizationLevel
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
@@ -34,6 +34,8 @@ def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
 
 def any(path: str, sanitized: bool = False, warnings: bool = False):
     pkg = package.find_problem_package_or_die()
+
+    path = str(remote.expand_file(path))
 
     solution = package.get_solution_or_nil(path)
     if solution is not None:

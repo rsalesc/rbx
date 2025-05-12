@@ -139,3 +139,13 @@ def _expand_paths(paths: List[pathlib.Path]) -> List[pathlib.Path]:
 
 def expand_files(files: List[str]) -> List[pathlib.Path]:
     return _expand_paths([pathlib.Path(file) for file in files])
+
+
+def expand_file(file: str) -> pathlib.Path:
+    res = expand_files([file])
+    if len(res) != 1:
+        console.console.print(
+            f'Could not expand {ref(file)} because it is not a valid expansion.'
+        )
+        raise typer.Exit(1)
+    return res[0]
