@@ -25,13 +25,9 @@ DiffBox {
         border: solid $accent;
         height: 1fr;
         width: 1fr;
-        Markdown {
+        RichLog {
                 height: 1fr;
                 width: 1fr;
-
-                .code_inline {
-                        background: $background;
-                }
         }
 }
 

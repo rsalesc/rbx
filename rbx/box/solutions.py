@@ -16,7 +16,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, environment, package, state
+from rbx.box import checkers, environment, package, remote, state
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -159,12 +159,10 @@ def compile_solutions(
 
     compiled_solutions = {}
 
-    for solution in pkg.solutions:
-        if (
-            tracked_solutions is not None
-            and str(solution.path) not in tracked_solutions
-        ):
-            continue
+    if tracked_solutions is None:
+        tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
+
+    for solution in expand_solutions(list(tracked_solutions)):
         if progress:
             progress.update(f'Compiling solution {href(solution.path)}...')
         try:
@@ -254,11 +252,7 @@ def _get_solutions_for_skeleton(
         if verification.value >= VerificationLevel.ALL_SOLUTIONS.value or is_fast(sol)
     ]
     if tracked_solutions is not None:
-        solutions = [
-            solution
-            for solution in solutions
-            if str(solution.path) in tracked_solutions
-        ]
+        solutions = expand_solutions(list(tracked_solutions))
     return solutions
 
 
@@ -726,28 +720,42 @@ def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
     ]
 
 
-async def expand_solutions(sols: List[str]) -> List[Solution]:
+def expand_solutions_with_source(sols: List[str]) -> List[Tuple[Solution, bool]]:
     pkg = package.find_problem_package_or_die()
-    seen_sols = set(str(sol.path) for sol in pkg.solutions)
+    pkg_sols = {str(sol.path): sol for sol in pkg.solutions}
 
-    # Dedup sols.
-    sols = [sol for sol in sols if str(sol) not in seen_sols]
+    # Download remote sols.
+    sols = remote.expand_files(sols)
 
     # Ensure sols exist.
     sols = [sol for sol in sols if pathlib.Path(sol).is_file()]
 
-    return [
-        Solution(path=pathlib.Path(sol), outcome=ExpectedOutcome.ACCEPTED)
-        for sol in sols
-    ]
+    seen_sols = set()
+    res: List[Tuple[Solution, bool]] = []
+    for sol in sols:
+        if sol in seen_sols:
+            # This solution was already added.
+            continue
+        if sol in pkg_sols:
+            # This solution is in the package.
+            res.append((pkg_sols[sol], False))
+        else:
+            # This solution is fetched from some source.
+            res.append(
+                (Solution(path=pathlib.Path(sol), outcome=ExpectedOutcome.ANY), True)
+            )
+        seen_sols.add(sol)
+    return res
+
+
+def expand_solutions(sols: List[str]) -> List[Solution]:
+    return [sol for sol, _ in expand_solutions_with_source(sols)]
 
 
 async def pick_solutions(
     tracked_solutions: Optional[Set[str]],
-    extra_solutions: Optional[Iterable[Solution]] = None,
+    extra_solutions: Optional[List[str]] = None,
 ) -> List[str]:
-    extra_sols = set(extra_solutions) if extra_solutions is not None else set()
-
     pkg = package.find_problem_package_or_die()
     # Store in a separate list to maintain order with the package declaration.
     import questionary
@@ -763,13 +771,15 @@ async def pick_solutions(
 
     seen_sols = set(str(sol.path) for sol in pkg.solutions)
 
-    if extra_sols:
+    if extra_solutions is not None:
         # Add only new solutions.
         choices.extend(
             questionary.Choice(
-                title=_get_solution_repr(sol), value=str(sol.path), checked=True
+                title=_get_solution_repr(sol),
+                value=str(sol.path),
+                checked=True,
             )
-            for sol in extra_sols
+            for sol in expand_solutions(extra_solutions)
             if str(sol.path) not in seen_sols
         )
 

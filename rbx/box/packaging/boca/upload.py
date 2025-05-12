@@ -4,6 +4,7 @@ import hashlib
 import os
 import pathlib
 import re
+import shutil
 import typing
 from typing import Any, NoReturn, Optional, Tuple
 
@@ -248,12 +249,50 @@ class BocaUploader:
                 '[error]Persistent error while uploading problem to BOCA website.[/error]'
             )
             console.console.print(
-                '[warning]This might be caused by PHP max upload size limit (which usually defaults to 2MBF).[/warning]'
+                '[warning]This might be caused by PHP max upload size limit (which usually defaults to 2MB).[/warning]'
             )
             console.console.print(
                 '[warning]Check [item]https://www.php.net/manual/en/ini.core.php#ini.sect.file-uploads[/item] for more information.[/warning]'
             )
             raise typer.Exit(1)
+
+    def download_run(self, run_number: int, site_number: int, into_dir: pathlib.Path):
+        url = f'{self.base_url}/admin/runedit.php?runnumber={run_number}&runsitenumber={site_number}'
+        _, html = self.open(
+            url,
+            error_msg=f'Error while downloading BOCA run [item]{run_number}-{site_number}[/item]',
+        )
+
+        soup = BeautifulSoup(html, 'html.parser')
+        rows = soup.select('tr')
+
+        href: Optional[str] = None
+        filename: Optional[pathlib.Path] = None
+
+        for row in rows:
+            row_text = row.select('td')[0].text.strip().lower()
+            if row_text != "team's code:":
+                continue
+            link_col = row.select_one('td:nth-of-type(2) a:nth-of-type(1)')
+            if link_col is None:
+                continue
+            href = str(link_col.attrs['href'])
+            filename = pathlib.Path(link_col.text.strip())
+            break
+
+        if href is None or filename is None:
+            self.raw_error(
+                "Error while downloading run:\nNo link to team's code found."
+            )
+
+        link = self.br.find_link(url=href)
+        tmp_file, _ = self.br.retrieve(link.absolute_url)
+        if tmp_file is None:
+            self.raw_error('Error while downloading run:\nDownloaded file is None.')
+        final_path = into_dir / filename.with_stem(f'{run_number}-{site_number}')
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(tmp_file, final_path)
+        return final_path
 
 
 @functools.lru_cache

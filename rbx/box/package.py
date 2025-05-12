@@ -151,6 +151,19 @@ def get_problem_cache_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
 
 
 @functools.cache
+def get_problem_remote_dir(
+    platform: Optional[str] = None, root: pathlib.Path = pathlib.Path()
+) -> pathlib.Path:
+    remote_dir = get_problem_cache_dir(root) / '.remote'
+    remote_dir.mkdir(parents=True, exist_ok=True)
+
+    if platform is not None:
+        remote_dir = remote_dir / platform
+        remote_dir.mkdir(parents=True, exist_ok=True)
+    return remote_dir
+
+
+@functools.cache
 def get_problem_storage_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     storage_dir = get_problem_cache_dir(root) / '.storage'
     storage_dir.mkdir(parents=True, exist_ok=True)

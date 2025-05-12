@@ -57,6 +57,9 @@ def expand_var(value: Primitive) -> Primitive:
 
 
 class ExpectedOutcome(AutoEnum):
+    ANY = alias('any')  # type: ignore
+    """Expected outcome for any outcome."""
+
     ACCEPTED = alias('accepted', 'ac', 'correct')  # type: ignore
     """Expected outcome for correct solutions (AC)."""
 
@@ -97,6 +100,8 @@ class ExpectedOutcome(AutoEnum):
     Especially useful for environments where TLE and RTE are indistinguishable."""
 
     def style(self) -> str:
+        if self == ExpectedOutcome.ANY:
+            return 'orange'
         if self == ExpectedOutcome.ACCEPTED:
             return 'green'
         if self == ExpectedOutcome.WRONG_ANSWER:
@@ -115,6 +120,8 @@ class ExpectedOutcome(AutoEnum):
         return self in [ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TLE_OR_RTE]
 
     def match(self, outcome: Outcome) -> bool:
+        if self == ExpectedOutcome.ANY:
+            return True
         if self == ExpectedOutcome.ACCEPTED:
             return outcome == Outcome.ACCEPTED
         if self == ExpectedOutcome.ACCEPTED_OR_TLE:
