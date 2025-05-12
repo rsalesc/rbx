@@ -1,8 +1,12 @@
 import os
 import pathlib
-from typing import Optional
+from typing import Any, Optional
 
 from rbx.box import setter_config
+
+
+def ref(text: Any) -> str:
+    return f'[item]{text}[/item]'
 
 
 def href(url: os.PathLike[str], text: Optional[str] = None, style: str = 'item') -> str:

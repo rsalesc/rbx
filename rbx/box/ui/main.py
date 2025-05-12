@@ -6,6 +6,7 @@ from textual.containers import Center
 from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
 
+from rbx.box import remote
 from rbx.box.ui.screens.differ import DifferScreen
 from rbx.box.ui.screens.run_explorer import RunExplorerScreen
 from rbx.box.ui.screens.test_explorer import TestExplorerScreen
@@ -57,5 +58,7 @@ def start():
 
 
 def start_differ(path1: pathlib.Path, path2: pathlib.Path):
+    path1, path2 = remote.expand_files([path1, path2])
+
     app = rbxDifferApp(path1, path2)
     app.run()

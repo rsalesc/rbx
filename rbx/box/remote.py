@@ -3,9 +3,11 @@ import re
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple, Union
 
+import typer
+
 from rbx import console
-from rbx.box import package
-from rbx.box.formatting import href
+from rbx.box import cd, package
+from rbx.box.formatting import href, ref
 
 PathLike = Union[str, pathlib.Path]
 
@@ -106,6 +108,12 @@ def _try_cache(path: pathlib.Path, expander: Expander) -> Optional[pathlib.Path]
 
 
 def _expand_path(path: pathlib.Path) -> Optional[pathlib.Path]:
+    if not cd.is_problem_package():
+        console.console.print(
+            f'Skipping expansion of {ref(path)} because we are not in a problem package.'
+        )
+        raise typer.Exit(1)
+
     for expander in REGISTERED_EXPANDERS:
         cached = _try_cache(path, expander)
         if cached is not None:
