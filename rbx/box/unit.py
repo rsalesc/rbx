@@ -14,6 +14,7 @@ from rbx.box.schema import (
     ValidatorOutcome,
     ValidatorTest,
 )
+from rbx.grading.steps import Outcome
 from rbx.utils import StatusProgress
 
 
@@ -180,6 +181,39 @@ async def run_checker_unit_tests(progress: StatusProgress):
             program_output=test.output or empty_file,
             skip_run_log=True,
         )
+
+        if test.answer is not None:
+            ans_result = await checkers.check(
+                compiled_digest,
+                run_log=None,
+                testcase=Testcase(
+                    inputPath=test.input or empty_file,
+                    outputPath=test.answer,
+                ),
+                program_output=test.answer,
+                skip_run_log=True,
+            )
+
+            if ans_result.outcome != Outcome.ACCEPTED:
+                console.console.print(
+                    f'[error]FAIL[/error] Unit test [item]#{i + 1}[/item] ({test.running_tests_formatted_string()})'
+                )
+                console.console.print(
+                    '[error]Error validating the [item].ans[/item] file.'
+                )
+                console.console.print(
+                    '[error]While checking your [item].ans[/item] against itself, the checker returned the following error:[/error]'
+                )
+                console.console.print(
+                    f'  [status]Verdict[/status] {ans_result.outcome.name}'
+                )
+                console.console.print(
+                    f'  [status]Message[/status] {ans_result.message}'
+                )
+                console.console.print(
+                    '[error]Please fix your [item].ans[/item] file and try again, or double-check that your checker is correct.[/error]'
+                )
+                continue
 
         markup = (
             '[success]OK[/success]'
