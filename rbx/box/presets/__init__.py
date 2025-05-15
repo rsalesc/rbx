@@ -3,7 +3,6 @@ import shutil
 import tempfile
 from typing import Annotated, Iterable, List, Optional, Sequence, Union
 
-import questionary
 import rich
 import rich.prompt
 import typer
@@ -497,6 +496,8 @@ def copy_local_preset(
     preset_remote_uri = preset_remote.url if preset_remote is not None else remote_uri
     if preset_remote_uri is None:
         return
+
+    import questionary
 
     add_submodule = questionary.confirm(
         'The preset is installed from a remote Git repository. Do you want to add it as a submodule of your project?',
