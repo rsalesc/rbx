@@ -317,10 +317,7 @@ async def generate_output_for_testcase(
         capture_pipes=True,
     )
 
-    if (
-        eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-        and eval.result.no_tle_outcome == Outcome.ACCEPTED
-    ):
+    if eval.result.outcome.is_slow() and eval.result.no_tle_outcome == Outcome.ACCEPTED:
         console.console.print(
             f'[warning]Testcase [item]{testcase.inputPath}[/item] finished in TLE, but test was generated successfully.[/warning]'
         )

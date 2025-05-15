@@ -130,7 +130,7 @@ class RunSolutionResult:
 
 def is_fast(solution: Solution) -> bool:
     # If solution has TLE tag, it is considered slow.
-    return not solution.outcome.match(Outcome.TIME_LIMIT_EXCEEDED)
+    return not solution.outcome.is_slow()
 
 
 def get_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solution]:
@@ -794,7 +794,7 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
         return 'green'
     if outcome == Outcome.WRONG_ANSWER:
         return 'red'
-    if outcome == Outcome.TIME_LIMIT_EXCEEDED:
+    if outcome.is_slow():
         return 'yellow'
     if outcome == Outcome.RUNTIME_ERROR:
         return 'blue'
@@ -807,7 +807,7 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
     res = '✓'
     if outcome != Outcome.ACCEPTED:
         res = '✗'
-    if outcome == Outcome.TIME_LIMIT_EXCEEDED:
+    if outcome.is_slow():
         res = '⧖'
     if outcome == Outcome.RUNTIME_ERROR:
         res = '✗'
@@ -837,6 +837,19 @@ def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
 def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
     if not evals:
         return 0
+    evals_with_ile = [
+        eval for eval in evals if eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
+    ]
+    for eval in evals_with_ile:
+        # Try every way of estimating a ILE max timelimit.
+        if eval.log.metadata is None:
+            continue
+        if eval.log.metadata.limits is not None:
+            expanded_tl = eval.log.metadata.limits.get_expanded_tl()
+            if expanded_tl is not None:
+                return expanded_tl
+        if eval.log.metadata.timeLimit is not None:
+            return eval.log.metadata.timeLimit
     return max(int((eval.log.time or 0.0) * 1000) for eval in evals)
 
 
@@ -857,7 +870,10 @@ def get_capped_evals_formatted_time(
     pkg = package.find_problem_package_or_die()
 
     max_time = _get_evals_time_in_ms(evals)
-    has_tle = any(eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED for eval in evals)
+    has_tle = any(eval.result.outcome.is_slow() for eval in evals)
+    has_ile = any(
+        eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED for eval in evals
+    )
     timelimits = [
         eval.log.metadata.limits.get_expanded_tl()
         for eval in evals
@@ -875,7 +891,7 @@ def get_capped_evals_formatted_time(
             # Using double TL for verification.
             tl = tl * 2
 
-    if has_tle and max_time >= tl:
+    if has_tle and max_time >= tl or has_ile:
         return f'>{tl} ms'
     return f'{max_time} ms'
 
@@ -960,8 +976,7 @@ def get_solution_outcome_report(
         ):
             no_tle_bad_verdicts.add(eval.result.no_tle_outcome)
         has_plain_tle = has_plain_tle or (
-            eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-            and eval.result.no_tle_outcome is None
+            eval.result.outcome.is_slow() and eval.result.no_tle_outcome is None
         )
         has_sanitizer_warnings = (
             has_sanitizer_warnings or eval.result.sanitizer_warnings
@@ -994,9 +1009,7 @@ def get_solution_outcome_report(
             report_got_verdicts = {Outcome.ACCEPTED}
 
     evals_time = _get_evals_time_in_ms(evals)
-    expected_outcome_is_tle = solution.outcome.match(
-        Outcome.TIME_LIMIT_EXCEEDED
-    ) and not solution.outcome.match(Outcome.ACCEPTED)
+    expected_outcome_is_tle = solution.outcome.matches_tle_and_is_incorrect()
     if (
         # Running verification with double TL.
         verification.value >= VerificationLevel.FULL.value

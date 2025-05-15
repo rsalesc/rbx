@@ -34,6 +34,7 @@ class Outcome(Enum):
     WRONG_ANSWER = 'wrong-answer'
     MEMORY_LIMIT_EXCEEDED = 'memory-limit-exceeded'
     TIME_LIMIT_EXCEEDED = 'time-limit-exceeded'
+    IDLENESS_LIMIT_EXCEEDED = 'idleness-limit-exceeded'
     RUNTIME_ERROR = 'runtime-error'
     OUTPUT_LIMIT_EXCEEDED = 'output-limit-exceeded'
     JUDGE_FAILED = 'judge-failed'
@@ -45,6 +46,12 @@ class Outcome(Enum):
             return cls._member_names_.index(o.name)
 
         return max(outcomes, key=_outcome_to_int)
+
+    def is_slow(self) -> bool:
+        return self in [
+            Outcome.TIME_LIMIT_EXCEEDED,
+            Outcome.IDLENESS_LIMIT_EXCEEDED,
+        ]
 
 
 class DigestHolder(BaseModel):

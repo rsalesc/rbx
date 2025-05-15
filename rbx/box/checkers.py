@@ -91,8 +91,10 @@ def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
 
     if run_log.exitstatus in [SandboxBase.EXIT_SIGNAL, SandboxBase.EXIT_NONZERO_RETURN]:
         return CheckerResult(outcome=Outcome.RUNTIME_ERROR)
-    if run_log.exitstatus in [SandboxBase.EXIT_TIMEOUT, SandboxBase.EXIT_TIMEOUT_WALL]:
+    if run_log.exitstatus == SandboxBase.EXIT_TIMEOUT:
         return CheckerResult(outcome=Outcome.TIME_LIMIT_EXCEEDED)
+    if run_log.exitstatus == SandboxBase.EXIT_TIMEOUT_WALL:
+        return CheckerResult(outcome=Outcome.IDLENESS_LIMIT_EXCEEDED)
     if run_log.exitstatus == SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED:
         return CheckerResult(outcome=Outcome.MEMORY_LIMIT_EXCEEDED)
     if run_log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR:
@@ -103,7 +105,7 @@ def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
 
 
 def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerResult:
-    if result.outcome == Outcome.TIME_LIMIT_EXCEEDED:
+    if result.outcome.is_slow():
         # This already is a TLE outcome.
         return result
     is_sanitized = (

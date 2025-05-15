@@ -119,31 +119,39 @@ class ExpectedOutcome(AutoEnum):
     def is_slow(self) -> bool:
         return self in [ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TLE_OR_RTE]
 
+    def matches_tle_and_is_incorrect(self) -> bool:
+        return self.match(Outcome.TIME_LIMIT_EXCEEDED) and not self.match(
+            Outcome.ACCEPTED
+        )
+
     def match(self, outcome: Outcome) -> bool:
         if self == ExpectedOutcome.ANY:
             return True
         if self == ExpectedOutcome.ACCEPTED:
             return outcome == Outcome.ACCEPTED
         if self == ExpectedOutcome.ACCEPTED_OR_TLE:
-            return outcome in {Outcome.ACCEPTED, Outcome.TIME_LIMIT_EXCEEDED}
+            return outcome in {Outcome.ACCEPTED} or outcome.is_slow()
         if self == ExpectedOutcome.WRONG_ANSWER:
             return outcome == Outcome.WRONG_ANSWER
         if self == ExpectedOutcome.INCORRECT:
-            return outcome in {
-                Outcome.WRONG_ANSWER,
-                Outcome.RUNTIME_ERROR,
-                Outcome.MEMORY_LIMIT_EXCEEDED,
-                Outcome.TIME_LIMIT_EXCEEDED,
-                Outcome.OUTPUT_LIMIT_EXCEEDED,
-            }
+            return (
+                outcome
+                in {
+                    Outcome.WRONG_ANSWER,
+                    Outcome.RUNTIME_ERROR,
+                    Outcome.MEMORY_LIMIT_EXCEEDED,
+                    Outcome.OUTPUT_LIMIT_EXCEEDED,
+                }
+                or outcome.is_slow()
+            )
         if self == ExpectedOutcome.RUNTIME_ERROR:
             return outcome == Outcome.RUNTIME_ERROR
         if self == ExpectedOutcome.TIME_LIMIT_EXCEEDED:
-            return outcome == Outcome.TIME_LIMIT_EXCEEDED
+            return outcome.is_slow()
         if self == ExpectedOutcome.MEMORY_LIMIT_EXCEEDED:
             return outcome == Outcome.MEMORY_LIMIT_EXCEEDED
         if self == ExpectedOutcome.TLE_OR_RTE:
-            return outcome in {Outcome.TIME_LIMIT_EXCEEDED, Outcome.RUNTIME_ERROR}
+            return outcome in {Outcome.RUNTIME_ERROR} or outcome.is_slow()
         if self == ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED:
             return outcome == Outcome.OUTPUT_LIMIT_EXCEEDED
         return False

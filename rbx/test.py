@@ -158,7 +158,7 @@ def _pretty_print_outcome_panel(
     problem: DumpedProblem, eval: steps.Evaluation
 ) -> Panel:
     result: steps.CheckerResult = eval.result
-    is_tle = result.outcome == steps.Outcome.TIME_LIMIT_EXCEEDED or (
+    is_tle = result.outcome.is_slow() or (
         problem.timeLimit and eval.log.time * 1000 > problem.timeLimit
     )
 

@@ -18,10 +18,7 @@ def _both_accepted(eval_a: Evaluation, eval_b: Evaluation) -> bool:
 
 
 def _any_tle(eval_a: Evaluation, eval_b: Evaluation) -> bool:
-    return (
-        eval_a.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-        or eval_b.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-    )
+    return eval_a.result.outcome.is_slow() or eval_b.result.outcome.is_slow()
 
 
 def _get_faster(eval_a: Evaluation, eval_b: Evaluation) -> Evaluation:
@@ -130,13 +127,10 @@ class Retrier:
 
     def should_repeat(self, eval: Evaluation) -> bool:
         if self.is_stress:
-            if (
-                eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-                and self.retries_for_stress > 0
-            ):
+            if eval.result.outcome.is_slow() and self.retries_for_stress > 0:
                 self.retries_for_stress -= 1
                 return True
-        if eval.result.outcome == Outcome.TIME_LIMIT_EXCEEDED and self.retries > 0:
+        if eval.result.outcome.is_slow() and self.retries > 0:
             self.retries -= 1
             return True
         if self.reps > 0:
