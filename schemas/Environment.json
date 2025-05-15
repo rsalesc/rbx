@@ -1,0 +1,511 @@
+{
+    "$defs": {
+        "BocaExtension": {
+            "properties": {
+                "languages": {
+                    "default": [
+                        "c",
+                        "cpp",
+                        "cc",
+                        "kt",
+                        "java",
+                        "py2",
+                        "py3"
+                    ],
+                    "items": {
+                        "enum": [
+                            "c",
+                            "cpp",
+                            "cc",
+                            "kt",
+                            "java",
+                            "py2",
+                            "py3"
+                        ],
+                        "type": "string"
+                    },
+                    "title": "Languages",
+                    "type": "array"
+                },
+                "flags": {
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "default": {},
+                    "title": "Flags",
+                    "type": "object"
+                },
+                "maximumTimeError": {
+                    "default": 0.2,
+                    "title": "Maximumtimeerror",
+                    "type": "number"
+                },
+                "preferContestLetter": {
+                    "default": false,
+                    "title": "Prefercontestletter",
+                    "type": "boolean"
+                }
+            },
+            "title": "BocaExtension",
+            "type": "object"
+        },
+        "BocaLanguageExtension": {
+            "properties": {
+                "bocaLanguage": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Bocalanguage"
+                }
+            },
+            "title": "BocaLanguageExtension",
+            "type": "object"
+        },
+        "CompilationConfig": {
+            "properties": {
+                "commands": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "title": "Commands"
+                },
+                "sandbox": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/EnvironmentSandbox"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            },
+            "title": "CompilationConfig",
+            "type": "object"
+        },
+        "EnvironmentLanguage": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "title": "Name",
+                    "type": "string"
+                },
+                "readable_name": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Readable Name"
+                },
+                "extension": {
+                    "title": "Extension",
+                    "type": "string"
+                },
+                "compilation": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CompilationConfig"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "execution": {
+                    "$ref": "#/$defs/ExecutionConfig"
+                },
+                "fileMapping": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/FileMapping"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "extensions": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/LanguageExtensions"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            },
+            "required": [
+                "name",
+                "extension",
+                "execution"
+            ],
+            "title": "EnvironmentLanguage",
+            "type": "object"
+        },
+        "EnvironmentSandbox": {
+            "additionalProperties": false,
+            "properties": {
+                "maxProcesses": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": 1,
+                    "title": "Maxprocesses"
+                },
+                "timeLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Timelimit"
+                },
+                "wallTimeLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Walltimelimit"
+                },
+                "memoryLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Memorylimit"
+                },
+                "fileSizeLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Filesizelimit"
+                },
+                "stackLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Stacklimit"
+                },
+                "preserveEnv": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": false,
+                    "title": "Preserveenv"
+                },
+                "mirrorDirs": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "title": "Mirrordirs"
+                }
+            },
+            "title": "EnvironmentSandbox",
+            "type": "object"
+        },
+        "ExecutionConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "command": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Command"
+                },
+                "sandbox": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/EnvironmentSandbox"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                },
+                "problemLimits": {
+                    "$ref": "#/$defs/Limits"
+                }
+            },
+            "title": "ExecutionConfig",
+            "type": "object"
+        },
+        "Extensions": {
+            "properties": {
+                "boca": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/BocaExtension"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Environment-level extensions for BOCA packaging."
+                }
+            },
+            "title": "Extensions",
+            "type": "object"
+        },
+        "FileMapping": {
+            "additionalProperties": false,
+            "properties": {
+                "input": {
+                    "default": "stdin",
+                    "title": "Input",
+                    "type": "string"
+                },
+                "output": {
+                    "default": "stdout",
+                    "title": "Output",
+                    "type": "string"
+                },
+                "error": {
+                    "default": "stderr",
+                    "title": "Error",
+                    "type": "string"
+                },
+                "compilable": {
+                    "default": "compilable",
+                    "title": "Compilable",
+                    "type": "string"
+                },
+                "executable": {
+                    "default": "executable",
+                    "title": "Executable",
+                    "type": "string"
+                }
+            },
+            "title": "FileMapping",
+            "type": "object"
+        },
+        "LanguageExtensions": {
+            "properties": {
+                "boca": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/BocaLanguageExtension"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Language-level extensions for BOCA packaging."
+                }
+            },
+            "title": "LanguageExtensions",
+            "type": "object"
+        },
+        "Limits": {
+            "properties": {
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override time limit with, in milliseconds.",
+                    "title": "Time"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override memory limit with, in MB.",
+                    "title": "Memory"
+                },
+                "output": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override output limit with, in KB.",
+                    "title": "Output"
+                },
+                "isDoubleTL": {
+                    "default": false,
+                    "description": "Whether to use double TL for this language.",
+                    "title": "Isdoubletl",
+                    "type": "boolean"
+                }
+            },
+            "title": "Limits",
+            "type": "object"
+        },
+        "TimingConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "formula": {
+                    "default": "step_up(max(fastest * 3, slowest * 1.5), 100)",
+                    "title": "Formula",
+                    "type": "string"
+                }
+            },
+            "title": "TimingConfig",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "defaultFileMapping": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/FileMapping"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
+        "defaultCompilation": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/CompilationConfig"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
+        "defaultExecution": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/ExecutionConfig"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        },
+        "languages": {
+            "default": [],
+            "items": {
+                "$ref": "#/$defs/EnvironmentLanguage"
+            },
+            "title": "Languages",
+            "type": "array"
+        },
+        "sandbox": {
+            "default": "stupid",
+            "title": "Sandbox",
+            "type": "string"
+        },
+        "preset": {
+            "default": "default",
+            "title": "Preset",
+            "type": "string"
+        },
+        "timing": {
+            "$ref": "#/$defs/TimingConfig"
+        },
+        "extensions": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Extensions"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null
+        }
+    },
+    "title": "Environment",
+    "type": "object"
+}

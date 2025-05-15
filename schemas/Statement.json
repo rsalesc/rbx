@@ -1,0 +1,156 @@
+{
+    "$defs": {
+        "JinjaTeX": {
+            "properties": {
+                "type": {
+                    "const": "jinja-tex",
+                    "enum": [
+                        "jinja-tex"
+                    ],
+                    "title": "Type",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "JinjaTeX",
+            "type": "object"
+        },
+        "StatementType": {
+            "enum": [
+                "rbxTeX",
+                "TeX",
+                "JinjaTeX",
+                "PDF"
+            ],
+            "title": "StatementType",
+            "type": "string"
+        },
+        "TexToPDF": {
+            "description": "Configures the conversion between LaTeX and PDF using pdfLaTeX.",
+            "properties": {
+                "type": {
+                    "const": "tex2pdf",
+                    "enum": [
+                        "tex2pdf"
+                    ],
+                    "title": "Type",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "TexToPDF",
+            "type": "object"
+        },
+        "rbxToTeX": {
+            "description": "Configures the conversion between rbxTeX and LaTeX.",
+            "properties": {
+                "type": {
+                    "const": "rbx-tex",
+                    "enum": [
+                        "rbx-tex"
+                    ],
+                    "title": "Type",
+                    "type": "string"
+                },
+                "template": {
+                    "default": "template.rbx.tex",
+                    "description": "Path to the template that should be used to render the rbx-tex blocks.",
+                    "format": "path",
+                    "title": "Template",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "rbxToTeX",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "title": {
+            "description": "Name of the problem, as it appears in the statement.",
+            "title": "Title",
+            "type": "string"
+        },
+        "path": {
+            "description": "Path to the input statement file.",
+            "format": "path",
+            "title": "Path",
+            "type": "string"
+        },
+        "type": {
+            "allOf": [
+                {
+                    "$ref": "#/$defs/StatementType"
+                }
+            ],
+            "description": "Type of the input statement file."
+        },
+        "steps": {
+            "default": [],
+            "description": "\nDescribes a sequence of conversion steps that should be applied to the statement file.\n\nUsually, it is not necessary to specify these, as they can be inferred from the\ninput statement type and the output statement type, but you can use this to force\ncertain conversion steps to happen.\n",
+            "items": {
+                "anyOf": [
+                    {
+                        "$ref": "#/$defs/TexToPDF"
+                    },
+                    {
+                        "$ref": "#/$defs/JinjaTeX"
+                    },
+                    {
+                        "$ref": "#/$defs/rbxToTeX"
+                    }
+                ]
+            },
+            "title": "Steps",
+            "type": "array"
+        },
+        "configure": {
+            "default": [],
+            "description": "\nConfigure how certain conversion steps should happen when applied to the statement file.\n\nDifferent from the `steps` field, this does not force the steps to happen, but rather only\nconfigure them in case they are applied.\n",
+            "items": {
+                "anyOf": [
+                    {
+                        "$ref": "#/$defs/TexToPDF"
+                    },
+                    {
+                        "$ref": "#/$defs/JinjaTeX"
+                    },
+                    {
+                        "$ref": "#/$defs/rbxToTeX"
+                    }
+                ]
+            },
+            "title": "Configure",
+            "type": "array"
+        },
+        "assets": {
+            "default": [],
+            "description": "\nAssets relative to the package directory that should be included while building\nthe statement. Files will be included in the same folder as the statement file, preserving\ntheir relativeness. Can be glob pattern as well, such as `imgs/*.png`.\n",
+            "items": {
+                "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+        },
+        "language": {
+            "default": "en",
+            "description": "Language this is statement is written in.",
+            "title": "Language",
+            "type": "string"
+        }
+    },
+    "required": [
+        "title",
+        "path",
+        "type"
+    ],
+    "title": "Statement",
+    "type": "object"
+}

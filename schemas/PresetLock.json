@@ -1,0 +1,54 @@
+{
+    "$defs": {
+        "LockedAsset": {
+            "properties": {
+                "path": {
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "hash": {
+                    "title": "Hash",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path",
+                "hash"
+            ],
+            "title": "LockedAsset",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "name": {
+            "title": "Name",
+            "type": "string"
+        },
+        "uri": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Uri"
+        },
+        "assets": {
+            "default": [],
+            "items": {
+                "$ref": "#/$defs/LockedAsset"
+            },
+            "title": "Assets",
+            "type": "array"
+        }
+    },
+    "required": [
+        "name"
+    ],
+    "title": "PresetLock",
+    "type": "object"
+}
