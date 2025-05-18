@@ -62,6 +62,11 @@ class RunTestExplorerScreen(Screen):
                 yield TwoSidedTestBoxWidget(id='test-output')
 
     async def on_mount(self):
+        self.title = str(self.solution.path)
+
+        if self.diff_solution is not None:
+            self.title = f'{self.title} vs. {self.diff_solution.path}'
+
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
 
