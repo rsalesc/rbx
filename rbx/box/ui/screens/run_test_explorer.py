@@ -13,7 +13,9 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases,
 )
+from rbx.box.ui.screens.rich_log_modal import RichLogModal
 from rbx.box.ui.utils.run_ui import (
+    get_metadata_markup,
     get_run_testcase_markup,
     get_run_testcase_metadata_markup,
 )
@@ -30,6 +32,7 @@ class RunTestExplorerScreen(Screen):
         ('3', 'show_log', 'Show log'),
         ('m', 'toggle_metadata', 'Toggle metadata'),
         ('s', 'toggle_side_by_side', 'Toggle sxs'),
+        ('g', 'toggle_test_metadata', 'Toggle test metadata'),
     ]
 
     side_by_side: reactive[bool] = reactive(False)
@@ -169,3 +172,15 @@ class RunTestExplorerScreen(Screen):
             return
         widget = self.query_one('#test-output', TwoSidedTestBoxWidget)
         widget.diff_with_data = diff_with_data
+
+    def action_toggle_test_metadata(self):
+        list_view = self.query_one('#test-list', ListView)
+        if list_view.index is None:
+            return
+        entry = self._entries[list_view.index]
+        self.app.push_screen(
+            RichLogModal(
+                get_metadata_markup(entry),
+                title='Testcase metadata',
+            )
+        )

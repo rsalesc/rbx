@@ -11,6 +11,7 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases_from_groups,
 )
+from rbx.box.ui.utils.run_ui import get_metadata_markup
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
@@ -78,19 +79,7 @@ class TestExplorerScreen(Screen):
         )
 
         metadata.clear()
-        metadata.write(
-            f'[bold]{entry.group_entry.group}[/bold] / [bold]{entry.group_entry.index}[/bold]'
-        )
-        if entry.metadata.copied_from is not None:
-            metadata.write(
-                f'[bold]Copied from:[/bold] {entry.metadata.copied_from.inputPath}'
-            )
-        if entry.metadata.generator_call is not None:
-            metadata.write(f'[bold]Gen. call:[/bold] {entry.metadata.generator_call}')
-        if entry.metadata.generator_script is not None:
-            metadata.write(
-                f'[bold]Gen. script:[/bold] {entry.metadata.generator_script}'
-            )
+        metadata.write(get_metadata_markup(entry))
 
     async def _update_tests(self):
         self.watch(

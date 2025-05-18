@@ -4,6 +4,7 @@ from typing import List, Optional
 from rbx import utils
 from rbx.box import package, solutions
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
+from rbx.box.testcase_extractors import GenerationTestcaseEntry
 from rbx.box.testcase_utils import TestcaseEntry
 from rbx.grading.steps import Evaluation
 
@@ -92,4 +93,16 @@ def get_run_testcase_metadata_markup(
     lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
     if checker_msg is not None:
         lines.append(f'[b]Checker:[/b] {checker_msg}')
+    return '\n'.join(lines)
+
+
+def get_metadata_markup(entry: GenerationTestcaseEntry) -> str:
+    lines = []
+    lines.append(f'[b]{entry.group_entry.group}[/b] / [b]{entry.group_entry.index}[/b]')
+    if entry.metadata.copied_from is not None:
+        lines.append(f'[b]Copied from:[/b] {entry.metadata.copied_from.inputPath}')
+    if entry.metadata.generator_call is not None:
+        lines.append(f'[b]Gen. call:[/b] {entry.metadata.generator_call}')
+    if entry.metadata.generator_script is not None:
+        lines.append(f'[b]Gen. script:[/b] {entry.metadata.generator_script}')
     return '\n'.join(lines)

@@ -1,10 +1,11 @@
 Screen {
         background: $background;
         color: $text;
+        align: center middle;
 }
 
-Screen {
-        align: center middle;
+ModalScreen {
+        background: $background 65%;
 }
 
 ListView {
@@ -106,4 +107,20 @@ TestExplorerScreen, RunTestExplorerScreen {
                 border: solid $accent;
                 padding: 0 1;
         }
+}
+
+#rich-dialog {
+        max-width: 80;
+        height: auto;
+        max-height: 5;
+
+        RichLog {
+                border: solid $accent;
+                padding: 0 1;
+        }
+}
+
+#selector-dialog {
+        max-width: 80;
+        height: auto;
 }
