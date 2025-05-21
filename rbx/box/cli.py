@@ -552,18 +552,17 @@ def create(
 @syncer.sync
 async def stress(
     name: Annotated[
-        str,
+        Optional[str],
         typer.Argument(
-            help='Name of the stress test to run (specified in problem.rbx.yml), '
-            'or the generator to run, in case -g is specified.'
+            help='Name of the stress test to run (specified in problem.rbx.yml).'
         ),
-    ],
+    ] = None,
     generator_args: Annotated[
         Optional[str],
         typer.Option(
             '--generator',
             '-g',
-            help='Run generator [name] with these args.',
+            help='Generator call to use to generate a single test for execution.',
         ),
     ] = None,
     finder: Annotated[
@@ -610,9 +609,9 @@ async def stress(
 
     with utils.StatusProgress('Running stress...') as s:
         report = await stresses.run_stress(
-            name,
             timeout,
-            args=generator_args,
+            name=name,
+            generator_call=generator_args,
             finder=finder,
             findingsLimit=findings,
             progress=s,

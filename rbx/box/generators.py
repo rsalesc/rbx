@@ -110,7 +110,10 @@ def get_all_built_testcases() -> Dict[str, List[Testcase]]:
 
 
 def get_call_from_string(call_str: str) -> GeneratorCall:
-    name, args = call_str.split(None, 1)
+    try:
+        name, args = call_str.split(None, 1)
+    except ValueError:
+        return GeneratorCall(name=call_str, args='')
     return GeneratorCall(name=name, args=args)
 
 

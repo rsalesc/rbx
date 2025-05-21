@@ -8,7 +8,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import checkers, package, validators
+from rbx.box import checkers, generators, package, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.generators import (
     GenerationMetadata,
@@ -51,10 +51,10 @@ def _compile_finder(finder: CodeItem) -> str:
 
 
 async def run_stress(
-    name: str,
     timeoutInSeconds: int,
+    name: Optional[str] = None,
     finder: Optional[str] = None,
-    args: Optional[str] = None,
+    generator_call: Optional[str] = None,
     findingsLimit: int = 1,
     verbose: bool = False,
     progress: Optional[StatusProgress] = None,
@@ -68,12 +68,23 @@ async def run_stress(
         raise typer.Exit(1)
 
     if finder:
+        if generator_call is None:
+            console.console.print(
+                '[error]Generator arguments are required for stress testing. Specify them through the [item]-g[/item] flag.[/error]'
+            )
+            raise typer.Exit(1)
+        generator = generators.get_call_from_string(generator_call)
         stress = Stress(
-            name=f'{name}',
-            generator=GeneratorCall(name=name, args=args or ''),
+            name=f'{generator.name}',
+            generator=generator,
             finder=finder,
         )
     else:
+        if name is None:
+            console.console.print(
+                '[error]Invalid stress test paramaters. Either provide a stress test name, or provide a finder expression (-f) and generator arguments (-g).[/error]'
+            )
+            raise typer.Exit(1)
         stress = package.get_stress(name)
 
     call = stress.generator
@@ -258,7 +269,7 @@ async def run_stress(
 
         if internal_error_results:
             console.console.print(
-                f'[error]Checkers failed during stress test [item]{name}[/item] with args [info]{expanded_generator_call.name} {expanded_generator_call.args}[/info][/error]'
+                f'[error]Checkers failed during stress test [item]{stress.name}[/item] with args [info]{expanded_generator_call.name} {expanded_generator_call.args}[/info][/error]'
             )
             for internal_error_result in internal_error_results:
                 assert internal_error_result.checker is not None
