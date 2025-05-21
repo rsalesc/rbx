@@ -124,3 +124,10 @@ TestExplorerScreen, RunTestExplorerScreen {
         max-width: 80;
         height: auto;
 }
+
+#run-tips {
+        border: solid $accent;
+        padding: 0 1;
+        height: auto;
+        text-align: center;
+}

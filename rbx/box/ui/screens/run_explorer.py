@@ -1,15 +1,19 @@
 from typing import Optional
 
 from textual.app import ComposeResult
+from textual.containers import Vertical
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
+from rbx.box import package
+from rbx.box.schema import TaskType
 from rbx.box.solutions import SolutionReportSkeleton
 from rbx.box.ui.screens.error import ErrorScreen
 from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
 from rbx.box.ui.screens.selector import SelectorScreen
 from rbx.box.ui.utils.run_ui import get_skeleton, get_solution_markup, has_run
+from rbx.box.ui.widgets.rich_log_box import RichLogBox
 
 
 class RunExplorerScreen(Screen):
@@ -29,9 +33,22 @@ class RunExplorerScreen(Screen):
                 Label(get_solution_markup(self.skeleton, sol), markup=True)
                 for i, sol in enumerate(self.skeleton.solutions)
             ]
-        run_list = ListView(*[ListItem(item) for item in items], id='run-list')
-        run_list.border_title = 'Runs'
-        yield run_list
+        with Vertical():
+            run_list = ListView(*[ListItem(item) for item in items], id='run-list')
+            run_list.border_title = 'Runs'
+            yield run_list
+
+            tips = RichLogBox(id='run-tips')
+            tips.markup = True
+            tips.display = False
+            tips.border_title = 'Tips'
+            pkg = package.find_problem_package_or_die()
+            if pkg.type == TaskType.COMMUNICATION:
+                tips.display = True
+                tips.write(
+                    'This is an interactive problem.\nYou can use the [bold blue]rbx -d run[/bold blue] command to capture the interaction between the processes and see them here.'
+                )
+            yield tips
 
     def on_mount(self):
         if not has_run():
