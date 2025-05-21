@@ -42,47 +42,47 @@
 umask 0022
 
 if [ "$1" == "" ]; then
-    echo "parameter problem"
-    exit 43
+  echo "parameter problem"
+  exit 43
 fi
 if [ ! -r "$1" ]; then
-    echo "$1 not found or it's not readable"
-    exit 44
+  echo "$1 not found or it's not readable"
+  exit 44
 fi
 name="$1"
 if [ ! -r "$1" ]; then
-    echo "$1 not found or it's not readable"
-    exit 44
+  echo "$1 not found or it's not readable"
+  exit 44
 fi
 mkdir -p src
 if [ "${name##*.}" == "zip" -a "${name##*.}" == "ZIP" ]; then
-	unzip "$name" -d src
-	name="*.c"
+  unzip "$name" -d src
+  name="*.c"
 else
-	cp "$name" src
+  cp "$name" src
 fi
 id -u bocajail >/dev/null 2>/dev/null
 if [ $? == 0 ]; then
-	bocau=`id -u bocajail`
-	bocag=`id -g bocajail`
-	chown bocajail.nogroup .
+  bocau=$(id -u bocajail)
+  bocag=$(id -g bocajail)
+  chown bocajail.nogroup .
 else
-	bocau=`id -u nobody`
-	bocag=`id -g nobody`
-	chown nobody.nogroup .
+  bocau=$(id -u nobody)
+  bocag=$(id -g nobody)
+  chown nobody.nogroup .
 fi
 if [ "$bocau" == "" -o "$bocag" == "" ]; then
-	echo "error finding user to run script"
-	exit 43
+  echo "error finding user to run script"
+  exit 43
 fi
 
 # this script makes use of safeexec to execute the code with less privilegies
 # make sure that directories below are correct.
-sf=`which safeexec`
+sf=$(which safeexec)
 [ -x "$sf" ] || sf=/usr/bin/safeexec
 if [ ! -x $sf ]; then
-    echo "$sf not found or it's not executable"
-    exit 46
+  echo "$sf not found or it's not executable"
+  exit 46
 fi
 maxm=512000
 if [ "$4" != "" ]; then
@@ -93,9 +93,9 @@ fi
 
 # setting up the timelimit according to the problem
 if [ "$3" == "" ]; then
-time=5
+  time=5
 else
-time=$3
+  time=$3
 fi
 let "ttime = $time + 30"
 
@@ -106,7 +106,7 @@ else
 fi
 
 rm -f "$exe" compileit.retcode runit.retcode 2>/dev/null
-cat <<EOF > compileit.sh
+cat <<EOF >compileit.sh
 #!/bin/bash
 cc=\`which python2\`
 [ -x "\$cc" ] || cc=/usr/bin/python2
@@ -115,6 +115,14 @@ if [ ! -x "\$cc" ]; then
     exit 47
 fi
 cd src
+"\$cc" -m py_compile "$name"
+pyc_ret=\$?
+if [ "\$pyc_ret" != "0" ]; then
+    echo "python syntax check failed: \$pyc_ret"
+    echo \$pyc_ret > ../compileit.retcode
+    exit 0
+fi
+
 echo "#!/usr/bin/python2" | cat - "$name" > "../$exe"
 chmod 755 "../$exe"
 echo \$? > ../compileit.retcode
@@ -122,13 +130,13 @@ exit 0
 EOF
 chmod 755 compileit.sh
 
-cdir=`pwd`
+cdir=$(pwd)
 echo "Current directory is $cdir" >&2
 echo $cdir | grep -q "/bocajail"
 if [ $? == 0 ]; then
-    cdir=`echo $cdir | sed "s/.*\/bocajail//"`
-    echo "Internal directory is $cdir"
-    cat <<EOF > runit.sh
+  cdir=$(echo $cdir | sed "s/.*\/bocajail//")
+  echo "Internal directory is $cdir"
+  cat <<EOF >runit.sh
 #!/bin/bash
 cd "$cdir"
 [ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
@@ -142,32 +150,32 @@ if [ ! -d /bocajail ]; then
   /bin/umount /sys 2>/dev/null
 fi
 EOF
-    chmod 755 runit.sh
-    chroot /bocajail "$cdir/runit.sh"
-    if [ -r runit.retcode ]; then
-    	ret=`cat runit.retcode`
-    else
-		ret=99
-    fi
+  chmod 755 runit.sh
+  chroot /bocajail "$cdir/runit.sh"
+  if [ -r runit.retcode ]; then
+    ret=$(cat runit.retcode)
+  else
+    ret=99
+  fi
 else
-	echo "COMPILATION IS NOT BEING CHROOTED -- THIS IS NOT AN IDEAL SETTING"
-	$sf -r1 -F1000 -n0 -U$bocau -G$bocag -C. -ostdout0 -estderr0 -d$maxm -m$maxm -f20000 -t$ttime -T$ttime ./compileit.sh
-	ret=$?
+  echo "COMPILATION IS NOT BEING CHROOTED -- THIS IS NOT AN IDEAL SETTING"
+  $sf -r1 -F1000 -n0 -U$bocau -G$bocag -C. -ostdout0 -estderr0 -d$maxm -m$maxm -f20000 -t$ttime -T$ttime ./compileit.sh
+  ret=$?
 fi
 if [ -f "stdout0" ]; then
-	cat "stdout0"
+  cat "stdout0"
 fi
 if [ -f "stderr0" ]; then
-	cat "stderr0"
+  cat "stderr0"
 fi
 rm -rf src/
 if [ "$ret" != "0" ]; then
-	echo "Compilation Error: $ret"
-	exit $ret
+  echo "Compilation Error: $ret"
+  exit $ret
 fi
-ret=`cat compileit.retcode`
+ret=$(cat compileit.retcode)
 if [ "$ret" != "0" ]; then
-	echo "Compilation Error: $ret"
-	ret=1
+  echo "Compilation Error: $ret"
+  ret=1
 fi
 exit $ret
