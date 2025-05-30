@@ -107,8 +107,13 @@ cdir=$(pwd)
 echo "Current directory is $cdir" >&2
 
 # Make sure the class name is Main.
-mv "src/$name" "src/Main.java"
-sed -i -E "s/public[[:space:]]+class[[:space:]]+[A-Za-z0-9_\\$]+([^A-Za-z0-9_\\$])/public class Main\1/" src/Main.java
+regex="public[[:space:]]+class[[:space:]]+[A-Za-z0-9_\\$]+([^A-Za-z0-9_\\$])"
+klass=$(basename "$name" .java)
+if [ -n "$(sed -n -E "/$regex/p" src/$name)" ]; then
+  klass="Main"
+  mv "src/$name" "src/Main.java"
+  sed -i -E "s/$regex/public class Main\1/" src/Main.java
+fi
 
 cat <<EOF >compileit.sh
 #!/bin/bash
@@ -126,8 +131,8 @@ if [ ! -x \$jar ]; then
 fi
 export CLASSPATH=.:\$CLASSPATH
 cd src
-if [ -r "Main.java" ]; then
-  \$javac Main.java
+if [ -r "\$klass.java" ]; then
+  \$javac \$klass.java
   echo \$? > ../compileit.retcode
 fi
 find . -name "*.java" | while read lin; do
@@ -135,7 +140,7 @@ find . -name "*.java" | while read lin; do
   echo \$? > ../compileit.retcode
 done
 rm -f ../$jarfile
-\$jar cvfe ../$jarfile Main *
+\$jar cvfe ../$jarfile \$klass *
 exit 0
 EOF
 chmod 755 compileit.sh
