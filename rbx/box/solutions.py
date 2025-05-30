@@ -725,26 +725,24 @@ def expand_solutions_with_source(sols: List[str]) -> List[Tuple[Solution, bool]]
     pkg_sols = {str(sol.path): sol for sol in pkg.solutions}
 
     # Download remote sols.
-    sols = remote.expand_files(sols)
+    path_sols = remote.expand_files(sols)
 
     # Ensure sols exist.
-    sols = [sol for sol in sols if pathlib.Path(sol).is_file()]
+    path_sols = [sol for sol in path_sols if sol.is_file()]
 
     seen_sols = set()
     res: List[Tuple[Solution, bool]] = []
-    for sol in sols:
-        if sol in seen_sols:
+    for sol in path_sols:
+        if str(sol) in seen_sols:
             # This solution was already added.
             continue
-        if sol in pkg_sols:
+        if str(sol) in pkg_sols:
             # This solution is in the package.
-            res.append((pkg_sols[sol], False))
+            res.append((pkg_sols[str(sol)], False))
         else:
             # This solution is fetched from some source.
-            res.append(
-                (Solution(path=pathlib.Path(sol), outcome=ExpectedOutcome.ANY), True)
-            )
-        seen_sols.add(sol)
+            res.append((Solution(path=sol, outcome=ExpectedOutcome.ANY), True))
+        seen_sols.add(str(sol))
     return res
 
 
