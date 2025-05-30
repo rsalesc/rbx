@@ -115,6 +115,12 @@ if [ -n "$(sed -n -E "/$regex/p" src/$name)" ]; then
   sed -i -E "s/$regex/public class Main\1/" src/Main.java
 fi
 
+echo "Klass is $klass"
+
+cat <<EOF >src/Manifest.txt
+Main-Class: $klass
+EOF
+
 cat <<EOF >compileit.sh
 #!/bin/bash
 javac=$(which javac)
@@ -140,7 +146,7 @@ find . -name "*.java" | while read lin; do
   echo \$? > ../compileit.retcode
 done
 rm -f ../$jarfile
-\$jar cvfe ../$jarfile \$klass *
+\$jar cfm ../$jarfile Manifest.txt *
 exit 0
 EOF
 chmod 755 compileit.sh
@@ -182,6 +188,7 @@ fi
 if [ -f "stderr0" ]; then
   cat "stderr0"
 fi
+
 rm -rf src/
 if [ "$ret" != "0" ]; then
   echo "Compilation Error: $ret"
