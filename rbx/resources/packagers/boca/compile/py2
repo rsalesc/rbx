@@ -115,13 +115,13 @@ if [ ! -x "\$cc" ]; then
     exit 47
 fi
 cd src
-"\$cc" -m py_compile "$name"
-pyc_ret=\$?
-if [ "\$pyc_ret" != "0" ]; then
-    echo "python syntax check failed: \$pyc_ret"
-    echo \$pyc_ret > ../compileit.retcode
-    exit 0
-fi
+# "\$cc" -m py_compile "$name"
+# pyc_ret=\$?
+# if [ "\$pyc_ret" != "0" ]; then
+#     echo "python syntax check failed: \$pyc_ret"
+#     echo \$pyc_ret > ../compileit.retcode
+#     exit 0
+# fi
 
 echo "#!/usr/bin/python2" | cat - "$name" > "../$exe"
 chmod 755 "../$exe"
