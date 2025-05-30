@@ -78,6 +78,11 @@ async def polygon(
         '-u',
         help='If set, will upload the package to Polygon.',
     ),
+    preserve_language: bool = typer.Option(
+        False,
+        '--preserve-language',
+        help='If set, will preserve the original language of the statement.',
+    ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
@@ -86,7 +91,10 @@ async def polygon(
     if upload:
         from rbx.box.packaging.polygon.upload import upload_problem
 
-        await upload_problem(name=get_problem_name_with_contest_info())
+        await upload_problem(
+            name=get_problem_name_with_contest_info(),
+            preserve_language=preserve_language,
+        )
 
 
 @app.command('boca', help='Build a package for BOCA.')

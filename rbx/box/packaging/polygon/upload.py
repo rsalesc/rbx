@@ -286,7 +286,7 @@ def _upload_statement_resources(problem: api.Problem, statement: Statement):
         )
 
 
-def _upload_statement(problem: api.Problem):
+def _upload_statement(problem: api.Problem, preserve_language: bool = False):
     pkg = package.find_problem_package_or_die()
 
     languages = set()
@@ -300,9 +300,15 @@ def _upload_statement(problem: api.Problem):
             continue
         if statement.type != StatementType.rbxTeX:
             continue
+        statement_lang = code_to_langs([language])[0]
         console.console.print(
-            f'Uploading statement for language [item]{language}[/item] (polygon language: [item]{code_to_langs([language])[0]}[/item])...'
+            f'Uploading statement for language [item]{language}[/item] (polygon language: [item]{statement_lang}[/item])...'
         )
+        if not preserve_language and statement_lang != 'english':
+            console.console.print(
+                '[warning]By default, Polygon statements are uploaded in English.\n'
+                'If you want to preserve the original language of your statement, use [item]--preserve-language[/item].'
+            )
         blocks = _get_statement_blocks(statement)
         polygon_statement = api.Statement(
             encoding='utf-8',
@@ -316,7 +322,8 @@ def _upload_statement(problem: api.Problem):
             notes=_get_notes_with_explanations(blocks) or '',
         )
         problem.save_statement(
-            lang=code_to_langs([language])[0], problem_statement=polygon_statement
+            lang=statement_lang if preserve_language else 'english',
+            problem_statement=polygon_statement,
         )
 
         _upload_statement_resources(problem, statement)
@@ -326,7 +333,7 @@ def _normalize_problem_name(name: str) -> str:
     return name.replace(' ', '-').replace('_', '-').lower()
 
 
-async def upload_problem(name: str):
+async def upload_problem(name: str, preserve_language: bool = False):
     pkg = package.find_problem_package_or_die()
     name = _normalize_problem_name(name)
     problem = _find_or_create_problem(name)
@@ -345,7 +352,7 @@ async def upload_problem(name: str):
 
     _upload_solutions(problem)
     _upload_testcases(problem)
-    _upload_statement(problem)
+    _upload_statement(problem, preserve_language=preserve_language)
 
     # Commit.
     console.console.print('Committing changes...')
