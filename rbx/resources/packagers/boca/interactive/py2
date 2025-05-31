@@ -78,10 +78,10 @@ fi
 
 time=$3
 if [ "$time" -gt "0" ]; then
-  let "ttime = $time + 30"
+  let "ttime = $time * 4"
 else
   time=1
-  ttime=30
+  ttime=4
 fi
 
 nruns=1
@@ -123,11 +123,17 @@ SFPID=\$!
 ./interactor.exe "stdin0" "stdout0" <fifo.out >fifo.in 2>stderr0 &
 INTPID=\$!
 
-wait \$SFPID
-ECSF=\$?
-
 wait \$INTPID
 ECINT=\$?
+
+ECSF=0
+if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]]; then
+  # kill the solution
+  kill -9 \$SFPID
+else
+  wait \$SFPID
+  ECSF=\$?
+fi
 
 rm -rf fifo.in fifo.out
 

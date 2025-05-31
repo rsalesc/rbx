@@ -79,10 +79,10 @@ fi
 
 time=$3
 if [ "$time" -gt "0" ]; then
-  let "ttime = $time + 30"
+  let "ttime = $time * 4"
 else
   time=1
-  ttime=30
+  ttime=4
 fi
 
 nruns=1
