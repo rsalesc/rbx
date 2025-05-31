@@ -236,22 +236,23 @@ def each(ctx: typer.Context) -> None:
 
 @app.command(
     'on',
-    help='Run a command in the problem of a context.',
+    help='Run a command in the problem (or in a set of problems) of a context.',
     context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
 )
 @within_contest
-def on(ctx: typer.Context, problem: str) -> None:
+def on(ctx: typer.Context, problems: str) -> None:
     command = ' '.join(['rbx'] + ctx.args)
-    contest = find_contest_package_or_die()
-    for p in contest.problems:
-        if p.short_name == problem:
-            console.console.print(
-                f'[status]Running [item]{command}[/item] for [item]{problem}[/item]...[/status]'
-            )
-            command = ' '.join(['rbx'] + ctx.args)
-            subprocess.call(command, cwd=p.get_path(), shell=True)
-            return
+    problems_of_interest = contest_utils.get_problems_of_interest(problems)
 
-    console.console.print(
-        f'[error]Problem [item]{problem}[/item] not found in contest.[/error]'
-    )
+    if not problems_of_interest:
+        console.console.print(
+            f'[error]No problems found in contest matching [item]{problems}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+
+    for p in problems_of_interest:
+        console.console.print(
+            f'[status]Running [item]{command}[/item] for [item]{p.short_name}[/item]...[/status]'
+        )
+        subprocess.call(command, cwd=p.get_path(), shell=True)
+        console.console.print()

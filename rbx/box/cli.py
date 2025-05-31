@@ -136,11 +136,11 @@ def ui():
 
 @app.command(
     'on',
-    help='Run a command in the context of a problem of a contest.',
+    help='Run a command in the context of a problem (or a set of problems) of a contest.',
     context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
 )
-def on(ctx: typer.Context, problem: str) -> None:
-    contest.on(ctx, problem)
+def on(ctx: typer.Context, problems: str) -> None:
+    contest.on(ctx, problems)
 
 
 @app.command('diff', hidden=True)
