@@ -60,7 +60,7 @@ app.add_typer(
 )
 app.add_typer(
     download.app,
-    name='download',
+    name='download, down',
     cls=annotations.AliasGroup,
     help='Download an asset from supported repositories (sub-command).',
     rich_help_panel='Management',

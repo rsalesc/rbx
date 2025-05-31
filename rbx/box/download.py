@@ -5,7 +5,7 @@ from typing import Optional
 import typer
 
 from rbx import annotations, console
-from rbx.box import header, package
+from rbx.box import header, package, remote
 from rbx.box.schema import CodeItem
 from rbx.config import get_builtin_checker, get_jngen, get_testlib
 from rbx.grading import steps
@@ -72,3 +72,21 @@ def checker(name: str):
     console.console.print(
         f'[success]Downloaded [item]{name}[/item] into current package.[/success]'
     )
+
+
+@app.command('remote, r', help='Download a remote code.')
+@package.within_problem
+def remote_cmd(
+    name: str,
+    output: Optional[str] = typer.Option(
+        None,
+        '-o',
+        '--output',
+        help='Whether to not build outputs for tests and run checker.',
+    ),
+):
+    path = remote.expand_file(name)
+
+    if output is not None:
+        pathlib.Path(output).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(str(path), output)
