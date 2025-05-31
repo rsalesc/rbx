@@ -26,7 +26,7 @@ printf "%s" "${TestlibContent}" >testlib.h
 printf "%s" "${RbxHeaderContent}" >rbx.h
 printf "%s" "${CheckerContent}" >$CHECKER_PATH
 
-checker_hash=($(md5sum $CHECKER_PATH))
+checker_hash=($(cat $CHECKER_PATH rbx.h testlib.h | md5sum))
 checker_cache="/tmp/boca-chk-${checker_hash}"
 
 echo "Polygon checker hash: $checker_hash"
