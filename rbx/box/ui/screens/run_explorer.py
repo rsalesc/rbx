@@ -46,7 +46,7 @@ class RunExplorerScreen(Screen):
             if pkg.type == TaskType.COMMUNICATION:
                 tips.display = True
                 tips.write(
-                    'This is an interactive problem.\nYou can use the [bold blue]rbx -d run[/bold blue] command to capture the interaction between the processes and see them here.'
+                    'This is an interactive problem.\nYou can use the [bold blue]rbx --capture run[/bold blue] command to capture the interaction between the processes and see them here.'
                 )
             yield tips
 
