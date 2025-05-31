@@ -134,6 +134,15 @@ def ui():
     ui_pkg.start()
 
 
+@app.command(
+    'on',
+    help='Run a command in the context of a problem of a contest.',
+    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+)
+def on(ctx: typer.Context, problem: str) -> None:
+    contest.on(ctx, problem)
+
+
 @app.command('diff', hidden=True)
 def diff(path1: pathlib.Path, path2: pathlib.Path):
     from rbx.box.ui import main as ui_pkg

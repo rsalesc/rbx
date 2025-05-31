@@ -232,3 +232,26 @@ def each(ctx: typer.Context) -> None:
         console.console.print(
             '[error]One of the commands above failed. Check the output![/error]'
         )
+
+
+@app.command(
+    'on',
+    help='Run a command in the problem of a context.',
+    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+)
+@within_contest
+def on(ctx: typer.Context, problem: str) -> None:
+    command = ' '.join(['rbx'] + ctx.args)
+    contest = find_contest_package_or_die()
+    for p in contest.problems:
+        if p.short_name == problem:
+            console.console.print(
+                f'[status]Running [item]{command}[/item] for [item]{problem}[/item]...[/status]'
+            )
+            command = ' '.join(['rbx'] + ctx.args)
+            subprocess.call(command, cwd=p.get_path(), shell=True)
+            return
+
+    console.console.print(
+        f'[error]Problem [item]{problem}[/item] not found in contest.[/error]'
+    )
