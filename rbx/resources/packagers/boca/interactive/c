@@ -132,16 +132,26 @@ SFPID=\$!
 ./interactor.exe "stdin0" "stdout0" <fifo.out >fifo.in 2>stderr0 &
 INTPID=\$!
 
-wait \$INTPID
-ECINT=\$?
-
+ECINT=0
 ECSF=0
-if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]]; then
-  # kill the solution
-  kill -9 \$SFPID
-else
+
+wait -p EXITID -n \$SFPID \$INTPID
+ECEXIT=\$?
+if [[ \$ECEXIT -ne 0 ]]; then
+  kill -SIGTERM \$SFPID \$INTPID 2>/dev/null
+fi
+
+EXITFIRST=none
+if [[ \$EXITID -eq \$INTPID ]]; then
   wait \$SFPID
   ECSF=\$?
+  ECINT=\$ECEXIT
+  EXITFIRST=interactor
+else
+  wait \$INTPID
+  ECINT=\$?
+  ECSF=\$ECEXIT
+  EXITFIRST=solution
 fi
 
 rm -rf fifo.in fifo.out
@@ -149,27 +159,38 @@ rm -rf fifo.in fifo.out
 echo "Ran solution as \$@" &>>stderr0
 echo "interactor exitcode \$ECINT" &>>stderr0
 echo "solution exitcode \$ECSF" &>>stderr0
+echo "exit first \$EXITFIRST" &>>stderr0
 
-RTE=0
-if [[ \$ECSF -eq -13 ]]; then
-  RTE=0
-elif [[ \$ECSF -ne 0 ]] && cat stderr0 | grep -q "wrong output format Unexpected end of file"; then
-  echo "Found EOF RTE" &>>stderr0
-  RTE=1
+finish() {
+  echo "exitting from runit.sh with exit code \$1" &>>stderr0
+  exit \$1
+}
+
+# 1. Check for interactor errors.
+if [[ \$ECSF -eq -SIGPIPE ]] || [[ \$ECSF -eq -SIGTERM ]] || [[ \$ECSF -ne 0 ]] && ! cat stderr0 | grep -q "wrong output format Unexpected end of file"; then
+  if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]]; then
+    echo "testlib exitcode \$ECINT" >stdout0
+    finish 0
+  elif [[ \$ECINT -ne 0 ]]; then
+    finish 9
+  fi
 fi
 
-ret=0
-if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]] && [[ \$RTE -eq 0 ]]; then
+# 2. Check for solution errors.
+if [[ \$ECSF -ne 0 ]]; then
+  finish \$ECSF
+fi
+
+# 3. Check for interactor without looking at solution output.
+if [[ \$ECINT -ge 1 ]] && [[ \$ECINT -le 4 ]]; then
   echo "testlib exitcode \$ECINT" >stdout0
-  ret=0
-elif [[ \$ECSF -ne 0 ]]; then
-  ret=\$ECSF
+  finish 0
 elif [[ \$ECINT -ne 0 ]]; then
-  ret=9
+  finish 9
 fi
 
-echo "exitting from runit.sh with exit code \$ret" &>>stderr0
-exit \$ret
+# 4. Finish with zero and later check output.
+finish 0
 EOF
 
 chmod 755 runit.sh
