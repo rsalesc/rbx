@@ -86,3 +86,16 @@ async def polygon(
     await run_contest_packager(
         PolygonContestPackager, PolygonPackager, verification=verification
     )
+
+
+@app.command('pkg', help='Build a contest package for PKG.')
+@contest_package.within_contest
+@syncer.sync
+async def pkg(
+    verification: environment.VerificationParam,
+):
+    from rbx.box.packaging.pkg.packager import PkgContestPackager, PkgPackager
+
+    await run_contest_packager(
+        PkgContestPackager, PkgPackager, verification=verification
+    )

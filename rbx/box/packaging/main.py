@@ -132,3 +132,14 @@ async def moj(
     from rbx.box.packaging.moj.packager import MojPackager
 
     await run_packager(MojPackager, verification=verification, for_boca=for_boca)
+
+
+@app.command('pkg', help='Build a package for PKG.')
+@package.within_problem
+@syncer.sync
+async def pkg(
+    verification: environment.VerificationParam,
+):
+    from rbx.box.packaging.pkg.packager import PkgPackager
+
+    await run_packager(PkgPackager, verification=verification)

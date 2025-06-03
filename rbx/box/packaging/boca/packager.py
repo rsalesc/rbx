@@ -206,7 +206,6 @@ class BocaPackager(BasePackager):
         return compile_text
 
     def _copy_solutions(self, into_path: pathlib.Path):
-        into_path = into_path / 'solutions'
         for solution in package.get_solutions():
             dest_path = (
                 into_path
