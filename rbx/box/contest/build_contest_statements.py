@@ -85,36 +85,41 @@ def get_statement_builder_contest(
 
 def get_problems_for_statement(
     contest: Contest,
-    language: str,
+    contest_statement: ContestStatement,
     requires_matching_statement: bool = True,
 ) -> List[ExtractedProblem]:
     pkgs = get_problems(contest)
-    if not pkgs:
+    if not pkgs and not requires_matching_statement:
         console.console.print(
             '[error]No problems found in the contest, cannot infer statement type.[/error]'
         )
         raise typer.Exit(1)
 
+    def matches(statement: Statement) -> bool:
+        if not requires_matching_statement:
+            return True
+        if contest_statement.match is None:
+            return statement.language == contest_statement.language
+        return statement.name == contest_statement.match
+
     res = []
     for pkg, problem in zip(pkgs, contest.problems):
-        found = False
-        for statement in pkg.statements:
-            if statement.language == language or not requires_matching_statement:
-                found = True
-                res.append(
-                    ExtractedProblem(
-                        package=pkg,
-                        statement=statement,
-                        problem=problem,
-                        samples=_get_samples(problem),
-                    )
-                )
-                break
-        if not found:
+        matching_statements = [
+            statement for statement in pkg.statements if matches(statement)
+        ]
+        if not matching_statements:
             console.console.print(
-                f'[error]No statement found for language {language} in problem {problem.short_name}[/error]'
+                f'[error]No statement found for language {contest_statement.language} in problem {problem.short_name}[/error]'
             )
             raise typer.Exit(1)
+        res.append(
+            ExtractedProblem(
+                package=pkg,
+                statement=matching_statements[0],
+                problem=problem,
+                samples=_get_samples(problem),
+            )
+        )
 
     return res
 
@@ -149,7 +154,7 @@ def _build_problem_statements(
     is_editorial: bool = False,
 ) -> List[ExtractedProblem]:
     console.console.print('Building problem-level statements...')
-    extracted_problems = get_problems_for_statement(contest, statement.language)
+    extracted_problems = get_problems_for_statement(contest, statement)
     res = []
     contest_cwd_absolute = pathlib.Path().resolve()
     contest_assets = get_relative_assets(statement.path, statement.assets)
@@ -257,7 +262,7 @@ def build_statement_rooted(
     if statement.joiner is None:
         joiner = None
         extracted_problems = get_problems_for_statement(
-            contest, statement.language, requires_matching_statement=False
+            contest, statement, requires_matching_statement=False
         )
     else:
         # Build problem-level statements.

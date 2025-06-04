@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rbx.box.fields import NameField
+from rbx.box.fields import FNameField, NameField
 from rbx.box.schema import Primitive, expand_var
 from rbx.box.statements.schema import (
     ConversionStep,
@@ -98,6 +98,15 @@ Can be glob pattern as well, such as `imgs/*.png`.
 
     override: Optional[ProblemStatementOverride] = Field(
         default=None, description='Override configuration for problem statements.'
+    )
+
+    match: Optional[str] = FNameField(
+        default=None,
+        description="""
+        Name of the problem-level statement to match this statement against.
+
+        If not specified, will match against the first statement of the same language.
+        """,
     )
 
     # Vars to be re-used in the statement.
