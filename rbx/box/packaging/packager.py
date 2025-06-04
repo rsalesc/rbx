@@ -46,7 +46,7 @@ class BasePackager(ABC):
         pkg = package.find_problem_package_or_die()
 
         res = set()
-        for statement in pkg.statements:
+        for statement in pkg.expanded_statements:
             res.add(statement.language)
         return list(res)
 
@@ -89,7 +89,7 @@ class BasePackager(ABC):
 
     def get_statement_for_language(self, lang: str) -> Statement:
         pkg = package.find_problem_package_or_die()
-        for statement in pkg.statements:
+        for statement in pkg.expanded_statements:
             if statement.language == lang:
                 return statement
         raise
@@ -114,7 +114,7 @@ class BaseContestPackager(ABC):
         pkg = contest_package.find_contest_package_or_die()
 
         res = set()
-        for statement in pkg.statements:
+        for statement in pkg.expanded_statements:
             res.add(statement.language)
         return list(res)
 
@@ -123,7 +123,7 @@ class BaseContestPackager(ABC):
 
     def get_statement_for_language(self, lang: str) -> ContestStatement:
         contest = contest_package.find_contest_package_or_die()
-        for statement in contest.statements:
+        for statement in contest.expanded_statements:
             if statement.language == lang:
                 return statement
         raise

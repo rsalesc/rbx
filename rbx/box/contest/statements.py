@@ -81,7 +81,7 @@ async def build(
             return False
         return True
 
-    valid_statements = [st for st in contest.statements if should_process(st)]
+    valid_statements = [st for st in contest.expanded_statements if should_process(st)]
 
     if not valid_statements:
         console.console.print(

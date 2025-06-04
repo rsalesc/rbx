@@ -9,6 +9,7 @@ from pydantic_core import PydanticCustomError
 
 from rbx.autoenum import AutoEnum, alias
 from rbx.box.fields import FNameField, NameField
+from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import Statement
 from rbx.grading.steps import Outcome
 
@@ -463,6 +464,10 @@ that is correct and used as reference -- and should have the `accepted` outcome.
         default_factory=UnitTests,
         description='Unit tests for components of this problem.',
     )
+
+    @property
+    def expanded_statements(self) -> List[Statement]:
+        return expand_statements(self.statements)
 
     @property
     def expanded_vars(self) -> Dict[str, Primitive]:

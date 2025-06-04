@@ -32,11 +32,11 @@ class BocaPackager(BasePackager):
     def _get_main_statement(self) -> Statement:
         pkg = package.find_problem_package_or_die()
 
-        if not pkg.statements:
+        if not pkg.expanded_statements:
             console.console.print('[error]No statements found.[/error]')
             raise typer.Exit(1)
 
-        return pkg.statements[0]
+        return pkg.expanded_statements[0]
 
     def _get_main_built_statement(
         self, built_statements: List[BuiltStatement]

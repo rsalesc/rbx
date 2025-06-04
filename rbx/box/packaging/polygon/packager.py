@@ -59,7 +59,7 @@ class PolygonPackager(BasePackager):
         pkg = package.find_problem_package_or_die()
 
         lang_codes = set()
-        for statement in pkg.statements:
+        for statement in pkg.expanded_statements:
             lang_codes.add(statement.title)
 
         for lang in langs:

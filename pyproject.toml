@@ -42,6 +42,7 @@ aiofiles = "^24.1.0"
 colour = "^0.1.5"
 beautifulsoup4 = "^4.13.4"
 dateparser = "^1.2.1"
+deepmerge = "^2.0"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"

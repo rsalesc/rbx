@@ -364,7 +364,7 @@ async def build(
             return False
         return True
 
-    valid_statements = [st for st in pkg.statements if should_process(st)]
+    valid_statements = [st for st in pkg.expanded_statements if should_process(st)]
 
     if not valid_statements:
         console.console.print(

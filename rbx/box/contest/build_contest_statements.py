@@ -105,7 +105,7 @@ def get_problems_for_statement(
     res = []
     for pkg, problem in zip(pkgs, contest.problems):
         matching_statements = [
-            statement for statement in pkg.statements if matches(statement)
+            statement for statement in pkg.expanded_statements if matches(statement)
         ]
         if not matching_statements:
             console.console.print(

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rbx.box.fields import FNameField, NameField
 from rbx.box.schema import Primitive, expand_var
+from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import (
     ConversionStep,
     Joiner,
@@ -34,13 +35,17 @@ configure them in case they are applied.
 class ContestStatement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = NameField(description='Name of this statement.')
+    name: str = FNameField(description='Name of this statement.')
+
+    extends: Optional[str] = FNameField(
+        default=None, description='Name of the statement to inherit from.'
+    )
 
     language: str = Field(
         default='en', description='Language code for this statement (ISO 639-1).'
     )
 
-    title: str = Field(description='Title of the contest in this language.')
+    title: str = Field(default='', description='Title of the contest in this language.')
 
     location: Optional[str] = Field(
         default=None, description='Location of the contest in this language.'
@@ -50,9 +55,14 @@ class ContestStatement(BaseModel):
         default=None, description='Date of the contest in this language.'
     )
 
-    path: pathlib.Path = Field(description='Path to the input statement file.')
+    path: pathlib.Path = Field(
+        default_factory=pathlib.Path,
+        description='Path to the input statement file.',
+    )
 
-    type: StatementType = Field(description='Type of the input statement file.')
+    type: StatementType = Field(
+        default=StatementType.rbxTeX, description='Type of the input statement file.'
+    )
 
     joiner: Optional[Joiner] = Field(
         default=None,
@@ -212,6 +222,10 @@ class Contest(BaseModel):
     vars: Dict[str, Primitive] = Field(
         default={}, description='Variables to be re-used across the package.'
     )
+
+    @property
+    def expanded_statements(self) -> List[ContestStatement]:
+        return expand_statements(self.statements)
 
     @property
     def expanded_vars(self) -> Dict[str, Primitive]:

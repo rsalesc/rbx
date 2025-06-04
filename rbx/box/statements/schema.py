@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pathlib
 from enum import Enum
-from typing import List, Literal, Union
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import NameField
+from rbx.box.fields import FNameField
 
 
 ### Conversion types
@@ -96,19 +96,28 @@ class StatementType(AutoEnum):
 class Statement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = NameField(description='Name of this statement.')
+    name: str = FNameField(description='Name of this statement.')
+
+    extends: Optional[str] = FNameField(
+        default=None,
+        description='Name of the statement that this statement extends.',
+    )
 
     language: str = Field(
         default='en', description='Language code of this statement (ISO 639-1).'
     )
 
     title: str = Field(
-        description='Name of the problem, as it appears in the statement.'
+        default='', description='Name of the problem, as it appears in the statement.'
     )
 
-    path: pathlib.Path = Field(description='Path to the input statement file.')
+    path: pathlib.Path = Field(
+        default_factory=pathlib.Path, description='Path to the input statement file.'
+    )
 
-    type: StatementType = Field(description='Type of the input statement file.')
+    type: StatementType = Field(
+        default=StatementType.rbxTeX, description='Type of the input statement file.'
+    )
 
     steps: List[ConversionStep] = Field(
         default=[],

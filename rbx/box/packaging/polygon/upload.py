@@ -229,7 +229,7 @@ def _upload_solutions(problem: api.Problem):
 
 def _get_statement_for_language(language: str) -> Optional[Statement]:
     pkg = package.find_problem_package_or_die()
-    for statement in pkg.statements:
+    for statement in pkg.expanded_statements:
         if statement.language == language:
             return statement
     return None
@@ -290,7 +290,7 @@ def _upload_statement(problem: api.Problem, preserve_language: bool = False):
     pkg = package.find_problem_package_or_die()
 
     languages = set()
-    for statement in pkg.statements:
+    for statement in pkg.expanded_statements:
         if not is_valid_lang_code(statement.language):
             continue
         languages.add(statement.language)
