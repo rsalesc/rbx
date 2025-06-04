@@ -7,6 +7,7 @@ from typing import List, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from rbx.autoenum import AutoEnum, alias
+from rbx.box.fields import NameField
 
 
 ### Conversion types
@@ -95,6 +96,12 @@ class StatementType(AutoEnum):
 class Statement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
+    name: str = NameField(description='Name of this statement.')
+
+    language: str = Field(
+        default='en', description='Language code of this statement (ISO 639-1).'
+    )
+
     title: str = Field(
         description='Name of the problem, as it appears in the statement.'
     )
@@ -133,8 +140,4 @@ Assets relative to the package directory that should be included while building
 the statement. Files will be included in the same folder as the statement file, preserving
 their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
 """,
-    )
-
-    language: str = Field(
-        default='en', description='Language this is statement is written in.'
     )

@@ -294,14 +294,13 @@ def build_statement(
         is_editorial=is_editorial,
         short_name=naming.get_problem_shortname(),
     )
-    statement_path = (
-        package.get_build_path()
-        / f'{statement.path.stem}{last_output.get_file_suffix()}'
+    statement_path = (package.get_build_path() / statement.name).with_suffix(
+        last_output.get_file_suffix()
     )
     statement_path.parent.mkdir(parents=True, exist_ok=True)
     statement_path.write_bytes(last_content)
     console.console.print(
-        f'Statement built successfully for language '
+        f'Statement [item]{statement.name}[/item] built successfully for language '
         f'[item]{statement.language}[/item] at '
         f'{href(statement_path)}'
     )
@@ -313,13 +312,18 @@ def build_statement(
 @syncer.sync
 async def build(
     verification: environment.VerificationParam,
+    names: Annotated[
+        Optional[List[str]],
+        typer.Argument(
+            help='Names of statements to build.',
+        ),
+    ] = None,
     languages: Annotated[
         Optional[List[str]],
         typer.Option(
-            default_factory=list,
             help='Languages to build statements for. If not specified, build statements for all available languages.',
         ),
-    ],
+    ] = None,
     output: Annotated[
         Optional[StatementType],
         typer.Option(
@@ -350,20 +354,27 @@ async def build(
             raise typer.Exit(1)
 
     pkg = package.find_problem_package_or_die()
-    candidate_languages = languages
-    if not candidate_languages:
-        candidate_languages = sorted(set([st.language for st in pkg.statements]))
+    candidate_languages = set(languages or [])
+    candidate_names = set(names or [])
 
-    for language in candidate_languages:
-        candidates_for_lang = [st for st in pkg.statements if st.language == language]
-        if not candidates_for_lang:
-            console.console.print(
-                f'[error]No statement found for language [item]{language}[/item].[/error]',
-            )
-            raise typer.Exit(1)
+    def should_process(st: Statement) -> bool:
+        if candidate_languages and st.language not in candidate_languages:
+            return False
+        if candidate_names and st.name not in candidate_names:
+            return False
+        return True
 
+    valid_statements = [st for st in pkg.statements if should_process(st)]
+
+    if not valid_statements:
+        console.console.print(
+            '[error]No statement found according to the specified criteria.[/error]',
+        )
+        raise typer.Exit(1)
+
+    for statement in valid_statements:
         build_statement(
-            candidates_for_lang[0],
+            statement,
             pkg,
             output_type=output,
             use_samples=samples,

@@ -3,7 +3,8 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rbx.box.schema import NameField, Primitive, expand_var
+from rbx.box.fields import NameField
+from rbx.box.schema import Primitive, expand_var
 from rbx.box.statements.schema import (
     ConversionStep,
     Joiner,
@@ -33,7 +34,11 @@ configure them in case they are applied.
 class ContestStatement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    language: str = Field(default='en', description='Language code for this statement.')
+    name: str = NameField(description='Name of this statement.')
+
+    language: str = Field(
+        default='en', description='Language code for this statement (ISO 639-1).'
+    )
 
     title: str = Field(description='Title of the contest in this language.')
 

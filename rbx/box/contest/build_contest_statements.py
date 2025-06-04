@@ -337,13 +337,13 @@ def build_statement(
             is_editorial=is_editorial,
         )
 
-    statement_path = pathlib.Path(
-        f'build/{statement.path.stem}{last_output.get_file_suffix()}'
+    statement_path = (pathlib.Path('build') / statement.name).with_suffix(
+        last_output.get_file_suffix()
     )
     statement_path.parent.mkdir(parents=True, exist_ok=True)
     statement_path.write_bytes(typing.cast(bytes, last_content))
     console.console.print(
-        f'Statement built successfully for language '
+        f'Statement [item]{statement.name}[/item] built successfully for language '
         f'[item]{statement.language}[/item] at '
         f'{href(statement_path)}'
     )

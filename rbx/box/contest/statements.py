@@ -10,6 +10,7 @@ from rbx.box.contest.contest_package import (
     find_contest_package_or_die,
     within_contest,
 )
+from rbx.box.contest.schema import ContestStatement
 from rbx.box.statements.schema import StatementType
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -20,13 +21,18 @@ app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 @syncer.sync
 async def build(
     verification: environment.VerificationParam,
+    names: Annotated[
+        Optional[List[str]],
+        typer.Argument(
+            help='Names of statements to build.',
+        ),
+    ] = None,
     languages: Annotated[
         Optional[List[str]],
         typer.Option(
-            default_factory=list,
             help='Languages to build statements for. If not specified, build statements for all available languages.',
         ),
-    ],
+    ] = None,
     output: Annotated[
         Optional[StatementType],
         typer.Option(
@@ -64,22 +70,28 @@ async def build(
                     raise typer.Exit(1)
 
     contest = find_contest_package_or_die()
-    candidate_languages = languages
-    if not candidate_languages:
-        candidate_languages = sorted(set([st.language for st in contest.statements]))
 
-    for language in candidate_languages:
-        candidates_for_lang = [
-            st for st in contest.statements if st.language == language
-        ]
-        if not candidates_for_lang:
-            console.console.print(
-                f'[error]No contest-level statement found for language [item]{language}[/item].[/error]',
-            )
-            raise typer.Exit(1)
+    candidate_languages = set(languages or [])
+    candidate_names = set(names or [])
 
+    def should_process(st: ContestStatement) -> bool:
+        if candidate_languages and st.language not in candidate_languages:
+            return False
+        if candidate_names and st.name not in candidate_names:
+            return False
+        return True
+
+    valid_statements = [st for st in contest.statements if should_process(st)]
+
+    if not valid_statements:
+        console.console.print(
+            '[error]No statement found according to the specified criteria.[/error]',
+        )
+        raise typer.Exit(1)
+
+    for statement in valid_statements:
         build_statement(
-            candidates_for_lang[0],
+            statement,
             contest,
             output_type=output,
             use_samples=samples,

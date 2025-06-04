@@ -8,22 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
 from rbx.autoenum import AutoEnum, alias
+from rbx.box.fields import FNameField, NameField
 from rbx.box.statements.schema import Statement
 from rbx.grading.steps import Outcome
 
 Primitive = Union[str, int, float, bool]
-
-
-def NameField(**kwargs):
-    return Field(
-        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$', min_length=3, max_length=32, **kwargs
-    )
-
-
-def FNameField(**kwargs):
-    return Field(
-        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$', min_length=3, max_length=128, **kwargs
-    )
 
 
 def _check_oneof(model_obj: BaseModel, fields: List[str]):
