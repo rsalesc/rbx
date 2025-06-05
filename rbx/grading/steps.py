@@ -53,6 +53,27 @@ class Outcome(Enum):
             Outcome.IDLENESS_LIMIT_EXCEEDED,
         ]
 
+    def short_name(self) -> str:
+        if self == Outcome.ACCEPTED:
+            return 'AC'
+        if self == Outcome.WRONG_ANSWER:
+            return 'WA'
+        if self == Outcome.TIME_LIMIT_EXCEEDED:
+            return 'TLE'
+        if self == Outcome.IDLENESS_LIMIT_EXCEEDED:
+            return 'ILE'
+        if self == Outcome.MEMORY_LIMIT_EXCEEDED:
+            return 'MLE'
+        if self == Outcome.RUNTIME_ERROR:
+            return 'RTE'
+        if self == Outcome.OUTPUT_LIMIT_EXCEEDED:
+            return 'OLE'
+        if self == Outcome.JUDGE_FAILED:
+            return 'FL'
+        if self == Outcome.INTERNAL_ERROR:
+            return 'IE'
+        return 'XX'
+
 
 class DigestHolder(BaseModel):
     value: Optional[str] = None

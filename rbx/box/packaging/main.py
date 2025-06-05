@@ -114,9 +114,9 @@ async def boca(
     result_path = await run_packager(BocaPackager, verification=verification)
 
     if upload:
-        from rbx.box.packaging.boca.upload import get_boca_uploader
+        from rbx.box.tooling.boca.scraper import get_boca_scraper
 
-        uploader = get_boca_uploader()
+        uploader = get_boca_scraper()
         uploader.login_and_upload(result_path)
 
 

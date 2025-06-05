@@ -6,15 +6,17 @@ import pathlib
 import re
 import shutil
 import typing
-from typing import Any, NoReturn, Optional, Tuple
+from typing import Any, List, NoReturn, Optional, Tuple
 
 import dateparser
 import mechanize
 import typer
 from bs4 import BeautifulSoup
+from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import naming
+from rbx.grading.steps import Outcome
 
 ALERT_REGEX = re.compile(r'\<script[^\>]*\>\s*alert\(\'([^\']+)\'\);?\s*\<\/script\>')
 UPLOAD_LOG_REGEX = re.compile(r'Problem (\d+) \([^\)]+\) updated')
@@ -32,7 +34,30 @@ def _parse_env_var(var: str, override: Optional[str]) -> str:
     return value
 
 
-class BocaUploader:
+def _parse_answer_as_outcome(answer: str) -> Optional[Outcome]:
+    answer = answer.lower()
+    if 'yes' in answer:
+        return Outcome.ACCEPTED
+    if 'wrong answer' in answer:
+        return Outcome.WRONG_ANSWER
+    if 'time limit exceeded' in answer:
+        return Outcome.TIME_LIMIT_EXCEEDED
+    if 'runtime error' in answer:
+        return Outcome.RUNTIME_ERROR
+    return None
+
+
+class BocaRun(BaseModel):
+    run_number: int
+    site_number: int
+    problem_shortname: str
+    outcome: Outcome
+    time: int
+
+    user: Optional[str] = None
+
+
+class BocaScraper:
     def __init__(
         self,
         base_url: Optional[str] = None,
@@ -256,7 +281,49 @@ class BocaUploader:
             )
             raise typer.Exit(1)
 
-    def download_run(self, run_number: int, site_number: int, into_dir: pathlib.Path):
+    def list_runs(self) -> List[BocaRun]:
+        _, html = self.open(
+            f'{self.base_url}/admin/run.php',
+            error_msg='Error while listing runs in BOCA',
+        )
+
+        soup = BeautifulSoup(html, 'html.parser')
+        rows = soup.select('form[name="form1"] table tr')
+
+        runs: List[BocaRun] = []
+        for row in rows[1:]:
+            cells = row.select('td')
+
+            run_number = cells[0].text.strip()
+            site_number = cells[1].text.strip()
+            shortname = cells[4].text.strip()
+            answer = cells[-1].text.strip()
+            time = int(cells[3].text.strip())
+            user = cells[2].text.strip()
+
+            outcome = _parse_answer_as_outcome(answer)
+            if outcome is None:
+                continue
+            runs.append(
+                BocaRun(
+                    run_number=run_number,
+                    site_number=site_number,
+                    problem_shortname=shortname,
+                    outcome=outcome,
+                    time=time,
+                    user=user,
+                )
+            )
+
+        return runs
+
+    def download_run(
+        self,
+        run_number: int,
+        site_number: int,
+        into_dir: pathlib.Path,
+        name: Optional[str] = None,
+    ):
         url = f'{self.base_url}/admin/runedit.php?runnumber={run_number}&runsitenumber={site_number}'
         _, html = self.open(
             url,
@@ -277,7 +344,8 @@ class BocaUploader:
             if link_col is None:
                 continue
             href = str(link_col.attrs['href'])
-            filename = pathlib.Path(link_col.text.strip())
+            if filename is None:
+                filename = pathlib.Path(link_col.text.strip())
             break
 
         if href is None or filename is None:
@@ -289,16 +357,17 @@ class BocaUploader:
         tmp_file, _ = self.br.retrieve(link.absolute_url)
         if tmp_file is None:
             self.raw_error('Error while downloading run:\nDownloaded file is None.')
-        final_path = into_dir / filename.with_stem(f'{run_number}-{site_number}')
+        filename = filename.with_stem(name or f'{run_number}-{site_number}')
+        final_path = into_dir / filename
         final_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(tmp_file, final_path)
         return final_path
 
 
 @functools.lru_cache
-def get_boca_uploader(
+def get_boca_scraper(
     base_url: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
-) -> BocaUploader:
-    return BocaUploader(base_url, username, password)
+) -> BocaScraper:
+    return BocaScraper(base_url, username, password)

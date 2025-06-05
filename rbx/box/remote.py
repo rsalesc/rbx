@@ -52,14 +52,14 @@ class BocaExpander(Expander):
         return [str(self.get_boca_path(run_number, site_number)) + '.*']
 
     def expand(self, path: pathlib.Path) -> Optional[pathlib.Path]:
-        from rbx.box.packaging.boca import upload as boca_upload
+        from rbx.box.tooling.boca import scraper as boca_upload
 
         match = self.get_match(str(path))
         if match is None:
             return None
         run_number, site_number = match
 
-        boca_uploader = boca_upload.get_boca_uploader()
+        boca_uploader = boca_upload.get_boca_scraper()
         boca_uploader.login()
         sol_path = boca_uploader.download_run(
             run_number, site_number, self.get_boca_folder()

@@ -42,6 +42,7 @@ from rbx.box.solutions import (
 from rbx.box.statements import build_statements
 from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testcases import main as testcases
+from rbx.box.tooling import main as tooling
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 app.add_typer(
@@ -92,6 +93,13 @@ app.add_typer(
     cls=annotations.AliasGroup,
     help='Manage testcases (sub-command).',
     rich_help_panel='Management',
+)
+app.add_typer(
+    tooling.app,
+    name='tool, tooling',
+    cls=annotations.AliasGroup,
+    help='Manage tooling (sub-command).',
+    rich_help_panel='Misc',
 )
 
 
