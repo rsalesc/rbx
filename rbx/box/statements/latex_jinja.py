@@ -155,6 +155,14 @@ def add_builtin_filters(j2_env: jinja2.Environment):
     j2_env.filters['stem'] = path_stem
 
 
+def add_builtin_tests(j2_env: jinja2.Environment):
+    # j2_env.tests['truthy'] = var_truthy
+    # j2_env.tests['falsy'] = var_falsy
+    # j2_env.tests['nonnull'] = var_nonnull
+    # j2_env.tests['null'] = var_null
+    pass
+
+
 def render_latex_template(path_templates, template_filename, template_vars=None) -> str:
     """Render a latex template, filling in its template variables
 
@@ -171,6 +179,7 @@ def render_latex_template(path_templates, template_filename, template_vars=None)
         undefined=jinja2.StrictUndefined,
     )
     add_builtin_filters(j2_env)
+    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     try:
         return template.render(**var_dict)  # type: ignore
