@@ -3,9 +3,9 @@ from __future__ import annotations
 import os
 import pathlib
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
 from rbx.autoenum import AutoEnum, alias
@@ -76,6 +76,13 @@ def convert_to_primitive(value: Any) -> Primitive:
 def expand_any_vars(vars: Dict[str, Any]) -> Dict[str, Primitive]:
     converted_vars = {key: convert_to_primitive(value) for key, value in vars.items()}
     return expand_vars(converted_vars)
+
+
+def is_unique_by_name(statements: List['Statement']) -> List['Statement']:
+    names = {st.name for st in statements}
+    if len(names) != len(statements):
+        raise ValueError('Statement names must be unique.')
+    return statements
 
 
 class ExpectedOutcome(AutoEnum):
@@ -481,9 +488,10 @@ that is correct and used as reference -- and should have the `accepted` outcome.
         default=[], description='Stress tests for the problem.'
     )
 
-    statements: List[Statement] = Field(
-        default=[], description='Statements for the problem.'
-    )
+    statements: Annotated[
+        List[Statement],
+        AfterValidator(is_unique_by_name),
+    ] = Field(default=[], description='Statements for the problem.')
 
     # Vars to be re-used across the package.
     #   - It will be passed as --key=value arguments to the validator.

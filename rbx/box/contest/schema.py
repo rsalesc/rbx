@@ -1,7 +1,7 @@
 import pathlib
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from rbx.box.fields import FNameField, NameField
 from rbx.box.schema import Primitive, expand_var
@@ -15,6 +15,13 @@ from rbx.box.statements.schema import (
 
 def ShortNameField(**kwargs):
     return Field(pattern=r'^[A-Z]+[0-9]*$', min_length=1, max_length=4, **kwargs)
+
+
+def is_unique_by_name(statements: List['ContestStatement']) -> List['ContestStatement']:
+    names = {st.name for st in statements}
+    if len(names) != len(statements):
+        raise ValueError('Statement names must be unique.')
+    return statements
 
 
 class ProblemStatementOverride(BaseModel):
@@ -217,7 +224,10 @@ class Contest(BaseModel):
         default=[], description='List of problems in this contest.'
     )
 
-    statements: List[ContestStatement] = Field(
+    statements: Annotated[
+        List[ContestStatement],
+        AfterValidator(is_unique_by_name),
+    ] = Field(
         default=None,
         description='Configure statements in this contest, per language.',
     )
