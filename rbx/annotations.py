@@ -1,7 +1,7 @@
 import importlib.resources
 import pathlib
 import re
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import typer
 import typer.core
@@ -110,6 +110,26 @@ Checker = Annotated[
         autocompletion=_get_checker_options, help='Path to a testlib checker file.'
     ),
 ]
+
+
+def parse_dictionary(value: Optional[str]) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    res = {}
+    for item in value.split(','):
+        key, value = item.split('=', 1)
+        res[key] = value
+    return res
+
+
+def parse_dictionary_items(items: Optional[List[str]]) -> Dict[str, Any]:
+    if items is None:
+        return {}
+    res = {}
+    for item in items:
+        key, value = item.split('=', 1)
+        res[key] = value
+    return res
 
 
 class AliasGroup(typer.core.TyperGroup):

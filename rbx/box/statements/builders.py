@@ -40,17 +40,17 @@ class StatementBuilderContext:
     languages: List[StatementCodeLanguage]
     params: ConversionStep
     root: pathlib.Path
-    editorial: bool
+    custom_vars: Optional[Dict[str, Any]] = None
     vars: Optional[Dict[str, Primitive]] = None
 
     def build_jinja_kwargs(self) -> Dict[str, Any]:
         res = {
             'languages': self.languages,
             'keyed_languages': {lang.id: lang for lang in self.languages},
-            'is_editorial': self.editorial,
         }
-        if self.vars is not None:
-            res['vars'] = self.vars
+        if self.vars is not None or self.custom_vars is not None:
+            res['vars'] = self.vars or {}
+            res['vars'].update(self.custom_vars or {})
         return res
 
 
@@ -324,10 +324,6 @@ class rbxTeXBuilder(StatementBuilder):
             context.root, input, **problem.build_inner_jinja_kwargs()
         )
         blocks = statement_blocks.blocks
-
-        # Remove editorial block when not editorial.
-        if not context.editorial and 'editorial' in blocks:
-            del blocks['editorial']
 
         problem_kwargs = problem.build_jinja_kwargs()
         problem_kwargs['problem']['blocks'] = blocks

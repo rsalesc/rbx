@@ -2,7 +2,7 @@ import dataclasses
 import pathlib
 import tempfile
 import typing
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 
@@ -151,7 +151,7 @@ def _build_problem_statements(
     root: pathlib.Path,
     output_type: StatementType,
     use_samples: bool = True,
-    is_editorial: bool = False,
+    custom_vars: Optional[Dict[str, Any]] = None,
 ) -> List[ExtractedProblem]:
     console.console.print('Building problem-level statements...')
     extracted_problems = get_problems_for_statement(contest, statement)
@@ -179,7 +179,7 @@ def _build_problem_statements(
                 overridden_assets=contest_assets,  # overridden assets
                 overridden_params_root=contest_cwd_absolute,
                 use_samples=use_samples,
-                is_editorial=is_editorial,
+                custom_vars=custom_vars,
             )
         dest_dir = root / '.problems' / extracted_problem.problem.short_name
         dest_path = dest_dir / f'statement{output_type.get_file_suffix()}'
@@ -206,7 +206,7 @@ def build_contest_only(
     input: bytes,
     input_type: StatementType,
     output_type: Optional[StatementType] = None,
-    is_editorial: bool = False,
+    custom_vars: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bytes, StatementType]:
     console.console.print('Building contest-level statement.')
     bdrs = get_builders(
@@ -232,7 +232,7 @@ def build_contest_only(
                     languages=get_environment_languages_for_statement(),
                     params=params,
                     root=pathlib.Path(td),
-                    editorial=is_editorial,
+                    custom_vars=custom_vars,
                     vars={**contest.expanded_vars, **statement.expanded_vars},
                 ),
                 item=get_statement_builder_contest(statement, extracted_problems),
@@ -250,7 +250,7 @@ def build_statement_rooted(
     root: pathlib.Path,
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
-    is_editorial: bool = False,
+    custom_vars: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bytes, StatementType]:
     # Validate.
     if not statement.path.is_file():
@@ -273,7 +273,7 @@ def build_statement_rooted(
             root,
             output_type=joiner.joined_type(),
             use_samples=use_samples,
-            is_editorial=is_editorial,
+            custom_vars=custom_vars,
         )
 
     # Build contest-level statement into joiner input type.
@@ -284,7 +284,7 @@ def build_statement_rooted(
         statement.path.read_bytes(),
         statement.type,
         output_type=joiner.joined_type() if joiner is not None else output_type,
-        is_editorial=is_editorial,
+        custom_vars=custom_vars,
     )
 
     if joiner is None:
@@ -318,7 +318,7 @@ def build_statement_rooted(
         last_content,
         last_output,
         output_type=output_type,
-        is_editorial=is_editorial,
+        custom_vars=custom_vars,
     )
 
     return last_content, last_output
@@ -329,7 +329,7 @@ def build_statement(
     contest: Contest,
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
-    is_editorial: bool = False,
+    custom_vars: Optional[Dict[str, Any]] = None,
 ) -> pathlib.Path:
     with tempfile.TemporaryDirectory() as td:
         root = pathlib.Path(td)
@@ -339,7 +339,7 @@ def build_statement(
             root,
             output_type=output_type,
             use_samples=use_samples,
-            is_editorial=is_editorial,
+            custom_vars=custom_vars,
         )
 
     statement_path = (pathlib.Path('build') / statement.name).with_suffix(

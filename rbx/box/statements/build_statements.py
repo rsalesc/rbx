@@ -1,7 +1,7 @@
 import pathlib
 import tempfile
 import typing
-from typing import Annotated, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import syncer
 import typer
@@ -9,7 +9,7 @@ import typer
 from rbx import annotations, console
 from rbx.box import environment, naming, package
 from rbx.box.formatting import href
-from rbx.box.schema import Package
+from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements.builders import (
     BUILDER_LIST,
     PROBLEM_BUILDER_LIST,
@@ -217,7 +217,7 @@ def build_statement_bytes(
     overridden_params: Optional[Dict[ConversionType, ConversionStep]] = None,
     overridden_assets: Optional[List[Tuple[pathlib.Path, pathlib.Path]]] = None,
     use_samples: bool = True,
-    is_editorial: bool = False,
+    custom_vars: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bytes, StatementType]:
     overridden_params = overridden_params or {}
     overridden_assets = overridden_assets or []
@@ -261,7 +261,7 @@ def build_statement_bytes(
                     languages=get_environment_languages_for_statement(),
                     params=params,
                     root=pathlib.Path(td),
-                    editorial=is_editorial,
+                    custom_vars=custom_vars,
                 ),
                 item=StatementBuilderProblem(
                     package=pkg,
@@ -284,14 +284,14 @@ def build_statement(
     pkg: Package,
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
-    is_editorial: bool = False,
+    custom_vars: Optional[Dict[str, Any]] = None,
 ) -> pathlib.Path:
     last_content, last_output = build_statement_bytes(
         statement,
         pkg,
         output_type=output_type,
         use_samples=use_samples,
-        is_editorial=is_editorial,
+        custom_vars=custom_vars,
         short_name=naming.get_problem_shortname(),
     )
     statement_path = (package.get_build_path() / statement.name).with_suffix(
@@ -335,9 +335,14 @@ async def build(
         bool,
         typer.Option(help='Whether to build the statement with samples or not.'),
     ] = True,
-    editorial: Annotated[
-        bool, typer.Option(help='Whether to add editorial blocks to the statements.')
-    ] = False,
+    vars: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '-v',
+            '--vars',
+            help='Variables to be used in the statements.',
+        ),
+    ] = None,
 ):
     # At most run the validators, only in samples.
     if samples:
@@ -378,7 +383,7 @@ async def build(
             pkg,
             output_type=output,
             use_samples=samples,
-            is_editorial=editorial,
+            custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
         )
 
 

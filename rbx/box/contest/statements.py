@@ -11,6 +11,7 @@ from rbx.box.contest.contest_package import (
     within_contest,
 )
 from rbx.box.contest.schema import ContestStatement
+from rbx.box.schema import expand_any_vars
 from rbx.box.statements.schema import StatementType
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -44,10 +45,14 @@ async def build(
         bool,
         typer.Option(help='Whether to build the statement with samples or not.'),
     ] = True,
-    editorial: Annotated[
-        bool,
-        typer.Option(help='Whether to add editorial blocks to the statements or not.'),
-    ] = False,
+    vars: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '-v',
+            '--vars',
+            help='Variables to be used in the statements.',
+        ),
+    ] = None,
 ):
     contest = find_contest_package_or_die()
     # At most run the validators, only in samples.
@@ -95,7 +100,7 @@ async def build(
             contest,
             output_type=output,
             use_samples=samples,
-            is_editorial=editorial,
+            custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
         )
 
 

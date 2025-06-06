@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import pathlib
-from typing import Dict, List, Optional, Union
+import re
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
@@ -44,6 +45,37 @@ def expand_var(value: Primitive) -> Primitive:
     raise TypeError(
         f'Variable with backticks should evaluate to a primitive Python type: {value}'
     )
+
+
+def expand_vars(vars: Dict[str, Primitive]) -> Dict[str, Primitive]:
+    return {key: expand_var(value) for key, value in vars.items()}
+
+
+def _represents_int(s: str) -> bool:
+    return re.match(r'[-+]?\d+$', s.strip()) is not None
+
+
+def _represents_float(s: str) -> bool:
+    return re.match(r'[-+]?\d+\.\d+$', s.strip()) is not None
+
+
+def _represents_bool(s: str) -> bool:
+    return s.lower().strip() in ['true', 'false', 'True', 'False']
+
+
+def convert_to_primitive(value: Any) -> Primitive:
+    if _represents_int(value):
+        return int(value)
+    if _represents_float(value):
+        return float(value)
+    if _represents_bool(value):
+        return value.lower().strip() == 'true'
+    return str(value)
+
+
+def expand_any_vars(vars: Dict[str, Any]) -> Dict[str, Primitive]:
+    converted_vars = {key: convert_to_primitive(value) for key, value in vars.items()}
+    return expand_vars(converted_vars)
 
 
 class ExpectedOutcome(AutoEnum):
@@ -471,7 +503,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 
     @property
     def expanded_vars(self) -> Dict[str, Primitive]:
-        return {key: expand_var(value) for key, value in self.vars.items()}
+        return expand_vars(self.vars)
 
     def timelimit_for_language(self, language: Optional[str]) -> int:
         res = self.timeLimit
