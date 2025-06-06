@@ -5,6 +5,7 @@ import resource
 import signal
 import stat
 import sys
+import threading
 from time import monotonic
 from typing import Any, Dict, List, Optional, Set, Union
 
@@ -292,13 +293,21 @@ def main():
     alarm_msg: List[Optional[str]] = [None]
     status_holder: Set[str] = set()
 
-    def handle_alarm(*args, **kwargs):
-        nonlocal alarm_msg
-        wall_time = monotonic() - start_time
-        if options.wall_time_limit is not None and wall_time > options.wall_time_limit:
-            alarm_msg[0] = 'wall timelimit'
-            os.kill(sub_pid, 9)
+    stop_wall_handler = threading.Event()
+    stop_alarm_handler = threading.Event()
+
+    def handle_wall():
+        if stop_wall_handler.wait(options.wall_time_limit):
             return
+        stop_alarm_handler.set()
+        nonlocal alarm_msg
+        alarm_msg[0] = 'wall timelimit'
+        os.kill(sub_pid, 9)
+
+    def handle_alarm():
+        if stop_alarm_handler.wait(0.3):
+            return
+        nonlocal alarm_msg
         ru = resource.getrusage(resource.RUSAGE_CHILDREN)
         if options.time_limit is not None:
             cpu_time = get_cpu_time(ru)
@@ -313,20 +322,26 @@ def main():
                 os.kill(sub_pid, 9)
                 return
 
-        signal.setitimer(signal.ITIMER_REAL, 0.3)
+        stop_alarm_handler.clear()
+        handle_alarm()
+
+    alarm_handler = threading.Thread(target=handle_alarm, daemon=True)
+    wall_handler = threading.Thread(target=handle_wall, daemon=True)
+    alarm_handler.start()
+    wall_handler.start()
 
     def handle_sub_term(*args, **kwargs):
         nonlocal status_holder
         status_holder.add('TE')
         os.kill(sub_pid, 9)
 
-    signal.setitimer(signal.ITIMER_REAL, 0.3)
-    signal.signal(signal.SIGALRM, handle_alarm)
     signal.signal(signal.SIGTERM, handle_sub_term)
 
     wait_and_finish(sub_pid, options, start_time, status_holder, alarm_msg=alarm_msg)
-    # Cancel alarm before exiting to avoid surprises.
-    signal.setitimer(signal.ITIMER_REAL, 0)
+
+    # Process finished, stop the handlers.
+    stop_wall_handler.set()
+    stop_alarm_handler.set()
 
     # Exit gracefully.
     sys.exit(0)
