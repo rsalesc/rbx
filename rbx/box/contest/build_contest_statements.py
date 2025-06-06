@@ -179,7 +179,10 @@ def _build_problem_statements(
                 overridden_assets=contest_assets,  # overridden assets
                 overridden_params_root=contest_cwd_absolute,
                 use_samples=use_samples,
-                custom_vars=custom_vars,
+                # Use custom var overriding and problem-level overriding.
+                custom_vars=(
+                    statement.override.vars if statement.override is not None else {}
+                ).update(custom_vars or {}),
             )
         dest_dir = root / '.problems' / extracted_problem.problem.short_name
         dest_path = dest_dir / f'statement{output_type.get_file_suffix()}'

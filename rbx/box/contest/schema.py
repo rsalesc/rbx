@@ -31,6 +31,11 @@ configure them in case they are applied.
 """,
     )
 
+    vars: Dict[str, Primitive] = Field(
+        default={},
+        description='Variables to be merged into the problem statement vars.',
+    )
+
 
 class ContestStatement(BaseModel):
     model_config = ConfigDict(extra='forbid')
