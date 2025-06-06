@@ -6,9 +6,10 @@ with Latex.
 import pathlib
 import re
 import typing
-from typing import Dict, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import jinja2
+import jinja2.runtime
 import typer
 
 from rbx import console
@@ -131,9 +132,54 @@ def path_stem(path: pathlib.Path) -> str:
     return path.stem
 
 
+@jinja2.pass_context
+def test_var_truthy(ctx: jinja2.runtime.Context, value: Any):
+    if isinstance(value, jinja2.Undefined):
+        return False
+    if value is None:
+        return False
+    return bool(value)
+
+
+@jinja2.pass_context
+def test_var_falsy(ctx: jinja2.runtime.Context, value: Any):
+    return not test_var_truthy(ctx, value)
+
+
+@jinja2.pass_context
+def test_var_null(ctx: jinja2.runtime.Context, value: Any):
+    if isinstance(value, jinja2.Undefined):
+        return True
+    if value is None:
+        return True
+    return False
+
+
+@jinja2.pass_context
+def test_var_nonnull(ctx: jinja2.runtime.Context, value: Any):
+    return not test_var_null(ctx, value)
+
+
 ######################################################################
 # Declare module functions
 ######################################################################
+
+
+class StrictChainableUndefined(jinja2.StrictUndefined):
+    def __getattr__(self, name: str) -> 'StrictChainableUndefined':
+        # Raise AttributeError on requests for names that appear to be unimplemented
+        # dunder methods to avoid confusing Python with truthy non-method objects that
+        # do not implement the protocol being probed for. e.g., copy.copy(Undefined())
+        # fails spectacularly if getattr(Undefined(), '__setstate__') returns an
+        # Undefined object instead of raising AttributeError to signal that it does not
+        # support that style of object initialization.
+        if name[:2] == '__' and name[-2:] == '__':
+            raise AttributeError(name)
+
+        return self
+
+    def __getitem__(self, _name: str) -> 'StrictChainableUndefined':  # type: ignore[override]
+        return self
 
 
 class JinjaDictWrapper(dict):
@@ -145,7 +191,9 @@ class JinjaDictWrapper(dict):
         try:
             return super().__getitem__(key)
         except KeyError:
-            return jinja2.StrictUndefined(hint=f'"{key}" was not found in "{self.key}"')
+            return StrictChainableUndefined(
+                hint=f'"{key}" was not found in "{self.key}"'
+            )
 
 
 def add_builtin_filters(j2_env: jinja2.Environment):
@@ -156,11 +204,10 @@ def add_builtin_filters(j2_env: jinja2.Environment):
 
 
 def add_builtin_tests(j2_env: jinja2.Environment):
-    # j2_env.tests['truthy'] = var_truthy
-    # j2_env.tests['falsy'] = var_falsy
-    # j2_env.tests['nonnull'] = var_nonnull
-    # j2_env.tests['null'] = var_null
-    pass
+    j2_env.tests['truthy'] = test_var_truthy
+    j2_env.tests['falsy'] = test_var_falsy
+    j2_env.tests['null'] = test_var_null
+    j2_env.tests['nonnull'] = test_var_nonnull
 
 
 def render_latex_template(path_templates, template_filename, template_vars=None) -> str:
@@ -176,7 +223,7 @@ def render_latex_template(path_templates, template_filename, template_vars=None)
     j2_env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(path_templates),
         **J2_ARGS,
-        undefined=jinja2.StrictUndefined,
+        undefined=StrictChainableUndefined,
     )
     add_builtin_filters(j2_env)
     add_builtin_tests(j2_env)
@@ -207,9 +254,10 @@ def render_latex_template_blocks(
     j2_env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(path_templates),
         **J2_ARGS,
-        undefined=jinja2.StrictUndefined,
+        undefined=StrictChainableUndefined,
     )
     add_builtin_filters(j2_env)
+    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:
