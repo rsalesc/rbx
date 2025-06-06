@@ -159,6 +159,9 @@ def _build_problem_statements(
     contest_cwd_absolute = pathlib.Path().resolve()
     contest_assets = get_relative_assets(statement.path, statement.assets)
 
+    extra_vars = dict(statement.override.vars if statement.override is not None else {})
+    extra_vars.update(custom_vars or {})
+
     for extracted_problem in extracted_problems:
         console.console.print(
             f'Building statement for problem {extracted_problem.problem.short_name}...'
@@ -180,9 +183,7 @@ def _build_problem_statements(
                 overridden_params_root=contest_cwd_absolute,
                 use_samples=use_samples,
                 # Use custom var overriding and problem-level overriding.
-                custom_vars=(
-                    statement.override.vars if statement.override is not None else {}
-                ).update(custom_vars or {}),
+                custom_vars=extra_vars,
             )
         dest_dir = root / '.problems' / extracted_problem.problem.short_name
         dest_path = dest_dir / f'statement{output_type.get_file_suffix()}'
