@@ -352,8 +352,8 @@ def build_statement(
     statement_path.parent.mkdir(parents=True, exist_ok=True)
     statement_path.write_bytes(typing.cast(bytes, last_content))
     console.console.print(
-        f'Statement [item]{statement.name}[/item] built successfully for language '
+        f'[success]Statement [item]{statement.name}[/item] built successfully for language '
         f'[item]{statement.language}[/item] at '
-        f'{href(statement_path)}'
+        f'{href(statement_path)}[/success]'
     )
     return statement_path

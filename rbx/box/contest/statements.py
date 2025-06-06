@@ -11,6 +11,7 @@ from rbx.box.contest.contest_package import (
     within_contest,
 )
 from rbx.box.contest.schema import ContestStatement
+from rbx.box.formatting import href
 from rbx.box.schema import expand_any_vars
 from rbx.box.statements.schema import StatementType
 
@@ -94,13 +95,23 @@ async def build(
         )
         raise typer.Exit(1)
 
+    built_statements = []
+
     for statement in valid_statements:
-        build_statement(
-            statement,
-            contest,
-            output_type=output,
-            use_samples=samples,
-            custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
+        built_statements.append(
+            build_statement(
+                statement,
+                contest,
+                output_type=output,
+                use_samples=samples,
+                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
+            )
+        )
+
+    console.console.rule(title='Built statements')
+    for statement, built_path in zip(valid_statements, built_statements):
+        console.console.print(
+            f'[item]{statement.name} {statement.language}[/item] -> {href(built_path)}'
         )
 
 
