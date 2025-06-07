@@ -589,8 +589,8 @@ async def run_communication(
     interactor_prepared.metadata.retryIndex = retry_index
     solution_prepared.metadata.retryIndex = retry_index
 
-    interactor_prefix = 'INTERACTOR:'
-    solution_prefix = 'SOLUTION:'
+    interactor_prefix = '<'
+    solution_prefix = '>'
 
     if merged_capture is not None:
         package.get_merged_capture_path().write_text(
