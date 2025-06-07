@@ -559,3 +559,19 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     {'i': i + 1},
                 )
         return self
+
+    @model_validator(mode='after')
+    def check_checker_and_interactor_for_task_type(self):
+        if self.type == TaskType.BATCH:
+            if self.interactor is not None:
+                raise PydanticCustomError(
+                    'INTERACTOR_NOT_ALLOWED',
+                    'Interactor is not allowed for batch problems. Change the task type to COMMUNICATION.',
+                )
+        if self.type == TaskType.COMMUNICATION:
+            if self.checker is not None:
+                raise PydanticCustomError(
+                    'CHECKER_NOT_ALLOWED',
+                    'Checkers should not be specified for communication problems.',
+                )
+        return self
