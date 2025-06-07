@@ -94,6 +94,8 @@ class StupidSandbox(SandboxBase):
             args.append(f'-f{self.params.fsize}')
         if self.chdir:
             args.append(f'-c{self.chdir}')
+        if self.use_pgid() and self.params.pgid is not None:
+            args.append(f'-g{self.params.pgid}')
 
         file_args = []
         if self.params.stdin_file:
@@ -146,6 +148,9 @@ class StupidSandbox(SandboxBase):
         return float(self.log['time-wall'])
 
     def use_soft_timeout(self) -> bool:
+        return True
+
+    def use_pgid(self) -> bool:
         return True
 
     def get_memory_used(self) -> Optional[int]:
@@ -305,6 +310,8 @@ class StupidSandbox(SandboxBase):
             + self.get_timeit_args()
             + command
         )
+
+        self.clear_pid()
         with subprocess.Popen(
             real_command,
             stdin=subprocess.PIPE,

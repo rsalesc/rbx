@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import collections
 import dataclasses
 import io
@@ -15,12 +16,26 @@ from typing import IO, Any, Dict, List, Optional
 
 import pydantic
 
-from rbx.grading import processing_context
 from rbx.grading.judge import cacher, storage
 
 logger = logging.getLogger(__name__)
 
 MERGE_STDERR = pathlib.PosixPath('/dev/stdout')
+
+
+# Thread-safe version of asyncio.Event.
+class Event_ts(asyncio.Event):
+    def get_loop(self):
+        if self._loop is None:
+            return asyncio.get_event_loop()
+        else:
+            return self._loop
+
+    def set(self):
+        self.get_loop().call_soon_threadsafe(super().set)
+
+    def clear(self):
+        self.get_loop().call_soon_threadsafe(super().clear)
 
 
 def wait_without_std(
@@ -116,6 +131,7 @@ class SandboxParams(pydantic.BaseModel):
     wallclock_timeout: Optional[int] = None  # ms
     extra_timeout: Optional[int] = None  # ms
     reverse_io: bool = False
+    pgid: Optional[int] = None
 
     # For timeit
     timeit_dups: Dict[str, List[pathlib.Path]] = dataclasses.field(
@@ -229,6 +245,7 @@ class SandboxBase(abc.ABC):
 
         self.params = params or SandboxParams()
         self.pid = None
+        self._pid_event = Event_ts()
 
         # Set common environment variables.
         # Specifically needed by Python, that searches the home for
@@ -329,17 +346,34 @@ class SandboxBase(abc.ABC):
         pass
 
     def set_pid(self, pid: int):
-        processing_context.add_to_processing_context(pid)
-        self.pid = pid
+        """Set the PID of the sandboxed process.
 
-    def get_pid(self) -> Optional[int]:
-        """Return the PID of the sandboxed process.
-
-        return (int|None): the PID of the sandboxed process, or None if
-            the sandboxed process is not running.
+        pid (int): the PID of the sandboxed process.
 
         """
+        self.pid = pid
+        self._pid_event.set()
+
+    async def get_pid(self) -> int:
+        """Return the PID of the sandboxed process.
+
+        Blocks until the PID is set.
+
+        return (int): the PID of the sandboxed process.
+
+        """
+        await self._pid_event.wait()
+        assert self.pid is not None
         return self.pid
+
+    def clear_pid(self):
+        """Clear the PID of the sandboxed process."""
+        self._pid_event.clear()
+        self.pid = None
+
+    def use_pgid(self) -> bool:
+        """Whether the sandbox supports process groups."""
+        return False
 
     @abc.abstractmethod
     def get_detailed_logs(self) -> str:

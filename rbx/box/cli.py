@@ -114,7 +114,8 @@ def main(
     ),
     capture: bool = typer.Option(
         True,
-        '--capture',
+        '--nocapture',
+        flag_value=False,
         help='Whether to save extra logs and outputs from interactive solutions.',
     ),
 ):

@@ -599,6 +599,7 @@ class IsolateSandbox(SandboxBase):
         return (bool|Popen): return True if the sandbox didn't report
             errors (caused by the sandbox itself), False otherwise.
         """
+        self.clear_pid()
         popen = self._popen(
             command,
             stdin=subprocess.PIPE,

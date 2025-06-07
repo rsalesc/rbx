@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import typing
 from enum import Enum
 from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -663,7 +662,6 @@ async def run(
     sandbox: SandboxBase,
     artifacts: GradingArtifacts,
     metadata: Optional[RunLogMetadata] = None,
-    kill_on_processing_context_exit: bool = False,
 ) -> Optional[RunLog]:
     _process_input_artifacts(artifacts, sandbox)
     _process_fifos(artifacts, sandbox)
@@ -682,9 +680,6 @@ async def run(
             sandbox.debug_message(),
         )
         return None
-
-    if sandbox.get_exit_code() != 0 and kill_on_processing_context_exit:
-        processing_context.terminate_all_processes_in_context(clear=False)
 
     if not _process_output_artifacts(artifacts, sandbox):
         return None
@@ -727,27 +722,25 @@ async def run_coordinated(
     interactor: CoordinatedRunParams,
     solution: CoordinatedRunParams,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
-    with processing_context.new_processing_context(terminate_all_on_error=True):
-        # Schedule both runs to execute immediately.
-        runs = tuple(
-            asyncio.create_task(
-                run(
-                    params.command,
-                    params.params,
-                    params.sandbox,
-                    params.artifacts,
-                    params.metadata,
-                    kill_on_processing_context_exit=True,
-                )
+    def run_one(params: CoordinatedRunParams) -> asyncio.Task[Optional[RunLog]]:
+        return asyncio.create_task(
+            run(
+                params.command,
+                params.params,
+                params.sandbox,
+                params.artifacts,
+                params.metadata,
             )
-            for params in [interactor, solution]
         )
-        await processing_context.wait_all_processes_in_context(wait_for=2)
-        logs = typing.cast(
-            Tuple[Optional[RunLog], Optional[RunLog]],
-            tuple(await asyncio.gather(*runs)),
-        )
-        return logs
+
+    # Use interactor PID as the process group id.
+    interactor_task = run_one(interactor)
+    solution.sandbox.params.pgid = await interactor.sandbox.get_pid()
+    solution_task = run_one(solution)
+
+    await processing_context.wait_all([interactor.sandbox, solution.sandbox])
+
+    return await asyncio.gather(interactor_task, solution_task)
 
 
 def _normalize_checked_words(s: str) -> Tuple[str, ...]:

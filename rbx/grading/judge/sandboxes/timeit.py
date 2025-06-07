@@ -26,6 +26,7 @@ class Options:
     file_duplicates: Dict[int, List[str]] = dataclasses.field(default_factory=dict)
     prefixed: Set[str] = dataclasses.field(default_factory=set)
     prefix: str = ''
+    process_group: Optional[int] = None
 
 
 def exit_with(code: int):
@@ -151,6 +152,8 @@ def parse_opts() -> Options:
             options.fs_limit = int(opt[2:])
         elif opt.startswith('-P'):
             options.prefix = opt[2:]
+        elif opt.startswith('-g'):
+            options.process_group = int(opt[2:])
         else:
             raise Exception(f'Invalid option {opt}')
         num_opts += 1
@@ -271,6 +274,7 @@ def wait_and_finish(
     entries.append(f'time-wall: {wall_time:.3f}')
     entries.append(f'mem: {memory_used}')
     entries.append(f'file: {file_sizes}')
+    entries.append(f'pid: {pid}')
 
     output_file = pathlib.Path(sys.argv[1])
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -279,6 +283,9 @@ def wait_and_finish(
 
 def main():
     options = parse_opts()
+
+    if options.process_group is not None:
+        os.setpgid(0, options.process_group)
 
     start_time = monotonic()
     sub_pid = os.fork()
