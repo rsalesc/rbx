@@ -25,7 +25,11 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
-from rbx.box.testcase_utils import TestcaseInteraction, parse_interaction
+from rbx.box.testcase_utils import (
+    TestcaseInteraction,
+    TestcaseInteractionParsingError,
+    parse_interaction,
+)
 
 
 @dataclasses.dataclass
@@ -82,7 +86,13 @@ class StatementSample(BaseModel):
 
         interaction = None
         if pio_path.is_file():
-            interaction = parse_interaction(pio_path)
+            try:
+                interaction = parse_interaction(pio_path)
+            except TestcaseInteractionParsingError as e:
+                console.console.print(
+                    f'Error parsing interactive sample: [error]{e}[/error]'
+                )
+                raise typer.Exit(1) from e
 
         return StatementSample(
             inputPath=input_path,

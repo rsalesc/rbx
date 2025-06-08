@@ -20,7 +20,11 @@ from rbx.box.statements.builders import (
     render_jinja_blocks,
 )
 from rbx.box.statements.schema import Statement, StatementType
-from rbx.box.testcase_utils import get_alternate_interaction_texts, parse_interaction
+from rbx.box.testcase_utils import (
+    TestcaseInteractionParsingError,
+    get_alternate_interaction_texts,
+    parse_interaction,
+)
 
 _API_URL = 'https://polygon.codeforces.com/api'
 
@@ -163,17 +167,23 @@ def _get_test_params_for_statement(
 
     pio_path = testcase.outputPath.with_suffix('.pio')
     if pio_path.is_file():
-        interaction = parse_interaction(pio_path)
-        res['test_input_for_statements'], res['test_output_for_statements'] = (
-            get_alternate_interaction_texts(interaction)
-        )
-    else:
-        pin_path = testcase.outputPath.with_suffix('.pin')
-        if pin_path.is_file():
-            res['test_input_for_statements'] = pin_path.read_text()
-        pout_path = testcase.outputPath.with_suffix('.pout')
-        if pout_path.is_file():
-            res['test_output_for_statements'] = pout_path.read_text()
+        try:
+            interaction = parse_interaction(pio_path)
+        except TestcaseInteractionParsingError:
+            pass
+        else:
+            res['test_input_for_statements'], res['test_output_for_statements'] = (
+                get_alternate_interaction_texts(interaction)
+            )
+            return res
+
+    # .pio does not exist or is not parseable, fallback to .pin and .pout.
+    pin_path = testcase.outputPath.with_suffix('.pin')
+    if pin_path.is_file():
+        res['test_input_for_statements'] = pin_path.read_text()
+    pout_path = testcase.outputPath.with_suffix('.pout')
+    if pout_path.is_file():
+        res['test_output_for_statements'] = pout_path.read_text()
     return res
 
 

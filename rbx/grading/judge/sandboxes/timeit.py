@@ -93,17 +93,16 @@ def create_tee(files, mode, buffer_size=4096, prefix=''):
             # Close parent's end of the pipe
             os.close(pipe_write)
 
-            bytes = os.read(pipe_read, 1)
-            while bytes:
+            new = True
+            while bytes := os.read(pipe_read, 1):
                 for tee in tee_list:
-                    if tee.prefix and bytes == b'\n':
+                    if tee.prefix and new:
                         tee.file.write(tee.prefix)
                     tee.file.write(bytes)
                     tee.file.flush()
+                    new = bytes == b'\n'
                     # TODO maybe add in fsync() here if the fileno() method
                     # exists on file
-
-                bytes = os.read(pipe_read, 1)
         except Exception:
             pass
         finally:

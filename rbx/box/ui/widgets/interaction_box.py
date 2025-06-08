@@ -28,13 +28,31 @@ class InteractionBox(RichLogBox):
         self.auto_scroll = False
         self.can_focus = False
 
+    def _show_raw_text(self, path: pathlib.Path):
+        path_str = str(path.relative_to(pathlib.Path.cwd()))
+        self.write(
+            rich.text.Text(
+                'Showing raw interaction file because the interaction text is not parseable.\n'
+                'This might usually happen when the processes do not communicate properly.\n',
+                style='red',
+            )
+        )
+        self.write(rich.text.Text(path.read_text()))
+        self.border_subtitle = f'{path_str} (raw file)'
+
     @work(exclusive=True)
     async def _load_file(self, path: pathlib.Path):
         self.clear()
         path_str = str(path.relative_to(pathlib.Path.cwd()))
         self.border_subtitle = f'{path_str} (loading...)'
 
-        interaction = await asyncio.to_thread(testcase_utils.parse_interaction, path)
+        try:
+            interaction = await asyncio.to_thread(
+                testcase_utils.parse_interaction, path
+            )
+        except testcase_utils.TestcaseInteractionParsingError:
+            self._show_raw_text(path)
+            return
 
         for entry in interaction.entries:
             if entry.pipe == 0:

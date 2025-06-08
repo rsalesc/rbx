@@ -160,6 +160,10 @@ def fill_output_for_defined_testcase(testcase: Testcase) -> Testcase:
     return res
 
 
+class TestcaseInteractionParsingError(Exception):
+    pass
+
+
 def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     entries = []
     with file.open('r') as f:
@@ -167,53 +171,19 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
             interactor_prefix = f.readline().strip()
             solution_prefix = f.readline().strip()
         except Exception:
-            console.console.print(
-                f'[error]Failed to read interaction file [item]{file}[/item]. Expected the first two lines to be the interactor and solution prefixes.[/error]'
-            )
-            raise typer.Exit(1) from None
+            raise TestcaseInteractionParsingError(
+                f'Failed to read interaction file {file}. Expected the first two lines to be the interactor and solution prefixes.'
+            ) from None
 
-        # Crop file.
-        rest = f.read()
-        start = 0
-
-        def _find_next_prefix(start: int) -> Optional[Tuple[int, int]]:
-            interactor_idx = rest.find(interactor_prefix, start)
-            solution_idx = rest.find(solution_prefix, start)
-            if interactor_idx == -1 and solution_idx == -1:
-                return None
-            if interactor_idx == -1:
-                return (solution_idx, solution_idx + len(solution_prefix))
-            if solution_idx == -1:
-                return (interactor_idx, interactor_idx + len(interactor_prefix))
-            if interactor_idx < solution_idx:
-                return (interactor_idx, interactor_idx + len(interactor_prefix))
-            return (solution_idx, solution_idx + len(solution_prefix))
-
-        def _find_next_block() -> Optional[Tuple[int, Tuple[int, int]]]:
-            prefix = _find_next_prefix(start)
-            if prefix is None:
-                return None
-            prefix_start, prefix_end = prefix
-            prefix = rest[prefix_start:prefix_end]
-            pipe = 1 if prefix == solution_prefix else 0
-
-            nxt = _find_next_prefix(prefix_end)
-            if nxt is None:
-                return (pipe, (prefix_end, len(rest)))
-            nxt_start, _ = nxt
-            return (pipe, (prefix_end, nxt_start))
-
-        # TODO: optimize
-        blocks = 0
-        MAX_BLOCKS = 1024
-        while blocks < MAX_BLOCKS:
-            block = _find_next_block()
-            if block is None:
-                break
-            pipe, (st, nd) = block
-            entries.append(TestcaseInteractionEntry(data=rest[st:nd], pipe=pipe))
-            start = nd
-            blocks += 1
+        while line := f.readline().strip():
+            if line.startswith(interactor_prefix):
+                entries.append(TestcaseInteractionEntry(data=line, pipe=0))
+            elif line.startswith(solution_prefix):
+                entries.append(TestcaseInteractionEntry(data=line, pipe=1))
+            else:
+                raise TestcaseInteractionParsingError(
+                    f'Invalid line in interaction file {file}. Expected the line to start with the interactor or solution prefix ({interactor_prefix} or {solution_prefix}).'
+                ) from None
 
     return TestcaseInteraction(
         prefixes=(interactor_prefix, solution_prefix),

@@ -48,6 +48,7 @@ from rbx.box.tasks import (
 from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_utils import (
     TestcaseEntry,
+    TestcaseInteractionParsingError,
     find_built_testcases,
     parse_interaction,
     print_interaction,
@@ -374,7 +375,11 @@ def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = Fa
         if not output_file.is_file():
             continue
         if output_file.suffix == '.pio':
-            print_interaction(parse_interaction(output_file))
+            try:
+                print_interaction(parse_interaction(output_file))
+            except TestcaseInteractionParsingError:
+                # Ignore parsing errors and proceed to next file.
+                continue
         else:
             console.console.print(output_file.read_text())
         return
