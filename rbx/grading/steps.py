@@ -392,12 +392,12 @@ def _is_c_command(exe_command: str) -> bool:
     return 'gcc' in exe_command or 'clang' in exe_command
 
 
-def _is_cpp_command(exe_command: str) -> bool:
+def is_cpp_command(exe_command: str) -> bool:
     return 'g++' in exe_command or 'clang++' in exe_command
 
 
 def is_cxx_command(exe_command: str) -> bool:
-    return _is_cpp_command(exe_command) or _is_c_command(exe_command)
+    return is_cpp_command(exe_command) or _is_c_command(exe_command)
 
 
 def is_cxx_sanitizer_command(command: str) -> bool:
@@ -451,7 +451,7 @@ def _get_cxx_version_output(command: str, extra_flags: str = '') -> Optional[str
 
 
 def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
-    if not _is_cpp_command(get_exe_from_command(command)):
+    if not is_cpp_command(get_exe_from_command(command)):
         return None
     version_output = _get_cxx_version_output(command)
     if version_output is None:
@@ -485,7 +485,7 @@ def _find_system_paths_in_version_output(version_output: str) -> List[pathlib.Pa
 
 
 def _get_system_bits_stdcpp(command: str) -> Optional[GradingFileInput]:
-    if not _is_cpp_command(get_exe_from_command(command)):
+    if not is_cpp_command(get_exe_from_command(command)):
         return None
     version_output = _get_cxx_version_output(command, '-xc++ -E -')
     if version_output is None:

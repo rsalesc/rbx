@@ -41,6 +41,7 @@ from rbx.grading.steps import (
     RunLog,
     RunLogMetadata,
     get_exe_from_command,
+    is_cpp_command,
     is_cxx_command,
     maybe_get_bits_stdcpp_for_commands,
 )
@@ -395,7 +396,7 @@ def _prepare_run(
 
 
 def _should_precompile(commands: List[str]) -> bool:
-    return any(is_cxx_command(command) for command in commands)
+    return any(is_cpp_command(command) for command in commands)
 
 
 def _precompile_header(
@@ -571,7 +572,7 @@ def compile_item(
             if is_cxx_command(get_exe_from_command(command))
         ]
 
-    # Precompile header files.
+    # Precompile C++ header files.
     if precompile and _should_precompile(commands):
         precompilation_inputs = []
         for input in artifacts.inputs:
