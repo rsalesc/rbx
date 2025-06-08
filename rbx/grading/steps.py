@@ -433,6 +433,7 @@ def _complain_about_clang() -> None:
     )
 
 
+@functools.cache
 def _get_cxx_version_output(command: str) -> Optional[str]:
     cmds = shlex.split(command)
     if not cmds:
@@ -580,6 +581,8 @@ def compile(
     sandbox: SandboxBase,
     artifacts: GradingArtifacts,
 ) -> bool:
+    sandbox.reset()
+
     commands = _try_following_alias_for_commands(commands)
     bits_artifact = _maybe_get_bits_stdcpp_for_commands(commands)
     if bits_artifact is not None:
@@ -591,7 +594,9 @@ def compile(
         return True
 
     logs: List[PreprocessLog] = []
-    sandbox.set_params(params)
+    sandbox.set_params(
+        params.model_copy(deep=True)
+    )  # Copy to allow further modification.
 
     for i, command in enumerate(commands):
         _maybe_complain_about_sanitization(command)
@@ -663,10 +668,14 @@ async def run(
     artifacts: GradingArtifacts,
     metadata: Optional[RunLogMetadata] = None,
 ) -> Optional[RunLog]:
+    sandbox.reset()
+
     _process_input_artifacts(artifacts, sandbox)
     _process_fifos(artifacts, sandbox)
     cmd = _split_and_expand(command, sandbox)
-    sandbox.set_params(params)
+    sandbox.set_params(
+        params.model_copy(deep=True)
+    )  # Copy to allow further modification.
 
     # Remove memory constraints for Java.
     if is_java_like_command(get_exe_from_command(command)):

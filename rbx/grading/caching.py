@@ -7,9 +7,12 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from rbx import console
 from rbx.grading.judge.digester import digest_cooperatively
 from rbx.grading.judge.storage import Storage, copyfileobj
 from rbx.grading.steps import DigestHolder, GradingArtifacts, GradingLogsHolder
+
+VERBOSE = False
 
 
 class CacheInput(BaseModel):
@@ -157,12 +160,21 @@ def _build_cache_input(
         artifacts.model_copy(deep=True) for artifacts in artifact_list
     ]
     for artifacts in cloned_artifact_list:
+        # Clear logs from cache input, since they are not
+        # part of the cache key.
+        artifacts.logs = None
+
         for output in artifacts.outputs:
             if output.hash:
                 # Cleanup dest field from hash artifacts
                 # since they only their digest value should
                 # be tracked by cache.
                 output.dest = None
+
+            if output.digest is not None:
+                # Cleanup output digest value from cache input,
+                # since it is not part of the cache key.
+                output.digest.value = None
     return CacheInput(
         commands=commands, artifacts=cloned_artifact_list, extra_params=extra_params
     )
@@ -237,7 +249,11 @@ class DependencyCacheBlock:
             artifact_list=self.artifact_list,
             extra_params=self.extra_params,
         )
+        if VERBOSE:
+            console.console.log(f'Cache input is: {input}')
         self._key = _build_cache_key(input)
+        if VERBOSE:
+            console.console.log(f'Cache key is: {self._key}')
         found = self.cache.find_in_cache(
             self.commands, self.artifact_list, self.extra_params, key=self._key
         )
@@ -349,8 +365,8 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ):
-        input = CacheInput(
-            commands=commands, artifacts=artifact_list, extra_params=extra_params
+        input = _build_cache_input(
+            commands=commands, artifact_list=artifact_list, extra_params=extra_params
         )
         key = key or _build_cache_key(input)
 

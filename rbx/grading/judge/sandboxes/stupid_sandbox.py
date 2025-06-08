@@ -51,22 +51,21 @@ class StupidSandbox(SandboxBase):
         SandboxBase.__init__(self, file_cacher, name, temp_dir, params)
 
         # Make box directory
+        self.initialize()
+
+    def initialize(self):
         self._path = pathlib.Path(
             tempfile.mkdtemp(dir=str(self.temp_dir), prefix='rbx-%s-' % (self.name))
         )
-        self.initialize()
-
         self.exec_num = -1
         self.log = None
         self.returncode = None
+        self._path.mkdir(parents=True, exist_ok=True)
 
         logger.debug("Sandbox in `%s' created, using stupid box.", self._path)
 
         # Box parameters
         self.chdir = self._path
-
-    def initialize(self):
-        self._path.mkdir(parents=True, exist_ok=True)
 
     def get_timeit_executable(self) -> pathlib.Path:
         with importlib.resources.as_file(

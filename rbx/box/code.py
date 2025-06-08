@@ -14,6 +14,7 @@ import typer
 from rbx import console
 from rbx.box import download, package, setter_config, state
 from rbx.box.environment import (
+    CompilationConfig,
     ExecutionConfig,
     FileMapping,
     get_compilation_config,
@@ -29,7 +30,7 @@ from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 from rbx.grading import steps, steps_with_caching
-from rbx.grading.judge.sandbox import SandboxParams
+from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -391,12 +392,115 @@ def _prepare_run(
     )
 
 
+def _should_precompile(commands: List[str]) -> bool:
+    return any(is_cxx_command(command) for command in commands)
+
+
+def _precompile_header(
+    compilation_options: CompilationConfig,
+    sanitized: SanitizationLevel,
+    sandbox: SandboxBase,
+    sandbox_params: SandboxParams,
+    artifacts: GradingArtifacts,
+    input_artifact: GradingFileInput,
+    force_warnings: bool = False,
+    verbose: bool = False,
+) -> GradingFileInput:
+    """
+    Precompile a header file (.h).
+
+    Assumes input artifact is a header file (.h) and compilation commands are C++.
+    """
+    assert compilation_options.commands is not None
+
+    dependency_cache = package.get_dependency_cache()
+
+    # TODO: deduplicate code with compile_item.
+    commands = get_mapped_commands(
+        compilation_options.commands,
+        FileMapping(
+            compilable='precompilable.h',
+            executable='precompilable.h.gch',
+        ),
+    )
+    commands = add_warning_flags(commands, force_warnings)
+    commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
+
+    if sanitized.should_sanitize():
+        commands = add_sanitizer_flags(commands)
+
+    precompilation_artifacts = GradingArtifacts()
+
+    # Keep only header files.
+    precompilation_artifacts.inputs = [
+        input
+        for input in artifacts.inputs
+        if input.src is not None and input.src.suffix == '.h'
+    ]
+    precompilation_artifacts.inputs.append(
+        GradingFileInput(
+            src=input_artifact.src,
+            dest=PosixPath('precompilable.h'),
+        )
+    )
+
+    # Pull only the precompiled header file.
+    precompiled_digest = DigestHolder()
+    precompilation_artifacts.outputs.append(
+        GradingFileOutput(
+            src=PosixPath('precompilable.h.gch'),
+            digest=precompiled_digest,
+            executable=True,
+        )
+    )
+
+    console.console.print(
+        f'[status]Precompiling header file: [item]{input_artifact.src}[/item]'
+    )
+    if not steps_with_caching.compile(
+        commands,
+        params=sandbox_params,
+        artifacts=precompilation_artifacts,
+        sandbox=sandbox,
+        dependency_cache=dependency_cache,
+    ):
+        console.console.print(
+            f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
+        )
+        raise typer.Exit(1)
+    console.console.print(
+        f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
+    )
+
+    if verbose:
+        console.console.print(
+            f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
+        )
+
+        if (
+            precompilation_artifacts.logs is not None
+            and precompilation_artifacts.logs.preprocess is not None
+        ):
+            for log in precompilation_artifacts.logs.preprocess:
+                console.console.print(f'[status]Command:[/status] {log.get_command()}')
+                console.console.print(f'[status]Summary:[/status] {log.get_summary()}')
+
+    assert precompiled_digest.value is not None
+
+    return GradingFileInput(
+        digest=precompiled_digest,
+        dest=input_artifact.dest.with_suffix('.h.gch'),
+        executable=True,
+    )
+
+
 # Compile code item and return its digest in the storage.
 def compile_item(
     code: CodeItem,
     sanitized: SanitizationLevel = SanitizationLevel.PREFER,
     force_warnings: bool = False,
     verbose: bool = False,
+    precompile: bool = True,
 ) -> str:
     _check_stack_limit()
 
@@ -461,6 +565,31 @@ def compile_item(
     for input in artifacts.inputs:
         _ignore_warning_in_cxx_input(input)
 
+    # Precompile header files.
+    if precompile and _should_precompile(commands):
+        precompilation_inputs = []
+        for input in artifacts.inputs:
+            if (
+                input.src is not None
+                and input.src.suffix == '.h'
+                and input.dest.suffix == '.h'
+            ):
+                precompilation_inputs.append(
+                    _precompile_header(
+                        compilation_options,
+                        sanitized,
+                        sandbox,
+                        sandbox_params,
+                        artifacts,
+                        input,
+                        force_warnings,
+                        verbose,
+                    )
+                )
+        if precompilation_inputs:
+            artifacts.inputs.extend(precompilation_inputs)
+
+    # Compile the code.
     if not steps_with_caching.compile(
         commands,
         params=sandbox_params,
@@ -473,6 +602,7 @@ def compile_item(
     assert compiled_digest.value is not None
 
     if verbose and artifacts.logs is not None and artifacts.logs.preprocess is not None:
+        console.console.print(f'[status]Compiled item: [item]{code.path}[/item]')
         for log in artifacts.logs.preprocess:
             console.console.print(f'[status]Command:[/status] {log.get_command()}')
             console.console.print(f'[status]Summary:[/status] {log.get_summary()}')

@@ -740,6 +740,15 @@ class SandboxBase(abc.ABC):
         """
         pass
 
+    def reset(self):
+        """Reset the sandbox.
+
+        To be called at the beginning of the execution.
+
+        """
+        self.cleanup(delete=True)
+        self.initialize()
+
     @abc.abstractmethod
     def cleanup(self, delete: bool = False):
         """Cleanup the sandbox.
