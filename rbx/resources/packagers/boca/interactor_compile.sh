@@ -1,4 +1,7 @@
 ### START OF INTERACTOR COMPILATION
+CACHE_DIR="/tmp/boca-cache"
+mkdir -p $CACHE_DIR
+
 # Assumes testlib was added by checker
 INTERACTOR_PATH="interactor.cpp"
 INTERACTOR_OUT="interactor.exe"
@@ -22,7 +25,7 @@ EOF
 printf "%s" "${InteractorContent}" >$INTERACTOR_PATH
 
 interactor_hash=($(md5sum $INTERACTOR_PATH))
-interactor_cache="/tmp/boca-int-${interactor_hash}"
+interactor_cache="$CACHE_DIR/interactor-${interactor_hash}"
 
 echo "Interactor hash: $interactor_hash"
 echo "Copying interactor to $CDIR/$INTERACTOR_OUT"
