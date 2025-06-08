@@ -40,7 +40,9 @@ from rbx.grading.steps import (
     GradingFileOutput,
     RunLog,
     RunLogMetadata,
+    get_exe_from_command,
     is_cxx_command,
+    maybe_get_bits_stdcpp_for_commands,
 )
 
 
@@ -454,9 +456,6 @@ def _precompile_header(
         )
     )
 
-    console.console.print(
-        f'[status]Precompiling header file: [item]{input_artifact.src}[/item]'
-    )
     if not steps_with_caching.compile(
         commands,
         params=sandbox_params,
@@ -468,9 +467,6 @@ def _precompile_header(
             f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
         )
         raise typer.Exit(1)
-    console.console.print(
-        f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
-    )
 
     if verbose:
         console.console.print(
@@ -565,6 +561,16 @@ def compile_item(
     for input in artifacts.inputs:
         _ignore_warning_in_cxx_input(input)
 
+    # Add system bits/stdc++.h to the compilation.
+    bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
+    if bits_artifact is not None:
+        artifacts.inputs.append(bits_artifact)
+        commands = [
+            command + ' -I.'
+            for command in commands
+            if is_cxx_command(get_exe_from_command(command))
+        ]
+
     # Precompile header files.
     if precompile and _should_precompile(commands):
         precompilation_inputs = []
@@ -583,7 +589,7 @@ def compile_item(
                         artifacts,
                         input,
                         force_warnings,
-                        verbose,
+                        verbose=False,
                     )
                 )
         if precompilation_inputs:

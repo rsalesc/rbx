@@ -434,7 +434,7 @@ def _complain_about_clang() -> None:
 
 
 @functools.cache
-def _get_cxx_version_output(command: str) -> Optional[str]:
+def _get_cxx_version_output(command: str, extra_flags: str = '') -> Optional[str]:
     cmds = shlex.split(command)
     if not cmds:
         return None
@@ -442,8 +442,8 @@ def _get_cxx_version_output(command: str) -> Optional[str]:
     if not is_cxx_command(exe):
         return None
 
-    exe = cmds[0]
-    output = subprocess.run([exe, '-v'], capture_output=True)
+    extra = shlex.split(extra_flags)
+    output = subprocess.run([exe, '-v', *extra], capture_output=True, input='')
     if output.returncode != 0:
         console.print('[error]Failed to get C/C++ compiler version.[/error]')
         return None
@@ -451,6 +451,8 @@ def _get_cxx_version_output(command: str) -> Optional[str]:
 
 
 def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
+    if not _is_cpp_command(get_exe_from_command(command)):
+        return None
     version_output = _get_cxx_version_output(command)
     if version_output is None:
         return None
@@ -467,11 +469,44 @@ def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]
     return GradingFileInput(src=bits, dest=pathlib.Path('bits/stdc++.h'))
 
 
-def _maybe_get_bits_stdcpp_for_commands(
+def _find_system_paths_in_version_output(version_output: str) -> List[pathlib.Path]:
+    res = []
+    start = False
+    for line in version_output.splitlines():
+        if line.startswith('#include <...> search starts here:'):
+            start = True
+            continue
+        if not start:
+            continue
+        if not line.startswith(' '):
+            break
+        res.append(pathlib.Path(line.strip()))
+    return res
+
+
+def _get_system_bits_stdcpp(command: str) -> Optional[GradingFileInput]:
+    if not _is_cpp_command(get_exe_from_command(command)):
+        return None
+    version_output = _get_cxx_version_output(command, '-xc++ -E -')
+    if version_output is None:
+        return None
+    for path in _find_system_paths_in_version_output(version_output):
+        bits_candidate = path / 'bits' / 'stdc++.h'
+        if not bits_candidate.is_file():
+            continue
+        return GradingFileInput(
+            src=bits_candidate.resolve().absolute(), dest=pathlib.Path('bits/stdc++.h')
+        )
+    return None
+
+
+def maybe_get_bits_stdcpp_for_commands(
     commands: List[str],
 ) -> Optional[GradingFileInput]:
     for command in commands:
-        res = _maybe_get_bits_stdcpp_for_clang(command)
+        res = _get_system_bits_stdcpp(command) or _maybe_get_bits_stdcpp_for_clang(
+            command
+        )
         if res is not None:
             return res
     return None
@@ -584,9 +619,6 @@ def compile(
     sandbox.reset()
 
     commands = _try_following_alias_for_commands(commands)
-    bits_artifact = _maybe_get_bits_stdcpp_for_commands(commands)
-    if bits_artifact is not None:
-        _process_input_artifacts(GradingArtifacts(inputs=[bits_artifact]), sandbox)
     _process_input_artifacts(artifacts, sandbox)
 
     if not commands:
@@ -608,10 +640,6 @@ def compile(
         # Remove memory constraints for Java.
         if is_java_like_command(get_exe_from_command(command)):
             sandbox.params.address_space = None
-
-        if bits_artifact is not None and _is_cpp_command(cmd[0]):
-            # Include from sandbox directory to import bits/stdc++.h.
-            cmd.append('-I.')
 
         if not sandbox.execute_without_std(cmd):
             console.print(
