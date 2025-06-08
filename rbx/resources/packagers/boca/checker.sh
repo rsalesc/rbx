@@ -1,4 +1,7 @@
 ### START OF CHECKER COMPILATION
+CACHE_DIR="/tmp/boca-cache"
+mkdir -p $CACHE_DIR
+
 CDIR=$(pwd)
 CHECKER_PATH="checker.cpp"
 CHECKER_OUT="checker.exe"
@@ -27,7 +30,7 @@ printf "%s" "${RbxHeaderContent}" >rbx.h
 printf "%s" "${CheckerContent}" >$CHECKER_PATH
 
 checker_hash=($(cat $CHECKER_PATH rbx.h testlib.h | md5sum))
-checker_cache="/tmp/boca-chk-${checker_hash}"
+checker_cache="$CACHE_DIR/checker-${checker_hash}"
 
 echo "Polygon checker hash: $checker_hash"
 echo "Copying polygon checker to $CDIR/$CHECKER_OUT"
