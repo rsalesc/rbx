@@ -217,6 +217,19 @@ class BocaPackager(BasePackager):
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(str(solution.path), dest_path)
 
+    def _expand_run_script(self, run_path: pathlib.Path):
+        pkg = package.find_problem_package_or_die()
+        if pkg.type == TaskType.COMMUNICATION:
+            runit_content = (
+                get_default_app_path() / 'packagers' / 'boca' / 'interactor_run.sh'
+            ).read_text()
+            run_path.write_text(
+                run_path.read_text().replace(
+                    '{{runit_content}}',
+                    runit_content,
+                )
+            )
+
     @classmethod
     def name(cls) -> str:
         return 'boca'
@@ -262,6 +275,7 @@ class BocaPackager(BasePackager):
                 )
                 raise typer.Exit(1)
             shutil.copyfile(run_orig_path, run_path / language)
+            self._expand_run_script(run_path / language)
 
         # Prepare compile.
         compile_path = into_path / 'compile'
