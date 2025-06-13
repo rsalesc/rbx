@@ -177,9 +177,11 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
 
         while line := f.readline().strip():
             if line.startswith(interactor_prefix):
-                entries.append(TestcaseInteractionEntry(data=line, pipe=0))
+                stripped = line[len(interactor_prefix) :].strip()
+                entries.append(TestcaseInteractionEntry(data=stripped, pipe=0))
             elif line.startswith(solution_prefix):
-                entries.append(TestcaseInteractionEntry(data=line, pipe=1))
+                stripped = line[len(solution_prefix) :].strip()
+                entries.append(TestcaseInteractionEntry(data=stripped, pipe=1))
             else:
                 raise TestcaseInteractionParsingError(
                     f'Invalid line in interaction file {file}. Expected the line to start with the interactor or solution prefix ({interactor_prefix} or {solution_prefix}).'
