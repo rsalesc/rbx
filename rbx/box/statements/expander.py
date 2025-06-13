@@ -8,11 +8,11 @@ TypeVarT = TypeVar('TypeVarT', bound=Any)
 
 def expand_statements(statements: List[TypeVarT]) -> List[TypeVarT]:
     deg = collections.defaultdict(int)
-    dependencies = {}
+    dependencies = collections.defaultdict(list)
     for statement in statements:
         if statement.extends is not None:
             deg[statement.name] += 1
-            dependencies[statement.extends] = statement.name
+            dependencies[statement.extends].append(statement.name)
 
     # Topological sort.
     #   - We need to expand statements in the order of dependencies.
@@ -36,10 +36,10 @@ def expand_statements(statements: List[TypeVarT]) -> List[TypeVarT]:
 
         expanded[statement.name] = expanded_statement
 
-        if statement.name in dependencies:
-            deg[dependencies[statement.name]] -= 1
-            if deg[dependencies[statement.name]] == 0:
-                st.append(st_per_name[dependencies[statement.name]])
+        for dep_name in dependencies[statement.name]:
+            deg[dep_name] -= 1
+            if deg[dep_name] == 0:
+                st.append(st_per_name[dep_name])
 
     if len(expanded) != len(statements):
         raise ValueError(
