@@ -61,6 +61,10 @@ fi
 # make sure that directories below are correct.
 sf=$(which safeexec)
 [ -x "$sf" ] || sf=/usr/bin/safeexec
+if [ -x "../safeexec.exe" ]; then
+  cp "../safeexec.exe" "safeexec.exe"
+  sf="./safeexec.exe"
+fi
 
 if [ "$1" == "" -o "$2" == "" -o "$3" == "" ]; then
   echo "parameter problem"
@@ -77,8 +81,9 @@ if [ ! -x "$sf" ]; then
 fi
 
 time=$3
-if [ "$time" -gt "0" ]; then
-  let "ttime = $time * 4"
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  let "ttime = $rtime * 4"
 else
   time=1
   ttime=4
@@ -86,8 +91,8 @@ fi
 
 nruns=1
 if [ "$4" != "" ]; then
-  if [ "$4" -gt "0" ]; then
-    nruns=$4
+  if [ "$4" -gt "1" ]; then
+    echo "WARNING: nruns is set to $4, but it will be ignored because it's not supported by interactive problems"
   fi
 fi
 maxm=512000
@@ -131,7 +136,7 @@ if [ $? -eq 0 ]; then
       echo "\$python3 not found or it's not executable"
       exit 47
   fi
-  "$sf" -F256 -u256 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -ostdout0 -estderr0 -- ./runit.sh "\$python3" "$name"
+  ./runit.sh "$cdir" "$sf" "$ttime" -F256 -u256 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -- "\$python3" "$name"
   retval=\$?
   echo \$retval > runch.exitcode
   if [ ! -d /bocajail ]; then
@@ -150,17 +155,8 @@ EOF
     exit 49
   fi
 else
-  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  python3=$(which python3)
-  [ -x "$python3" ] || python3=/usr/bin/python3
-  if [ ! -x "$python3" ]; then
-    echo "$python3 not found or it's not executable"
-    exit 47
-  fi
-  "$sf" -F256 -u256 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -ostdout0 -estderr0 -- ./runit.sh "$python3" "$name"
-  ret=$?
+  echo "ERROR: CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  exit 48
 fi
 ### END OF BOCA RUN COMMAND
 

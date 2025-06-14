@@ -61,6 +61,10 @@ fi
 # make sure that directories below are correct.
 sf=$(which safeexec)
 [ -x "$sf" ] || sf=/usr/bin/safeexec
+if [ -x "../safeexec.exe" ]; then
+  cp "../safeexec.exe" "safeexec.exe"
+  sf="./safeexec.exe"
+fi
 
 if [ "$1" == "" -o "$2" == "" -o "$3" == "" ]; then
   echo "parameter problem"
@@ -80,8 +84,9 @@ if [ ! -x "$sf" ]; then
 fi
 
 time=$3
-if [ "$time" -gt "0" ]; then
-  let "ttime = $time * 4"
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  let "ttime = $rtime * 4"
 else
   time=1
   ttime=4
@@ -89,8 +94,8 @@ fi
 
 nruns=1
 if [ "$4" != "" ]; then
-  if [ "$4" -gt "0" ]; then
-    nruns=$4
+  if [ "$4" -gt "1" ]; then
+    echo "WARNING: nruns is set to $4, but it will be ignored because it's not supported by interactive problems"
   fi
 fi
 maxm=512000
@@ -134,7 +139,7 @@ if [ $? -eq 0 ]; then
   cd "$cdir"
   [ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
   [ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
-  "$sf" -F10 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -ostdout0 -estderr0 -- ./runit.sh ./run.exe
+  ./runit.sh "$cdir" "$sf" "$ttime" -F10 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -- ./run.exe
   retval=\$?
   echo \$retval > runch.exitcode
   if [ ! -d /bocajail ]; then
@@ -153,12 +158,8 @@ EOF
     exit 49
   fi
 else
-  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-
-  "$sf" -F10 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -ostdout0 -estderr0 -- ./runit.sh ./run.exe
-  ret=$?
+  echo "ERROR: CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  exit 48
 fi
 ### END OF BOCA RUN COMMAND
 

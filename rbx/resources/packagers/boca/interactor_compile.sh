@@ -24,7 +24,7 @@ EOF
 
 printf "%s" "${InteractorContent}" >$INTERACTOR_PATH
 
-interactor_hash=($(md5sum $INTERACTOR_PATH))
+interactor_hash=($(cat $INTERACTOR_PATH rbx.h testlib.h | md5sum))
 interactor_cache="$CACHE_DIR/interactor-${interactor_hash}"
 
 echo "Interactor hash: $interactor_hash"

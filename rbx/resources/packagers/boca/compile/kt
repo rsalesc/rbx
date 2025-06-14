@@ -41,22 +41,22 @@
 
 umask 0022
 if [ "$1" == "" ]; then
-    echo "parameter problem"
-    exit 43
+	echo "parameter problem"
+	exit 43
 fi
 name="$1"
 if [ ! -r "$1" ]; then
-    echo "$1 not found or it's not readable"
-    exit 44
+	echo "$1 not found or it's not readable"
+	exit 44
 fi
 id -u bocajail >/dev/null 2>/dev/null
 if [ $? == 0 ]; then
-	bocau=`id -u bocajail`
-	bocag=`id -g bocajail`
+	bocau=$(id -u bocajail)
+	bocag=$(id -g bocajail)
 	chown bocajail.nogroup .
 else
-	bocau=`id -u nobody`
-	bocag=`id -g nobody`
+	bocau=$(id -u nobody)
+	bocag=$(id -g nobody)
 	chown nobody.nogroup .
 fi
 if [ "$bocau" == "" -o "$bocag" == "" ]; then
@@ -67,10 +67,10 @@ fi
 mkdir -p src
 if [ "${name##*.}" == "zip" -a "${name##*.}" == "ZIP" ]; then
 	unzip "$name" -d src
-    if [ "${name##*.}" == "zip" ]; then
-		name=`basename $name .zip`
+	if [ "${name##*.}" == "zip" ]; then
+		name=$(basename $name .zip)
 	else
-		name=`basename $name .ZIP`
+		name=$(basename $name .ZIP)
 	fi
 else
 	cp "$name" src
@@ -80,42 +80,38 @@ chmod -R 700 src
 
 # this script makes use of safeexec to execute the code with less privilegies
 # make sure that directories below are correct.
-sf=`which safeexec`
+sf=$(which safeexec)
 [ -x "$sf" ] || sf=/usr/bin/safeexec
 if [ ! -x $sf ]; then
-    echo "$sf not found or it's not executable"
-    exit 46
+	echo "$sf not found or it's not executable"
+	exit 46
 fi
 
 # setting up the timelimit according to the problem
-if [ "$3" == "" ]; then
-  time=5
-else
-  time=$3
-fi
-let "ttime = $time + 30"
+time=30
+ttime=30
 
 maxm=1024
 if [ "$4" != "" -a "$4" -gt "1024" ]; then
-maxm=$4
+	maxm=$4
 fi
 
 maxms=100
 
 if [ "$2" == "" ]; then
-  jarfile=run.jar
+	jarfile=run.jar
 else
-  jarfile=$2
+	jarfile=$2
 fi
 
-cdir=`pwd`
+cdir=$(pwd)
 echo "Current directory is $cdir" >&2
-mainname=`echo $name | cut -d'.' -f1`
+mainname=$(echo $name | cut -d'.' -f1)
 if [ "$mainname" == "" ]; then
-  mainname=Main
+	mainname=Main
 fi
 
-cat <<EOF > compileit.sh
+cat <<EOF >compileit.sh
 #!/bin/bash
 kotlinc=/snap/kotlin/24/bin/kotlinc
 [ -x "\$kotlinc" ] || kotlinc=/snap/bin/kotlinc
@@ -147,7 +143,7 @@ if [ "$ret" != "0" ]; then
 	echo "Compilation Error: $ret"
 	exit $ret
 fi
-ret=`cat compileit.retcode`
+ret=$(cat compileit.retcode)
 if [ "$ret" != "0" ]; then
 	echo "Compilation Error: $ret"
 	ret=1

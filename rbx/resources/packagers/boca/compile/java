@@ -88,13 +88,8 @@ if [ ! -x $sf ]; then
 fi
 
 # setting up the timelimit according to the problem
-if [ "$3" == "" ]; then
-  time=5
-else
-  time=$3
-fi
-let "ttime = $time + 30"
 time=30
+ttime=30
 
 maxm=512
 if [ "$4" != "" -a "$4" -gt "512" ]; then

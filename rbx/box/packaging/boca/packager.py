@@ -119,10 +119,18 @@ class BocaPackager(BasePackager):
 
     def _get_limits(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
-        no_of_runs = self._get_number_of_runs(language)
+        if pkg.type == TaskType.COMMUNICATION:
+            # Interactive tasks only support a single run.
+            no_of_runs = 1
+            time_limit = f'{self._get_pkg_timelimit(language) / 1000:.2f}'
+        else:
+            no_of_runs = self._get_number_of_runs(language)
+            time_limit = test_time(
+                self._get_pkg_timelimit(language) / 1000 * no_of_runs
+            )
         return (
             '#!/bin/bash\n'
-            f'echo {test_time(self._get_pkg_timelimit(language) / 1000 * no_of_runs)}\n'
+            f'echo {time_limit}\n'
             f'echo {no_of_runs}\n'
             f'echo {self._get_pkg_memorylimit(language)}\n'
             f'echo {pkg.outputLimit}\n'
@@ -176,6 +184,25 @@ class BocaPackager(BasePackager):
             '{{rbxFlags}}', extension.flags_with_defaults()['cc']
         ).replace('{{interactor_content}}', interactor)
 
+    def _get_safeexec(self) -> str:
+        safeexec_script_path = (
+            get_default_app_path() / 'packagers' / 'boca' / 'safeexec_compile.sh'
+        )
+        safeexec_path = get_default_app_path() / 'packagers' / 'boca' / 'safeexec.c'
+        if not safeexec_script_path.exists():
+            console.console.print(
+                '[error]BOCA template safeexec compile script not found.[/error]'
+            )
+            raise typer.Exit(1)
+        if not safeexec_path.exists():
+            console.console.print(
+                '[error]BOCA template safeexec source code not found.[/error]'
+            )
+            raise typer.Exit(1)
+        return safeexec_script_path.read_text().replace(
+            '{{safeexec_content}}', safeexec_path.read_text()
+        )
+
     def _get_compile(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
         extension = get_extension_or_default('boca', BocaExtension)
@@ -195,6 +222,9 @@ class BocaPackager(BasePackager):
         if pkg.type == TaskType.COMMUNICATION:
             compile_text = compile_text.replace(
                 'umask 0022', 'umask 0022\n\n' + self._get_interactor()
+            )
+            compile_text = compile_text.replace(
+                'umask 0022', 'umask 0022\n\n' + self._get_safeexec()
             )
         compile_text = compile_text.replace(
             'umask 0022', 'umask 0022\n\n' + self._get_checker()

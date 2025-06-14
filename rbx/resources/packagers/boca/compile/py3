@@ -92,12 +92,8 @@ if [ "$4" != "" ]; then
 fi
 
 # setting up the timelimit according to the problem
-if [ "$3" == "" ]; then
-  time=5
-else
-  time=$3
-fi
-let "ttime = $time + 30"
+time=15
+let "ttime = $time * 2"
 
 if [ "$2" == "" ]; then
   exe=run.exe
