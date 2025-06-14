@@ -90,6 +90,14 @@ def _move_logs_to_temp_dir(
     return recover
 
 
+def get_retrier_config(nruns: int = 0) -> RepeatsConfig:
+    if nruns == 0:
+        return get_setter_config().repeats
+    repeats = get_setter_config().repeats.model_copy(deep=True)
+    repeats.reps = nruns
+    return repeats
+
+
 class Retrier:
     def __init__(self, config: Optional[RepeatsConfig] = None, is_stress: bool = False):
         self.config = config or get_setter_config().repeats

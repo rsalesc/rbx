@@ -4,7 +4,7 @@ from typing import Optional
 from rbx.box import checkers, package, state
 from rbx.box.code import CommunicationItem, run_communication, run_item
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
-from rbx.box.retries import Retrier
+from rbx.box.retries import Retrier, get_retrier_config
 from rbx.box.schema import Solution, Testcase
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
@@ -51,6 +51,7 @@ async def run_solution_on_testcase(
     use_retries: bool = True,
     use_timelimit: bool = True,
     capture_pipes: bool = False,
+    nruns: int = 0,
 ) -> Evaluation:
     if interactor_digest is not None:
         return await _run_communication_solution_on_testcase(
@@ -66,6 +67,7 @@ async def run_solution_on_testcase(
             use_retries=use_retries,
             use_timelimit=use_timelimit,
             capture_pipes=capture_pipes,
+            nruns=nruns,
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
@@ -132,7 +134,7 @@ async def run_solution_on_testcase(
     if not use_retries:
         return await run_fn(0)
 
-    retrier = Retrier()
+    retrier = Retrier(get_retrier_config(nruns))
     return await retrier.repeat(run_fn)
 
 
@@ -166,6 +168,7 @@ async def _run_communication_solution_on_testcase(
     use_retries: bool = True,
     use_timelimit: bool = True,
     capture_pipes: bool = False,
+    nruns: int = 0,
 ) -> Evaluation:
     capture_pipes = capture_pipes or state.STATE.debug_logs
 
@@ -291,5 +294,5 @@ async def _run_communication_solution_on_testcase(
     if not use_retries:
         return await run_fn(0)
 
-    retrier = Retrier()
+    retrier = Retrier(get_retrier_config(nruns))
     return await retrier.repeat(run_fn)

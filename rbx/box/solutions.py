@@ -192,6 +192,7 @@ def _run_solution(
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
+    nruns: int = 0,
 ) -> List[Deferred[Evaluation]]:
     group = package.get_testgroup(group_name)
     testcases = find_built_testcases(group)
@@ -217,6 +218,7 @@ def _run_solution(
                 testcase_index=i,
                 verification=verification,
                 timelimit_override=timelimit_override,
+                nruns=nruns,
             )
 
         res.append(Deferred(run_fn))
@@ -315,6 +317,7 @@ def _produce_solution_items(
     check: bool = True,
     timelimit_override: Optional[int] = None,
     sanitized: bool = False,
+    nruns: int = 0,
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
@@ -348,6 +351,7 @@ def _produce_solution_items(
                 progress=progress,
                 verification=verification,
                 timelimit_override=timelimit_override,
+                nruns=nruns,
             )
         ):
             res.append(
@@ -394,6 +398,7 @@ def run_solutions(
     check: bool = True,
     timelimit_override: Optional[int] = None,
     sanitized: bool = False,
+    nruns: int = 0,
 ) -> RunSolutionResult:
     skeleton = _get_report_skeleton(
         tracked_solutions,
@@ -409,6 +414,7 @@ def run_solutions(
             check=check,
             timelimit_override=timelimit_override,
             sanitized=sanitized,
+            nruns=nruns,
         ),
     )
     return result

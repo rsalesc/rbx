@@ -333,7 +333,7 @@ async def run(
     )
 
 
-async def _time_impl(check: bool, detailed: bool) -> Optional[int]:
+async def _time_impl(check: bool, detailed: bool, runs: int = 0) -> Optional[int]:
     if package.get_main_solution() is None:
         console.console.print(
             '[warning]No main solution found, so cannot estimate a time limit.[/warning]'
@@ -353,6 +353,7 @@ async def _time_impl(check: bool, detailed: bool) -> Optional[int]:
             check=check,
             verification=VerificationLevel(verification),
             timelimit_override=-1,  # Unlimited for time limit estimation
+            nruns=runs,
         )
 
     console.console.print()
@@ -397,6 +398,12 @@ async def time(
         '-d',
         help='Whether to print a detailed view of the tests using tables.',
     ),
+    runs: int = typer.Option(
+        0,
+        '--runs',
+        '-r',
+        help='Number of runs to perform for each solution. Zero means the config default.',
+    ),
 ):
     main_solution = package.get_main_solution()
     if check and main_solution is None:
@@ -411,7 +418,7 @@ async def time(
     if not await builder.build(verification=verification, output=check):
         return None
 
-    await _time_impl(check, detailed)
+    await _time_impl(check, detailed, runs)
 
 
 @app.command(
