@@ -258,6 +258,7 @@ def build_statement_bytes(
             output = bdr.build(
                 input=last_content,
                 context=StatementBuilderContext(
+                    lang=statement.language,
                     languages=get_environment_languages_for_statement(),
                     params=params,
                     root=pathlib.Path(td),

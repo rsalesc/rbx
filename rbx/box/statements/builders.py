@@ -41,6 +41,7 @@ class StatementCodeLanguage:
 
 @dataclasses.dataclass
 class StatementBuilderContext:
+    lang: str
     languages: List[StatementCodeLanguage]
     params: ConversionStep
     root: pathlib.Path
@@ -49,6 +50,7 @@ class StatementBuilderContext:
 
     def build_jinja_kwargs(self) -> Dict[str, Any]:
         res = {
+            'lang': self.lang,
             'languages': self.languages,
             'keyed_languages': {lang.id: lang for lang in self.languages},
         }
