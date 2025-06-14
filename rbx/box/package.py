@@ -459,7 +459,7 @@ def get_merged_capture_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path
 def is_cache_valid(root: pathlib.Path = pathlib.Path()):
     cache_dir = find_problem(root) / '.box'
     if not cache_dir.is_dir():
-        return
+        return True
 
     fingerprint_file = cache_dir / 'fingerprint'
     if not fingerprint_file.is_file():
