@@ -233,6 +233,17 @@ Testlib and jngen are already included by default.
     )
 
 
+class Interactor(CodeItem):
+    model_config = ConfigDict(extra='forbid')
+
+    legacy: bool = Field(
+        default=False,
+        description="""
+Whether this interactor is a legacy interactor and needs a checker to be specified.
+""",
+    )
+
+
 class Testcase(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -458,7 +469,7 @@ class Package(BaseModel):
         default=None, description='The checker for this problem.'
     )
 
-    interactor: Optional[CodeItem] = Field(
+    interactor: Optional[Interactor] = Field(
         default=None, description='The interactor for this problem.'
     )
 
@@ -569,7 +580,9 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     'Interactor is not allowed for batch problems. Change the task type to COMMUNICATION.',
                 )
         if self.type == TaskType.COMMUNICATION:
-            if self.checker is not None:
+            if self.checker is not None and (
+                self.interactor is None or not self.interactor.legacy
+            ):
                 raise PydanticCustomError(
                     'CHECKER_NOT_ALLOWED',
                     'Checkers should not be specified for communication problems.',
