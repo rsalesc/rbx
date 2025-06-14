@@ -304,7 +304,11 @@ def _upload_statement(problem: api.Problem, preserve_language: bool = False):
         if not is_valid_lang_code(statement.language):
             continue
         languages.add(statement.language)
-    for language in languages:
+
+    uploaded_languages = set()
+
+    # Prioritize English statements.
+    for language in ['en'] + list(languages):
         statement = _get_statement_for_language(language)
         if statement is None:
             continue
@@ -314,6 +318,10 @@ def _upload_statement(problem: api.Problem, preserve_language: bool = False):
         console.console.print(
             f'Uploading statement for language [item]{language}[/item] (polygon language: [item]{statement_lang}[/item])...'
         )
+        uploaded_language = statement_lang if preserve_language else 'english'
+        if uploaded_language in uploaded_languages:
+            continue
+        uploaded_languages.add(uploaded_language)
         if not preserve_language and statement_lang != 'english':
             console.console.print(
                 '[warning]By default, Polygon statements are uploaded in English.\n'
@@ -332,7 +340,7 @@ def _upload_statement(problem: api.Problem, preserve_language: bool = False):
             notes=_get_notes_with_explanations(blocks) or '',
         )
         problem.save_statement(
-            lang=statement_lang if preserve_language else 'english',
+            lang=uploaded_language,
             problem_statement=polygon_statement,
         )
 
