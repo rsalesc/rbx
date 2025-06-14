@@ -572,14 +572,14 @@ def compile_item(
             if is_cxx_command(get_exe_from_command(command))
         ]
 
-    # Precompile C++ header files.
+    # Precompile C++ interesting header files.
     if precompile and _should_precompile(commands):
         precompilation_inputs = []
         for input in artifacts.inputs:
             if (
                 input.src is not None
                 and input.src.suffix == '.h'
-                and input.dest.suffix == '.h'
+                and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
             ):
                 precompilation_inputs.append(
                     _precompile_header(
