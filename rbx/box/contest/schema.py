@@ -9,6 +9,7 @@ from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import (
     ConversionStep,
     Joiner,
+    StatementLanguage,
     StatementType,
 )
 
@@ -53,7 +54,7 @@ class ContestStatement(BaseModel):
         default=None, description='Name of the statement to inherit from.'
     )
 
-    language: str = Field(
+    language: StatementLanguage = Field(
         default='en', description='Language code for this statement (ISO 639-1).'
     )
 

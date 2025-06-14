@@ -2,12 +2,24 @@ from __future__ import annotations
 
 import pathlib
 from enum import Enum
-from typing import List, Literal, Optional, Union
+from typing import Annotated, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from rbx.autoenum import AutoEnum, alias
 from rbx.box.fields import FNameField
+from rbx.box.lang import is_valid_lang_code
+
+
+def validate_statement_language(lang: str):
+    if not is_valid_lang_code(lang) or not lang.islower():
+        raise ValueError(
+            f'Invalid statement language: {lang}. Language must be a valid lowercase ISO 639-1 code.'
+        )
+    return lang
+
+
+StatementLanguage = Annotated[str, AfterValidator(validate_statement_language)]
 
 
 ### Conversion types
@@ -103,7 +115,7 @@ class Statement(BaseModel):
         description='Name of the statement that this statement extends.',
     )
 
-    language: str = Field(
+    language: StatementLanguage = Field(
         default='en', description='Language code of this statement (ISO 639-1).'
     )
 

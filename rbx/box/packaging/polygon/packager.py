@@ -1,13 +1,12 @@
-import functools
 import pathlib
 import shutil
 from typing import List, Optional
 
-import iso639
 import typer
 
 from rbx import console
 from rbx.box import header, package
+from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.packager import (
     BaseContestPackager,
     BasePackager,
@@ -26,27 +25,6 @@ DAT_TEMPLATE = """
 @teams 0
 @submissions 0
 """
-
-
-def langs_to_code(langs: List[str]) -> List[str]:
-    return [iso639.Language.from_name(lang).part1 for lang in langs]
-
-
-def code_to_langs(langs: List[str]) -> List[str]:
-    return [iso639.Language.from_part1(lang).name.lower() for lang in langs]
-
-
-@functools.cache
-def is_valid_lang_code(lang: str) -> bool:
-    try:
-        code_to_langs([lang])
-    except iso639.LanguageNotFoundError:
-        console.console.print(
-            f'[warning]Language [item]{lang}[/item] is being skipped because it is not a iso639 language.[/warning]'
-        )
-        return False
-
-    return True
 
 
 class PolygonPackager(BasePackager):
