@@ -81,6 +81,8 @@ checker:
   path: "my-checker.cpp"
 ```
 
+See [here](https://codeforces.com/blog/entry/18431) how to write a custom {{testlib}} checker.
+
 #### Add a generator
 
 Add a new generator entry to the `generators` field.
@@ -92,6 +94,8 @@ generators:
     path: "my-gen.cpp"
 ```
 
+See [here](https://codeforces.com/blog/entry/18291) how to write a {{testlib}}-based generator.
+
 !!! tip
     To actually generate tests with this new generator, you have to add testcase groups
     and call the generator.
@@ -102,6 +106,17 @@ generators:
 validator:
   path: 'my-validator.cpp`
 ```
+
+See [here](https://codeforces.com/blog/entry/18426) how to write a {{testlib}}-based validator.
+
+#### Set an interactor
+
+```yaml
+interactor:
+  path: 'my-interactor.cpp'
+```
+
+See [here](https://codeforces.com/blog/entry/18455) how to write a {{testlib}}-based interactor.
 
 ### Add a new solution
 
@@ -228,7 +243,7 @@ vars:
 
 === "In statements"
     ```tex
-    The maximum value of N is \VAR{MAX_N | sci} % (1)!
+    The maximum value of N is \VAR{vars.MAX_N | sci} % (1)!
     ```
 
     1.   If `MAX_N` has lots of trailing zeroes, `sci` converts it to scientific notation.
