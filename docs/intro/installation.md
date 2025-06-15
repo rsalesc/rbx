@@ -6,9 +6,8 @@ You can install {{rbx}} with a single command, either using `pip` or `pipx`. Pre
 
 - Python 3.9.1 or above (stable with Python 3.10).
 - A C++ toolchain to compile {{testlib}} libraries (usually `g++`).
-- Optional:
+- (Optional):
     - Compilers/interpreters that you need to run your solutions on (e.g. `g++`, `java`).
-    - [Competitive Companion](https://github.com/jmerle/competitive-companion) for contestants
     - pdfLaTeX and other additional packages to convert TeX files into PDF (see https://www.latex-project.org/get/)
 
 ## From PyPI
