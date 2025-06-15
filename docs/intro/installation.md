@@ -4,7 +4,7 @@ You can install {{rbx}} with a single command, either using `pip` or `pipx`. Pre
 
 ## Requirements
 
-- Python 3.9 or above (stable with Python 3.10).
+- Python 3.9.1 or above (stable with Python 3.10).
 - A C++ toolchain to compile {{testlib}} libraries (usually `g++`).
 - Optional:
     - Compilers/interpreters that you need to run your solutions on (e.g. `g++`, `java`).
