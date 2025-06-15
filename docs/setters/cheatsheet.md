@@ -2,49 +2,65 @@
 
 ## CLI
 
-| Task                                            | Command                                        |
-| ----------------------------------------------- | ---------------------------------------------- |
-| Show help message                               | `rbx --help`                                   |
-| Open {{rbx}} configuration for editing          | `rbx config edit`                              |
-| Create a new package in folder `package`        | `rbx create package`                           |
-| Compile a file given its path                   | `rbx compile my/file.cpp`                      |
-| Open the problem configuration in a text editor | `rbx edit`                                     |
-| Generate all testcases                          | `rbx build`                                    |
-| Use dynamic timing to estimate time limits      | `rbx time`                                     |
-| Run all solutions and check their tags          | `rbx run`                                      |
-| Run all solutions with sanitizer                | `rbx run -s`                                   |
-| Run all solutions with dynamic timing           | `rbx run -t`                                   |
-| Run all solutions except the slow ones          | `rbx run -v2`                                  |
-| Run all solutions without checking              | `rbx run --nocheck`                            |
-| Run all solutions interactively                 | `rbx irun`                                     |
-| Run the validator interactively                 | `rbx validate`                                 |
-| Run a stress test with name `break`             | `rbx stress break`                             |
-| Run a stress test for a generator               | `rbx stress gen -g "[1..10]" -s sols/main.cpp` |
-| Download {{testlib}} to the current folder      | `rbx download testlib`                         |
-| Download {{jngen}} to the current folder        | `rbx download jngen`                           |
-| Download a built-in {{testlib}} checker         | `rbx download checker wcmp.cpp`                |
-| Build PDF statements                            | `rbx statements build --output=pdf`            |
-| Build PDF statements for English                | `rbx statements build en --output=pdf`         |
-| Package problem for {{polygon}}                 | `rbx package polygon`                          |
-| Package problem for {{boca}}                    | `rbx package boca`                             |
-| List all languages available in the environment | `rbx languages`                                |
-| Clear cache                                     | `rbx clear`                                    |
+Below you can find a list of common {{rbx}} commands. You can read more about each of them in the [CLI reference](reference/cli.md).
+
+
+| Task                                               | Command                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------- |
+| Show help message                                  | `rbx --help`                                                   |
+| Open {{rbx}} configuration for editing             | `rbx config edit`                                              |
+| Create a new package in folder `package`           | `rbx create package`                                           |
+| Compile a file given its path                      | `rbx compile my/file.cpp`                                      |
+| Open the problem configuration in a text editor    | `rbx edit`                                                     |
+| Generate all testcases                             | `rbx build`                                                    |
+| Use dynamic timing to estimate time limits         | `rbx time`                                                     |
+| Run all solutions and check their tags             | `rbx run`                                                      |
+| Run all solutions with sanitizer                   | `rbx run -s`                                                   |
+| Run all solutions with dynamic timing              | `rbx run -t`                                                   |
+| Run all solutions except the slow ones             | `rbx run -v2`                                                  |
+| Run all solutions without checking                 | `rbx run --nocheck`                                            |
+| Run a single solution                              | `rbx run sols/my-solution.cpp`                                 |
+| Choose solutions and run                           | `rbx run -c`                                                   |
+| Run all solutions interactively                    | `rbx irun`                                                     |
+| Choose solutions and run interactively             | `rbx irun -c`                                                  |
+| Run solutions in a single testcase                 | `rbx irun -t samples/0`                                        |
+| Run solutions in a generator testcase              | `rbx irun -g gen 5 10`                                         |
+| Interactively visualize outputs of a recent run    | `rbx ui`                                                       |
+| Run the validator interactively                    | `rbx validate`                                                 |
+| Run a stress test with name `break`                | `rbx stress break`                                             |
+| Run a stress test for a generator                  | `rbx stress gen -g "[1..10]" -f "[sols/main.cpp ~ INCORRECT]"` |
+| Run unit tests for validator and checker           | `rbx unit`                                                     |
+| Download {{testlib}} to the current folder         | `rbx download testlib`                                         |
+| Download {{jngen}} to the current folder           | `rbx download jngen`                                           |
+| Download a built-in {{testlib}} checker            | `rbx download checker wcmp.cpp`                                |
+| Build all statements                               | `rbx statements build`                                         |
+| Build a specific statement                         | `rbx statements build <name>`                                  |
+| Build statements for English                       | `rbx statements build -l en`                                   |
+| Package problem for {{polygon}}                    | `rbx package polygon`                                          |
+| Package problem for {{boca}}                       | `rbx package boca`                                             |
+| Package problem for {{boca}} but only validate     | `rbx package boca -v1`                                         |
+| List all languages available in the environment    | `rbx languages`                                                |
+| Format all YAML configuration files in the package | `rbx fix`                                                      |
+| Clear cache                                        | `rbx clear`                                                    |
 
 ### Contest CLI
 
-| Task                                            | Command                                        |
-| ----------------------------------------------- | ---------------------------------------------- |
-| Show help message                               | `rbx contest --help`                           |
-| Create a new contest in folder `package`        | `rbx contest create package`                   |
-| Add a new problem to the contest with letter A  | `rbx contest add new-problem A`                |
-| Remove a problem from the contest               | `rbx contest remove A`                         |
-| Remove a problem at a certain path              | `rbx contest remove path/to/problem`           |
-| Open the contest configuration in a text editor | `rbx contest edit`                             |
-| Build PDF statements                            | `rbx contest statements build --output=pdf`    |
-| Build PDF statements for English                | `rbx contest statements build en --output=pdf` |
-| Package contest for {{polygon}}                 | `rbx contest package polygon`                  |
-| Build each problem in the contest               | `rbx contest each build`                       |
-| Package each problem in the contest             | `rbx contest each package boca`                |
+| Task                                            | Command                               |
+| ----------------------------------------------- | ------------------------------------- |
+| Show help message                               | `rbx contest --help`                  |
+| Create a new contest in folder `package`        | `rbx contest create package`          |
+| Add a new problem to the contest with letter A  | `rbx contest add new-problem A`       |
+| Remove a problem from the contest               | `rbx contest remove A`                |
+| Remove a problem at a certain path              | `rbx contest remove path/to/problem`  |
+| Open the contest configuration in a text editor | `rbx contest edit`                    |
+| Build all statements                            | `rbx contest statements build`        |
+| Build a specific statement                      | `rbx contest statements build <name>` |
+| Build statements for English                    | `rbx contest statements build en`     |
+| Package contest for {{polygon}}                 | `rbx contest package polygon`         |
+| Build each problem in the contest               | `rbx contest each build`              |
+| Package each problem in the contest             | `rbx contest each package boca`       |
+| Build problem A in the contest                  | `rbx contest on A build`              |
+| Build problems A to C in the contest            | `rbx contest on A-C build`            |
 
 ## `problem.rbx.yml`
 
