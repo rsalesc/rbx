@@ -255,21 +255,50 @@ vars:
 ```yaml
 statements:
   # ...other statements
-  - title: "My problem"
-    path: "statement/statement.rbx.tex"
+  - name: 'statement-en'
+    title: "My problem"
+    path: "statement/statement.rbx.tex" # (1)!
     type: rbxTeX
     language: 'en'
-    pipeline:
+    configure:
       - type: 'rbx-tex'
-        template: statement/template.rbx.tex' # (1)!
-    assets: ['statement/olymp.sty', 'statement/*.png'] # (2)!
+        template: statement/template.rbx.tex' # (2)!
+    assets: ['statement/olymp.sty', 'statement/*.png'] # (3)!
 ```
 
-1. Defines how a {{rbxTeX}} file will be converted to a normal TeX file. Here, we link
+1. Defines the path to the {{rbxTeX}} file, where the building blocks of the statement
+   will be defined.
+
+2. Defines how a {{rbxTeX}} file will be converted to a normal TeX file. Here, we link
      the template where our {{rbxTeX}} sections such as *legend*, *input* and *output*
      will be inserted into.
 
-2. Defines assets that should be linked when the resulting statement is being compiled.
+3. Defines assets that should be linked when the resulting statement is being compiled.
+
+#### Extends other {{rbxTeX}} statements
+
+```yaml
+statements:
+  - name: 'statement'
+    title: 'My problem'
+    path: "statement/statement.rbx.tex"
+    type: rbxTeX
+    language: 'en'
+    configure:
+      - type: 'rbx-tex'
+        template: statement/template.rbx.tex'
+    assets: ['statement/olymp.sty', 'statement/*.png']
+  - name: 'statement-pt'
+    title: 'Meu problema'
+    extends: 'statement' # (1)!
+    language: 'pt'
+    path: 'statement/statement-pt.rbx.tex' # (2)!
+```
+
+1. The `statement-pt` statement will inherit the properties of the `statement` statement, and override a subset of them.
+
+2. The `statement-pt` statement will use a different {{rbxTeX}} file, since we need to rewrite the building blocks
+   of the statement in another language.
 
 #### Add a PDF statement
 
