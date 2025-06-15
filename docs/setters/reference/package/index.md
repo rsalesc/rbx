@@ -308,24 +308,49 @@ You can specify validators in two places:
           path: "validator-alternative.cpp"
     ```
 
-You can pass variables to validators by calling {{testlib}}'s `prepareOpts` function and by using its provided `opt` accessor.
+You can pass variables to validators in two different ways.
 
-```cpp
-#include "testlib.h"
+1. (C++ only) Include the `rbx.h` header and using the `getVar` accessor.
 
-using namespace std;
+    ```cpp
+    #include "testlib.h"
+    #include "rbx.h"
 
-int main(int argc, char *argv[]) {
-    registerValidation(argc, argv);
-    prepareOpts(argc, argv);
+    using namespace std;
 
-    int MAX_N = opt<int>("MAX_N"); // Read from package vars.
+    int main(int argc, char *argv[]) {
+        registerValidation(argc, argv);
 
-    inf.readInt(1, MAX_N, "N");
-    inf.readEoln();
-    inf.readEof();
-}
-```
+        int MAX_N = getVar<int>("MAX_N"); // Read from package vars.
+
+        inf.readInt(1, MAX_N, "N");
+        inf.readEoln();
+        inf.readEof();
+    }
+    ```
+
+    This header is automatically generated at your problem's root directory by {{rbx}}.
+
+    !!! success "Recommended"
+        This is the recommended approach of passing variables to validators.
+
+1. Read the variables from the command line.
+
+    {{rbx}} passes all the variables defined in the `vars` section to the validator through `--{name}={value}` parameters. You are
+    responsible for writing code to parse them.
+
+    ```python
+    import sys
+
+    variables = {}
+
+    for arg in sys.argv[1:]:
+      if arg.startswith('--') and '=' in arg:
+        name, value = arg[2:].split('=', 1)
+        variables[name] = value
+
+    # Use variables...
+    ```
 
 ## Stress tests
 
