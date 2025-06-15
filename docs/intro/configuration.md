@@ -8,4 +8,4 @@ If you want to dive deeper into {{rbx}} configuration files you can proceed to t
 
 ---
 
-If you want to start putting your hands on the tool and running a few commands, you can proceed to [rbx First Steps](../setters/first-steps.md) (to start using rbx for setters) or to [rbc First Steps](../setters/first-steps.md) (to start using rbx for contestants).
+If you want to start putting your hands on the tool and running a few commands, you can proceed to [rbx First Steps](../setters/first-steps.md).
