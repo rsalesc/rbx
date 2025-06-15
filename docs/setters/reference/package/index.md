@@ -42,6 +42,45 @@ modifiers:
 You can use this (optional) field to specify the type of your problem. If you're building an interactive problem, for instance, you should
 set this to `COMMUNICATION`, otherwise the default `BATCH` will be used.
 
+## Variables
+
+**Field**: `vars`
+**Schema**: `#!python Dict[str, Union[str, int, float, bool]]`
+
+In the package definition you can define variables that can be referenced in statements, validators, checkers, interactors and stress tests.
+
+This is useful to maintain consistency when changing constraints of your problem. A common mistake this field tries to solve is changing constraints in the statement, but not updating them in the other components.
+
+```yaml
+vars:
+  MAX_N: 10000
+  MAX_A: 100000
+  MOD: py`10**9+7` # Backticks force the var to be evaluated as a Python expression.
+```
+
+{{rbx}} automatically generates an `rbx.h` header file in the root of your package that you can include in your code to read these variables.
+
+```cpp
+#include "rbx.h"
+
+int main() {
+  int MAX_N = getVar<int>("MAX_N");
+  // Rest of your code...
+}
+```
+
+If you're not using C++ for your components, consider doing so as the {{rbx}} experience is tightly integrated with {{testlib}}.
+
+If not, you can still use the variables in validators, see the [Validators](#validators) section for more information.
+
+!!! warning
+    Refrain from using variables in generators. Although it is tempting to use `rbx.h` in there, it is not recommended to do so.
+
+    Read more on the [Generators](#generators) section.
+
+!!! note
+    Variable names should be valid Python identifiers.
+
 ## Checker
 
 **Field**: `checker`
@@ -74,7 +113,8 @@ The checker is controlled through the top-level parameter `checker`, and is opti
         {{rbx}} automatically places `testlib.h` together with your code when compiling it, but you can explicitly download it with `rbx download testlib` if you want.
 
     !!! success "Recommended"
-        This is usually the recommended solution when building a custom checker.
+        This is usually the recommended solution when building a custom checker, as {{rbx}} provides a clear integration with {{testlib}}
+        and you can use include `rbx.h` in your checker to read variables.
 
 3. A custom checker (not necessarily using {{testlib}}). It can even be in other language, in which case we suggest specifying the `language` property.
 
@@ -83,6 +123,9 @@ The checker is controlled through the top-level parameter `checker`, and is opti
       path: "my-custom-checker.py"
       language: "python"
     ```
+
+    !!! warning
+        Currently, it is not possible to use variables in custom checkers not written in C++.
 
     !!! note
         Although this is not a {{testlib}}-based checker, we still expect checker programs to follow the same command line structure as {{testlib}}, which is
@@ -112,6 +155,10 @@ interactor:
   legacy: true
 ```
 
+!!! danger
+    {{rbx}} currently only supports {{testlib}}-based interactors. If you do not use a {{testlib}}-based interactor,
+    {{rbx}} will not complain but might behave unexpectedly.
+
 !!! warning
     Notice that a few judges do not support interactors with a checker, and an error will be thrown if you try to build a package
     for an unsupported judge with both components specified.
@@ -134,6 +181,15 @@ generators:
 ```
 
 Notice also how the `generators` field is a list, and as such you can define multiple generators.
+
+!!! danger
+    Refrain from using [Variables](#variables) in generators. Although it is tempting to depend on them, it is not a good practice.
+    
+    This will make your generator sensible to the changes you make to the `vars` field, meaning if you found a testcase that breaks
+    a specific solution, but it depends on a `vars` entry and you change it, you might end up with a totally different test. Instead,
+    you should be able to describe all your generator parameters through static variables.
+
+
 
 ## Solutions
 
@@ -254,29 +310,6 @@ You can define multiple testgroups for you problem. For each testgroup, you can 
 ### Samples
 
 You can also specify samples to be included in your statement by defining a testgroup named `samples`. This testgroup **has to be the first one defined**, otherwise an error will be raised.
-
-## Variables
-
-**Field**: `vars`
-**Schema**: `#!python Dict[str, Union[str, int, float, bool]]`
-
-In the package definition you can define variables that can be referenced in statements, validators and stress tests.
-
-This is useful to maintain consistency when changing constraints of your problem. A common mistake this field tries to solve is changing constraints in the statement, but not updating them in the validator.
-
-```yaml
-vars:
-  MAX_N: 10000
-  MAX_A: 100000
-  MOD: py`10**9+7` # Backticks force the var to be evaluated as a Python expression.
-```
-
-!!! note
-    Variable names should be valid Python identifiers.
-
-!!! tip
-    You can see how to include these variables in each of the possible assets in the
-    sections below.
 
 ## Validators
 
