@@ -6,21 +6,22 @@ This is usually a problem because in modern online judges, the stack limit is co
 
 The disparity can usually cause some friction, because it's really hard to identify that a solution crashed because it exceeded the stack limit, and not because of some other reason. Thus, it's usually a good practice to increase the stack limit as much as possible to avoid the problem.
 
-You can check your current stack limit by running `ulimit -s` in your terminal. Also, you can check even more details about resource limits by running `sudo launchctl limit`, which will show something like this:
+You can check your current stack limit by running `ulimit -s` in your terminal. Also, you can check even more details about resource limits by running `sudo launchctl limit` on MacOS or `ulimit -a -S`/`ulimit -a -H` on Linux, which will show something like this:
 
 ```
-        cpu         unlimited      unlimited      
-        filesize    unlimited      unlimited      
-        data        unlimited      unlimited      
-        stack       8372224        67092480       
-        core        0              unlimited      
-        rss         unlimited      unlimited      
-        memlock     unlimited      unlimited      
-        maxproc     2666           4000           
-        maxfiles    256            unlimited
+# Output of `ulimit -a` on Linux
+-t: cpu time (seconds)              unlimited
+-f: file size (blocks)              unlimited
+-d: data seg size (kbytes)          unlimited
+-s: stack size (kbytes)             8192
+-c: core file size (blocks)         0
+-v: address space (kbytes)          unlimited
+-l: locked-in-memory size (kbytes)  unlimited
+-u: processes                       2666
+-n: file descriptors                1048575
 ```
 
-Notice we have two columns for each resource limit. The first column indicates a soft limit -- in this example, 8 MiB --, and the second column indicates a hard limit -- in this example, 64 MiB. Usually, hard limits are a bit hard to configure, but soft limits can be easily increased to match the hard limit through the `ulimit` command.
+The values for `ulimit -a -S` indicates the soft limit -- in this example, 8 MiB --, and the values for `ulimit -a -H` indicates a hard limit. Usually, hard limits are a bit hard to configure, but soft limits can be easily increased to match the hard limit through the `ulimit` command.
 
 !!! note
     8 MiB is a really small and dangerous stack limit: it's not uncommon for a DFS with a handful of parameters in a big graph to exceed that limit. On the other hand, 64 MiB is usually enough for most problems.
@@ -36,7 +37,7 @@ ulimit -s unlimited
 To ensure you're not bitten by this issue so easily, {{rbx}} will complain if you try to run code
 while your soft stack limit is less than your hard stack limit.
 
-Do not worry, the fix is really simple and will be shown along the error message.
+Do not worry, the fix -- which consists of adding some lines to your `.bashrc` (or the equivalent for other shells) -- is really simple and will be shown along the error message.
 
 !!! tip
     You should ensure the lines added to the file are definitely after the lines where `pipx` paths are added to `$PATH$`, otherwise the `rbx` command will not be found.
