@@ -392,6 +392,22 @@ You can pass variables to validators in two different ways.
     # Use variables...
     ```
 
+### Extra validators
+
+You can also specify extra validators to be used in your testcases, both at the problem-level and testgroup-level.
+
+```yaml
+validator:
+  path: "validator.cpp"
+testcases:
+  - name: "group-1"
+    # ...other testgroup definitions
+  - name: "group-2-without-solution"
+    # a group whose testcases don't have a solution
+    extraValidators:
+      - path: "validator-no-solution.cpp"
+```
+
 ## Stress tests
 
 **Field**: `stresses`
