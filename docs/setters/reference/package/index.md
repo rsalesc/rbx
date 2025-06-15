@@ -34,6 +34,14 @@ modifiers:
     memory: 512  # 512 MB ML for Java
 ```
 
+## Task Type
+
+**Field**: `type`
+**Schema**: [rbx.box.schema.TaskType][]
+
+You can use this (optional) field to specify the type of your problem. If you're building an interactive problem, for instance, you should
+set this to `COMMUNICATION`, otherwise the default `BATCH` will be used.
+
 ## Checker
 
 **Field**: `checker`
@@ -41,7 +49,7 @@ modifiers:
 
 Checkers are also a very important part of your problem package, and define how the output of a solution will be judged.
 
-The checker is controlled through the top-level parameter `checker`, and is optional. In the case it is not specified, {{rbx}} falls back to {{testlib}}'s [wcmp.cpp](https://github.com/MikeMirzayanov/testlib/blob/master/checkers/wcmp.cpp), which is a token-based checker that compares the output of the solution with the expected answer.
+The checker is controlled through the top-level parameter `checker`, and is optional. In the case it is not specified, {{rbx}} falls back to {{testlib}}'s [wcmp.cpp](https://github.com/MikeMirzayanov/testlib/blob/master/checkers/wcmp.cpp), which is a token-based checker that compares the output of the solution with the expected answer. In case of interactive problems, a checker is not required.
 
 {{rbx}} is **tightly integrated** with {{testlib}}, and thus you can either specify:
 
@@ -81,6 +89,32 @@ The checker is controlled through the top-level parameter `checker`, and is opti
         receiving and reading three file paths from the command line.
         
         Thus, your checker program will be called as `<program> <input-file> <output-file> <expected-answer-file>`.
+
+## Interactor
+
+**Field**: `interactor`
+**Schema**: [rbx.box.schema.Interactor][]
+
+You can specify an interactor for your problem, or leave this field empty for non-interactive problems.
+
+```yaml
+interactor:
+  path: "my-interactor.cpp"
+```
+
+According to the [ICPC package specification](https://icpc.io/problem-package-format/spec/legacy-icpc.html), used by the ICPC World Finals, interactors **cannot** be specified together with a checker, and an error will be thrown if both are present.
+
+{{rbx}} enforces this rule, but supports interactive problems with a checker if you set the `legacy` flag in the interactor definition.
+
+```yaml
+interactor:
+  path: "my-interactor.cpp"
+  legacy: true
+```
+
+!!! warning
+    Notice that a few judges do not support interactors with a checker, and an error will be thrown if you try to build a package
+    for an unsupported judge with both components specified.
 
 ## Generators
 
