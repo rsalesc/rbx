@@ -213,13 +213,14 @@ vars:
 
 #### Use variables
 
-=== "In validators"
+=== "In testlib components"
     ```cpp
+    #include "rbx.h"
+
     int32_t main() {
       registerValidation(argc, argv);
-      prepareOpts(argc, argv);
 
-      int MAX_N = opt<int>("MAX_N"); // Read from package vars.
+      int MAX_N = getVar<int>("MAX_N"); // Read from package vars.
 
       // Rest of the validator
     }
