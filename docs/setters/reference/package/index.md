@@ -42,6 +42,13 @@ modifiers:
 You can use this (optional) field to specify the type of your problem. If you're building an interactive problem, for instance, you should
 set this to `COMMUNICATION`, otherwise the default `BATCH` will be used.
 
+```yaml
+name: "interactive-problem"
+type: COMMUNICATION
+timeLimit: 1000  # 1 second TL
+memoryLimit: 256  # 256 MB ML
+```
+
 ## Variables
 
 **Field**: `vars`
