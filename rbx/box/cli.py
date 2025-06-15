@@ -948,6 +948,18 @@ def stats(
 
 
 @app.command(
+    'fix',
+    rich_help_panel='Management',
+    help='Format files of the current package.',
+)
+@cd.within_closest_package
+def fix():
+    from rbx.box import linting
+
+    linting.fix_package()
+
+
+@app.command(
     'clear, clean',
     rich_help_panel='Management',
     help='Clears cache and build directories.',

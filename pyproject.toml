@@ -12,7 +12,7 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.9.1"
 typer = "^0.15.1"
 fastapi = "^0.115.8"
 filelock = "^3.14.0"
@@ -43,6 +43,7 @@ colour = "^0.1.5"
 beautifulsoup4 = "^4.13.4"
 dateparser = "^1.2.1"
 deepmerge = "^2.0"
+yamlfix = "^1.17.0"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"

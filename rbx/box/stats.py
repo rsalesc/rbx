@@ -7,16 +7,17 @@ from rbx.box.cd import (
     is_contest_package,
     is_problem_package,
 )
-from rbx.box.contest.contest_package import find_contest_package_or_die
+from rbx.box.contest.contest_package import find_contest, find_contest_package_or_die
 from rbx.box.formatting import get_formatted_memory
 
 
 def find_problem_packages_from_contest(
     root: pathlib.Path = pathlib.Path(),
 ) -> Iterable[pathlib.Path]:
-    contest = find_contest_package_or_die(root)
+    contest_path = find_contest(root)
+    contest = find_contest_package_or_die(contest_path)
     for problem in contest.problems:
-        yield root / problem.get_path()
+        yield contest_path / problem.get_path()
 
 
 def find_all_reachable_packages(
