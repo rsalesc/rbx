@@ -1,7 +1,7 @@
 import contextlib
 import functools
 import pathlib
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -23,6 +23,16 @@ def find_package(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     if not has_file():
         return None
     return root
+
+
+def find_all_ancestor_packages(
+    root: pathlib.Path = pathlib.Path(),
+) -> List[pathlib.Path]:
+    packages = []
+    while (pkg := find_package(root)) is not None:
+        packages.append(pkg)
+        root = pkg.parent
+    return packages
 
 
 def is_problem_package(root: pathlib.Path = pathlib.Path()) -> bool:

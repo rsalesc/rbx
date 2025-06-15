@@ -926,6 +926,28 @@ def languages():
 
 
 @app.command(
+    'stats',
+    rich_help_panel='Management',
+    help='Show stats about current and related packages.',
+)
+@cd.within_closest_package
+def stats(
+    transitive: bool = typer.Option(
+        False,
+        '--transitive',
+        '-t',
+        help='Show stats about all reachable packages.',
+    ),
+):
+    from rbx.box import stats
+
+    if transitive:
+        stats.print_reachable_package_stats()
+    else:
+        stats.print_package_stats()
+
+
+@app.command(
     'clear, clean',
     rich_help_panel='Management',
     help='Clears cache and build directories.',
