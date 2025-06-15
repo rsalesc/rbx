@@ -408,6 +408,7 @@ def _precompile_header(
     input_artifact: GradingFileInput,
     force_warnings: bool = False,
     verbose: bool = False,
+    include_other_headers: bool = False,
 ) -> GradingFileInput:
     """
     Precompile a header file (.h).
@@ -435,11 +436,12 @@ def _precompile_header(
     precompilation_artifacts = GradingArtifacts()
 
     # Keep only header files.
-    precompilation_artifacts.inputs = [
-        input
-        for input in artifacts.inputs
-        if input.src is not None and input.src.suffix == '.h'
-    ]
+    if include_other_headers:
+        precompilation_artifacts.inputs = [
+            input
+            for input in artifacts.inputs
+            if input.src is not None and input.src.suffix == '.h'
+        ]
     precompilation_artifacts.inputs.append(
         GradingFileInput(
             src=input_artifact.src,
