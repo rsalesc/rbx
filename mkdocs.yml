@@ -5,21 +5,25 @@ nav:
   - "Introduction":
       - "intro/installation.md"
       - "intro/configuration.md"
-  - "rbx: rbx for setters":
+  - "User Guide":
       - "setters/first-steps.md"
+      - "Packaging":
+          - "setters/packaging/index.md"
+          - "BOCA": "setters/packaging/boca.md"
+          - "Polygon": "setters/packaging/polygon.md"
       - "setters/cheatsheet.md"
-      - "Reference":
-          - "Package":
-              - "setters/reference/package/index.md"
-              - "Schema": "setters/reference/package/schema.md"
-          - "Contest":
-              - "setters/reference/contest/index.md"
-              - "Schema": "setters/reference/contest/schema.md"
-          # - "Environment": "setters/reference/environment.md"
-          # - "CLI": "setters/reference/cli.md"
-      - "Troubleshooting":
-          - "cpp-on-macos.md"
-          - "stack-limit.md"
+  - "Reference":
+      - "Package":
+          - "setters/reference/package/index.md"
+          - "Schema": "setters/reference/package/schema.md"
+      - "Contest":
+          - "setters/reference/contest/index.md"
+          - "Schema": "setters/reference/contest/schema.md"
+      # - "Environment": "setters/reference/environment.md"
+      # - "CLI": "setters/reference/cli.md"
+  - "Troubleshooting":
+      - "cpp-on-macos.md"
+      - "stack-limit.md"
 theme:
   name: material
   palette:
@@ -61,6 +65,7 @@ extra:
   testlib: "[testlib](https://codeforces.com/testlib)"
   jngen: "[jngen](https://github.com/ifsmirnov/jngen)"
   YAML: "[YAML](https://yaml.org)"
+  repo: "[GitHub repository](https://github.com/rsalesc/rbx)"
   regex:
     name: "^[a-zA-Z0-9][a-zA-Z0-9\\-]{2,32}$"
   tags:
@@ -81,3 +86,7 @@ markdown_extensions:
   - md_in_html
   - pymdownx.tabbed:
       alternate_style: true
+  - markdown_grid_tables
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg

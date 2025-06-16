@@ -1250,6 +1250,20 @@ docs = ["mdx-gh-links (>=0.2)", "mkdocs (>=1.5)", "mkdocs-gen-files", "mkdocs-li
 testing = ["coverage", "pyyaml"]
 
 [[package]]
+name = "markdown-grid-tables"
+version = "0.5.0"
+description = "Python-Markdown extension to support grid tables."
+optional = false
+python-versions = ">=3.7"
+groups = ["dev"]
+files = [
+    {file = "markdown_grid_tables-0.5.0-py3-none-any.whl", hash = "sha256:f2afc0933d33e75f5f823ceaa6894a7160bbd83a05e377e06c6773951320a480"},
+]
+
+[package.dependencies]
+markdown = ">=3.0.0"
+
+[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -3261,4 +3275,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.1"
-content-hash = "69cc3f6bcb634b16960312730e571dfd3d30f626799fdfce50b4b729673b8d5b"
+content-hash = "6adb04ddb0bae7aa3a88b73922be8fe2a5a27f37eb70aea50161dda4fb6da1f7"
