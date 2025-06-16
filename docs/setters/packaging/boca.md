@@ -32,6 +32,19 @@ You can upload the package to BOCA by setting the `--upload` / `-u` flag.
 rbx package boca -u
 ```
 
+Or you can use the contest-level commands below.
+
+```bash
+# Will upload all problems in the contest
+rbx contest each package boca -u
+
+# Will upload only problem A
+rbx contest on A package boca -u
+
+# Will upload problems A to C
+rbx contest on A-C package boca -u
+```
+
 For that to work, you have to instruct {{rbx}} on how to connect to the BOCA server.
 
 {{rbx}} expects you to have set three environment variables, which you can, for instance, keep in your `.bashrc` or `.zshrc` files:
@@ -52,11 +65,25 @@ the package. Also, make sure the correct contest is activated in the BOCA server
 
 BOCA packages are uploaded to the server via HTTP. By default, BOCA servers (actually, PHP servers) are configured
 with a really tight limit for uploaded file sizes. If you are running into this issue, you can try to increase the
-limit by setting the `upload_max_filesize` directive in your `php.ini` file.
+limit by setting the `upload_max_filesize` and the `post_max_size` directives in your `php.ini` file.
+
+For BOCA installations done through the official Maratona Ubuntu PPA, you can find the configuration file in
+`/etc/php/8.1/fpm/php.ini`, and then restart the PHP service with `sudo service php8.1-fpm restart`.
+
+If you want to give a shot at fixing this with a bash script, try running:
 
 ```bash
-php -i | grep upload_max_filesize
+sudo sed -i 's/upload_max_filesize = .*/upload_max_filesize = 200M/' /etc/php/8.1/fpm/php.ini
+sudo sed -i 's/post_max_size = .*/post_max_size = 200M/' /etc/php/8.1/fpm/php.ini
+sudo sed -i 's/memory_limit = .*/memory_limit = 256M/' /etc/php/8.1/fpm/php.ini
+sudo service php8.1-fpm restart
 ```
+
+!!! danger
+    These limits are there for a reason, and you should only change them if you know what you're doing.
+    Allowing big post sizes can open the door for malicious users to take advantage of that.
+    
+    Try setting it to the smallest value you can to be able to upload your packages.
 
 !!! warning
     Another option, often easier but sometimes undesirable, is to make sure your packages are not too big. Big
