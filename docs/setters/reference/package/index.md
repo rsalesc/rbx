@@ -496,3 +496,44 @@ Finder expressions are really powerful, and can even be used to test your checke
 # Compare two checkers to see if they're misbehaving.
 [sols/sol.cpp ON custom-checker.cpp] != [sols/sol.cpp ON brute-force-checker.cpp]
 ```
+
+## Unit tests
+
+**Field**: `unitTests`
+**Schema**: [`UnitTests`][rbx.box.schema.UnitTests]
+
+
+You can specify unit tests for your validator and your checker through the `unitTests` field.
+
+```yaml
+unitTests:
+  validator:
+    - glob: "unit/validator/valid_*.in"  # (1)!
+      outcome: VALID
+    - glob: "unit/validator/invalid_*.in"  # (2)!
+      outcome: INVALID
+  checker: 
+    - glob: "unit/checker/ac*"  # (3)!
+      outcome: ACCEPTED
+    - glob: "unit/checker/wa*"
+      outcome: WRONG_ANSWER
+```
+
+1. Specify a glob to match manually crafted input files that when validated should be considered valid.
+
+2. Specify a glob to match manually crafted input files that when validated should be considered INVALID.
+
+3. Specify a glob to match files named `unit/checker/ac*(.in|.out|.ans)` that when checked should be considered ACCEPTED.
+
+Validator globs are really simple: they should match `.in` files relative to the problem root directory. Those files will be passed
+to the validator program and validated.
+
+Checker globs are a bit more complex, since they accept three different parameters:
+
+- A `.in` file, the input for the testcase;
+- A `.out` file, the output of the participant's program;
+- A `.ans` file, the output of the main solution.
+
+Thus, to test a checker, you should provide a subset of these three (3) files. The checker unit test definition expects a glob that matches the names of these three files. Thus, the glob `unit/checker/ac*` will match, for instance, `unit/checker/ac.in`, `unit/checker/ac.out` and `unit/checker/ac.ans`.
+
+Not all three files must exist, only those required by the checker.

@@ -362,6 +362,27 @@ stresses:
 
 1. The `@` at the end of the `args` string appends a random string to it. This is necessary here because `gen 100000` would return the same testcase over and over, since {{testlib}} rng is seeded from its command line argc and argv.
 
+### Add unit tests
+
+```yaml
+unitTests:
+  validator:
+    - glob: "unit/validator/valid_*.in"  # (1)!
+      outcome: VALID
+    - glob: "unit/validator/invalid_*.in"
+      outcome: INVALID
+  checker:
+    - glob: "unit/checker/ac*"  # (2)!
+      outcome: ACCEPTED
+    - glob: "unit/checker/wa*"
+      outcome: WRONG_ANSWER
+    # ...other checker unit tests
+```
+
+1. Matches `.in` files relative to the problem root directory that when validated should be considered valid.
+
+2. Matches `.in`, `.out`, `.ans` files that when checked should be considered ACCEPTED.
+
 ## `contest.rbx.yml`
 
 ### Add a new problem
