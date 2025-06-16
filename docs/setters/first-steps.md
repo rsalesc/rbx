@@ -1,6 +1,13 @@
 # First steps
 
-`rbx` (short for {{rbx}} for setters) is the CLI tool {{rbx}} provides for setters to prepare contests and problems.
+`rbx` is the CLI tool {{rbx}} provides for setters to prepare contests and problems.
+
+This document focus on a very specific and simple user journey to highlight the most
+common features of {{rbx}}. Feel free to explore the rest of the documentation on the sidebar
+to get more information about the other features.
+
+We'll focus on how to create a problem from a pre-initialized template, how to write its main
+components and how to test it.
 
 You can start creating a new problem from a pre-initialized template by running `rbx create [name]`.
 
@@ -106,7 +113,10 @@ build
 │           └── ...
 ```
 
-You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this template in particular, we have three testsets: `random`, `program-random` and `samples`. We'll go into more details about each one of these in a minute.
+You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this template in particular, we have three testsets: `random`, `program-random` and `samples`.
+
+If you want, you can explore these folders manually, but {{rbx}} also provides a TUI (terminal UI) to explore the testcases.
+You can run `rbx ui` and select the first option to explore the built testcases.
 
 ## Run
 
@@ -119,7 +129,7 @@ $ rbx run
 You can see this command prints a full run report: it shows for each testcase of each testgroup whether a certain solution passed or not. There are also links for the outputs of each problem.
 
 !!! tip
-    You can notice when you called `rbx run`, the testcases were built really fast.
+    You can notice when you call `rbx run` again, the testcases were built really fast.
     That's because {{rbx}} caches certain calls based on the hash tree of your package
     (similar to Makefile). You can explicitly clear this cache by calling `rbx clean`.
 
@@ -196,14 +206,14 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
 === "validator.cpp"
     ```c++
     #include "testlib.h"
+    #include "rbx.h"
 
     using namespace std;
 
     int main(int argc, char *argv[]) {
         registerValidation(argc, argv);
-        prepareOpts(argc, argv);
 
-        int MAX_N = opt<int>("MAX_N"); // (1)!
+        int MAX_N = getVar<int>("MAX_N"); // (1)!
 
         for (int i = 0; i < n; i++) {
             if (i) inf.readSpace();
@@ -224,7 +234,8 @@ Now, let's rewrite our random generator to generate `N` numbers instead of only 
 
 We have to actually call this generator and generate testcases into some of the testgroups.
 
-Let's delete the existing test groups in `problem.rbx.yml`, except for the `samples` one, and create a new `main_tests` group. Let's generate 10 random tests for this group by using a generator script. We can end up with the following files:
+Let's delete the existing test groups in `problem.rbx.yml`, except for the `samples` one, and create a new `main_tests` group. Let's generate 10 random tests for this group by using a generator script. We can either use a static generator script
+(represented in the example below as `random.txt`) or a dynamic generator script (represented in the example below as `random.py`).
 
 === "gen.cpp"
     ```c++
@@ -247,10 +258,24 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
 
     1.  The generator now receive two parameters `MAX_N` (accessed through `#!c++ opt<int>(1)`) and `MAX_A` (accessed through `#!c++ opt<int>(2)`).
 
-=== "random.py"
+=== "random.txt (static)"
+    ```
+    gen 1000 1000 1
+    gen 1000 1000 2
+    gen 1000 1000 3
+    gen 1000 1000 4
+    gen 1000 1000 5
+    gen 1000 1000 6
+    gen 1000 1000 7
+    gen 1000 1000 8
+    gen 1000 1000 9
+    gen 1000 1000 10
+    ```
+
+=== "random.py (dynamic)"
     ```python
     for i in range(10):
-        print(f'gen 1000 1000000000 {i}') # (1)!
+        print(f'gen 1000 1000 {i}') # (1)!
     ```
 
     1.  This line defines 10 random calls to the generator `gen`, 
@@ -275,19 +300,28 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
         testcaseGlob: 'tests/samples/*.in'
     - name: 'main_tests'  # (1)!
         generatorScript:
-            path: 'random.py'
+            path: 'random.txt'  # or 'random.py', in case you want to use a dynamic generator
     ```
     
-    1.  Here, `main_tests` would contain the 10 tests defined in `random.py`.
+    1.  Here, `main_tests` would contain the 10 tests defined in `random.txt` or `random.py`.
+
+Our newly defined generator `gen.cpp` will receive two positional arguments, `N` and `A`, and generate
+a list of `N` integers, each of which is at most `A`.
+
+Then, our generator script will can this generator 10 times to generate 10 different tests with
+`N` integers ranging from 1 to `A`.
 
 Now, if we run `rbx build`, we'd get our brand new generated tests.
 
 ### Update the statement
 
 Of course, last but not least, we have to update the statement of our problem. {{rbx}}
-has its own statement format, called {{rbxTeX}}.
+has its own statement format, called {{rbxTeX}}. The format itself is simple, but the ecosystem
+behind it is complex and provides a lot of flexibility for setters.
 
-In `statement/statement.rbx.tex` you will find something like the following:
+For now, you just need to know the body and meat of the statement is written at `statement/statement.rbx.tex`.
+If you open it, you will find something like the following:
+
 
 === "statement/statement.rbx.tex"
     ```tex
@@ -319,7 +353,9 @@ In `statement/statement.rbx.tex` you will find something like the following:
         use filters. Here in particular, we're using a pre-defined filter implemented
         by {{rbxTeX}} called `sci`. This filter converts numbers with lots of zeroes (for instance, 100000), into their scientific notations (`10^5`).
 
-As you can see, similar to {{polygon}}, you write a few blocks of LaTeX that are expanded into a template. Here, the `%` delimits those pre-defined blocks. Your statement needs at least a _legend_, an _input_ and an _output_.
+As you can see, similar to {{polygon}}, you write a few blocks of LaTeX. Here, the `%` delimits those pre-defined blocks.
+Your statement needs at least a _legend_, an _input_ and an _output_. When the time comes to build this statement,
+these blocks will be pieced together to form the final statement.
 
 Let's change each corresponding block to match our new problem description.
 
