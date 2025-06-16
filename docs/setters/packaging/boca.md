@@ -83,7 +83,7 @@ sudo service php8.1-fpm restart
     These limits are there for a reason, and you should only change them if you know what you're doing.
     Allowing big post sizes can open the door for malicious users to take advantage of that.
     
-    Try setting it to the smallest value you can to be able to upload your packages.
+    Try setting it to the smallest value you need to be able to upload your packages.
 
 !!! warning
     Another option, often easier but sometimes undesirable, is to make sure your packages are not too big. Big
