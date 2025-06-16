@@ -214,10 +214,11 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
         registerValidation(argc, argv);
 
         int MAX_N = getVar<int>("MAX_N"); // (1)!
+        int MAX_A = getVar<int>("MAX_A");
 
         for (int i = 0; i < n; i++) {
             if (i) inf.readSpace();
-            inf.readInt(1, MAX_N, "A_i");
+            inf.readInt(1, MAX_A, "A_i");
         }
         inf.readEoln();
         inf.readEof();
@@ -260,22 +261,22 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
 
 === "random.txt (static)"
     ```
-    gen 1000 1000 1
-    gen 1000 1000 2
-    gen 1000 1000 3
-    gen 1000 1000 4
-    gen 1000 1000 5
-    gen 1000 1000 6
-    gen 1000 1000 7
-    gen 1000 1000 8
-    gen 1000 1000 9
-    gen 1000 1000 10
+    gen 1000 1000000000 1
+    gen 1000 1000000000 2
+    gen 1000 1000000000 3
+    gen 1000 1000000000 4
+    gen 1000 1000000000 5
+    gen 1000 1000000000 6
+    gen 1000 1000000000 7
+    gen 1000 1000000000 8
+    gen 1000 1000000000 9
+    gen 1000 1000000000 10
     ```
 
 === "random.py (dynamic)"
     ```python
     for i in range(10):
-        print(f'gen 1000 1000 {i}') # (1)!
+        print(f'gen 1000 1000000000 {i}') # (1)!
     ```
 
     1.  This line defines 10 random calls to the generator `gen`, 
@@ -287,7 +288,7 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
             That's because {{testlib}} rng seed is initialized from the `argv` given to
             the generator.
             
-            Thus generators are reproducible: if we called `gen 1000` 10 times, we
+            Thus generators are reproducible: if we called `gen 1000 1000000000` 10 times, we
             would always get the same result. By appending an extra variable `{i}`,
             we introduce randomness to the tests.
 
