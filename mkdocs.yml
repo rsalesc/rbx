@@ -7,6 +7,11 @@ nav:
       - "intro/configuration.md"
   - "User Guide":
       - "setters/first-steps.md"
+      - "Verification":
+          - "setters/verification/index.md"
+          - "Validators": "setters/verification/validators.md"
+          - "Unit tests": "setters/verification/unit-tests.md"
+          - "Stress testing": "setters/verification/stress-tests.md"
       - "Packaging":
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
@@ -60,6 +65,7 @@ plugins:
 extra:
   rbx: "[rbx](){:.rbx}"
   rbxTeX: "[rbxTeX](){:.rbx}"
+  codeforces: "[Codeforces](https://codeforces.com)"
   polygon: "[Polygon](https://polygon.codeforces.com)"
   boca: "[BOCA](https://github.com/cassiopc/boca)"
   testlib: "[testlib](https://codeforces.com/testlib)"
