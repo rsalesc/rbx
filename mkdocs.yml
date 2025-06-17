@@ -8,6 +8,9 @@ nav:
       - "intro/configuration.md"
   - "User Guide":
       - "setters/first-steps.md"
+      - "Grading":
+          - "setters/grading/index.md"
+          - "Checkers": "setters/grading/checkers.md"
       - "Verification":
           - "setters/verification/index.md"
           - "Validators": "setters/verification/validators.md"
