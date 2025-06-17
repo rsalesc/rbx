@@ -122,10 +122,10 @@ We can write a checker that does exactly that.
 
         // Read the participant's output
         // `ouf` is a stream used to read the participant's output.
-        int K = ouf.readInt(1, N); // (1)!
+        int K = ouf.readInt(1, N, "path size"); // (1)!
         vector<int> path(K);
         for (int i = 0; i < K; i++) {
-            path[i] = ouf.readInt(1, N);
+            path[i] = ouf.readInt(1, N, "path vertex");
         }
 
         // Check if the path starts at 1 and ends at N.
@@ -210,10 +210,10 @@ a special outcome called `JUDGE_FAILED`, which is used to convey a checking fail
     int readPath(InStream &stream,
                  int N,
                  const vector<set<int>> &adj) {
-      int K = stream.readInt(1, N);
+      int K = stream.readInt(1, N, "path size");
       vector<int> path(K);
       for (int i = 0; i < K; i++) {
-        path[i] = stream.readInt(1, N);
+        path[i] = stream.readInt(1, N, "path vertex");
       }
 
       // Check if the path starts at 1 and ends at N.
