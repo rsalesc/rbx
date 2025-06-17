@@ -124,7 +124,23 @@ In the following page, paste the contest UID in Polygon, and click the button. Y
 
 ![Contest UID](uid.png)
 
-## Troubleshooting
+#### Caveats
 
-### I'm getting an error about the checker
+!!! warning
+    The caveats in this section are probably the main reason you should consider using {{polygon}} directly
+    if your main goal is to hold a Gym contest.
+
+The Polygon API has a few limitations. The main two, which have huge implications on how {{rbx}} uploads your problems, are:
+
+- The API doesn't allow you to remove solutions from a problem;
+- The API doesn't allow you to remove tests from a problem.
+
+This means that, whenever you remove a few tests from a problem, or a solution, and re-upload, you have to manually
+get rid of them. {{rbx}} will successfully replace every test index that still exists, and also the solutions that exist,
+but it won't do anything to remove old ones.
+
+Also notice that whenever you tune your time limits or statements in Polygon and re-issue an upload, those modifications
+you did will be overridden. You have to be extra careful with that. Preferrably, you should replicate all your statement
+changes in {{rbx}} before uploading to Polygon.
+
 
