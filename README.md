@@ -1,5 +1,5 @@
 <p align="center">
-    <em>The go-to CLI tool for competitive programmers and setters.</em>
+    <em>The go-to CLI tool for programming competitions setters.</em>
 </p>
 <p align="center">
 	<!-- loscal repository, no metadata badges. -->
@@ -16,6 +16,7 @@
   <summary>Table of Contents</summary><br>
 
 - [Overview](#overview)
+- [Features](#features)
 - [Documentation](#documentation)
 - [License](#license)
 </details>
@@ -29,9 +30,20 @@
 [![PyPI pyversions](https://img.shields.io/pypi/pyversions/rbx.svg)](https://pypi.python.org/pypi/rbx/)
 [![PyPI version shields.io](https://img.shields.io/pypi/v/rbx.svg)](https://pypi.python.org/pypi/rbx/)
 
-rbx is a CLI tool and library that aims to help contestants and setters from the competitive programming community to have an easier time.
+**rbx** is a CLI tool that empowers setters from the competitive programming community.
 
-Although trying to solve the issues of these two audiences seems to be too much for a single tool to handle, we exploit the fact that the journeys of contestants and setters have a lot in common.
+A flexible setting tool, as powerful as [Polygon](https://polygon.codeforces.com/), right on your terminal.
+
+--- 
+
+## Features
+
+- 🧱 Structure: describe your problem or contest structure with the use of YAML configuration files.
+- 🤖 Generation: provides a simple way to describe your whole testset, including both manually added and generated testcases.
+- 🔨 Testing: provides commands for automatically running correct and incorrect solutions against the testcases of your problem, automatically judging whether the verdict was as expected or not.
+- ✅ Verify: checks if your testcases and solutions are strictly conformant with the use of validators and unit tests.
+- 📝 Statements: provides tooling for writing and building statements, also ensuring they're easily synchronized with your testset.
+- 📤 Package: provides a single command for packaging your problems for use in your preferred judge system.
 
 ---
 
