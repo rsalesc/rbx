@@ -31,7 +31,7 @@ checker:
 
 {{rbx}} will automatically detect it is a built-in checker and will download it from the {{testlib}} repository.
 
-The most common built-in checkers are described in the table below, but feel free to explore the others. The `wcmp.cpp` checker
+The most common built-in checkers are described in the table below, but you should feel free to explore the others. The `wcmp.cpp` checker
 is the default checker for {{rbx}}, since it's basically a space-tolerant diff.
 
 +--------------+----------------------------------------------------------------------------------------------+
