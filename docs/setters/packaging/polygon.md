@@ -70,14 +70,59 @@ Follow the step-by-step guide below to get your contest up in the Gym.
 
 #### Step 1: Get a Polygon API key
 
+Log in to Polygon and go to the *Settings* page. In the *API Keys* section, create a new API key
+and save the generated pair.
+
 #### Step 2: Upload all your problems to Polygon using the API
 
-#### Step 3: Create a new Polygon contest with all the problems
+You can upload all problems to the contest by defining the environment variables below
+and running the {{rbx}} command:
 
-#### Step 4: (Optional) Tune your time limits and statements to Polygon
+```bash
+export POLYGON_API_KEY=<your-api-key>
+export POLYGON_API_SECRET=<your-api-secret>
+rbx contest each package polygon -u
+```
+
+Feel free to keep those variables in your `.bashrc` (or equivalent in other shells) file if you want.
+
+This will create a Polygon problem for each problem in your contest following the pattern `<contest-name>-<problem-shortname>-<problem-name>` (example: `my-contest-a-my-problem` for a contest named `my-contest` with a problem named `my-problem` which has the letter `A`).
+
+This problem will contain the validator, checker, interactor, and any other files you added to the problem.
+
+The statement blocks will also be uploaded to Polygon, along with all model solutions.
+
+#### Step 3: (Optional) Tune your time limits and statements to Polygon
+
+This is the optional part that we **highly recommend** following. There are two components in Polygon
+that might not work right out of the box when you upload your problem, and it's worth checking them
+and tuning them if necessary.
+
+1. **Time limits**: The time limits might not work well in the Polygon machines. We recommend you to
+   fire up a custom invocation in the *Invocations* section, and tune your time limit based on that
+   in the *General info* section.
+
+2. **Statements**: Polygon only supports rendering in HTML a [subset](https://polygon.codeforces.com/docs/statements-tex-manual) of *LaTeX* commands. You might have to do some manual adjustments if you really want HTML statements in your contest. With some trial and error, it is easy to get a sense of which commands work and which don't.
+
+#### Step 4: Create a new Polygon contest with all the problems
+
+Now that you have all your problems in Polygon, you can create a new contest and import all problems into it.
+
+Click *New contest* in the top-right corner, and fill in the form. Then, enter the contest and add all problems
+you uploaded to it. Finally, click *Manage problem access* and give `read` access to `codeforces` to all problems, and
+to the contest itself.
+
+After that, click *Build standard packages* to ensure the packages for all problems are built.
 
 #### Step 5: Create a contest in the Gym and import the Polygon contest
 
+Enable coach mode, create a new contest and hit the *Add problems from contest* link.
+
+![Add problems from contest](gym-import.png)
+
+In the following page, paste the contest UID in Polygon, and click the button. You can obtain the contest UID like in the picture below:
+
+![Contest UID](uid.png)
 
 ## Troubleshooting
 
