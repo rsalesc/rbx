@@ -2,6 +2,7 @@ site_name: rbx
 repo_url: https://github.com/rsalesc/rbx
 nav:
   - "index.md"
+  - "Cheatsheet": "setters/cheatsheet.md"
   - "Introduction":
       - "intro/installation.md"
       - "intro/configuration.md"
@@ -16,7 +17,6 @@ nav:
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
           - "Polygon": "setters/packaging/polygon.md"
-      - "setters/cheatsheet.md"
   - "Reference":
       - "Package":
           - "setters/reference/package/index.md"
