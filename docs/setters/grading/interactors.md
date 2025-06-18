@@ -187,6 +187,10 @@ checker:
 The newly defined checker will read as the outputs for the participant's and the jury's solutions the `output_files`
 produced by their interactor runs (whatever was written into `tout`).
 
+<center markdown>
+![Interactor with checker](interactor-checker.svg)
+</center>
+
 Then, you could split the previously defined interactor into two files as such:
 
 === "interactor.cpp"
