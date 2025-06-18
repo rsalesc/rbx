@@ -2,7 +2,7 @@
 
 {{rbx}} supports exporting problem/contest packages into a few formats. You can see
 in the table below which formats are supported, and what are its supported features
-and linitations:
+and limitations:
 
 +-----------------------+---------------------+-----------------------------------------------------------+
 |        Format         |   Target Systems    |                         Supports                          |

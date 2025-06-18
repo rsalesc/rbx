@@ -11,6 +11,7 @@ nav:
       - "Grading":
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"
+          - "Interactors": "setters/grading/interactors.md"
       - "Verification":
           - "setters/verification/index.md"
           - "Validators": "setters/verification/validators.md"
@@ -68,6 +69,7 @@ plugins:
 extra:
   rbx: "[rbx](){:.rbx}"
   rbxTeX: "[rbxTeX](){:.rbx}"
+  icpcformat: "[ICPC package format](https://icpc.io/problem-package-format/spec/legacy-icpc.html)"
   codeforces: "[Codeforces](https://codeforces.com)"
   polygon: "[Polygon](https://polygon.codeforces.com)"
   boca: "[BOCA](https://github.com/cassiopc/boca)"
