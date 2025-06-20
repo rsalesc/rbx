@@ -116,6 +116,8 @@ of how this feature works.
 rbx stress -g "<generator-expression>" -f "<finder-expression>"
 ```
 
+{{ asciinema("TOoswpIL4mRKfstnDCkKLw2Xn", speed=1.5) }}
+
 By default, the stress test will be run for 10 seconds and will stop as soon as a match is found. You can tune these values
 with the `--findings / -n` and the `--timeout / -t` flags.
 

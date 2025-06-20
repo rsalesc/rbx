@@ -6,6 +6,8 @@
 rbx package boca
 ```
 
+{{ asciinema("3aYdLnJVUS6dUaF9TWg6UkFMz") }}
+
 Or, if you want to build the package for all problems in your contest:
 
 ```bash
@@ -43,7 +45,12 @@ rbx contest on A package boca -u
 
 # Will upload problems A to C
 rbx contest on A-C package boca -u
+
+# Will upload problems A and C
+rbx contest on A,C package boca -u
 ```
+
+{{ asciinema("onJXQDVPELqn2kITmCrbkJeCX", speed=3) }}
 
 For that to work, you have to instruct {{rbx}} on how to connect to the BOCA server.
 

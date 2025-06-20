@@ -178,6 +178,8 @@ The command below can be used to build the testset.
 rbx build
 ```
 
+{{ asciinema("LlhvlLY5Fmee2l1OgCvFQk0xM") }}
+
 This command will build the testset, using the generator scripts to generate the tests for each group. All tests
 will be written to the `build/tests` directory, which you can inspect manually in our file system.
 
@@ -198,6 +200,8 @@ You can use the `rbx ui` to visualize the testcases that were built through the 
 ```sh
 rbx ui
 ```
+
+{{ asciinema("cqUTWgIRFA1P7VsV39uJTorKC") }}
 
 This command will start an interactive UI in your terminal which you can use to browse the testset.
 

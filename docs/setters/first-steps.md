@@ -126,17 +126,14 @@ Now, let's execute `rbx run`. This command **builds** all testcases and **execut
 $ rbx run
 ```
 
+{{ asciinema("x8NJUtmob4uSHUUFppxUn64Kn") }}
+
 You can see this command prints a full run report: it shows for each testcase of each testgroup whether a certain solution passed or not. There are also links for the outputs of each problem.
 
 !!! tip
     You can notice when you call `rbx run` again, the testcases were built really fast.
     That's because {{rbx}} caches certain calls based on the hash tree of your package
     (similar to Makefile). You can explicitly clear this cache by calling `rbx clean`.
-
-<figure markdown="span">
-  ![rbx run](rbx_run.png)
-  <figcaption>Result of the `rbx run` command.</figcaption>
-</figure>
 
 ## Modifying the package
 

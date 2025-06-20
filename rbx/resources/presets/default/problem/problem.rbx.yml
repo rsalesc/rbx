@@ -40,6 +40,17 @@ stresses:
       name: "gen"
       args: "[1..<MAX_N>] @" # `@` generates a random string
     finder: "[sols/wa.cpp] ~ INCORRECT"
+unitTests:
+  validator:
+    - glob: "unit/validator/valid*.in"
+      outcome: "VALID"
+    - glob: "unit/validator/invalid*.in"
+      outcome: "INVALID"
+  checker:
+    - glob: "unit/checker/ac*"
+      outcome: "ACCEPTED"
+    - glob: "unit/checker/wa*"
+      outcome: "WRONG_ANSWER"
 vars:
   "MAX_N": 1000000000 # Can be used in the validator, in stress tests and in the statement.
 

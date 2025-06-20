@@ -24,6 +24,8 @@ The unit tests can be run with the following command:
 rbx unit
 ```
 
+{{ asciinema("51w76V3tB3zirJkucufFVD4hs") }}
+
 In the next sections, we'll go through what each of these fields mean, and how to define
 the actual test inputs.
 
@@ -83,6 +85,8 @@ To check the tests are working properly, let's create the following files in the
 
 Now, when you run `rbx unit`, you should see all the three tests passing if the validator
 is implemented correctly, and we should see failures if the validator does not behave as expected.
+
+{{ asciinema("Q31OAPd4qfzHM5oGcqjeos904") }}
 
 ## Testing checkers
 
