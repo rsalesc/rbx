@@ -47,7 +47,9 @@ There are 5 different ways of adding tests to group:
 
 In this section, we'll talk about the two most recommended approaches: using a testcase glob and using a generator script.
 
-## Testcase glob
+## Defining the testset
+
+### Testcase glob
 
 Testcase globbing is the simplest way of adding manually defined tests to a group.
 
@@ -71,7 +73,7 @@ three will be added to the samples group.
 
     Instead, define the tests as `01.in`, `02.in`, ..., `10.in`, using leading zeroes.
 
-## Generator script
+### Generator script
 
 *If you haven't read the [Generators section](generators.md) yet, you should read it before proceeding.*
 
@@ -80,7 +82,7 @@ A generator script is a script that will be used to generate tests for a group.
 It can be either a static script (in which case we also call it a testplan) or a dynamic script,
 and can be specified through the `generatorScript` field of a test group.
 
-### Static generator script (*aka* testplan)
+#### Static generator script (*aka* testplan)
 
 A static generator script (or a testplan) is a `.txt` file containing a list of line-separated generator calls.
 
@@ -115,7 +117,7 @@ to define it in the `problem.rbx.yml` file.
         generatorScript: 'testplan.txt'
     ```
 
-### Dynamic generator script
+#### Dynamic generator script
 
 A dynamic generator script is a code that produces a testplan. Think of a code (in Python, or even in C++)
 that produces a testplan file as its output.
@@ -142,7 +144,7 @@ Below, there's an example of a dynamic generator script for a problem that has a
 The script spits a testplan with exactly 10 random tests, each one generated from a different argument between
 0 and 9.
 
-## What about the outputs?
+### What about the outputs?
 
 Until now, we've just generated the inputs of our testcases. What about the outputs? Where they come from?
 
@@ -168,5 +170,34 @@ Let's look at the file tree above, and assume we have a testcase glob for sample
   - 02.in
 ```
 
-In this case, {{rbx}} will use the `01.out` file as the output for the testcase `01.in`. This file will be checked
-as usual, so make sure to provide a valid output file. This will also be shown in the statement.
+## Building the testset
+
+The command below can be used to build the testset.
+
+```sh
+rbx build
+```
+
+This command will build the testset, using the generator scripts to generate the tests for each group. All tests
+will be written to the `build/tests` directory, which you can inspect manually in our file system.
+
+This command also accepts an extra verification flag (`-v`), which you can use to control whether validators will
+be run after generating the tests or not. The flag defaults to `-v0`, which means no verification will be done.
+
+```sh
+rbx build -v1
+```
+
+You can read more about the verification level flag in the [verification section](/setters/verification#verification-level) and
+about validation in the [Validators section](/setters/verification/validators).
+
+## Visualizing the testset
+
+You can use the `rbx ui` to visualize the testcases that were built through the `rbx build` command.
+
+```sh
+rbx ui
+```
+
+This command will start an interactive UI in your terminal which you can use to browse the testset.
+

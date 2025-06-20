@@ -2,12 +2,12 @@ site_name: rbx
 repo_url: https://github.com/rsalesc/rbx
 nav:
   - "index.md"
+  - "intro/installation.md"
+  - "intro/configuration.md"
   - "Cheatsheet": "setters/cheatsheet.md"
-  - "Introduction":
-      - "intro/installation.md"
-      - "intro/configuration.md"
-  - "User Guide":
+  - "Walkthrough":
       - "setters/first-steps.md"
+  - "Feature Guide":
       - "Testset":
           - "setters/testset/index.md"
           - "Generators": "setters/testset/generators.md"
