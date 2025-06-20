@@ -8,6 +8,10 @@ nav:
       - "intro/configuration.md"
   - "User Guide":
       - "setters/first-steps.md"
+      - "Testset":
+          - "setters/testset/index.md"
+          - "Generators": "setters/testset/generators.md"
+          - "Stress testing": "setters/stress-testing.md"
       - "Grading":
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"
@@ -16,7 +20,7 @@ nav:
           - "setters/verification/index.md"
           - "Validators": "setters/verification/validators.md"
           - "Unit tests": "setters/verification/unit-tests.md"
-          - "Stress testing": "setters/verification/stress-tests.md"
+          - "Stress testing": "setters/stress-testing.md"
       - "Packaging":
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
