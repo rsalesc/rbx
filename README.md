@@ -1,6 +1,6 @@
-<center>
+<p align="center">
 	<img src="docs/rbx_white.png" alt="rbx" width="200">
-</center>
+</p>
 
 <p align="center">
     <em>The go-to CLI tool for programming competitions setters.</em>
