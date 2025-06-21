@@ -9,7 +9,7 @@ and limitations:
 +=======================+=====================+===========================================================+
 | ICPC                  | DOMjudge, Kattis    |                                                           |
 | (coming soon)         |                     | :white_check_mark: Interactive problems (without checker) |
-|                       |                    | :white_check_mark: Batch problems                         |
+|                       |                     | :white_check_mark: Batch problems                         |
 |                       |                     | :white_check_mark: Test grouping                          |
 |                       |                     | :white_check_mark: Limits per language                    |
 |                       |                     | :white_check_mark: Solution verification                  |

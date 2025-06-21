@@ -1,4 +1,9 @@
-# Getting started
+---
+title: Overview
+template: home.html
+---
+
+<!-- # Getting started
 
 {{rbx}} is a CLI tool and library that aims to help setters from the competitive programming community to have an easier time.
 
@@ -15,4 +20,4 @@ A flexible setting tool, as powerful as {{polygon}}, right on your terminal.
 
 ---
 
-Proceed to the [Installation](intro/installation.md) section.
+Proceed to the [Installation](intro/installation.md) section. -->

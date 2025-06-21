@@ -39,6 +39,8 @@ nav:
       - "stack-limit.md"
 theme:
   name: material
+  custom_dir: docs/overrides
+  logo: rbx_black_fit.png
   palette:
     primary: orange
   font:

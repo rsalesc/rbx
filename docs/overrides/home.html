@@ -1,0 +1,264 @@
+{% extends "main.html" %}
+{% block extrahead %}
+<script src="https://cdn.twind.style" crossorigin></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap"
+  rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+  integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+  crossorigin="anonymous" referrerpolicy="no-referrer" />
+{% endblock %}
+{% macro quality_item(title, icon="") %}
+<div class="flex flex-col py-2 px-4">
+  <h2 class="text-[0.9rem] font-bold mb-2">
+    {% if icon %}
+    <i class="fa-solid fa-{{ icon }} mr-1"></i>
+    {% endif %}
+    {{ title }}
+  </h2>
+  <div class="text-gray-600 text-[0.8rem] leading-normal">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro feature_item(title, link, recordingId, command="", reverse=None) %}
+<!-- Feature Row-->
+{% if reverse is none %}
+{% set direction = "flex-row even:flex-row-reverse" %}
+{% else %}
+{% set direction = "flex-row-reverse" if reverse else "flex-row" %}
+{% endif %}
+<div class="flex {{ direction }} flex-wrap items-center justify-center md:justify-between mb-4">
+  <!-- LHS -->
+  <div class="w-full md:w-[40%] p-6">
+    <h2 class="text-xl font-bold mb-3">{{ title }}</h2>
+    {% if command %}
+    <p class="text-gray-500 text-xs leading-tight my-3 rbx-caret" style="font-family: 'Source Code Pro', monospace;">
+      <b class="text-gray-600">$</b> {{ command }}
+    </p>
+    {% endif %}
+    <div class="text-gray-600 mt-2 mb-7 text-sm leading-normal rbx-feature-text">
+      {{ caller() }}
+    </div>
+    <a href="{{ link | url }}">
+      <button class="text-white text-[0.7rem] bg-gray-800 px-6 py-2 shadow-lg rounded-full hover:bg-gray-700">
+        Read more
+      </button>
+    </a>
+  </div>
+  <!-- RHS -->
+  <div class="w-full sm:w-[90%] md:w-[55%] p-6 flex flex-col">
+    <script src="https://asciinema.org/a/{{ recordingId }}.js" id="asciicast-{{ recordingId }}" async="true" data-loop
+      data-autoplay data-idle-time-limit="1"></script>
+  </div>
+</div>
+{% endmacro %}
+{% block tabs %}
+<!-- {{ super() }} -->
+<style>
+  .md-header {
+    position: initial
+  }
+
+  .md-header__topic,
+  .md-header__button {
+    display: none !important;
+  }
+
+  .md-main__inner {
+    margin: 0
+  }
+
+  .md-content {
+    display: none
+  }
+
+  @media screen and (min-width:60em) {
+    .md-sidebar--secondary {
+      display: none
+    }
+  }
+
+  @media screen and (min-width:76.25em) {
+    .md-sidebar--primary {
+      display: none
+    }
+  }
+
+  .rbx-hero-gradient {
+    background: linear-gradient(to right, #ff9900, #ff6600);
+  }
+
+  .rbx-features-gradient {
+    background: linear-gradient(to bottom, #e6e6e6 0%, #ffffff 5%);
+  }
+
+  .rbx-feature-text p {
+    margin-bottom: 0.72rem;
+  }
+
+  @keyframes typing {
+    from {
+      width: 0;
+    }
+
+    50% {
+      width: 100%;
+    }
+
+    to {
+      width: 100%;
+    }
+  }
+
+  @keyframes caret-blink {
+    0% {
+      opacity: 0;
+    }
+  }
+
+
+  .rbx-caret::after {
+    content: "";
+    width: 2px;
+    height: 0.8rem;
+    background-color: gray;
+    display: inline-block;
+    margin-left: -0.1rem;
+    margin-bottom: -0.1rem;
+    animation: caret-blink 1.2s steps(2) infinite;
+  }
+
+  /* https://isotropic.co/tool/hex-color-to-css-filter/ */
+  .rbx-logo-white {
+    filter: invert(100%) sepia(67%) saturate(46%) hue-rotate(112deg) brightness(113%) contrast(113%) drop-shadow(rgba(0, 0, 0, 0.075) 0.5rem 0.5rem 7px);
+  }
+</style>
+<!-- Hero -->
+<div class="text-white rbx-hero-gradient pt-8 pb-14 shadow-lg">
+  <div class="max-w-4xl px-4 mx-auto flex flex-wrap flex-col-reverse items-center md:flex-row">
+    <!-- LHS -->
+    <div class="flex flex-col w-full md:w-2/5 text-center md:text-left">
+      <h1 class="my-4 text-2xl font-bold">Problem setting made easy</h1>
+      <p class="text-[1rem] leading-normal">
+        Start preparing your contest in no time, right from your terminal.
+      </p>
+      <div class="flex flex-row justify-center md:justify-start gap-2 mt-4">
+        <a href="{{ 'intro/installation' | url }}">
+          <button class="text-black text-[0.7rem] bg-white px-6 py-2 shadow-lg rounded-full hover:bg-gray-100">
+            Installation
+            <i class="fa-brands fa-apple text-[0.75rem] ml-1"></i>
+            <i class="fa-brands fa-linux text-[0.75rem] ml-1"></i>
+          </button>
+        </a>
+        <a href="{{ 'setters/first-steps' | url }}">
+          <button class="text-black text-[0.7rem] bg-white px-6 py-2 shadow-lg rounded-full hover:bg-gray-100">
+            Get started
+            <i class="fa-solid fa-book text-[0.75rem] ml-1"></i>
+          </button>
+        </a>
+      </div>
+    </div>
+    <!-- RHS -->
+    <div class="flex flex-row w-full md:w-3/5 justify-center">
+      <img src="{{ 'rbx_black_fit.png' | url }}" alt="rbx logo"
+        class="sm:w-1/2 w-3/5 mx-auto md:mx-0 rbx-logo-white max-w-[240px]">
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="mdx-container pt-8 rbx-features-gradient" style="font-family: 'Source Sans Pro', sans-serif;">
+  <div class="px-4 mx-auto max-w-4xl text-gray-700">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+      {% call quality_item("Blazing fast", icon="bolt") %}
+      <p>
+        <b>Everything</b> is cached, only affected nodes are recomputed.
+      </p>
+      {% endcall %}
+
+      {% call quality_item("Easy to use", icon="face-smile") %}
+      <p>
+        Thorough <a href="{{ 'intro/installation' | url }}">documentation</a> to get
+        you rolling.
+      </p>
+      {% endcall %}
+
+      {% call quality_item("Ship everywhere", icon="rocket") %}
+      <p>
+        Build packages for <b>BOCA</b>, <b>Codeforces</b> and more.
+      </p>
+      {% endcall %}
+
+      {% call quality_item("Correctness is key", icon="check") %}
+      <p>
+        Seamless integration with the testlib library.
+      </p>
+      {% endcall %}
+
+      {% call quality_item("Think outside the <i>box</i>", icon="box-open") %}
+      <p>
+        First class support for <b>interactive</b> problems.
+      </p>
+      {% endcall %}
+
+      {% call quality_item("Define once, use everywhere", icon="recycle") %}
+      <p>
+        Declare your constraints as <b>variables</b>, reference them everywhere.
+      </p>
+      {% endcall %}
+    </div>
+
+    <hr class="h-[4px] bg-gray-100 mt-4 mb-2">
+
+    <div>
+      {% call feature_item("Visualize your testset", "setters/testset/#visualizing-the-testset",
+      "cqUTWgIRFA1P7VsV39uJTorKC",
+      command="rbx ui") %}
+      <p>Visualize your testset <b>interactively</b>, without leaving your terminal.</p>
+      <p>Check the test input, the expected output, and information about the origin of the test case.</p>
+      {% endcall %}
+
+      <!-- TODO: set recording id and link -->
+      {% call feature_item("Verify solutions", "", "x8NJUtmob4uSHUUFppxUn64Kn", command="rbx run") %}
+      <p>
+        Verify whether correct solutions pass, and incorrect solutions fail at least one testcase.
+      </p>
+
+      <p>
+        Define their expected verdict once, and let the tool verify it for you.
+      </p>
+      {% endcall %}
+
+      {% call feature_item("Stress test", "setters/stress-testing", "TOoswpIL4mRKfstnDCkKLw2Xn", command="rbx
+      stress") %}
+      <p>
+        Build a strong testset by generating <b>random testcases</b> that break incorrect solutions.
+      </p>
+      <p>
+        Ensure your correct solutions pass a stress test scenario and cover all edge cases.
+      </p>
+      {% endcall %}
+
+      {% call feature_item("Validate inputs", "setters/verification/validators", "141SSzM2QsLqznBknzMdojOHj") %}
+      <p>
+        Validate your input data with <b>validators</b> and never worry about
+        invalid input data again.
+      </p>
+      {% endcall %}
+
+      {% call feature_item("Unit tests", "setters/verification/unit-tests", "51w76V3tB3zirJkucufFVD4hs", command="rbx
+      unit") %}
+      <p>
+        Write unit tests for your custom <b>checkers</b> and <b>validators</b>
+        and reduce the likelihood of bugs in your problem.
+      </p>
+      {% endcall %}
+
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block content %}{% endblock %}
