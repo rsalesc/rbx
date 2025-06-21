@@ -2,10 +2,10 @@ site_name: rbx
 site_description: A tool for creating and managing competitive programming problems
 site_author: Roberto Sales
 repo_url: https://github.com/rsalesc/rbx
+repo_name: rsalesc/rbx
 nav:
   - "intro/overview.md"
   - "intro/installation.md"
-  - "intro/configuration.md"
   - "Cheatsheet": "setters/cheatsheet.md"
   - "Walkthrough":
       - "setters/first-steps.md"
@@ -46,7 +46,8 @@ theme:
   palette:
     primary: orange
   font:
-    text: Ubuntu
+    text: Source Sans Pro
+    code: Source Code Pro
   icon:
     repo: fontawesome/brands/github
   features:
@@ -90,6 +91,9 @@ extra:
   tags:
     accepted: '<span style="color: green">accepted</span>'
     wrong_answer: '<span style="color: red">wrong answer</span>'
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rsalesc/rbx
 extra_css:
   - extra.css
 markdown_extensions:
