@@ -1,6 +1,7 @@
 site_name: rbx
 site_description: A tool for creating and managing competitive programming problems
 site_author: Roberto Sales
+site_url: https://rbx.rsalesc.dev/
 repo_url: https://github.com/rsalesc/rbx
 repo_name: rsalesc/rbx
 nav:
