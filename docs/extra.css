@@ -2,3 +2,7 @@
   color: orange;
   font-weight: bold;
 }
+
+.md-header__title:not(.md-header__title--active) {
+  visibility: hidden;
+}
