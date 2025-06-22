@@ -43,7 +43,11 @@ def find_and_group_all_reachable_packages(
 def get_dir_size(path: pathlib.Path) -> int:
     if not path.is_dir():
         return 0
-    return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file())
+    return sum(
+        f.stat().st_size
+        for f in path.glob('**/*')
+        if f.is_file() and not f.is_symlink()
+    )
 
 
 def get_cache_size(root: pathlib.Path = pathlib.Path()) -> int:
