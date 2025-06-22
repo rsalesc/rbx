@@ -141,9 +141,16 @@ def _is_checker_exitcode(exitcode: int) -> bool:
     return exitcode in [0, 1, 2, 3]
 
 
+def _get_last_line(message: str) -> str:
+    if not message:
+        return ''
+    return message.strip().split('\n')[-1]
+
+
 def process_checker_run_log(
     checker_run_log: Optional[RunLog], message: str
 ) -> CheckerResult:
+    message = _get_last_line(message)
     if (
         checker_run_log is not None
         and checker_run_log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR
@@ -352,7 +359,8 @@ async def check_communication(
         return _extra_check_and_sanitize(result)
 
     # Just a defensive pattern to ensure result is not None, should never happen.
-    result = check_with_no_output(interactor_run_log)
+    if result is None:
+        result = check_with_no_output(interactor_run_log)
     if result.outcome != Outcome.ACCEPTED:
         if result.outcome == Outcome.RUNTIME_ERROR:
             result.outcome = Outcome.JUDGE_FAILED

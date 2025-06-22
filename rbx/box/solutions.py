@@ -1410,31 +1410,54 @@ async def print_run_report(
         )
 
     ok = True
+    single_solution = len(result.skeleton.solutions) == 1
 
     for solution in result.skeleton.solutions:
         _print_solution_header(solution, console)
+        if single_solution:
+            console.print()
         solution_evals = []
         for group in result.skeleton.groups:
-            console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
+            if not single_solution:
+                console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
             group_evals = []
             for i, _ in enumerate(group.testcases):
                 eval = structured_evaluations[str(solution.path)][group.name][i]
                 if eval is None:
                     continue
                 eval = await eval()
-                console.print(f'{i}/', end='')
-                console.print(get_testcase_markup_verdict(eval), end='')
-                if eval.result.sanitizer_warnings:
-                    console.print('[warning]*[/warning]', end='')
-                console.print('', end=' ')
+                if single_solution:
+                    console.print(get_testcase_markup_verdict(eval), end=' ')
+                    console.print(f'{group.name}/{i}', end='')
+                    if eval.result.sanitizer_warnings:
+                        console.print('[warning]*[/warning]', end='')
+                    time = get_capped_evals_formatted_time(
+                        solution, [eval], verification
+                    )
+                    memory = get_evals_formatted_memory([eval])
+                    console.print(f' ({time}, {memory})', end='')
+                    checker_msg = eval.result.message
+                    if checker_msg:
+                        console.print(f': [i]{checker_msg}[/i]', end='')
+                else:
+                    console.print(f'{i}/', end='')
+                    console.print(get_testcase_markup_verdict(eval), end='')
+                    if eval.result.sanitizer_warnings:
+                        console.print('[warning]*[/warning]', end='')
+
+                console.print('', end='\n' if single_solution else ' ')
                 group_evals.append(eval)
                 solution_evals.append(eval)
 
+            if single_solution:
+                console.print(f'  [status]{group.name}[/status]', end=' ')
             console.print(
                 f'({get_capped_evals_formatted_time(solution, group_evals, verification)}, {get_evals_formatted_memory(group_evals)})',
                 end='',
             )
             console.print()
+            if single_solution:
+                console.print()
 
         cur_ok = _print_solution_outcome(
             solution,
@@ -1445,9 +1468,10 @@ async def print_run_report(
         ok = ok and cur_ok
         console.print()
 
-    await _print_timing(
-        console, result.skeleton, structured_evaluations, verification=verification
-    )
+    if not single_solution:
+        await _print_timing(
+            console, result.skeleton, structured_evaluations, verification=verification
+        )
 
     return ok
 
