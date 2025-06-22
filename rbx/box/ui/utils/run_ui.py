@@ -52,7 +52,7 @@ def get_solution_markup(
 
     evals = get_solution_evals_or_null(skeleton, solution)
     report = solutions.get_solution_outcome_report(
-        solution, evals or [], skeleton.verification, subset=False
+        solution, skeleton, evals or [], skeleton.verification, subset=False
     )
     if evals is None:
         return header + '\n' + report.get_verdict_markup(incomplete=True)

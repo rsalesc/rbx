@@ -690,7 +690,7 @@ async def run_and_print_interactive_solutions(
             console.console.print(get_testcase_markup_verdict(eval), end=' ')
             _print_solution_header(sol, console.console)
             _print_solution_outcome(
-                sol, [eval], console.console, verification, subset=True
+                sol, skeleton, [eval], console.console, verification, subset=True
             )
 
         stdout_path = eval.log.stdout_absolute_path
@@ -918,6 +918,7 @@ class SolutionOutcomeReport(BaseModel):
     solution: Solution
     evals: List[Evaluation]
     ok: bool
+    message: Optional[Tuple[TestcaseEntry, str]]
     expectedOutcome: Optional[ExpectedOutcome]
     gotVerdicts: Set[Outcome]
     runUnderDoubleTl: bool
@@ -955,15 +956,22 @@ class SolutionOutcomeReport(BaseModel):
             res += '\n[bold yellow]WARNING[/bold yellow] The solution had sanitizer errors or warnings, marked with [bold yellow]*[/bold yellow]. See their stderr for more details.'
         return res
 
-    def get_outcome_markup(self) -> str:
+    def get_outcome_markup(self, print_message: bool = True) -> str:
         res = self.get_verdict_markup_with_warnings()
         res += f'\nTime: {get_capped_evals_formatted_time(self.solution, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
+        if print_message and self.message is not None:
+            tc, msg = self.message
+            if msg:
+                if len(msg) > 100:
+                    msg = msg[:100] + '... (truncated)'
+                res += f'\nMessage for {tc}: {msg}'
         return res
 
 
 def get_solution_outcome_report(
     solution: Solution,
+    skeleton: SolutionReportSkeleton,
     evals: List[Evaluation],
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
@@ -975,7 +983,8 @@ def get_solution_outcome_report(
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
     has_sanitizer_warnings = False
-    for eval in evals:
+    message: Optional[Tuple[TestcaseEntry, str]] = None
+    for eval, entry in zip(evals, skeleton.entries):
         all_verdicts.add(eval.result.outcome)
         if eval.result.outcome != Outcome.ACCEPTED:
             bad_verdicts.add(eval.result.outcome)
@@ -990,6 +999,16 @@ def get_solution_outcome_report(
         has_sanitizer_warnings = (
             has_sanitizer_warnings or eval.result.sanitizer_warnings
         )
+        if (
+            eval.result.outcome
+            in [
+                Outcome.WRONG_ANSWER,
+                Outcome.JUDGE_FAILED,
+            ]
+            and message is None
+        ):
+            message = (entry, eval.result.message)
+
     unmatched_bad_verdicts = set(
         v for v in bad_verdicts if not solution.outcome.match(v)
     )
@@ -1048,6 +1067,7 @@ def get_solution_outcome_report(
         solution=solution,
         evals=evals,
         ok=not has_failed,
+        message=message,
         expectedOutcome=report_expected_outcome,
         gotVerdicts=report_got_verdicts,
         runUnderDoubleTl=report_run_under_double_tl,
@@ -1059,13 +1079,17 @@ def get_solution_outcome_report(
 
 def _print_solution_outcome(
     solution: Solution,
+    skeleton: SolutionReportSkeleton,
     evals: List[Evaluation],
     console: rich.console.Console,
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
+    print_message: bool = True,
 ) -> bool:
-    report = get_solution_outcome_report(solution, evals, verification, subset)
-    console.print(report.get_outcome_markup())
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, verification, subset
+    )
+    console.print(report.get_outcome_markup(print_message))
     return report.ok
 
 
@@ -1349,6 +1373,7 @@ async def _print_detailed_run_report(
         _print_solution_header(solution, console)
         cur_ok = _print_solution_outcome(
             solution,
+            result.skeleton,
             all_evals,
             console,
             verification=verification,
@@ -1461,9 +1486,11 @@ async def print_run_report(
 
         cur_ok = _print_solution_outcome(
             solution,
+            result.skeleton,
             solution_evals,
             console,
             verification=verification,
+            print_message=not single_solution,
         )
         ok = ok and cur_ok
         console.print()
