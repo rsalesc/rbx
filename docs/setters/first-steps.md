@@ -6,19 +6,19 @@ This document focus on a very specific and simple user journey to highlight the 
 common features of {{rbx}}. Feel free to explore the rest of the documentation on the sidebar
 to get more information about the other features.
 
-We'll focus on how to create a problem from a pre-initialized template, how to write its main
+We'll focus on how to create a problem from a pre-initialized preset, how to write its main
 components and how to test it.
 
-You can start creating a new problem from a pre-initialized template by running `rbx create [name]`.
+You can start creating a new problem from a pre-initialized preset by running `rbx create [name]`.
 
 <!--termynal-->
 ```bash
 $ rbx create test
 # This will create a `test` directory under the current
-# working directory with a pre-initialized problem template.
+# working directory with a pre-initialized problem preset.
 ```
 
-This is how the directory structure of the pre-initialized problem template will look like:
+This is how the directory structure of the pre-initialized problem preset will look like:
 
 ```bash
 test
@@ -113,7 +113,7 @@ build
 │           └── ...
 ```
 
-You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this template in particular, we have three testsets: `random`, `program-random` and `samples`.
+You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this preset in particular, we have three testsets: `random`, `program-random` and `samples`.
 
 If you want, you can explore these folders manually, but {{rbx}} also provides a TUI (terminal UI) to explore the testcases.
 You can run `rbx ui` and select the first option to explore the built testcases.
@@ -139,7 +139,7 @@ You can see this command prints a full run report: it shows for each testcase of
 
 ## Modifying the package
 
-As you can see from the solutions and the statement, the pre-initialized template simply implements a problem where you have to add up two numbers `A` and `B`. Let's modify the problem to _compute the sum of N numbers_.
+As you can see from the solutions and the statement, the pre-initialized preset simply implements a problem where you have to add up two numbers `A` and `B`. Let's modify the problem to _compute the sum of N numbers_.
 
 ### Rewrite solutions
 
