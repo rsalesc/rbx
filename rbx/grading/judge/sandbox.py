@@ -25,25 +25,29 @@ MERGE_STDERR = pathlib.PosixPath('/dev/stdout')
 
 # Thread-safe version of asyncio.Event.
 class Event_ts(asyncio.Event):
+    def __init__(self):
+        super().__init__()
+        self._inherited_loop = asyncio.get_event_loop()
+
     def get_loop(self):
-        if self._loop is None:
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError as e:
-                if str(e).startswith('There is no current event loop in thread'):
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                else:
-                    raise
-            return loop
-        else:
-            return self._loop
+        if self._inherited_loop is None:
+            return None
+        if self._inherited_loop.is_closed():
+            return None
+        return self._inherited_loop
+
+    def set_loop(self, loop):
+        self._inherited_loop = loop
 
     def set(self):
-        self.get_loop().call_soon_threadsafe(super().set)
+        loop = self.get_loop()
+        if loop is not None:
+            loop.call_soon_threadsafe(super().set)
 
     def clear(self):
-        self.get_loop().call_soon_threadsafe(super().clear)
+        loop = self.get_loop()
+        if loop is not None:
+            loop.call_soon_threadsafe(super().clear)
 
 
 def wait_without_std(
@@ -253,7 +257,7 @@ class SandboxBase(abc.ABC):
 
         self.params = params or SandboxParams()
         self.pid = None
-        self._pid_event = Event_ts()
+        self.pid_event = Event_ts()
 
         # Set common environment variables.
         # Specifically needed by Python, that searches the home for
@@ -360,7 +364,7 @@ class SandboxBase(abc.ABC):
 
         """
         self.pid = pid
-        self._pid_event.set()
+        self.pid_event.set()
 
     async def get_pid(self) -> int:
         """Return the PID of the sandboxed process.
@@ -370,13 +374,13 @@ class SandboxBase(abc.ABC):
         return (int): the PID of the sandboxed process.
 
         """
-        await self._pid_event.wait()
+        await self.pid_event.wait()
         assert self.pid is not None
         return self.pid
 
     def clear_pid(self):
         """Clear the PID of the sandboxed process."""
-        self._pid_event.clear()
+        self.pid_event.clear()
         self.pid = None
 
     def use_pgid(self) -> bool:

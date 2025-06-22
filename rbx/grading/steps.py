@@ -709,6 +709,7 @@ async def run(
     if is_java_like_command(get_exe_from_command(command)):
         sandbox.params.address_space = None
 
+    sandbox.pid_event.set_loop(asyncio.get_event_loop())
     if not await asyncio.to_thread(sandbox.execute_without_std, cmd):
         console.print(
             '[error]Sandbox crashed while processing command:[/error]',
