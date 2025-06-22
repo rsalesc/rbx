@@ -118,6 +118,8 @@ You can notice it created several folders inside a `tests` directory, each of wh
 If you want, you can explore these folders manually, but {{rbx}} also provides a TUI (terminal UI) to explore the testcases.
 You can run `rbx ui` and select the first option to explore the built testcases.
 
+{{ asciinema("cqUTWgIRFA1P7VsV39uJTorKC") }}
+
 ## Run
 
 Now, let's execute `rbx run`. This command **builds** all testcases and **executes** each solution against them, evaluating whether each solution had the expected outcome.
