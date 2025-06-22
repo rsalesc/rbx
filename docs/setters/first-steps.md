@@ -324,22 +324,19 @@ If you open it, you will find something like the following:
 === "statement/statement.rbx.tex"
     ```tex
     %- block legend
-    Dado dois números inteiros $A$ e $B$, determine o valor de $A + B$.
-
-    \includegraphics[width=6cm]{projecao.png}
+    Given two integers $A$ and $B$, determine the value of $A + B$.
     %- endblock
 
     %- block input
-    A entrada é composta por uma única linha contendo dois números
-    inteiros $A$ e $B$ ($1 \leq A, B \leq \VAR{vars.MAX_N | sci}$). % (1)!
+    The input is a single line containing two integers $A$ and $B$ ($1 \leq A, B \leq \VAR{vars.MAX_N | sci}$). % (1)!
     %- endblock
 
     %- block output
-    A saída deve conter somente um único inteiro, a soma de $A$ e $B$.
+    The output must contain only one integer, the sum of $A$ and $B$.
     %- endblock
 
     %- block notes
-    Sem muitas notas pra este problema.
+    No notes.
     %- endblock
     ```
 
@@ -351,7 +348,7 @@ If you open it, you will find something like the following:
         use filters. Here in particular, we're using a pre-defined filter implemented
         by {{rbxTeX}} called `sci`. This filter converts numbers with lots of zeroes (for instance, 100000), into their scientific notations (`10^5`).
 
-As you can see, similar to {{polygon}}, you write a few blocks of LaTeX. Here, the `%` delimits those pre-defined blocks.
+As you can see, similar to {{polygon}}, you write a few blocks of LaTeX. Here, the `%-` delimits those pre-defined blocks.
 Your statement needs at least a _legend_, an _input_ and an _output_. When the time comes to build this statement,
 these blocks will be pieced together to form the final statement.
 
@@ -378,23 +375,43 @@ Let's change each corresponding block to match our new problem description.
     %- endblock
     ```
 
-## Advanced configuration
+## Next steps
 
-If you want to do more advanced changes to the package, you can continue reading our Reference section on the sidebar.
+If you want to customize the problem even more, you can continue reading our Reference
+section on the sidebar.
 
-## Package the problem
+<div class="grid cards" markdown>
 
-To build you problem, you can use the `rbx package [platform]` command.
+-   :fontawesome-solid-not-equal: **Add a custom checker**
 
-Here, we'll build a {{polygon}} package with our statement, and as such we'll need LaTeX dependencies installed to compile it to a PDF. You can read more about a few recommendations we have to install pdfLaTeX and other common dependencies [here](pdflatex.md).
+    ---
 
-!!! note
-    Packages usually require a statement to be built.
-    
-    You can try running `rbx package [platform] --no-statement`, but an error might be raised in case such platform does not support packages without statements.
+    Want to grade solutions without comparing tokens? Check out our guide on how to add a custom checker.
 
-```bash
-$ rbx package polygon
-```
+    [:octicons-arrow-right-24: Checkers](/setters/grading/checkers)
 
-A {{polygon}} package will be built. This package can be directly uploaded to the [Codeforces Gym](https://codeforces.com/gyms) through FTP.
+-   :fontawesome-solid-rocket: **Package and ship your problem**
+
+    ---
+
+    Want to package your problem for a judge? Check out our guide on how to package your problem.
+
+    [:octicons-arrow-right-24: Packaging](/setters/packaging)
+
+-   :fontawesome-solid-shuffle: **Stress test**
+
+    ---
+
+    Want to generate stronger testcases? Check out our guide on how to stress test your solutions.
+
+    [:octicons-arrow-right-24: Stress testing](/setters/stress-testing)
+
+-   :fontawesome-solid-gear: **Configure further**
+
+    ---
+
+    Want to learn all you can do in `problem.rbx.yml`? Check out our guide on how to configure your problem.
+
+    [:octicons-arrow-right-24: `problem.rbx.yml`](/setters/reference/package)
+
+</div>
