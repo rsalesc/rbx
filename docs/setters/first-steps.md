@@ -328,7 +328,8 @@ If you open it, you will find something like the following:
     %- endblock
 
     %- block input
-    The input is a single line containing two integers $A$ and $B$ ($1 \leq A, B \leq \VAR{vars.MAX_N | sci}$). % (1)!
+    The input is a single line containing two integers $A$ and $B$
+    ($1 \leq A, B \leq \VAR{vars.MAX_N | sci}$). % (1)!
     %- endblock
 
     %- block output
