@@ -53,7 +53,7 @@ This header can be directly included in your validator/checker files.
 
 === "validator.cpp"
 
-    ```cpp
+    ```cpp hl_lines="2 7-8" linenums="1"
     #include "testlib.h"
     #include "rbx.h"
 
@@ -74,7 +74,7 @@ This header can be directly included in your validator/checker files.
 
 === "checker.cpp"
 
-    ```cpp
+    ```cpp hl_lines="2 7-8" linenums="1"
     #include "testlib.h"
     #include "rbx.h"
 
@@ -94,7 +94,7 @@ Validators also receive the variables as command-line arguments. This means that
 for the `problem.rbx.yml` above, your validator would be called roughly as follows:
 
 ```bash
-./validator.exe MAX_N=100000 MAX_M=200000
+./validator.exe --MAX_N=100000 --MAX_M=200000
 ```
 
 You can freely parse those arguments in your language of choice.
