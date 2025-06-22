@@ -88,7 +88,7 @@ of the validator component.
 
 Of course, we still have to check that the graph is connected, but let's do this in a minute.
 
-Let's first talk about variables. As explained in the [Variables](variables.md) section,
+Let's first talk about variables. As explained in the [Variables](/setters/variables) section,
 we can use variables to refer to constraints in the input. 
 
 At the moment, we're hard coding the lower and upper bounds for `N` in the validator. If we change the problem statement to, let's say,
@@ -123,7 +123,7 @@ Let's do the following modifications to our problem to make it safer:
 {{rbx}} will automatically generate an `rbx.h` header file for you, which will include the variables
 you defined in your `problem.rbx.yml` file, that you can access in your validator with the `getVar<>()` function.
 
-To read more about variables, check the [Variables](variables.md) section.
+To read more about variables, check the [Variables](/setters/variables) section.
 
 Now, let's finally check that the graph is connected.
 

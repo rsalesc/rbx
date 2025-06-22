@@ -11,6 +11,7 @@ nav:
   - "Walkthrough":
       - "setters/first-steps.md"
   - "Feature Guide":
+      - "Variables": "setters/variables.md"
       - "Testset":
           - "setters/testset/index.md"
           - "Generators": "setters/testset/generators.md"
@@ -79,6 +80,7 @@ plugins:
 extra:
   rbx: "[rbx](){:.rbx}"
   rbxTeX: "[rbxTeX](){:.rbx}"
+  rbxtex: "[rbxTeX](){:.rbx}"
   icpcformat: "[ICPC package format](https://icpc.io/problem-package-format/spec/legacy-icpc.html)"
   codeforces: "[Codeforces](https://codeforces.com)"
   polygon: "[Polygon](https://polygon.codeforces.com)"
@@ -114,3 +116,5 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: "#"

@@ -10,7 +10,7 @@ Quick walkthroughs to get you started with {{rbx}}.
 
     ---
 
-    Install {{rbx}} on your machine with `pipx` on Linux or macOS.
+    Install {{rbx}} with `pipx` on Linux or macOS.
 
     [:octicons-arrow-right-24: Installation](/intro/installation)
 
@@ -37,6 +37,15 @@ Learn how to use the different features of {{rbx}}.
     Learn how to set samples, use generators and stress tests.
 
     [:octicons-arrow-right-24: Testset](/setters/testset)
+
+-   :fontawesome-solid-code: **Define your constraints**
+
+    ---
+
+    Define variables and use them in validators,
+    checkers and even in your statements.
+
+    [:octicons-arrow-right-24: Variables](/setters/variables)
 
 -   :fontawesome-solid-check: **Verify your problem**
 
