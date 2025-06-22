@@ -28,7 +28,7 @@ is a valid generator expression. Below, there are a few examples of valid genera
 for a hypothetical generator named `gen` that generates a random integer between 1 and `N`, where `N`
 is a value passed on the generator call `gen N`.
 
-```
+```py
 # A valid generator expression, but not super useful for a stress test.
 # Since generators are idempotent, the testcases will always have the same number.
 gen 100
@@ -69,7 +69,7 @@ Finder expressions are domain-specific expressions evaluated by {{rbx}} that ret
 Instead of formally defining the grammar for finder expressions, we list a few examples, with an explanation of what they do. They should give a rough understanding
 of how this feature works.
 
-```sh
+```py
 # Find a test for which `sols/wa.cpp` returns any verdict considered incorrect.
 [sols/wa.cpp] ~ INCORRECT
 
