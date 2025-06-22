@@ -413,7 +413,7 @@ section on the sidebar.
 
     ---
 
-    Want to learn all you can do in `problem.rbx.yml`? Check out our guide on how to configure your problem.
+    Want to learn all you can do in `problem.rbx.yml`? Check out our reference on how to configure your problem.
 
     [:octicons-arrow-right-24: `problem.rbx.yml`](/setters/reference/package)
 
