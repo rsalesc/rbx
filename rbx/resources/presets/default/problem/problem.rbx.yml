@@ -1,5 +1,5 @@
 ---
-# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Problem.json
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Package.json
 name: 'new-problem'
 timeLimit: 1000
 memoryLimit: 256

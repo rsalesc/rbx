@@ -10,8 +10,8 @@ from rbx.box.cd import is_contest_package, is_preset_package, is_problem_package
 from rbx.box.contest.schema import Contest
 from rbx.box.presets import get_preset_yaml
 from rbx.box.presets.schema import Preset
+from rbx.box.schema import Package
 from rbx.box.stats import find_problem_packages_from_contest
-from rbx.schema import Problem
 from rbx.utils import uploaded_schema_path
 
 
@@ -54,14 +54,14 @@ def fix_package(root: pathlib.Path = pathlib.Path()):
         fix_yaml(root / 'preset.rbx.yml', model_cls=Preset)
         preset = get_preset_yaml(root)
         if preset.problem is not None:
-            fix_yaml(root / preset.problem / 'problem.rbx.yml', model_cls=Problem)
+            fix_yaml(root / preset.problem / 'problem.rbx.yml', model_cls=Package)
         if preset.contest is not None:
             fix_package(root / preset.contest)
         return
 
     if is_problem_package(root):
-        fix_yaml(root / 'problem.rbx.yml', model_cls=Problem)
+        fix_yaml(root / 'problem.rbx.yml', model_cls=Package)
     if is_contest_package(root):
         fix_yaml(root / 'contest.rbx.yml', model_cls=Contest)
         for problem in find_problem_packages_from_contest(root):
-            fix_yaml(problem / 'problem.rbx.yml', model_cls=Problem)
+            fix_yaml(problem / 'problem.rbx.yml', model_cls=Package)
