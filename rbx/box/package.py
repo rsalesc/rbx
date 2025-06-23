@@ -10,10 +10,9 @@ import ruyaml
 import typer
 from pydantic import ValidationError
 
-from rbx import config, console, utils
-from rbx.box import cd, environment
+from rbx import console, utils
+from rbx.box import cd
 from rbx.box.environment import get_sandbox_type
-from rbx.box.presets import get_installed_preset_or_null, get_preset_lock
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
@@ -38,33 +37,6 @@ TEMP_DIR = None
 CACHE_STEP_VERSION = 1
 
 
-def warn_preset_deactivated(root: pathlib.Path = pathlib.Path()):
-    preset_lock = get_preset_lock(root)
-    if preset_lock is None:
-        return
-
-    preset = get_installed_preset_or_null(preset_lock.preset_name)
-    if preset is None:
-        console.console.print(
-            f'[warning]WARNING: [item]{preset_lock.preset_name}[/item] is not installed. '
-            'Run [item]rbx presets sync && rbx activate[/item] to install and activate this preset.'
-        )
-        console.console.print()
-        return
-
-    if preset.env is not None and (
-        not environment.get_environment_path(preset.name).is_file()
-        or config.get_config().boxEnvironment != preset.name
-    ):
-        console.console.print(
-            '[warning]WARNING: This package uses a preset that configures a custom environment, '
-            f' but instead you are using the environment [item]{config.get_config().boxEnvironment}[/item]. '
-            'Run [item]rbx activate[/item] to use the environment configured by your preset.'
-        )
-        console.console.print()
-        return
-
-
 @functools.cache
 def find_problem_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     root = root.resolve()
@@ -74,7 +46,6 @@ def find_problem_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.P
         problem_yaml_path = root / YAML_NAME
     if not problem_yaml_path.is_file():
         return None
-    warn_preset_deactivated(root)
     return problem_yaml_path
 
 
@@ -130,9 +101,7 @@ def save_package(
 def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
     problem_yaml_path = find_problem_yaml(root)
     if problem_yaml_path is None:
-        console.console.print(
-            f'Problem not found in {pathlib.Path().absolute()}', style='error'
-        )
+        console.console.print(f'[error]Problem not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
     res = ruyaml.YAML()
     return res, res.load(problem_yaml_path.read_text())

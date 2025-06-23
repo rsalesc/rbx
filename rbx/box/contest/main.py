@@ -17,7 +17,6 @@ from rbx.box.contest.contest_package import (
 )
 from rbx.box.contest.schema import ContestProblem
 from rbx.box.packaging import contest_main as packaging
-from rbx.box.presets.fetch import get_preset_fetch_info
 from rbx.box.schema import Package
 from rbx.config import open_editor
 
@@ -40,53 +39,18 @@ app.add_typer(
 def create(
     path: str,
     preset: Annotated[
-        str,
+        Optional[str],
         typer.Option(
             '--preset',
             '-p',
-            help='Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.',
+            help='Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.\n'
+            'If not provided, the default preset will be used, or the active preset if any.',
         ),
-    ] = 'default',
-    local: bool = typer.Option(
-        False,
-        '--local',
-        '-l',
-        help='Whether to inline the installed preset within the contest folder.',
-    ),
+    ] = None,
 ):
     console.console.print(f'Creating new contest at [item]{path}[/item]...')
 
-    fetch_info = get_preset_fetch_info(preset)
-    if fetch_info is None:
-        console.console.print(
-            f'[error]Invalid preset name/URI [item]{preset}[/item][/error]'
-        )
-        raise typer.Exit(1)
-
-    if fetch_info.is_remote():
-        preset = presets.install_from_remote(fetch_info)
-    elif fetch_info.is_local_dir():
-        preset = presets.install_from_local_dir(fetch_info)
-
-    preset_cfg = presets.get_installed_preset(preset)
-    preset_path = (
-        presets.get_preset_installation_path(preset)
-        if preset_cfg.contest is not None
-        else presets.get_preset_installation_path('default')
-    )
-
-    contest_path = (
-        presets.get_preset_installation_path(preset) / preset_cfg.contest
-        if preset_cfg.contest is not None
-        else presets.get_preset_installation_path('default') / 'contest'
-    )
-
-    if not contest_path.is_dir():
-        console.console.print(
-            f'[error]Contest template [item]{contest_path}[/item] does not exist.[/error]'
-        )
-        raise typer.Exit(1)
-
+    fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
     dest_path = pathlib.Path(path)
 
     if dest_path.exists():
@@ -100,23 +64,11 @@ def create(
             )
             raise typer.Exit(1)
 
-    dest_path.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(str(contest_path), str(dest_path), dirs_exist_ok=True)
-    shutil.rmtree(str(dest_path / 'build'), ignore_errors=True)
-    shutil.rmtree(str(dest_path / '.box'), ignore_errors=True)
-    shutil.rmtree(str(dest_path / '.local.rbx'), ignore_errors=True)
-    # TODO: consider clearing build and .box recursively for nested problem directories
-    for lock in dest_path.rglob('.preset-lock.yml'):
-        lock.unlink(missing_ok=True)
-
-    if local:
-        presets.copy_local_preset(
-            preset_path, dest_path, remote_uri=fetch_info.uri or preset_cfg.uri
-        )
+    presets.install_contest(dest_path, fetch_info)
 
     with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()
-        presets.generate_lock(preset if not local else presets.LOCAL)
+        presets.generate_lock()
 
 
 @app.command('edit, e', help='Open contest.rbx.yml in your default editor.')
@@ -143,9 +95,6 @@ def add(path: str, short_name: str, preset: Optional[str] = None):
         )
         raise typer.Exit(1)
 
-    preset_lock = presets.get_preset_lock()
-    if preset is None and preset_lock is not None:
-        preset = preset_lock.preset_name
     creation.create(name, preset=preset, path=pathlib.Path(path))
 
     contest = find_contest_package_or_die()

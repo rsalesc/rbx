@@ -26,7 +26,7 @@ from rbx.box import (
 )
 from rbx.box.contest import main as contest
 from rbx.box.contest.contest_package import find_contest_yaml
-from rbx.box.environment import VerificationLevel, get_environment_path
+from rbx.box.environment import VerificationLevel, get_app_environment_path
 from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
@@ -821,6 +821,7 @@ def header():
     generate_header()
 
 
+# TODO: warn when using a preset (or show it)
 @app.command(
     'environment, env',
     rich_help_panel='Configuration',
@@ -838,15 +839,14 @@ def environment_command(
     ] = None,
 ):
     if env is None:
-        cfg = config.get_config()
-        console.console.print(f'Current environment: [item]{cfg.boxEnvironment}[/item]')
         console.console.print(
-            f'Location: {environment.get_environment_path(cfg.boxEnvironment)}'
+            f'Current environment: [item]{environment.get_active_environment_description()}[/item]'
         )
+        console.console.print(f'Location: {environment.get_active_environment_path()}')
         return
     if install_from is not None:
         environment.install_environment(env, pathlib.Path(install_from))
-    if not get_environment_path(env).is_file():
+    if not get_app_environment_path(env).is_file():
         console.console.print(
             f'[error]Environment [item]{env}[/item] does not exist.[/error]'
         )
@@ -859,50 +859,13 @@ def environment_command(
         )
         return
     console.console.print(
-        f'Changing box environment from [item]{cfg.boxEnvironment}[/item] to [item]{env}[/item]...'
+        f'Changing global environment from [item]{cfg.boxEnvironment}[/item] to [item]{env}[/item]...'
     )
     cfg.boxEnvironment = env
     config.save_config(cfg)
 
     # Also clear cache when changing environments.
     clear()
-
-
-@app.command(
-    'activate',
-    rich_help_panel='Configuration',
-    help='Activate the environment of the current preset used by the package.',
-)
-@cd.within_closest_package
-def activate():
-    preset_lock = presets.get_preset_lock()
-    if preset_lock is None:
-        console.console.print(
-            '[warning]No configured preset to be activated for this package.[/warning]'
-        )
-        raise typer.Exit(1)
-
-    preset = presets.get_installed_preset_or_null(preset_lock.preset_name)
-    if preset is None:
-        if preset_lock.uri is None:
-            console.console.print(
-                '[error]Preset is not installed. Install it manually, or specify a URI in [item].preset-lock.yml[/item].[/error]'
-            )
-            raise typer.Exit(1)
-        presets.install(preset_lock.uri)
-
-    preset = presets.get_installed_preset(preset_lock.preset_name)
-
-    # Install the environment from the preset if it's not already installed.
-    presets.optionally_install_environment_from_preset(
-        preset, root=presets.get_preset_installation_path(preset_lock.name)
-    )
-
-    # Activate the environment.
-    if preset.env is not None:
-        environment_command(preset.name)
-
-    console.console.print(f'[success]Preset [item]{preset.name}[/item] is activated.')
 
 
 @app.command(

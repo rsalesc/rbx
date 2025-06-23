@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from rbx import console, utils
 from rbx.box import cd
 from rbx.box.contest.schema import Contest
-from rbx.box.package import find_problem_package_or_die, warn_preset_deactivated
+from rbx.box.package import find_problem_package_or_die
 from rbx.box.schema import Package
 
 YAML_NAME = 'contest.rbx.yml'
@@ -24,7 +24,6 @@ def find_contest_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.P
         contest_yaml_path = root / YAML_NAME
     if not contest_yaml_path.is_file():
         return None
-    warn_preset_deactivated(root)
     return contest_yaml_path
 
 
@@ -84,12 +83,10 @@ def get_problems(contest: Contest) -> List[Package]:
     return problems
 
 
-def get_ruyaml() -> Tuple[ruyaml.YAML, ruyaml.Any]:
-    contest_yaml_path = find_contest_yaml()
+def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    contest_yaml_path = find_contest_yaml(root)
     if contest_yaml_path is None:
-        console.console.print(
-            f'Contest not found in {pathlib.Path().absolute()}', style='error'
-        )
+        console.console.print(f'[error]Contest not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
     res = ruyaml.YAML()
     return res, res.load(contest_yaml_path.read_text())

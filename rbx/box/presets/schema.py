@@ -1,8 +1,10 @@
 import pathlib
 from typing import List, Optional
 
+import typer
 from pydantic import BaseModel, Field
 
+from rbx import console
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
 
 
@@ -32,8 +34,9 @@ class Preset(BaseModel):
     # Name of the preset, or a GitHub repository containing it.
     name: str = NameField()
 
-    # URI of the preset to be fetched.
-    uri: Optional[str] = None
+    # URI of the preset to be fetched. Uniquely identifies the preset.
+    # Should usually be a GitHub repository.
+    uri: str
 
     # Path to the environment file that will be installed with this preset.
     # When copied to the box environment, the environment will be named `name`.
@@ -52,8 +55,13 @@ class Preset(BaseModel):
 
     @property
     def fetch_info(self) -> PresetFetchInfo:
-        if self.uri is None:
-            return PresetFetchInfo(name=self.name)
         res = get_preset_fetch_info(self.uri)
-        assert res is not None
+        if res is None:
+            console.console.print(
+                f'[error]Preset URI [item]{self.uri}[/item] is not valid.[/error]'
+            )
+            console.console.print(
+                '[error]Please check that the URI is correct and that the directory/asset really exists.[/error]'
+            )
+            raise typer.Exit(1)
         return res

@@ -7,6 +7,7 @@ import typer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rbx import config, console, utils
+from rbx.box import presets
 from rbx.box.extensions import Extensions, LanguageExtensions
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.isolate import IsolateSandbox
@@ -185,22 +186,33 @@ class Environment(BaseModel):
     extensions: Optional[Extensions] = None
 
 
-def get_environment_path(env: str) -> pathlib.Path:
+def get_app_environment_path(env: str) -> pathlib.Path:
     return config.get_app_file(pathlib.PosixPath('envs') / f'{env}.rbx.yml')
 
 
-def get_local_environment_path() -> Optional[pathlib.Path]:
-    # TODO: implement logic to get env from local preset
-    return None
+def get_active_environment_path() -> pathlib.Path:
+    env_path = presets.get_preset_environment_path()
+    if env_path is None:
+        env_path = get_app_environment_path(config.get_config().boxEnvironment)
+    return env_path
+
+
+@functools.cache
+def get_active_environment_description() -> str:
+    env_path = presets.get_preset_environment_path()
+    if env_path is None:
+        return config.get_config().boxEnvironment
+    preset = presets.get_active_preset()
+    return f'preset - {preset.name}'
 
 
 @functools.cache
 def get_environment(env: Optional[str] = None) -> Environment:
     env_path = (
-        get_environment_path(env) if env is not None else get_local_environment_path()
+        get_app_environment_path(env)
+        if env is not None
+        else get_active_environment_path()
     )
-    if env_path is None:
-        env_path = get_environment_path(config.get_config().boxEnvironment)
     if not env_path.is_file():
         console.console.print(
             f'Environment file [item]{env_path}[/item] not found.', style='error'
@@ -232,8 +244,8 @@ def install_environment(name: str, file: pathlib.Path):
         )
         raise typer.Exit(1)
 
-    get_environment_path(name).parent.mkdir(parents=True, exist_ok=True)
-    get_environment_path(name).write_bytes(file.read_bytes())
+    get_app_environment_path(name).parent.mkdir(parents=True, exist_ok=True)
+    get_app_environment_path(name).write_bytes(file.read_bytes())
     console.console.print(
         f'[success]Environment [item]{name}[/item] was installed from [item]{file}[/item]'
     )
