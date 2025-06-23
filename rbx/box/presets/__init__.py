@@ -669,7 +669,7 @@ def update():
 
     preset_path = _find_local_preset(pathlib.Path.cwd())
     assert preset_path is not None
-    _install_preset_from_fetch_info(preset.fetch_info, dest=preset_path, update=update)
+    _install_preset_from_fetch_info(preset.fetch_info, dest=preset_path, update=True)
     console.console.print(
         f'[success]Preset [item]{preset.name}[/item] updated successfully.[/success]'
     )
