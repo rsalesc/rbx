@@ -915,7 +915,7 @@ def stats(
     rich_help_panel='Management',
     help='Format files of the current package.',
 )
-@cd.within_closest_package
+@cd.within_closest_wrapper
 def fix():
     from rbx.box import linting
 

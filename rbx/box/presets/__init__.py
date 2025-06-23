@@ -23,7 +23,7 @@ def _find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.P
     return None
 
 
-def _get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
+def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
     found = _find_preset_yaml(root)
     if not found:
         console.console.print(
@@ -221,7 +221,7 @@ def _copy_updated_assets(
 def get_active_preset_or_null(root: pathlib.Path = pathlib.Path()) -> Optional[Preset]:
     local_preset = _find_local_preset(root)
     if local_preset is not None:
-        return _get_preset_yaml(local_preset)
+        return get_preset_yaml(local_preset)
     return None
 
 
@@ -319,7 +319,7 @@ def _install_preset_from_dir(
     update: bool = False,
     override_uri: Optional[str] = None,
 ):
-    preset = _get_preset_yaml(src)
+    preset = get_preset_yaml(src)
 
     if ensure_contest and preset.contest is None:
         console.console.print(
@@ -391,7 +391,7 @@ def _install_preset_from_local_dir(
     update: bool = False,
 ):
     pd = pathlib.Path(fetch_info.inner_dir)
-    preset = _get_preset_yaml(pd)
+    preset = get_preset_yaml(pd)
     console.console.print(
         f'Installing local preset [item]{preset.name}[/item] into [item]{dest}[/item]...'
     )

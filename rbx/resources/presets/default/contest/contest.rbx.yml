@@ -1,15 +1,16 @@
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Contest.json
 # Add problems by running `rbx contest add <problem-name> <short-name>`
-
-name: "new-contest"
+name: 'new-contest'
 statements:
-  - name: "statement-en"
-    title: "New contest"
-    language: en
-    path: "statement/contest.rbx.tex"
-    type: "jinja-tex"
-    assets: ["statement/olymp.sty", "statement/*.png"]
-    joiner: { type: "tex2pdf" }
+  - name: 'statement-en'
+    title: 'New contest'
+    language: 'en'
+    path: 'statement/contest.rbx.tex'
+    type: 'jinja-tex'
+    assets: ['statement/olymp.sty', 'statement/*.png']
+    joiner: {type: 'tex2pdf'}
     override:
       configure:
-        - type: "rbx-tex" # Convert rbxTeX to TeX
-          template: "statement/template.rbx.tex"
+        - type: 'rbx-tex'  # Convert rbxTeX to TeX
+          template: 'statement/template.rbx.tex'

@@ -1,56 +1,55 @@
-# yaml-language-server: $schema=/home/rsalesc/.config/rbx/schemas/Package.json
-
-name: "new-problem"
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Problem.json
+name: 'new-problem'
 timeLimit: 1000
 memoryLimit: 256
-checker: { path: "wcmp.cpp" } # Download others from testlib with `rbx download checker`
-validator: { path: "validator.cpp" }
+checker: {path: 'wcmp.cpp'}  # Download others from testlib with `rbx download checker`
+validator: {path: 'validator.cpp'}
 generators:
-  - path: "gen.cpp"
-    name: "gen"
+  - path: 'gen.cpp'
+    name: 'gen'
 testcases:
-  - name: "samples"
-    testcaseGlob: "tests/samples/*.in" # Pattern for the sample inputs.
-  - name: "random"
+  - name: 'samples'
+    testcaseGlob: 'tests/samples/*.in'  # Pattern for the sample inputs.
+  - name: 'random'
     generatorScript:
-      path: "random.txt" # Static generator script.
-  - name: "program-random"
+      path: 'random.txt'  # Static generator script.
+  - name: 'program-random'
     generatorScript:
-      path: "random.py" # Generator script written programatically.
+      path: 'random.py'  # Generator script written programatically.
 solutions:
-  - path: "sols/main.cpp"
-    outcome: ACCEPTED
-  - path: "sols/wa.cpp"
-    outcome: WRONG_ANSWER
-  - path: "sols/slow.cpp"
-    outcome: TLE_OR_RTE # Can be TLE too
+  - path: 'sols/main.cpp'
+    outcome: 'ACCEPTED'
+  - path: 'sols/wa.cpp'
+    outcome: 'WRONG_ANSWER'
+  - path: 'sols/slow.cpp'
+    outcome: 'TLE_OR_RTE'  # Can be TLE too
 statements:
-  - name: "statement-en"
-    title: "New Problem"
-    path: "statement/statement.rbx.tex" # Open this file to edit your statement.
-    type: rbxTeX
-    language: "en"
-    assets: ["statement/olymp.sty", "statement/*.png"]
+  - name: 'statement-en'
+    title: 'New Problem'
+    path: 'statement/statement.rbx.tex'  # Open this file to edit your statement.
+    type: 'rbxTeX'
+    language: 'en'
+    assets: ['statement/olymp.sty', 'statement/*.png']
     configure:
-      - type: "rbx-tex" # Convert rbxTeX to TeX
-        template: "statement/template.rbx.tex"
+      - type: 'rbx-tex'  # Convert rbxTeX to TeX
+        template: 'statement/template.rbx.tex'
 stresses:
-  - name: "stress"
+  - name: 'stress'
     generator:
-      name: "gen"
-      args: "[1..<MAX_N>] @" # `@` generates a random string
-    finder: "[sols/wa.cpp] ~ INCORRECT"
+      name: 'gen'
+      args: '[1..<MAX_N>] @'  # `@` generates a random string
+    finder: '[sols/wa.cpp] ~ INCORRECT'
 unitTests:
   validator:
-    - glob: "unit/validator/valid*.in"
-      outcome: "VALID"
-    - glob: "unit/validator/invalid*.in"
-      outcome: "INVALID"
+    - glob: 'unit/validator/valid*.in'
+      outcome: 'VALID'
+    - glob: 'unit/validator/invalid*.in'
+      outcome: 'INVALID'
   checker:
-    - glob: "unit/checker/ac*"
-      outcome: "ACCEPTED"
-    - glob: "unit/checker/wa*"
-      outcome: "WRONG_ANSWER"
+    - glob: 'unit/checker/ac*'
+      outcome: 'ACCEPTED'
+    - glob: 'unit/checker/wa*'
+      outcome: 'WRONG_ANSWER'
 vars:
-  "MAX_N": 1000000000 # Can be used in the validator, in stress tests and in the statement.
-
+  MAX_N: 1000000000  # Can be used in the validator, in stress tests and in the statement.
