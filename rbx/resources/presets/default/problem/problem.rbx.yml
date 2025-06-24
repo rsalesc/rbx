@@ -1,22 +1,22 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Package.json
 name: "new-problem"
-timeLimit: 1000
-memoryLimit: 256
+timeLimit: 1000 # ms
+memoryLimit: 256 # MiB
 checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
 validator: {path: "validator.cpp"}
 generators:
-  - path: "gen.cpp"
+  - path: "gens/gen.cpp"
     name: "gen"
 testcases:
   - name: "samples"
-    testcaseGlob: "tests/samples/*.in" # Pattern for the sample inputs.
+    testcaseGlob: "manual_tests/samples/*.in" # Pattern for the sample inputs.
   - name: "random"
     generatorScript:
-      path: "random.txt" # Static generator script.
+      path: "testplan/random.txt" # Static generator script (testplan).
   - name: "program-random"
     generatorScript:
-      path: "random.py" # Generator script written programatically.
+      path: "testplan/random.py" # Generator script written programatically.
 solutions:
   - path: "sols/main.cpp"
     outcome: "ACCEPTED"
@@ -30,7 +30,9 @@ statements:
     path: "statement/statement.rbx.tex" # Open this file to edit your statement.
     type: "rbxTeX"
     language: "en"
-    assets: ["statement/olymp.sty", "statement/*.png"]
+    assets: # Define assets for the statement.
+      - "statement/icpc.sty"
+      - "statement/*.png"
     configure:
       - type: "rbx-tex" # Convert rbxTeX to TeX
         template: "statement/template.rbx.tex"
@@ -51,5 +53,7 @@ unitTests:
       outcome: "ACCEPTED"
     - glob: "unit/checker/wa*"
       outcome: "WRONG_ANSWER"
+# Can be used in the validator, checker, interactor, stress tests
+# and in the statement.
 vars:
-  MAX_N: 1000000000 # Can be used in the validator, in stress tests and in the statement.
+  MAX_N: 1000000000

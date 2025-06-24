@@ -1,42 +1,51 @@
-\begin{problem}
+%- if vars.show_problem is truthy
+\includeProblem
 %- if problem.short_name is defined
-  [\VAR{problem.short_name}]
+	[\VAR{problem.short_name}]
 %- endif
-  {\VAR{problem.title | escape}}
-  {stdin}
-  {stdout}
-  {\VAR{problem.package.timeLimit / 1000 | round(1, 'floor')} s}
-  {\VAR{problem.package.memoryLimit} MB}
+{\VAR{problem.title | escape}}{
 
-\VAR{problem.blocks.legend}
+	\VAR{problem.blocks.legend}
 
-%- if problem.blocks.input is defined
-\InputFile
-\VAR{problem.blocks.input}
+	%- if problem.blocks.input is defined
+		\inputdesc{\VAR{problem.blocks.input}}
+	%- endif
+
+	%- if problem.blocks.output is defined
+		\outputdesc{\VAR{problem.blocks.output}}
+	%- endif
+
+	%- if problem.blocks.interaction is defined
+		\interactiondesc{\VAR{problem.blocks.interaction}}
+	%- endif
+
+	%- if problem.samples
+		\vspace{0.3cm}
+		\subsection*{\strExamples}
+		%- for sample in problem.samples
+			%- if sample.interaction is not none
+				\exampleInteractive
+				%- for entry in sample.interaction.entries
+					\interaction{\VAR{entry.data}}{\VAR{entry.pipe}}
+				%- endfor
+			%- else
+				\example{\VAR{sample.inputPath}}
+					{\VAR{sample.outputPath if sample.outputPath is not none else ''}}
+			%- endif
+			%- if sample.explanation is not none
+				\explanation{\VAR{sample.explanation}}
+			%- endif
+		%- endfor
+	%- endif
+
+	%- if problem.blocks.notes is defined
+		\subsection*{\strNotes}
+		\VAR{problem.blocks.notes}
+	%- endif
+}
 %- endif
 
-%- if problem.blocks.output is defined
-\OutputFile
-\VAR{problem.blocks.output}
-%- endif
-
-\Examples
-
-%- for sample in problem.samples
-\begin{example}
-  \exmpfile{\VAR{sample.inputPath}}{\VAR{sample.outputPath if sample.outputPath is not none else ''}}%
-\end{example}
-%- endfor
-
-%- if problem.blocks.notes is defined
-\Notes
-\VAR{problem.blocks.notes}
-%- endif
-
-%- if problem.blocks.editorial is defined
-\Editorial
+%- if problem.blocks.editorial is nonnull and vars.editorial is truthy
+\subsection*{\strSolution}
 \VAR{problem.blocks.editorial}
 %- endif
-
-
-\end{problem}

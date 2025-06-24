@@ -7,8 +7,8 @@ contest: "contest"
 tracking:
   problem:
     - path: "statement/template.rbx.tex"
-    - path: "statement/olymp.sty"
+    - path: "statement/icpc.sty"
   contest:
     - path: "statement/template.rbx.tex"
-    - path: "statement/olymp.sty"
+    - path: "statement/icpc.sty"
     - path: "statement/contest.rbx.tex"
