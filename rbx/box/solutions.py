@@ -739,7 +739,12 @@ def expand_solutions_with_source(sols: List[str]) -> List[Tuple[Solution, bool]]
     path_sols = remote.expand_files(sols)
 
     # Ensure sols exist.
-    path_sols = [sol for sol in path_sols if sol.is_file()]
+    for sol in path_sols:
+        if not sol.is_file():
+            console.console.print(
+                f'[error]Solution [item]{sol}[/item] could not be found.[/error]'
+            )
+            raise typer.Exit(1)
 
     seen_sols = set()
     res: List[Tuple[Solution, bool]] = []

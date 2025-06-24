@@ -132,6 +132,9 @@ def _expand_paths(paths: List[pathlib.Path]) -> List[pathlib.Path]:
             continue
         expanded = _expand_path(path)
         if expanded is None:
+            console.console.print(
+                f'[warning]Remote solution [item]{path}[/item] could not be expanded. Skipping.[/warning]'
+            )
             continue
         res.append(expanded)
     return res
