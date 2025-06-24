@@ -1,14 +1,14 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
-name: 'default'
-uri: 'rsalesc/rbx/rbx/resources/presets/default'
-problem: 'problem'
-contest: 'contest'
+name: "default"
+uri: "rsalesc/rbx/rbx/resources/presets/default"
+problem: "problem"
+contest: "contest"
 tracking:
   problem:
-    - path: 'statement/template.rbx.tex'
-    - path: 'statement/olymp.sty'
+    - path: "statement/template.rbx.tex"
+    - path: "statement/olymp.sty"
   contest:
-    - path: 'statement/template.rbx.tex'
-    - path: 'statement/olymp.sty'
-    - path: 'statement/contest.rbx.tex'
+    - path: "statement/template.rbx.tex"
+    - path: "statement/olymp.sty"
+    - path: "statement/contest.rbx.tex"

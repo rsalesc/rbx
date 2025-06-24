@@ -916,10 +916,10 @@ def stats(
     help='Format files of the current package.',
 )
 @cd.within_closest_wrapper
-def fix():
+def fix(print_diff: bool = typer.Option(False, '--print-diff', '-p')):
     from rbx.box import linting
 
-    linting.fix_package()
+    linting.fix_package(print_diff=print_diff)
 
 
 @app.command(
