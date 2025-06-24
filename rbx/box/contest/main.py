@@ -73,6 +73,29 @@ def create(
         presets.generate_lock()
 
 
+@app.command('init, i', help='Initialize a new contest in the current directory.')
+def init(
+    preset: Annotated[
+        Optional[str],
+        typer.Option(
+            '--preset',
+            '-p',
+            help='Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.\n'
+            'If not provided, the default preset will be used, or the active preset if any.',
+        ),
+    ] = None,
+):
+    console.console.print('Initializing new contest in the current directory...')
+
+    fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
+
+    presets.install_contest(pathlib.Path.cwd(), fetch_info)
+
+    contest_utils.clear_all_caches()
+    fix_package()
+    presets.generate_lock()
+
+
 @app.command('edit, e', help='Open contest.rbx.yml in your default editor.')
 @within_contest
 def edit():
