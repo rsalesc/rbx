@@ -7,7 +7,9 @@ import pathlib
 import shutil
 import tempfile
 import typing
-from typing import IO, List, Optional
+from typing import IO, List, Optional, Type, TypeVar
+
+from pydantic import BaseModel
 
 from rbx.grading import grading_context
 from rbx.grading.judge import digester, storage
@@ -62,6 +64,7 @@ class FileCacher:
         self.shared = shared
         self.folder = folder
         self.existing = set()
+        self.desc = {}
 
         # First we create the config directories.
         if folder:
@@ -301,7 +304,9 @@ class FileCacher:
             with dst_path.open('wb') as dst:
                 storage.copyfileobj(src, dst, self.CHUNK_SIZE)
 
-    def put_file_from_fobj(self, src: IO[bytes], desc: str = '') -> str:
+    def put_file_from_fobj(
+        self, src: IO[bytes], desc: Optional[BaseModel] = None
+    ) -> str:
         """Store a file in the storage.
 
         If it's already (for some reason...) in the cache send that
@@ -365,10 +370,11 @@ class FileCacher:
                         self.backend.commit_file(pending_file, desc)
 
             os.rename(dst.name, cache_file_path)
+            self.desc[digest] = desc
 
         return digest
 
-    def put_file_content(self, content: bytes, desc: str = '') -> str:
+    def put_file_content(self, content: bytes, desc: Optional[BaseModel] = None) -> str:
         """Store a file in the storage.
 
         See `put_file_from_fobj'. This method will read the content of
@@ -384,10 +390,12 @@ class FileCacher:
         with io.BytesIO(content) as src:
             return self.put_file_from_fobj(src, desc)
 
-    def put_file_text(self, text: str, desc: str = '') -> str:
+    def put_file_text(self, text: str, desc: Optional[BaseModel] = None) -> str:
         return self.put_file_content(text.encode('utf-8'), desc)
 
-    def put_file_from_path(self, src_path: pathlib.Path, desc: str = '') -> str:
+    def put_file_from_path(
+        self, src_path: pathlib.Path, desc: Optional[BaseModel] = None
+    ) -> str:
         """Store a file in the storage.
 
         See `put_file_from_fobj'. This method will read the content of
@@ -404,7 +412,18 @@ class FileCacher:
         with src_path.open('rb') as src:
             return self.put_file_from_fobj(src, desc)
 
-    def describe(self, digest: str) -> str:
+    def set_description(self, digest: str, desc: Optional[BaseModel]):
+        """Set the description of a file given its digest.
+
+        digest (unicode): the digest of the file to add the description.
+        desc (BaseModel): the description of the file.
+        """
+        self.desc[digest] = desc
+        if grading_context.is_transient():
+            return
+        self.backend.set_description(digest, desc)
+
+    def describe(self, digest: str, model_cls: Type[BaseModel]) -> Optional[BaseModel]:
         """Return the description of a file given its digest.
 
         digest (unicode): the digest of the file to describe.
@@ -416,7 +435,9 @@ class FileCacher:
         """
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
-        return self.backend.describe(digest)
+        if digest in self.desc:
+            return self.desc[digest]
+        return self.backend.describe(digest, model_cls)
 
     def get_size(self, digest: str) -> int:
         """Return the size of a file given its digest.
@@ -456,6 +477,7 @@ class FileCacher:
         cache_file_path: pathlib.Path = self.file_dir / digest
         cache_file_path.unlink(missing_ok=True)
         self.existing.discard(digest)
+        del self.desc[digest]
 
     def purge_cache(self):
         """Empty the local cache.
@@ -468,6 +490,7 @@ class FileCacher:
         if self.folder is not None:
             self.folder.mkdir(parents=True, exist_ok=True)
         self.existing.clear()
+        self.desc.clear()
 
     def destroy_cache(self):
         """Completely remove and destroy the cache.
@@ -524,3 +547,15 @@ class FileCacher:
                 clean = False
 
         return clean
+
+
+T = TypeVar('T', bound=BaseModel)
+
+
+def get_description(cacher: FileCacher, digest: str, model_cls: Type[T]) -> Optional[T]:
+    """Get the description of a file given its digest.
+
+    digest (unicode): the digest of the file to get the description.
+    model_cls (Type[BaseModel]): the model class of the description.
+    """
+    return typing.cast(Optional[T], cacher.describe(digest, model_cls))

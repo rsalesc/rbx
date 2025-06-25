@@ -1,10 +1,14 @@
+import atexit
 import dataclasses
 import io
 import logging
 import pathlib
+import shelve
 import tempfile
 from abc import ABC, abstractmethod
-from typing import IO, AnyStr, List, Optional
+from typing import IO, AnyStr, List, Optional, Type
+
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -81,17 +85,25 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def commit_file(self, file: PendingFile, desc: str = '') -> bool:
+    def commit_file(self, file: PendingFile, desc: Optional[BaseModel] = None) -> bool:
         """Commit a file created by create_file() to be stored.
         Given a file object returned by create_file(), this function populates
         the database to record that this file now legitimately exists and can
         be used.
-        fobj (fileobj): the object returned by create_file()
         file (PendingFile): the file to commit.
+        desc (BaseModel): the description of the file.
         return (bool): True if the file was committed successfully, False if
             there was already a file with the same filename in the database. This
             shouldn't make any difference to the caller, except for testing
             purposes!
+        """
+        pass
+
+    @abstractmethod
+    def set_description(self, filename: str, desc: Optional[BaseModel]):
+        """Set the description of a file given its filename.
+        filename (unicode): the filename of the file to set the description.
+        desc (BaseModel): the description of the file.
         """
         pass
 
@@ -101,10 +113,12 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def describe(self, filename: str) -> str:
+    def describe(
+        self, filename: str, model_cls: Type[BaseModel]
+    ) -> Optional[BaseModel]:
         """Return the description of a file given its filename.
         filename (unicode): the filename of the file to describe.
-        return (unicode): the description of the file.
+        return (BaseModel): the description of the file.
         raise (KeyError): if the file cannot be found.
         """
         pass
@@ -153,13 +167,18 @@ class NullStorage(Storage):
     def create_file(self, digest: str) -> Optional[PendingFile]:
         return None
 
-    def commit_file(self, file: PendingFile, desc: str = '') -> bool:
+    def commit_file(self, file: PendingFile, desc: Optional[BaseModel] = None) -> bool:
         return False
+
+    def set_description(self, filename: str, desc: Optional[BaseModel]):
+        pass
 
     def exists(self, filename: str) -> bool:
         return False
 
-    def describe(self, digest: str) -> str:
+    def describe(
+        self, filename: str, model_cls: Type[BaseModel]
+    ) -> Optional[BaseModel]:
         raise KeyError('File not found.')
 
     def get_size(self, digest: str) -> int:
@@ -188,6 +207,8 @@ class FilesystemStorage(Storage):
 
         # Create the directory if it doesn't exist
         path.mkdir(parents=True, exist_ok=True)
+        self.db = shelve.open(path / '.desc_db')
+        atexit.register(self.db.close)
 
     def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""
@@ -213,11 +234,14 @@ class FilesystemStorage(Storage):
         )
         return PendingFile(fd=temp_file, filename=filename)
 
-    def commit_file(self, file: PendingFile, desc: str = '') -> bool:
+    def commit_file(self, file: PendingFile, desc: Optional[BaseModel] = None) -> bool:
         """See FileCacherBackend.commit_file()."""
         file.fd.close()
 
         file_path: pathlib.Path = self.path / file.filename
+        if desc is not None:
+            self.db[file.filename] = desc.model_dump_json()
+
         # Move it into place in the cache. Skip if it already exists, and
         # delete the temporary file instead.
         if not file_path.is_file():
@@ -231,20 +255,32 @@ class FilesystemStorage(Storage):
             pathlib.PosixPath(file.fd.name).unlink()
             return False
 
+    def set_description(self, filename: str, desc: Optional[BaseModel]):
+        if desc is None:
+            if filename in self.db:
+                del self.db[filename]
+        else:
+            self.db[filename] = desc.model_dump_json()
+
     def exists(self, filename: str) -> bool:
         """See FileCacherBackend.exists()."""
         file_path: pathlib.Path = self.path / filename
 
         return file_path.is_file()
 
-    def describe(self, filename: str) -> str:
+    def describe(
+        self, filename: str, model_cls: Type[BaseModel]
+    ) -> Optional[BaseModel]:
         """See FileCacherBackend.describe()."""
         file_path: pathlib.Path = self.path / filename
 
         if not file_path.is_file():
             raise KeyError('File not found.')
 
-        return ''
+        desc = self.db.get(filename)
+        if desc is None:
+            return None
+        return model_cls.model_validate_json(desc)
 
     def get_size(self, filename: str) -> int:
         """See FileCacherBackend.get_size()."""
@@ -260,6 +296,7 @@ class FilesystemStorage(Storage):
         file_path: pathlib.Path = self.path / filename
 
         file_path.unlink(missing_ok=True)
+        del self.db[filename]
 
     def list(self) -> List[FileWithDescription]:
         """See FileCacherBackend.list()."""

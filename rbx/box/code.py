@@ -10,6 +10,7 @@ from typing import List, Optional
 import rich
 import rich.text
 import typer
+from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import download, package, setter_config, state
@@ -30,6 +31,7 @@ from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 from rbx.grading import steps, steps_with_caching
+from rbx.grading.judge.cacher import get_description
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
     DigestHolder,
@@ -59,6 +61,10 @@ class SanitizationLevel(Enum):
         return self.value >= SanitizationLevel.FORCE.value
 
 
+class FileDescription(BaseModel):
+    is_sanitized: bool
+
+
 def substitute_commands(commands: List[str], sanitized: bool = False) -> List[str]:
     cfg = setter_config.get_setter_config()
     return [cfg.substitute_command(command, sanitized) for command in commands]
@@ -78,8 +84,13 @@ def find_language_name(code: CodeItem) -> str:
 def is_executable_sanitized(executable: DigestOrSource) -> bool:
     if executable.digest is None:
         return False
-    storage = package.get_cache_storage()
-    return storage.exists(f'{executable.digest.value}.san')
+    if executable.digest.value is None:
+        return False
+    cacher = package.get_file_cacher()
+    desc = get_description(cacher, executable.digest.value, FileDescription)
+    if desc is None:
+        return False
+    return desc.is_sanitized
 
 
 def add_sanitizer_flags_to_command(command: str) -> str:
@@ -629,13 +640,13 @@ def compile_item(
             warning_stack.get_warning_stack().add_warning(code)
 
     # Create sentinel to indicate this executable is sanitized.
-    storage = package.get_cache_storage()
+    cacher = package.get_file_cacher()
     if sanitized.should_sanitize():
-        pf = storage.create_file(f'{compiled_digest.value}.san')
-        if pf is not None:
-            storage.commit_file(pf)
-    elif storage.exists(f'{compiled_digest.value}.san'):
-        storage.delete(f'{compiled_digest.value}.san')
+        cacher.set_description(
+            compiled_digest.value, FileDescription(is_sanitized=True)
+        )
+    else:
+        cacher.set_description(compiled_digest.value, None)
 
     return compiled_digest.value
 

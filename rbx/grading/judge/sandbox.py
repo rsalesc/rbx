@@ -647,7 +647,10 @@ class SandboxBase(abc.ABC):
         return self.get_file_to_bytes(path, maxlen).decode('utf-8')
 
     def get_file_to_storage(
-        self, path: pathlib.Path, description: str = '', trunc_len: Optional[int] = None
+        self,
+        path: pathlib.Path,
+        description: Optional[pydantic.BaseModel] = None,
+        trunc_len: Optional[int] = None,
     ) -> str:
         """Put a sandbox file in FS and return its digest.
 
