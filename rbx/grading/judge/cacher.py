@@ -9,6 +9,7 @@ import tempfile
 import typing
 from typing import IO, List, Optional
 
+from rbx.grading import grading_context
 from rbx.grading.judge import digester, storage
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class FileCacher:
         self.backend = backend
         self.shared = shared
         self.folder = folder
+        self.existing = set()
 
         # First we create the config directories.
         if folder:
@@ -168,6 +170,22 @@ class FileCacher:
         if not cache_only:
             return fd
 
+    def exists(self, digest: str, cache_only: bool = False) -> bool:
+        """Check if a file exists in the cacher.
+
+        cache_only (bool): don't check the backend.
+
+        """
+        cache_file_path = self.file_dir / digest
+        if cache_file_path.exists() or digest in self.existing:
+            return True
+        if cache_only:
+            return False
+        exists = self.backend.exists(digest)
+        if exists:
+            self.existing.add(digest)
+        return exists
+
     def cache_file(self, digest: str):
         """Load a file into the cache.
 
@@ -218,6 +236,9 @@ class FileCacher:
     def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
+
+        if grading_context.is_transient():
+            return None
 
         logger.debug('Getting symlink file path %s.', digest)
         return self.backend.path_for_symlink(digest)
@@ -334,11 +355,14 @@ class FileCacher:
             # We read from the temporary file before moving it to
             # cache_file_path because the latter might be deleted before
             # we get a chance to open it.
-            with open(dst.name, 'rb') as src:
-                pending_file = self.backend.create_file(digest)
-                if pending_file is not None:
-                    storage.copyfileobj(src, pending_file.fd, self.CHUNK_SIZE)
-                    self.backend.commit_file(pending_file, desc)
+            #
+            # Only store file when not in transient mode.
+            if not grading_context.is_transient():
+                with open(dst.name, 'rb') as src:
+                    pending_file = self.backend.create_file(digest)
+                    if pending_file is not None:
+                        storage.copyfileobj(src, pending_file.fd, self.CHUNK_SIZE)
+                        self.backend.commit_file(pending_file, desc)
 
             os.rename(dst.name, cache_file_path)
 
@@ -431,6 +455,7 @@ class FileCacher:
             return
         cache_file_path: pathlib.Path = self.file_dir / digest
         cache_file_path.unlink(missing_ok=True)
+        self.existing.discard(digest)
 
     def purge_cache(self):
         """Empty the local cache.
@@ -442,6 +467,7 @@ class FileCacher:
         self.file_dir.mkdir(parents=True, exist_ok=True)
         if self.folder is not None:
             self.folder.mkdir(parents=True, exist_ok=True)
+        self.existing.clear()
 
     def destroy_cache(self):
         """Completely remove and destroy the cache.

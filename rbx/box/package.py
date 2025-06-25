@@ -175,7 +175,7 @@ def get_cache_storage(root: pathlib.Path = pathlib.Path()) -> Storage:
 
 @functools.cache
 def get_dependency_cache(root: pathlib.Path = pathlib.Path()) -> DependencyCache:
-    return DependencyCache(get_problem_cache_dir(root), get_cache_storage(root))
+    return DependencyCache(get_problem_cache_dir(root), get_file_cacher(root))
 
 
 @functools.cache

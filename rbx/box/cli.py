@@ -43,6 +43,7 @@ from rbx.box.statements import build_statements
 from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testcases import main as testcases
 from rbx.box.tooling import main as tooling
+from rbx.grading import grading_context
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 app.add_typer(
@@ -105,6 +106,15 @@ app.add_typer(
 
 @app.callback()
 def main(
+    cache: Annotated[
+        int,
+        typer.Option(
+            '-c',
+            '--cache',
+            help='Which degree of caching to use.',
+            default_factory=lambda: grading_context.CacheLevel.CACHE_ALL.value,
+        ),
+    ],
     sanitized: bool = typer.Option(
         False,
         '--sanitized',
@@ -133,6 +143,8 @@ def main(
             'If you want to run the solutions with sanitizers enabled, use the [item]-s[/item] flag in the corresponding run command.[/warning]'
         )
     state.STATE.debug_logs = capture
+
+    grading_context.cache_level_var.set(grading_context.CacheLevel(cache))
 
 
 @app.command('ui', hidden=True)

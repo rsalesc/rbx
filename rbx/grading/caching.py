@@ -3,13 +3,17 @@ import io
 import os
 import pathlib
 import shelve
+import shutil
+import tempfile
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
 from rbx import console
+from rbx.grading import grading_context
+from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.digester import digest_cooperatively
-from rbx.grading.judge.storage import Storage, copyfileobj
+from rbx.grading.judge.storage import copyfileobj
 from rbx.grading.steps import DigestHolder, GradingArtifacts, GradingLogsHolder
 
 VERBOSE = False
@@ -185,7 +189,7 @@ def _build_cache_key(input: CacheInput) -> str:
         return digest_cooperatively(fobj)
 
 
-def _copy_hashed_files(artifact_list: List[GradingArtifacts], storage: Storage):
+def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher):
     for artifact in artifact_list:
         for output in artifact.outputs:
             if not output.hash or output.dest is None:
@@ -194,19 +198,19 @@ def _copy_hashed_files(artifact_list: List[GradingArtifacts], storage: Storage):
             if output.optional and output.digest.value is None:
                 continue
             assert output.digest.value is not None
-            with storage.get_file(output.digest.value) as fobj:
+            with cacher.get_file(output.digest.value) as fobj:
                 with output.dest.open('wb') as f:
                     copyfileobj(fobj, f, maxlen=output.maxlen)
             if output.executable:
                 output.dest.chmod(0o755)
 
 
-def is_artifact_ok(artifact: GradingArtifacts, storage: Storage) -> bool:
+def is_artifact_ok(artifact: GradingArtifacts, cacher: FileCacher) -> bool:
     for output in artifact.outputs:
         if output.optional or output.intermediate:
             continue
         if output.digest is not None:
-            if output.digest.value is None or not storage.exists(output.digest.value):
+            if output.digest.value is None or not cacher.exists(output.digest.value):
                 return False
             return True
         assert output.dest is not None
@@ -219,9 +223,9 @@ def is_artifact_ok(artifact: GradingArtifacts, storage: Storage) -> bool:
     return True
 
 
-def are_artifacts_ok(artifacts: List[GradingArtifacts], storage: Storage) -> bool:
+def are_artifacts_ok(artifacts: List[GradingArtifacts], cacher: FileCacher) -> bool:
     for artifact in artifacts:
-        if not is_artifact_ok(artifact, storage):
+        if not is_artifact_ok(artifact, cacher):
             return False
     return True
 
@@ -244,6 +248,8 @@ class DependencyCacheBlock:
         self._key = None
 
     def __enter__(self):
+        if grading_context.is_no_cache():
+            return False
         input = _build_cache_input(
             commands=self.commands,
             artifact_list=self.artifact_list,
@@ -260,6 +266,8 @@ class DependencyCacheBlock:
         return found
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if grading_context.is_no_cache():
+            return True if exc_type is NoCacheException else None
         if exc_type is None:
             self.cache.store_in_cache(
                 self.commands, self.artifact_list, self.extra_params, key=self._key
@@ -271,26 +279,36 @@ class DependencyCacheBlock:
 
 class DependencyCache:
     root: pathlib.Path
-    storage: Storage
+    cacher: FileCacher
 
-    def __init__(self, root: pathlib.Path, storage: Storage):
+    def __init__(self, root: pathlib.Path, cacher: FileCacher):
         self.root = root
-        self.storage = storage
+        self.cacher = cacher
         self.db = shelve.open(self._cache_name())
+        tmp_dir = pathlib.Path(tempfile.mkdtemp())
+        self.transient_db = shelve.open(tmp_dir / '.cache_db')
         atexit.register(lambda: self.db.close())
+        atexit.register(lambda: self.transient_db.close())
+        atexit.register(lambda: shutil.rmtree(tmp_dir))
 
     def _cache_name(self) -> str:
         return str(self.root / '.cache_db')
 
+    def get_db(self) -> shelve.Shelf:
+        if grading_context.is_transient():
+            return self.transient_db
+        return self.db
+
     def _find_in_cache(self, key: str) -> Optional[CacheFingerprint]:
-        return self.db.get(key)
+        return self.get_db().get(key)
 
     def _store_in_cache(self, key: str, fingerprint: CacheFingerprint):
-        self.db[key] = fingerprint
+        self.get_db()[key] = fingerprint
 
     def _evict_from_cache(self, key: str):
-        if key in self.db:
-            del self.db[key]
+        db = self.get_db()
+        if key in db:
+            del db[key]
 
     def __call__(
         self,
@@ -334,7 +352,7 @@ class DependencyCache:
         for digest, reference_digest in zip(fingerprint.digests, reference_digests):
             reference_digest.value = digest
 
-        if not are_artifacts_ok(artifact_list, self.storage):
+        if not are_artifacts_ok(artifact_list, self.cacher):
             # Rollback digest changes.
             for old_digest_value, reference_digest in zip(
                 old_digest_values, reference_digests
@@ -344,7 +362,7 @@ class DependencyCache:
             return False
 
         # Copy hashed files to file system.
-        _copy_hashed_files(artifact_list, self.storage)
+        _copy_hashed_files(artifact_list, self.cacher)
 
         # Apply logs changes.
         for logs, reference_logs in zip(fingerprint.logs, reference_fingerprint.logs):
@@ -370,7 +388,7 @@ class DependencyCache:
         )
         key = key or _build_cache_key(input)
 
-        if not are_artifacts_ok(artifact_list, self.storage):
+        if not are_artifacts_ok(artifact_list, self.cacher):
             return
 
         self._store_in_cache(key, _build_cache_fingerprint(artifact_list))

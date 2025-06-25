@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from rbx.grading import steps
+from rbx.grading import grading_context, steps
 from rbx.grading.caching import DependencyCache, NoCacheException
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
@@ -56,15 +56,19 @@ async def run(
     if metadata is not None and metadata.retryIndex is not None:
         cacheable_params['__retry_index__'] = metadata.retryIndex
 
-    with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
-        if not is_cached:
-            await steps.run(
-                command=command,
-                params=params,
-                artifacts=artifacts,
-                sandbox=sandbox,
-                metadata=metadata,
-            )
+    with grading_context.cache_level(
+        grading_context.CacheLevel.NO_CACHE,
+        when=grading_context.CacheLevel.CACHE_COMPILATION,
+    ):
+        with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
+            if not is_cached:
+                await steps.run(
+                    command=command,
+                    params=params,
+                    artifacts=artifacts,
+                    sandbox=sandbox,
+                    metadata=metadata,
+                )
 
     return artifacts.logs.run
 
@@ -91,13 +95,17 @@ async def run_coordinated(
     if solution.metadata is not None and solution.metadata.retryIndex is not None:
         cacheable_params['solution.__retry_index__'] = solution.metadata.retryIndex
 
-    with dependency_cache(
-        [interactor.command, solution.command],
-        [interactor.artifacts, solution.artifacts],
-        cacheable_params,
-    ) as is_cached:
-        if not is_cached:
-            await steps.run_coordinated(interactor, solution)
+    with grading_context.cache_level(
+        grading_context.CacheLevel.NO_CACHE,
+        when=grading_context.CacheLevel.CACHE_COMPILATION,
+    ):
+        with dependency_cache(
+            [interactor.command, solution.command],
+            [interactor.artifacts, solution.artifacts],
+            cacheable_params,
+        ) as is_cached:
+            if not is_cached:
+                await steps.run_coordinated(interactor, solution)
 
     return (
         interactor.artifacts.logs.run,

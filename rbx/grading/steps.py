@@ -20,7 +20,7 @@ from rich.text import Text
 from rbx import utils
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
-from rbx.grading import processing_context
+from rbx.grading import grading_context, processing_context
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.storage import Storage, copyfileobj
 from rbx.grading.limits import Limits
@@ -312,7 +312,8 @@ def _process_output_artifacts(
 ) -> bool:
     for output_artifact in artifacts.outputs:
         if output_artifact.hash and output_artifact.digest is None:
-            output_artifact.digest = DigestHolder()
+            if not grading_context.is_no_cache():
+                output_artifact.digest = DigestHolder()
         if not sandbox.file_exists(output_artifact.src):
             if output_artifact.optional:
                 continue
