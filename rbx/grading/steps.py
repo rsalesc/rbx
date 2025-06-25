@@ -21,8 +21,9 @@ from rbx import utils
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import grading_context, processing_context
+from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
-from rbx.grading.judge.storage import Storage, copyfileobj
+from rbx.grading.judge.storage import copyfileobj
 from rbx.grading.limits import Limits
 
 MAX_STDOUT_LEN = 1024 * 1024 * 128  # 128 MB
@@ -161,15 +162,15 @@ class GradingFileOutput(BaseModel):
     # Whether to touch the file before the command runs.
     touch: bool = False
 
-    def get_file(self, storage: Storage) -> Optional[IO[bytes]]:
+    def get_file(self, cacher: FileCacher) -> Optional[IO[bytes]]:
         if self.dest is not None:
             if self.optional and not self.dest.exists():
                 return None
             return self.dest.open('rb')
         if self.digest is not None and self.digest.value is not None:
-            if self.optional and not storage.exists(self.digest.value):
+            if self.optional and not cacher.exists(self.digest.value):
                 return None
-            return storage.get_file(self.digest.value)
+            return cacher.get_file(self.digest.value)
         raise ValueError('No file to get')
 
 

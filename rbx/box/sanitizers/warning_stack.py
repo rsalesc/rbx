@@ -4,7 +4,7 @@ import shutil
 
 from rbx import console
 from rbx.box.schema import CodeItem
-from rbx.grading.judge.storage import Storage
+from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.steps import GradingFileOutput
 
 
@@ -18,7 +18,7 @@ class WarningStack:
         self.warnings.add(code.path)
 
     def add_sanitizer_warning(
-        self, storage: Storage, code: CodeItem, reference: GradingFileOutput
+        self, cacher: FileCacher, code: CodeItem, reference: GradingFileOutput
     ):
         if code.path in self.sanitizer_warnings:
             return
@@ -26,7 +26,7 @@ class WarningStack:
             code.path.with_suffix(code.path.suffix + '.log')
         )
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        f = reference.get_file(storage)
+        f = reference.get_file(cacher)
         if f is None:
             return
         with dest_path.open('wb') as fout:

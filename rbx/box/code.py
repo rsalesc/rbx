@@ -686,7 +686,7 @@ async def run_item(
         )
         if stderr_output is not None:
             warning_stack.get_warning_stack().add_sanitizer_warning(
-                package.get_cache_storage(), code, stderr_output
+                package.get_file_cacher(), code, stderr_output
             )
     return run_log
 

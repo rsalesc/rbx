@@ -45,6 +45,7 @@ dateparser = "^1.2.1"
 deepmerge = "^2.0"
 yamlfix = "^1.17.0"
 ruamel-yaml = "^0.18.14"
+lz4 = "^4.4.4"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"
