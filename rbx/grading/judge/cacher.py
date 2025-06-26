@@ -151,6 +151,10 @@ class FileCacher:
 
         logger.debug('File %s not in cache, downloading ' 'from database.', digest)
 
+        if (symlink := self.backend.path_for_symlink(digest)) is not None:
+            cache_file_path.symlink_to(symlink)
+            return cache_file_path.open('rb') if not cache_only else None
+
         ftmp_handle, temp_file_path = tempfile.mkstemp(dir=self.temp_dir, text=False)
         temp_file_path = pathlib.Path(temp_file_path)
         with open(ftmp_handle, 'wb') as ftmp, self.backend.get_file(digest) as fobj:
