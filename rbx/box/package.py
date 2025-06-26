@@ -34,7 +34,7 @@ YAML_NAME = 'problem.rbx.yml'
 _DEFAULT_CHECKER = 'wcmp.cpp'
 _NOOP_CHECKER = 'noop.cpp'
 TEMP_DIR = None
-CACHE_STEP_VERSION = 1
+CACHE_STEP_VERSION = 2
 
 
 @functools.cache

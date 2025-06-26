@@ -250,6 +250,12 @@ class FileCacher:
         logger.debug('Getting symlink file path %s.', digest)
         return self.backend.path_for_symlink(digest)
 
+    def digest_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+        if grading_context.is_transient():
+            return None
+
+        return self.backend.filename_from_symlink(link)
+
     def get_file_content(self, digest: str) -> bytes:
         """Retrieve a file from the storage.
 

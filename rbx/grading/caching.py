@@ -94,11 +94,15 @@ def _build_digest_list(artifacts_list: List[GradingArtifacts]) -> List[DigestHol
     return digests
 
 
-def _build_fingerprint_list(artifacts_list: List[GradingArtifacts]) -> List[str]:
+def _build_fingerprint_list(
+    artifacts_list: List[GradingArtifacts], cacher: FileCacher
+) -> List[str]:
     fingerprints = []
     for artifacts in artifacts_list:
         for input in artifacts.inputs:
             if input.src is None:
+                continue
+            if cacher.digest_from_symlink(input.src) is not None:
                 continue
             with input.src.open('rb') as f:
                 fingerprints.append(digest_cooperatively(f))
@@ -129,9 +133,10 @@ def _build_logs_list(artifacts_list: List[GradingArtifacts]) -> List[GradingLogs
 
 def _build_cache_fingerprint(
     artifacts_list: List[GradingArtifacts],
+    cacher: FileCacher,
 ) -> CacheFingerprint:
     digests = [digest.value for digest in _build_digest_list(artifacts_list)]
-    fingerprints = _build_fingerprint_list(artifacts_list)
+    fingerprints = _build_fingerprint_list(artifacts_list, cacher)
     output_fingerprints = _build_output_fingerprint_list(artifacts_list)
     logs = _build_logs_list(artifacts_list)
     return CacheFingerprint(
@@ -160,6 +165,7 @@ def _build_cache_input(
     commands: List[str],
     artifact_list: List[GradingArtifacts],
     extra_params: Dict[str, Any],
+    cacher: FileCacher,
 ) -> CacheInput:
     cloned_artifact_list = [
         artifacts.model_copy(deep=True) for artifacts in artifact_list
@@ -168,6 +174,15 @@ def _build_cache_input(
         # Clear logs from cache input, since they are not
         # part of the cache key.
         artifacts.logs = None
+
+        for input in artifacts.inputs:
+            if input.src is None:
+                continue
+            inferred_digest = cacher.digest_from_symlink(input.src)
+            if inferred_digest is not None:
+                # Consume cache from digest instead of file.
+                input.digest = DigestHolder(value=inferred_digest)
+                input.src = None
 
         for output in artifacts.outputs:
             if output.hash:
@@ -264,6 +279,7 @@ class DependencyCacheBlock:
                 commands=self.commands,
                 artifact_list=self.artifact_list,
                 extra_params=self.extra_params,
+                cacher=self.cache.cacher,
             )
             if VERBOSE:
                 console.console.log(f'Cache input is: {input}')
@@ -338,7 +354,10 @@ class DependencyCache:
         key: Optional[str] = None,
     ) -> bool:
         input = _build_cache_input(
-            commands=commands, artifact_list=artifact_list, extra_params=extra_params
+            commands=commands,
+            artifact_list=artifact_list,
+            extra_params=extra_params,
+            cacher=self.cacher,
         )
         key = key or _build_cache_key(input)
 
@@ -346,7 +365,7 @@ class DependencyCache:
         if fingerprint is None:
             return False
 
-        reference_fingerprint = _build_cache_fingerprint(artifact_list)
+        reference_fingerprint = _build_cache_fingerprint(artifact_list, self.cacher)
 
         if not _fingerprints_match(fingerprint, reference_fingerprint):
             self._evict_from_cache(key)
@@ -395,11 +414,14 @@ class DependencyCache:
         key: Optional[str] = None,
     ):
         input = _build_cache_input(
-            commands=commands, artifact_list=artifact_list, extra_params=extra_params
+            commands=commands,
+            artifact_list=artifact_list,
+            extra_params=extra_params,
+            cacher=self.cacher,
         )
         key = key or _build_cache_key(input)
 
         if not are_artifacts_ok(artifact_list, self.cacher):
             return
 
-        self._store_in_cache(key, _build_cache_fingerprint(artifact_list))
+        self._store_in_cache(key, _build_cache_fingerprint(artifact_list, self.cacher))

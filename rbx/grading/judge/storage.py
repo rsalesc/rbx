@@ -177,6 +177,10 @@ class Storage(ABC):
     def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
         pass
 
+    @abstractmethod
+    def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+        pass
+
 
 class NullStorage(Storage):
     """This backend is always empty, it just drops each file that
@@ -221,6 +225,9 @@ class NullStorage(Storage):
         return list()
 
     def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
+        return None
+
+    def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
         return None
 
 
@@ -397,3 +404,11 @@ class FilesystemStorage(Storage):
         if compression_metadata is not None:
             return None
         return file_path
+
+    def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+        if not link.is_symlink():
+            return None
+        filename = link.readlink().resolve()
+        if not filename.is_file():
+            return None
+        return str(filename.relative_to(self.path))
