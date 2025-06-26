@@ -284,7 +284,7 @@ class FilesystemStorage(Storage):
                     compression_level=level,
                 ),
             )
-            temp_file.name = fd_name
+            temp_file.name = fd_name  # type: ignore
             metadata['compression'] = CompressionMetadata(compression_level=level)
 
         return PendingFile(fd=temp_file, filename=filename, metadata=metadata)
