@@ -309,11 +309,13 @@ def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: SandboxBase):
 
 
 def _process_output_artifacts(
-    artifacts: GradingArtifacts, sandbox: SandboxBase
+    artifacts: GradingArtifacts,
+    sandbox: SandboxBase,
 ) -> bool:
     for output_artifact in artifacts.outputs:
         if output_artifact.hash and output_artifact.digest is None:
             if not grading_context.is_no_cache():
+                # If cache is enabled, track this file in cache.
                 output_artifact.digest = DigestHolder()
         if not sandbox.file_exists(output_artifact.src):
             if output_artifact.optional:
@@ -324,6 +326,7 @@ def _process_output_artifacts(
             return False
 
         if output_artifact.digest is not None:
+            # Put it in the cache, possibly compressing it if it's an executable.
             with grading_context.compression(
                 use_compression=True,
                 when=output_artifact.executable,
@@ -336,15 +339,30 @@ def _process_output_artifacts(
         dst: pathlib.Path = artifacts.root / output_artifact.dest
         # Ensure dst directory exists.
 
-        # TODO: Get from storage if output_artifact.digest is not None.
         dst.parent.mkdir(parents=True, exist_ok=True)
-        with dst.open('wb') as f:
-            with sandbox.get_file(output_artifact.src) as sb_f:
-                copyfileobj(
-                    sb_f,
-                    f,
-                    maxlen=output_artifact.maxlen,
+
+        if (
+            output_artifact.digest is not None
+            and output_artifact.digest.value is not None
+            and (
+                path_to_symlink := sandbox.file_cacher.path_for_symlink(
+                    output_artifact.digest.value
                 )
+            )
+            is not None
+        ):
+            # File is in the persistent cache, store a symlink to it.
+            dst.unlink(missing_ok=True)
+            dst.symlink_to(path_to_symlink)
+        else:
+            # File is not in the persistent cache, copy it.
+            with dst.open('wb') as f:
+                with sandbox.get_file(output_artifact.src) as sb_f:
+                    copyfileobj(
+                        sb_f,
+                        f,
+                        maxlen=output_artifact.maxlen,
+                    )
         if output_artifact.executable:
             dst.chmod(0o755)
     return True

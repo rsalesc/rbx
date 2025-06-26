@@ -198,9 +198,17 @@ def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher
             if output.optional and output.digest.value is None:
                 continue
             assert output.digest.value is not None
-            with cacher.get_file(output.digest.value) as fobj:
-                with output.dest.open('wb') as f:
-                    copyfileobj(fobj, f, maxlen=output.maxlen)
+            if (
+                path_to_symlink := cacher.path_for_symlink(output.digest.value)
+            ) is not None:
+                # Use a symlink to the file in the persistent cache, if available.
+                output.dest.unlink(missing_ok=True)
+                output.dest.symlink_to(path_to_symlink)
+            else:
+                # Otherwise, copy it.
+                with cacher.get_file(output.digest.value) as fobj:
+                    with output.dest.open('wb') as f:
+                        copyfileobj(fobj, f, maxlen=output.maxlen)
             if output.executable:
                 output.dest.chmod(0o755)
 

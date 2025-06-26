@@ -151,6 +151,7 @@ class FileCacher:
         logger.debug('File %s not in cache, downloading ' 'from database.', digest)
 
         if (symlink := self.backend.path_for_symlink(digest)) is not None:
+            cache_file_path.unlink(missing_ok=True)
             cache_file_path.symlink_to(symlink)
             return cache_file_path.open('rb') if not cache_only else None
 
