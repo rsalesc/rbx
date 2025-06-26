@@ -6,6 +6,7 @@ from rbx.box.code import CommunicationItem, run_communication, run_item
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
 from rbx.box.schema import Solution, Testcase
+from rbx.grading import profiling
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
@@ -91,23 +92,25 @@ async def run_solution_on_testcase(
         eval_path = output_path.with_suffix('.eval')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        run_log = await run_item(
-            solution,
-            DigestOrSource.create(compiled_digest),
-            stdin=DigestOrSource.create(testcase.inputPath),
-            stdout=DigestOrDest.create(output_path),
-            stderr=DigestOrDest.create(error_path),
-            extra_config=extra_config,
-            retry_index=retry_index,
-        )
+        with profiling.PushContext('tasks.run_solution_on_testcase'):
+            run_log = await run_item(
+                solution,
+                DigestOrSource.create(compiled_digest),
+                stdin=DigestOrSource.create(testcase.inputPath),
+                stdout=DigestOrDest.create(output_path),
+                stderr=DigestOrDest.create(error_path),
+                extra_config=extra_config,
+                retry_index=retry_index,
+            )
 
         if checker_digest is not None:
-            checker_result = await checkers.check(
-                checker_digest,
-                run_log,
-                testcase,
-                program_output=output_path,
-            )
+            with profiling.PushContext('tasks.run_solution_on_testcase.check'):
+                checker_result = await checkers.check(
+                    checker_digest,
+                    run_log,
+                    testcase,
+                    program_output=output_path,
+                )
         else:
             checker_result = checkers.check_with_no_output(run_log)
 

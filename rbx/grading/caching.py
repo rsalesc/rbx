@@ -14,6 +14,7 @@ from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.digester import digest_cooperatively
 from rbx.grading.judge.storage import copyfileobj
+from rbx.grading.profiling import Profiler
 from rbx.grading.steps import DigestHolder, GradingArtifacts, GradingLogsHolder
 
 VERBOSE = False
@@ -256,33 +257,35 @@ class DependencyCacheBlock:
         self._key = None
 
     def __enter__(self):
-        if grading_context.is_no_cache():
-            return False
-        input = _build_cache_input(
-            commands=self.commands,
-            artifact_list=self.artifact_list,
-            extra_params=self.extra_params,
-        )
-        if VERBOSE:
-            console.console.log(f'Cache input is: {input}')
-        self._key = _build_cache_key(input)
-        if VERBOSE:
-            console.console.log(f'Cache key is: {self._key}')
-        found = self.cache.find_in_cache(
-            self.commands, self.artifact_list, self.extra_params, key=self._key
-        )
-        return found
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if grading_context.is_no_cache():
-            return True if exc_type is NoCacheException else None
-        if exc_type is None:
-            self.cache.store_in_cache(
+        with Profiler('enter_in_cache'):
+            if grading_context.is_no_cache():
+                return False
+            input = _build_cache_input(
+                commands=self.commands,
+                artifact_list=self.artifact_list,
+                extra_params=self.extra_params,
+            )
+            if VERBOSE:
+                console.console.log(f'Cache input is: {input}')
+            self._key = _build_cache_key(input)
+            if VERBOSE:
+                console.console.log(f'Cache key is: {self._key}')
+            found = self.cache.find_in_cache(
                 self.commands, self.artifact_list, self.extra_params, key=self._key
             )
-        if exc_type is NoCacheException:
-            return True
-        return None
+            return found
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        with Profiler('exit_in_cache'):
+            if grading_context.is_no_cache():
+                return True if exc_type is NoCacheException else None
+            if exc_type is None:
+                self.cache.store_in_cache(
+                    self.commands, self.artifact_list, self.extra_params, key=self._key
+                )
+            if exc_type is NoCacheException:
+                return True
+            return None
 
 
 class DependencyCache:

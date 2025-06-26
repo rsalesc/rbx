@@ -30,7 +30,7 @@ from rbx.box.environment import (
 from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
-from rbx.grading import steps, steps_with_caching
+from rbx.grading import profiling, steps, steps_with_caching
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
     DigestHolder,
@@ -681,14 +681,15 @@ async def run_item(
         retry_index,
     )
 
-    run_log = await steps_with_caching.run(
-        prepared.command,
-        params=prepared.sandbox_params,
-        sandbox=package.get_singleton_sandbox(),
-        artifacts=prepared.artifacts,
-        dependency_cache=dependency_cache,
-        metadata=prepared.metadata,
-    )
+    with profiling.PushContext('code.run_item'):
+        run_log = await steps_with_caching.run(
+            prepared.command,
+            params=prepared.sandbox_params,
+            sandbox=package.get_singleton_sandbox(),
+            artifacts=prepared.artifacts,
+            dependency_cache=dependency_cache,
+            metadata=prepared.metadata,
+        )
 
     # Find sanitizer logs.
     if run_log is not None and run_log.warnings:

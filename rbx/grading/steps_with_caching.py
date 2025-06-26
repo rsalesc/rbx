@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from rbx.grading import grading_context, steps
+from rbx.grading import grading_context, profiling, steps
 from rbx.grading.caching import DependencyCache, NoCacheException
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
@@ -60,16 +60,21 @@ async def run(
         grading_context.CacheLevel.NO_CACHE,
         when=grading_context.is_compilation_only,
     ):
+        cached_profile = profiling.Profiler('steps.run[cached]', start=True)
         with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
             if not is_cached:
-                await steps.run(
-                    command=command,
-                    params=params,
-                    artifacts=artifacts,
-                    sandbox=sandbox,
-                    metadata=metadata,
-                )
-
+                with profiling.Profiler('steps.run'):
+                    profiling.add_to_counter('steps.run')
+                    await steps.run(
+                        command=command,
+                        params=params,
+                        artifacts=artifacts,
+                        sandbox=sandbox,
+                        metadata=metadata,
+                    )
+            else:
+                cached_profile.stop()
+                profiling.add_to_counter('steps.run[cached]')
     return artifacts.logs.run
 
 
@@ -99,13 +104,19 @@ async def run_coordinated(
         grading_context.CacheLevel.NO_CACHE,
         when=grading_context.is_compilation_only,
     ):
+        cached_profile = profiling.Profiler('steps.run_coordinated[cached]', start=True)
         with dependency_cache(
             [interactor.command, solution.command],
             [interactor.artifacts, solution.artifacts],
             cacheable_params,
         ) as is_cached:
             if not is_cached:
-                await steps.run_coordinated(interactor, solution)
+                with profiling.Profiler('steps.run_coordinated'):
+                    profiling.add_to_counter('steps.run_coordinated')
+                    await steps.run_coordinated(interactor, solution)
+            else:
+                cached_profile.stop()
+                profiling.add_to_counter('steps.run_coordinated[cached]')
 
     return (
         interactor.artifacts.logs.run,

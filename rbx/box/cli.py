@@ -1,3 +1,4 @@
+import atexit
 import pathlib
 import shlex
 import shutil
@@ -128,6 +129,12 @@ def main(
         flag_value=False,
         help='Whether to save extra logs and outputs from interactive solutions.',
     ),
+    profile: bool = typer.Option(
+        False,
+        '--profile',
+        '-p',
+        help='Whether to profile the execution.',
+    ),
 ):
     if cd.is_problem_package() and not package.is_cache_valid():
         console.console.print(
@@ -145,6 +152,11 @@ def main(
     state.STATE.debug_logs = capture
 
     grading_context.cache_level_var.set(grading_context.CacheLevel(cache))
+
+    if profile:
+        from rbx.grading import profiling
+
+        atexit.register(profiling.print_summary)
 
 
 @app.command('ui', hidden=True)
