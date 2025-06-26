@@ -31,7 +31,6 @@ from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 from rbx.grading import steps, steps_with_caching
-from rbx.grading.judge.cacher import get_description
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
     DigestHolder,
@@ -61,7 +60,7 @@ class SanitizationLevel(Enum):
         return self.value >= SanitizationLevel.FORCE.value
 
 
-class FileDescription(BaseModel):
+class CompilationMetadata(BaseModel):
     is_sanitized: bool
 
 
@@ -87,7 +86,9 @@ def is_executable_sanitized(executable: DigestOrSource) -> bool:
     if executable.digest.value is None:
         return False
     cacher = package.get_file_cacher()
-    desc = get_description(cacher, executable.digest.value, FileDescription)
+    desc = cacher.get_metadata(
+        executable.digest.value, 'compilation', CompilationMetadata
+    )
     if desc is None:
         return False
     return desc.is_sanitized
@@ -642,11 +643,11 @@ def compile_item(
     # Create sentinel to indicate this executable is sanitized.
     cacher = package.get_file_cacher()
     if sanitized.should_sanitize():
-        cacher.set_description(
-            compiled_digest.value, FileDescription(is_sanitized=True)
+        cacher.set_metadata(
+            compiled_digest.value, 'compilation', CompilationMetadata(is_sanitized=True)
         )
     else:
-        cacher.set_description(compiled_digest.value, None)
+        cacher.set_metadata(compiled_digest.value, 'compilation', None)
 
     return compiled_digest.value
 

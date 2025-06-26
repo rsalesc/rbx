@@ -649,13 +649,13 @@ class SandboxBase(abc.ABC):
     def get_file_to_storage(
         self,
         path: pathlib.Path,
-        description: Optional[pydantic.BaseModel] = None,
+        metadata: Optional[Dict[str, pydantic.BaseModel]] = None,
         trunc_len: Optional[int] = None,
     ) -> str:
         """Put a sandbox file in FS and return its digest.
 
         path (Path): relative path of the file inside the sandbox.
-        description (str): the description for FS.
+        metadata (Dict[str, pydantic.BaseModel]): the metadata for FS.
         trunc_len (int|None): if None, does nothing; otherwise, before
             returning truncate it at the specified length.
 
@@ -663,7 +663,7 @@ class SandboxBase(abc.ABC):
 
         """
         with self.get_file(path, trunc_len=trunc_len) as file_:
-            return self.file_cacher.put_file_from_fobj(file_, description)
+            return self.file_cacher.put_file_from_fobj(file_, metadata)
 
     def stat_file(self, path: pathlib.Path) -> os.stat_result:
         """Return the stats of a file in the sandbox.

@@ -324,13 +324,19 @@ def _process_output_artifacts(
             return False
 
         if output_artifact.digest is not None:
-            output_artifact.digest.value = sandbox.get_file_to_storage(
-                output_artifact.src, trunc_len=output_artifact.maxlen
-            )
+            with grading_context.compression(
+                use_compression=True,
+                when=output_artifact.executable,
+            ):
+                output_artifact.digest.value = sandbox.get_file_to_storage(
+                    output_artifact.src, trunc_len=output_artifact.maxlen
+                )
         if output_artifact.dest is None:
             continue
         dst: pathlib.Path = artifacts.root / output_artifact.dest
         # Ensure dst directory exists.
+
+        # TODO: Get from storage if output_artifact.digest is not None.
         dst.parent.mkdir(parents=True, exist_ok=True)
         with dst.open('wb') as f:
             with sandbox.get_file(output_artifact.src) as sb_f:

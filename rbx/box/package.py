@@ -170,7 +170,7 @@ def get_problem_preprocessed_path(
 
 @functools.cache
 def get_cache_storage(root: pathlib.Path = pathlib.Path()) -> Storage:
-    return FilesystemStorage(get_problem_storage_dir(root))
+    return FilesystemStorage(get_problem_storage_dir(root), compress=False)
 
 
 @functools.cache

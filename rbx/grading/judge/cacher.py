@@ -7,7 +7,7 @@ import pathlib
 import shutil
 import tempfile
 import typing
-from typing import IO, List, Optional, Type, TypeVar
+from typing import IO, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 
@@ -64,7 +64,6 @@ class FileCacher:
         self.shared = shared
         self.folder = folder
         self.existing = set()
-        self.desc = {}
 
         # First we create the config directories.
         if folder:
@@ -309,7 +308,7 @@ class FileCacher:
                 storage.copyfileobj(src, dst, self.CHUNK_SIZE)
 
     def put_file_from_fobj(
-        self, src: IO[bytes], desc: Optional[BaseModel] = None
+        self, src: IO[bytes], metadata: Optional[Dict[str, BaseModel]] = None
     ) -> str:
         """Store a file in the storage.
 
@@ -322,7 +321,7 @@ class FileCacher:
 
         src (fileobj): a readable binary file-like object from which
             to read the contents of the file.
-        desc (unicode): the (optional) description to associate to the
+        metadata (Dict[str, BaseModel]): the (optional) metadata to associate to the
             file.
 
         return (unicode): the digest of the stored file.
@@ -371,34 +370,37 @@ class FileCacher:
                     pending_file = self.backend.create_file(digest)
                     if pending_file is not None:
                         storage.copyfileobj(src, pending_file.fd, self.CHUNK_SIZE)
-                        self.backend.commit_file(pending_file, desc)
+                        self.backend.commit_file(pending_file, metadata)
 
             os.rename(dst.name, cache_file_path)
-            self.desc[digest] = desc
 
         return digest
 
-    def put_file_content(self, content: bytes, desc: Optional[BaseModel] = None) -> str:
+    def put_file_content(
+        self, content: bytes, metadata: Optional[Dict[str, BaseModel]] = None
+    ) -> str:
         """Store a file in the storage.
 
         See `put_file_from_fobj'. This method will read the content of
         the file from the given binary string.
 
         content (bytes): the content of the file to store.
-        desc (unicode): the (optional) description to associate to the
+        metadata (Dict[str, BaseModel]): the (optional) metadata to associate to the
             file.
 
         return (unicode): the digest of the stored file.
 
         """
         with io.BytesIO(content) as src:
-            return self.put_file_from_fobj(src, desc)
+            return self.put_file_from_fobj(src, metadata)
 
-    def put_file_text(self, text: str, desc: Optional[BaseModel] = None) -> str:
-        return self.put_file_content(text.encode('utf-8'), desc)
+    def put_file_text(
+        self, text: str, metadata: Optional[Dict[str, BaseModel]] = None
+    ) -> str:
+        return self.put_file_content(text.encode('utf-8'), metadata)
 
     def put_file_from_path(
-        self, src_path: pathlib.Path, desc: Optional[BaseModel] = None
+        self, src_path: pathlib.Path, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> str:
         """Store a file in the storage.
 
@@ -407,41 +409,53 @@ class FileCacher:
 
         src_path (Path): an accessible location on the file-system
             from which to read the contents of the file.
-        desc (unicode): the (optional) description to associate to the
+        metadata (Dict[str, BaseModel]): the (optional) metadata to associate to the
             file.
 
         return (unicode): the digest of the stored file.
 
         """
         with src_path.open('rb') as src:
-            return self.put_file_from_fobj(src, desc)
+            return self.put_file_from_fobj(src, metadata)
 
-    def set_description(self, digest: str, desc: Optional[BaseModel]):
+    def set_metadata(self, digest: str, key: str, value: Optional[BaseModel]):
         """Set the description of a file given its digest.
 
         digest (unicode): the digest of the file to add the description.
-        desc (BaseModel): the description of the file.
+        key (str): the key of the metadata to add.
+        value (BaseModel): the value of the metadata to add.
         """
-        self.desc[digest] = desc
         if grading_context.is_transient():
             return
-        self.backend.set_description(digest, desc)
+        self.backend.set_metadata(digest, key, value)
 
-    def describe(self, digest: str, model_cls: Type[BaseModel]) -> Optional[BaseModel]:
+    def get_metadata(
+        self, digest: str, key: str, model_cls: Type[storage.BaseModelT]
+    ) -> Optional[storage.BaseModelT]:
         """Return the description of a file given its digest.
 
         digest (unicode): the digest of the file to describe.
-
-        return (unicode): the description of the file.
+        key (str): the key of the metadata to get.
+        model_cls (Type[storage.BaseModelT]): the model class of the metadata.
+        return (BaseModel): the metadata of the file.
 
         raise (KeyError): if the file cannot be found.
 
         """
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
-        if digest in self.desc:
-            return self.desc[digest]
-        return self.backend.describe(digest, model_cls)
+        return typing.cast(
+            Optional[storage.BaseModelT],
+            self.backend.get_metadata(digest, key, model_cls),
+        )
+
+    def list_metadata(self, filename: str) -> List[str]:
+        """List the metadata of a file given its filename.
+
+        filename (str): the filename of the file to list the metadata.
+        return (List[str]): the list of metadata keys.
+        """
+        return self.backend.list_metadata(filename)
 
     def get_size(self, digest: str) -> int:
         """Return the size of a file given its digest.
@@ -481,7 +495,6 @@ class FileCacher:
         cache_file_path: pathlib.Path = self.file_dir / digest
         cache_file_path.unlink(missing_ok=True)
         self.existing.discard(digest)
-        del self.desc[digest]
 
     def purge_cache(self):
         """Empty the local cache.
@@ -494,7 +507,6 @@ class FileCacher:
         if self.folder is not None:
             self.folder.mkdir(parents=True, exist_ok=True)
         self.existing.clear()
-        self.desc.clear()
 
     def destroy_cache(self):
         """Completely remove and destroy the cache.
@@ -509,7 +521,7 @@ class FileCacher:
             raise Exception('You may not destroy a shared cache.')
         shutil.rmtree(str(self.file_dir))
 
-    def list(self) -> List[storage.FileWithDescription]:
+    def list(self) -> List[storage.FileWithMetadata]:
         """List the files available in the storage.
 
         return ([(unicode, unicode)]): a list of pairs, each
@@ -551,15 +563,3 @@ class FileCacher:
                 clean = False
 
         return clean
-
-
-T = TypeVar('T', bound=BaseModel)
-
-
-def get_description(cacher: FileCacher, digest: str, model_cls: Type[T]) -> Optional[T]:
-    """Get the description of a file given its digest.
-
-    digest (unicode): the digest of the file to get the description.
-    model_cls (Type[BaseModel]): the model class of the description.
-    """
-    return typing.cast(Optional[T], cacher.describe(digest, model_cls))

@@ -58,7 +58,7 @@ async def run(
 
     with grading_context.cache_level(
         grading_context.CacheLevel.NO_CACHE,
-        when=grading_context.CacheLevel.CACHE_COMPILATION,
+        when=grading_context.is_compilation_only,
     ):
         with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
             if not is_cached:
@@ -97,7 +97,7 @@ async def run_coordinated(
 
     with grading_context.cache_level(
         grading_context.CacheLevel.NO_CACHE,
-        when=grading_context.CacheLevel.CACHE_COMPILATION,
+        when=grading_context.is_compilation_only,
     ):
         with dependency_cache(
             [interactor.command, solution.command],
