@@ -100,9 +100,9 @@ def create_tee(files, mode, buffer_size=4096, prefix=''):
                         tee.file.write(tee.prefix)
                     tee.file.write(bytes)
                     tee.file.flush()
-                    new = bytes == b'\n'
                     # TODO maybe add in fsync() here if the fileno() method
                     # exists on file
+                new = bytes == b'\n'
         except Exception:
             pass
         finally:
