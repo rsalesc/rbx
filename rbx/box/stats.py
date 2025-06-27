@@ -78,6 +78,14 @@ def print_package_stats(root: pathlib.Path = pathlib.Path()) -> int:
     return cache_size + build_size
 
 
+def print_global_stats() -> int:
+    cache_size = get_cache_size()
+    console.console.print(
+        f'[status]Global cache size[/status]: [item]{get_formatted_memory(cache_size)}[/item]'
+    )
+    return cache_size
+
+
 def print_reachable_package_stats(root: pathlib.Path = pathlib.Path()) -> None:
     contest_packages, problem_packages = find_and_group_all_reachable_packages(root)
     total_size = 0
@@ -87,6 +95,8 @@ def print_reachable_package_stats(root: pathlib.Path = pathlib.Path()) -> None:
     for pkg in problem_packages:
         total_size += print_package_stats(pkg)
         console.console.print()
+
+    total_size += print_global_stats()
     console.console.print(
         f'[status]Total size[/status]: [item]{get_formatted_memory(total_size)}[/item]'
     )
