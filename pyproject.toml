@@ -46,6 +46,7 @@ deepmerge = "^2.0"
 yamlfix = "^1.17.0"
 ruamel-yaml = "^0.18.14"
 lz4 = "^4.4.4"
+ordered-set = "^4.1.0"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"

@@ -13,6 +13,7 @@ import rich.markup
 import rich.table
 import rich.text
 import typer
+from ordered_set import OrderedSet
 from pydantic import BaseModel
 
 from rbx import console, utils
@@ -245,7 +246,7 @@ async def convert_list_of_solution_evaluations_to_dict(
 
 
 def _get_solutions_for_skeleton(
-    tracked_solutions: Optional[Set[str]] = None,
+    tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
 ) -> List[Solution]:
     pkg = package.find_problem_package_or_die()
@@ -260,7 +261,7 @@ def _get_solutions_for_skeleton(
 
 
 def _get_report_skeleton(
-    tracked_solutions: Optional[Set[str]] = None,
+    tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
 ) -> SolutionReportSkeleton:
@@ -393,7 +394,7 @@ def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = Fa
 
 def run_solutions(
     progress: Optional[StatusProgress] = None,
-    tracked_solutions: Optional[Set[str]] = None,
+    tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     timelimit_override: Optional[int] = None,
@@ -605,7 +606,7 @@ def _run_interactive_solutions(
 
 
 def _get_interactive_skeleton(
-    tracked_solutions: Optional[Set[str]] = None,
+    tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
 ) -> SolutionReportSkeleton:
     solutions = _get_solutions_for_skeleton(tracked_solutions, verification)
@@ -645,7 +646,7 @@ def _get_interactive_skeleton(
 
 async def run_and_print_interactive_solutions(
     progress: Optional[StatusProgress] = None,
-    tracked_solutions: Optional[Set[str]] = None,
+    tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
     testcase_entry: Optional[TestcaseEntry] = None,
@@ -767,7 +768,7 @@ def expand_solutions(sols: List[str]) -> List[Solution]:
 
 
 async def pick_solutions(
-    tracked_solutions: Optional[Set[str]],
+    tracked_solutions: Optional[OrderedSet[str]],
     extra_solutions: Optional[List[str]] = None,
 ) -> List[str]:
     pkg = package.find_problem_package_or_die()

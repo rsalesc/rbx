@@ -10,6 +10,7 @@ import rich
 import rich.prompt
 import syncer
 import typer
+from ordered_set import OrderedSet
 
 from rbx import annotations, config, console, utils
 from rbx.box import (
@@ -282,17 +283,17 @@ async def run(
         )
         check = False
 
-    tracked_solutions = None
+    tracked_solutions: Optional[OrderedSet[str]] = None
     if outcome is not None:
-        tracked_solutions = {
+        tracked_solutions = OrderedSet(
             str(solution.path)
             for solution in get_matching_solutions(ExpectedOutcome(outcome))
-        }
+        )
     if solutions:
-        tracked_solutions = set(solutions)
+        tracked_solutions = OrderedSet(solutions)
 
     if choice:
-        tracked_solutions = set(
+        tracked_solutions = OrderedSet(
             await pick_solutions(
                 tracked_solutions,
                 extra_solutions=solutions,
@@ -337,10 +338,10 @@ async def run(
         console.console.print(
             '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
         )
-        tracked_solutions = {
+        tracked_solutions = OrderedSet(
             str(solution.path)
             for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-        }
+        )
 
     with utils.StatusProgress('Running solutions...') as s:
         solution_result = run_solutions(
@@ -373,10 +374,10 @@ async def _time_impl(check: bool, detailed: bool, runs: int = 0) -> Optional[int
     verification = VerificationLevel.ALL_SOLUTIONS.value
 
     with utils.StatusProgress('Running ACCEPTED solutions...') as s:
-        tracked_solutions = {
+        tracked_solutions = OrderedSet(
             str(solution.path)
             for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-        }
+        )
         solution_result = run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
@@ -525,17 +526,17 @@ async def irun(
         )
         return
 
-    tracked_solutions = None
+    tracked_solutions: Optional[OrderedSet[str]] = None
     if outcome is not None:
-        tracked_solutions = {
+        tracked_solutions = OrderedSet(
             str(solution.path)
             for solution in get_matching_solutions(ExpectedOutcome(outcome))
-        }
+        )
     if solutions:
-        tracked_solutions = set(solutions)
+        tracked_solutions = OrderedSet(solutions)
 
     if choice:
-        tracked_solutions = set(
+        tracked_solutions = OrderedSet(
             await pick_solutions(
                 tracked_solutions,
                 extra_solutions=solutions,
@@ -549,10 +550,10 @@ async def irun(
         console.console.print(
             '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
         )
-        tracked_solutions = {
+        tracked_solutions = OrderedSet(
             str(solution.path)
             for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-        }
+        )
 
     with utils.StatusProgress('Running solutions...') as s:
         await run_and_print_interactive_solutions(
