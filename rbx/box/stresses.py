@@ -1,3 +1,5 @@
+import pathlib
+import shutil
 import time
 from shutil import rmtree
 from typing import List, Optional
@@ -8,24 +10,19 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import checkers, generators, package, validators
-from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box import generators, package, tasks, validators
+from rbx.box.code import SanitizationLevel, compile_item
 from rbx.box.generators import (
     GenerationMetadata,
     expand_generator_call,
     generate_standalone,
 )
-from rbx.box.retries import Retrier
 from rbx.box.schema import CodeItem, GeneratorCall, Stress, TaskType, Testcase
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
 from rbx.box.stressing import finder_parser
 from rbx.grading.steps import (
-    DigestOrDest,
-    DigestOrSource,
     Evaluation,
     Outcome,
-    TestcaseIO,
-    TestcaseLog,
 )
 from rbx.utils import StatusProgress
 
@@ -161,44 +158,36 @@ async def run_stress(
         @async_lru.alru_cache(maxsize=None)
         async def run_solution_fn(
             solution: str,
-            retry_index: Optional[int] = None,
+            checker_digest: Optional[str] = None,
             input_path=input_path,
-        ) -> TestcaseLog:
+            output_path: Optional[pathlib.Path] = None,
+        ) -> Evaluation:
             index = solution_indices[solution]
             sol = solutions[index]
-            output_path = input_path.with_stem(f'{index}').with_suffix('.out')
-            stderr_path = output_path.with_suffix('.err')
-
-            run_log = await run_item(
-                sol,
-                DigestOrSource.create(solutions_digest[sol.path]),
-                stdin=DigestOrSource.create(input_path),
-                stdout=DigestOrDest.create(output_path),
-                stderr=DigestOrDest.create(stderr_path),
-                retry_index=retry_index,
-            )
-
-            return TestcaseLog(
-                **(run_log.model_dump() if run_log is not None else {}),
-                stdout_absolute_path=output_path.absolute(),
-                stderr_absolute_path=stderr_path.absolute(),
+            return await tasks.run_solution_on_testcase(
+                solutions[index],
+                compiled_digest=solutions_digest[sol.path],
+                checker_digest=checker_digest,
+                testcase=Testcase(inputPath=input_path, outputPath=output_path),
+                output_dir=input_path.parent,
+                filestem=f'{index}',
+                is_stress=True,
             )
 
         # Get main solution output.
         expected_output_path = empty_path
         if needs_expected_output:
-            main_testcase_log = await run_solution_fn(str(solutions[0].path))
-            main_checker_result = checkers.check_with_no_output(main_testcase_log)
-            if main_checker_result.outcome != Outcome.ACCEPTED:
+            eval = await run_solution_fn(str(solutions[0].path))
+            if eval.result.outcome != Outcome.ACCEPTED:
                 console.console.print(
                     '[error]Error while generating main solution output.[/error]'
                 )
                 console.console.print(f'Input written at [item]{input_path}[/item]')
                 console.console.print(
-                    f'Output written at [item]{main_testcase_log.stdout_absolute_path}[/item]'
+                    f'Output written at [item]{eval.log.stdout_absolute_path}[/item]'
                 )
                 console.console.print(
-                    f'Stderr written at [item]{main_testcase_log.stderr_absolute_path}[/item]'
+                    f'Stderr written at [item]{eval.log.stderr_absolute_path}[/item]'
                 )
                 console.console.print()
                 console.console.print(
@@ -206,44 +195,31 @@ async def run_stress(
                     "use the two-way modifier in your finder expression (':2')."
                 )
                 raise typer.Exit(1)
-            expected_output_path = main_testcase_log.stdout_absolute_path
+            if eval.log.stdout_absolute_path is not None:
+                expected_output_path = input_path.with_suffix('.ans')
+                shutil.copyfile(eval.log.stdout_absolute_path, expected_output_path)
+            else:
+                expected_output_path = None
 
         @async_lru.alru_cache(maxsize=None)
         async def run_solution_and_checker_fn(
             call: finder_parser.FinderCall,
-            input_path=input_path,
             expected_output_path=expected_output_path,
         ) -> finder_parser.FinderResult:
-            async def run_fn(retry_index: int) -> Evaluation:
+            async def run_fn() -> Evaluation:
                 solution = call.solution
                 checker = call.checker
 
-                testcase_log = await run_solution_fn(solution, retry_index=retry_index)
-                assert testcase_log.stdout_absolute_path is not None
-
-                if checker is None:
-                    checker_result = checkers.check_with_no_output(testcase_log)
-                else:
-                    checker_digest = finders_digest[checker.path]
-                    checker_result = await checkers.check(
-                        checker_digest,
-                        testcase_log,
-                        Testcase(inputPath=input_path, outputPath=expected_output_path),
-                        program_output=testcase_log.stdout_absolute_path,
-                    )
-
-                return Evaluation(
-                    result=checker_result,
-                    testcase=TestcaseIO(
-                        index=0,
-                        input=input_path,
-                        output=expected_output_path,
-                    ),
-                    log=testcase_log,
+                checker_digest = (
+                    finders_digest[checker.path] if checker is not None else None
+                )
+                return await run_solution_fn(
+                    solution,
+                    checker_digest=checker_digest,
+                    output_path=expected_output_path,
                 )
 
-            retrier = Retrier(is_stress=True)
-            eval = await retrier.repeat(run_fn)
+            eval = await run_fn()
 
             return finder_parser.FinderResult(
                 solution=call.solution,

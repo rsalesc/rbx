@@ -5,7 +5,7 @@ from rbx.box import checkers, package, state
 from rbx.box.code import CommunicationItem, run_communication, run_item
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
-from rbx.box.schema import Solution, Testcase
+from rbx.box.schema import CodeItem, Testcase
 from rbx.grading import profiling
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
@@ -40,7 +40,7 @@ def get_limits_for_language(
 
 
 async def run_solution_on_testcase(
-    solution: Solution,
+    solution: CodeItem,
     compiled_digest: str,
     checker_digest: Optional[str],
     testcase: Testcase,
@@ -53,6 +53,8 @@ async def run_solution_on_testcase(
     use_timelimit: bool = True,
     capture_pipes: bool = False,
     nruns: int = 0,
+    filestem: Optional[str] = None,
+    is_stress: bool = False,
 ) -> Evaluation:
     if interactor_digest is not None:
         return await _run_communication_solution_on_testcase(
@@ -69,6 +71,8 @@ async def run_solution_on_testcase(
             use_timelimit=use_timelimit,
             capture_pipes=capture_pipes,
             nruns=nruns,
+            filestem=filestem,
+            is_stress=is_stress,
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
@@ -86,7 +90,8 @@ async def run_solution_on_testcase(
             assert testcase.outputPath is not None
             output_path = testcase.outputPath
         else:
-            output_path = output_dir / testcase.inputPath.with_suffix('.out').name
+            stem = filestem or testcase.inputPath.stem
+            output_path = output_dir / pathlib.PosixPath(stem).with_suffix('.out')
         error_path = output_path.with_suffix('.err')
         log_path = output_path.with_suffix('.log')
         eval_path = output_path.with_suffix('.eval')
@@ -137,7 +142,7 @@ async def run_solution_on_testcase(
     if not use_retries:
         return await run_fn(0)
 
-    retrier = Retrier(get_retrier_config(nruns))
+    retrier = Retrier(get_retrier_config(nruns), is_stress=is_stress)
     return await retrier.repeat(run_fn)
 
 
@@ -159,7 +164,7 @@ def _get_execution_config(
 
 
 async def _run_communication_solution_on_testcase(
-    solution: Solution,
+    solution: CodeItem,
     compiled_digest: str,
     interactor_digest: str,
     checker_digest: Optional[str],
@@ -172,6 +177,8 @@ async def _run_communication_solution_on_testcase(
     use_timelimit: bool = True,
     capture_pipes: bool = False,
     nruns: int = 0,
+    filestem: Optional[str] = None,
+    is_stress: bool = False,
 ) -> Evaluation:
     capture_pipes = capture_pipes or state.STATE.debug_logs
 
@@ -203,7 +210,8 @@ async def _run_communication_solution_on_testcase(
             assert testcase.outputPath is not None
             output_path = testcase.outputPath
         else:
-            output_path = output_dir / testcase.inputPath.with_suffix('.out').name
+            stem = filestem or testcase.inputPath.stem
+            output_path = output_dir / pathlib.PosixPath(stem).with_suffix('.out')
         solution_error_path = output_path.with_suffix('.sol.err')
         interactor_error_path = output_path.with_suffix('.int.err')
         log_path = output_path.with_suffix('.log')
@@ -297,5 +305,5 @@ async def _run_communication_solution_on_testcase(
     if not use_retries:
         return await run_fn(0)
 
-    retrier = Retrier(get_retrier_config(nruns))
+    retrier = Retrier(get_retrier_config(nruns), is_stress=is_stress)
     return await retrier.repeat(run_fn)
