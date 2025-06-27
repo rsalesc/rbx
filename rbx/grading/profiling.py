@@ -8,7 +8,7 @@ ALL_CONTEXTS_BY_NAME = {}
 _ALL_CONTEXTS_BY_NAME_LOCK = threading.Lock()
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _get_threadsafe_context(name: str) -> 'Context':
     with _ALL_CONTEXTS_BY_NAME_LOCK:
         if name not in ALL_CONTEXTS_BY_NAME:

@@ -158,7 +158,7 @@ async def run_stress(
             else None,
         )
 
-        @async_lru.alru_cache
+        @async_lru.alru_cache(maxsize=None)
         async def run_solution_fn(
             solution: str,
             retry_index: Optional[int] = None,
@@ -208,7 +208,7 @@ async def run_stress(
                 raise typer.Exit(1)
             expected_output_path = main_testcase_log.stdout_absolute_path
 
-        @async_lru.alru_cache
+        @async_lru.alru_cache(maxsize=None)
         async def run_solution_and_checker_fn(
             call: finder_parser.FinderCall,
             input_path=input_path,

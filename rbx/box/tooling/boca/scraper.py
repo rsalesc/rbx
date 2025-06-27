@@ -364,7 +364,7 @@ class BocaScraper:
         return final_path
 
 
-@functools.lru_cache
+@functools.cache
 def get_boca_scraper(
     base_url: Optional[str] = None,
     username: Optional[str] = None,
