@@ -10,7 +10,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import generators, package, tasks, validators
+from rbx.box import checkers, generators, package, tasks, validators
 from rbx.box.code import SanitizationLevel, compile_item
 from rbx.box.generators import (
     GenerationMetadata,
@@ -58,11 +58,6 @@ async def run_stress(
     sanitized: bool = False,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
-    if pkg.type == TaskType.COMMUNICATION:
-        console.console.print(
-            '[error]Communication problems do not support stress testing.[/error]'
-        )
-        raise typer.Exit(1)
 
     if finder:
         if generator_call is None:
@@ -110,6 +105,10 @@ async def run_stress(
     if progress:
         progress.update('Compiling finders...')
     finders_digest = {str(finder.path): _compile_finder(finder) for finder in finders}
+
+    interactor_digest = None
+    if pkg.type == TaskType.COMMUNICATION:
+        interactor_digest = checkers.compile_interactor(progress=progress)
 
     compiled_validator = validators.compile_main_validator()
 
@@ -168,6 +167,7 @@ async def run_stress(
                 solutions[index],
                 compiled_digest=solutions_digest[sol.path],
                 checker_digest=checker_digest,
+                interactor_digest=interactor_digest,
                 testcase=Testcase(inputPath=input_path, outputPath=output_path),
                 output_dir=input_path.parent,
                 filestem=f'{index}',
