@@ -19,6 +19,7 @@ from rbx.box import (
     download,
     environment,
     generators,
+    global_package,
     package,
     presets,
     setter_config,
@@ -141,6 +142,11 @@ def main(
             '[warning]Cache is incompatible with the current version of [item]rbx[/item], so it will be cleared.[/warning]'
         )
         clear()
+    if not global_package.is_global_cache_valid():
+        console.console.print(
+            '[warning]Global cache is incompatible with the current version of [item]rbx[/item], so it will be cleared.[/warning]'
+        )
+        clear(global_cache=True)
 
     state.STATE.run_through_cli = True
     state.STATE.sanitized = sanitized
@@ -946,13 +952,29 @@ def fix(print_diff: bool = typer.Option(False, '--print-diff', '-p')):
     linting.fix_package(print_diff=print_diff)
 
 
+@cd.within_closest_package
+def _clear_package_cache():
+    console.console.print('Cleaning cache and build directories...')
+    shutil.rmtree('.box', ignore_errors=True)
+    shutil.rmtree('build', ignore_errors=True)
+
+
 @app.command(
     'clear, clean',
     rich_help_panel='Management',
     help='Clears cache and build directories.',
 )
-@cd.within_closest_package
-def clear():
-    console.console.print('Cleaning cache and build directories...')
-    shutil.rmtree('.box', ignore_errors=True)
-    shutil.rmtree('build', ignore_errors=True)
+def clear(global_cache: bool = typer.Option(False, '--global', '-g')):
+    cleared = False
+    if global_cache:
+        console.console.print('Cleaning global cache...')
+        global_package.clear_global_cache()
+        cleared = True
+
+    closest_package = cd.find_package()
+    if closest_package is not None:
+        _clear_package_cache()
+        cleared = True
+
+    if not cleared:
+        console.console.print('[error]No cache or build directories to clean.[/error]')

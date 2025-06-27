@@ -27,17 +27,24 @@ def compile(
     artifacts.logs = GradingLogsHolder()
 
     ok = True
+    cached_profile = profiling.Profiler('steps.compile[cached]', start=True)
     with dependency_cache(
         commands, [artifacts], params.get_cacheable_params()
     ) as is_cached:
-        if not is_cached and not steps.compile(
-            commands=commands,
-            params=params,
-            artifacts=artifacts,
-            sandbox=sandbox,
-        ):
-            ok = False
-            raise NoCacheException()
+        if not is_cached:
+            with profiling.Profiler('steps.compile'):
+                profiling.add_to_counter('steps.compile')
+                ok = steps.compile(
+                    commands=commands,
+                    params=params,
+                    artifacts=artifacts,
+                    sandbox=sandbox,
+                )
+                if not ok:
+                    raise NoCacheException()
+        else:
+            cached_profile.stop()
+            profiling.add_to_counter('steps.compile[cached]')
 
     return ok
 

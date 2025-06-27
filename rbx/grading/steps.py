@@ -140,6 +140,8 @@ class GradingFileInput(BaseModel):
     digest: Optional[DigestHolder] = None
     # Whether the destination file should be marked as an executable.
     executable: bool = False
+    # Whether to track file through its hash (disable for optimization).
+    hash: bool = True
 
 
 class GradingFileOutput(BaseModel):

@@ -13,7 +13,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import download, package, setter_config, state
+from rbx.box import download, global_package, package, setter_config, state
 from rbx.box.environment import (
     CompilationConfig,
     ExecutionConfig,
@@ -30,8 +30,8 @@ from rbx.box.environment import (
 from rbx.box.formatting import get_formatted_memory
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
-from rbx.grading import profiling, steps, steps_with_caching
-from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
+from rbx.grading import grading_context, profiling, steps, steps_with_caching
+from rbx.grading.judge.sandbox import SandboxParams
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -414,7 +414,6 @@ def _should_precompile(commands: List[str]) -> bool:
 def _precompile_header(
     compilation_options: CompilationConfig,
     sanitized: SanitizationLevel,
-    sandbox: SandboxBase,
     sandbox_params: SandboxParams,
     artifacts: GradingArtifacts,
     input_artifact: GradingFileInput,
@@ -429,7 +428,8 @@ def _precompile_header(
     """
     assert compilation_options.commands is not None
 
-    dependency_cache = package.get_dependency_cache()
+    sandbox = global_package.get_global_sandbox()
+    dependency_cache = global_package.get_global_dependency_cache()
 
     # TODO: deduplicate code with compile_item.
     commands = get_mapped_commands(
@@ -467,41 +467,60 @@ def _precompile_header(
         GradingFileOutput(
             src=PosixPath('precompilable.h.gch'),
             digest=precompiled_digest,
-            executable=True,
         )
     )
 
-    if not steps_with_caching.compile(
-        commands,
-        params=sandbox_params,
-        artifacts=precompilation_artifacts,
-        sandbox=sandbox,
-        dependency_cache=dependency_cache,
-    ):
-        console.console.print(
-            f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
-        )
-        raise typer.Exit(1)
-
-    if verbose:
-        console.console.print(
-            f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
-        )
-
-        if (
-            precompilation_artifacts.logs is not None
-            and precompilation_artifacts.logs.preprocess is not None
+    with profiling.PushContext('code.precompile_header'):
+        if not steps_with_caching.compile(
+            commands,
+            params=sandbox_params,
+            artifacts=precompilation_artifacts,
+            sandbox=sandbox,
+            dependency_cache=dependency_cache,
         ):
-            for log in precompilation_artifacts.logs.preprocess:
-                console.console.print(f'[status]Command:[/status] {log.get_command()}')
-                console.console.print(f'[status]Summary:[/status] {log.get_summary()}')
+            console.console.print(
+                f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
+            )
+            raise typer.Exit(1)
+
+        if verbose:
+            console.console.print(
+                f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
+            )
+
+            if (
+                precompilation_artifacts.logs is not None
+                and precompilation_artifacts.logs.preprocess is not None
+            ):
+                for log in precompilation_artifacts.logs.preprocess:
+                    console.console.print(
+                        f'[status]Command:[/status] {log.get_command()}'
+                    )
+                    console.console.print(
+                        f'[status]Summary:[/status] {log.get_summary()}'
+                    )
 
     assert precompiled_digest.value is not None
 
+    digest_path = dependency_cache.cacher.path_for_symlink(precompiled_digest.value)
+    if digest_path is not None and digest_path.is_file():
+        # If storage backend supports symlinks, use it as the grading input.
+        input = DigestOrSource.create(digest_path)
+    else:
+        # Otherwise, copy the file to the local cache, transiently.
+        local_cacher = package.get_file_cacher()
+        with dependency_cache.cacher.get_file(precompiled_digest.value) as f:
+            with grading_context.cache_level(
+                grading_context.CacheLevel.CACHE_TRANSIENTLY
+            ):
+                input = DigestOrSource.create(local_cacher.put_file_from_fobj(f))
+
     return GradingFileInput(
-        digest=precompiled_digest,
+        **input.expand(),
         dest=input_artifact.dest.with_suffix('.h.gch'),
-        executable=True,
+        # Do not track fingerprint of the precompiled header file,
+        # trust the compilation step above.
+        hash=False,
     )
 
 
@@ -588,37 +607,38 @@ def compile_item(
 
     # Precompile C++ interesting header files.
     if precompile and _should_precompile(commands):
-        precompilation_inputs = []
-        for input in artifacts.inputs:
-            if (
-                input.src is not None
-                and input.src.suffix == '.h'
-                and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
-            ):
-                precompilation_inputs.append(
-                    _precompile_header(
-                        compilation_options,
-                        sanitized,
-                        sandbox,
-                        sandbox_params,
-                        artifacts,
-                        input,
-                        force_warnings,
-                        verbose=False,
+        with profiling.Profiler('code.precompile'):
+            precompilation_inputs = []
+            for input in artifacts.inputs:
+                if (
+                    input.src is not None
+                    and input.src.suffix == '.h'
+                    and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
+                ):
+                    precompilation_inputs.append(
+                        _precompile_header(
+                            compilation_options,
+                            sanitized,
+                            sandbox_params,
+                            artifacts,
+                            input,
+                            force_warnings,
+                            verbose=False,
+                        )
                     )
-                )
-        if precompilation_inputs:
-            artifacts.inputs.extend(precompilation_inputs)
+            if precompilation_inputs:
+                artifacts.inputs.extend(precompilation_inputs)
 
-    # Compile the code.
-    if not steps_with_caching.compile(
-        commands,
-        params=sandbox_params,
-        artifacts=artifacts,
-        sandbox=sandbox,
-        dependency_cache=dependency_cache,
-    ):
-        raise typer.Exit(1)
+    with profiling.Profiler('code.compile'):
+        # Compile the code.
+        if not steps_with_caching.compile(
+            commands,
+            params=sandbox_params,
+            artifacts=artifacts,
+            sandbox=sandbox,
+            dependency_cache=dependency_cache,
+        ):
+            raise typer.Exit(1)
 
     assert compiled_digest.value is not None
 

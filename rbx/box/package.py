@@ -11,8 +11,9 @@ import typer
 from pydantic import ValidationError
 
 from rbx import console, utils
-from rbx.box import cd
+from rbx.box import cd, global_package
 from rbx.box.environment import get_sandbox_type
+from rbx.box.global_package import get_cache_fingerprint
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
@@ -34,7 +35,6 @@ YAML_NAME = 'problem.rbx.yml'
 _DEFAULT_CHECKER = 'wcmp.cpp'
 _NOOP_CHECKER = 'noop.cpp'
 TEMP_DIR = None
-CACHE_STEP_VERSION = 2
 
 
 @functools.cache
@@ -107,17 +107,13 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
     return res, res.load(problem_yaml_path.read_text())
 
 
-def _get_fingerprint() -> str:
-    return f'{CACHE_STEP_VERSION}'
-
-
 @functools.cache
 def get_problem_cache_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     cache_dir = find_problem(root) / '.box'
     cache_dir.mkdir(parents=True, exist_ok=True)
     fingerprint_file = cache_dir / 'fingerprint'
     if not fingerprint_file.is_file():
-        fingerprint_file.write_text(_get_fingerprint())
+        fingerprint_file.write_text(get_cache_fingerprint())
     return cache_dir
 
 
@@ -427,16 +423,7 @@ def get_merged_capture_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path
 @functools.cache
 def is_cache_valid(root: pathlib.Path = pathlib.Path()):
     cache_dir = find_problem(root) / '.box'
-    if not cache_dir.is_dir():
-        return True
-
-    fingerprint_file = cache_dir / 'fingerprint'
-    if not fingerprint_file.is_file():
-        return False
-    fingerprint = fingerprint_file.read_text()
-    if fingerprint.strip() != _get_fingerprint():
-        return False
-    return True
+    return global_package.is_cache_valid(cache_dir)
 
 
 def clear_package_cache():

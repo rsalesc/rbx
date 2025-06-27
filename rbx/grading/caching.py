@@ -100,7 +100,7 @@ def _build_fingerprint_list(
     fingerprints = []
     for artifacts in artifacts_list:
         for input in artifacts.inputs:
-            if input.src is None:
+            if input.src is None or not input.hash:
                 continue
             if cacher.digest_from_symlink(input.src) is not None:
                 continue
