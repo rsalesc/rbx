@@ -82,6 +82,8 @@ async def run_stress(
     call = stress.generator
     generator = package.get_generator(call.name)
 
+    if progress:
+        progress.update('Compiling generator...')
     try:
         generator_digest = compile_item(generator, sanitized=SanitizationLevel.PREFER)
     except:
@@ -101,6 +103,7 @@ async def run_stress(
     solutions_digest = compile_solutions(
         tracked_solutions=set(str(solution.path) for solution in solutions),
         sanitized=sanitized,
+        progress=progress,
     )
     if progress:
         progress.update('Compiling finders...')
@@ -110,6 +113,8 @@ async def run_stress(
     if pkg.type == TaskType.COMMUNICATION:
         interactor_digest = checkers.compile_interactor(progress=progress)
 
+    if progress:
+        progress.update('Compiling validator...')
     compiled_validator = validators.compile_main_validator()
 
     # Erase old stress directory
