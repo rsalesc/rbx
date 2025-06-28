@@ -159,7 +159,7 @@ def _pretty_print_outcome_panel(
 ) -> Panel:
     result: steps.CheckerResult = eval.result
     is_tle = result.outcome.is_slow() or (
-        problem.timeLimit and eval.log.time * 1000 > problem.timeLimit
+        problem.timeLimit and (eval.log.time or 0) * 1000 > problem.timeLimit
     )
 
     text = Text()
