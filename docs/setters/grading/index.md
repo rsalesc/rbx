@@ -36,7 +36,18 @@ Right after running the solution, we must give a verdict to it (or, as we call t
 
 You can find the full list of outcomes in the table below.
 
-TODO: rsalesc
+| Outcome                   | Short name | Description                                                  |
+| ------------------------- | ---------- | ------------------------------------------------------------ |
+| `ACCEPTED`                | `AC`       | The solution passed all the testcases.                       |
+| `WRONG_ANSWER`            | `WA`       | The solution produced an incorrect output.                   |
+| `TIME_LIMIT_EXCEEDED`     | `TLE`      | The solution took too much time to execute.                  |
+| `MEMORY_LIMIT_EXCEEDED`   | `MLE`      | The solution used too much memory.                           |
+| `IDLENESS_LIMIT_EXCEEDED` | `ILE`      | The solution was idle for too long.                          |
+| `RUNTIME_ERROR`           | `RTE`      | The solution crashed.                                        |
+| `OUTPUT_LIMIT_EXCEEDED`   | `OLE`      | The solution produced too much output.                       |
+| `JUDGE_FAILED`            | `FL`       | The judge failed to execute or produced an incorrect answer. |
+| `INTERNAL_ERROR`          | `IE`       | An internal error occurred.                                  |
+
 
 All outcomes, except for `JUDGE_FAILED`, `WRONG_ANSWER` and `ACCEPTED` are all defined right after
 the solution runs.
