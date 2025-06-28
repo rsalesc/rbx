@@ -168,7 +168,7 @@ Read more about them in the [Running solutions](/setters/running/) section.
 
 The results of the run can also be inspected using the `rbx ui` command.
 
-{{ asciinema("1QYrKEMUKGgtFLTEEtrKTFIgn") }}
+{{ asciinema("wJnaQpSpYNRty3UPCwNlc90JV") }}
 
 If you want to compile the solution, and interactively communicate with it as if you were the interactor agent,
 you can compile your solution with the `rbx compile` command and then run it manually with `./build/exe`.
