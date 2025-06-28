@@ -54,6 +54,7 @@ from rbx.box.testcase_utils import (
     parse_interaction,
     print_interaction,
 )
+from rbx.grading import grading_context
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     Evaluation,
@@ -660,23 +661,28 @@ async def run_and_print_interactive_solutions(
         tracked_solutions,
         verification=verification,
     )
-    testcase = await _generate_testcase_interactively(
-        progress=progress,
-        generator=generator,
-        testcase_entry=testcase_entry,
-        check=check,
-        custom_output=custom_output,
-        sanitized=sanitized,
-        print=print,
-    )
-    items = _run_interactive_solutions(
-        testcase,
-        skeleton=skeleton,
-        progress=progress,
-        verification=verification,
-        check=check,
-        sanitized=sanitized,
-    )
+
+    should_cache = testcase_entry is not None
+    with grading_context.cache_level(
+        grading_context.CacheLevel.CACHE_COMPILATION, when=not should_cache
+    ):
+        testcase = await _generate_testcase_interactively(
+            progress=progress,
+            generator=generator,
+            testcase_entry=testcase_entry,
+            check=check,
+            custom_output=custom_output,
+            sanitized=sanitized,
+            print=print,
+        )
+        items = _run_interactive_solutions(
+            testcase,
+            skeleton=skeleton,
+            progress=progress,
+            verification=verification,
+            check=check,
+            sanitized=sanitized,
+        )
 
     for item in items:
         sol = skeleton.find_solution_skeleton(item.solution)
