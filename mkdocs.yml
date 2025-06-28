@@ -16,6 +16,8 @@ nav:
           - "setters/testset/index.md"
           - "Generators": "setters/testset/generators.md"
           - "Stress testing": "setters/stress-testing.md"
+      - "Running":
+          - "setters/running/index.md"
       - "Grading":
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"
