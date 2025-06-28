@@ -71,6 +71,8 @@ of how this feature works.
 
 ```py
 # Find a test for which `sols/wa.cpp` returns any verdict considered incorrect.
+# Both versions are equivalent, the first one being a shorthand for the second.
+sols/wa.cpp
 [sols/wa.cpp] ~ INCORRECT
 
 # Find a test that fails one incorrect solution and a TLE solution at the same time.
@@ -124,6 +126,7 @@ with the `--findings / -n` and the `--timeout / -t` flags.
 ```sh
 # Runs for 2 minutes or stops after finding 3 matches.
 rbx stress -g "<generator-expression>" -f "<finder-expression>" -n 3 -t 120
+rbx stress -g "gen 100 @" -f sols/main.cpp
 rbx stress -g "gen 100 @" -f "[sols/main.cpp] ~ INCORRECT" -n 3 -t 120
 ```
 
