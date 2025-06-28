@@ -4,18 +4,18 @@
 the {{testlib}} assets you use. You can see a quick summary of the features in the table below,
 and then read more about each one in the following sections.
 
-+--------------------------------------------+---------------------------------------------------------------+
-|                  Feature                   |                          Description                          |
-+============================================+===============================================================+
-| [Validators](validators.md)                | Check whether your test inputs are conforming the to the      |
-|                                            | format you expect.                                            |
-+--------------------------------------------+---------------------------------------------------------------+
-| [Unit tests](unit-tests.md)                | Check whether your checker and/or validator are behaving      |
-|                                            | as expected against manually defined inputs.                  |
-+--------------------------------------------+---------------------------------------------------------------+
-| [Stress testing](/setters/stress-tests.md) | Check whether your validators, checkers and correct solutions |
-|                                            | are behaving as expected against randomly generated inputs.   |
-+--------------------------------------------+---------------------------------------------------------------+
++-------------------------------------------+---------------------------------------------------------------+
+|                  Feature                  |                          Description                          |
++===========================================+===============================================================+
+| [Validators](validators.md)               | Check whether your test inputs are conforming the to the      |
+|                                           | format you expect.                                            |
++-------------------------------------------+---------------------------------------------------------------+
+| [Unit tests](unit-tests.md)               | Check whether your checker and/or validator are behaving      |
+|                                           | as expected against manually defined inputs.                  |
++-------------------------------------------+---------------------------------------------------------------+
+| [Stress testing](/setters/stress-testing) | Check whether your validators, checkers and correct solutions |
+|                                           | are behaving as expected against randomly generated inputs.   |
++-------------------------------------------+---------------------------------------------------------------+
 
 ## Verification Level
 
@@ -36,7 +36,7 @@ The verification level is a non-negative incremental enum, which means that the 
 `N+1` will include all the checks of level `N`, plus what is specified in
 the table below:
 
-| Level                  | Description                                                           |
+|         Level          |                              Description                              |
 | ---------------------- | --------------------------------------------------------------------- |
 | `0` / `NONE`           | No verification.                                                      |
 | `1` / `VALIDATE`       | Run validators on the generated testset.                              |
