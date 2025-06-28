@@ -27,6 +27,16 @@ class Expander(ABC):
         pass
 
 
+class MainExpander(Expander):
+    def expand(self, path: pathlib.Path) -> Optional[pathlib.Path]:
+        if str(path) != '@main':
+            return None
+        sol = package.get_main_solution()
+        if sol is None:
+            return None
+        return sol.path
+
+
 class BocaExpander(Expander):
     BOCA_REGEX = re.compile(r'\@boca\/(\d+)(?:\-(\d+))?')
 
@@ -69,6 +79,7 @@ class BocaExpander(Expander):
 
 
 REGISTERED_EXPANDERS: List['Expander'] = [
+    MainExpander(),
     BocaExpander(),
 ]
 
