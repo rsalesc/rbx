@@ -10,6 +10,7 @@ import typer
 from rbx import console
 from rbx.box import package
 from rbx.box.schema import CodeItem, ExpectedOutcome
+from rbx.box.solutions import expand_solutions
 from rbx.grading.steps import CheckerResult, Outcome, RunLog, TestcaseLog
 
 LARK_GRAMMAR = r"""
@@ -30,7 +31,7 @@ logical: eval matcher expected_outcome -> matching
 eval: "[" solution checking? "]"
 
 // Eval
-solution: _filename | WILDCARD
+solution: _solution_filename | WILDCARD
 checking: "ON"i (checking_mode? checker | ":nil")
 checking_mode: MODE ":"
 MODE: "2" | "3"
@@ -55,6 +56,7 @@ WILDCARD: "$"
 
 // File name
 _filename: FILENAME | "\"" FILENAME "\""
+_solution_filename: _filename | "@" _filename
 FILENAME: /[\/A-Za-z0-9\-_\.]/+
 
 // Names (Variables)
@@ -217,20 +219,7 @@ def get_all_solutions(tree: lark.ParseTree) -> List[str]:
 
 def get_all_solution_items(tree: lark.ParseTree) -> List[CodeItem]:
     solution_names = get_all_solutions(tree)
-    res = []
-
-    for solution_name in solution_names:
-        found_solution = package.get_solution_or_nil(solution_name)
-        if found_solution is None:
-            res.append(
-                CodeItem(
-                    path=pathlib.Path(solution_name),
-                    language=None,
-                    compilationFiles=None,
-                )
-            )
-            continue
-        res.append(found_solution)
+    res = typing.cast(List[CodeItem], expand_solutions(solution_names))
 
     main_solution = package.get_main_solution()
     if main_solution is None:
