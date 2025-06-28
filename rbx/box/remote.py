@@ -152,3 +152,8 @@ def expand_file(file: str) -> pathlib.Path:
         )
         raise typer.Exit(1)
     return res[0]
+
+
+def is_path_remote(path: pathlib.Path) -> bool:
+    remote_dir = package.get_problem_remote_dir()
+    return path.resolve().is_relative_to(remote_dir.resolve())

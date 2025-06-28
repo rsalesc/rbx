@@ -28,6 +28,7 @@ from rbx.box.environment import (
     merge_execution_configs,
 )
 from rbx.box.formatting import get_formatted_memory
+from rbx.box.remote import is_path_remote
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 from rbx.grading import grading_context, profiling, steps, steps_with_caching
@@ -702,14 +703,19 @@ async def run_item(
     )
 
     with profiling.PushContext('code.run_item'):
-        run_log = await steps_with_caching.run(
-            prepared.command,
-            params=prepared.sandbox_params,
-            sandbox=package.get_singleton_sandbox(),
-            artifacts=prepared.artifacts,
-            dependency_cache=dependency_cache,
-            metadata=prepared.metadata,
-        )
+        # Do not cache remote solutions.
+        with grading_context.cache_level(
+            grading_context.CacheLevel.NO_CACHE,
+            when=lambda: is_path_remote(code.path),
+        ):
+            run_log = await steps_with_caching.run(
+                prepared.command,
+                params=prepared.sandbox_params,
+                sandbox=package.get_singleton_sandbox(),
+                artifacts=prepared.artifacts,
+                dependency_cache=dependency_cache,
+                metadata=prepared.metadata,
+            )
 
     # Find sanitizer logs.
     if run_log is not None and run_log.warnings:
@@ -806,8 +812,13 @@ async def run_communication(
         metadata=solution_prepared.metadata,
     )
 
-    return await steps_with_caching.run_coordinated(
-        interactor_run_params,
-        solution_run_params,
-        dependency_cache=package.get_dependency_cache(),
-    )
+    # Do not cache remote solutions.
+    with grading_context.cache_level(
+        grading_context.CacheLevel.NO_CACHE,
+        when=lambda: is_path_remote(solution.code.path),
+    ):
+        return await steps_with_caching.run_coordinated(
+            interactor_run_params,
+            solution_run_params,
+            dependency_cache=package.get_dependency_cache(),
+        )
