@@ -156,7 +156,28 @@ You can see in the commented code below how to read from each of the files avail
 
 ## Executing solutions against the interactor
 
-TODO
+Solutions for interactive problems can be executed normally, similar to batch problems, with the `rbx run`
+and `rbx irun` commands.
+
+Read more about them in the [Running solutions](/setters/running/) section.
+
+!!! warning
+
+    When providing a custom input for `rbx irun`, you're actually providing the input to the interactor,
+    **NOT** the solution.
+
+The results of the run can also be inspected using the `rbx ui` command.
+
+{{ asciinema("1QYrKEMUKGgtFLTEEtrKTFIgn") }}
+
+If you want to compile the solution, and interactively communicate with it as if you were the interactor agent,
+you can compile your solution with the `rbx compile` command and then run it manually with `./build/exe`.
+
+```bash
+rbx compile solution.cpp
+./build/exe
+# ... start interacting with the solution as the interactor ...
+```
 
 ## Do I need to write a checker?
 
