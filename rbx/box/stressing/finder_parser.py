@@ -27,8 +27,9 @@ negation: _NOT "(" disjunction ")"
 // Expressions
 logical: eval matcher expected_outcome -> matching
        | eval equality (eval | outcome) -> equating
+       | eval -> eval_only
 
-eval: "[" solution checking? "]"
+eval: "[" solution checking? "]" | solution
 
 // Eval
 solution: _solution_filename | WILDCARD
@@ -379,6 +380,11 @@ class FinderTreeRunner(lark.Transformer):
             truth_value = not truth_value
 
         return FinderOutcome(truth_value=truth_value, results=results)
+
+    def eval_only(self, eval_result: FinderResult) -> FinderOutcome:
+        return self.matching(
+            eval_result, is_positive=True, expected_outcome=ExpectedOutcome.INCORRECT
+        )
 
     def negation(self, value: FinderOutcome) -> FinderOutcome:
         return dataclasses.replace(value, truth_value=not value.truth_value)
