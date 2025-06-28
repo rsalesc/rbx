@@ -632,14 +632,19 @@ def compile_item(
 
     with profiling.Profiler('code.compile'):
         # Compile the code.
-        if not steps_with_caching.compile(
-            commands,
-            params=sandbox_params,
-            artifacts=artifacts,
-            sandbox=sandbox,
-            dependency_cache=dependency_cache,
+        # Do not cache remote solutions.
+        with grading_context.cache_level(
+            grading_context.CacheLevel.NO_CACHE,
+            when=lambda: is_path_remote(code.path),
         ):
-            raise typer.Exit(1)
+            if not steps_with_caching.compile(
+                commands,
+                params=sandbox_params,
+                artifacts=artifacts,
+                sandbox=sandbox,
+                dependency_cache=dependency_cache,
+            ):
+                raise typer.Exit(1)
 
     assert compiled_digest.value is not None
 
