@@ -1,8 +1,9 @@
 import pathlib
 import shutil
 import tempfile
-from typing import Annotated, Iterable, List, Optional, Sequence, Union
+from typing import Annotated, Iterable, List, Optional, Sequence, Tuple, Union
 
+import ruyaml
 import typer
 
 from rbx import console, utils
@@ -533,6 +534,30 @@ def install_problem(
     _clean_copied_problem_dir(dest_pkg)
 
 
+def install_preset(
+    dest_pkg: pathlib.Path, fetch_info: Optional[PresetFetchInfo] = None
+):
+    if fetch_info is None and get_active_preset_or_null() is None:
+        console.console.print(
+            '[error]No preset found to initialize the new preset from.[/error]'
+        )
+        raise typer.Exit(1)
+    if fetch_info is None:
+        _install_preset_from_dir(get_active_preset_path(), dest_pkg)
+    else:
+        _install_preset_from_fetch_info(fetch_info, dest_pkg)
+
+
+def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    if not (root / 'preset.rbx.yml').is_file():
+        console.console.print(
+            f'[error]Preset at [item]{root}[/item] does not have a [item]preset.rbx.yml[/item] file.[/error]'
+        )
+        raise typer.Exit(1)
+    res = ruyaml.YAML()
+    return res, res.load(root / 'preset.rbx.yml')
+
+
 def generate_lock(root: pathlib.Path = pathlib.Path()):
     preset = get_active_preset(root)
 
@@ -635,6 +660,47 @@ def copy_local_preset(
     console.console.print(
         f'[success]Preset [item]{preset_remote_uri}[/item] was added as a submodule to your project at [item]{path_str}[/item].[/success]'
     )
+
+
+@app.command('create', help='Create a new preset.')
+def create(
+    name: Annotated[
+        str,
+        typer.Option(
+            help='The name of the preset to create. This will also be the name of the folder.',
+            prompt='What is the name of your new preset?',
+        ),
+    ],
+    uri: Annotated[
+        str,
+        typer.Option(
+            help='The URI of the new preset.',
+            prompt='What is the URI of your new preset? (ex: rsalesc/rbx-preset for a GitHub repository)',
+        ),
+    ],
+    from_preset: Annotated[
+        Optional[str],
+        typer.Option(
+            '--preset', '-p', help='The URI of the preset to init the new preset from.'
+        ),
+    ] = None,
+):
+    console.console.print(f'Creating new preset [item]{name}[/item]...')
+
+    fetch_info = get_preset_fetch_info_with_fallback(from_preset)
+    dest_path = pathlib.Path(name)
+    if dest_path.exists():
+        console.console.print(
+            f'[error]Directory [item]{dest_path}[/item] already exists.[/error]'
+        )
+        raise typer.Exit(1)
+
+    install_preset(dest_path, fetch_info)
+
+    ru, preset = get_ruyaml(dest_path)
+    preset['name'] = name
+    preset['uri'] = uri
+    utils.save_ruyaml(dest_path / 'preset.rbx.yml', ru, preset)
 
 
 @app.command('update', help='Update preset of current package')
