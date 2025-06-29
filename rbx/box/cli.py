@@ -914,7 +914,7 @@ def languages():
 
     for language in env.languages:
         console.console.print(
-            f'[item]{language.name}[/item], aka [item]{language.readable_name or language.name}[/item]:'
+            f'[item]{language.name}[/item], aka [item]{language.readableName or language.name}[/item]:'
         )
         console.console.print(language)
         console.console.print()

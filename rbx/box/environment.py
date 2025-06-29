@@ -40,102 +40,149 @@ VerificationParam = Annotated[
 class FileMapping(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    # Path where to copy the stdin file to before running the program,
-    # relative to the sandbox root.
-    input: str = 'stdin'
+    input: str = Field(
+        default='stdin',
+        description="""Path where to copy the stdin file to before running the program,
+relative to the sandbox root.""",
+    )
 
-    # Path where to output the stdout file after running the program,
-    # relative to the sandbox root.
-    output: str = 'stdout'
+    output: str = Field(
+        default='stdout',
+        description="""Path where to output the stdout file after running the program,
+relative to the sandbox root.""",
+    )
 
-    # Path where to output the stderr file after running the program,
-    # relative to the sandbox root.
-    error: str = 'stderr'
+    error: str = Field(
+        default='stderr',
+        description="""Path where to output the stderr file after running the program,
+relative to the sandbox root.""",
+    )
 
-    # Path where to copy the compilable file to before compiling the program,
-    # relative to the sandbox root.
-    compilable: str = 'compilable'
+    compilable: str = Field(
+        default='compilable',
+        description="""Path where to copy the compilable file to before compiling the program,
+relative to the sandbox root.""",
+    )
 
-    # Path to where to output the executable file after compiling the program,
-    # relative to the sandbox root.
-    executable: str = 'executable'
+    executable: str = Field(
+        default='executable',
+        description="""Path to where to output the executable file after compiling the program,
+relative to the sandbox root.""",
+    )
 
 
 class EnvironmentSandbox(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    # Max. number of process to allow to run concurrently for the program.
-    maxProcesses: Optional[int] = 1
+    maxProcesses: Optional[int] = Field(
+        default=1,
+        description="""Max. number of process to allow to run concurrently for the program.""",
+    )
 
-    # Time limit in milliseconds to allow the program to run.
-    timeLimit: Optional[int] = None
+    timeLimit: Optional[int] = Field(
+        default=None,
+        description="""Time limit in milliseconds to allow the program to run.""",
+    )
 
-    # Wall time limit in milliseconds to allow the program to run.
-    wallTimeLimit: Optional[int] = None
+    wallTimeLimit: Optional[int] = Field(
+        default=None,
+        description="""Wall time limit in milliseconds to allow the program to run.""",
+    )
 
-    # Memory limit in MiB.
-    memoryLimit: Optional[int] = None
+    memoryLimit: Optional[int] = Field(
+        default=None,
+        description="""Memory limit in MiB.""",
+    )
 
-    # File size limit in KiB
-    fileSizeLimit: Optional[int] = None
+    fileSizeLimit: Optional[int] = Field(
+        default=None,
+        description="""File size limit in KiB""",
+    )
 
-    # Stack limit in MiB.
-    stackLimit: Optional[int] = None
+    stackLimit: Optional[int] = Field(
+        default=None,
+        description="""Stack limit in MiB.""",
+    )
 
-    # Whether to preserve env. variables coming from the host.
-    preserveEnv: Optional[bool] = False
+    preserveEnv: Optional[bool] = Field(
+        default=False,
+        description="""Whether to preserve env. variables coming from the host.""",
+    )
 
-    # Directories in the host that should be read-only exposed to the sandbox.
-    mirrorDirs: Optional[List[str]] = []
+    mirrorDirs: Optional[List[str]] = Field(
+        default=[],
+        description="""Directories in the host that should be read-only exposed to the sandbox.""",
+    )
 
 
 class CompilationConfig(BaseModel):
-    # Commands to compile the program.
-    commands: Optional[List[str]] = []
+    commands: Optional[List[str]] = Field(
+        default=[],
+        description="""Commands to compile the program.""",
+    )
 
-    # Sandbox configuration to use when compiling for this language.
-    sandbox: Optional[EnvironmentSandbox] = None
+    sandbox: Optional[EnvironmentSandbox] = Field(
+        default=None,
+        description="""Sandbox configuration to use when compiling for this language.""",
+    )
 
 
 class ExecutionConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    # Command to run the program.
-    command: Optional[str] = None
+    command: Optional[str] = Field(
+        default=None,
+        description="""Command to run the program.""",
+    )
 
-    # Sandbox configuration to use when executing for this language.
-    sandbox: Optional[EnvironmentSandbox] = None
+    sandbox: Optional[EnvironmentSandbox] = Field(
+        default=None,
+        description="""Sandbox configuration to use when executing for this language.""",
+    )
 
-    # Original limits of the problem.
-    problemLimits: Limits = Field(default_factory=Limits)
+    problemLimits: Limits = Field(
+        default_factory=Limits,
+        description="""Original limits of the problem.""",
+    )
 
 
 class EnvironmentLanguage(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    # Identifier of this language within this environment.
-    name: str
+    name: str = Field(
+        description="""Identifier of this language within this environment."""
+    )
 
-    # Readable name for this language.
-    readable_name: Optional[str] = None
+    readableName: Optional[str] = Field(
+        default=None,
+        description="""Readable name for this language.""",
+    )
 
-    # File extension supported by this language. If there's only one language
-    # that supports a certain file extension in the environment, the tool
-    # will automatically identify the language based on such extension.
-    extension: str
+    extension: str = Field(
+        description="""File extension supported by this language. If there's only one language
+that supports a certain file extension in the environment, the tool
+will automatically identify the language based on such extension."""
+    )
 
-    # Compilation config to use when compiling programs for this language.
-    compilation: Optional[CompilationConfig] = None
+    compilation: Optional[CompilationConfig] = Field(
+        default=None,
+        description="""Compilation config to use when compiling programs for this language.""",
+    )
 
-    # Execution config to use when running programs for this language.
-    execution: ExecutionConfig
+    execution: ExecutionConfig = Field(
+        description="""Execution config to use when running programs for this language."""
+    )
 
-    # Mapping for files within the sandbox. If not specified, the default mapping
-    # for the environment will be used.
-    fileMapping: Optional[FileMapping] = None
+    fileMapping: Optional[FileMapping] = Field(
+        default=None,
+        description="""Mapping for files within the sandbox. If not specified, the default mapping
+for the environment will be used.""",
+    )
 
-    # Exntensions to apply for this language.
-    extensions: Optional[LanguageExtensions] = None
+    extensions: Optional[LanguageExtensions] = Field(
+        default=None,
+        description="""Extensions to apply for this language.""",
+    )
 
     def get_extension(self, name: str, _: Type[T]) -> Optional[T]:
         if self.extensions is None:
@@ -151,39 +198,52 @@ class EnvironmentLanguage(BaseModel):
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    # Formula to use to calculate the time limit for the environment.
-    formula: str = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
+    formula: str = Field(
+        default='step_up(max(fastest * 3, slowest * 1.5), 100)',
+        description="""Formula to use to calculate the time limit for the environment.""",
+    )
 
 
 class Environment(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    # Default mapping for files within the sandbox. Fields in the mapping can be
-    # individually overridden in the language configuration.
-    defaultFileMapping: Optional[FileMapping] = None
+    defaultFileMapping: Optional[FileMapping] = Field(
+        default=None,
+        description="""Default mapping for files within the sandbox. Fields in the mapping can be
+individually overridden in the language configuration.""",
+    )
 
-    # Default compilation configuration to use when compiling programs. Fields in
-    # the compilation config can be individually overridden in the language configuration.
-    defaultCompilation: Optional[CompilationConfig] = None
+    defaultCompilation: Optional[CompilationConfig] = Field(
+        default=None,
+        description="""Default compilation configuration to use when compiling programs. Fields in
+the compilation config can be individually overridden in the language configuration.""",
+    )
 
-    # Default execution configuration to use when running programs. Fields in the
-    # execution config can be individually overridden in the language configuration.
-    defaultExecution: Optional[ExecutionConfig] = None
+    defaultExecution: Optional[ExecutionConfig] = Field(
+        default=None,
+        description="""Default execution configuration to use when running programs. Fields in the
+execution config can be individually overridden in the language configuration.""",
+    )
 
-    # Configuration for each language supported in this environment.
-    languages: List[EnvironmentLanguage] = []
+    languages: List[EnvironmentLanguage] = Field(
+        default=[],
+        description="""Configuration for each language supported in this environment.""",
+    )
 
-    # Identifier of the sandbox used by this environment (e.g. "stupid", "isolate")
-    sandbox: str = 'stupid'
+    sandbox: str = Field(
+        default='stupid',
+        description="""Identifier of the sandbox used by this environment (e.g. "stupid", "isolate")""",
+    )
 
-    # Identifier of the preset that should be used when creating new problems.
-    preset: str = 'default'
+    timing: TimingConfig = Field(
+        default_factory=TimingConfig,
+        description="""Timing configuration for the environment.""",
+    )
 
-    # Timing configuration for the environment.
-    timing: TimingConfig = Field(default_factory=TimingConfig)
-
-    # Extensions to be added to the environment.
-    extensions: Optional[Extensions] = None
+    extensions: Optional[Extensions] = Field(
+        default=None,
+        description="""Extensions to be added to the environment.""",
+    )
 
 
 def get_app_environment_path(env: str) -> pathlib.Path:

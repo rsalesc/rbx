@@ -46,7 +46,7 @@ def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
         res.append(
             StatementCodeLanguage(
                 id=language.name,
-                name=language.readable_name or language.name,
+                name=language.readableName or language.name,
                 command=cmd or '',
             )
         )

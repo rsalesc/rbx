@@ -110,7 +110,7 @@ and the `name` field of the `contest.rbx.yml` file, which will be changed to mat
 The environment file will be used to configure the execution environment of {{rbx}} to be used
 in the contest.
 
-This file is rather complex, and its full reference documentation can be found [here](../reference/env.md).
+This file is rather complex, and its full reference documentation can be found [here](../reference/env).
 
 You can usually get away with the environment used by the `default` preset, which is
 a good starting point for most contests. You can check its code [here](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/env.rbx.yml).
