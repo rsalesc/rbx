@@ -55,6 +55,14 @@ Learn how to use the different features of {{rbx}}.
 
     [:octicons-arrow-right-24: Verification](/setters/verification)
 
+-   :fontawesome-solid-person-running: **Run your solutions**
+
+    ---
+
+    Run your solutions and verify whether they're given the expected verdict or not.
+
+    [:octicons-arrow-right-24: Running](/setters/running)
+
 -   :fontawesome-solid-not-equal: **Grade with custom checkers**
 
     ---
