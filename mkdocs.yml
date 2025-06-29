@@ -31,6 +31,8 @@ nav:
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
           - "Polygon": "setters/packaging/polygon.md"
+      - "Presets":
+          - "setters/presets/index.md"
   - "Reference":
       - "Package":
           - "setters/reference/package/index.md"

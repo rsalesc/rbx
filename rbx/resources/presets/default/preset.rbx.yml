@@ -4,6 +4,7 @@ name: "default"
 uri: "rsalesc/rbx/rbx/resources/presets/default"
 problem: "problem"
 contest: "contest"
+env: "env.rbx.yml"
 tracking:
   problem:
     - path: "statement/template.rbx.tex"
