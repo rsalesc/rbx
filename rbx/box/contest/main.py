@@ -38,7 +38,13 @@ app.add_typer(
 
 @app.command('create, c', help='Create a new contest package.')
 def create(
-    path: str,
+    path: Annotated[
+        str,
+        typer.Option(
+            help='Path where to create the contest.',
+            prompt='Where should the contest be created, relative to the current directory? (e.g. "contests/ioi2024")',
+        ),
+    ],
     preset: Annotated[
         Optional[str],
         typer.Option(
@@ -108,7 +114,28 @@ def edit():
 
 @app.command('add, a', help='Add new problem to contest.')
 @within_contest
-def add(path: str, short_name: str, preset: Optional[str] = None):
+def add(
+    path: Annotated[
+        str,
+        typer.Option(
+            help='Path where to create the problem. Name part of the path will be used as the problem name.',
+            prompt='Where should the problem be created, relative to the contest root? (e.g. problems/choco will create a problem named "choco" in this directory)',
+        ),
+    ],
+    short_name: Annotated[
+        str,
+        typer.Option(
+            help='Short name of the problem. Will be used as the identifier in the contest.',
+            prompt='What should the problem be named? (e.g. "A", "B1", "B2", "Z")',
+        ),
+    ],
+    preset: Annotated[
+        Optional[str],
+        typer.Option(
+            help='Preset to use when creating the problem. If not specified, the active preset will be used.',
+        ),
+    ] = None,
+):
     problem_path = pathlib.Path(path)
     name = problem_path.stem
     utils.validate_field(ContestProblem, 'short_name', short_name)

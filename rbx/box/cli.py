@@ -577,7 +577,13 @@ async def irun(
     help='Create a new problem package.',
 )
 def create(
-    name: str,
+    name: Annotated[
+        str,
+        typer.Option(
+            help='Name of the problem to create, which will be used as the name of the new folder.',
+            prompt='What should the name of the problem be?',
+        ),
+    ],
     preset: Annotated[
         Optional[str], typer.Option(help='Preset to use when creating the problem.')
     ] = None,
