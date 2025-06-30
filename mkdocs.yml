@@ -41,8 +41,8 @@ nav:
           - "setters/reference/contest/index.md"
           - "Schema": "setters/reference/contest/schema.md"
       - "Environment":
-          - "setters/reference/env/index.md"
-          - "Schema": "setters/reference/env/schema.md"
+          - "setters/reference/environment/index.md"
+          - "Schema": "setters/reference/environment/schema.md"
       # - "CLI": "setters/reference/cli.md"
   - "Troubleshooting":
       - "cpp-on-macos.md"
