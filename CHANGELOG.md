@@ -1,3 +1,11 @@
+## 0.9.1 (2025-06-30)
+
+### Fix
+
+- add caching to default config templates
+- fix shelve open call type
+- check integrity of symlinks
+
 ## 0.9.0 (2025-06-30)
 
 ### Feat
