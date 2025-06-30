@@ -2,9 +2,12 @@ import os
 import pathlib
 import sys
 
-from rbx.grading import steps_with_caching
+import pytest
+
+from rbx.grading import grading_context, steps_with_caching
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
+from rbx.grading.judge.digester import digest_cooperatively
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
     DigestOrSource,
@@ -74,6 +77,124 @@ async def test_run_from_disk(
     assert not artifacts.logs.cached
 
 
+async def test_run_reruns_if_cache_disabled(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+        with grading_context.cache_level(grading_context.CacheLevel.NO_CACHE):
+            await steps_with_caching.run(
+                f'{sys.executable} executable.py',
+                params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+                sandbox=sandbox,
+                artifacts=artifacts,
+                dependency_cache=dependency_cache,
+            )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert not another_artifacts.logs.cached
+
+
+async def test_run_reruns_if_first_run_cache_disabled(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(
+        dest: pathlib.Path, cache: bool = True
+    ) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+        with grading_context.cache_level(
+            grading_context.CacheLevel.NO_CACHE, when=cache
+        ):
+            await steps_with_caching.run(
+                f'{sys.executable} executable.py',
+                params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+                sandbox=sandbox,
+                artifacts=artifacts,
+                dependency_cache=dependency_cache,
+            )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'), cache=False)
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert not another_artifacts.logs.cached
+
+
+async def test_run_reruns_if_second_run_cache_disabled(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(
+        dest: pathlib.Path, cache: bool = True
+    ) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+        with grading_context.cache_level(
+            grading_context.CacheLevel.NO_CACHE, when=cache
+        ):
+            await steps_with_caching.run(
+                f'{sys.executable} executable.py',
+                params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+                sandbox=sandbox,
+                artifacts=artifacts,
+                dependency_cache=dependency_cache,
+            )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    another_artifacts = await configure_and_run_with_dest(
+        pathlib.Path('out.txt'), cache=False
+    )
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert not another_artifacts.logs.cached
+
+
 async def test_run_caches_intermediate_digest_if_dest_changes(
     cleandir: pathlib.Path,
     dependency_cache: DependencyCache,
@@ -106,12 +227,127 @@ async def test_run_caches_intermediate_digest_if_dest_changes(
     another_artifacts = await configure_and_run_with_dest(
         pathlib.Path('another-out.txt')
     )
+    assert (cleandir / 'another-out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert another_artifacts.logs.cached
+
+
+async def test_run_caches_intermediate_digest_if_dest_changes_and_cache_transient(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+
+        with grading_context.cache_level(grading_context.CacheLevel.CACHE_TRANSIENTLY):
+            await steps_with_caching.run(
+                f'{sys.executable} executable.py',
+                params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+                sandbox=sandbox,
+                artifacts=artifacts,
+                dependency_cache=dependency_cache,
+            )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    another_artifacts = await configure_and_run_with_dest(
+        pathlib.Path('another-out.txt')
+    )
+    assert (cleandir / 'another-out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert another_artifacts.logs.cached
+
+
+async def test_run_overwrites_changed_file_when_storage_value_is_changed_and_cache_transient(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+        with grading_context.cache_level(grading_context.CacheLevel.CACHE_TRANSIENTLY):
+            await steps_with_caching.run(
+                f'{sys.executable} executable.py',
+                params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+                sandbox=sandbox,
+                artifacts=artifacts,
+                dependency_cache=dependency_cache,
+            )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    pathlib.Path('out.txt').write_text('42')
+
+    another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
     assert (cleandir / 'out.txt').read_text().strip() == '5'
     assert another_artifacts.logs is not None
     assert another_artifacts.logs.cached
 
 
-async def test_run_overwrite_changed_file_with_storage_value(
+async def test_run_overwrites_changed_file_when_file_deleted_and_cache_transient(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+        with grading_context.cache_level(grading_context.CacheLevel.CACHE_TRANSIENTLY):
+            await steps_with_caching.run(
+                f'{sys.executable} executable.py',
+                params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+                sandbox=sandbox,
+                artifacts=artifacts,
+                dependency_cache=dependency_cache,
+            )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    pathlib.Path('out.txt').unlink()
+
+    another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert another_artifacts.logs.cached
+
+
+async def test_run_fails_when_storage_value_is_changed_and_integrity_check_is_enabled(
     cleandir: pathlib.Path,
     dependency_cache: DependencyCache,
     sandbox: SandboxBase,
@@ -142,13 +378,13 @@ async def test_run_overwrite_changed_file_with_storage_value(
 
     pathlib.Path('out.txt').write_text('42')
 
-    another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
-    assert (cleandir / 'out.txt').read_text().strip() == '5'
-    assert another_artifacts.logs is not None
-    assert another_artifacts.logs.cached
+    with pytest.raises(ValueError) as exc_info:
+        await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert 'rbx clean' in str(exc_info.value)
+    assert (cleandir / 'out.txt').read_text().strip() == '42'
 
 
-async def test_run_recreates_deleted_file_with_storage_value(
+async def test_run_evicts_and_recreates_deleted_file_with_storage_value(
     cleandir: pathlib.Path,
     dependency_cache: DependencyCache,
     sandbox: SandboxBase,
@@ -183,6 +419,46 @@ async def test_run_recreates_deleted_file_with_storage_value(
     assert (cleandir / 'out.txt').read_text().strip() == '5'
     assert another_artifacts.logs is not None
     assert another_artifacts.logs.cached
+
+
+async def test_run_evicts_when_storage_value_deleted(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
+        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=dest)
+        )
+        await steps_with_caching.run(
+            f'{sys.executable} executable.py',
+            params=SandboxParams(stdout_file=pathlib.Path('box-out.txt')),
+            sandbox=sandbox,
+            artifacts=artifacts,
+            dependency_cache=dependency_cache,
+        )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    # Delete the file from the cache
+    with pathlib.Path('out.txt').open('rb') as f:
+        digest = digest_cooperatively(f)
+    file_cacher.delete(digest)
+
+    another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
+    assert (cleandir / 'out.txt').read_text().strip() == '5'
+    assert another_artifacts.logs is not None
+    assert not another_artifacts.logs.cached
 
 
 async def test_run_overwrite_exec_bit_when_changed(

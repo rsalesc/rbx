@@ -9,6 +9,7 @@ import typer
 from pydantic import BaseModel, Field
 
 from rbx import config, console, utils
+from rbx.grading.grading_context import CacheLevel
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -52,6 +53,19 @@ class RepeatsConfig(BaseModel):
     )
 
 
+class CachingConfig(BaseModel):
+    level: CacheLevel = Field(
+        default=CacheLevel.CACHE_ALL,
+        description='Whether to enable caching and which caching level to use.',
+    )
+
+    check_integrity: bool = Field(
+        default=True,
+        description='Whether to check the integrity of the cached result, and evict it'
+        'if file has changed since it was cached.',
+    )
+
+
 class SetterConfig(BaseModel):
     sanitizers: SanitizersConfig = Field(
         default_factory=SanitizersConfig,  # type: ignore
@@ -74,6 +88,10 @@ class SetterConfig(BaseModel):
     hyperlinks: bool = Field(
         default=True,
         description='Whether to use hyperlinks in the terminal output.',
+    )
+    caching: CachingConfig = Field(
+        default_factory=CachingConfig,  # type: ignore
+        description='Configuration for caching.',
     )
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:

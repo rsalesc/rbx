@@ -159,6 +159,9 @@ def main(
     state.STATE.debug_logs = capture
 
     grading_context.cache_level_var.set(grading_context.CacheLevel(cache))
+    grading_context.check_integrity_var.set(
+        setter_config.get_setter_config().caching.check_integrity
+    )
 
     if profile:
         from rbx.grading import profiling

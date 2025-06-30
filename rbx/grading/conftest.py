@@ -28,6 +28,6 @@ def sandbox(request, file_cacher: FileCacher) -> Iterator[SandboxBase]:
 
 @pytest.fixture
 def dependency_cache(
-    request, cleandir: pathlib.Path, storage: Storage
+    request, cleandir: pathlib.Path, file_cacher: FileCacher
 ) -> Iterator[DependencyCache]:
-    yield DependencyCache(cleandir / '.box', storage)
+    yield DependencyCache(cleandir / '.box', file_cacher)

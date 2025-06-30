@@ -15,7 +15,12 @@ from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.digester import digest_cooperatively
 from rbx.grading.judge.storage import copyfileobj
 from rbx.grading.profiling import Profiler
-from rbx.grading.steps import DigestHolder, GradingArtifacts, GradingLogsHolder
+from rbx.grading.steps import (
+    DigestHolder,
+    GradingArtifacts,
+    GradingFileOutput,
+    GradingLogsHolder,
+)
 
 VERBOSE = False
 
@@ -109,10 +114,27 @@ def _build_fingerprint_list(
     return fingerprints
 
 
+def _maybe_check_integrity(output: GradingFileOutput):
+    if not grading_context.should_check_integrity():
+        return
+    if output.dest is None or not output.dest.is_symlink():
+        return
+    if output.digest is None or output.digest.value is None:
+        return
+    with output.dest.open('rb') as f:
+        fingerprint = digest_cooperatively(f)
+    if fingerprint != output.digest.value:
+        raise ValueError(
+            f'Cache was tampered with, file {output.dest} has changed since it was cached.\nPlease run `rbx clean` to reset the cache.'
+        )
+
+
 def _build_output_fingerprint_list(artifacts_list: List[GradingArtifacts]) -> List[str]:
     fingerprints = []
     for artifacts in artifacts_list:
         for output in artifacts.outputs:
+            if output.hash:
+                _maybe_check_integrity(output)
             if output.dest is None or output.intermediate or output.hash:
                 continue
             if not output.dest.is_file():

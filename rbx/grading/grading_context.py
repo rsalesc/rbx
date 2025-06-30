@@ -94,3 +94,28 @@ class compression(ConditionedContext):
         if self.use_compression_token is not None:
             use_compression_var.reset(self.use_compression_token)
         return None
+
+
+check_integrity_var = contextvars.ContextVar('check_integrity', default=True)
+
+
+def should_check_integrity() -> bool:
+    return check_integrity_var.get()
+
+
+class check_integrity(ConditionedContext):
+    def __init__(self, enabled: bool, when: Condition = True):
+        super().__init__(when)
+        self.enabled = enabled
+        self.token = None
+
+    def __enter__(self):
+        if not self.should_enter():
+            return self
+        self.token = check_integrity_var.set(self.enabled)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.token is not None:
+            check_integrity_var.reset(self.token)
+        return None

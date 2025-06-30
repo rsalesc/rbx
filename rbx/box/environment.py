@@ -247,13 +247,13 @@ execution config can be individually overridden in the language configuration.""
 
 
 def get_app_environment_path(env: str) -> pathlib.Path:
-    return config.get_app_file(pathlib.PosixPath('envs') / f'{env}.rbx.yml')
+    return config.get_resources_file(pathlib.PosixPath('envs') / f'{env}.rbx.yml')
 
 
 def get_active_environment_path() -> pathlib.Path:
     env_path = presets.get_preset_environment_path()
     if env_path is None:
-        env_path = get_app_environment_path(config.get_config().boxEnvironment)
+        env_path = get_app_environment_path('default')
     return env_path
 
 
@@ -261,7 +261,7 @@ def get_active_environment_path() -> pathlib.Path:
 def get_active_environment_description() -> str:
     env_path = presets.get_preset_environment_path()
     if env_path is None:
-        return config.get_config().boxEnvironment
+        return 'default'
     preset = presets.get_active_preset()
     return f'preset - {preset.name}'
 

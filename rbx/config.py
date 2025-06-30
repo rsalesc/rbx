@@ -90,6 +90,13 @@ def get_empty_app_persist_path() -> pathlib.Path:
     return app_dir
 
 
+def get_resources_file(path: pathlib.Path) -> pathlib.Path:
+    file_path = importlib.resources.files('rbx') / 'resources' / path  # type: ignore
+    if file_path.is_file():
+        return file_path
+    raise FileNotFoundError(f'File {path} not found in {_RESOURCES_PKG}.')
+
+
 def get_app_file(path: pathlib.Path) -> pathlib.Path:
     file_path = get_app_path() / path
     if file_path.is_file():
