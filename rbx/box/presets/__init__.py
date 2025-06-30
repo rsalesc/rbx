@@ -236,7 +236,6 @@ def _build_package_locked_assets(
                     path=tracked_asset.path,
                     hash=None,
                     symlink_info=_get_symlink_info(tracked_asset, root),
-                    symlink=tracked_asset.symlink,
                 )
             )
             continue
@@ -246,7 +245,6 @@ def _build_package_locked_assets(
                     path=tracked_asset.path,
                     hash=digest_cooperatively(f),
                     symlink_info=_get_symlink_info(tracked_asset, root),
-                    symlink=tracked_asset.symlink,
                 )
             )
     return res
@@ -276,6 +274,7 @@ def _find_non_modified_assets(
 def _find_modified_assets(
     reference: List[LockedAsset],
     current: List[LockedAsset],
+    seen_symlinks: Set[pathlib.Path],
 ):
     current_by_path = {asset.path: asset for asset in current}
 
@@ -284,7 +283,8 @@ def _find_modified_assets(
         current_asset = LockedAsset(path=asset.path, hash=None)
         if asset.path in current_by_path:
             current_asset = current_by_path[asset.path]
-        if current_asset.symlink and not asset.symlink:
+        if current_asset.path in seen_symlinks and not asset.is_symlink():
+            # TODO: improve this condition, it's almost always triggering
             # Preset asset should be forced to be a symlink,
             # but in the current package it is not.
             res.append(asset)
@@ -382,18 +382,20 @@ def _copy_updated_assets(
         console.console.print(f'  - [item]{asset}[/item]')
     console.console.print()
 
-    assets_to_copy = _find_modified_assets(non_modified_assets, current_preset_snapshot)
+    seen_symlinks = _get_tracked_assets_symlinks(preset_tracked_assets)
+
+    assets_to_copy = _find_modified_assets(
+        non_modified_assets, current_preset_snapshot, seen_symlinks
+    )
 
     # console.console.log(current_package_snapshot)
+    # console.console.log(current_preset_snapshot)
 
     if not assets_to_copy:
         console.console.print('[warning]No assets to update.[/warning]')
         return
 
     # console.console.log(assets_to_copy)
-    # console.console.log(current_preset_snapshot)
-
-    seen_symlinks = _get_tracked_assets_symlinks(preset_tracked_assets)
 
     for asset in assets_to_copy:
         src_path = preset_package_path / asset.path
