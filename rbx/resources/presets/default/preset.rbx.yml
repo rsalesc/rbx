@@ -7,10 +7,12 @@ contest: "contest"
 env: "env.rbx.yml"
 tracking:
   problem:
-    - path: "statement/template.rbx.tex"
+    - path: ".gitignore"
     - path: "statement/icpc.sty"
+    - path: "statement/template.rbx.tex"
   contest:
-    - path: "statement/template.rbx.tex"
+    - path: ".gitignore"
     - path: "statement/icpc.sty"
+    - path: "statement/template.rbx.tex"
     - path: "statement/contest.rbx.tex"
       symlink: true
