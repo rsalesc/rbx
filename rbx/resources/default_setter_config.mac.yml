@@ -14,6 +14,21 @@ command_substitutions:
   python2: python2
   python3: python3
 
+caching:
+  # Set the caching level.
+  #
+  # CACHE_ALL: Cache everything.
+  # CACHE_COMPILATION: Cache only compilation.
+  # NO_CACHE: Do not cache anything.
+  level: CACHE_ALL
+
+  # Whether to check the integrity of the cached result, and evict it
+  # if file has changed since it was cached.
+  #
+  # Disable for more performance, but be careful to not modify any generated
+  # files.
+  check_integrity: true
+
 repeats:
   # Number of times to run the solution.
   reps: 1
