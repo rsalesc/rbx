@@ -6,7 +6,7 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple
 import syncer
 import typer
 
-from rbx import annotations, console
+from rbx import annotations, console, utils
 from rbx.box import environment, naming, package
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
@@ -173,7 +173,7 @@ def get_relative_assets(
     relative_to: pathlib.Path,
     assets: List[str],
 ) -> List[Tuple[pathlib.Path, pathlib.Path]]:
-    relative_to = relative_to.resolve()
+    relative_to = utils.abspath(relative_to)
     if not relative_to.is_dir():
         relative_to = relative_to.parent
     res = []
@@ -192,7 +192,7 @@ def get_relative_assets(
                 raise typer.Exit(1)
             res.extend(get_relative_assets(relative_to, list(map(str, globbed))))
             continue
-        if not relative_path.resolve().is_relative_to(relative_to):
+        if not utils.abspath(relative_path).is_relative_to(relative_to):
             console.console.print(
                 f'[error]Asset [item]{asset}[/item] is not relative to your statement.[/error]'
             )
@@ -200,8 +200,8 @@ def get_relative_assets(
 
         res.append(
             (
-                relative_path.resolve(),
-                relative_path.resolve().relative_to(relative_to),
+                utils.abspath(relative_path),
+                utils.abspath(relative_path).relative_to(relative_to),
             )
         )
 

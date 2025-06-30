@@ -523,7 +523,8 @@ def _get_system_bits_stdcpp(command: str) -> Optional[GradingFileInput]:
         if not bits_candidate.is_file():
             continue
         return GradingFileInput(
-            src=bits_candidate.resolve().absolute(), dest=pathlib.Path('bits/stdc++.h')
+            src=utils.abspath(bits_candidate),
+            dest=pathlib.Path('bits/stdc++.h'),
         )
     return None
 

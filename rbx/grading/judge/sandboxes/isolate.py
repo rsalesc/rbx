@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 from typing import IO, Any, Dict, List, Optional
 
+from rbx import utils
 from rbx.config import get_app_path
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.sandbox import (
@@ -180,10 +181,10 @@ class IsolateSandbox(SandboxBase):
         """
         outer_paths: List[pathlib.Path] = []
         for inner_path in inner_paths:
-            abs_inner_path = (self._home_dest / inner_path).resolve()
+            abs_inner_path = utils.abspath(self._home_dest / inner_path)
             # If an inner path is absolute (e.g., /fifo0/u0_to_m) then
             # it may be outside home and we should ignore it.
-            if not abs_inner_path.is_relative_to(self._home_dest.resolve()):
+            if not abs_inner_path.is_relative_to(utils.abspath(self._home_dest)):
                 continue
             rel_inner_path = abs_inner_path.relative_to(self._home_dest)
             outer_path = self._home / rel_inner_path

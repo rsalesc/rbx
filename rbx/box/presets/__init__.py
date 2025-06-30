@@ -36,7 +36,7 @@ def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
 
 
 def _find_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
-    root = root.resolve()
+    root = utils.abspath(root)
     problem_yaml_path = root / '.preset-lock.yml'
     if not problem_yaml_path.is_file():
         return None
@@ -51,7 +51,7 @@ def _get_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[PresetLock
 
 
 def _find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
-    root = root.resolve()
+    root = utils.abspath(root)
     problem_yaml_path = root / 'preset.rbx.yml'
     while root != pathlib.PosixPath('/') and not problem_yaml_path.is_file():
         root = root.parent
@@ -63,7 +63,7 @@ def _find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
 
 def _find_local_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
     original_root = root
-    root = root.resolve()
+    root = utils.abspath(root)
     problem_yaml_path = root / '.local.rbx' / 'preset.rbx.yml'
     while root != pathlib.PosixPath('/') and not problem_yaml_path.is_file():
         root = root.parent
@@ -77,7 +77,7 @@ def _is_installed_preset(root: pathlib.Path = pathlib.Path()) -> bool:
     preset_path = _find_local_preset(root)
     if preset_path is None:
         return False
-    resolved_path = preset_path.resolve()
+    resolved_path = utils.abspath(preset_path)
     return resolved_path.name == '.local.rbx'
 
 
@@ -217,9 +217,9 @@ def _get_symlink_info(
     if not asset_path.is_symlink():
         return None
     target = pathlib.Path(os.readlink(str(asset_path)))
-    absolute_target = (asset_path.parent / target).resolve()
+    absolute_target = utils.abspath(asset_path.parent / target)
     is_broken = not absolute_target.exists()
-    is_outside = not absolute_target.is_relative_to(root.resolve())
+    is_outside = not absolute_target.is_relative_to(utils.abspath(root))
     return SymlinkInfo(target=target, is_broken=is_broken, is_outside=is_outside)
 
 
@@ -312,14 +312,14 @@ def _copy_preset_file(
         return
 
     # Ensure preset package path is inside the preset path.
-    absolute_preset_package_path = preset_package_path.resolve()
-    absolute_preset_path = preset_path.resolve()
+    absolute_preset_package_path = utils.abspath(preset_package_path)
+    absolute_preset_path = utils.abspath(preset_path)
     assert absolute_preset_package_path.is_relative_to(absolute_preset_path)
 
     # Get the symlink absolute path.
     if src.is_symlink():
         target_relative_path = pathlib.Path(os.readlink(str(src)))
-        target_absolute_path = (src.parent / target_relative_path).resolve()
+        target_absolute_path = utils.abspath(src.parent / target_relative_path)
 
         if target_absolute_path.is_relative_to(absolute_preset_package_path):
             # The symlink points inside the preset package path.
@@ -327,7 +327,7 @@ def _copy_preset_file(
             dst.symlink_to(target_relative_path)
             return
     else:
-        target_absolute_path = src.resolve()
+        target_absolute_path = utils.abspath(src)
 
     if not target_absolute_path.is_relative_to(absolute_preset_path):
         console.console.print(
@@ -336,7 +336,7 @@ def _copy_preset_file(
         raise typer.Exit(1)
 
     # The symlink points somewhere inside the preset folder, fix the symlink.
-    dst_absolute_path = dst.resolve()
+    dst_absolute_path = utils.abspath(dst)
     fixed_target_relative_path = target_absolute_path.relative_to(
         dst_absolute_path.parent,
         walk_up=True,
@@ -592,7 +592,7 @@ def _install_preset_from_local_dir(
         dest,
         ensure_contest,
         ensure_problem,
-        override_uri=str(pd.resolve()),
+        override_uri=str(utils.abspath(pd)),
         update=update,
     )
 
@@ -618,7 +618,7 @@ def _install_preset_from_resources(
         dest,
         ensure_contest,
         ensure_problem,
-        override_uri=str(rsrc_preset_path.resolve()),
+        override_uri=str(utils.abspath(rsrc_preset_path)),
         update=update,
     )
     return True
@@ -874,7 +874,9 @@ def copy_local_preset(
     if not add_submodule:
         return
 
-    dest_path_rel = dest_path.resolve().relative_to(pathlib.Path.cwd().resolve())
+    dest_path_rel = utils.abspath(dest_path).relative_to(
+        utils.abspath(pathlib.Path.cwd())
+    )
     path_str = str(dest_path_rel / '.local.rbx')
     try:
         current_repo.git.submodule('add', preset_remote_uri, path_str)

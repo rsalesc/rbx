@@ -2,6 +2,7 @@ import os
 import pathlib
 from typing import Any, Optional
 
+from rbx import utils
 from rbx.box import setter_config
 
 
@@ -23,7 +24,7 @@ def href(url: os.PathLike[str], text: Optional[str] = None, style: str = 'item')
             return f'[{style}]{text}[/{style}]'
 
     if isinstance(url, pathlib.Path):
-        url = url.resolve()
+        url = utils.abspath(url)
 
     url_str = str(url)
     if pathlib.Path(url_str).exists():

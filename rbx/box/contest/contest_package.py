@@ -17,7 +17,7 @@ YAML_NAME = 'contest.rbx.yml'
 
 @functools.cache
 def find_contest_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
-    root = root.resolve()
+    root = utils.abspath(root)
     contest_yaml_path = root / YAML_NAME
     while root != pathlib.PosixPath('/') and not contest_yaml_path.is_file():
         root = root.parent

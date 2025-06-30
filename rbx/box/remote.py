@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import cd, package
 from rbx.box.formatting import href, ref
 
@@ -85,7 +85,7 @@ REGISTERED_EXPANDERS: List['Expander'] = [
 
 
 def _relative_to_pkg(path: pathlib.Path) -> pathlib.Path:
-    return path.resolve().relative_to(pathlib.Path.cwd())
+    return utils.abspath(path).relative_to(pathlib.Path.cwd())
 
 
 def _try_cacheable_paths(
@@ -167,4 +167,4 @@ def expand_file(file: str) -> pathlib.Path:
 
 def is_path_remote(path: pathlib.Path) -> bool:
     remote_dir = package.get_problem_remote_dir()
-    return path.resolve().is_relative_to(remote_dir.resolve())
+    return utils.abspath(path).is_relative_to(utils.abspath(remote_dir))

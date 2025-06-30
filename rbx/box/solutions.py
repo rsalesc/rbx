@@ -499,7 +499,7 @@ async def _generate_testcase_interactively(
             console.console.print(testcase.inputPath.read_text())
         else:
             console.console.print(
-                f'Input was written to [item]{testcase.inputPath.resolve()}[/item]'
+                f'Input was written to [item]{utils.abspath(testcase.inputPath)}[/item]'
             )
         console.console.print()
 

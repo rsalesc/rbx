@@ -319,7 +319,7 @@ class rbxTeXBuilder(StatementBuilder):
         params = typing.cast(rbxToTeX, params)
         if not params.template:
             return []
-        return [((root / params.template).resolve(), params.template)]
+        return [(utils.abspath(root / params.template), params.template)]
 
     def build(
         self,

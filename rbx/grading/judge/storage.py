@@ -10,6 +10,7 @@ from typing import IO, AnyStr, Dict, List, Optional, Type, TypeVar
 import lz4.frame
 from pydantic import BaseModel
 
+from rbx import utils
 from rbx.grading import grading_context
 
 logger = logging.getLogger(__name__)
@@ -408,7 +409,7 @@ class FilesystemStorage(Storage):
     def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
         if not link.is_symlink():
             return None
-        filename = link.readlink().resolve()
+        filename = utils.abspath(link.readlink())
         if not filename.is_file():
             return None
         return str(filename.relative_to(self.path))

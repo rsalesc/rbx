@@ -3,6 +3,7 @@ import fcntl
 import functools
 import json
 import os
+import os.path
 import pathlib
 import resource
 from typing import Any, Optional, Type, TypeVar
@@ -32,6 +33,10 @@ def highlight_str(s: str) -> text.Text:
     txt = text.Text(s)
     JSONHighlighter().highlight(txt)
     return txt
+
+
+def abspath(path: pathlib.Path) -> pathlib.Path:
+    return pathlib.Path(os.path.abspath(path))
 
 
 def highlight_json_obj(obj: Any) -> text.Text:
@@ -70,7 +75,7 @@ def dump_schema(model: Type[BaseModel], path: pathlib.Path):
 def ensure_schema(model: Type[BaseModel]) -> pathlib.Path:
     path = get_app_path() / 'schemas' / f'{model.__name__}.json'
     dump_schema(model, path)
-    return path.resolve()
+    return abspath(path)
 
 
 def model_json(model: BaseModel) -> str:

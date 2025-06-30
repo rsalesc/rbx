@@ -12,7 +12,7 @@ import rich.text
 import typer
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import download, global_package, package, setter_config, state
 from rbx.box.environment import (
     CompilationConfig,
@@ -296,7 +296,7 @@ def _prepare_for_communication(
             )
 
         if capture.merged_capture is not None:
-            merged_output_path = package.get_merged_capture_path().resolve()
+            merged_output_path = utils.abspath(package.get_merged_capture_path())
             run.sandbox_params.timeit_dups['Do'].append(merged_output_path)
 
             run.artifacts.outputs.append(

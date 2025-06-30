@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 
-from rbx import console, testing_utils
+from rbx import console, testing_utils, utils
 from rbx.box import cd, package
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
@@ -156,7 +156,7 @@ def _build_problem_statements(
     console.console.print('Building problem-level statements...')
     extracted_problems = get_problems_for_statement(contest, statement)
     res = []
-    contest_cwd_absolute = pathlib.Path().resolve()
+    contest_cwd_absolute = utils.abspath(pathlib.Path())
     contest_assets = get_relative_assets(statement.path, statement.assets)
 
     extra_vars = dict(statement.override.vars if statement.override is not None else {})

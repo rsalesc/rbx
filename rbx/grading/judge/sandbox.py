@@ -16,6 +16,7 @@ from typing import IO, Any, Dict, List, Optional
 
 import pydantic
 
+from rbx import utils
 from rbx.grading.judge import cacher, storage
 
 logger = logging.getLogger(__name__)
@@ -468,7 +469,7 @@ class SandboxBase(abc.ABC):
         if override:
             real_path.unlink(missing_ok=True)
         try:
-            real_path.symlink_to(from_path.resolve())
+            real_path.symlink_to(utils.abspath(from_path))
         except NotImplementedError:
             return None
         return real_path

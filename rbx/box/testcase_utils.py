@@ -7,7 +7,7 @@ import rich.text
 import typer
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import package
 from rbx.box.package import get_build_testgroup_path, get_build_tests_path
 from rbx.box.schema import Testcase, TestcaseGroup
@@ -141,8 +141,8 @@ def get_samples() -> List[Testcase]:
     tcs = find_built_testcases(package.get_testgroup('samples'))
     return [
         Testcase(
-            inputPath=tc.inputPath.resolve(),
-            outputPath=tc.outputPath.resolve()
+            inputPath=utils.abspath(tc.inputPath),
+            outputPath=utils.abspath(tc.outputPath)
             if tc.outputPath is not None and tc.outputPath.is_file()
             else None,
         )

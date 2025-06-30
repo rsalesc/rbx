@@ -39,7 +39,7 @@ TEMP_DIR = None
 
 @functools.cache
 def find_problem_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
-    root = root.resolve()
+    root = utils.abspath(root)
     problem_yaml_path = root / YAML_NAME
     while root != pathlib.PosixPath('/') and not problem_yaml_path.is_file():
         root = root.parent
@@ -152,8 +152,8 @@ def get_problem_iruns_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
 def get_problem_preprocessed_path(
     item: pathlib.Path, root: pathlib.Path = pathlib.Path()
 ) -> pathlib.Path:
-    root_resolved = root.resolve()
-    item_resolved = item.resolve()
+    root_resolved = utils.abspath(root)
+    item_resolved = utils.abspath(item)
 
     if not item_resolved.is_relative_to(root_resolved):
         final_path = pathlib.Path('remote') / item_resolved.name
@@ -360,11 +360,11 @@ def get_test_groups_by_name(
 # Return each compilation file and to where it should be moved inside
 # the sandbox.
 def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
-    code_dir = code.path.parent.resolve()
+    code_dir = utils.abspath(code.path.parent)
 
     res = []
     for compilation_file in code.compilationFiles or []:
-        compilation_file_path = pathlib.Path(compilation_file).resolve()
+        compilation_file_path = utils.abspath(pathlib.Path(compilation_file))
         if not compilation_file_path.is_file():
             console.console.print(
                 f'[error]Compilation file [item]{compilation_file}[/item] for '

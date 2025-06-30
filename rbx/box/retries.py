@@ -5,6 +5,7 @@ import tempfile
 from contextlib import contextmanager
 from typing import Awaitable, Callable, List, Optional
 
+from rbx import utils
 from rbx.box import package
 from rbx.box.setter_config import RepeatsConfig, get_setter_config
 from rbx.grading.steps import Evaluation, Outcome
@@ -59,8 +60,8 @@ class FileToRecover:
 
 def _move_to_temp_dir(path: pathlib.Path, temp_dir: pathlib.Path) -> FileToRecover:
     problem_path = package.find_problem()
-    path = path.resolve()
-    temp_dir = temp_dir.resolve()
+    path = utils.abspath(path)
+    temp_dir = utils.abspath(temp_dir)
     relative = path.relative_to(problem_path)
 
     temp_path = temp_dir / relative

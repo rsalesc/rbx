@@ -2,7 +2,7 @@ import functools
 import pathlib
 import shutil
 
-from rbx import console
+from rbx import console, utils
 from rbx.box.schema import CodeItem
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.steps import GradingFileOutput
@@ -60,7 +60,7 @@ def _get_warning_runs_dir(root: pathlib.Path) -> pathlib.Path:
 
 
 def get_warning_stack() -> WarningStack:
-    current_root = pathlib.Path.cwd().resolve()
+    current_root = utils.abspath(pathlib.Path.cwd())
     return _get_warning_stack(current_root)
 
 

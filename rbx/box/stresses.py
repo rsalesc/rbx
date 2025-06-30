@@ -9,7 +9,7 @@ import syncer
 import typer
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import checkers, generators, package, tasks, validators
 from rbx.box.code import SanitizationLevel, compile_item
 from rbx.box.generators import (
@@ -311,7 +311,7 @@ def print_stress_report(report: StressReport):
     console.console.print(f'Found [item]{len(report.findings)}[/item] testcases.')
 
     findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-    console.console.print(f'Findings: {findings_dir.resolve()}')
+    console.console.print(f'Findings: {utils.abspath(findings_dir)}')
     console.console.print()
 
     for i, finding in enumerate(report.findings):

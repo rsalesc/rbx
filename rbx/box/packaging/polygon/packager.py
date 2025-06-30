@@ -4,7 +4,7 @@ from typing import List, Optional
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import header, package
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.packager import (
@@ -129,7 +129,7 @@ class PolygonPackager(BasePackager):
         shutil.copyfile(built_statement.path, final_path)
 
         return polygon_schema.Statement(
-            path=str(final_path.resolve().relative_to(into_path.resolve())),
+            path=str(utils.abspath(final_path).relative_to(utils.abspath(into_path))),
             language=language,
             type=self._statement_application_type(built_statement),  # type: ignore
         )
@@ -238,7 +238,7 @@ class PolygonContestPackager(BaseContestPackager):
         shutil.copyfile(built_statement.path, final_path)
 
         return polygon_schema.Statement(
-            path=str(final_path.resolve().relative_to(into_path.resolve())),
+            path=str(utils.abspath(final_path).relative_to(utils.abspath(into_path))),
             language=language,
             type='application/pdf',  # type: ignore
         )

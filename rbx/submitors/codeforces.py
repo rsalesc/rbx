@@ -3,6 +3,7 @@ from typing import Any
 
 import mechanize
 
+from rbx import utils
 from rbx.console import console
 from rbx.schema import Problem
 from rbx.submitors.submitor import Submitor
@@ -55,7 +56,7 @@ class Session:
             )
 
     def submit_from_contest(self, url: str, file: pathlib.Path, typeid: int):
-        filename = str(file.resolve())
+        filename = str(utils.abspath(file))
         self.br.open(url)
         form = self.select_form_by_class('submit-form', self.br.forms())
         if form is None:
@@ -67,7 +68,7 @@ class Session:
         self.br.submit()
 
     def submit(self, url: str, file: pathlib.Path, typeid: int):
-        filename = str(file.resolve())
+        filename = str(utils.abspath(file))
         response = self.br.open(url)
         if response is None:
             raise Exception('Response was not received')

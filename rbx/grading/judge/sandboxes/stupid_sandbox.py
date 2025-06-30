@@ -11,6 +11,7 @@ import sys
 import tempfile
 from typing import Any, Dict, List, Optional
 
+from rbx import utils
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.sandbox import (
     SandboxBase,
@@ -303,8 +304,8 @@ class StupidSandbox(SandboxBase):
         real_command = (
             [
                 sys.executable,
-                str(self.get_timeit_executable().resolve()),
-                str(self.relative_path(self.get_current_log_name()).resolve()),
+                str(utils.abspath(self.get_timeit_executable())),
+                str(utils.abspath(self.relative_path(self.get_current_log_name()))),
             ]
             + self.get_timeit_args()
             + command

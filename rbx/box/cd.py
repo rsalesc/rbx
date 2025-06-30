@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box.sanitizers import warning_stack
 from rbx.utils import new_cd
 
@@ -13,7 +13,7 @@ from rbx.utils import new_cd
 def find_package(
     root: pathlib.Path = pathlib.Path(), consider_presets: bool = False
 ) -> Optional[pathlib.Path]:
-    root = root.resolve()
+    root = utils.abspath(root)
 
     def has_file():
         problem_yaml_path = root / 'problem.rbx.yml'
