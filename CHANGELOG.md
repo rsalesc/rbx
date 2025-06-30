@@ -1,3 +1,19 @@
+## 0.9.0 (2025-06-30)
+
+### Feat
+
+- **preset**: add support for symlinks in presets
+- **presets**: add rbx presets create
+
+### Fix
+
+- **preset**: ensure symlinks are always copied
+- replace .resolve() calls with utils.abspath()
+- update preset tracking
+- add prompts to all package creation commands
+- **cache**: do not cache in irun, except for when passing -t/-tc
+- fix none issue with run.log.time
+
 ## 0.8.0 (2025-06-28)
 
 ### Feat
