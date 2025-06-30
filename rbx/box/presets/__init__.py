@@ -1,7 +1,8 @@
+import os
 import pathlib
 import shutil
 import tempfile
-from typing import Annotated, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
 import ruyaml
 import typer
@@ -9,7 +10,7 @@ import typer
 from rbx import console, utils
 from rbx.box import cd
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
-from rbx.box.presets.lock_schema import LockedAsset, PresetLock
+from rbx.box.presets.lock_schema import LockedAsset, PresetLock, SymlinkInfo
 from rbx.box.presets.schema import Preset, TrackedAsset
 from rbx.config import get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
@@ -104,23 +105,68 @@ def _check_is_valid_package(root: pathlib.Path = pathlib.Path()):
         raise typer.Exit(1)
 
 
+def _glob_while_ignoring(
+    dir: pathlib.Path,
+    glb: str,
+    extra_gitignore: Optional[str] = '.box\nbuild\n',
+    recursive: bool = False,
+) -> Iterable[pathlib.Path]:
+    from gitignore_parser import parse_gitignore, parse_gitignore_str
+
+    ignore_matchers = []
+
+    if extra_gitignore is not None:
+        ignore_matchers.append(parse_gitignore_str(extra_gitignore, base_dir=dir))
+
+    for file in dir.rglob('.gitignore'):
+        if file.is_file():
+            ignore_matchers.append(parse_gitignore(file))
+
+    def should_ignore(path: pathlib.Path) -> bool:
+        return any(m(str(path)) for m in ignore_matchers)
+
+    for file in dir.rglob(glb) if recursive else dir.glob(glb):
+        if should_ignore(file):
+            continue
+        yield file
+
+
 def _process_globbing(
-    assets: Iterable[TrackedAsset], preset_dir: pathlib.Path
+    assets: Iterable[TrackedAsset], preset_pkg_dir: pathlib.Path
 ) -> List[TrackedAsset]:
     res = []
     for asset in assets:
         if '*' in str(asset.path):
             glb = str(asset.path)
-            files = preset_dir.glob(glb)
-            relative_files = [file.relative_to(preset_dir) for file in files]
-            res.extend([TrackedAsset(path=path) for path in relative_files])
+            files = _glob_while_ignoring(
+                preset_pkg_dir,
+                glb,
+            )
+            relative_files = [file.relative_to(preset_pkg_dir) for file in files]
+            res.extend(
+                [
+                    TrackedAsset(path=path, symlink=asset.symlink)
+                    for path in relative_files
+                ]
+            )
             continue
         res.append(asset)
     return res
 
 
+def _dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
+    seen_paths = set()
+    res = []
+    for asset in assets:
+        if asset.path in seen_paths:
+            continue
+        seen_paths.add(asset.path)
+        res.append(asset)
+    return res
+
+
 def _get_preset_tracked_assets(
-    root: pathlib.Path, is_contest: bool
+    root: pathlib.Path, is_contest: bool, add_symlinks: bool = False
 ) -> List[TrackedAsset]:
     preset = get_active_preset(root)
     preset_path = _find_local_preset(root)
@@ -130,12 +176,51 @@ def _get_preset_tracked_assets(
         assert (
             preset.contest is not None
         ), 'Preset does not have a contest package definition.'
-        return _process_globbing(preset.tracking.contest, preset_path)
+        preset_pkg_path = preset_path / preset.contest
+        res = _process_globbing(preset.tracking.contest, preset_pkg_path)
+    else:
+        assert (
+            preset.problem is not None
+        ), 'Preset does not have a problem package definition,'
+        preset_pkg_path = preset_path / preset.problem
+        res = _process_globbing(preset.tracking.problem, preset_pkg_path)
 
-    assert (
-        preset.problem is not None
-    ), 'Preset does not have a problem package definition,'
-    return _process_globbing(preset.tracking.problem, preset_path)
+    if add_symlinks:
+        for file in _glob_while_ignoring(
+            preset_pkg_path,
+            '*',
+            recursive=True,
+        ):
+            if not file.is_symlink() or not file.is_file():
+                continue
+            res.append(
+                TrackedAsset(path=file.relative_to(preset_pkg_path), symlink=True)
+            )
+
+    return _dedup_tracked_assets(res)
+
+
+def _get_tracked_assets_symlinks(
+    tracked_assets: List[TrackedAsset],
+) -> Set[pathlib.Path]:
+    res = set()
+    for asset in tracked_assets:
+        if asset.symlink:
+            res.add(asset.path)
+    return res
+
+
+def _get_symlink_info(
+    tracked_asset: Union[TrackedAsset, LockedAsset], root: pathlib.Path
+) -> Optional[SymlinkInfo]:
+    asset_path = root / tracked_asset.path
+    if not asset_path.is_symlink():
+        return None
+    target = pathlib.Path(os.readlink(str(asset_path)))
+    absolute_target = (asset_path.parent / target).resolve()
+    is_broken = not absolute_target.exists()
+    is_outside = not absolute_target.is_relative_to(root.resolve())
+    return SymlinkInfo(target=target, is_broken=is_broken, is_outside=is_outside)
 
 
 def _build_package_locked_assets(
@@ -146,10 +231,23 @@ def _build_package_locked_assets(
     for tracked_asset in tracked_assets:
         asset_path = root / tracked_asset.path
         if not asset_path.is_file():
+            res.append(
+                LockedAsset(
+                    path=tracked_asset.path,
+                    hash=None,
+                    symlink_info=_get_symlink_info(tracked_asset, root),
+                    symlink=tracked_asset.symlink,
+                )
+            )
             continue
         with asset_path.open('rb') as f:
             res.append(
-                LockedAsset(path=tracked_asset.path, hash=digest_cooperatively(f))
+                LockedAsset(
+                    path=tracked_asset.path,
+                    hash=digest_cooperatively(f),
+                    symlink_info=_get_symlink_info(tracked_asset, root),
+                    symlink=tracked_asset.symlink,
+                )
             )
     return res
 
@@ -157,14 +255,18 @@ def _build_package_locked_assets(
 def _find_non_modified_assets(
     reference: List[LockedAsset], current: List[LockedAsset]
 ) -> List[LockedAsset]:
-    current_by_path = {asset.path: asset for asset in current}
+    reference_by_path = {asset.path: asset for asset in reference}
 
     res = []
-    for asset in reference:
-        if (
-            asset.path in current_by_path
-            and current_by_path[asset.path].hash != asset.hash
-        ):
+    for asset in current:
+        # File does not exist in the reference.
+        reference_asset = LockedAsset(path=asset.path, hash=None)
+
+        # File already exists.
+        if asset.path in reference_by_path:
+            reference_asset = reference_by_path[asset.path]
+
+        if asset.was_modified(reference_asset) and not asset.is_broken_symlink():
             # This is a file that was modified.
             continue
         res.append(asset)
@@ -175,45 +277,134 @@ def _find_modified_assets(
     reference: List[LockedAsset],
     current: List[LockedAsset],
 ):
-    reference_by_path = {asset.path: asset for asset in reference}
+    current_by_path = {asset.path: asset for asset in current}
 
     res = []
-    for asset in current:
-        if (
-            asset.path in reference_by_path
-            and reference_by_path[asset.path].hash == asset.hash
-        ):
-            # This is a file that was not modified.
+    for asset in reference:
+        current_asset = LockedAsset(path=asset.path, hash=None)
+        if asset.path in current_by_path:
+            current_asset = current_by_path[asset.path]
+        if current_asset.symlink and not asset.symlink:
+            # Preset asset should be forced to be a symlink,
+            # but in the current package it is not.
+            res.append(asset)
             continue
-        res.append(asset)
+        if current_asset.was_modified(asset, follow_symlinks=True):
+            # This is a file that was modified.
+            res.append(asset)
     return res
+
+
+def _copy_preset_file(
+    src: pathlib.Path,
+    dst: pathlib.Path,
+    preset_package_path: pathlib.Path,
+    preset_path: pathlib.Path,
+    force_symlink: bool = False,
+):
+    if dst.is_file() or dst.is_symlink():
+        dst.unlink(missing_ok=True)
+    if not src.exists():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not src.is_symlink() and not force_symlink:
+        shutil.copyfile(str(src), str(dst))
+        return
+
+    # Ensure preset package path is inside the preset path.
+    absolute_preset_package_path = preset_package_path.resolve()
+    absolute_preset_path = preset_path.resolve()
+    assert absolute_preset_package_path.is_relative_to(absolute_preset_path)
+
+    # Get the symlink absolute path.
+    if src.is_symlink():
+        target_relative_path = pathlib.Path(os.readlink(str(src)))
+        target_absolute_path = (src.parent / target_relative_path).resolve()
+
+        if target_absolute_path.is_relative_to(absolute_preset_package_path):
+            # The symlink points inside the preset package path.
+            # Copy the symlink as is.
+            dst.symlink_to(target_relative_path)
+            return
+    else:
+        target_absolute_path = src.resolve()
+
+    if not target_absolute_path.is_relative_to(absolute_preset_path):
+        console.console.print(
+            f'[error]Preset [item]{preset_path.name}[/item] has a symlink to [item]{target_absolute_path}[/item] which is outside the preset folder.[/error]'
+        )
+        raise typer.Exit(1)
+
+    # The symlink points somewhere inside the preset folder, fix the symlink.
+    dst_absolute_path = dst.resolve()
+    fixed_target_relative_path = target_absolute_path.relative_to(
+        dst_absolute_path.parent,
+        walk_up=True,
+    )
+    dst.symlink_to(fixed_target_relative_path)
 
 
 def _copy_updated_assets(
     preset_lock: PresetLock,
     is_contest: bool,
     root: pathlib.Path = pathlib.Path(),
+    force: bool = False,
+    symlinks: bool = False,
 ):
-    current_package_snapshot = _build_package_locked_assets(preset_lock.assets)
-    non_modified_assets = _find_non_modified_assets(
-        preset_lock.assets, current_package_snapshot
-    )
-
+    # Build preset package snapshot.
     preset = get_active_preset(root)
+    preset_path = get_active_preset_path(root)
     preset_package_path = _get_active_preset_package_path(root, is_contest)
 
     preset_tracked_assets = _get_preset_tracked_assets(
-        preset_package_path, is_contest=is_contest
+        preset_package_path, is_contest=is_contest, add_symlinks=symlinks
     )
     current_preset_snapshot = _build_package_locked_assets(
         preset_tracked_assets, preset_package_path
     )
+
+    # Build current package snapshot based on the current preset snapshot.
+    current_package_snapshot = _build_package_locked_assets(current_preset_snapshot)
+
+    non_modified_assets = current_package_snapshot
+    if not force:
+        non_modified_assets = _find_non_modified_assets(
+            preset_lock.assets, current_package_snapshot
+        )
+
+    console.console.print('Tracking the following assets from preset:')
+    for asset in current_preset_snapshot:
+        console.console.print(f'  - [item]{asset}[/item]')
+    console.console.print()
+
+    console.console.print('Current package snapshot:')
+    for asset in current_package_snapshot:
+        console.console.print(f'  - [item]{asset}[/item]')
+    console.console.print()
+
     assets_to_copy = _find_modified_assets(non_modified_assets, current_preset_snapshot)
+
+    # console.console.log(current_package_snapshot)
+
+    if not assets_to_copy:
+        console.console.print('[warning]No assets to update.[/warning]')
+        return
+
+    # console.console.log(assets_to_copy)
+    # console.console.log(current_preset_snapshot)
+
+    seen_symlinks = _get_tracked_assets_symlinks(preset_tracked_assets)
 
     for asset in assets_to_copy:
         src_path = preset_package_path / asset.path
         dst_path = root / asset.path
-        shutil.copyfile(str(src_path), str(dst_path))
+        _copy_preset_file(
+            src_path,
+            dst_path,
+            preset_package_path,
+            preset_path,
+            force_symlink=asset.path in seen_symlinks,
+        )
         console.console.print(
             f'Updated [item]{asset.path}[/item] from preset [item]{preset.name}[/item].'
         )
@@ -476,6 +667,45 @@ def install_preset_at_package(fetch_info: PresetFetchInfo, dest_pkg: pathlib.Pat
     _install_preset_from_fetch_info(fetch_info, dest_pkg / '.local.rbx')
 
 
+def _install_package_from_preset(
+    preset_path: pathlib.Path,
+    preset_package_inner_path: pathlib.Path,
+    dest_pkg: pathlib.Path,
+    tracked_assets: List[TrackedAsset],
+):
+    preset_package_path = preset_path / preset_package_inner_path
+    if not preset_package_path.is_dir():
+        console.console.print(
+            f'[error]Preset [item]{preset_path.name}[/item] does not have a [item]{preset_package_inner_path}[/item] package definition.[/error]'
+        )
+        raise typer.Exit(1)
+
+    for file in _glob_while_ignoring(
+        preset_package_path,
+        '*',
+        recursive=True,
+    ):
+        if not file.is_file():
+            continue
+        _copy_preset_file(
+            file,
+            dest_pkg / file.relative_to(preset_package_path),
+            preset_package_path,
+            preset_path,
+        )
+
+    for asset in tracked_assets:
+        if not asset.symlink:
+            continue
+        _copy_preset_file(
+            preset_package_path / asset.path,
+            dest_pkg / asset.path,
+            preset_package_path,
+            preset_path,
+            force_symlink=True,
+        )
+
+
 def install_contest(
     dest_pkg: pathlib.Path, fetch_info: Optional[PresetFetchInfo] = None
 ):
@@ -497,10 +727,8 @@ def install_contest(
     console.console.print(
         f'Installing contest from [item]{preset_path / preset.contest}[/item] to [item]{dest_pkg}[/item]...'
     )
-    shutil.copytree(
-        str(preset_path / preset.contest),
-        str(dest_pkg),
-        dirs_exist_ok=True,
+    _install_package_from_preset(
+        preset_path, preset.contest, dest_pkg, preset.tracking.contest
     )
     _clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
 
@@ -526,10 +754,8 @@ def install_problem(
     console.console.print(
         f'Installing problem from [item]{preset_path / preset.problem}[/item] to [item]{dest_pkg}[/item]...'
     )
-    shutil.copytree(
-        str(preset_path / preset.problem),
-        str(dest_pkg),
-        dirs_exist_ok=True,
+    _install_package_from_preset(
+        preset_path, preset.problem, dest_pkg, preset.tracking.problem
     )
     _clean_copied_problem_dir(dest_pkg)
 
@@ -573,7 +799,7 @@ def generate_lock(root: pathlib.Path = pathlib.Path()):
     )
 
 
-def _sync(try_update: bool = False):
+def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False):
     preset_lock = _get_preset_lock()
     if preset_lock is None:
         console.console.print(
@@ -590,6 +816,8 @@ def _sync(try_update: bool = False):
     _copy_updated_assets(
         preset_lock,
         is_contest=_is_contest(),
+        force=force,
+        symlinks=symlinks,
     )
     generate_lock()
 
@@ -755,13 +983,31 @@ def sync(
             help='Whether to fetch an up-to-date version of the installed preset from remote, if available.',
         ),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            '--force',
+            '-f',
+            help='Whether to forcefully overwrite the local assets with the preset assets, even if they have been modified.',
+        ),
+    ] = False,
+    symlinks: Annotated[
+        bool,
+        typer.Option(
+            '--symlinks',
+            '-s',
+            help='Whether to update all symlinks in the preset to point to their right targets.',
+        ),
+    ] = False,
 ):
     _check_is_valid_package()
-    _sync(try_update=update)
+    _sync(try_update=update, force=force, symlinks=symlinks)
 
 
 @app.command(
-    'lock', help='Generate a lock for this package, based on a existing preset.'
+    'lock',
+    help='Generate a lock for this package, based on a existing preset.',
+    hidden=True,
 )
 @cd.within_closest_package
 def lock():

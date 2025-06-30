@@ -1,0 +1,57 @@
+\documentclass[a4paper,11pt]{article}
+
+\def\lang{\VAR{lang}}
+\usepackage{icpc}
+
+%- if problem.blocks.preamble is defined
+	\VAR{problem.blocks.preamble}
+%- endif
+
+\begin{document}
+
+\includeProblem
+%- if problem.short_name is defined
+	[\VAR{problem.short_name}]
+%- endif
+{\VAR{problem.title | escape}}{
+
+	\VAR{problem.blocks.legend}
+
+	%- if problem.blocks.input is defined
+		\inputdesc{\VAR{problem.blocks.input}}
+	%- endif
+
+	%- if problem.blocks.output is defined
+		\outputdesc{\VAR{problem.blocks.output}}
+	%- endif
+
+	%- if problem.blocks.interaction is defined
+		\interactiondesc{\VAR{problem.blocks.interaction}}
+	%- endif
+
+	%- if problem.samples
+		\vspace{0.3cm}
+		\subsection*{\strExamples}
+		%- for sample in problem.samples
+			%- if sample.interaction is not none
+				\exampleInteractive
+				%- for entry in sample.interaction.entries
+					\interaction{\VAR{entry.data}}{\VAR{entry.pipe}}
+				%- endfor
+			%- else
+				\example{\VAR{sample.inputPath}}
+					{\VAR{sample.outputPath if sample.outputPath is not none else ''}}
+			%- endif
+			%- if sample.explanation is not none
+				\explanation{\VAR{sample.explanation}}
+			%- endif
+		%- endfor
+	%- endif
+
+	%- if problem.blocks.notes is defined
+		\subsection*{Observações}
+		\VAR{problem.blocks.notes}
+	%- endif
+}
+\end{document}
+

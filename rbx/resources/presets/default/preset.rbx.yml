@@ -13,3 +13,4 @@ tracking:
     - path: "statement/template.rbx.tex"
     - path: "statement/icpc.sty"
     - path: "statement/contest.rbx.tex"
+      symlink: true

@@ -1,2 +1,6 @@
-build/
 .box/
+build/
+
+*.o
+*.aux
+*.log

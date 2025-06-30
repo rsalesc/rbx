@@ -19,6 +19,10 @@ class TrackedAsset(BaseModel):
     # be tracked. Can also be a glob, when specified in the preset config.
     path: pathlib.Path
 
+    # Whether the asset should be symlinked to the local preset directory,
+    # instead of being copied.
+    symlink: bool = False
+
 
 class Tracking(BaseModel):
     # Problem assets that should be tracked and updated by rbx

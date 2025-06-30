@@ -111,5 +111,8 @@
   "python.testing.pytestEnabled": true,
   "[html]": {
     "editor.defaultFormatter": "vscode.html-language-features"
+  },
+  "[ignore]": {
+    "editor.defaultFormatter": "foxundermoon.shell-format"
   }
 }
