@@ -120,7 +120,88 @@ a good starting point for most contests. You can check its code [here](https://g
 The preset definition file is a `preset.rbx.yml` file that will be used to define the preset
 and its dependencies.
 
-TODO: write this section
+It can usually be broken down into a few sections, documented below for the default preset:
+
+```yaml title="preset.rbx.yml"
+# The name of the preset.
+name: "default"
+
+# The URI of the preset. Usually, refers to a GitHub repository.
+# Here, refers to the "rbx/resources/presets/default" folder inside
+# the "rsalesc/rbx" repository.
+uri: "rsalesc/rbx/rbx/resources/presets/default"
+
+# The template to use for creating problems from this preset.
+# Refers to the `problem` folder in the preset definition.
+problem: "problem"
+
+# The template to use for creating contests from this preset.
+# Refers to the `contest` folder in the preset definition.
+contest: "contest"
+
+# The environment to use for the contest and problems created from this preset.
+env: "env.rbx.yml"
+
+# Assets to be tracked and synced with the preset.
+tracking:
+  problem:
+    - path: ".gitignore"
+    - path: "statement/icpc.sty"
+    - path: "statement/template.rbx.tex"
+  contest:
+    - path: ".gitignore"
+    - path: "statement/icpc.sty"
+    - path: "statement/template.rbx.tex"
+    - path: "statement/contest.rbx.tex"
+      symlink: true
+
+```
+
+The first few sections are pretty self-explanatory. Let's focus on the `tracking` section.
+
+The `tracking` section describes a set of files that should be tracked by {{rbx}} when a problem
+or contest is created from this preset.
+
+If a file is tracked, it means that -- in theory -- it should be automatically synced with the preset.
+Let's say you have a `.tex` file that is imported by all the problems in your contest. Let's say your
+contest has 10 problems, but just now you realized you have to modify this `.tex` file to fix a typo.
+
+Usually, this would mean you have to repeat the same change in all 10 problems. With presets, you
+can just modify the `.tex` file in the preset definition, and run `rbx presets sync` inside your
+contest folder, as long as the file is tracked.
+
+This will sync all packages that use this preset with its newest changes, based on the set of tracked files.
+Files that are not tracked **will not** be synced.
+
+Tracked files can be specified both explicitly, or through Python-compliant glob patterns: `*.png`, `**/*.tex`, etc.
+
+#### Symlink tracking
+
+##### Flag-based symlink tracking
+
+When you know for sure that a file should always be kept in sync (without manual intervention), you can
+also create them as symlinks. Just mark the tracked file with the `symlink: true` flag, and {{rbx}} will
+create a symlink to the file in the package instead of copying it. Then, every modification you do to it
+will be instantly reflected in all other packages that use the preset.
+
+##### Soft symlink tracking
+
+An alternative way to create symlinks is to track files that are symlinks themselves. Let's suppose you have
+the following structure:
+
+```bash
+contest/
+├── statement/
+│   └── icpc.sty -> ../../common_icpc.sty
+problem/
+└── statement/
+    └── icpc.sty -> ../../common_icpc.sty
+└── common_icpc.sty
+```
+
+In this case, you can track both `contest/statement/icpc.sty` and `problem/statement/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} will make sure to create a symlink to `common_icpc.sty` automagically for you.
+
+This approach is particularly useful when you want to share a common file between the contest and the problem packages.
 
 ## Using a preset
 
