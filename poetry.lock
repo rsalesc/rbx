@@ -2351,6 +2351,18 @@ pyyaml = "*"
 extra = ["pygments (>=2.19.1)"]
 
 [[package]]
+name = "pypandoc"
+version = "1.15"
+description = "Thin wrapper for pandoc."
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "pypandoc-1.15-py3-none-any.whl", hash = "sha256:4ededcc76c8770f27aaca6dff47724578428eca84212a31479403a9731fc2b16"},
+    {file = "pypandoc-1.15.tar.gz", hash = "sha256:ea25beebe712ae41d63f7410c08741a3cab0e420f6703f95bc9b3a749192ce13"},
+]
+
+[[package]]
 name = "pyte"
 version = "0.8.2"
 description = "Simple VTXXX-compatible terminal emulator."
@@ -3433,4 +3445,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.1"
-content-hash = "93b76038902212b96e79819c4f30b9cb296a4baf564374c27239e679c3b3fc38"
+content-hash = "e85951248f67b1141dadc3ef1833e4ec350d9e50592c3b7751b4fbc6788cc9de"

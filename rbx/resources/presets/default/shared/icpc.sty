@@ -25,6 +25,41 @@
 \usepackage{pdftexcmds}
 \usepackage{amsmath}
 
+% Additional pandoc packages
+%\usepackage{lmodern}  % or 'libertine' / 'times' for different fonts
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage{parskip}
+
+% Links
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue,
+  pdfborder={0 0 0}
+}
+
+% Pandoc shenanigans
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%Add commentMore actions
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+
 \captionsetup[figure]{labelformat=empty}
 \setlist[itemize]{noitemsep, nolistsep}
 

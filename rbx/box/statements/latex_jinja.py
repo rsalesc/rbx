@@ -32,6 +32,12 @@ J2_ARGS = {
     'autoescape': False,
 }
 
+J2_MD_ARGS = {
+    'trim_blocks': True,
+    'autoescape': False,
+}
+
+
 ######################################################################
 # Latex escape regex constants
 ######################################################################
@@ -254,6 +260,38 @@ def render_latex_template_blocks(
     j2_env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(path_templates),
         **J2_ARGS,
+        undefined=StrictChainableUndefined,
+    )
+    add_builtin_filters(j2_env)
+    add_builtin_tests(j2_env)
+    template = j2_env.get_template(template_filename)
+    ctx = template.new_context(var_dict)  # type: ignore
+    try:
+        return {key: ''.join(value(ctx)) for key, value in template.blocks.items()}
+    except jinja2.UndefinedError as err:
+        console.console.print('[error]Error while rendering Jinja2 template:', end=' ')
+        console.console.print(err)
+        console.console.print(
+            '[warning]This usually happens when accessing an undefined variable.[/warning]'
+        )
+        raise typer.Abort() from err
+
+
+def render_markdown_template_blocks(
+    path_templates, template_filename, template_vars=None
+) -> Dict[str, str]:
+    """Render a markdown template, filling in its template variables
+
+    :param path_templates: the path to the template directory
+    :param template_filename: the name, rooted at the path_template_directory,
+        of the desired template for rendering
+    :param template_vars: dictionary of key:val for jinja2 variables
+        defaults to None for case when no values need to be passed
+    """
+    var_dict = template_vars if template_vars else {}
+    j2_env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(path_templates),
+        **J2_MD_ARGS,  # type: ignore
         undefined=StrictChainableUndefined,
     )
     add_builtin_filters(j2_env)

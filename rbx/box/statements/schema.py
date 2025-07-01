@@ -27,6 +27,8 @@ class ConversionType(str, Enum):
     rbxToTex = 'rbx-tex'
     """Conversion from rbxTeX to LaTeX."""
 
+    rbxMarkdownToTeX = 'rbx-md-tex'
+    """Conversion from rbxMarkdown to LaTeX."""
     TexToPDF = 'tex2pdf'
     """Conversion from LaTeX to PDF using pdfLaTeX."""
 
@@ -38,6 +40,12 @@ class ConversionType(str, Enum):
 
 
 ### Conversion nodes.
+class rbxMarkdownToTeX(BaseModel):
+    """Configures the conversion between rbxMarkdown and LaTeX."""
+
+    type: Literal[ConversionType.rbxMarkdownToTeX]
+
+
 class rbxToTeX(BaseModel):
     """Configures the conversion between rbxTeX and LaTeX."""
 
@@ -75,14 +83,17 @@ class JoinTexToPDF(BaseModel):
     type: Literal[JoinerType.TexToPDF]
 
 
-ConversionStep = Union[TexToPDF, JinjaTeX, rbxToTeX]
+ConversionStep = Union[TexToPDF, JinjaTeX, rbxToTeX, rbxMarkdownToTeX]
 Joiner = JoinTexToPDF
 
 
 ### Statement types
 class StatementType(AutoEnum):
-    rbxTeX = alias('rbx-tex', 'rbx-tex', 'rbx')  # type: ignore
+    rbxTeX = alias('rbx-tex')  # type: ignore
     """Statement written in rbxTeX format."""
+
+    rbxMarkdown = alias('rbxMd', 'rbx-markdown', 'rbx-md')  # type: ignore
+    """Statement written in rbxMarkdown format."""
 
     TeX = alias('tex')
     """Statement written in pure LaTeX format."""
@@ -98,6 +109,8 @@ class StatementType(AutoEnum):
             return '.tex'
         if self == StatementType.rbxTeX:
             return '.rbx.tex'
+        if self == StatementType.rbxMarkdown:
+            return '.rbx.md'
         if self == StatementType.JinjaTeX:
             return '.jinja.tex'
         if self == StatementType.PDF:

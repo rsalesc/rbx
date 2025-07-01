@@ -110,7 +110,7 @@ app.add_typer(
 @app.callback()
 def main(
     cache: Annotated[
-        int,
+        grading_context.CacheLevel,
         typer.Option(
             '-c',
             '--cache',

@@ -4,8 +4,9 @@ import re
 import shutil
 import typing
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import pypandoc
 import typer
 from pydantic import BaseModel
 
@@ -15,6 +16,7 @@ from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
     render_latex_template,
     render_latex_template_blocks,
+    render_markdown_template_blocks,
 )
 from rbx.box.statements.schema import (
     ConversionStep,
@@ -23,6 +25,7 @@ from rbx.box.statements.schema import (
     Statement,
     StatementType,
     TexToPDF,
+    rbxMarkdownToTeX,
     rbxToTeX,
 )
 from rbx.box.testcase_utils import (
@@ -207,13 +210,24 @@ def render_jinja(root: pathlib.Path, content: bytes, **kwargs) -> bytes:
 
 
 def render_jinja_blocks(
-    root: pathlib.Path, content: bytes, **kwargs
+    root: pathlib.Path,
+    content: bytes,
+    mode: Literal['latex', 'markdown'] = 'latex',
+    **kwargs,
 ) -> StatementBlocks:
-    temp_file = '__input__.tex'
+    if mode == 'latex':
+        temp_file = '__input__.tex'
+        renderer = render_latex_template_blocks
+    elif mode == 'markdown':
+        temp_file = '__input__.md'
+        renderer = render_markdown_template_blocks
+    else:
+        raise ValueError(f'Invalid mode: {mode}')
+
     temp_path = root / temp_file
     temp_path.write_bytes(content)
 
-    result: Dict[str, str] = render_latex_template_blocks(
+    result: Dict[str, str] = renderer(
         str(root),
         temp_file,
         kwargs,
@@ -356,6 +370,45 @@ class rbxTeXBuilder(StatementBuilder):
         )
 
 
+class rbxMarkdownToTeXBuilder(StatementBuilder):
+    def name(self) -> ConversionType:
+        return ConversionType.rbxMarkdownToTeX
+
+    def default_params(self) -> ConversionStep:
+        return rbxMarkdownToTeX(type=ConversionType.rbxMarkdownToTeX)
+
+    def input_type(self) -> StatementType:
+        return StatementType.rbxMarkdown
+
+    def output_type(self) -> StatementType:
+        return StatementType.rbxTeX
+
+    def handles_contest(self) -> bool:
+        # This builder cannot build contest statements.
+        return False
+
+    def build(
+        self,
+        input: bytes,
+        context: StatementBuilderContext,
+        item: StatementBuilderItem,
+        verbose: bool = False,
+    ) -> bytes:
+        problem = typing.cast(StatementBuilderProblem, item)
+
+        statement_blocks = render_jinja_blocks(
+            context.root, input, mode='markdown', **problem.build_inner_jinja_kwargs()
+        )
+        blocks = statement_blocks.blocks
+
+        result_str = ''
+        for name, content in blocks.items():
+            converted_content = pypandoc.convert_text(content, 'latex', 'markdown')
+            result_str += f'%- block {name}\n{converted_content}\n%- endblock\n\n'
+
+        return result_str.encode()
+
+
 class TeX2PDFBuilder(StatementBuilder):
     def name(self) -> ConversionType:
         return ConversionType.TexToPDF
@@ -413,6 +466,7 @@ BUILDER_LIST: List[StatementBuilder] = [
     TeX2PDFBuilder(),
     JinjaTeXBuilder(),
     rbxTeXBuilder(),
+    rbxMarkdownToTeXBuilder(),
 ]
 PROBLEM_BUILDER_LIST = [
     builder for builder in BUILDER_LIST if builder.handles_problem()

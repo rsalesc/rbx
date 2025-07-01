@@ -48,6 +48,7 @@ ruamel-yaml = "^0.18.14"
 lz4 = "^4.4.4"
 ordered-set = "^4.1.0"
 gitignore-parser = "^0.1.12"
+pypandoc = "^1.15"
 
 [tool.poetry.scripts]
 rbc = "rbx.main:app"
