@@ -1,6 +1,7 @@
 import contextvars
-from enum import Enum
 from typing import Callable, Optional, Union
+
+from rbx.autoenum import AutoEnum, alias
 
 Condition = Union[bool, Callable[[], bool]]
 
@@ -15,11 +16,11 @@ class ConditionedContext:
         return self.when()
 
 
-class CacheLevel(Enum):
-    NO_CACHE = 0
-    CACHE_TRANSIENTLY = 1
-    CACHE_COMPILATION = 2
-    CACHE_ALL = 3
+class CacheLevel(AutoEnum):
+    NO_CACHE = alias('none')
+    CACHE_TRANSIENTLY = alias('transient')
+    CACHE_COMPILATION = alias('compilation')
+    CACHE_ALL = alias('all')
 
 
 cache_level_var = contextvars.ContextVar('cache_level', default=CacheLevel.CACHE_ALL)
@@ -30,11 +31,11 @@ def is_compilation_only() -> bool:
 
 
 def is_transient() -> bool:
-    return cache_level_var.get().value <= CacheLevel.CACHE_TRANSIENTLY.value
+    return cache_level_var.get() == CacheLevel.CACHE_TRANSIENTLY or is_no_cache()
 
 
 def is_no_cache() -> bool:
-    return cache_level_var.get().value <= CacheLevel.NO_CACHE.value
+    return cache_level_var.get() == CacheLevel.NO_CACHE
 
 
 class cache_level(ConditionedContext):
