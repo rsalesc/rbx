@@ -1,3 +1,9 @@
+## 0.9.2 (2025-07-01)
+
+### Fix
+
+- fix cache level on pydantic
+
 ## 0.9.1 (2025-06-30)
 
 ### Fix
