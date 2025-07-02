@@ -5,6 +5,8 @@ from typing import Optional
 
 import chardet
 
+from rbx.utils import command_exists
+
 MAX_PDFLATEX_RUNS = 3
 
 
@@ -45,3 +47,12 @@ class Latex:
             return LatexResult(result=completed, pdf=None)
 
         return LatexResult(result=completed, pdf=output_path.read_bytes())
+
+
+def install_tex_packages(path: pathlib.Path, cwd: pathlib.Path):
+    if not command_exists('texliveonfly'):
+        return
+    subprocess.run(
+        ['texliveonfly', path],
+        cwd=cwd,
+    )

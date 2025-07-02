@@ -6,6 +6,7 @@ import os
 import os.path
 import pathlib
 import resource
+import subprocess
 from typing import Any, Optional, Type, TypeVar
 
 import rich
@@ -143,6 +144,18 @@ def get_open_fds():
             continue
         fds.append(fd)
     return fds
+
+
+def command_exists(command):
+    try:
+        subprocess.run(
+            [command], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return True
+    except FileNotFoundError:
+        return False
+    except subprocess.CalledProcessError:
+        return True
 
 
 @contextlib.contextmanager

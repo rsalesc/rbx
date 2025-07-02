@@ -1,6 +1,5 @@
 import dataclasses
 import pathlib
-import subprocess
 import tempfile
 import typing
 from typing import Any, Dict, List, Optional, Tuple
@@ -13,7 +12,7 @@ from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.formatting import href
 from rbx.box.schema import Package, Testcase
-from rbx.box.statements import build_statements
+from rbx.box.statements import build_statements, latex
 from rbx.box.statements.build_statements import (
     get_builders,
     get_environment_languages_for_statement,
@@ -253,10 +252,10 @@ def build_contest_only(
                 console.console.log(
                     f'Installing LaTeX packages for [item]{statement.name} {statement.language}[/item]...'
                 )
-                subprocess.run(
-                    ['texliveonfly', output],
-                    cwd=td,
-                )
+                tmp_file = pathlib.Path(td) / '__tmp_install__.tex'
+                tmp_file.write_bytes(output)
+                latex.install_tex_packages(tmp_file, pathlib.Path(td))
+
         last_content = output
         last_output = bdr.output_type()
 
