@@ -1,3 +1,14 @@
+## 0.11.0 (2025-07-02)
+
+### Feat
+
+- add option to install tex missing packages automatically with tinytex
+
+### Fix
+
+- **preset**: uncomment modern font in default preset
+- fix editorial in presets
+
 ## 0.10.3 (2025-07-01)
 
 ### Fix
