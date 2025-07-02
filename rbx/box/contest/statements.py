@@ -1,3 +1,4 @@
+import subprocess
 from typing import Annotated, List, Optional
 
 import syncer
@@ -54,6 +55,10 @@ async def build(
             help='Variables to be used in the statements.',
         ),
     ] = None,
+    install_tex: Annotated[
+        bool,
+        typer.Option(help='Whether to install missing LaTeX packages.'),
+    ] = False,
 ):
     contest = find_contest_package_or_die()
     # At most run the validators, only in samples.
@@ -97,6 +102,9 @@ async def build(
 
     built_statements = []
 
+    if install_tex:
+        output = StatementType.TeX
+
     for statement in valid_statements:
         built_statements.append(
             build_statement(
@@ -110,6 +118,13 @@ async def build(
 
     console.console.rule(title='Built statements')
     for statement, built_path in zip(valid_statements, built_statements):
+        if install_tex:
+            subprocess.run(
+                [
+                    'texliveonfly',
+                    built_path,
+                ]
+            )
         console.console.print(
             f'[item]{statement.name} {statement.language}[/item] -> {href(built_path)}'
         )
