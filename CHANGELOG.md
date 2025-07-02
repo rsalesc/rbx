@@ -1,3 +1,9 @@
+## 0.11.1 (2025-07-02)
+
+### Fix
+
+- ensure joined type does not superseed install-tex
+
 ## 0.11.0 (2025-07-02)
 
 ### Feat
