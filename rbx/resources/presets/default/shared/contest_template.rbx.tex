@@ -1,3 +1,4 @@
+%- if vars.show_problem is truthy
 \includeProblem
 %- if problem.short_name is defined
 	[\VAR{problem.short_name}]
@@ -42,4 +43,8 @@
 		\VAR{problem.blocks.notes}
 	%- endif
 }
-
+%- endif
+%- if problem.blocks.editorial is nonnull and vars.editorial is truthy
+\subsection*{\strSolution}
+\VAR{problem.blocks.editorial}
+%- endif
