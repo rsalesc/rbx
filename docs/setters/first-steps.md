@@ -9,13 +9,13 @@ to get more information about the other features.
 We'll focus on how to create a problem from a pre-initialized preset, how to write its main
 components and how to test it.
 
-You can start creating a new problem from a pre-initialized preset by running `rbx create [name]`.
+You can start creating a new problem from a pre-initialized preset by running `rbx create`.
 
 <!--termynal-->
 ```bash
-$ rbx create test
-# This will create a `test` directory under the current
-# working directory with a pre-initialized problem preset.
+$ rbx create
+# This will prompt you for the name of the problem, and then create a new problem
+# in a folder with that name.
 ```
 
 This is how the directory structure of the pre-initialized problem preset will look like:
