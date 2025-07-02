@@ -1,4 +1,4 @@
-%- if vars.show_problem is truthy
+%- if vars.show_problem is truthy or vars.editorial is falsy
 \includeProblem
 %- if problem.short_name is defined
 	[\VAR{problem.short_name}]

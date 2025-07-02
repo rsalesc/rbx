@@ -19,11 +19,14 @@ statements:
           template: "statement/template.rbx.tex"
   - name: "editorial-en"
     extends: "statement-en"
+    override:
+      vars:
+        # Whether to show the problem statement in the editorial.
+        show_problem: false
+        editorial: true
     vars:
       editorial: true
-      watermark: true
-      # Whether to show the problem statement in the editorial.
-      show_problem: false
+      watermark: false
 vars:
   year: 2025
   date: "2025-06-21"
