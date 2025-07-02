@@ -1,6 +1,6 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Contest.json
-# Add problems by running `rbx contest add <problem-name> <short-name>`
+# Add problems by running `rbx contest add`
 name: "new-contest"
 statements:
   - name: "statement-en"

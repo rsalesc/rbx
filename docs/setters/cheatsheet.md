@@ -9,7 +9,7 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | -------------------------------------------------- | -------------------------------------------------------------- |
 | Show help message                                  | `rbx --help`                                                   |
 | Open {{rbx}} configuration for editing             | `rbx config edit`                                              |
-| Create a new package in folder `package`           | `rbx create package`                                           |
+| Create a new package in folder `package`           | `rbx create`                                                   |
 | Compile a file given its path                      | `rbx compile my/file.cpp`                                      |
 | Open the problem configuration in a text editor    | `rbx edit`                                                     |
 | Generate all testcases                             | `rbx build`                                                    |
@@ -48,8 +48,8 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Task                                            | Command                               |
 | ----------------------------------------------- | ------------------------------------- |
 | Show help message                               | `rbx contest --help`                  |
-| Create a new contest in folder `package`        | `rbx contest create package`          |
-| Add a new problem to the contest with letter A  | `rbx contest add new-problem A`       |
+| Create a new contest                            | `rbx contest create`                  |
+| Add a new problem to the contest with letter A  | `rbx contest add`                     |
 | Remove a problem from the contest               | `rbx contest remove A`                |
 | Remove a problem at a certain path              | `rbx contest remove path/to/problem`  |
 | Open the contest configuration in a text editor | `rbx contest edit`                    |
