@@ -1,3 +1,10 @@
+## 0.10.3 (2025-07-01)
+
+### Fix
+
+- make sure copytree respects symlnks in presets
+- add editorial block to template
+
 ## 0.10.2 (2025-07-01)
 
 ### Fix
