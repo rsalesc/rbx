@@ -125,6 +125,10 @@ async def build(
                     built_path,
                 ]
             )
+            console.console.log(
+                f'Installing LaTeX packages for [item]{statement.name} {statement.language}[/item]...'
+            )
+            continue
         console.console.print(
             f'[item]{statement.name} {statement.language}[/item] -> {href(built_path)}'
         )

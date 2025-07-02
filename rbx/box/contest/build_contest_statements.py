@@ -292,7 +292,7 @@ def build_statement_rooted(
         custom_vars=custom_vars,
     )
 
-    if joiner is None:
+    if joiner is None or joiner.joined_type() == output_type:
         return last_content, last_output
     assert statement.joiner is not None
 
