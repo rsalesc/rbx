@@ -1,3 +1,9 @@
+## 0.10.0rc0 (2025-07-01)
+
+### Feat
+
+- **statement**: add support for pandoc markdown wirh rbxmd
+
 ## 0.9.2 (2025-07-01)
 
 ### Fix
