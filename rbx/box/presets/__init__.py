@@ -17,6 +17,8 @@ from rbx.grading.judge.digester import digest_cooperatively
 
 app = typer.Typer(no_args_is_help=True)
 
+_FALLBACK_PRESET_URI = 'rsalesc/rbx/rbx/resources/presets/default'
+
 
 def _find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     found = root / 'preset.rbx.yml'
@@ -476,7 +478,7 @@ def get_preset_fetch_info_with_fallback(
         # Use active preset if any, otherwise use the default preset.
         if get_active_preset_or_null() is not None:
             return None
-        default_preset = get_preset_fetch_info('default')
+        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_URI)
         if default_preset is None:
             console.console.print(
                 '[error]Internal error: could not find [item]default[/item] preset.[/error]'
@@ -651,14 +653,15 @@ def _install_preset_from_fetch_info(
             update=update,
         )
         return
-    if _install_preset_from_resources(
-        fetch_info,
-        dest,
-        ensure_contest=ensure_contest,
-        ensure_problem=ensure_problem,
-        update=update,
-    ):
-        return
+    # NOTE: Disabled for now.
+    # if _install_preset_from_resources(
+    #     fetch_info,
+    #     dest,
+    #     ensure_contest=ensure_contest,
+    #     ensure_problem=ensure_problem,
+    #     update=update,
+    # ):
+    #     return
     console.console.print(
         f'[error]Preset [item]{fetch_info.name}[/item] not found.[/error]'
     )
