@@ -16,7 +16,6 @@ from rbx.box.contest.contest_package import (
     within_contest,
 )
 from rbx.box.contest.schema import ContestProblem
-from rbx.box.linting import fix_package
 from rbx.box.packaging import contest_main as packaging
 from rbx.box.schema import Package
 from rbx.config import open_editor
@@ -75,7 +74,7 @@ def create(
 
     with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()
-        fix_package()
+        # fix_package()
         presets.generate_lock()
 
 
@@ -98,7 +97,7 @@ def init(
     presets.install_contest(pathlib.Path.cwd(), fetch_info)
 
     contest_utils.clear_all_caches()
-    fix_package()
+    # fix_package()
     presets.generate_lock()
 
 

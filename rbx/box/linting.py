@@ -51,9 +51,9 @@ def fix_yaml(
     )
     _, changed = yamlfix.fix_files([str(path)], dry_run=False, config=config)
 
-    if model_cls is not None:
-        if fix_language_server(path, model_cls):
-            changed = True
+    # if model_cls is not None:
+    #     if fix_language_server(path, model_cls):
+    #         changed = True
 
     if changed and verbose:
         console.console.print(

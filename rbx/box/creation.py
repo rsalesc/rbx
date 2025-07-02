@@ -5,7 +5,6 @@ import typer
 
 from rbx import console, utils
 from rbx.box import package, presets
-from rbx.box.linting import fix_package
 
 
 def create(
@@ -43,6 +42,6 @@ def create(
     problem['name'] = name
     utils.save_ruyaml(dest_path / 'problem.rbx.yml', ru, problem)
 
-    fix_package(dest_path)
+    # fix_package(dest_path)
 
     presets.generate_lock(dest_path)
