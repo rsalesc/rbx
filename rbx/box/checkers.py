@@ -30,7 +30,7 @@ def compile_checker(progress: Optional[StatusProgress] = None) -> str:
     try:
         digest = compile_item(checker, sanitized=SanitizationLevel.PREFER)
     except Exception as e:
-        console.console.print('[error]Failed compiling checker.[/error]')
+        console.console.print('[error]Failed compiling checker[/error]')
         raise typer.Exit(1) from e
     return digest
 
