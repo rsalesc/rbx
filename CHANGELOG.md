@@ -1,3 +1,9 @@
+## 0.10.1 (2025-07-01)
+
+### Fix
+
+- do not get presets from resources
+
 ## 0.10.0 (2025-07-01)
 
 ### Fix
