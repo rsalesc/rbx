@@ -1,5 +1,6 @@
 import dataclasses
 import pathlib
+import subprocess
 import tempfile
 import typing
 from typing import Any, Dict, List, Optional, Tuple
@@ -211,8 +212,12 @@ def build_contest_only(
     input_type: StatementType,
     output_type: Optional[StatementType] = None,
     custom_vars: Optional[Dict[str, Any]] = None,
+    install_tex: bool = False,
 ) -> Tuple[bytes, StatementType]:
     console.console.print('Building contest-level statement.')
+    if install_tex:
+        output_type = StatementType.TeX
+
     bdrs = get_builders(
         contest.name,
         statement.steps,
@@ -243,6 +248,15 @@ def build_contest_only(
                 item=get_statement_builder_contest(statement, extracted_problems),
                 verbose=False,
             )
+
+            if install_tex and bdr.output_type() == StatementType.TeX:
+                console.console.log(
+                    f'Installing LaTeX packages for [item]{statement.name} {statement.language}[/item]...'
+                )
+                subprocess.run(
+                    ['texliveonfly', output],
+                    cwd=td,
+                )
         last_content = output
         last_output = bdr.output_type()
 
@@ -256,6 +270,7 @@ def build_statement_rooted(
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
+    install_tex: bool = False,
 ) -> Tuple[bytes, StatementType]:
     # Validate.
     if not statement.path.is_file():
@@ -290,9 +305,10 @@ def build_statement_rooted(
         statement.type,
         output_type=joiner.joined_type() if joiner is not None else output_type,
         custom_vars=custom_vars,
+        install_tex=install_tex,
     )
 
-    if joiner is None or joiner.joined_type() == output_type:
+    if joiner is None or install_tex:
         return last_content, last_output
     assert statement.joiner is not None
 
@@ -335,6 +351,7 @@ def build_statement(
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
+    install_tex: bool = False,
 ) -> pathlib.Path:
     with tempfile.TemporaryDirectory() as td:
         root = pathlib.Path(td)
@@ -345,6 +362,7 @@ def build_statement(
             output_type=output_type,
             use_samples=use_samples,
             custom_vars=custom_vars,
+            install_tex=install_tex,
         )
 
     statement_path = (pathlib.Path('build') / statement.name).with_suffix(
