@@ -1,6 +1,21 @@
 .box/
 build/
+__pycache__/
 
+.DS_Store
+.vscode/
+
+a.out
+*.exe
+*.pyc
 *.o
+*~
+
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
 *.aux
 *.log
+
+*.un~
