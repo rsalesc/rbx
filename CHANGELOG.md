@@ -1,3 +1,11 @@
+## 0.10.2 (2025-07-01)
+
+### Fix
+
+- temporarily disable rbx fix on pkg creation
+- fix order
+- fix problem_template.rbx.tex
+
 ## 0.10.1 (2025-07-01)
 
 ### Fix
