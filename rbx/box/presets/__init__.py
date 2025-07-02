@@ -832,7 +832,8 @@ def copy_tree_normalizing_gitdir(
 ):
     from rbx.box import git_utils
 
-    shutil.copytree(str(src_path), str(dst_path), dirs_exist_ok=update)
+    shutil.copytree(str(src_path), str(dst_path), dirs_exist_ok=update, symlinks=True)
+
     if not (src_path / '.git').is_file():
         return
 
