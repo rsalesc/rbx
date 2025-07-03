@@ -32,6 +32,16 @@ $ rbx --help
 # rbx help string should show up here
 ```
 
+## A note for Windows users
+
+{{rbx}} **is not** supported on Windows. One of the main reasons (but not the only one) is that {{rbx}}
+heavily uses symlinks, which is inherently a POSIX feature, and even though it's been implemented in Windows
+recently, it's not yet perfectly supported.
+
+If you want to use {{rbx}} on Windows, you can do so by using the WSL (Windows Subsystem for Linux). Also,
+you'll have to make sure your packages are cloned within the WSL instance and filesystem. Cloning on a Windows
+folder and mounting it into the WSL instance **will not work** since symlinks will not be preserved.
+
 ---
 
 Proceed to the [Configuration](configuration.md) section.
