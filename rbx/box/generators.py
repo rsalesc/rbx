@@ -157,14 +157,15 @@ def get_call_from_string(call_str: str) -> GeneratorCall:
 async def _get_necessary_generators_for_groups(
     groups: Optional[Set[str]] = None,
 ) -> Set[str]:
-    pkg = package.find_problem_package_or_die()
-    existing_generators = set(generator.name for generator in pkg.generators)
     necessary_generators = set()
 
     class NecessaryGeneratorsVisitor(TestcaseGroupVisitor):
         async def visit(self, entry: GenerationTestcaseEntry):
             if entry.metadata.generator_call is not None:
-                if entry.metadata.generator_call.name not in existing_generators:
+                if (
+                    package.get_generator_or_nil(entry.metadata.generator_call.name)
+                    is None
+                ):
                     console.console.print(
                         f'[error]Generator [item]{entry.metadata.generator_call.name}[/item] is not present in the package.[/error]'
                     )
@@ -177,24 +178,21 @@ async def _get_necessary_generators_for_groups(
 
     await run_testcase_visitor(NecessaryGeneratorsVisitor(groups))
 
-    return existing_generators.intersection(necessary_generators)
+    return necessary_generators
 
 
 def compile_generators(
+    tracked_generators: Set[str],
     progress: Optional[StatusProgress] = None,
-    tracked_generators: Optional[Set[str]] = None,
 ) -> Dict[str, str]:
     def update_status(text: str):
         if progress is not None:
             progress.update(text)
 
-    pkg = package.find_problem_package_or_die()
-
     generator_to_compiled_digest = {}
 
-    for generator in pkg.generators:
-        if tracked_generators is not None and generator.name not in tracked_generators:
-            continue
+    for generator_name in tracked_generators:
+        generator = package.get_generator(generator_name)
         update_status(f'Compiling generator [item]{generator.name}[/item]')
         try:
             generator_to_compiled_digest[generator.name] = _compile_generator(generator)

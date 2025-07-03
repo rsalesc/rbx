@@ -229,13 +229,45 @@ def get_build_testgroup_path(
 
 
 @functools.cache
-def get_generator(name: str, root: pathlib.Path = pathlib.Path()) -> Generator:
+def get_generator_or_nil(
+    name: str, root: pathlib.Path = pathlib.Path()
+) -> Optional[Generator]:
     package = find_problem_package_or_die(root)
     for generator in package.generators:
         if generator.name == name:
             return generator
-    console.console.print(f'[error]Generator [item]{name}[/item] not found[/error]')
-    raise typer.Exit(1)
+
+    path = pathlib.Path(root / name)
+    if path.is_file():
+        return Generator(name=name, path=path)
+
+    path_pattern = path.with_suffix('.*')
+    matching_files = list(
+        file.relative_to(root) for file in root.glob(str(path_pattern))
+    )
+
+    if len(matching_files) > 1:
+        console.console.print(
+            f'[error]Multiple candidate generators found for [item]{name}[/item]: {matching_files}[/error]'
+        )
+        console.console.print(
+            '[info]Please specify the generator path explicitly, including the extension, or rename the conflicting files.[/info]'
+        )
+        raise typer.Exit(1)
+
+    if matching_files:
+        return Generator(name=name, path=matching_files[0])
+
+    return None
+
+
+@functools.cache
+def get_generator(name: str, root: pathlib.Path = pathlib.Path()) -> Generator:
+    generator = get_generator_or_nil(name, root)
+    if generator is None:
+        console.console.print(f'[error]Generator [item]{name}[/item] not found[/error]')
+        raise typer.Exit(1)
+    return generator
 
 
 @functools.cache
@@ -294,20 +326,24 @@ def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
     package = find_problem_package_or_die(root)
     seen_paths = set()
     res = []
+
+    def add_solution(entry: Solution):
+        if entry.path in seen_paths:
+            return
+        seen_paths.add(entry.path)
+        res.append(entry)
+
     for entry in package.solutions:
         if '*' in str(entry.path):
             for file in root.glob(str(entry.path)):
                 relative_file = file.relative_to(root)
-                if relative_file in seen_paths:
-                    continue
-                seen_paths.add(relative_file)
-                res.append(
+                add_solution(
                     Solution.model_copy(
                         entry, update={'path': relative_file}, deep=True
                     )
                 )
             continue
-        res.append(entry)
+        add_solution(entry)
     return res
 
 

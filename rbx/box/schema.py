@@ -9,7 +9,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 from pydantic_core import PydanticCustomError
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import FNameField, NameField
+from rbx.box.fields import NameField
 from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import Statement
 from rbx.grading.steps import Outcome
@@ -257,7 +257,7 @@ class Testcase(BaseModel):
 class GeneratorCall(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = FNameField(description='The name of the generator to call.')
+    name: str = Field(description='The name of the generator to call.')
 
     args: Optional[str] = Field(
         default=None, description='The arguments to pass to the generator.'
@@ -355,7 +355,7 @@ problems that have points.
 class Generator(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = NameField(description="""The name of the generator.""")
+    name: str = Field(description="""The name of the generator.""")
 
 
 class Solution(CodeItem):
