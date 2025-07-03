@@ -339,7 +339,6 @@ async def build(
     vars: Annotated[
         Optional[List[str]],
         typer.Option(
-            '-v',
             '--vars',
             help='Variables to be used in the statements.',
         ),
