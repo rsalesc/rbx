@@ -241,6 +241,7 @@ def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher
             ) is not None:
                 # Use a symlink to the file in the persistent cache, if available.
                 output.dest.unlink(missing_ok=True)
+                output.dest.parent.mkdir(parents=True, exist_ok=True)
                 output.dest.symlink_to(path_to_symlink)
             else:
                 # Otherwise, copy it.

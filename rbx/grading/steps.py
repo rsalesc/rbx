@@ -355,6 +355,7 @@ def _process_output_artifacts(
         ):
             # File is in the persistent cache, store a symlink to it.
             dst.unlink(missing_ok=True)
+            dst.parent.mkdir(parents=True, exist_ok=True)
             dst.symlink_to(path_to_symlink)
         else:
             # File is not in the persistent cache, copy it.

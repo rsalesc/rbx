@@ -469,6 +469,7 @@ class SandboxBase(abc.ABC):
         if override:
             real_path.unlink(missing_ok=True)
         try:
+            real_path.parent.mkdir(parents=True, exist_ok=True)
             real_path.symlink_to(utils.abspath(from_path))
         except NotImplementedError:
             return None
