@@ -1,3 +1,4 @@
+import functools
 import pathlib
 import shutil
 from typing import Dict, List, Optional, Set
@@ -40,20 +41,35 @@ def _compile_generator(generator: CodeItem) -> str:
     return compile_item(generator, sanitized=SanitizationLevel.PREFER)
 
 
+@functools.cache
+def _warn_once_about_crlf():
+    console.console.print(
+        '[warning]It seems a few files have CRLF (\\r\\n) line endings.[/warning]'
+    )
+    console.console.print(
+        '[warning]This usually happens when the file is created on Windows. Please convert the file to LF (\\n) line endings.[/warning]'
+    )
+    console.console.print(
+        '[warning]If you are in VSCode, you can make sure LF (\\n) line endings are used by changing the [item]"files.eol"[/item] setting.[/warning]'
+    )
+
+
+@functools.cache
+def _warn_about_crlf(path: pathlib.Path):
+    _warn_once_about_crlf()
+    console.console.print(
+        f'[warning]Testcase file [item]{path}[/item] has CRLF (\\r\\n) line endings, converting to LF (\\n).[/warning]'
+    )
+
+
 def _check_crlf(path: pathlib.Path):
     with open(path, 'rb') as f:
         for line in f:
             if line.endswith(b'\r\n') or line.endswith(b'\n\r'):
-                console.console.print(
-                    f'[error]Testcase file [item]{path}[/item] has CRLF (\\r\\n) line endings.[/error]'
-                )
-                console.console.print(
-                    '[error]This usually happens when the file is created on Windows. Please convert the file to LF (\\n) line endings.[/error]'
-                )
-                console.console.print(
-                    '[error]If you are in VSCode, you can make sure LF (\\n) line endings are used by changing the [item]"files.eol"[/item] setting.[/error]'
-                )
-                raise typer.Exit(1)
+                _warn_about_crlf(path)
+                break
+
+    path.write_text(path.read_text().replace('\r', ''))
 
 
 def _copy_testcase_over(
