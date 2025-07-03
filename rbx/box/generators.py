@@ -127,6 +127,15 @@ async def _get_necessary_generators_for_groups(
     class NecessaryGeneratorsVisitor(TestcaseGroupVisitor):
         async def visit(self, entry: GenerationTestcaseEntry):
             if entry.metadata.generator_call is not None:
+                if entry.metadata.generator_call.name not in existing_generators:
+                    console.console.print(
+                        f'[error]Generator [item]{entry.metadata.generator_call.name}[/item] is not present in the package.[/error]'
+                    )
+                    if entry.metadata.generator_script is not None:
+                        console.console.print(
+                            f'[error]This generator is referenced from [item]{entry.metadata.generator_script}[/item].[/error]'
+                        )
+                    raise typer.Exit(1)
                 necessary_generators.add(entry.metadata.generator_call.name)
 
     await run_testcase_visitor(NecessaryGeneratorsVisitor(groups))
@@ -267,9 +276,7 @@ async def generate_testcases(
 
     compiled_generators = compile_generators(
         progress=progress,
-        tracked_generators=await _get_necessary_generators_for_groups(groups)
-        if groups is not None
-        else None,
+        tracked_generators=await _get_necessary_generators_for_groups(groups),
     )
 
     testcase_utils.clear_built_testcases()
