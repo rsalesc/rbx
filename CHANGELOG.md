@@ -1,3 +1,23 @@
+## 0.12.0 (2025-07-03)
+
+### Feat
+
+- **package**: add suppot for specifying generators by path
+- **package**: support globs on solutions
+
+### Fix
+
+- **preset**: update default preset to use getVar() instead of opt()
+- **cache**: ensure dir of symlinks are created before the symlink itself
+- make sure --vars does not override -v in statement commands
+- ensure CRLF are automatically fixed
+- add check for crlf when building tests
+- show proper error when invalid generator is referenced by script
+- use enum in preset instead of alias
+- improve texliveonfly call
+- fix preset interactive example spacing
+- improve default preset .gitignore
+
 ## 0.11.2 (2025-07-02)
 
 ### Fix
