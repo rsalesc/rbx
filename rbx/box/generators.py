@@ -40,12 +40,29 @@ def _compile_generator(generator: CodeItem) -> str:
     return compile_item(generator, sanitized=SanitizationLevel.PREFER)
 
 
+def _check_crlf(path: pathlib.Path):
+    with open(path, 'rb') as f:
+        for line in f:
+            if line.endswith(b'\r\n') or line.endswith(b'\n\r'):
+                console.console.print(
+                    f'[error]Testcase file [item]{path}[/item] has CRLF (\\r\\n) line endings.[/error]'
+                )
+                console.console.print(
+                    '[error]This usually happens when the file is created on Windows. Please convert the file to LF (\\n) line endings.[/error]'
+                )
+                console.console.print(
+                    '[error]If you are in VSCode, you can make sure LF (\\n) line endings are used by changing the [item]"files.eol"[/item] setting.[/error]'
+                )
+                raise typer.Exit(1)
+
+
 def _copy_testcase_over(
     testcase: Testcase,
     dest: Testcase,
 ):
     testcase = fill_output_for_defined_testcase(testcase)
     dest.inputPath.parent.mkdir(parents=True, exist_ok=True)
+    _check_crlf(testcase.inputPath)
     shutil.copy(
         str(testcase.inputPath),
         str(dest.inputPath),
@@ -55,6 +72,7 @@ def _copy_testcase_over(
         and testcase.outputPath.is_file()
         and dest.outputPath is not None
     ):
+        _check_crlf(testcase.outputPath)
         dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(
             str(testcase.outputPath),
@@ -71,6 +89,8 @@ def _copy_testcase_output_over(
     if not src_path.is_file():
         return False
 
+    _check_crlf(src_path)
+
     shutil.copy(str(src_path), str(dest_output_path.with_suffix(suffix)))
     return True
 
@@ -84,6 +104,7 @@ def _copy_testcase_outputs_over(
     has_copied = False
 
     if testcase.outputPath is not None and testcase.outputPath.is_file():
+        _check_crlf(testcase.outputPath)
         shutil.copy(str(testcase.outputPath), str(dest.outputPath))
         has_copied = True
 
