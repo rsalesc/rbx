@@ -186,6 +186,15 @@ def on(ctx: typer.Context, problems: str) -> None:
     contest.on(ctx, problems)
 
 
+@app.command(
+    'each',
+    help='Run a command for each problem in the contest.',
+    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+)
+def each(ctx: typer.Context) -> None:
+    contest.each(ctx)
+
+
 @app.command('diff', hidden=True)
 def diff(path1: pathlib.Path, path2: pathlib.Path):
     from rbx.box.ui import main as ui_pkg
