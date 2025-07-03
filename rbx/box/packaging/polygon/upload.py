@@ -214,8 +214,7 @@ def _upload_testcases(problem: api.Problem):
 
 def _upload_solutions(problem: api.Problem):
     console.console.print('Uploading main solution...')
-    pkg = package.find_problem_package_or_die()
-    main_solution = pkg.solutions[0]
+    main_solution = package.get_main_solution()
     if main_solution is None or main_solution.outcome != ExpectedOutcome.ACCEPTED:
         return
     problem.save_solution(
@@ -225,7 +224,7 @@ def _upload_solutions(problem: api.Problem):
         tag=api.SolutionTag.MA,
     )
 
-    for i, solution in enumerate(pkg.solutions):
+    for i, solution in enumerate(package.get_solutions()):
         console.console.print(
             f'Uploading solution [item]{solution.path.name}[/item] (tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
         )

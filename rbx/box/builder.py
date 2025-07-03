@@ -96,10 +96,10 @@ async def verify(verification: environment.VerificationParam) -> bool:
 
     tracked_solutions = None
     if verification < VerificationLevel.ALL_SOLUTIONS.value:
-        pkg = package.find_problem_package_or_die()
-
         tracked_solutions = {
-            str(solution.path) for solution in pkg.solutions if is_fast(solution)
+            str(solution.path)
+            for solution in package.get_solutions()
+            if is_fast(solution)
         }
 
     with utils.StatusProgress('Running solutions...') as s:

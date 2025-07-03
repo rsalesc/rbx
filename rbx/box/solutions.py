@@ -158,12 +158,10 @@ def compile_solutions(
     tracked_solutions: Optional[Set[str]] = None,
     sanitized: bool = False,
 ) -> Dict[pathlib.Path, str]:
-    pkg = package.find_problem_package_or_die()
-
     compiled_solutions = {}
 
     if tracked_solutions is None:
-        tracked_solutions = set(str(sol.path) for sol in pkg.solutions)
+        tracked_solutions = set(str(sol.path) for sol in package.get_solutions())
 
     for solution in expand_solutions(list(tracked_solutions)):
         if progress:
@@ -232,9 +230,8 @@ async def convert_list_of_solution_evaluations_to_dict(
     skeleton: SolutionReportSkeleton,
     items: Iterable[EvaluationItem],
 ) -> List[Dict[str, List[Evaluation]]]:
-    pkg = package.find_problem_package_or_die()
     res: List[Dict[str, List[Evaluation]]] = [
-        collections.defaultdict(list) for _ in pkg.solutions
+        collections.defaultdict(list) for _ in package.get_solutions()
     ]
 
     for item in items:
@@ -250,10 +247,9 @@ def _get_solutions_for_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
 ) -> List[Solution]:
-    pkg = package.find_problem_package_or_die()
     solutions = [
         sol
-        for sol in pkg.solutions
+        for sol in package.get_solutions()
         if verification.value >= VerificationLevel.ALL_SOLUTIONS.value or is_fast(sol)
     ]
     if tracked_solutions is not None:
@@ -739,8 +735,7 @@ def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
 
 
 def expand_solutions_with_source(sols: List[str]) -> List[Tuple[Solution, bool]]:
-    pkg = package.find_problem_package_or_die()
-    pkg_sols = {str(sol.path): sol for sol in pkg.solutions}
+    pkg_sols = {str(sol.path): sol for sol in package.get_solutions()}
 
     # Download remote sols.
     path_sols = remote.expand_files(sols)
@@ -777,9 +772,10 @@ async def pick_solutions(
     tracked_solutions: Optional[OrderedSet[str]],
     extra_solutions: Optional[List[str]] = None,
 ) -> List[str]:
-    pkg = package.find_problem_package_or_die()
     # Store in a separate list to maintain order with the package declaration.
     import questionary
+
+    solutions = package.get_solutions()
 
     choices = [
         questionary.Choice(
@@ -787,10 +783,10 @@ async def pick_solutions(
             value=str(sol.path),
             checked=tracked_solutions is None or str(sol.path) in tracked_solutions,
         )
-        for sol in pkg.solutions
+        for sol in solutions
     ]
 
-    seen_sols = set(str(sol.path) for sol in pkg.solutions)
+    seen_sols = set(str(sol.path) for sol in solutions)
 
     if extra_solutions is not None:
         # Add only new solutions.

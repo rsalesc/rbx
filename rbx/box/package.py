@@ -292,7 +292,23 @@ def get_interactor(root: pathlib.Path = pathlib.Path()) -> CodeItem:
 @functools.cache
 def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
     package = find_problem_package_or_die(root)
-    return package.solutions
+    seen_paths = set()
+    res = []
+    for entry in package.solutions:
+        if '*' in str(entry.path):
+            for file in root.glob(str(entry.path)):
+                relative_file = file.relative_to(root)
+                if relative_file in seen_paths:
+                    continue
+                seen_paths.add(relative_file)
+                res.append(
+                    Solution.model_copy(
+                        entry, update={'path': relative_file}, deep=True
+                    )
+                )
+            continue
+        res.append(entry)
+    return res
 
 
 @functools.cache
