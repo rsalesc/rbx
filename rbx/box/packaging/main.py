@@ -1,3 +1,5 @@
+from typing import Optional
+
 import syncer
 import typer
 
@@ -20,22 +22,31 @@ async def polygon(
         '-u',
         help='If set, will upload the package to Polygon.',
     ),
-    preserve_language: bool = typer.Option(
+    language: Optional[str] = typer.Option(
+        None,
+        '--language',
+        '-l',
+        help='If set, will use the given language as the main language.',
+    ),
+    upload_as_english: bool = typer.Option(
         False,
-        '--preserve-language',
-        help='If set, will preserve the original language of the statement.',
+        '--upload-as-english',
+        help='If set, will force the main statement to be uploaded in English.',
     ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
-    await run_packager(PolygonPackager, verification=verification)
+    await run_packager(
+        PolygonPackager, verification=verification, main_language=language
+    )
 
     if upload:
         from rbx.box.packaging.polygon.upload import upload_problem
 
         await upload_problem(
             name=get_problem_name_with_contest_info(),
-            preserve_language=preserve_language,
+            main_language=language,
+            upload_as_english=upload_as_english,
         )
 
 

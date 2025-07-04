@@ -3,7 +3,7 @@ import pathlib
 import shutil
 import tempfile
 import zipfile
-from typing import Annotated
+from typing import Annotated, Optional
 
 import syncer
 import typer
@@ -28,6 +28,10 @@ async def convert(
         str, typer.Option('-d', '--dest', help='The format to convert to.')
     ],
     output: Annotated[str, typer.Option('-o', '--output', help='The output path.')],
+    language: Annotated[
+        Optional[str],
+        typer.Option('--language', '-l', help='The main language of the problem.'),
+    ] = None,
 ):
     if pkg.suffix == '.zip':
         temp_dir = tempfile.TemporaryDirectory()
@@ -42,7 +46,9 @@ async def convert(
         raise typer.Exit(1)
 
     with tempfile.TemporaryDirectory() as td:
-        result_path = await converter.convert(pkg, pathlib.Path(td), source, dest)
+        result_path = await converter.convert(
+            pkg, pathlib.Path(td), source, dest, main_language=language
+        )
         output_path = pathlib.Path(output)
         if output_path.suffix == '.zip':
             output_path.parent.mkdir(parents=True, exist_ok=True)

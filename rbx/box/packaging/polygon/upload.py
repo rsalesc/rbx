@@ -295,19 +295,32 @@ def _upload_statement_resources(problem: api.Problem, statement: Statement):
         )
 
 
-def _upload_statement(problem: api.Problem, preserve_language: bool = False):
+def _upload_statement(
+    problem: api.Problem, main_language: Optional[str], upload_as_english: bool = False
+):
     pkg = package.find_problem_package_or_die()
 
+    lang_list = []
     languages = set()
     for statement in pkg.expanded_statements:
         if not is_valid_lang_code(statement.language):
             continue
         languages.add(statement.language)
-
+        lang_list.append(statement.language)
     uploaded_languages = set()
 
+    if main_language is None:
+        main_language = lang_list[0]
+
+    # Put the main language first.
+    lang_list = list(languages)
+    for i in range(len(lang_list)):
+        if lang_list[i] == main_language:
+            lang_list[i], lang_list[0] = lang_list[0], lang_list[i]
+            break
+
     # Prioritize English statements.
-    for language in ['en'] + list(languages):
+    for language in lang_list:
         statement = _get_statement_for_language(language)
         if statement is None:
             continue
@@ -317,15 +330,19 @@ def _upload_statement(problem: api.Problem, preserve_language: bool = False):
         console.console.print(
             f'Uploading statement for language [item]{language}[/item] (polygon language: [item]{statement_lang}[/item])...'
         )
-        uploaded_language = statement_lang if preserve_language else 'english'
+        uploaded_language = statement_lang
+        if main_language == language:
+            if not upload_as_english:
+                console.console.print(
+                    '[warning]By default, Polygon statements are uploaded respecting their original language.\n'
+                    'Codeforces does not work well with statements in other languages. If you want a better experience, '
+                    'use the [item]--upload-as-english[/item] option to force the main statement to be uploaded in English.[/warning]'
+                )
+            else:
+                uploaded_language = 'english'
         if uploaded_language in uploaded_languages:
             continue
         uploaded_languages.add(uploaded_language)
-        if not preserve_language and statement_lang != 'english':
-            console.console.print(
-                '[warning]By default, Polygon statements are uploaded in English.\n'
-                'If you want to preserve the original language of your statement, use [item]--preserve-language[/item].'
-            )
         blocks = _get_statement_blocks(statement)
         polygon_statement = api.Statement(
             encoding='utf-8',
@@ -350,7 +367,9 @@ def _normalize_problem_name(name: str) -> str:
     return name.replace(' ', '-').replace('_', '-').lower()
 
 
-async def upload_problem(name: str, preserve_language: bool = False):
+async def upload_problem(
+    name: str, main_language: Optional[str], upload_as_english: bool = False
+):
     pkg = package.find_problem_package_or_die()
     name = _normalize_problem_name(name)
     problem = _find_or_create_problem(name)
@@ -369,7 +388,9 @@ async def upload_problem(name: str, preserve_language: bool = False):
 
     _upload_solutions(problem)
     _upload_testcases(problem)
-    _upload_statement(problem, preserve_language=preserve_language)
+    _upload_statement(
+        problem, main_language=main_language, upload_as_english=upload_as_english
+    )
 
     # Commit.
     console.console.print('Committing changes...')

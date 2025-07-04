@@ -1,6 +1,6 @@
 import pathlib
 import shutil
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -71,11 +71,17 @@ def _populate_tests(
 
 
 def _populate_statements(
-    problem: Problem, pkg: Package, pkg_path: pathlib.Path, into_path: pathlib.Path
+    problem: Problem,
+    pkg: Package,
+    pkg_path: pathlib.Path,
+    into_path: pathlib.Path,
+    main_language: Optional[str] = None,
 ):
     name_per_language = {name.language: name for name in problem.names}
     pdf_statements = _get_pdf_statements(problem)
     pkg_statements = []
+    found_main = False
+
     for statement in pdf_statements:
         if statement.language not in name_per_language:
             continue
@@ -93,13 +99,32 @@ def _populate_statements(
             path=_get_statement_path(statement),
             type=StatementType.PDF,
         )
-        if name.main:
+
+        if (
+            main_language is not None
+            and main_language == iso639_code
+            and not found_main
+        ):
             # If main statement, add it to the front of the list
             pkg_statements = [pkg_statement] + pkg_statements
+            found_main = True
             continue
+
+        if name.main and not found_main:
+            # If main statement, add it to the front of the list
+            pkg_statements = [pkg_statement] + pkg_statements
+            found_main = True
+            continue
+
         pkg_statements.append(pkg_statement)
 
     pkg.statements = pkg_statements
+
+    if main_language is not None and not found_main:
+        console.console.print(
+            f'[error]Main statement of language [item]{main_language}[/item] not found.[/error]',
+        )
+        raise typer.Exit(1)
 
 
 def _is_cpp_source(source: File) -> bool:
@@ -167,6 +192,9 @@ def _copy_headers(
 
 
 class PolygonImporter(BaseImporter):
+    def __init__(self, main_language: Optional[str]):
+        self.main_language = main_language
+
     @classmethod
     def name(cls) -> str:
         return 'polygon'
@@ -196,7 +224,7 @@ class PolygonImporter(BaseImporter):
         )
 
         _populate_tests(testset, pkg, pkg_path, into_path)
-        _populate_statements(problem, pkg, pkg_path, into_path)
+        _populate_statements(problem, pkg, pkg_path, into_path, self.main_language)
         _copy_checker(problem, pkg, pkg_path, into_path)
         _copy_interactor(problem, pkg, pkg_path, into_path)
         _copy_headers(problem, pkg, pkg_path, into_path)

@@ -1,6 +1,6 @@
 import pathlib
 import tempfile
-from typing import Type
+from typing import Optional, Type
 
 import syncer
 import typer
@@ -23,6 +23,7 @@ async def run_contest_packager(
     contest_packager_cls: Type[BaseContestPackager],
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
+    **kwargs,
 ):
     contest = contest_package.find_contest_package_or_die()
 
@@ -34,7 +35,9 @@ async def run_contest_packager(
         )
         with cd.new_package_cd(problem.get_path()):
             package.clear_package_cache()
-            package_path = await run_packager(packager_cls, verification=verification)
+            package_path = await run_packager(
+                packager_cls, verification=verification, **kwargs
+            )
             built_packages.append(
                 BuiltProblemPackage(
                     path=problem.get_path() / package_path,
@@ -44,7 +47,7 @@ async def run_contest_packager(
             )
 
     # Build statements.
-    packager = contest_packager_cls()
+    packager = contest_packager_cls(**kwargs)
     statement_types = packager.statement_types()
     built_statements = []
 
@@ -63,12 +66,12 @@ async def run_contest_packager(
 
     # Build contest-level package.
     with tempfile.TemporaryDirectory() as td:
-        packager.package(
+        result_path = packager.package(
             built_packages, pathlib.Path('build'), pathlib.Path(td), built_statements
         )
 
     console.console.print(
-        f'[success]Contest packaged for [item]{packager.name()}[/item]![/success]'
+        f'[success]Created contest package for [item]{packager.name()}[/item] at [item]{result_path}[/item]![/success]'
     )
 
 
@@ -77,6 +80,12 @@ async def run_contest_packager(
 @syncer.sync
 async def polygon(
     verification: environment.VerificationParam,
+    language: Optional[str] = typer.Option(
+        None,
+        '--language',
+        '-l',
+        help='If set, will use the given language as the main language.',
+    ),
 ):
     from rbx.box.packaging.polygon.packager import (
         PolygonContestPackager,
@@ -84,7 +93,10 @@ async def polygon(
     )
 
     await run_contest_packager(
-        PolygonContestPackager, PolygonPackager, verification=verification
+        PolygonContestPackager,
+        PolygonPackager,
+        verification=verification,
+        main_language=language,
     )
 
 

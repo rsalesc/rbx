@@ -1,5 +1,6 @@
 import pathlib
 import tempfile
+from typing import Optional
 
 import typer
 
@@ -25,18 +26,18 @@ IMPORTER_REGISTRY = {
 }
 
 
-def get_packager(source: str) -> BasePackager:
+def get_packager(source: str, **kwargs) -> BasePackager:
     if source not in PACKAGER_REGISTRY:
         console.console.print(f'Unknown packager: {source}')
         raise typer.Exit(1)
-    return PACKAGER_REGISTRY[source]()
+    return PACKAGER_REGISTRY[source](**kwargs)
 
 
-def get_importer(source: str) -> BaseImporter:
+def get_importer(source: str, **kwargs) -> BaseImporter:
     if source not in IMPORTER_REGISTRY:
         console.console.print(f'Unknown importer: {source}')
         raise typer.Exit(1)
-    return IMPORTER_REGISTRY[source]()
+    return IMPORTER_REGISTRY[source](**kwargs)
 
 
 async def convert(
@@ -44,8 +45,9 @@ async def convert(
     into_dir: pathlib.Path,
     source: str,
     destination: str,
+    main_language: Optional[str] = None,
 ) -> pathlib.Path:
-    importer = get_importer(source)
+    importer = get_importer(source, main_language=main_language)
     packager = get_packager(destination)
     await importer.import_package(pkg_dir, into_dir)
 

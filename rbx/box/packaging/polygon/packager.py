@@ -6,7 +6,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import header, package
-from rbx.box.lang import code_to_langs, is_valid_lang_code
+from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging.packager import (
     BaseContestPackager,
     BasePackager,
@@ -27,7 +27,31 @@ DAT_TEMPLATE = """
 """
 
 
+def _select_main_language(
+    names: List[polygon_schema.Name], main_language: Optional[str]
+):
+    if names:
+        if main_language is not None:
+            lang_name = code_to_lang(main_language)
+            found = False
+            for name in names:
+                if name.language == lang_name:
+                    name.main = True
+                    found = True
+                    break
+            if not found:
+                console.console.print(
+                    f'[error]Main language [item]{main_language}[/item] not found.[/error]'
+                )
+                raise typer.Exit(1)
+        else:
+            names[0].main = True
+
+
 class PolygonPackager(BasePackager):
+    def __init__(self, main_language: Optional[str] = None):
+        self.main_language = main_language
+
     @classmethod
     def task_types(cls) -> List[TaskType]:
         return [TaskType.BATCH, TaskType.COMMUNICATION]
@@ -49,13 +73,17 @@ class PolygonPackager(BasePackager):
                 raise typer.Exit(1)
 
     def _get_names(self) -> List[polygon_schema.Name]:
-        return [
+        names = [
             polygon_schema.Name(
                 language=code_to_langs([lang])[0],
                 value=self.get_statement_for_language(lang).title,
             )
             for lang in self.languages()
         ]
+
+        _select_main_language(names, self.main_language)
+
+        return names
 
     def _get_checker(self) -> polygon_schema.Checker:
         # TODO: support other checker languages
@@ -210,6 +238,9 @@ class PolygonPackager(BasePackager):
 
 
 class PolygonContestPackager(BaseContestPackager):
+    def __init__(self, main_language: Optional[str] = None):
+        self.main_language = main_language
+
     @classmethod
     def name(cls) -> str:
         return 'polygon'
@@ -223,8 +254,7 @@ class PolygonContestPackager(BaseContestPackager):
             for lang in self.languages()
             if is_valid_lang_code(lang)
         ]
-        if names:
-            names[0].main = True
+        _select_main_language(names, self.main_language)
         return names
 
     def _process_statement(
@@ -320,4 +350,4 @@ class PolygonContestPackager(BaseContestPackager):
         # Zip all.
         shutil.make_archive(str(build_path / 'contest'), 'zip', into_path)
 
-        return pathlib.Path('contest.zip')
+        return build_path / 'contest.zip'
