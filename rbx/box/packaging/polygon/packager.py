@@ -155,6 +155,7 @@ class PolygonPackager(BasePackager):
         pkg = package.find_problem_package_or_die()
 
         problem = polygon_schema.Problem(
+            short_name=pkg.name,
             names=self._get_names(),
             checker=self._get_checker(),
             judging=self._get_judging(),

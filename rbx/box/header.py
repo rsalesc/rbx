@@ -16,6 +16,11 @@ def get_header() -> pathlib.Path:
 
 
 def generate_header():
+    override_header = pathlib.Path('rbx.override.h')
+    if override_header.is_file():
+        pathlib.Path('rbx.h').write_bytes(override_header.read_bytes())
+        return
+
     with importlib.resources.as_file(
         importlib.resources.files('rbx') / 'resources' / 'templates' / 'rbx.h'
     ) as file:

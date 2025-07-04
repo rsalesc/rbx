@@ -1,27 +1,40 @@
 import functools
-from typing import List
+from typing import Dict, List
 
 import iso639
 
-from rbx import console
+
+@functools.cache
+def _get_lowercase_name_mapping() -> Dict[str, iso639.Lang]:
+    res = {}
+    for lang in iso639.iter_langs():
+        res[lang.name.lower()] = lang
+    return res
+
+
+def _get_lang_name(lang: str) -> str:
+    mapping = _get_lowercase_name_mapping()
+    if lang.lower() in mapping:
+        return mapping[lang.lower()].name
+    return lang
+
+
+def code_to_lang(lang: str) -> str:
+    return iso639.Lang(lang).name.lower()
 
 
 def code_to_langs(langs: List[str]) -> List[str]:
-    return [iso639.Language.from_part1(lang).name.lower() for lang in langs]
+    return [code_to_lang(lang) for lang in langs]
 
 
 @functools.cache
 def is_valid_lang_code(lang: str) -> bool:
-    try:
-        code_to_langs([lang])
-    except iso639.LanguageNotFoundError:
-        console.console.print(
-            f'[warning]Language [item]{lang}[/item] is being skipped because it is not a iso639 language.[/warning]'
-        )
-        return False
+    return iso639.is_language(lang)
 
-    return True
+
+def lang_to_code(lang: str) -> str:
+    return iso639.Lang(_get_lang_name(lang)).pt1
 
 
 def langs_to_code(langs: List[str]) -> List[str]:
-    return [iso639.Language.from_name(lang).part1 for lang in langs]
+    return [lang_to_code(lang) for lang in langs]

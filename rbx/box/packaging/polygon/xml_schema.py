@@ -10,7 +10,7 @@ class Name(BaseXmlModel):
 
 
 class Statement(BaseXmlModel):
-    charset: Optional[Literal['UTF-8']] = attr(default=None)
+    charset: Optional[str] = attr(default=None)
 
     language: str = attr()
 
@@ -43,9 +43,12 @@ class Testset(BaseXmlModel):
     size: int = element('test-count', default=None)
 
     inputPattern: str = element('input-path-pattern')
-    answerPattern: str = element('answer-path-pattern')
+    outputPattern: Optional[str] = element('output-path-pattern', default=None)
+    answerPattern: Optional[str] = element('answer-path-pattern', default=None)
 
-    tests: List[Test] = wrapped('tests', element(tag='test'), default_factory=list)
+    tests: List[Test] = wrapped(
+        'tests', element(tag='test', default=None), default_factory=list
+    )
 
 
 class Judging(BaseXmlModel):
@@ -56,7 +59,7 @@ class Judging(BaseXmlModel):
 
 
 class Checker(BaseXmlModel):
-    name: str = attr()
+    name: Optional[str] = attr(default=None)
     type: Literal['testlib'] = attr()
     source: File = element()
     binary: Optional[File] = element(default=None)
@@ -70,6 +73,8 @@ class Interactor(BaseXmlModel):
 
 
 class Problem(BaseXmlModel, tag='problem'):
+    short_name: str = attr('short-name')
+
     names: List[Name] = wrapped('names', element(tag='name'), default_factory=list)
 
     statements: List[Statement] = wrapped(
@@ -86,9 +91,13 @@ class Problem(BaseXmlModel, tag='problem'):
         default=[],
     )
 
-    checker: Checker = wrapped('assets', element(tag='checker'))
+    checker: Optional[Checker] = wrapped(
+        'assets', element(tag='checker', default=None), default=None
+    )
 
-    interactor: Optional[Interactor] = wrapped('assets', element(tag='interactor'))
+    interactor: Optional[Interactor] = wrapped(
+        'assets', element(tag='interactor', default=None), default=None
+    )
 
 
 class ContestProblem(BaseXmlModel):

@@ -999,6 +999,18 @@ files = [
 ]
 
 [[package]]
+name = "iso639-lang"
+version = "2.6.1"
+description = "A fast, comprehensive, ISO 639 library."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "iso639_lang-2.6.1-py3-none-any.whl", hash = "sha256:6f41183aafc84716c3d559f57c036b04c3262899b89f7eadd68c397cce1ab572"},
+    {file = "iso639_lang-2.6.1.tar.gz", hash = "sha256:5e960467cd95b7e4417d48792745a51457be0346417a3cde40a75cfc142e1a37"},
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 description = "A very fast and expressive template engine."
@@ -3445,4 +3457,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.1"
-content-hash = "e85951248f67b1141dadc3ef1833e4ec350d9e50592c3b7751b4fbc6788cc9de"
+content-hash = "4997f907d656b75fc3d512640700a9bbb38f1fbc16e34179791590b6a37d7c3c"

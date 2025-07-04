@@ -8,12 +8,12 @@ import typer
 from rbx import annotations, console
 from rbx.box import cd, environment, package
 from rbx.box.contest import build_contest_statements, contest_package
-from rbx.box.packaging.main import run_packager
 from rbx.box.packaging.packager import (
     BaseContestPackager,
     BasePackager,
     BuiltContestStatement,
     BuiltProblemPackage,
+    run_packager,
 )
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)

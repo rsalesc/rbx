@@ -1,13 +1,19 @@
 import dataclasses
 import pathlib
+import tempfile
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import List, Tuple, Type
 
-from rbx.box import naming, package
+import typer
+
+from rbx import console
+from rbx.box import environment, header, naming, package
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
+from rbx.box.formatting import href
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.schema import Package, TaskType, Testcase, TestcaseGroup
+from rbx.box.statements.build_statements import build_statement
 from rbx.box.statements.schema import Statement, StatementType
 
 
@@ -127,3 +133,54 @@ class BaseContestPackager(ABC):
             if statement.language == lang:
                 return statement
         raise
+
+
+async def run_packager(
+    packager_cls: Type[BasePackager],
+    verification: environment.VerificationParam,
+    **kwargs,
+) -> pathlib.Path:
+    from rbx.box import builder
+
+    header.generate_header()
+
+    if not await builder.verify(verification=verification):
+        console.console.print(
+            '[error]Build or verification failed, check the report.[/error]'
+        )
+        raise typer.Exit(1)
+
+    pkg = package.find_problem_package_or_die()
+
+    if pkg.type not in packager_cls.task_types():
+        console.console.print(
+            f'[error]Packager [item]{packager_cls.name()}[/item] does not support task type [item]{pkg.type}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+
+    packager = packager_cls(**kwargs)
+
+    statement_types = packager.statement_types()
+    built_statements = []
+
+    for statement_type in statement_types:
+        languages = packager.languages()
+        for language in languages:
+            statement = packager.get_statement_for_language(language)
+            statement_path = build_statement(statement, pkg, statement_type)
+            built_statements.append(
+                BuiltStatement(statement, statement_path, statement_type)
+            )
+
+    console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
+
+    with tempfile.TemporaryDirectory() as td:
+        result_path = packager.package(
+            package.get_build_path(), pathlib.Path(td), built_statements
+        )
+
+    console.console.print(
+        f'[success]Problem packaged for [item]{packager.name()}[/item]![/success]'
+    )
+    console.console.print(f'Package was saved at {href(result_path)}')
+    return result_path
