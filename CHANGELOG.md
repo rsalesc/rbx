@@ -1,3 +1,12 @@
+## 0.13.1 (2025-07-04)
+
+### Fix
+
+- **stress**: fix stress name
+- add contest-level packager for boca
+- **preset**: remove generation section in default preset yaml
+- ensure interactor and main are only compiled when output generation is necessary
+
 ## 0.13.0 (2025-07-04)
 
 ### Feat
