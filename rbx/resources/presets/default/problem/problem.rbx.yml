@@ -5,9 +5,6 @@ timeLimit: 1000 # ms
 memoryLimit: 256 # MiB
 checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
 validator: {path: "validator.cpp"}
-generators:
-  - path: "gens/gen.cpp"
-    name: "gen"
 testcases:
   - name: "samples"
     testcaseGlob: "manual_tests/samples/*.in" # Pattern for the sample inputs.
@@ -39,7 +36,7 @@ statements:
 stresses:
   - name: "stress"
     generator:
-      name: "gen"
+      name: "gens/gen"
       args: "[1..<MAX_N>] @" # `@` generates a random string
     finder: "[sols/wa.cpp] ~ INCORRECT"
 unitTests:

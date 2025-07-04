@@ -1,4 +1,2 @@
-gen 123456
-gen 12345678
-# Obtained by running `rbx stress -g 'gen [1..<MAX_N>] @' -f '[sols/wa.cpp] ~ INCORRECT'`
-gen 149403982 b139a2bd
+gens/gen 123456
+gens/gen 12345678
