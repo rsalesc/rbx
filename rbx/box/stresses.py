@@ -67,7 +67,7 @@ async def run_stress(
             raise typer.Exit(1)
         generator = generators.get_call_from_string(generator_call)
         stress = Stress(
-            name=f'{generator.name}',
+            name=f'{pathlib.Path(generator.name).stem}',
             generator=generator,
             finder=finder,
         )
