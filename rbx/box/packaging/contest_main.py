@@ -13,6 +13,7 @@ from rbx.box.packaging.packager import (
     BasePackager,
     BuiltContestStatement,
     BuiltProblemPackage,
+    ContestZipper,
     run_packager,
 )
 
@@ -97,6 +98,26 @@ async def polygon(
         PolygonPackager,
         verification=verification,
         main_language=language,
+    )
+
+
+@app.command('boca', help='Build a contest package for BOCA.')
+@contest_package.within_contest
+@syncer.sync
+async def boca(
+    verification: environment.VerificationParam,
+):
+    from rbx.box.packaging.boca.packager import BocaPackager
+
+    class BocaContestPackager(ContestZipper):
+        def __init__(self, **kwargs):
+            super().__init__('boca-contest', zip_inner=True, **kwargs)
+
+        def name(self) -> str:
+            return 'boca'
+
+    await run_contest_packager(
+        BocaContestPackager, BocaPackager, verification=verification
     )
 
 

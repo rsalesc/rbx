@@ -1,5 +1,6 @@
 import dataclasses
 import pathlib
+import shutil
 import tempfile
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Type
@@ -133,6 +134,41 @@ class BaseContestPackager(ABC):
             if statement.language == lang:
                 return statement
         raise
+
+
+class ContestZipper(BaseContestPackager):
+    def __init__(
+        self, filename: str, zip_inner: bool = False, prefer_shortname: bool = True
+    ):
+        super().__init__()
+        self.zip_inner = zip_inner
+        self.filename = filename
+        self.prefer_shortname = prefer_shortname
+
+    def package(
+        self,
+        built_packages: List[BuiltProblemPackage],
+        build_path: pathlib.Path,
+        into_path: pathlib.Path,
+        built_statements: List[BuiltContestStatement],
+    ) -> pathlib.Path:
+        for built_package in built_packages:
+            if self.prefer_shortname:
+                pkg_path = into_path / 'problems' / built_package.problem.short_name
+            else:
+                pkg_path = into_path / 'problems' / built_package.package.name
+
+            if self.zip_inner:
+                pkg_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(built_package.path, pkg_path.with_suffix('.zip'))
+            else:
+                pkg_path.mkdir(parents=True, exist_ok=True)
+                shutil.unpack_archive(built_package.path, pkg_path, format='zip')
+
+        # Zip all.
+        shutil.make_archive(str(build_path / self.filename), 'zip', into_path)
+
+        return build_path / pathlib.Path(self.filename).with_suffix('.zip')
 
 
 async def run_packager(
