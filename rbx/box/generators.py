@@ -97,7 +97,10 @@ def _copy_testcase_over(
 
 
 def _copy_testcase_output_over(
-    src_output_path: pathlib.Path, dest_output_path: pathlib.Path, suffix: str
+    src_output_path: pathlib.Path,
+    dest_output_path: pathlib.Path,
+    suffix: str,
+    dry_run: bool = False,
 ) -> bool:
     dest_output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -105,39 +108,62 @@ def _copy_testcase_output_over(
     if not src_path.is_file():
         return False
 
-    _check_crlf(src_path)
+    if dry_run:
+        return True
 
+    _check_crlf(src_path)
     shutil.copy(str(src_path), str(dest_output_path.with_suffix(suffix)))
     return True
 
 
 def _copy_testcase_outputs_over(
-    testcase: Testcase, dest: Testcase, pipes: bool = False
+    testcase: Testcase, dest: Testcase, pipes: bool = False, dry_run: bool = False
 ):
     assert dest.outputPath is not None
-    dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
 
     has_copied = False
 
     if testcase.outputPath is not None and testcase.outputPath.is_file():
-        _check_crlf(testcase.outputPath)
-        shutil.copy(str(testcase.outputPath), str(dest.outputPath))
+        if not dry_run:
+            _check_crlf(testcase.outputPath)
+            shutil.copy(str(testcase.outputPath), str(dest.outputPath))
         has_copied = True
 
     if not pipes:
         return has_copied
 
     reference_path = testcase.outputPath or testcase.inputPath
-    if _copy_testcase_output_over(reference_path, dest.outputPath, '.pin'):
+    if _copy_testcase_output_over(
+        reference_path, dest.outputPath, '.pin', dry_run=dry_run
+    ):
         has_copied = True
 
-    if _copy_testcase_output_over(reference_path, dest.outputPath, '.pout'):
+    if _copy_testcase_output_over(
+        reference_path, dest.outputPath, '.pout', dry_run=dry_run
+    ):
         has_copied = True
 
-    if _copy_testcase_output_over(reference_path, dest.outputPath, '.pio'):
+    if _copy_testcase_output_over(
+        reference_path, dest.outputPath, '.pio', dry_run=dry_run
+    ):
         has_copied = True
 
     return has_copied
+
+
+def _needs_output(generation_entries: List[GenerationTestcaseEntry]) -> bool:
+    for entry in generation_entries:
+        tc = entry.metadata.copied_to
+        if not tc.inputPath.is_file():
+            continue
+        if entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
+            entry.metadata.copied_from, tc, dry_run=True
+        ):
+            continue
+        return True
+    return False
 
 
 def get_all_built_testcases() -> Dict[str, List[Testcase]]:
@@ -395,17 +421,20 @@ async def generate_outputs_for_testcases(
         if progress is not None:
             progress.step()
 
+    generation_entries = await extract_generation_testcases(entries)
+    needs_output = _needs_output(generation_entries)
+
     main_solution = package.get_main_solution()
     solution_digest: Optional[str] = None
 
     pkg = package.find_problem_package_or_die()
 
-    if pkg.type == TaskType.COMMUNICATION:
+    if pkg.type == TaskType.COMMUNICATION and needs_output:
         interactor_digest = checkers.compile_interactor(progress)
     else:
         interactor_digest = None
 
-    if main_solution is not None:
+    if main_solution is not None and needs_output:
         if progress:
             progress.update('Compiling main solution...')
         try:
@@ -417,8 +446,6 @@ async def generate_outputs_for_testcases(
     gen_runs_dir = package.get_problem_runs_dir() / '.gen'
     shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
     gen_runs_dir.mkdir(parents=True, exist_ok=True)
-
-    generation_entries = await extract_generation_testcases(entries)
 
     for entry in generation_entries:
         tc = entry.metadata.copied_to
@@ -434,6 +461,7 @@ async def generate_outputs_for_testcases(
             step()
             continue
 
+        assert needs_output
         if (
             main_solution is None or solution_digest is None
         ) and not tc.outputPath.is_file():
