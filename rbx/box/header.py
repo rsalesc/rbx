@@ -1,6 +1,7 @@
 import functools
 import importlib
 import importlib.resources
+import json
 import pathlib
 from typing import Callable, Dict, Type
 
@@ -40,12 +41,21 @@ def _preprocess_header(header: str) -> str:
     )
 
 
+def _string_repr(s):
+    return json.dumps(s)
+
+
 def _get_string_var_block() -> str:
-    return _get_var_block(_get_vars_of_type(str, lambda x: f'{x:!r}'))
+    return _get_var_block(_get_vars_of_type(str, _string_repr))
 
 
 def _get_int_var_block() -> str:
-    return _get_var_block(_get_vars_of_type(int, lambda x: str(x)))
+    def _transform(x: Primitive) -> str:
+        if isinstance(x, bool):
+            return str(int(x))
+        return str(x)
+
+    return _get_var_block(_get_vars_of_type(int, _transform))
 
 
 def _get_float_var_block() -> str:
@@ -56,16 +66,14 @@ def _get_bool_var_block() -> str:
     return _get_var_block(_get_vars_of_type(bool, lambda x: 'true' if x else 'false'))
 
 
-def _get_vars_of_type(
-    type: Type, transform: Callable[[Primitive], str]
-) -> Dict[str, str]:
+def _get_vars_of_type(t: Type, transform: Callable[[Primitive], str]) -> Dict[str, str]:
     pkg = package.find_problem_package_or_die()
     vars = pkg.expanded_vars
-    return {
-        name: transform(value)
-        for name, value in vars.items()
-        if isinstance(value, type)
-    }
+
+    def is_valid(value: Primitive) -> bool:
+        return isinstance(value, t)
+
+    return {name: transform(value) for name, value in vars.items() if is_valid(value)}
 
 
 def _get_var_block(mappings: Dict[str, str]) -> str:
