@@ -9,7 +9,6 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box.tooling import converter
 from rbx.box.tooling.boca import main as boca_main
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -33,6 +32,8 @@ async def convert(
         typer.Option('--language', '-l', help='The main language of the problem.'),
     ] = None,
 ):
+    from rbx.box.tooling import converter
+
     if pkg.suffix == '.zip':
         temp_dir = tempfile.TemporaryDirectory()
         with zipfile.ZipFile(pkg, 'r') as zip_ref:
