@@ -2467,21 +2467,6 @@ files = [
 six = ">=1.5"
 
 [[package]]
-name = "python-iso639"
-version = "2024.10.22"
-description = "ISO 639 language codes, names, and other associated information"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "python_iso639-2024.10.22-py3-none-any.whl", hash = "sha256:02d3ce2e01c6896b30b9cbbd3e1c8ee0d7221250b5d63ea9803e0d2a81fd1047"},
-    {file = "python_iso639-2024.10.22.tar.gz", hash = "sha256:750f21b6a0bc6baa24253a3d8aae92b582bf93aa40988361cd96852c2c6d9a52"},
-]
-
-[package.extras]
-dev = ["black (==24.10.0)", "build (==1.2.1)", "flake8 (==7.1.1)", "pytest (==8.3.3)", "requests (==2.32.3)", "twine (==5.1.1)"]
-
-[[package]]
 name = "pytz"
 version = "2025.2"
 description = "World timezone definitions, modern and historical"
@@ -3457,4 +3442,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.1"
-content-hash = "4997f907d656b75fc3d512640700a9bbb38f1fbc16e34179791590b6a37d7c3c"
+content-hash = "c6581c14a156c132406c1a43bbb98f9e43c7b7f47db9619e02440a6f43694182"
