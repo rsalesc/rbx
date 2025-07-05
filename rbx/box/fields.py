@@ -1,4 +1,4 @@
-from typing import TypeVar
+from typing import Dict, TypeVar, Union
 
 from deepmerge import always_merger
 from pydantic import BaseModel, Field
@@ -33,3 +33,27 @@ def merge_pydantic_models(base: T, nxt: T) -> T:
     nxt_dict = nxt.model_dump(exclude_unset=True)
     merged_dict = always_merger.merge(base_dict, nxt_dict)
     return base.model_validate(merged_dict)
+
+
+Primitive = Union[str, int, float, bool]
+
+
+def expand_var(value: Primitive) -> Primitive:
+    if not isinstance(value, str):
+        return value
+    if value.startswith('\\'):
+        return value[1:]
+    if not value.startswith('py`') or not value.endswith('`'):
+        return value
+    res = eval(value[3:-1])
+    for supported_type in [str, int, float, bool]:
+        if isinstance(res, supported_type):
+            return res
+
+    raise TypeError(
+        f'Variable with backticks should evaluate to a primitive Python type: {value}'
+    )
+
+
+def expand_vars(vars: Dict[str, Primitive]) -> Dict[str, Primitive]:
+    return {key: expand_var(value) for key, value in vars.items()}

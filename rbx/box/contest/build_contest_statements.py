@@ -10,6 +10,7 @@ from rbx import console, testing_utils, utils
 from rbx.box import cd, package
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
+from rbx.box.fields import Primitive
 from rbx.box.formatting import href
 from rbx.box.schema import Package, Testcase
 from rbx.box.statements import build_statements, latex
@@ -72,14 +73,21 @@ def get_statement_builder_problems(
 
 
 def get_statement_builder_contest(
+    contest: Contest,
     statement: ContestStatement,
     extracted_problems: List[ExtractedProblem],
+    custom_vars: Optional[Dict[str, Primitive]] = None,
 ) -> StatementBuilderContest:
     return StatementBuilderContest(
         title=statement.title,
         location=statement.location,
         date=statement.date,
         problems=get_statement_builder_problems(extracted_problems),
+        vars={
+            **contest.expanded_vars,
+            **statement.expanded_vars,
+            **(custom_vars or {}),
+        },
     )
 
 
@@ -241,10 +249,13 @@ def build_contest_only(
                     languages=get_environment_languages_for_statement(),
                     params=params,
                     root=pathlib.Path(td),
-                    custom_vars=custom_vars,
-                    vars={**contest.expanded_vars, **statement.expanded_vars},
                 ),
-                item=get_statement_builder_contest(statement, extracted_problems),
+                item=get_statement_builder_contest(
+                    contest,
+                    statement,
+                    extracted_problems,
+                    custom_vars=custom_vars,
+                ),
                 verbose=False,
             )
 
@@ -326,7 +337,9 @@ def build_statement_rooted(
     last_content = joiner.build(
         last_content,
         context=joiner_context,
-        contest=get_statement_builder_contest(statement, extracted_problems),
+        contest=get_statement_builder_contest(
+            contest, statement, extracted_problems, custom_vars=custom_vars
+        ),
     )
     last_output = joiner.output_type()
 

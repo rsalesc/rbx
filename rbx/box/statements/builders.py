@@ -11,7 +11,8 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box.schema import Package, Primitive, Testcase
+from rbx.box.fields import Primitive
+from rbx.box.schema import Package, Testcase
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
     render_latex_template,
@@ -48,8 +49,6 @@ class StatementBuilderContext:
     languages: List[StatementCodeLanguage]
     params: ConversionStep
     root: pathlib.Path
-    custom_vars: Optional[Dict[str, Any]] = None
-    vars: Optional[Dict[str, Primitive]] = None
 
     def build_jinja_kwargs(self) -> Dict[str, Any]:
         res = {
@@ -57,9 +56,6 @@ class StatementBuilderContext:
             'languages': self.languages,
             'keyed_languages': {lang.id: lang for lang in self.languages},
         }
-        if self.vars is not None or self.custom_vars is not None:
-            res['vars'] = self.vars or {}
-            res['vars'].update(self.custom_vars or {})
         return res
 
 
@@ -125,12 +121,14 @@ class StatementBuilderProblem(StatementBuilderItem):
     # Will only be filled by contests.
     io_path: Optional[pathlib.Path] = None
 
+    vars: Optional[Dict[str, Primitive]] = None
+
     def build_inner_jinja_kwargs(self) -> Dict[str, Any]:
         kwargs = {
             'package': self.package,
             'statement': self.statement,
             'samples': self.samples,
-            'vars': JinjaDictWrapper(self.package.expanded_vars, key='vars'),
+            'vars': JinjaDictWrapper(self.vars or {}, key='vars'),
             'title': self.statement.title or self.package.name,
         }
         if self.short_name is not None:
@@ -152,6 +150,7 @@ class StatementBuilderContest(StatementBuilderItem):
     location: Optional[str] = None
     date: Optional[str] = None
     problems: List[StatementBuilderProblem] = dataclasses.field(default_factory=list)
+    vars: Optional[Dict[str, Primitive]] = None
 
     def build_inner_jinja_kwargs(self) -> Dict[str, Any]:
         res = {'title': self.title}
@@ -167,6 +166,7 @@ class StatementBuilderContest(StatementBuilderItem):
             'problems': [
                 problem.build_inner_jinja_kwargs() for problem in self.problems
             ],
+            'vars': JinjaDictWrapper(self.vars or {}, key='vars'),
         }
         return res
 

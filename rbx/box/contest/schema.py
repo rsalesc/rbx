@@ -3,8 +3,7 @@ from typing import Annotated, Dict, List, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from rbx.box.fields import FNameField, NameField
-from rbx.box.schema import Primitive, expand_var
+from rbx.box.fields import FNameField, NameField, Primitive, expand_var
 from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import (
     ConversionStep,

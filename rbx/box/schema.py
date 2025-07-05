@@ -3,18 +3,16 @@ from __future__ import annotations
 import os
 import pathlib
 import re
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import NameField
+from rbx.box.fields import NameField, Primitive, expand_vars
 from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import Statement
 from rbx.grading.steps import Outcome
-
-Primitive = Union[str, int, float, bool]
 
 
 def _check_oneof(model_obj: BaseModel, fields: List[str]):
@@ -28,27 +26,6 @@ def _check_oneof(model_obj: BaseModel, fields: List[str]):
         f'fields {has} were specified at the same time '
         'in a testgroup; only one of them can be specified'
     )
-
-
-def expand_var(value: Primitive) -> Primitive:
-    if not isinstance(value, str):
-        return value
-    if value.startswith('\\'):
-        return value[1:]
-    if not value.startswith('py`') or not value.endswith('`'):
-        return value
-    res = eval(value[3:-1])
-    for supported_type in [str, int, float, bool]:
-        if isinstance(res, supported_type):
-            return res
-
-    raise TypeError(
-        f'Variable with backticks should evaluate to a primitive Python type: {value}'
-    )
-
-
-def expand_vars(vars: Dict[str, Primitive]) -> Dict[str, Primitive]:
-    return {key: expand_var(value) for key, value in vars.items()}
 
 
 def _represents_int(s: str) -> bool:

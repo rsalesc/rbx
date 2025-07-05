@@ -5,7 +5,7 @@ import pathlib
 from typing import Callable, Dict, Type
 
 from rbx.box import package
-from rbx.box.schema import Primitive
+from rbx.box.fields import Primitive
 
 
 @functools.cache

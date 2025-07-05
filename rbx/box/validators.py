@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import package
 from rbx.box.code import SanitizationLevel, compile_item, run_item
-from rbx.box.schema import CodeItem, Primitive
+from rbx.box.fields import Primitive
+from rbx.box.schema import CodeItem
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases_from_groups,

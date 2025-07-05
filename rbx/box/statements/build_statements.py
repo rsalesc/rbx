@@ -262,7 +262,6 @@ def build_statement_bytes(
                     languages=get_environment_languages_for_statement(),
                     params=params,
                     root=pathlib.Path(td),
-                    custom_vars=custom_vars,
                 ),
                 item=StatementBuilderProblem(
                     package=pkg,
@@ -271,6 +270,11 @@ def build_statement_bytes(
                         get_samples() if use_samples else []
                     ),
                     short_name=short_name,
+                    vars={
+                        **pkg.expanded_vars,
+                        **statement.expanded_vars,
+                        **(custom_vars or {}),
+                    },
                 ),
                 verbose=False,
             )

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pathlib
 from enum import Enum
-from typing import Annotated, List, Literal, Optional, Union
+from typing import Annotated, Dict, List, Literal, Optional, Union
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import FNameField
+from rbx.box.fields import FNameField, Primitive, expand_var
 from rbx.box.lang import is_valid_lang_code
 
 
@@ -175,3 +175,12 @@ the statement. Files will be included in the same folder as the statement file, 
 their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
 """,
     )
+
+    vars: Dict[str, Primitive] = Field(
+        default={},
+        description='Variables to be used in the statement.',
+    )
+
+    @property
+    def expanded_vars(self) -> Dict[str, Primitive]:
+        return {key: expand_var(value) for key, value in self.vars.items()}
