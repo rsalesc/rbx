@@ -5,6 +5,7 @@ import tempfile
 from collections.abc import Iterator
 
 import pytest
+from rich.console import Console
 
 from rbx.testing_utils import get_testdata_path
 
@@ -36,3 +37,8 @@ def cleandir_with_testdata(
     testdata = testdata_path / marker.args[0]
     shutil.copytree(str(testdata), str(cleandir), dirs_exist_ok=True)
     yield cleandir
+
+
+@pytest.fixture(autouse=True)
+def rich_no_markup(monkeypatch):
+    monkeypatch.setattr('rbx.console.console', Console(soft_wrap=True, no_color=True))

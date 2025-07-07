@@ -63,13 +63,16 @@ def _warn_about_crlf(path: pathlib.Path):
 
 
 def _check_crlf(path: pathlib.Path):
+    should_fix = False
     with open(path, 'rb') as f:
         for line in f:
-            if line.endswith(b'\r\n') or line.endswith(b'\n\r'):
+            if line.endswith(b'\r\n'):
                 _warn_about_crlf(path)
+                should_fix = True
                 break
 
-    path.write_text(path.read_text().replace('\r', ''))
+    if should_fix:
+        path.write_text('\n'.join(path.read_text().splitlines()) + '\n')
 
 
 def _copy_testcase_over(

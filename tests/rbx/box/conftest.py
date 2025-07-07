@@ -7,6 +7,7 @@ import pytest
 
 from rbx import testing_utils
 from rbx.box import package
+from rbx.box.testing import testing_package
 
 
 @pytest.fixture
@@ -37,6 +38,25 @@ def pkg_from_testdata(
     yield pkg_cleandir
 
 
+@pytest.fixture
+def testing_pkg(pkg_cleandir: pathlib.Path) -> Iterator[testing_package.TestingPackage]:
+    pkg = testing_package.TestingPackage(pkg_cleandir)
+    yield pkg
+    pkg.cleanup()
+
+
 @pytest.fixture(autouse=True)
 def clear_cache():
     testing_utils.clear_all_functools_cache()
+
+
+@pytest.fixture(autouse=True)
+def precompilation_should_use_local_cache(monkeypatch):
+    monkeypatch.setattr(
+        'rbx.box.global_package.get_global_dependency_cache',
+        package.get_dependency_cache,
+    )
+    monkeypatch.setattr(
+        'rbx.box.global_package.get_global_sandbox',
+        package.get_singleton_sandbox,
+    )

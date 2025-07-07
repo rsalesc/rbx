@@ -70,6 +70,7 @@ textual-dev = "^1.6.1"
 pytest-asyncio = "^0.26.0"
 mkdocs-gen-files = "^0.5.0"
 markdown-grid-tables = "^0.5.0"
+pytest-xdist = "^3.8.0"
 
 
 [tool.commitizen]
