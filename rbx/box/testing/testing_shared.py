@@ -42,6 +42,9 @@ class TestingShared:
             filename.touch()
         return filename
 
+    def relpath(self, path: PathOrStr) -> pathlib.Path:
+        return pathlib.Path(path).relative_to(self.root)
+
     def add_from_testdata(self, path: PathOrStr, src: PathOrStr):
         testdata_path = get_testdata_path()
         testdata_file = testdata_path / src

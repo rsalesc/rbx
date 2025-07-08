@@ -1,5 +1,5 @@
 import pathlib
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from rbx import console, utils
 from rbx.box.fields import Primitive
@@ -140,28 +140,70 @@ class TestingPackage(TestingShared):
         path = self.add_file(pathlib.Path('testplan') / f'{name}.py', src)
         return path
 
-    def add_testgroup_from_glob(self, name: str, glob: str):
+    def add_testgroup_from_glob(
+        self,
+        name: str,
+        glob: str,
+        validator: Optional[PathOrStr] = None,
+        extra_validators: Optional[List[PathOrStr]] = None,
+    ):
         self.yml.testcases = self.yml.testcases + [
-            TestcaseGroup(name=name, testcaseGlob=glob)
+            TestcaseGroup(
+                name=name,
+                testcaseGlob=glob,
+                validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+                extraValidators=[
+                    CodeItem(path=pathlib.Path(v)) for v in extra_validators
+                ]
+                if extra_validators
+                else [],
+            )
         ]
         self.save()
 
-    def add_testgroup_from_plan(self, name: str, plan: str):
+    def add_testgroup_from_plan(
+        self,
+        name: str,
+        plan: str,
+        validator: Optional[PathOrStr] = None,
+        extra_validators: Optional[List[PathOrStr]] = None,
+    ):
         plan_path = self.add_testplan(name)
         plan_path.write_text(plan)
         self.yml.testcases = self.yml.testcases + [
             TestcaseGroup(
                 name=name,
                 generatorScript=CodeItem(path=plan_path),
+                validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+                extraValidators=[
+                    CodeItem(path=pathlib.Path(v)) for v in extra_validators
+                ]
+                if extra_validators
+                else [],
             )
         ]
         self.save()
 
-    def add_testgroup_from_script(self, name: str, script: str):
+    def add_testgroup_from_script(
+        self,
+        name: str,
+        script: str,
+        validator: Optional[PathOrStr] = None,
+        extra_validators: Optional[List[PathOrStr]] = None,
+    ):
         script_path = self.add_testscript(name)
         script_path.write_text(script)
         self.yml.testcases = self.yml.testcases + [
-            TestcaseGroup(name=name, generatorScript=CodeItem(path=script_path))
+            TestcaseGroup(
+                name=name,
+                generatorScript=CodeItem(path=script_path),
+                validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+                extraValidators=[
+                    CodeItem(path=pathlib.Path(v)) for v in extra_validators
+                ]
+                if extra_validators
+                else [],
+            )
         ]
         self.save()
 
