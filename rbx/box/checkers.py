@@ -196,13 +196,17 @@ async def _check(
         if result.outcome != Outcome.ACCEPTED:
             return _convert_tle(result, run_log)
 
-    pkg = package.find_problem_package_or_die()
-    output_size = program_output.stat().st_size
-    if output_size > pkg.outputLimit * 1024:
-        return CheckerResult(
-            outcome=Outcome.OUTPUT_LIMIT_EXCEEDED,
-            message=f'Output size {pkg.outputLimit}kb, limit is {output_size // 1024}kb.',
-        )
+    if (
+        run_log is not None
+        and run_log.metadata is not None
+        and run_log.metadata.limits.output is not None
+    ):
+        output_size = program_output.stat().st_size
+        if output_size > run_log.metadata.limits.output * 1024:
+            return CheckerResult(
+                outcome=Outcome.OUTPUT_LIMIT_EXCEEDED,
+                message=f'Output size {run_log.metadata.limits.output}kb, limit is {output_size // 1024}kb.',
+            )
 
     error = DigestHolder()
     inputs = [

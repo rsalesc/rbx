@@ -1,4 +1,5 @@
 import pathlib
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from rbx import console, utils
@@ -15,7 +16,17 @@ from rbx.box.schema import (
 )
 from rbx.box.testing.testing_preset import TestingPreset
 from rbx.box.testing.testing_shared import PathOrStr, TestingShared
+from rbx.grading.steps import Evaluation
 from rbx.testing_utils import print_directory_tree
+
+
+@dataclass
+class TestcaseArtifacts:
+    output: Optional[str] = None
+    log: Optional[Evaluation] = None
+    interactor_input: Optional[str] = None
+    interactor_output: Optional[str] = None
+    interactor_pipes: Optional[str] = None
 
 
 class TestingPackage(TestingShared):
@@ -209,3 +220,22 @@ class TestingPackage(TestingShared):
 
     def get_build_testgroup_path(self, name: str) -> pathlib.Path:
         return self.root / 'build' / 'tests' / name
+
+    def get_testcase_contents(self, path: pathlib.Path) -> TestcaseArtifacts:
+        contents = TestcaseArtifacts()
+        output_path = path.with_suffix('.out')
+        if output_path.exists():
+            contents.output = output_path.read_text()
+        log_path = path.with_suffix('.log')
+        if log_path.exists():
+            contents.log = Evaluation.model_validate_json(log_path.read_text())
+        interactor_input_path = path.with_suffix('.pin')
+        if interactor_input_path.exists():
+            contents.interactor_input = interactor_input_path.read_text()
+        interactor_output_path = path.with_suffix('.pout')
+        if interactor_output_path.exists():
+            contents.interactor_output = interactor_output_path.read_text()
+        interactor_pipes_path = path.with_suffix('.pio')
+        if interactor_pipes_path.exists():
+            contents.interactor_pipes = interactor_pipes_path.read_text()
+        return contents

@@ -15,6 +15,17 @@ class TestingShared:
     def __init__(self, root: PathOrStr):
         self.root = pathlib.Path(root)
         self._created_tmps = []
+        self._old_cwd = None
+
+    def __enter__(self):
+        self._old_cwd = pathlib.Path.cwd()
+        os.chdir(self.root)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._old_cwd is not None:
+            os.chdir(self._old_cwd)
+        self.cleanup()
 
     def path(self, path: PathOrStr) -> pathlib.Path:
         return self.root / path
@@ -64,3 +75,6 @@ class TestingShared:
 
     def delete_file(self, path: PathOrStr):
         self.path(path).unlink()
+
+    def copy_from(self, other: 'TestingShared'):
+        shutil.copytree(other.root, self.root, dirs_exist_ok=True)

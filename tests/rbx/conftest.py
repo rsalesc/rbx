@@ -1,7 +1,6 @@
 import os
 import pathlib
 import shutil
-import tempfile
 from collections.abc import Iterator
 
 import pytest
@@ -10,21 +9,33 @@ from rich.console import Console
 from rbx.testing_utils import get_testdata_path
 
 
+@pytest.fixture(scope='session')
+def cder():
+    class Cder:
+        def __init__(self, path: pathlib.Path):
+            self.path = path
+
+        def __enter__(self) -> None:
+            self.old_cwd = pathlib.Path.cwd()
+            os.chdir(self.path)
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            os.chdir(self.old_cwd)
+
+    yield Cder
+
+
 @pytest.fixture
 def testdata_path() -> pathlib.Path:
     return get_testdata_path()
 
 
 @pytest.fixture
-def cleandir() -> Iterator[pathlib.Path]:
-    with tempfile.TemporaryDirectory() as newpath:
-        abspath = pathlib.Path(newpath).absolute()
-        old_cwd = pathlib.Path.cwd()
-        os.chdir(newpath)
-        try:
-            yield abspath
-        finally:
-            os.chdir(str(old_cwd))
+def cleandir(tmp_path_factory, cder) -> Iterator[pathlib.Path]:
+    new_dir = tmp_path_factory.mktemp('cleandir')
+    abspath = new_dir.absolute()
+    with cder(abspath):
+        yield abspath
 
 
 @pytest.fixture
@@ -39,6 +50,15 @@ def cleandir_with_testdata(
     yield cleandir
 
 
-@pytest.fixture(autouse=True)
-def rich_no_markup(monkeypatch):
-    monkeypatch.setattr('rbx.console.console', Console(soft_wrap=True, no_color=True))
+@pytest.fixture(scope='session')
+def monkeysession():
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mpatch = MonkeyPatch()
+    yield mpatch
+    mpatch.undo()
+
+
+@pytest.fixture(autouse=True, scope='session')
+def rich_no_markup(monkeysession):
+    monkeysession.setattr('rbx.console.console', Console(soft_wrap=True, no_color=True))
