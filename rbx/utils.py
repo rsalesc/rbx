@@ -7,6 +7,7 @@ import os.path
 import pathlib
 import resource
 import subprocess
+import sys
 from typing import Any, Optional, Type, TypeVar
 
 import rich
@@ -38,6 +39,13 @@ def highlight_str(s: str) -> text.Text:
 
 def abspath(path: pathlib.Path) -> pathlib.Path:
     return pathlib.Path(os.path.abspath(path))
+
+
+def relpath(path: pathlib.Path, base: pathlib.Path) -> pathlib.Path:
+    if sys.version_info >= (3, 12):
+        return path.relative_to(base, walk_up=True)
+    else:
+        return pathlib.Path(os.path.relpath(path, base))
 
 
 def highlight_json_obj(obj: Any) -> text.Text:

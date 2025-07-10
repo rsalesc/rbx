@@ -339,9 +339,9 @@ def _copy_preset_file(
 
     # The symlink points somewhere inside the preset folder, fix the symlink.
     dst_absolute_path = utils.abspath(dst)
-    fixed_target_relative_path = target_absolute_path.relative_to(
+    fixed_target_relative_path = utils.relpath(
+        target_absolute_path,
         dst_absolute_path.parent,
-        walk_up=True,
     )
     dst.symlink_to(fixed_target_relative_path)
 
