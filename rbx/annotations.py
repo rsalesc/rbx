@@ -7,7 +7,7 @@ import typer
 import typer.core
 from typing_extensions import Annotated
 
-from rbx import config, metadata
+from rbx import config
 from rbx.config import get_config
 
 
@@ -21,10 +21,10 @@ def _get_language_default():
 
 def _get_problem_options():
     options = set()
-    all_problems = metadata.find_problems()
-    for problem in all_problems:
-        options.add(problem.code)
-        options.update(problem.aliases)
+    # all_problems = metadata.find_problems()
+    # for problem in all_problems:
+    #     options.add(problem.code)
+    #     options.update(problem.aliases)
     return sorted(options)
 
 
