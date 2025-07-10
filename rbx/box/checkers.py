@@ -5,8 +5,7 @@ from typing import List, Optional
 import typer
 
 from rbx import console
-from rbx.box import package
-from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box import code, package
 from rbx.box.schema import Testcase
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
@@ -28,7 +27,7 @@ def compile_checker(progress: Optional[StatusProgress] = None) -> str:
         progress.update('Compiling checker...')
 
     try:
-        digest = compile_item(checker, sanitized=SanitizationLevel.PREFER)
+        digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
     except Exception as e:
         console.console.print('[error]Failed compiling checker[/error]')
         raise typer.Exit(1) from e
@@ -46,7 +45,7 @@ def compile_interactor(progress: Optional[StatusProgress] = None) -> str:
         progress.update('Compiling interactor...')
 
     try:
-        digest = compile_item(interactor, sanitized=SanitizationLevel.PREFER)
+        digest = code.compile_item(interactor, sanitized=code.SanitizationLevel.PREFER)
     except Exception as e:
         console.console.print('[error]Failed compiling interactor.[/error]')
         raise typer.Exit(1) from e
@@ -223,14 +222,14 @@ async def _check(
             dest=pathlib.PosixPath('output.txt'),
         ),
     ]
-    checker_run_log = await run_item(
+    checker_run_log = await code.run_item(
         package.get_checker(),
         DigestOrSource.create(checker_digest),
         stderr=DigestOrDest.create(error),
         inputs=inputs,
         extra_args='input.txt output.txt expected.txt',
     )
-    message = package.get_digest_as_string(error.value or '') or ''
+    message = package.get_digest_as_string(error.value) or ''
 
     processed_checker_result = process_checker_run_log(checker_run_log, message)
     if processed_checker_result.outcome == Outcome.INTERNAL_ERROR:

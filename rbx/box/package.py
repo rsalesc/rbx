@@ -181,8 +181,10 @@ def get_file_cacher(root: pathlib.Path = pathlib.Path()) -> FileCacher:
 
 @functools.cache
 def get_digest_as_string(
-    digest: str, root: pathlib.Path = pathlib.Path()
+    digest: Optional[str], root: pathlib.Path = pathlib.Path()
 ) -> Optional[str]:
+    if not digest:
+        return None
     cacher = get_file_cacher(root)
     try:
         content = cacher.get_file_content(digest)

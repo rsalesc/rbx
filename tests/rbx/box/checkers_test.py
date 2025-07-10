@@ -1,15 +1,17 @@
 import pathlib
 from typing import Dict, Tuple
+from unittest import mock
 
 import pytest
+import typer
 
 from rbx.box import checkers
 from rbx.box.checkers import compile_checker
-from rbx.box.schema import Testcase
+from rbx.box.schema import CodeItem, Testcase
 from rbx.box.testing import testing_package
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
-from rbx.grading.steps import Outcome, RunLog, RunLogMetadata
+from rbx.grading.steps import DigestOrSource, Outcome, RunLog, RunLogMetadata
 
 INTERESTING_CHECKERS = [
     'checkers/checker.cpp',
@@ -470,7 +472,7 @@ async def test_program_output_is_too_large(
     assert result.outcome == Outcome.OUTPUT_LIMIT_EXCEEDED
 
 
-async def test_checker_run_log_has_fl_exitcode(
+async def test_checker_item_run_log_has_fl_exitcode(
     checker_digest_dict: Dict[str, str],
     testcase: Testcase,
     program_output: pathlib.Path,
@@ -490,7 +492,7 @@ async def test_checker_run_log_has_fl_exitcode(
     assert result.outcome == Outcome.JUDGE_FAILED
 
 
-async def test_checker_run_log_has_invalid_exitcode(
+async def test_checker_item_run_log_has_invalid_exitcode(
     checker_digest_dict: Dict[str, str],
     testcase: Testcase,
     program_output: pathlib.Path,
@@ -509,3 +511,74 @@ async def test_checker_run_log_has_invalid_exitcode(
     )
     assert result.outcome == Outcome.JUDGE_FAILED
     assert 'checker failed with unknown exit code 42' in result.message
+
+
+@mock.patch('rbx.box.code.run_item')
+async def test_checker_item_run_log_is_none(
+    mock_run_item: mock.AsyncMock,
+    checker_digest_dict: Dict[str, str],
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+) -> None:
+    checker_digest = checker_digest_dict['checkers/checker.cpp']
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('123\n')
+
+    mock_run_item.return_value = None
+
+    with pytest.raises(typer.Exit):  # noqa: F821
+        await checkers.check(
+            checker_digest,
+            run_log,
+            testcase,
+            program_output,
+        )
+
+    mock_run_item.assert_awaited_with(
+        CodeItem(
+            path=pathlib.Path('checker.cpp'),
+        ),
+        DigestOrSource.create(checker_digest),
+        stderr=mock.ANY,
+        inputs=mock.ANY,
+        extra_args=mock.ANY,
+    )
+
+
+@mock.patch('rbx.box.code.run_item')
+async def test_checker_item_has_sandbox_error(
+    mock_run_item: mock.AsyncMock,
+    checker_digest_dict: Dict[str, str],
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+) -> None:
+    checker_digest = checker_digest_dict['checkers/checker.cpp']
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('123\n')
+
+    mock_run_item.return_value = RunLog(
+        exitcode=0,
+        exitstatus=SandboxBase.EXIT_SANDBOX_ERROR,
+    )
+
+    with pytest.raises(typer.Exit):  # noqa: F821
+        await checkers.check(
+            checker_digest,
+            run_log,
+            testcase,
+            program_output,
+        )
+
+    mock_run_item.assert_awaited_with(
+        CodeItem(
+            path=pathlib.Path('checker.cpp'),
+        ),
+        DigestOrSource.create(checker_digest),
+        stderr=mock.ANY,
+        inputs=mock.ANY,
+        extra_args=mock.ANY,
+    )
