@@ -163,6 +163,14 @@ def process_checker_run_log(
 
     if checker_run_log is None:
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
+    if checker_run_log.exitstatus not in [
+        SandboxBase.EXIT_OK,
+        SandboxBase.EXIT_NONZERO_RETURN,
+    ]:
+        return CheckerResult(
+            outcome=Outcome.JUDGE_FAILED,
+            message=f'checker failed with exit status {checker_run_log.exitstatus}: {message}',
+        )
     if not _is_checker_exitcode(checker_run_log.exitcode):
         return CheckerResult(
             outcome=Outcome.JUDGE_FAILED,
