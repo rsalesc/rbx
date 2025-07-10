@@ -4,7 +4,7 @@ import shutil
 import tempfile
 from typing import Optional, Union
 
-from rbx import utils
+from rbx import testing_utils, utils
 from rbx.config import get_resources_file
 from rbx.testing_utils import get_testdata_path
 
@@ -20,6 +20,7 @@ class TestingShared:
     def __enter__(self):
         self._old_cwd = pathlib.Path.cwd()
         os.chdir(self.root)
+        testing_utils.clear_all_functools_cache()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -77,4 +78,4 @@ class TestingShared:
         self.path(path).unlink()
 
     def copy_from(self, other: 'TestingShared'):
-        shutil.copytree(other.root, self.root, dirs_exist_ok=True)
+        shutil.copytree(other.root, self.root, dirs_exist_ok=True, symlinks=True)

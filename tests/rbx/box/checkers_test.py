@@ -1,5 +1,5 @@
 import pathlib
-from typing import Dict, Tuple
+from typing import Dict, Iterator, Tuple
 from unittest import mock
 
 import pytest
@@ -20,27 +20,26 @@ INTERESTING_CHECKERS = [
 ]
 
 
-@pytest.fixture(scope='package')
-def pkg_with_compiled_checker(tmp_path_factory, pkg_cder):
+@pytest.fixture(scope='module')
+def pkg_with_compiled_checker(tmp_path_factory):
     pkg_dir = tmp_path_factory.mktemp('pkg')
-    with pkg_cder(pkg_dir.absolute()):
-        testing_pkg = testing_package.TestingPackage(pkg_dir.absolute())
+    with testing_package.TestingPackage(pkg_dir.absolute()) as testing_pkg:
         checkers = {}
         for checker in INTERESTING_CHECKERS:
             testing_pkg.set_checker('checker.cpp', src=checker)
             checkers[checker] = compile_checker()
         yield testing_pkg, checkers
-        testing_pkg.cleanup()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def checker_pkg(
     pkg_with_compiled_checker: Tuple[testing_package.TestingPackage, str],
     testing_pkg: testing_package.TestingPackage,
-) -> testing_package.TestingPackage:
+) -> Iterator[testing_package.TestingPackage]:
     pkg, _ = pkg_with_compiled_checker
     testing_pkg.copy_from(pkg)
-    return testing_pkg
+    with testing_pkg:
+        yield testing_pkg
 
 
 @pytest.fixture

@@ -8,6 +8,7 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
+from sqlitedict import SqliteDict
 
 from rbx import console
 from rbx.grading import grading_context
@@ -334,9 +335,9 @@ class DependencyCache:
     def __init__(self, root: pathlib.Path, cacher: FileCacher):
         self.root = root
         self.cacher = cacher
-        self.db = shelve.open(self._cache_name())
+        self.db = SqliteDict(self._cache_name(), autocommit=True)
         tmp_dir = pathlib.Path(tempfile.mkdtemp())
-        self.transient_db = shelve.open(str(tmp_dir / '.cache_db'))
+        self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
         atexit.register(lambda: shutil.rmtree(tmp_dir))

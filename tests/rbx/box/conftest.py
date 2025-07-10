@@ -40,14 +40,16 @@ def pkg_cleandir(cleandir: pathlib.Path, pkg_cder) -> Iterator[pathlib.Path]:
 
 @pytest.fixture
 def pkg_from_testdata(
-    request, testdata_path: pathlib.Path, pkg_cleandir: pathlib.Path
+    request, testdata_path: pathlib.Path, pkg_cleandir: pathlib.Path, pkg_cder
 ) -> Iterator[pathlib.Path]:
     marker = request.node.get_closest_marker('test_pkg')
     if marker is None:
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
     shutil.copytree(str(testdata), str(pkg_cleandir), dirs_exist_ok=True)
-    yield pkg_cleandir
+    with pkg_cder(pkg_cleandir.absolute()):
+        testing_utils.clear_all_functools_cache()
+        yield pkg_cleandir
 
 
 @pytest.fixture(scope='session')
@@ -64,23 +66,14 @@ def testing_pkg_factory(tmp_path_factory):
 
 @pytest.fixture
 def testing_pkg(pkg_cleandir: pathlib.Path) -> Iterator[testing_package.TestingPackage]:
-    pkg = testing_package.TestingPackage(pkg_cleandir)
-    yield pkg
-    pkg.cleanup()
-
-
-@pytest.fixture(autouse=True)
-def clear_cache():
-    testing_utils.clear_all_functools_cache()
+    with testing_package.TestingPackage(pkg_cleandir) as pkg:
+        yield pkg
 
 
 @pytest.fixture(autouse=True, scope='session')
-def precompilation_should_use_local_cache(monkeysession):
+def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
+    cache_dir = tmp_path_factory.mktemp('cache')
     monkeysession.setattr(
-        'rbx.box.global_package.get_global_dependency_cache',
-        package.get_dependency_cache,
-    )
-    monkeysession.setattr(
-        'rbx.box.global_package.get_global_sandbox',
-        package.get_singleton_sandbox,
+        'rbx.box.global_package.get_global_cache_dir_path',
+        lambda: cache_dir / '.box',
     )

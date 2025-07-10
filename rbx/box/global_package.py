@@ -29,9 +29,13 @@ def is_cache_valid(cache_dir: pathlib.Path) -> bool:
     return True
 
 
+def get_global_cache_dir_path() -> pathlib.Path:
+    return get_app_path() / '.box'
+
+
 @functools.cache
 def get_global_cache_dir() -> pathlib.Path:
-    cache_dir = get_app_path() / '.box'
+    cache_dir = get_global_cache_dir_path()
     cache_dir.mkdir(parents=True, exist_ok=True)
     fingerprint_file = cache_dir / 'fingerprint'
     if not fingerprint_file.is_file():

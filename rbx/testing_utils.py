@@ -47,7 +47,7 @@ def walk_directory(
                 style=style,
                 guide_style=style,
             )
-            walk_directory(path, branch)
+            walk_directory(path, branch, show_hidden=show_hidden)
         else:
             text_filename = rich.text.Text(path.name, 'green')
             text_filename.highlight_regex(r'\..*$', 'bold red')

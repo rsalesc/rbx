@@ -128,7 +128,6 @@ def main(
     capture: bool = typer.Option(
         True,
         '--nocapture',
-        flag_value=False,
         help='Whether to save extra logs and outputs from interactive solutions.',
     ),
     profile: bool = typer.Option(
@@ -259,7 +258,6 @@ async def run(
     check: bool = typer.Option(
         True,
         '--nocheck',
-        flag_value=False,
         help='Whether to not build outputs for tests and run checker.',
     ),
     detailed: bool = typer.Option(
@@ -288,6 +286,7 @@ async def run(
         help='Whether to pick solutions interactively.',
     ),
 ):
+    console.console.log(check)
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
@@ -432,7 +431,6 @@ async def time(
     check: bool = typer.Option(
         True,
         '--nocheck',
-        flag_value=False,
         help='Whether to not build outputs for tests and run checker.',
     ),
     detailed: bool = typer.Option(
@@ -488,7 +486,6 @@ async def irun(
     check: bool = typer.Option(
         True,
         '--nocheck',
-        flag_value=False,
         help='Whether to not build outputs for tests and run checker.',
     ),
     generator: Optional[str] = typer.Option(

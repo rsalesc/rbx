@@ -222,6 +222,8 @@ Whether this interactor is a legacy interactor and needs a checker to be specifi
 
 
 class Testcase(BaseModel):
+    __test__ = False
+
     model_config = ConfigDict(extra='forbid')
 
     inputPath: pathlib.Path = Field(description="""The path of the input file.""")

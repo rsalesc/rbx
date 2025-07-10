@@ -14,6 +14,8 @@ from rbx.box.schema import Testcase, TestcaseGroup
 
 
 class TestcaseEntry(BaseModel):
+    __test__ = False
+
     group: str
     index: int
 
