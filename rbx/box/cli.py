@@ -286,7 +286,6 @@ async def run(
         help='Whether to pick solutions interactively.',
     ),
 ):
-    console.console.log(check)
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
