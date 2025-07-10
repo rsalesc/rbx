@@ -1,3 +1,17 @@
+## 0.13.4 (2025-07-10)
+
+### Fix
+
+- use relpath compatible with python < 3.12
+- use sqlitedict instead of shelve
+- add new tests for checker communication
+- fix vars formatting for rbx.h
+- **statement**: ensure flags are propagated to statements correctly
+
+### Refactor
+
+- delete old rbc assets
+
 ## 0.13.3 (2025-07-04)
 
 ### Fix
