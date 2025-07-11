@@ -53,10 +53,12 @@ class TestingPackage(TestingShared):
             )
 
     def initialize_preset(self) -> TestingPreset:
-        preset_path = presets.get_active_preset_path(self.root)
-        if preset_path is None:
+        preset = presets.get_active_preset_or_null(self.root)
+        if preset is None:
             preset_path = self.root / '.local.rbx'
             preset_path.mkdir(parents=True, exist_ok=True)
+        else:
+            preset_path = presets.get_active_preset_path(self.root)
         return TestingPreset(preset_path)
 
     def print_tree(self):
