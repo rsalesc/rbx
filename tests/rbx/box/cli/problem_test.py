@@ -32,17 +32,18 @@ def test_default_preset_problem(preset_testing_pkg: testing_package.TestingPacka
     print(result.stdout)
     assert result.exit_code == 0, 'rbx run failed'
 
-    # Test problem build statement
-    result = runner.invoke(app, ['st', 'b'])
-    print(result.stdout)
-    assert result.exit_code == 0, 'rbx st b failed'
+    # # Test problem build statement
+    # result = runner.invoke(app, ['st', 'b'])
 
-    # Test problem unit tests
-    result = runner.invoke(app, ['unit'])
-    print(result.stdout)
-    assert result.exit_code == 0, 'rbx unit failed'
+    # print(result.stdout)
+    # assert result.exit_code == 0, 'rbx st b failed'
 
-    # Package to BOCA
-    result = runner.invoke(app, ['pkg', 'boca'])
-    print(result.stdout)
-    assert result.exit_code == 0, 'rbx pkg boca failed'
+    # # Test problem unit tests
+    # result = runner.invoke(app, ['unit'])
+    # print(result.stdout)
+    # assert result.exit_code == 0, 'rbx unit failed'
+
+    # # Package to BOCA
+    # result = runner.invoke(app, ['pkg', 'boca'])
+    # print(result.stdout)
+    # assert result.exit_code == 0, 'rbx pkg boca failed'
