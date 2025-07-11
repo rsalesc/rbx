@@ -66,6 +66,13 @@ class CachingConfig(BaseModel):
     )
 
 
+class JudgingConfig(BaseModel):
+    check_stack: bool = Field(
+        default=True,
+        description='Whether to check the stack size before running code.',
+    )
+
+
 class SetterConfig(BaseModel):
     sanitizers: SanitizersConfig = Field(
         default_factory=SanitizersConfig,  # type: ignore
@@ -92,6 +99,10 @@ class SetterConfig(BaseModel):
     caching: CachingConfig = Field(
         default_factory=CachingConfig,  # type: ignore
         description='Configuration for caching.',
+    )
+    judging: JudgingConfig = Field(
+        default_factory=JudgingConfig,  # type: ignore
+        description='Configuration for judging.',
     )
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:

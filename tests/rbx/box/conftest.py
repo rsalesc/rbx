@@ -7,7 +7,7 @@ from typing import Optional
 import pytest
 
 from rbx import testing_utils
-from rbx.box import package
+from rbx.box import package, setter_config
 from rbx.box.testing import testing_package
 
 
@@ -52,6 +52,20 @@ def pkg_from_testdata(
         yield pkg_cleandir
 
 
+@pytest.fixture
+def pkg_from_resources(
+    request, resources_path: pathlib.Path, pkg_cleandir: pathlib.Path, pkg_cder
+):
+    marker = request.node.get_closest_marker('resource_pkg')
+    if marker is None:
+        raise ValueError('resource_pkg marker not found')
+    testdata = resources_path / marker.args[0]
+    shutil.copytree(str(testdata), str(pkg_cleandir), dirs_exist_ok=True)
+    with pkg_cder(pkg_cleandir.absolute()):
+        testing_utils.clear_all_functools_cache()
+        yield pkg_cleandir
+
+
 @pytest.fixture(scope='session')
 def testing_pkg_factory(tmp_path_factory):
     def new_testing_pkg(
@@ -77,3 +91,10 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
         'rbx.box.global_package.get_global_cache_dir_path',
         lambda: cache_dir / '.box',
     )
+
+
+@pytest.fixture(autouse=True, scope='session')
+def mock_setter_config(mock_app_path):
+    cfg = setter_config.get_setter_config()
+    cfg.judging = setter_config.JudgingConfig(check_stack=False)
+    setter_config.save_setter_config(cfg)

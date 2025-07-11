@@ -19,8 +19,6 @@ solutions:
     outcome: "ACCEPTED"
   - path: "sols/wa.cpp"
     outcome: "WRONG_ANSWER"
-  - path: "sols/slow.cpp"
-    outcome: "TLE_OR_RTE" # Can be TLE too
 statements:
   - name: "statement-en"
     title: "New Problem"

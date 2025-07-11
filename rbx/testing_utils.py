@@ -16,6 +16,13 @@ def get_testdata_path() -> pathlib.Path:
         return file.parent
 
 
+def get_resources_path() -> pathlib.Path:
+    with importlib.resources.as_file(
+        importlib.resources.files('rbx') / 'resources' / 'default_setter_config.yml'
+    ) as file:
+        return file.parent
+
+
 def clear_all_functools_cache():
     from rbx.box import environment, header, package
 

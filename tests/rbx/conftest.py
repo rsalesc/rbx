@@ -6,7 +6,7 @@ from collections.abc import Iterator
 import pytest
 from rich.console import Console
 
-from rbx.testing_utils import get_testdata_path
+from rbx.testing_utils import get_resources_path, get_testdata_path
 
 
 @pytest.fixture(scope='session')
@@ -28,6 +28,11 @@ def cder():
 @pytest.fixture
 def testdata_path() -> pathlib.Path:
     return get_testdata_path()
+
+
+@pytest.fixture
+def resources_path() -> pathlib.Path:
+    return get_resources_path()
 
 
 @pytest.fixture
@@ -62,3 +67,10 @@ def monkeysession():
 @pytest.fixture(autouse=True, scope='session')
 def rich_no_markup(monkeysession):
     monkeysession.setattr('rbx.console.console', Console(soft_wrap=True, no_color=True))
+
+
+@pytest.fixture(autouse=True, scope='session')
+def mock_app_path(monkeysession, tmp_path_factory):
+    app_path = tmp_path_factory.mktemp('app')
+    monkeysession.setattr('rbx.utils.get_app_path', lambda: app_path)
+    yield app_path

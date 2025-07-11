@@ -207,6 +207,9 @@ def _format_stack_limit(limit: int) -> str:
 
 
 def _check_stack_limit():
+    cfg = setter_config.get_setter_config()
+    if not cfg.judging.check_stack:
+        return
     if not state.STATE.run_through_cli:
         return
     soft, hard = resource.RLIM_INFINITY, resource.RLIM_INFINITY

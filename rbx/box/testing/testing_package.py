@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from rbx import console, utils
+from rbx.box import presets
 from rbx.box.fields import Primitive
 from rbx.box.schema import (
     CodeItem,
@@ -52,8 +53,10 @@ class TestingPackage(TestingShared):
             )
 
     def initialize_preset(self) -> TestingPreset:
-        preset_path = self.root / '.local.rbx'
-        preset_path.mkdir(parents=True, exist_ok=True)
+        preset_path = presets.get_active_preset_path(self.root)
+        if preset_path is None:
+            preset_path = self.root / '.local.rbx'
+            preset_path.mkdir(parents=True, exist_ok=True)
         return TestingPreset(preset_path)
 
     def print_tree(self):
