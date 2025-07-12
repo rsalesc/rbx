@@ -130,11 +130,13 @@ def _maybe_check_integrity(output: GradingFileOutput):
         )
 
 
-def _build_output_fingerprint_list(artifacts_list: List[GradingArtifacts]) -> List[str]:
+def _build_output_fingerprint_list(
+    artifacts_list: List[GradingArtifacts], check_integrity: bool = True
+) -> List[str]:
     fingerprints = []
     for artifacts in artifacts_list:
         for output in artifacts.outputs:
-            if output.hash:
+            if output.hash and check_integrity:
                 _maybe_check_integrity(output)
             if output.dest is None or output.intermediate or output.hash:
                 continue
@@ -157,10 +159,13 @@ def _build_logs_list(artifacts_list: List[GradingArtifacts]) -> List[GradingLogs
 def _build_cache_fingerprint(
     artifacts_list: List[GradingArtifacts],
     cacher: FileCacher,
+    check_integrity: bool = True,
 ) -> CacheFingerprint:
     digests = [digest.value for digest in _build_digest_list(artifacts_list)]
     fingerprints = _build_fingerprint_list(artifacts_list, cacher)
-    output_fingerprints = _build_output_fingerprint_list(artifacts_list)
+    output_fingerprints = _build_output_fingerprint_list(
+        artifacts_list, check_integrity
+    )
     logs = _build_logs_list(artifacts_list)
     return CacheFingerprint(
         digests=digests,
@@ -448,4 +453,7 @@ class DependencyCache:
         if not are_artifacts_ok(artifact_list, self.cacher):
             return
 
-        self._store_in_cache(key, _build_cache_fingerprint(artifact_list, self.cacher))
+        self._store_in_cache(
+            key,
+            _build_cache_fingerprint(artifact_list, self.cacher, check_integrity=False),
+        )
