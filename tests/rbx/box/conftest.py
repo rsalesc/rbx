@@ -1,6 +1,7 @@
 import os
 import pathlib
 import shutil
+import subprocess
 from collections.abc import Iterator
 from typing import Optional
 
@@ -8,6 +9,7 @@ import pytest
 
 from rbx import testing_utils
 from rbx.box import package, setter_config
+from rbx.box.statements.latex import LatexResult
 from rbx.box.testing import testing_package
 
 
@@ -98,3 +100,16 @@ def mock_setter_config(mock_app_path):
     cfg = setter_config.get_setter_config()
     cfg.judging = setter_config.JudgingConfig(check_stack=False)
     setter_config.save_setter_config(cfg)
+
+
+@pytest.fixture(autouse=True, scope='session')
+def mock_pdflatex(monkeysession):
+    monkeysession.setattr(
+        'rbx.box.statements.latex.Latex.build_pdf',
+        lambda *args, **kwargs: LatexResult(
+            result=subprocess.CompletedProcess(
+                args='', returncode=0, stdout=b'', stderr=b''
+            ),
+            pdf=b'',
+        ),
+    )
