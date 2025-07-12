@@ -10,7 +10,6 @@ from rbx import config, console, utils
 from rbx.box import presets
 from rbx.box.extensions import Extensions, LanguageExtensions
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
-from rbx.grading.judge.sandboxes.isolate import IsolateSandbox
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 from rbx.grading.limits import Limits
 
@@ -232,7 +231,7 @@ execution config can be individually overridden in the language configuration.""
 
     sandbox: str = Field(
         default='stupid',
-        description="""Identifier of the sandbox used by this environment (e.g. "stupid", "isolate")""",
+        description="""Identifier of the sandbox used by this environment (e.g. "stupid")""",
     )
 
     timing: TimingConfig = Field(
@@ -395,8 +394,6 @@ def get_sandbox_type() -> Type[SandboxBase]:
     used_sandbox = get_environment().sandbox
     if used_sandbox == 'stupid':
         return StupidSandbox
-    if used_sandbox == 'isolate':
-        return IsolateSandbox
     return StupidSandbox
 
 
