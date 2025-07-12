@@ -6,8 +6,6 @@ from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
-from rbx.box import package
-from rbx.box.schema import TaskType
 from rbx.box.solutions import SolutionReportSkeleton
 from rbx.box.ui.screens.error import ErrorScreen
 from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
@@ -42,12 +40,6 @@ class RunExplorerScreen(Screen):
             tips.markup = True
             tips.display = False
             tips.border_title = 'Tips'
-            pkg = package.find_problem_package_or_die()
-            if pkg.type == TaskType.COMMUNICATION:
-                tips.display = True
-                tips.write(
-                    'This is an interactive problem.\nYou can use the [bold blue]rbx --capture run[/bold blue] command to capture the interaction between the processes and see them here.'
-                )
             yield tips
 
     def on_mount(self):

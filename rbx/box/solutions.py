@@ -973,7 +973,7 @@ class SolutionOutcomeReport(BaseModel):
             if msg:
                 if len(msg) > 100:
                     msg = msg[:100] + '... (truncated)'
-                res += f'\nMessage for {tc}: {msg}'
+                res += f'\nMessage for {utils.escape_markup(str(tc))}: {utils.escape_markup(msg)}'
         return res
 
 

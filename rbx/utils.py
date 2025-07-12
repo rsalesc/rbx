@@ -5,12 +5,14 @@ import json
 import os
 import os.path
 import pathlib
+import re
 import resource
 import subprocess
 import sys
 from typing import Any, Optional, Type, TypeVar
 
 import rich
+import rich.markup
 import rich.prompt
 import rich.status
 import ruyaml
@@ -35,6 +37,10 @@ def highlight_str(s: str) -> text.Text:
     txt = text.Text(s)
     JSONHighlighter().highlight(txt)
     return txt
+
+
+def escape_markup(s: str) -> str:
+    return rich.markup.escape(s, _escape=re.compile(r'(\\*)(\[)').sub)
 
 
 def abspath(path: pathlib.Path) -> pathlib.Path:

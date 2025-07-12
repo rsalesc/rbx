@@ -44,7 +44,7 @@ class TestBoxWidget(Widget, can_focus=False):
         output: FileLog
         stderr: FileLog
         log: FileLog
-        interaction: FileLog
+        interaction: InteractionBox
 
     def logs(self) -> Logs:
         return self.Logs(
