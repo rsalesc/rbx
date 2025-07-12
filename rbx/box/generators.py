@@ -120,15 +120,25 @@ def _copy_testcase_output_over(
 
 
 def _copy_testcase_outputs_over(
-    testcase: Testcase, dest: Testcase, pipes: bool = False, dry_run: bool = False
+    testcase: Testcase,
+    dest: Testcase,
+    pipes: bool = False,
+    only_pipes: bool = False,
+    dry_run: bool = False,
 ):
+    if only_pipes:
+        pipes = True
     assert dest.outputPath is not None
     if not dry_run:
         dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
 
     has_copied = False
 
-    if testcase.outputPath is not None and testcase.outputPath.is_file():
+    if (
+        not only_pipes
+        and testcase.outputPath is not None
+        and testcase.outputPath.is_file()
+    ):
         if not dry_run:
             _check_crlf(testcase.outputPath)
             shutil.copy(str(testcase.outputPath), str(dest.outputPath))
@@ -371,6 +381,7 @@ async def generate_output_for_testcase(
     main_solution_digest: str,
     testcase: Testcase,
     interactor_digest: Optional[str] = None,
+    capture_pipes: Optional[bool] = None,
 ):
     assert testcase.outputPath is not None
     testcase.inputPath.parent.mkdir(parents=True, exist_ok=True)
@@ -388,7 +399,7 @@ async def generate_output_for_testcase(
         interactor_digest=interactor_digest,
         use_retries=False,
         use_timelimit=False,
-        capture_pipes=True,
+        capture_pipes=capture_pipes,
     )
 
     if eval.result.outcome.is_slow() and eval.result.no_tle_outcome == Outcome.ACCEPTED:
@@ -474,10 +485,22 @@ async def generate_outputs_for_testcases(
             raise typer.Exit(1)
 
         assert solution_digest is not None
+        capture_pipes = None
+        if (
+            pkg.type == TaskType.COMMUNICATION
+            and entry.metadata.copied_from is not None
+        ):
+            # If some pipe file is already specified, we don't need to capture the pipes
+            # when running the program.
+            capture_pipes = not _copy_testcase_outputs_over(
+                entry.metadata.copied_from, tc, only_pipes=True, dry_run=True
+            )
+
         await generate_output_for_testcase(
             solution_digest,
             tc,
             interactor_digest=interactor_digest,
+            capture_pipes=capture_pipes,
         )
         if entry.metadata.copied_from is not None:
             # Copy remaining pipe files.

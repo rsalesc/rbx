@@ -51,7 +51,7 @@ async def run_solution_on_testcase(
     timelimit_override: Optional[int] = None,
     use_retries: bool = True,
     use_timelimit: bool = True,
-    capture_pipes: bool = False,
+    capture_pipes: Optional[bool] = None,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -175,12 +175,13 @@ async def _run_communication_solution_on_testcase(
     timelimit_override: Optional[int] = None,
     use_retries: bool = True,
     use_timelimit: bool = True,
-    capture_pipes: bool = False,
+    capture_pipes: Optional[bool] = None,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
 ) -> Evaluation:
-    capture_pipes = capture_pipes or state.STATE.debug_logs
+    if capture_pipes is None:
+        capture_pipes = state.STATE.debug_logs
 
     async def run_fn(retry_index: int) -> Evaluation:
         actual_sandbox = package.get_singleton_sandbox()
