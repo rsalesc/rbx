@@ -1,9 +1,8 @@
+#ifndef _RBX_H
+#define _RBX_H
 #include <optional>
 #include <stdexcept>
 #include <string>
-
-#ifndef _RBX_H
-#define _RBX_H
 
 std::optional<std::string> getStringVar(std::string name) {
   

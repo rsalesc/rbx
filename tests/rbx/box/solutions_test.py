@@ -15,7 +15,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.grading.steps import Outcome
 
 
-@pytest.mark.test_pkg('box1')
+@pytest.mark.test_pkg('problems/box1')
 async def test_solutions(pkg_from_testdata: pathlib.Path):
     await generate_testcases()
     entries = [

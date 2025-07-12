@@ -8,6 +8,7 @@ checker:
   path: "checker.cpp"
 interactor:
   path: "interactor.cpp"
+  legacy: true
 generators:
   - name: "gen"
     path: "gen.cpp"
