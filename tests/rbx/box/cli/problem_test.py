@@ -47,3 +47,8 @@ def test_default_preset_problem(preset_testing_pkg: testing_package.TestingPacka
     result = runner.invoke(app, ['pkg', 'boca'])
     print(result.stdout)
     assert result.exit_code == 0, 'rbx pkg boca failed'
+
+    # Package to Polygon
+    result = runner.invoke(app, ['pkg', 'polygon'])
+    print(result.stdout)
+    assert result.exit_code == 0, 'rbx pkg polygon failed'
