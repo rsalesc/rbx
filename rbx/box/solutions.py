@@ -922,6 +922,12 @@ def get_worst_outcome(evals: List[Evaluation]) -> Outcome:
     return Outcome.worst_outcome(eval.result.outcome for eval in evals)
 
 
+def get_truncated_message(message: str, max_length: int = 100) -> str:
+    if len(message) > max_length:
+        return message[:max_length] + '... (truncated)'
+    return message
+
+
 class SolutionOutcomeReport(BaseModel):
     solution: Solution
     evals: List[Evaluation]
@@ -971,8 +977,7 @@ class SolutionOutcomeReport(BaseModel):
         if print_message and self.message is not None:
             tc, msg = self.message
             if msg:
-                if len(msg) > 100:
-                    msg = msg[:100] + '... (truncated)'
+                msg = get_truncated_message(msg)
                 res += f'\nMessage for {utils.escape_markup(str(tc))}: {utils.escape_markup(msg)}'
         return res
 
@@ -1471,7 +1476,10 @@ async def print_run_report(
                     console.print(f' ({time}, {memory})', end='')
                     checker_msg = eval.result.message
                     if checker_msg:
-                        console.print(f': [i]{checker_msg}[/i]', end='')
+                        checker_msg = get_truncated_message(checker_msg, 150)
+                        console.print(
+                            f': [i]{utils.escape_markup(checker_msg)}[/i]', end=''
+                        )
                 else:
                     console.print(f'{i}/', end='')
                     console.print(get_testcase_markup_verdict(eval), end='')
