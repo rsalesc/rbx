@@ -1,12 +1,12 @@
 import os
 import pathlib
-import shutil
 from collections.abc import Iterator
 
 import pytest
 from rich.console import Console
 
 from rbx.testing_utils import get_resources_path, get_testdata_path
+from rbx.utils import copytree_honoring_gitignore
 
 
 @pytest.fixture(scope='session')
@@ -51,7 +51,7 @@ def cleandir_with_testdata(
     if marker is None:
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
-    shutil.copytree(str(testdata), str(cleandir), dirs_exist_ok=True)
+    copytree_honoring_gitignore(testdata, cleandir, extra_gitignore='.box/\nbuild/\n')
     yield cleandir
 
 

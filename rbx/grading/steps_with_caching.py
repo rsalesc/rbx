@@ -88,10 +88,11 @@ async def run(
 async def run_coordinated(
     interactor: steps.CoordinatedRunParams,
     solution: steps.CoordinatedRunParams,
+    artifacts: GradingArtifacts,
+    sandbox: SandboxBase,
     dependency_cache: DependencyCache,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
-    interactor.artifacts.logs = GradingLogsHolder()
-    solution.artifacts.logs = GradingLogsHolder()
+    artifacts.logs = GradingLogsHolder()
 
     cacheable_params = {
         **_get_prefixed_cacheable_params(
@@ -114,18 +115,23 @@ async def run_coordinated(
         cached_profile = profiling.Profiler('steps.run_coordinated[cached]', start=True)
         with dependency_cache(
             [interactor.command, solution.command],
-            [interactor.artifacts, solution.artifacts],
+            [artifacts],
             cacheable_params,
         ) as is_cached:
             if not is_cached:
                 with profiling.Profiler('steps.run_coordinated'):
                     profiling.add_to_counter('steps.run_coordinated')
-                    await steps.run_coordinated(interactor, solution)
+                    await steps.run_coordinated(
+                        interactor,
+                        solution,
+                        artifacts,
+                        sandbox,
+                    )
             else:
                 cached_profile.stop()
                 profiling.add_to_counter('steps.run_coordinated[cached]')
 
     return (
-        interactor.artifacts.logs.run,
-        solution.artifacts.logs.run,
+        artifacts.logs.interactor_run,
+        artifacts.logs.run,
     )

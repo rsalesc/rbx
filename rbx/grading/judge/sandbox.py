@@ -3,16 +3,16 @@ import asyncio
 import collections
 import dataclasses
 import io
+import json
 import logging
 import os
 import pathlib
 import select
-import signal
 import stat
 import subprocess
 import sys
 import typing
-from typing import IO, Any, Dict, List, Optional
+from typing import IO, Any, Dict, List, Optional, Tuple
 
 import pydantic
 
@@ -210,6 +210,22 @@ class SandboxParams(pydantic.BaseModel):
         self.dirs.append(DirectoryMount(src, dest, options))
 
 
+class SandboxLog(pydantic.BaseModel):
+    """A log of the sandbox."""
+
+    params: SandboxParams
+    execution_time: float  # seconds
+    memory_used: int  # bytes
+    exitcode: int
+    exitstatus: str
+    killing_signal: Optional[int] = None
+    exit_index: int = 0
+    other_logs: Dict[str, Any] = pydantic.Field(default_factory=dict)
+
+    def dump_other_logs(self) -> str:
+        return json.dumps(self.other_logs)
+
+
 class SandboxBase(abc.ABC):
     """A base class for all sandboxes, meant to contain common
     resources.
@@ -229,16 +245,12 @@ class SandboxBase(abc.ABC):
     file_cacher: cacher.FileCacher
     name: str
     temp_dir: Optional[pathlib.Path]
-    cmd_file: pathlib.Path
-
-    params: SandboxParams
 
     def __init__(
         self,
         file_cacher: Optional[cacher.FileCacher] = None,
         name: Optional[str] = None,
         temp_dir: Optional[pathlib.Path] = None,
-        params: Optional[SandboxParams] = None,
     ):
         """Initialization.
 
@@ -253,157 +265,13 @@ class SandboxBase(abc.ABC):
         self.file_cacher = file_cacher or cacher.FileCacher(storage.NullStorage())
         self.name = name if name is not None else 'unnamed'
         self.temp_dir = temp_dir
-
-        self.cmd_file = pathlib.PosixPath('commands.log')
-
-        self.params = params or SandboxParams()
-        self.pid = None
-        self.pid_event = Event_ts()
-
-        # Set common environment variables.
-        # Specifically needed by Python, that searches the home for
-        # packages.
-        self.params.set_env['HOME'] = './'
-
-    def set_params(self, params: SandboxParams):
-        """Set the parameters of the sandbox.
-
-        params (SandboxParams): the parameters to set.
-
-        """
-        self.params = params
-
-    def set_multiprocess(self, multiprocess: bool):
-        """Set the sandbox to (dis-)allow multiple threads and processes.
-
-        multiprocess (bool): whether to allow multiple thread/processes or not.
-
-        """
-        if multiprocess:
-            # Max processes is set to 1000 to limit the effect of fork bombs.
-            self.params.max_processes = 1000
-        else:
-            self.params.max_processes = 1
-
-    def get_stats(self) -> str:
-        """Return a human-readable string representing execution time
-        and memory usage.
-
-        return (string): human-readable stats.
-
-        """
-        execution_time = self.get_execution_time()
-        if execution_time is not None:
-            time_str = f'{execution_time:.3f} sec'
-        else:
-            time_str = '(time unknown)'
-        memory_used = self.get_memory_used()
-        if memory_used is not None:
-            mem_str = f'{memory_used / (1024 * 1024):.2f} MB'
-        else:
-            mem_str = '(memory usage unknown)'
-        return f'[{time_str} - {mem_str}]'
+        self.cmd_file = pathlib.PosixPath('__commands__.log')
 
     @abc.abstractmethod
     def get_root_path(self) -> pathlib.Path:
         """Return the toplevel path of the sandbox.
 
         return (Path): the root path.
-
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_execution_time(self) -> Optional[float]:
-        """Return the time spent in the sandbox.
-
-        return (float): time spent in the sandbox.
-
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_memory_used(self) -> Optional[int]:
-        """Return the memory used by the sandbox.
-
-        return (int): memory used by the sandbox (in bytes).
-
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_killing_signal(self) -> int:
-        """Return the signal that killed the sandboxed process.
-
-        return (int): offending signal, or 0.
-
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_exit_status(self) -> str:
-        """Get information about how the sandbox terminated.
-
-        return (string): the main reason why the sandbox terminated.
-
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_exit_code(self) -> int:
-        """Return the exit code of the sandboxed process.
-
-        return (int): exitcode, or 0.
-
-        """
-        pass
-
-    def set_pid(self, pid: int):
-        """Set the PID of the sandboxed process.
-
-        pid (int): the PID of the sandboxed process.
-
-        """
-        self.pid = pid
-        self.pid_event.set()
-
-    async def get_pid(self) -> int:
-        """Return the PID of the sandboxed process.
-
-        Blocks until the PID is set.
-
-        return (int): the PID of the sandboxed process.
-
-        """
-        await self.pid_event.wait()
-        assert self.pid is not None
-        return self.pid
-
-    def clear_pid(self):
-        """Clear the PID of the sandboxed process."""
-        self.pid_event.clear()
-        self.pid = None
-
-    def use_pgid(self) -> bool:
-        """Whether the sandbox supports process groups."""
-        return False
-
-    @abc.abstractmethod
-    def get_detailed_logs(self) -> str:
-        """Return the detailed logs of the sandbox.
-
-        return (string): the detailed logs of the sandbox.
-
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_human_exit_description(self) -> str:
-        """Get the status of the sandbox and return a human-readable
-        string describing it.
-
-        return (string): human-readable explaination of why the
-                         sandbox terminated.
 
         """
         pass
@@ -702,51 +570,22 @@ class SandboxBase(abc.ABC):
         ]
 
     @abc.abstractmethod
-    def execute_without_std(
+    def run(
         self,
         command: List[str],
-    ) -> bool:
-        """Execute the given command in the sandbox using
-        subprocess.Popen and discarding standard input, output and
-        error. More specifically, the standard input gets closed just
-        after the execution has started; standard output and error are
-        read until the end, in a way that prevents the execution from
-        being blocked because of insufficient buffering.
-
-        command ([string]): executable filename and arguments of the
-            command.
-        wait (bool): True if this call is blocking, False otherwise
-
-        return (bool|Popen): if the call is blocking, then return True
-            if the sandbox didn't report errors (caused by the sandbox
-            itself), False otherwise; if the call is not blocking,
-            return the Popen object from subprocess.
-
-        """
+        params: SandboxParams,
+    ) -> SandboxLog:
         pass
 
     @abc.abstractmethod
-    def hydrate_logs(self):
-        """Fetch the results of the execution and hydrate logs.
-
-        This method should be called after the execution has
-        terminated, to hydrate logs and stuff.
-        """
+    def run_communication(
+        self,
+        command: List[str],
+        params: SandboxParams,
+        interactor_command: List[str],
+        interactor_params: SandboxParams,
+    ) -> Tuple[SandboxLog, SandboxLog]:
         pass
-
-    def translate_box_exitcode(self, exitcode: int) -> bool:
-        """Translate the sandbox exit code to a boolean sandbox success.
-
-        _ (int): the exit code of the sandbox.
-
-        return (bool): False if the sandbox had an error, True if it
-            terminated correctly (regardless of what the internal process
-            did).
-
-        """
-        # SIGTERM can be safely ignored, just in case it leaks away from
-        # the sandbox.
-        return exitcode == 0 or exitcode == -signal.SIGTERM
 
     @abc.abstractmethod
     def initialize(self):
@@ -778,9 +617,6 @@ class SandboxBase(abc.ABC):
 
         """
         pass
-
-    def debug_message(self) -> Any:
-        return 'N/A'
 
 
 class Truncator(io.RawIOBase):

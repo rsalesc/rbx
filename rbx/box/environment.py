@@ -57,6 +57,12 @@ relative to the sandbox root.""",
 relative to the sandbox root.""",
     )
 
+    capture: str = Field(
+        default='capture',
+        description="""Path where to output the capture file after running the program,
+relative to the sandbox root.""",
+    )
+
     compilable: str = Field(
         default='compilable',
         description="""Path where to copy the compilable file to before compiling the program,
@@ -380,13 +386,20 @@ def get_execution_config(language: str) -> ExecutionConfig:
 
 
 @functools.cache
-def get_file_mapping(language: str) -> FileMapping:
+def get_file_mapping(language: str, file_prefix: Optional[str] = None) -> FileMapping:
     environment = get_environment()
-    return _merge_shallow_models(
+    mapping = _merge_shallow_models(
         FileMapping,
         environment.defaultFileMapping or FileMapping(),
         get_language(language).fileMapping or FileMapping(),
     )
+    if file_prefix is not None:
+        mapping.input = f'{file_prefix}_{mapping.input}'
+        mapping.output = f'{file_prefix}_{mapping.output}'
+        mapping.error = f'{file_prefix}_{mapping.error}'
+        mapping.compilable = f'{file_prefix}_{mapping.compilable}'
+        mapping.executable = f'{file_prefix}_{mapping.executable}'
+    return mapping
 
 
 @functools.cache

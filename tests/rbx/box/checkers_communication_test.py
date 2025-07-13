@@ -103,6 +103,7 @@ def run_log() -> RunLog:
             memoryLimit=1024,
             retryIndex=0,
         ),
+        exitindex=0,
     )
 
 
@@ -117,7 +118,14 @@ def interactor_run_log() -> RunLog:
             memoryLimit=1024,
             retryIndex=0,
         ),
+        exitindex=1,
     )
+
+
+@pytest.fixture
+def interactor_exit_first(run_log: RunLog, interactor_run_log: RunLog):
+    interactor_run_log.exitindex = 0
+    run_log.exitindex = 1
 
 
 class TestCheckCommunicationInternalError:
@@ -204,8 +212,9 @@ class TestCheckCommunicationInternalError:
         assert result.outcome == Outcome.INTERNAL_ERROR
 
 
+@pytest.mark.usefixtures('interactor_exit_first')
 class TestCheckCommunicationInteractorExitedFirst:
-    async def test_check_communication_sol_terminated_and_wa(
+    async def test_check_communication_wa(
         self,
         checker_digest: str,
         testcase: Testcase,
@@ -214,7 +223,7 @@ class TestCheckCommunicationInteractorExitedFirst:
         run_log: RunLog,
         interactor_run_log: RunLog,
     ) -> None:
-        run_log.exitstatus = SandboxBase.EXIT_TERMINATED
+        run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
         interactor_run_log.exitcode = 1
         interactor_run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
 

@@ -244,6 +244,7 @@ async def _run_communication_solution_on_testcase(
             capture=DigestOrDest.create(interactor_capture_path)
             if interactor_capture_path
             else None,
+            file_prefix='interactor',
         )
         solution_capture_path = (
             output_path.with_suffix('.pout') if capture_pipes else None
@@ -256,6 +257,7 @@ async def _run_communication_solution_on_testcase(
             capture=DigestOrDest.create(solution_capture_path)
             if solution_capture_path
             else None,
+            file_prefix='solution',
         )
 
         merged_capture_path = output_path.with_suffix('.pio') if capture_pipes else None
@@ -263,7 +265,9 @@ async def _run_communication_solution_on_testcase(
             interactor=interactor_item,
             solution=solution_item,
             retry_index=retry_index,
-            merged_capture=merged_capture_path,
+            merged_capture=DigestOrDest.create(merged_capture_path)
+            if merged_capture_path
+            else None,
         )
 
         checker_result = await checkers.check_communication(

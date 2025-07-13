@@ -20,9 +20,9 @@ from rich.text import Text
 from rbx import utils
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
-from rbx.grading import grading_context, processing_context
+from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
-from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
+from rbx.grading.judge.sandbox import SandboxBase, SandboxLog, SandboxParams
 from rbx.grading.judge.storage import copyfileobj
 from rbx.grading.limits import Limits
 
@@ -81,6 +81,7 @@ class DigestHolder(BaseModel):
 
 class GradingLogsHolder(BaseModel):
     run: Optional['RunLog'] = None
+    interactor_run: Optional['RunLog'] = None
     preprocess: Optional[List['PreprocessLog']] = None
     cached: bool = False
 
@@ -238,6 +239,7 @@ class RunLog(BaseModel):
     sandbox: str = ''
     warnings: bool = False
     metadata: Optional[RunLogMetadata] = None
+    exitindex: int = 0
 
     def get_run_language(self) -> Optional[str]:
         if self.metadata is None:
@@ -394,16 +396,18 @@ def _expand_part(part: str, sandbox: SandboxBase) -> List[str]:
     return [part]
 
 
-def _get_java_memory_limits(sandbox: SandboxBase) -> Tuple[int, int]:
-    max_memory = sandbox.params.address_space
+def _get_java_memory_limits(params: SandboxParams) -> Tuple[int, int]:
+    max_memory = params.address_space
     if max_memory is None:
         max_memory = 2048
     return max_memory, min(512, int(max_memory * 0.9))
 
 
-def _split_and_expand(command: str, sandbox: SandboxBase) -> List[str]:
+def _split_and_expand(
+    command: str, sandbox: SandboxBase, params: SandboxParams
+) -> List[str]:
     res = []
-    max_mem, init_mem = _get_java_memory_limits(sandbox)
+    max_mem, init_mem = _get_java_memory_limits(params)
     parts = shlex.split(command.format(memory=max_mem, initialMemory=init_mem))
     for part in parts:
         res.extend(_expand_part(part, sandbox))
@@ -640,6 +644,36 @@ def _check_for_compilation_warnings(
         )
 
 
+def _build_run_log(
+    sandbox_log: SandboxLog,
+    sandbox: SandboxBase,
+    params: SandboxParams,
+    metadata: Optional[RunLogMetadata] = None,
+) -> RunLog:
+    execution_time = sandbox_log.execution_time
+    if execution_time is not None and (
+        sandbox_log.exitstatus == SandboxBase.EXIT_TIMEOUT
+        or sandbox_log.exitstatus == SandboxBase.EXIT_TIMEOUT_WALL
+    ):
+        execution_time = max(execution_time, (params.timeout or 0.0) / 1000)
+
+    run_log = RunLog(
+        exitcode=sandbox_log.exitcode,
+        exitstatus=sandbox_log.exitstatus,
+        time=execution_time,
+        memory=sandbox_log.memory_used,
+        metadata=metadata,
+        sandbox=sandbox_log.dump_other_logs(),
+        exitindex=sandbox_log.exit_index,
+    )
+    if metadata is not None and metadata.is_sanitized:
+        run_log.warnings = _check_for_sanitizer_warnings(
+            sandbox,
+            params.stderr_file,
+        )
+    return run_log
+
+
 def compile(
     commands: List[str],
     params: SandboxParams,
@@ -656,29 +690,20 @@ def compile(
         return True
 
     logs: List[PreprocessLog] = []
-    sandbox.set_params(
-        params.model_copy(deep=True)
-    )  # Copy to allow further modification.
+    params = params.model_copy(deep=True)  # Copy to allow further modification.
 
     for i, command in enumerate(commands):
         _maybe_complain_about_sanitization(command)
-        cmd = _split_and_expand(command, sandbox)
+        cmd = _split_and_expand(command, sandbox, params)
         stdout_file = pathlib.PosixPath(f'compile-{i}.stdout')
         stderr_file = pathlib.PosixPath(f'compile-{i}.stderr')
-        sandbox.params.set_stdall(stdout=stdout_file, stderr=stderr_file)
+        params.set_stdall(stdout=stdout_file, stderr=stderr_file)
 
         # Remove memory constraints for Java.
         if is_java_like_command(get_exe_from_command(command)):
-            sandbox.params.address_space = None
+            params.address_space = None
 
-        if not sandbox.execute_without_std(cmd):
-            console.print(
-                '[error]Sandbox crashed while processing command:[/error]',
-                utils.highlight_json_obj(cmd),
-                '[error]and logs[/error]',
-                sandbox.debug_message(),
-            )
-            return False
+        sandbox_log = sandbox.run(cmd, params)
 
         std_outputs = [
             sandbox.get_file_to_string(stderr_file, maxlen=None)
@@ -691,13 +716,13 @@ def compile(
 
         log = PreprocessLog(
             cmd=cmd,
-            exitcode=sandbox.get_exit_code(),
-            exitstatus=sandbox.get_exit_status(),
-            time=sandbox.get_execution_time(),
-            memory=sandbox.get_memory_used(),
+            exitcode=sandbox_log.exitcode,
+            exitstatus=sandbox_log.exitstatus,
+            time=sandbox_log.execution_time,
+            memory=sandbox_log.memory_used,
             warnings=_check_for_compilation_warnings(sandbox, stderr_file),
             log='\n'.join(std_outputs),
-            sandbox=sandbox.get_detailed_logs(),
+            sandbox=sandbox_log.dump_other_logs(),
         )
         logs.append(log)
 
@@ -730,48 +755,19 @@ async def run(
 
     _process_input_artifacts(artifacts, sandbox)
     _process_fifos(artifacts, sandbox)
-    cmd = _split_and_expand(command, sandbox)
-    sandbox.set_params(
-        params.model_copy(deep=True)
-    )  # Copy to allow further modification.
+    cmd = _split_and_expand(command, sandbox, params)
+    params = params.model_copy(deep=True)  # Copy to allow further modification.
 
     # Remove memory constraints for Java.
     if is_java_like_command(get_exe_from_command(command)):
-        sandbox.params.address_space = None
+        params.address_space = None
 
-    sandbox.pid_event.set_loop(asyncio.get_event_loop())
-    if not await asyncio.to_thread(sandbox.execute_without_std, cmd):
-        console.print(
-            '[error]Sandbox crashed while processing command:[/error]',
-            utils.highlight_json_obj(cmd),
-            '[error]and logs[/error]',
-            sandbox.debug_message(),
-        )
-        return None
+    sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
 
     if not _process_output_artifacts(artifacts, sandbox):
         return None
 
-    execution_time = sandbox.get_execution_time()
-    if execution_time is not None and (
-        sandbox.get_exit_status() == SandboxBase.EXIT_TIMEOUT
-        or sandbox.get_exit_status() == SandboxBase.EXIT_TIMEOUT_WALL
-    ):
-        execution_time = max(execution_time, (params.timeout or 0.0) / 1000)
-
-    run_log = RunLog(
-        exitcode=sandbox.get_exit_code(),
-        exitstatus=sandbox.get_exit_status(),
-        time=sandbox.get_execution_time(),
-        memory=sandbox.get_memory_used(),
-        metadata=metadata,
-        sandbox=sandbox.get_detailed_logs(),
-    )
-    if metadata is not None and metadata.is_sanitized:
-        run_log.warnings = _check_for_sanitizer_warnings(
-            sandbox,
-            params.stderr_file,
-        )
+    run_log = _build_run_log(sandbox_log, sandbox, params, metadata)
     if artifacts.logs is not None:
         artifacts.logs.run = run_log.model_copy()
     return run_log
@@ -781,34 +777,51 @@ async def run(
 class CoordinatedRunParams:
     command: str
     params: SandboxParams
-    sandbox: SandboxBase
-    artifacts: GradingArtifacts
     metadata: Optional[RunLogMetadata] = None
 
 
 async def run_coordinated(
     interactor: CoordinatedRunParams,
     solution: CoordinatedRunParams,
+    artifacts: GradingArtifacts,
+    sandbox: SandboxBase,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
-    def run_one(params: CoordinatedRunParams) -> asyncio.Task[Optional[RunLog]]:
-        return asyncio.create_task(
-            run(
-                params.command,
-                params.params,
-                params.sandbox,
-                params.artifacts,
-                params.metadata,
-            )
-        )
+    sandbox.reset()
 
-    # Use interactor PID as the process group id.
-    interactor_task = run_one(interactor)
-    solution.sandbox.params.pgid = await interactor.sandbox.get_pid()
-    solution_task = run_one(solution)
+    _process_input_artifacts(artifacts, sandbox)
+    _process_fifos(artifacts, sandbox)
 
-    await processing_context.wait_all([interactor.sandbox, solution.sandbox])
+    interactor_cmd = _split_and_expand(interactor.command, sandbox, interactor.params)
+    solution_cmd = _split_and_expand(solution.command, sandbox, solution.params)
 
-    return await asyncio.gather(interactor_task, solution_task)
+    interactor_params = interactor.params.model_copy(deep=True)
+    solution_params = solution.params.model_copy(deep=True)
+
+    if is_java_like_command(get_exe_from_command(solution.command)):
+        solution_params.address_space = None
+
+    solution_sandbox_log, interactor_sandbox_log = sandbox.run_communication(
+        solution_cmd,
+        solution_params,
+        interactor_cmd,
+        interactor_params,
+    )
+
+    if not _process_output_artifacts(artifacts, sandbox):
+        return None, None
+
+    solution_log = _build_run_log(
+        solution_sandbox_log, sandbox, solution.params, solution.metadata
+    )
+    interactor_log = _build_run_log(
+        interactor_sandbox_log, sandbox, interactor.params, interactor.metadata
+    )
+
+    if artifacts.logs is not None:
+        artifacts.logs.run = solution_log
+        artifacts.logs.interactor_run = interactor_log
+
+    return solution_log, interactor_log
 
 
 def _normalize_checked_words(s: str) -> Tuple[str, ...]:

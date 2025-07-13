@@ -1,6 +1,5 @@
 import os
 import pathlib
-import shutil
 import subprocess
 from collections.abc import Iterator
 from typing import Optional
@@ -11,6 +10,7 @@ from rbx import testing_utils
 from rbx.box import package, setter_config
 from rbx.box.statements.latex import LatexResult
 from rbx.box.testing import testing_package
+from rbx.utils import copytree_honoring_gitignore
 
 
 @pytest.fixture(scope='session')
@@ -48,7 +48,7 @@ def pkg_from_testdata(
     if marker is None:
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
-    shutil.copytree(str(testdata), str(pkg_cleandir), dirs_exist_ok=True)
+    copytree_honoring_gitignore(testdata, pkg_cleandir, extra_gitignore='.box\nbuild\n')
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
         yield pkg_cleandir
@@ -62,7 +62,9 @@ def pkg_from_resources(
     if marker is None:
         raise ValueError('resource_pkg marker not found')
     testdata = resources_path / marker.args[0]
-    shutil.copytree(str(testdata), str(pkg_cleandir), dirs_exist_ok=True)
+    copytree_honoring_gitignore(
+        testdata, pkg_cleandir, extra_gitignore='.box/\nbuild/\n'
+    )
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
         yield pkg_cleandir

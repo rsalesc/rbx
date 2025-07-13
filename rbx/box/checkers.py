@@ -1,5 +1,4 @@
 import pathlib
-import signal
 from typing import List, Optional
 
 import typer
@@ -345,14 +344,7 @@ async def check_communication(
     if (
         interactor_run_log is not None
         and run_log is not None
-        and (
-            run_log.exitcode == -signal.SIGPIPE
-            or run_log.exitstatus == SandboxBase.EXIT_TERMINATED
-            or (
-                run_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
-                and not _is_testlib_eof(interactor_stderr.read_text())
-            )
-        )
+        and (interactor_run_log.exitindex < run_log.exitindex)
     ):
         result = _check_interactor()
         if result is not None and result.outcome != Outcome.ACCEPTED:

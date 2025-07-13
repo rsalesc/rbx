@@ -7,9 +7,10 @@ import os.path
 import pathlib
 import re
 import resource
+import shutil
 import subprocess
 import sys
-from typing import Any, Optional, Type, TypeVar
+from typing import Any, Optional, Type, TypeVar, Union
 
 import rich
 import rich.markup
@@ -26,6 +27,7 @@ from rbx.console import console
 
 T = TypeVar('T', bound=BaseModel)
 APP_NAME = 'rbx'
+PathOrStr = Union[pathlib.Path, str]
 
 
 def create_and_write(path: pathlib.Path, *args, **kwargs):
@@ -189,6 +191,38 @@ def new_cd(x: pathlib.Path):
         # aren't equipped to figure out what went wrong if the
         # old working directory can't be restored.
         os.chdir(d)
+
+
+def copytree_honoring_gitignore(
+    src: pathlib.Path, dst: pathlib.Path, extra_gitignore: Optional[str] = None
+):
+    from gitignore_parser import parse_gitignore, parse_gitignore_str
+
+    ignore_matchers = []
+
+    if extra_gitignore is not None:
+        ignore_matchers.append(parse_gitignore_str(extra_gitignore, base_dir=src))
+
+    for file in src.rglob('.gitignore'):
+        if file.is_file():
+            ignore_matchers.append(parse_gitignore(file))
+
+    # TODO: use recursive walk
+    for file in src.rglob('*'):
+        matching_file = file
+        ignored = False
+        while matching_file.is_relative_to(src):
+            if any(ignore_matcher(matching_file) for ignore_matcher in ignore_matchers):
+                ignored = True
+                break
+            matching_file = matching_file.parent
+        if ignored:
+            continue
+        rel = relpath(file, src)
+        if file.is_file():
+            write_to = dst / rel
+            write_to.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(file, write_to)
 
 
 class StatusProgress(rich.status.Status):

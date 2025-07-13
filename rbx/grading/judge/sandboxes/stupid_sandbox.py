@@ -1,24 +1,43 @@
 from __future__ import annotations
 
-import importlib.resources
 import logging
 import os
 import pathlib
 import shutil
-import signal
-import subprocess
-import sys
 import tempfile
-from typing import Any, Dict, List, Optional
+import typing
+from typing import List, Optional, Tuple
 
-from rbx import utils
 from rbx.grading.judge.cacher import FileCacher
+from rbx.grading.judge.program import (
+    Program,
+    ProgramCode,
+    ProgramIO,
+    ProgramParams,
+    ProgramResult,
+)
 from rbx.grading.judge.sandbox import (
     SandboxBase,
+    SandboxLog,
     SandboxParams,
 )
 
 logger = logging.getLogger(__name__)
+
+TEE_CODE = R"""
+import sys
+c = sys.argv[1]
+new = True
+while True:
+    l = sys.stdin.read(1)
+    if l=='': break
+    sys.stdout.write(l)
+    sys.stdout.flush()
+    if new: sys.stderr.write(c)
+    sys.stderr.write(l)
+    sys.stderr.flush()
+    new = l=='\n'
+"""
 
 
 class StupidSandbox(SandboxBase):
@@ -31,16 +50,12 @@ class StupidSandbox(SandboxBase):
     """
 
     exec_num: int
-    popen: Optional[subprocess.Popen]
-    returncode: Optional[int]
-    log: Optional[Dict[str, str]]
 
     def __init__(
         self,
         file_cacher: Optional[FileCacher] = None,
         name: Optional[str] = None,
         temp_dir: Optional[pathlib.Path] = None,
-        params: Optional[SandboxParams] = None,
     ):
         """Initialization.
 
@@ -49,7 +64,7 @@ class StupidSandbox(SandboxBase):
         """
         if not temp_dir:
             temp_dir = pathlib.Path(tempfile.gettempdir())
-        SandboxBase.__init__(self, file_cacher, name, temp_dir, params)
+        SandboxBase.__init__(self, file_cacher, name, temp_dir)
 
         # Make box directory
         self.initialize()
@@ -68,56 +83,6 @@ class StupidSandbox(SandboxBase):
         # Box parameters
         self.chdir = self._path
 
-    def get_timeit_executable(self) -> pathlib.Path:
-        with importlib.resources.as_file(
-            importlib.resources.files('rbx')
-            / 'grading'
-            / 'judge'
-            / 'sandboxes'
-            / 'timeit.py'
-        ) as file:
-            return file
-
-    def get_timeit_args(self) -> List[str]:
-        args = []
-        if self.params.timeout:
-            timeout_in_s = self.params.timeout / 1000
-            if self.params.extra_timeout:
-                timeout_in_s += self.params.extra_timeout / 1000
-            args.append(f'-t{timeout_in_s:.3f}')
-        if self.params.wallclock_timeout:
-            walltimeout_in_s = self.params.wallclock_timeout / 1000
-            args.append(f'-w{walltimeout_in_s:.3f}')
-        if self.params.address_space:
-            args.append(f'-m{self.params.address_space}')
-        if self.params.fsize:
-            args.append(f'-f{self.params.fsize}')
-        if self.chdir:
-            args.append(f'-c{self.chdir}')
-        if self.use_pgid() and self.params.pgid is not None:
-            args.append(f'-g{self.params.pgid}')
-
-        file_args = []
-        if self.params.stdin_file:
-            file_args.append(f'-i{self.params.stdin_file}')
-        if self.params.stdout_file:
-            file_args.append(f'-o{self.params.stdout_file}')
-        if self.params.stderr_file:
-            file_args.append(f'-e{self.params.stderr_file}')
-        if self.params.reverse_io:
-            file_args.reverse()
-        args.extend(file_args)
-
-        if self.params.timeit_dups:
-            for i, files in self.params.timeit_dups.items():
-                assert i.lower() in ['di', 'do', 'de']
-                for file in files:
-                    args.append(f'-{i}{file}')
-        if self.params.timeit_prefix:
-            args.append(f'-P{self.params.timeit_prefix}')
-
-        return args
-
     def get_root_path(self) -> pathlib.Path:
         """Return the toplevel path of the sandbox.
 
@@ -126,171 +91,66 @@ class StupidSandbox(SandboxBase):
         """
         return self._path
 
-    def get_execution_time(self) -> Optional[float]:
-        """Return the time spent in the sandbox.
-
-        return (float): time spent in the sandbox.
-
-        """
-        if self.log is None:
-            return None
-        return float(self.log['time'])
-
-    def get_execution_wall_clock_time(self) -> Optional[float]:
-        """Return the total time from the start of the sandbox to the
-        conclusion of the task.
-
-        return (float): total time the sandbox was alive.
-
-        """
-        if self.log is None:
-            return None
-        return float(self.log['time-wall'])
-
     def use_soft_timeout(self) -> bool:
         return True
 
-    def use_pgid(self) -> bool:
-        return True
+    def _get_exit_status(self, result: ProgramResult) -> str:
+        if ProgramCode.TE in result.program_codes:
+            return SandboxBase.EXIT_TERMINATED
+        if ProgramCode.WT in result.program_codes:
+            return SandboxBase.EXIT_TIMEOUT_WALL
+        if ProgramCode.TO in result.program_codes:
+            return SandboxBase.EXIT_TIMEOUT
+        if ProgramCode.OL in result.program_codes:
+            return SandboxBase.EXIT_OUTPUT_LIMIT_EXCEEDED
+        if ProgramCode.ML in result.program_codes:
+            return SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED
+        if ProgramCode.SG in result.program_codes:
+            return SandboxBase.EXIT_SIGNAL
+        if ProgramCode.RE in result.program_codes:
+            return SandboxBase.EXIT_NONZERO_RETURN
+        return SandboxBase.EXIT_OK
 
-    def get_memory_used(self) -> Optional[int]:
-        """Return the memory used by the sandbox.
+    def _get_io(self, params: SandboxParams, pipe_io: bool = False) -> ProgramIO:
+        io = ProgramIO()
+        if params.stdin_file and not pipe_io:
+            io.input = self.relative_path(params.stdin_file)
+        if params.stdout_file and not pipe_io:
+            io.output = self.relative_path(params.stdout_file)
+        if params.stderr_file:
+            io.stderr = self.relative_path(params.stderr_file)
+        return io
 
-        return (int): memory used by the sandbox (in bytes).
+    def _get_program_params(self, params: SandboxParams) -> ProgramParams:
+        return ProgramParams(
+            chdir=self.chdir,
+            time_limit=params.timeout / 1000 if params.timeout else None,
+            wall_time_limit=params.wallclock_timeout / 1000
+            if params.wallclock_timeout
+            else None,
+            memory_limit=params.address_space,
+            fs_limit=params.fsize,
+            env=params.set_env,
+            io=self._get_io(params),
+        )
 
-        """
-        if self.log is None:
-            return None
-        return int(self.log['mem']) * 1024
+    def _get_sandbox_log(
+        self, result: ProgramResult, params: SandboxParams
+    ) -> SandboxLog:
+        return SandboxLog(
+            params=params.model_copy(deep=True),
+            execution_time=result.wall_time,
+            memory_used=result.memory_used,
+            exitcode=result.exitcode,
+            exitstatus=self._get_exit_status(result),
+            killing_signal=result.killing_signal,
+            other_logs={
+                'program_codes': [code.value for code in result.program_codes],
+                'alarm_msg': result.alarm_msg,
+            },
+        )
 
-    def get_killing_signal(self) -> int:
-        """Return the signal that killed the sandboxed process.
-
-        return (int): offending signal, or 0.
-
-        """
-        assert self.log is not None
-        if 'exit-sig' not in self.log:
-            return 0
-        return int(self.log['exit-sig'])
-
-    def get_status_list(self) -> List[str]:
-        """Reads the sandbox log file, and set and return the status
-        of the sandbox.
-
-        return (list): list of statuses of the sandbox.
-
-        """
-        assert self.log is not None
-        if 'status' in self.log:
-            return self.log['status'].split(',')
-        return []
-
-    # This sandbox only discriminates between processes terminating
-    # properly or being killed with a signal; all other exceptional
-    # conditions (RAM or CPU limitations, ...) result in some signal
-    # being delivered to the process
-    def get_exit_status(self) -> str:
-        """Get information about how the sandbox terminated.
-
-        return (string): the main reason why the sandbox terminated.
-
-        """
-        if self.returncode is not None and not self.translate_box_exitcode(
-            self.returncode
-        ):
-            return self.EXIT_SANDBOX_ERROR
-        status_list = self.get_status_list()
-        if 'TE' in status_list:
-            return self.EXIT_TERMINATED
-        if 'WT' in status_list:
-            return self.EXIT_TIMEOUT_WALL
-        if 'TO' in status_list:
-            return self.EXIT_TIMEOUT
-        if 'OL' in status_list:
-            return self.EXIT_OUTPUT_LIMIT_EXCEEDED
-        if 'ML' in status_list:
-            return self.EXIT_MEMORY_LIMIT_EXCEEDED
-        if 'SG' in status_list:
-            return self.EXIT_SIGNAL
-        if 'RE' in status_list:
-            return self.EXIT_NONZERO_RETURN
-        return self.EXIT_OK
-
-    def get_exit_code(self) -> int:
-        """Return the exit code of the sandboxed process.
-
-        return (float): exitcode, or 0.
-
-        """
-        assert self.log is not None
-        return int(self.log['exit-code'])
-
-    def get_detailed_logs(self) -> str:
-        return str(self.log)
-
-    def get_human_exit_description(self) -> str:
-        """Get the status of the sandbox and return a human-readable
-        string describing it.
-
-        return (string): human-readable explaination of why the
-                         sandbox terminated.
-
-        """
-        status = self.get_exit_status()
-        if status == self.EXIT_OK:
-            return (
-                'Execution successfully finished (with exit code %d)'
-                % self.get_exit_code()
-            )
-        elif status == self.EXIT_SANDBOX_ERROR:
-            return 'Execution failed because of sandbox error'
-        elif status == self.EXIT_TIMEOUT:
-            return 'Execution timed out'
-        elif status == self.EXIT_TIMEOUT_WALL:
-            return 'Execution timed out (wall clock limit exceeded)'
-        elif status == self.EXIT_SIGNAL:
-            return 'Execution killed with signal %s' % self.get_killing_signal()
-        elif status == self.EXIT_NONZERO_RETURN:
-            return 'Execution failed because the return code was nonzero'
-        elif status == self.EXIT_OUTPUT_LIMIT_EXCEEDED:
-            return 'Execution exceeded output limit'
-        return ''
-
-    def get_current_log_name(self) -> pathlib.Path:
-        return pathlib.Path(f'logs.{self.exec_num}')
-
-    def hydrate_logs(self):
-        self.log = None
-        if not self.relative_path(self.get_current_log_name()).is_file():
-            return
-        self.log = {}
-        raw_log = self.get_file_to_string(self.get_current_log_name(), maxlen=None)
-        for line in raw_log.splitlines():
-            items = line.split(':', 1)
-            if len(items) != 2:
-                continue
-            key, value = items
-            self.log[key] = value.strip()
-
-    def execute_without_std(
-        self,
-        command: List[str],
-    ) -> bool:
-        """Execute the given command in the sandbox using
-        subprocess.Popen and discarding standard input, output and
-        error. More specifically, the standard input gets closed just
-        after the execution has started; standard output and error are
-        read until the end, in a way that prevents the execution from
-        being blocked because of insufficient buffering.
-
-        command ([string]): executable filename and arguments of the
-            command.
-
-        return (bool): True if the sandbox didn't report errors
-            (caused by the sandbox itself), False otherwise
-
-        """
+    def run(self, command: List[str], params: SandboxParams) -> SandboxLog:
         self.exec_num += 1
 
         logger.debug(
@@ -301,43 +161,68 @@ class StupidSandbox(SandboxBase):
         ) as commands:
             commands.write('%s\n' % command)
 
-        real_command = (
-            [
-                sys.executable,
-                str(utils.abspath(self.get_timeit_executable())),
-                str(utils.abspath(self.relative_path(self.get_current_log_name()))),
-            ]
-            + self.get_timeit_args()
-            + command
+        program = Program(command, self._get_program_params(params))
+        result = program.wait()
+
+        return self._get_sandbox_log(result, params)
+
+    def run_communication(
+        self,
+        command: List[str],
+        params: SandboxParams,
+        interactor_command: List[str],
+        interactor_params: SandboxParams,
+    ) -> Tuple[SandboxLog, SandboxLog]:
+        self.exec_num += 1
+
+        logger.debug(
+            "Executing program in sandbox with command: `%s'.", ' '.join(command)
+        )
+        with open(
+            self.relative_path(self.cmd_file), 'at', encoding='utf-8'
+        ) as commands:
+            commands.write('%s\n' % command)
+
+        interactor_program_params = self._get_program_params(interactor_params)
+        interactor_program_params.io = self._get_io(interactor_params, pipe_io=True)
+        interactor = Program(
+            interactor_command,
+            interactor_program_params,
         )
 
-        self.clear_pid()
-        with subprocess.Popen(
-            real_command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env={**os.environ, **self.params.set_env},
-        ) as p:
-            self.set_pid(p.pid)
-            try:
-                self.returncode = p.wait()
-            except Exception:
-                p.kill()
-                raise
-        self.hydrate_logs()
-        return self.translate_box_exitcode(self.returncode)
+        group_id = os.getpgid(interactor.pid)
 
-    def translate_box_exitcode(self, exitcode: int) -> bool:
-        # SIGALRM can be safely ignored, just in case it leaks away. SIGTERM also.
-        if self.log is None:
-            return False
-        if 'TE' in self.get_status_list():
-            return True
-        return super().translate_box_exitcode(exitcode) or -exitcode == signal.SIGALRM
+        program_params = self._get_program_params(params)
+        program_params.io = self._get_io(params, pipe_io=True)
+        assert interactor.pipes.output is not None
+        assert interactor.pipes.input is not None
+        program_params.io.input = interactor.pipes.output
+        program_params.io.output = interactor.pipes.input
+        program_params.pgid = group_id
+        program = Program(command, program_params)
 
-    def debug_message(self) -> Any:
-        return f'returncode = {self.returncode}\nlogs = {self.log}\ntimeit_args = {self.get_timeit_args()}'
+        results: List[Optional[SandboxLog]] = [None, None]
+
+        for idx in range(2):
+            pid, status, ru = os.wait4(-group_id, 0)
+
+            if pid == interactor.pid:
+                interactor.pipes.output.close()
+
+                program_result = interactor.process_exit(status, ru)
+                results[1] = self._get_sandbox_log(program_result, interactor_params)
+                results[1].exit_index = idx
+                # TODO: kill in case of WA
+            elif pid == program.pid:
+                interactor.pipes.input.close()
+
+                program_result = program.process_exit(status, ru)
+                results[0] = self._get_sandbox_log(program_result, params)
+                results[0].exit_index = idx
+            else:
+                raise RuntimeError(f'Unknown pid: {pid}')
+
+        return typing.cast(Tuple[SandboxLog, SandboxLog], tuple(results))
 
     def cleanup(self, delete=False):
         """See Sandbox.cleanup()."""
