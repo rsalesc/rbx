@@ -1,3 +1,26 @@
+## 0.13.5 (2025-07-13)
+
+### Fix
+
+- fix copytree gitignore
+- capture interaction in new sandbox
+- allow for 64-bit rbx.h vars
+- fix digest integrity checks
+- rewrite to use a new stupid sandbox
+- ensure checker messages are properly truncated everywhere
+- ensure we don't check caching integrity on write
+- ensure pipes are not captured when specified manually in generators
+- add proper escaping in rbx ui
+- add tests for default preset
+- remove console log for nocheck
+
+### Refactor
+
+- delete unused fifo code
+- remove deprecated isolate code
+- move problem testdata
+- clean up check functions in steps.py
+
 ## 0.13.4 (2025-07-10)
 
 ### Fix
