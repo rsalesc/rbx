@@ -193,6 +193,13 @@ def new_cd(x: pathlib.Path):
         os.chdir(d)
 
 
+def _safe_match(matcher, path):
+    try:
+        return matcher(path)
+    except ValueError:
+        return False
+
+
 def copytree_honoring_gitignore(
     src: pathlib.Path, dst: pathlib.Path, extra_gitignore: Optional[str] = None
 ):
@@ -212,7 +219,10 @@ def copytree_honoring_gitignore(
         matching_file = file
         ignored = False
         while matching_file.is_relative_to(src):
-            if any(ignore_matcher(matching_file) for ignore_matcher in ignore_matchers):
+            if any(
+                _safe_match(ignore_matcher, matching_file)
+                for ignore_matcher in ignore_matchers
+            ):
                 ignored = True
                 break
             matching_file = matching_file.parent
