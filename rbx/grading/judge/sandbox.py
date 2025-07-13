@@ -584,6 +584,7 @@ class SandboxBase(abc.ABC):
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
+        merged_capture: Optional[pathlib.Path] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
         pass
 

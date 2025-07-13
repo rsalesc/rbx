@@ -9,7 +9,7 @@ from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 from rbx.grading.judge.storage import FilesystemStorage, Storage
 
-CACHE_STEP_VERSION = 3
+CACHE_STEP_VERSION = 4
 
 
 def get_cache_fingerprint() -> str:

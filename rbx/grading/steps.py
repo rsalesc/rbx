@@ -782,6 +782,7 @@ async def run_coordinated(
     solution: CoordinatedRunParams,
     artifacts: GradingArtifacts,
     sandbox: SandboxBase,
+    merged_capture: Optional[pathlib.Path] = None,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     sandbox.reset()
 
@@ -802,6 +803,7 @@ async def run_coordinated(
         solution_params,
         interactor_cmd,
         interactor_params,
+        merged_capture,
     )
 
     if not _process_output_artifacts(artifacts, sandbox):

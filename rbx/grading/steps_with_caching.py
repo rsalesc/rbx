@@ -1,3 +1,4 @@
+import pathlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from rbx.grading import grading_context, profiling, steps
@@ -91,6 +92,7 @@ async def run_coordinated(
     artifacts: GradingArtifacts,
     sandbox: SandboxBase,
     dependency_cache: DependencyCache,
+    merged_capture: Optional[pathlib.Path] = None,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     artifacts.logs = GradingLogsHolder()
 
@@ -126,6 +128,7 @@ async def run_coordinated(
                         solution,
                         artifacts,
                         sandbox,
+                        merged_capture=merged_capture,
                     )
             else:
                 cached_profile.stop()

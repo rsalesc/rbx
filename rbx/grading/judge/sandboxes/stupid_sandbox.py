@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import importlib.resources
 import logging
 import os
 import pathlib
 import shutil
+import subprocess
+import sys
 import tempfile
 import typing
 from typing import List, Optional, Tuple
 
+from rbx import utils
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.program import (
+    FileLike,
     Program,
     ProgramCode,
     ProgramIO,
@@ -134,6 +139,16 @@ class StupidSandbox(SandboxBase):
             io=self._get_io(params),
         )
 
+    def _get_tee_program_params(self, io: ProgramIO, pgid: int) -> ProgramParams:
+        return ProgramParams(
+            chdir=self.chdir,
+            time_limit=None,
+            wall_time_limit=None,
+            memory_limit=None,
+            io=io,
+            pgid=pgid,
+        )
+
     def _get_sandbox_log(
         self, result: ProgramResult, params: SandboxParams
     ) -> SandboxLog:
@@ -149,6 +164,60 @@ class StupidSandbox(SandboxBase):
                 'alarm_msg': result.alarm_msg,
             },
         )
+
+    def _needs_teeing(
+        self,
+        params: SandboxParams,
+        interactor_params: SandboxParams,
+        merged_capture: Optional[pathlib.Path] = None,
+    ) -> bool:
+        return (
+            params.stdout_file is not None
+            or interactor_params.stdout_file is not None
+            or merged_capture is not None
+        )
+
+    def _get_tee_executable(self) -> pathlib.Path:
+        with importlib.resources.as_file(
+            importlib.resources.files('rbx')
+            / 'grading'
+            / 'judge'
+            / 'sandboxes'
+            / 'tee.py'
+        ) as file:
+            return file
+
+    def _get_tee_command(self, char: str, extra: Optional[str] = None) -> List[str]:
+        return [
+            sys.executable,
+            str(utils.abspath(self._get_tee_executable())),
+            char,
+            extra or '/dev/null',
+        ]
+
+    def _get_tee_program(
+        self,
+        char: str,
+        stdin: FileLike,
+        stdout: FileLike,
+        pgid: int,
+        capture: Optional[pathlib.Path] = None,
+        merged_capture: Optional[pathlib.Path] = None,
+    ) -> Program:
+        io = ProgramIO(input=stdin, output=stdout, stderr=subprocess.DEVNULL)
+        if merged_capture:
+            io.stderr = self.relative_path(merged_capture).open('ab')
+        return Program(
+            self._get_tee_command(
+                char, str(self.relative_path(capture)) if capture else None
+            ),
+            self._get_tee_program_params(io, pgid),
+        )
+
+    def _get_pathlike_stdout(self, io: ProgramIO) -> Optional[pathlib.Path]:
+        if isinstance(io.output, str) or isinstance(io.output, pathlib.Path):
+            return pathlib.Path(io.output)
+        return None
 
     def run(self, command: List[str], params: SandboxParams) -> SandboxLog:
         self.exec_num += 1
@@ -172,6 +241,7 @@ class StupidSandbox(SandboxBase):
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
+        merged_capture: Optional[pathlib.Path] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
         self.exec_num += 1
 
@@ -189,36 +259,72 @@ class StupidSandbox(SandboxBase):
             interactor_command,
             interactor_program_params,
         )
+        assert interactor.pipes.output is not None
+        assert interactor.pipes.input is not None
+        solution_input_pipe = interactor.pipes.output
+        solution_output_pipe = interactor.pipes.input
 
         group_id = os.getpgid(interactor.pid)
+        should_tee = self._needs_teeing(params, interactor_params, merged_capture)
+
+        if should_tee:
+            if merged_capture:
+                self.create_file_from_string(merged_capture, '<\n>\n', override=True)
+
+            solution_tee = self._get_tee_program(
+                '>',
+                stdin=subprocess.PIPE,
+                stdout=interactor.pipes.input,
+                capture=self._get_pathlike_stdout(self._get_io(params)),
+                merged_capture=merged_capture,
+                pgid=group_id,
+            )
+            interactor_tee = self._get_tee_program(
+                '<',
+                stdin=interactor.pipes.output,
+                stdout=subprocess.PIPE,
+                capture=self._get_pathlike_stdout(self._get_io(interactor_params)),
+                merged_capture=merged_capture,
+                pgid=group_id,
+            )
+            assert solution_tee.pipes.input is not None
+            assert interactor_tee.pipes.output is not None
+            solution_input_pipe = interactor_tee.pipes.output
+            solution_output_pipe = solution_tee.pipes.input
 
         program_params = self._get_program_params(params)
         program_params.io = self._get_io(params, pipe_io=True)
-        assert interactor.pipes.output is not None
-        assert interactor.pipes.input is not None
-        program_params.io.input = interactor.pipes.output
-        program_params.io.output = interactor.pipes.input
+        program_params.io.input = solution_input_pipe
+        program_params.io.output = solution_output_pipe
         program_params.pgid = group_id
         program = Program(command, program_params)
 
         results: List[Optional[SandboxLog]] = [None, None]
 
-        for idx in range(2):
+        for idx in range(4 if should_tee else 2):
             pid, status, ru = os.wait4(-group_id, 0)
 
             if pid == interactor.pid:
-                interactor.pipes.output.close()
-
                 program_result = interactor.process_exit(status, ru)
                 results[1] = self._get_sandbox_log(program_result, interactor_params)
                 results[1].exit_index = idx
+
+                interactor.pipes.output.close()
+                if should_tee:
+                    assert interactor_tee.pipes.output is not None
+                    interactor_tee.pipes.output.close()
                 # TODO: kill in case of WA
             elif pid == program.pid:
-                interactor.pipes.input.close()
-
                 program_result = program.process_exit(status, ru)
                 results[0] = self._get_sandbox_log(program_result, params)
                 results[0].exit_index = idx
+
+                interactor.pipes.input.close()
+                if should_tee:
+                    assert solution_tee.pipes.input is not None
+                    solution_tee.pipes.input.close()
+            elif should_tee and (pid in (solution_tee.pid, interactor_tee.pid)):
+                pass
             else:
                 raise RuntimeError(f'Unknown pid: {pid}')
 

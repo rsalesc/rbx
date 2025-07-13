@@ -48,6 +48,8 @@ from rbx.grading.steps import (
     maybe_get_bits_stdcpp_for_commands,
 )
 
+MERGED_CAPTURE_FILENAME = 'merged_capture.pio'
+
 
 class SanitizationLevel(Enum):
     NONE = 0
@@ -738,6 +740,16 @@ async def run_communication(
     grading_artifacts.inputs.extend(solution_prepared.artifacts.inputs)
     grading_artifacts.outputs.extend(solution_prepared.artifacts.outputs)
 
+    merged_capture_path: Optional[pathlib.Path] = None
+    if merged_capture is not None:
+        merged_capture_path = pathlib.Path(MERGED_CAPTURE_FILENAME)
+        grading_artifacts.outputs.append(
+            GradingFileOutput(
+                src=merged_capture_path,
+                **merged_capture.expand(),
+            )
+        )
+
     interactor_run_params = steps.CoordinatedRunParams(
         command=interactor_prepared.command,
         params=interactor_prepared.sandbox_params,
@@ -760,4 +772,5 @@ async def run_communication(
             sandbox=package.get_singleton_sandbox(),
             artifacts=grading_artifacts,
             dependency_cache=package.get_dependency_cache(),
+            merged_capture=merged_capture_path,
         )
