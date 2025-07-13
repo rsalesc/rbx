@@ -88,15 +88,26 @@ def _check_digests(artifacts_list: List[GradingArtifacts]):
             produced.add(id(output.digest))
 
 
-def _build_digest_list(artifacts_list: List[GradingArtifacts]) -> List[DigestHolder]:
-    digests = []
+def _build_artifact_with_digest_list(
+    artifacts_list: List[GradingArtifacts],
+) -> List[GradingFileOutput]:
+    outputs = []
     for artifacts in artifacts_list:
         for output in artifacts.outputs:
             if output.hash and output.digest is None:
                 output.digest = DigestHolder()
             if output.digest is None:
                 continue
-            digests.append(output.digest)
+            outputs.append(output)
+    return outputs
+
+
+def _build_digest_list(artifacts_list: List[GradingArtifacts]) -> List[DigestHolder]:
+    outputs = _build_artifact_with_digest_list(artifacts_list)
+    digests = []
+    for output in outputs:
+        assert output.digest is not None
+        digests.append(output.digest)
     return digests
 
 
@@ -115,29 +126,44 @@ def _build_fingerprint_list(
     return fingerprints
 
 
-def _maybe_check_integrity(output: GradingFileOutput):
+def _maybe_check_integrity(output: GradingFileOutput, integrity_digest: str):
     if not grading_context.should_check_integrity():
         return
-    if output.dest is None or not output.dest.is_symlink():
+    if not output.hash:
         return
-    if output.digest is None or output.digest.value is None:
+    if output.dest is None or not output.dest.is_symlink() or not output.dest.is_file():
+        # Only makes sense if the file EXISTS and IS A SYMLINK pointing to an
+        # EXISTING storage file.
+        # If the storage file ceases to exist, we can simply evict from the cache.
+        return
+    if output.digest is None:
         return
     with output.dest.open('rb') as f:
-        fingerprint = digest_cooperatively(f)
-    if fingerprint != output.digest.value:
+        output_digest = digest_cooperatively(f)
+    if output_digest != integrity_digest:
         raise ValueError(
             f'Cache was tampered with, file {output.dest} has changed since it was cached.\nPlease run `rbx clean` to reset the cache.'
         )
 
 
+def _check_digest_list_integrity(
+    artifacts_list: List[GradingArtifacts], integrity_digests: List[Optional[str]]
+):
+    outputs = _build_artifact_with_digest_list(artifacts_list)
+    assert len(outputs) == len(integrity_digests)
+    for output, integrity_digest in zip(outputs, integrity_digests):
+        assert output.digest is not None
+        if integrity_digest is None:
+            continue
+        _maybe_check_integrity(output, integrity_digest)
+
+
 def _build_output_fingerprint_list(
-    artifacts_list: List[GradingArtifacts], check_integrity: bool = True
+    artifacts_list: List[GradingArtifacts],
 ) -> List[str]:
     fingerprints = []
     for artifacts in artifacts_list:
         for output in artifacts.outputs:
-            if output.hash and check_integrity:
-                _maybe_check_integrity(output)
             if output.dest is None or output.intermediate or output.hash:
                 continue
             if not output.dest.is_file():
@@ -159,13 +185,13 @@ def _build_logs_list(artifacts_list: List[GradingArtifacts]) -> List[GradingLogs
 def _build_cache_fingerprint(
     artifacts_list: List[GradingArtifacts],
     cacher: FileCacher,
-    check_integrity: bool = True,
 ) -> CacheFingerprint:
     digests = [digest.value for digest in _build_digest_list(artifacts_list)]
     fingerprints = _build_fingerprint_list(artifacts_list, cacher)
     output_fingerprints = _build_output_fingerprint_list(
-        artifacts_list, check_integrity
+        artifacts_list,
     )
+
     logs = _build_logs_list(artifacts_list)
     return CacheFingerprint(
         digests=digests,
@@ -382,6 +408,7 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ) -> bool:
+        print('== FINDING IN CACHE ==')
         input = _build_cache_input(
             commands=commands,
             artifact_list=artifact_list,
@@ -394,7 +421,10 @@ class DependencyCache:
         if fingerprint is None:
             return False
 
-        reference_fingerprint = _build_cache_fingerprint(artifact_list, self.cacher)
+        reference_fingerprint = _build_cache_fingerprint(
+            artifact_list,
+            self.cacher,
+        )
 
         if not _fingerprints_match(fingerprint, reference_fingerprint):
             self._evict_from_cache(key)
@@ -404,6 +434,11 @@ class DependencyCache:
             self._evict_from_cache(key)
             return False
 
+        # Check whether existing storage files were not tampered with.
+        _check_digest_list_integrity(
+            artifact_list,
+            fingerprint.digests,
+        )
         reference_digests = _build_digest_list(artifact_list)
 
         # Apply digest changes.
@@ -457,7 +492,11 @@ class DependencyCache:
         if not are_artifacts_ok(artifact_list, self.cacher):
             return
 
+        reference_fingerprint = _build_cache_fingerprint(
+            artifact_list,
+            self.cacher,
+        )
         self._store_in_cache(
             key,
-            _build_cache_fingerprint(artifact_list, self.cacher, check_integrity=False),
+            reference_fingerprint,
         )
