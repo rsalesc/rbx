@@ -408,7 +408,6 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ) -> bool:
-        print('== FINDING IN CACHE ==')
         input = _build_cache_input(
             commands=commands,
             artifact_list=artifact_list,

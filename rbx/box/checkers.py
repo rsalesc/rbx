@@ -247,6 +247,7 @@ async def _check(
             console.console.print(
                 f'[error]Summary:[/error] {checker_run_log.get_summary()}'
             )
+        console.console.print(f'[error]Message:[/error] {message}')
         console.console.print(
             f'[error]Testcase input:[/error] [item]{testcase.inputPath}[/item]'
         )

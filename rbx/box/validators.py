@@ -119,6 +119,7 @@ async def _validate_testcase(
         extra_args=shlex.join(var_args) if var_args else None,
     )
 
+    message = package.get_digest_as_string(message_digest.value or '')
     if (
         run_log is not None
         and run_log.exitcode != 0
@@ -128,12 +129,13 @@ async def _validate_testcase(
             f'[error]Validator [item]{validator.path}[/item] failed unexpectedly.[/error]'
         )
         console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
+        console.console.print(f'[error]Message:[/error] {message}')
+        console.console.print(f'[error]Testcase:[/error] {testcase}')
         raise typer.Exit(1)
 
     log_overview = ''
     if log_digest.value is not None:
         log_overview = package.get_digest_as_string(log_digest.value or '')
-    message = package.get_digest_as_string(message_digest.value or '')
     return (
         run_log is not None and run_log.exitcode == 0,
         message,

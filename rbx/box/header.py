@@ -49,11 +49,23 @@ def _get_string_var_block() -> str:
     return _get_var_block(_get_vars_of_type(str, _string_repr))
 
 
+def _check_int_bounds(x: int) -> None:
+    if x >= 2**64:
+        raise ValueError(
+            f'Some variable you defined (value: {x}) is too large to fit in a C++ 64-bit integer (signed or unsigned)'
+        )
+    if x < -(2**63):
+        raise ValueError(
+            f'Some variable you defined (value: {x}) is too small to fit in a C++ 64-bit signed integer (int64_t)'
+        )
+
+
 def _get_int_var_block() -> str:
     def _transform(x: Primitive) -> str:
         if isinstance(x, bool):
             return str(int(x))
-        return str(x)
+        _check_int_bounds(int(x))
+        return f'static_cast<int64_t>({x})'
 
     return _get_var_block(_get_vars_of_type(int, _transform))
 
