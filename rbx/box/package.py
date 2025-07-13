@@ -1,8 +1,6 @@
 import atexit
 import functools
-import os
 import pathlib
-import shutil
 import sys
 from typing import Dict, List, Optional, Tuple
 
@@ -453,18 +451,6 @@ def get_empty_sentinel_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path
     path = get_shared_dir(root) / '.empty'
     path.write_text('')
     return path
-
-
-@functools.cache
-def get_fifos(root: pathlib.Path = pathlib.Path()) -> Tuple[pathlib.Path, pathlib.Path]:
-    path = get_shared_dir(root) / '.fifos'
-    shutil.rmtree(path, ignore_errors=True)
-    path.mkdir(parents=True, exist_ok=True)
-    fifo_in = path / 'fifo.in'
-    fifo_out = path / 'fifo.out'
-    os.mkfifo(fifo_in)
-    os.mkfifo(fifo_out)
-    return fifo_in, fifo_out
 
 
 @functools.cache

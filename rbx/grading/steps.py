@@ -1,15 +1,12 @@
 import asyncio
-import contextlib
 import dataclasses
 import functools
-import os
 import pathlib
 import re
 import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 from enum import Enum
 from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -824,17 +821,6 @@ async def run_coordinated(
     return solution_log, interactor_log
 
 
-def _normalize_checked_words(s: str) -> Tuple[str, ...]:
-    return tuple(s.split())
-
-
-def _wcmp_check(expected: str, output: str) -> Outcome:
-    if _normalize_checked_words(expected) == _normalize_checked_words(output):
-        return Outcome.ACCEPTED
-
-    return Outcome.WRONG_ANSWER
-
-
 def get_checker_sandbox_params() -> SandboxParams:
     params = SandboxParams(
         max_processes=None,
@@ -843,13 +829,3 @@ def get_checker_sandbox_params() -> SandboxParams:
     params.add_mapped_directory(pathlib.Path('/usr'))
     params.add_mapped_directory(pathlib.Path('/etc'))
     return params
-
-
-@contextlib.contextmanager
-def make_fifos():
-    with tempfile.TemporaryDirectory() as temp_dir:
-        fifo_in = pathlib.PosixPath(temp_dir) / 'fifo.in'
-        fifo_out = pathlib.PosixPath(temp_dir) / 'fifo.out'
-        os.mkfifo(fifo_in)
-        os.mkfifo(fifo_out)
-        yield fifo_in, fifo_out
