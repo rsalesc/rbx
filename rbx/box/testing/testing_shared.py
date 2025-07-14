@@ -55,7 +55,10 @@ class TestingShared:
         return filename
 
     def relpath(self, path: PathOrStr) -> pathlib.Path:
-        return pathlib.Path(path).relative_to(self.root)
+        path = pathlib.Path(path)
+        if not path.is_relative_to(self.root):
+            return path
+        return path.relative_to(self.root)
 
     def add_from_testdata(self, path: PathOrStr, src: PathOrStr):
         testdata_path = get_testdata_path()
