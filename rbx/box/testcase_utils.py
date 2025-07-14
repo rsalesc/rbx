@@ -40,6 +40,8 @@ class TestcaseEntry(BaseModel):
 
 
 class TestcasePattern(BaseModel):
+    __test__ = False
+
     group_prefix: List[str]
     index: Optional[int] = None
 

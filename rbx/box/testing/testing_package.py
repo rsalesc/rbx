@@ -1,6 +1,6 @@
 import pathlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from rbx import console, utils
 from rbx.box import package, presets
@@ -10,11 +10,14 @@ from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
     Generator,
+    GeneratorCall,
     Interactor,
     Package,
     Solution,
     TaskType,
+    Testcase,
     TestcaseGroup,
+    TestcaseSubgroup,
     ValidatorOutcome,
     ValidatorTest,
 )
@@ -219,6 +222,154 @@ class TestingPackage(TestingShared):
             TestcaseGroup(
                 name=name,
                 generatorScript=CodeItem(path=script_path),
+                validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+                extraValidators=[
+                    CodeItem(path=pathlib.Path(v)) for v in extra_validators
+                ]
+                if extra_validators
+                else [],
+            )
+        ]
+        self.save()
+
+    def add_testgroup_with_subgroups(
+        self,
+        name: str,
+        subgroups: List[Dict[str, Any]],
+        validator: Optional[PathOrStr] = None,
+        extra_validators: Optional[List[PathOrStr]] = None,
+    ):
+        """Add a testgroup with subgroups.
+
+        Args:
+            name: Name of the testgroup
+            subgroups: List of subgroup definitions, each containing fields like:
+                - name: subgroup name
+                - generators: list of generator calls
+                - testcases: list of testcase objects
+                - testcaseGlob: glob pattern
+                - generatorScript: generator script path
+                - extraValidators: list of extra validators
+        """
+
+        subgroup_objects = []
+        for subgroup_data in subgroups:
+            subgroup_dict = {'name': subgroup_data['name']}
+
+            if 'generators' in subgroup_data:
+                subgroup_dict['generators'] = [
+                    GeneratorCall(name=gen['name'], args=gen.get('args'))
+                    for gen in subgroup_data['generators']
+                ]
+
+            if 'testcases' in subgroup_data:
+                subgroup_dict['testcases'] = [
+                    Testcase(
+                        inputPath=pathlib.Path(tc['inputPath']),
+                        outputPath=pathlib.Path(tc['outputPath'])
+                        if tc.get('outputPath')
+                        else None,
+                    )
+                    for tc in subgroup_data['testcases']
+                ]
+
+            if 'testcaseGlob' in subgroup_data:
+                subgroup_dict['testcaseGlob'] = subgroup_data['testcaseGlob']
+
+            if 'generatorScript' in subgroup_data:
+                subgroup_dict['generatorScript'] = CodeItem(
+                    path=pathlib.Path(subgroup_data['generatorScript'])
+                )
+
+            if 'extraValidators' in subgroup_data:
+                subgroup_dict['extraValidators'] = [
+                    CodeItem(path=pathlib.Path(v))
+                    for v in subgroup_data['extraValidators']
+                ]
+
+            subgroup_objects.append(TestcaseSubgroup(**subgroup_dict))
+
+        self.yml.testcases = self.yml.testcases + [
+            TestcaseGroup(
+                name=name,
+                subgroups=subgroup_objects,
+                validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+                extraValidators=[
+                    CodeItem(path=pathlib.Path(v)) for v in extra_validators
+                ]
+                if extra_validators
+                else [],
+            )
+        ]
+        self.save()
+
+    def add_testgroup_with_manual_testcases(
+        self,
+        name: str,
+        testcases: List[Dict[str, str]],
+        validator: Optional[PathOrStr] = None,
+        extra_validators: Optional[List[PathOrStr]] = None,
+    ):
+        """Add a testgroup with manually defined testcases.
+
+        Args:
+            name: Name of the testgroup
+            testcases: List of testcase definitions, each containing:
+                - inputPath: path to input file
+                - outputPath: optional path to output file
+        """
+
+        testcase_objects = []
+        for tc_data in testcases:
+            testcase_objects.append(
+                Testcase(
+                    inputPath=pathlib.Path(tc_data['inputPath']),
+                    outputPath=pathlib.Path(tc_data['outputPath'])
+                    if tc_data.get('outputPath')
+                    else None,
+                )
+            )
+
+        self.yml.testcases = self.yml.testcases + [
+            TestcaseGroup(
+                name=name,
+                testcases=testcase_objects,
+                validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+                extraValidators=[
+                    CodeItem(path=pathlib.Path(v)) for v in extra_validators
+                ]
+                if extra_validators
+                else [],
+            )
+        ]
+        self.save()
+
+    def add_testgroup_with_generators(
+        self,
+        name: str,
+        generators: List[Dict[str, str]],
+        validator: Optional[PathOrStr] = None,
+        extra_validators: Optional[List[PathOrStr]] = None,
+    ):
+        """Add a testgroup with generator calls.
+
+        Args:
+            name: Name of the testgroup
+            generators: List of generator definitions, each containing:
+                - name: generator name
+                - args: optional generator arguments
+        """
+
+        generator_objects = []
+        for gen_data in generators:
+            generator_objects.append(
+                GeneratorCall(name=gen_data['name'], args=gen_data.get('args'))
+            )
+
+        self.yml.testcases = self.yml.testcases + [
+            TestcaseGroup(
+                name=name,
+                generators=generator_objects,
                 validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
                 extraValidators=[
                     CodeItem(path=pathlib.Path(v)) for v in extra_validators

@@ -30,7 +30,7 @@ def _get_group_output(
     return group_path / f'{subgroup_prefix}{i:03d}.out'
 
 
-async def _run_generator_script(testcase: TestcaseSubgroup) -> str:
+async def run_generator_script(testcase: TestcaseSubgroup) -> str:
     assert testcase.generatorScript is not None
 
     cacher = package.get_file_cacher()
@@ -240,7 +240,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
 
         # Run generator script.
         if subgroup.generatorScript is not None:
-            script = await _run_generator_script(subgroup)
+            script = await run_generator_script(subgroup)
 
             # Run each line from generator script.
             for generator_name, args, line_number in _extract_script_lines(script):
