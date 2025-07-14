@@ -28,8 +28,6 @@ and realtime resource usage monitoring.
 
 Different from judging systems, where sandboxes are usually written in C/C++ and are run as privileged users, this wrapper script is written in Python for better portability.
 
-*If you're curious about the wrapper script, you can find it [here](https://github.com/rsalesc/rbx/blob/main/rbx/grading/judge/sandboxes/timeit.py).*
-
 ## Outcomes
 
 Right after running the solution, we must give a verdict to it (or, as we call them in {{rbx}}, an outcome).
