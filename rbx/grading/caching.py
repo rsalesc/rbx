@@ -371,7 +371,7 @@ class DependencyCache:
         self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
-        atexit.register(lambda: shutil.rmtree(tmp_dir))
+        atexit.register(lambda: shutil.rmtree(tmp_dir, ignore_errors=True))
 
     def _cache_name(self) -> str:
         return str(self.root / '.cache_db')

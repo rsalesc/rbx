@@ -73,7 +73,9 @@ class FileCacher:
             self.file_dir = pathlib.Path(tempfile.mkdtemp())
             # Delete this directory on exit since it has a random name and
             # won't be used again.
-            atexit.register(lambda: shutil.rmtree(str(self.file_dir)))
+            atexit.register(
+                lambda: shutil.rmtree(str(self.file_dir), ignore_errors=True)
+            )
         else:
             assert folder is not None
             self.file_dir = folder / 'fs-cache-shared'
@@ -84,7 +86,7 @@ class FileCacher:
         self.temp_dir = pathlib.Path(
             tempfile.mkdtemp(dir=self.file_dir, prefix='_temp')
         )
-        atexit.register(lambda: shutil.rmtree(str(self.temp_dir)))
+        atexit.register(lambda: shutil.rmtree(str(self.temp_dir), ignore_errors=True))
         # Just to make sure it was created.
 
     def is_shared(self) -> bool:
@@ -526,7 +528,7 @@ class FileCacher:
         """
         if self.is_shared():
             raise Exception('You may not destroy a shared cache.')
-        shutil.rmtree(str(self.file_dir))
+        shutil.rmtree(str(self.file_dir), ignore_errors=True)
 
     def list(self) -> List[storage.FileWithMetadata]:
         """List the files available in the storage.
