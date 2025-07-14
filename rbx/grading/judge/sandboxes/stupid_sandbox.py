@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -313,7 +314,9 @@ class StupidSandbox(SandboxBase):
                 if should_tee:
                     assert interactor_tee.pipes.output is not None
                     interactor_tee.pipes.output.close()
-                # TODO: kill in case of WA
+
+                if idx == 0 and program_result.exitcode != 0:
+                    os.killpg(group_id, signal.SIGKILL)
             elif pid == program.pid:
                 program_result = program.process_exit(status, ru)
                 results[0] = self._get_sandbox_log(program_result, params)
