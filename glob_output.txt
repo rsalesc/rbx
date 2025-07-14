@@ -1,0 +1,2 @@
+Arguments: discover pytest -- --rootdir /Users/rsalesc/Dev/robox.io -s --cache-clear .
+Count: 8

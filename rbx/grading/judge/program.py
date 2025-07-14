@@ -94,12 +94,40 @@ def get_preexec_fn(params: ProgramParams):
 
 
 def get_memory_usage(ru: resource.struct_rusage) -> int:
+    """Get memory usage in bytes from resource usage statistics.
+
+    Returns the total memory usage (RSS + shared memory segments) in bytes.
+
+    Platform differences in ru.ru_maxrss:
+    - macOS/Darwin: ru.ru_maxrss is in bytes
+    - Linux: ru.ru_maxrss is in kilobytes
+
+    This function normalizes the result to always return bytes.
+
+    Args:
+        ru: Resource usage statistics from os.wait4() or similar
+
+    Returns:
+        int: Total memory usage in bytes
+    """
     if sys.platform == 'darwin':
-        return ru.ru_maxrss // 1024 + ru.ru_ixrss
-    return ru.ru_maxrss + ru.ru_ixrss + ru.ru_idrss + ru.ru_isrss
+        # On macOS, ru.ru_maxrss is already in bytes
+        return ru.ru_maxrss + ru.ru_ixrss * 1024
+    # On Linux, ru.ru_maxrss is in kilobytes, so convert to bytes
+    return (ru.ru_maxrss + ru.ru_ixrss + ru.ru_idrss + ru.ru_isrss) * 1024
 
 
 def get_cpu_time(ru: resource.struct_rusage) -> float:
+    """Get CPU time in seconds from resource usage statistics.
+
+    Returns the total CPU time (user + system) in seconds.
+
+    Args:
+        ru: Resource usage statistics from os.wait4() or similar
+
+    Returns:
+        float: Total CPU time in seconds
+    """
     return ru.ru_utime + ru.ru_stime
 
 
@@ -239,6 +267,10 @@ class Program:
         ):
             program_codes.append(ProgramCode.WT)
             program_codes.append(ProgramCode.TO)
+        # Memory limit checking: Two ways a process can exceed memory limits:
+        # 1. Runtime monitoring (_handle_alarm) kills the process during execution
+        # 2. Post-execution check using ru.ru_maxrss detects peak memory usage exceeded limit
+        # Both memory_used (from ru.ru_maxrss) and memory_limit (converted to bytes) are in bytes
         if (
             self.params.memory_limit is not None
             and memory_used > self.params.memory_limit * 1024 * 1024
