@@ -8,6 +8,7 @@ When creating test, adhere to the following principles:
 - Use existing pytest fixtures in the codebase, or create one if the logic can be reused in various places
 - If possible, test the behavior of the function, not its implementation details. Inspect their output, produced assets (files, logs). Avoid mocking private functions unless strictly necessary.
 - When mocking, prefer to use the standard mock.patch Python library instead of manually replacing functions and properties.
+- Where possible, use a single assert and comparison (==, !=) operators, instead of multiple asserts for each field of a dict/list/tuple/class/etc.
 - Re-use existing files in the `testdata` folder, or create new ones when necessary. When creating new ones, make sure to create at a sub-folder that is related to the current test, or one that is general enough to contain files related to numerous tests.
 
 If adding tests to an already existing file, prioritize re-using the patterns the test file already adheres to instead of making new ones up.

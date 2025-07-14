@@ -277,8 +277,14 @@ class FilesystemStorage(Storage):
             return None
 
         # Create a temporary file in the same directory
+        # Use only the basename for the suffix to avoid issues with subdirectories
+        filename_basename = pathlib.Path(filename).name
         temp_file = tempfile.NamedTemporaryFile(
-            'wb', delete=False, prefix='.tmp.', suffix=filename, dir=self.path
+            'wb',
+            delete=False,
+            prefix='.tmp.',
+            suffix=f'.{filename_basename}',
+            dir=self.path,
         )
         metadata: Dict[str, Optional[BaseModel]] = {'compression': None}
         if self.compress or grading_context.should_compress():
