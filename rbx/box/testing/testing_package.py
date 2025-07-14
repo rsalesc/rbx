@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from rbx import console, utils
-from rbx.box import presets
+from rbx.box import package, presets
 from rbx.box.fields import Primitive
 from rbx.box.schema import (
+    CheckerTest,
     CodeItem,
     ExpectedOutcome,
     Generator,
@@ -14,6 +15,8 @@ from rbx.box.schema import (
     Solution,
     TaskType,
     TestcaseGroup,
+    ValidatorOutcome,
+    ValidatorTest,
 )
 from rbx.box.testing.testing_preset import TestingPreset
 from rbx.box.testing.testing_shared import PathOrStr, TestingShared
@@ -79,6 +82,9 @@ class TestingPackage(TestingShared):
 
     def save(self):
         self.yml_path.write_text(utils.model_to_yaml(self.yml))
+        # Clear internal cache and package cache to ensure the updated package is loaded fresh
+        self._yml = None
+        package.clear_package_cache()
 
     def set_type(self, type: TaskType):
         self.yml.type = type
@@ -244,3 +250,59 @@ class TestingPackage(TestingShared):
         if interactor_pipes_path.exists():
             contents.interactor_pipes = interactor_pipes_path.read_text()
         return contents
+
+    def add_validator_unit_test(
+        self,
+        glob: str,
+        outcome: ValidatorOutcome = ValidatorOutcome.VALID,
+        validator: Optional[PathOrStr] = None,
+        files: Optional[Dict[str, str]] = None,
+    ):
+        """Add a unit test for the validator.
+
+        Args:
+            glob: Glob pattern for input files
+            outcome: Expected validation outcome
+            validator: Optional validator to use (if not main validator)
+            files: Optional dict of {filename: content} to create test files
+        """
+        if files:
+            for filename, content in files.items():
+                self.add_file(filename).write_text(content)
+
+        validator_test = ValidatorTest(
+            glob=glob,
+            outcome=outcome,
+            validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+        )
+
+        # Explicitly set the unitTests field to mark it as dirty
+        unit_tests = self.yml.unitTests
+        unit_tests.validator = unit_tests.validator + [validator_test]
+        self.yml.unitTests = unit_tests
+        self.save()
+
+    def add_checker_unit_test(
+        self,
+        glob: str,
+        outcome: ExpectedOutcome = ExpectedOutcome.ACCEPTED,
+        files: Optional[Dict[str, str]] = None,
+    ):
+        """Add a unit test for the checker.
+
+        Args:
+            glob: Glob pattern for test files
+            outcome: Expected checker outcome
+            files: Optional dict of {filename: content} to create test files
+        """
+        if files:
+            for filename, content in files.items():
+                self.add_file(filename).write_text(content)
+
+        checker_test = CheckerTest(glob=glob, outcome=outcome)
+
+        # Explicitly set the unitTests field to mark it as dirty
+        unit_tests = self.yml.unitTests
+        unit_tests.checker = unit_tests.checker + [checker_test]
+        self.yml.unitTests = unit_tests
+        self.save()

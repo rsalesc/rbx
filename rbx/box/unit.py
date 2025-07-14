@@ -41,7 +41,7 @@ class CheckerTestEntry(BaseModel):
         return ', '.join(res)
 
 
-def _extract_validator_test_entries(
+def extract_validator_test_entries(
     tests: List[ValidatorTest],
 ) -> List[ValidatorTestEntry]:
     res: List[ValidatorTestEntry] = []
@@ -57,7 +57,7 @@ def _extract_validator_test_entries(
     return sorted(res, key=lambda x: x.input.name)
 
 
-def _extract_checker_test_entries(tests: List[CheckerTest]) -> List[CheckerTestEntry]:
+def extract_checker_test_entries(tests: List[CheckerTest]) -> List[CheckerTestEntry]:
     res: List[CheckerTestEntry] = []
     seen: Set[pathlib.Path] = set()
     for test in tests:
@@ -94,7 +94,7 @@ def _get_validator_for_test(test: ValidatorTestEntry) -> Optional[CodeItem]:
 async def run_validator_unit_tests(progress: StatusProgress):
     pkg = package.find_problem_package_or_die()
 
-    entries = _extract_validator_test_entries(pkg.unitTests.validator)
+    entries = extract_validator_test_entries(pkg.unitTests.validator)
 
     vals: List[CodeItem] = []
     for test in entries:
@@ -158,7 +158,7 @@ async def run_checker_unit_tests(progress: StatusProgress):
 
     console.console.rule('Checker tests', style='info')
 
-    entries = _extract_checker_test_entries(pkg.unitTests.checker)
+    entries = extract_checker_test_entries(pkg.unitTests.checker)
     if not entries:
         console.console.print('No checker unit tests found.')
         return

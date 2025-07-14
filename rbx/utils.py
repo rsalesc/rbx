@@ -103,13 +103,61 @@ def uploaded_schema_path(model: Type[BaseModel]) -> str:
     return f'https://rsalesc.github.io/rbx/schemas/{model.__name__}.json'
 
 
-def model_to_yaml(model: BaseModel) -> str:
+def model_to_yaml(model: BaseModel, **kwargs) -> str:
+    """Convert model to YAML string with proper boolean handling.
+
+    This function works around Pydantic's issue where Union[str, int, float, bool]
+    fields convert booleans to floats when using mode='json'.
+    """
+    # Use regular dump to preserve boolean types
+    data = model.model_dump(exclude_unset=True, exclude_none=True)
+
+    # Ensure the result is JSON-serializable by converting any non-JSON types
+    json_safe_data = _ensure_json_serializable(data)
+
+    # Add schema path comment and convert to YAML
     path = uploaded_schema_path(model.__class__)
-    return f'# yaml-language-server: $schema={path}\n\n' + yaml.dump(
-        model.model_dump(mode='python', exclude_unset=True, exclude_none=True),
-        sort_keys=False,
-        allow_unicode=True,
+    schema_comment = f'# yaml-language-server: $schema={path}\n\n'
+
+    yaml_content = yaml.safe_dump(
+        json_safe_data, sort_keys=False, allow_unicode=True, **kwargs
     )
+
+    return schema_comment + yaml_content
+
+
+def _ensure_json_serializable(obj):
+    """Recursively ensure an object is JSON-serializable while preserving booleans."""
+    from datetime import date, datetime
+    from enum import Enum
+    from pathlib import Path
+    from uuid import UUID
+
+    from rbx.autoenum import AutoEnum
+
+    if isinstance(obj, dict):
+        return {k: _ensure_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_ensure_json_serializable(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return [_ensure_json_serializable(item) for item in obj]
+    elif isinstance(obj, set):
+        return [_ensure_json_serializable(item) for item in obj]
+    elif isinstance(obj, AutoEnum):
+        return str(obj)
+    elif isinstance(obj, Enum):
+        return obj.value
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, UUID):
+        return str(obj)
+    elif isinstance(obj, Path):
+        return str(obj)
+    else:
+        # For any other type, try to convert to string
+        return str(obj)
 
 
 def model_from_yaml(model: Type[T], s: str) -> T:
