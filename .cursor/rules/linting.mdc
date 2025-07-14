@@ -1,0 +1,8 @@
+---
+description: 
+globs: *.py
+alwaysApply: false
+---
+When adding new Python code or refactoring existing code, make sure to fix all possible linting issues you introduce at the very end. You can use the `ruff` command to find the issues.
+
+Pre-existing linting issues are ok to keep.
