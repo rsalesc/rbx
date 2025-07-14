@@ -595,7 +595,7 @@ def _maybe_complain_about_sanitization(command: str) -> None:
         raise typer.Exit(1)
 
 
-def _check_for_sanitizer_warnings_in_line(line: str) -> bool:
+def check_for_sanitizer_warnings_in_line(line: str) -> bool:
     line = line.lower()
     return 'runtime error:' in line or '==error' in line
 
@@ -608,7 +608,7 @@ def _check_for_sanitizer_warnings(
     if not sandbox.file_exists(stderr_file):
         return False
     with sandbox.get_file(stderr_file) as f:
-        return any(_check_for_sanitizer_warnings_in_line(line.decode()) for line in f)
+        return any(check_for_sanitizer_warnings_in_line(line.decode()) for line in f)
 
 
 _WARNING_RE = re.compile(r'([^:]+):\d+:\d+:[ ]+warning:.*')
