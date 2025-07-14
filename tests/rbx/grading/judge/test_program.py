@@ -373,18 +373,25 @@ class TestProgram:
         program = Program(command, params)
 
         # Give the program a moment to start
-        time.sleep(0.1)
+        time.sleep(1.0)
 
         # Send SIGTERM to the process
         os.kill(program.pid, signal.SIGTERM)
 
         result = program.wait()
 
-        # Should be terminated by signal - exit code 143 = 128 + SIGTERM (15)
-        # The program itself handles the signal and exits with 128 + signum
-        assert result.exitcode == 143
-        # This will be marked as RE (runtime error) since it's a non-zero exit
-        assert ProgramCode.RE in result.program_codes
+        # Two possible outcomes due to race condition:
+
+        # 1. Signal handler executes: exit code 143 = 128 + SIGTERM (15)
+        # 2. Process killed by signal: exit code -15
+        assert result.exitcode in [143, -15]
+
+        # Both cases should be marked as errors
+        if result.exitcode == 143:
+            assert ProgramCode.RE in result.program_codes
+        else:  # result.exitcode == -15
+            assert ProgramCode.SG in result.program_codes
+            assert result.killing_signal == 15
 
     def test_program_pipes_access(self, simple_hello_program):
         """Test access to program pipes."""
