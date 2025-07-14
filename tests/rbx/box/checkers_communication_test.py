@@ -108,6 +108,12 @@ def run_log() -> RunLog:
 
 
 @pytest.fixture
+def run_log_with_warnings(run_log: RunLog) -> RunLog:
+    run_log.warnings = True
+    return run_log
+
+
+@pytest.fixture
 def interactor_run_log() -> RunLog:
     return RunLog(
         exitcode=0,
@@ -592,3 +598,273 @@ class TestCheckCommunicationLegacyChecker:
         )
 
         assert result.outcome == Outcome.WRONG_ANSWER
+
+
+class TestCheckCommunicationNoChecker:
+    """Test scenarios when no checker is provided (checker_digest is None)."""
+
+    async def test_check_communication_no_checker_solution_accepted(
+        self,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        result = await checkers.check_communication(
+            None,  # No checker
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.ACCEPTED
+
+    async def test_check_communication_no_checker_solution_rte(
+        self,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+
+        result = await checkers.check_communication(
+            None,  # No checker
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.RUNTIME_ERROR
+
+    async def test_check_communication_no_checker_interactor_wa(
+        self,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        interactor_run_log.exitcode = 1
+        interactor_run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+
+        result = await checkers.check_communication(
+            None,  # No checker
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.WRONG_ANSWER
+
+
+class TestCheckCommunicationSanitizerWarnings:
+    """Test sanitizer warnings propagation in communication mode."""
+
+    async def test_check_communication_sanitizer_warnings_on_accepted(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log_with_warnings: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        assert testcase.outputPath is not None
+        testcase.outputPath.write_text('123\n')
+        program_output.write_text('123\n')
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log_with_warnings,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.ACCEPTED
+        assert result.sanitizer_warnings is True
+
+    async def test_check_communication_sanitizer_warnings_on_failure(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log_with_warnings: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        run_log_with_warnings.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log_with_warnings,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.RUNTIME_ERROR
+        assert result.sanitizer_warnings is True
+
+    async def test_check_communication_no_sanitizer_warnings(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        assert testcase.outputPath is not None
+        testcase.outputPath.write_text('123\n')
+        program_output.write_text('123\n')
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.ACCEPTED
+        assert result.sanitizer_warnings is False
+
+
+class TestCheckCommunicationSkipRunLog:
+    """Test scenarios with skip_run_log=True."""
+
+    async def test_check_communication_skip_run_log_solution_accepted(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        assert testcase.outputPath is not None
+        testcase.outputPath.write_text('123\n')
+        program_output.write_text('123\n')
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+            skip_run_log=True,
+        )
+
+        assert result.outcome == Outcome.ACCEPTED
+
+    async def test_check_communication_skip_run_log_with_bad_solution(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        assert testcase.outputPath is not None
+        testcase.outputPath.write_text('123\n')
+        program_output.write_text('456\n')  # Wrong answer
+
+        # skip_run_log only affects the final checker run, not the pre-checks
+        # So we need a scenario where the solution is OK but the checker would fail
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+            skip_run_log=True,
+        )
+
+        # The checker should still run and detect wrong answer
+        assert result.outcome == Outcome.WRONG_ANSWER
+
+
+class TestCheckCommunicationInteractorComplexScenarios:
+    """Test complex interactor scenarios and edge cases."""
+
+    async def test_check_communication_interactor_mle(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        interactor_run_log.exitstatus = SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.MEMORY_LIMIT_EXCEEDED
+
+    async def test_check_communication_interactor_output_limit(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        interactor_run_log.exitstatus = SandboxBase.EXIT_OUTPUT_LIMIT_EXCEEDED
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.OUTPUT_LIMIT_EXCEEDED
+
+    async def test_check_communication_interactor_idleness(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        interactor_run_log.exitstatus = SandboxBase.EXIT_TIMEOUT_WALL
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
