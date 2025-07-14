@@ -1,6 +1,7 @@
 #ifndef _RBX_H
 #define _RBX_H
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>

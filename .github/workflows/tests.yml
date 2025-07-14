@@ -11,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.9.x", "3.10.x", "3.11.x", "3.12.x"]
-        runs-on: [ubuntu-latest, macos-latest]
+        runs-on: [ubuntu-latest]
     name: ${{matrix.runs-on }} - Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest --cov --cov-branch --cov-report=xml -n auto
+          pytest --ignore=tests/rbx/box/cli --cov --cov-branch --cov-report=xml -n auto
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:

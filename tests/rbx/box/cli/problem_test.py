@@ -8,7 +8,7 @@ from rbx.box.testing import testing_package
 
 
 @pytest.fixture
-def preset_testing_pkg(
+def preset_testing_pkg_from_resources(
     request,
     pkg_from_resources: pathlib.Path,
 ) -> Iterator[testing_package.TestingPackage]:
@@ -20,9 +20,24 @@ def preset_testing_pkg(
         yield pkg
 
 
+@pytest.fixture
+def preset_testing_pkg_from_testdata(
+    request,
+    pkg_from_testdata: pathlib.Path,
+) -> Iterator[testing_package.TestingPackage]:
+    marker = request.node.get_closest_marker('preset_path')
+    if marker is None:
+        raise ValueError('preset_path marker not found')
+    preset_path = pkg_from_testdata / marker.args[0]
+    with testing_package.TestingPackage(preset_path) as pkg:
+        yield pkg
+
+
 @pytest.mark.preset_path('problem')
 @pytest.mark.resource_pkg('presets/default')
-def test_default_preset_problem(preset_testing_pkg: testing_package.TestingPackage):
+def test_default_preset_problem(
+    preset_testing_pkg_from_resources: testing_package.TestingPackage,
+):
     from rbx.box.cli import app
 
     runner = CliRunner()
@@ -52,3 +67,19 @@ def test_default_preset_problem(preset_testing_pkg: testing_package.TestingPacka
     result = runner.invoke(app, ['pkg', 'polygon'])
     print(result.stdout)
     assert result.exit_code == 0, 'rbx pkg polygon failed'
+
+
+@pytest.mark.preset_path('')
+@pytest.mark.test_pkg('problems/interactive')
+def test_interactive_problem(
+    preset_testing_pkg_from_testdata: testing_package.TestingPackage,
+):
+    from rbx.box.cli import app
+
+    runner = CliRunner()
+
+    # Test problem run
+    result = runner.invoke(app, ['run'])
+    print(result.stdout)
+    assert result.exit_code == 0, 'rbx run failed'
+    assert 'FAILED' not in result.stdout
