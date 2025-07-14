@@ -106,7 +106,7 @@ def uploaded_schema_path(model: Type[BaseModel]) -> str:
 def model_to_yaml(model: BaseModel) -> str:
     path = uploaded_schema_path(model.__class__)
     return f'# yaml-language-server: $schema={path}\n\n' + yaml.dump(
-        model.model_dump(mode='json', exclude_unset=True, exclude_none=True),
+        model.model_dump(mode='python', exclude_unset=True, exclude_none=True),
         sort_keys=False,
         allow_unicode=True,
     )
