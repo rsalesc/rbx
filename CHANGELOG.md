@@ -1,3 +1,18 @@
+## 0.13.6 (2025-07-14)
+
+### Fix
+
+- fix header.h serialization issues and write tests
+- add tests for steps.run and fix memory usage
+- kill solution when interactor finishes first with wa
+
+### Refactor
+
+- remove a few debugging assets
+- delete processing_context.py (unused)
+- delete old test.py stupidsandbox tester
+- erase timeit
+
 ## 0.13.5 (2025-07-13)
 
 ### Fix
