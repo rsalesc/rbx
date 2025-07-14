@@ -1,6 +1,7 @@
 import os
 import pathlib
 import sys
+from typing import Optional
 
 import pytest
 
@@ -705,3 +706,228 @@ async def test_run_misses_when_input_file_changes(
     assert (cleandir / 'out.txt').read_text().strip() == '42'
     assert another_artifacts.logs is not None
     assert not another_artifacts.logs.cached
+
+
+async def test_run_coordinated_from_digest(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    interactor_executable = DigestOrSource.create(
+        file_cacher.put_file_text('print("hello"); input()')
+    )
+    solution_executable = DigestOrSource.create(
+        file_cacher.put_file_text('print("world")')
+    )
+
+    artifacts = GradingArtifacts()
+    artifacts.inputs.append(
+        GradingFileInput(
+            **interactor_executable.expand(), dest=pathlib.Path('interactor.py')
+        )
+    )
+    artifacts.inputs.append(
+        GradingFileInput(
+            **solution_executable.expand(), dest=pathlib.Path('solution.py')
+        )
+    )
+    artifacts.outputs.append(
+        GradingFileOutput(
+            src=pathlib.Path('interactor-out.txt'), dest=pathlib.Path('int_out.txt')
+        )
+    )
+    artifacts.outputs.append(
+        GradingFileOutput(
+            src=pathlib.Path('solution-out.txt'), dest=pathlib.Path('sol_out.txt')
+        )
+    )
+
+    from rbx.grading.steps import CoordinatedRunParams
+
+    interactor = CoordinatedRunParams(
+        command=f'{sys.executable} interactor.py',
+        params=SandboxParams(stdout_file=pathlib.Path('interactor-out.txt')),
+        metadata=RunLogMetadata(),
+    )
+    solution = CoordinatedRunParams(
+        command=f'{sys.executable} solution.py',
+        params=SandboxParams(stdout_file=pathlib.Path('solution-out.txt')),
+        metadata=RunLogMetadata(),
+    )
+
+    solution_log, interactor_log = await steps_with_caching.run_coordinated(
+        interactor=interactor,
+        solution=solution,
+        artifacts=artifacts,
+        sandbox=sandbox,
+        dependency_cache=dependency_cache,
+    )
+
+    assert (cleandir / 'int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
+    assert artifacts.logs is not None
+    assert artifacts.logs.run is not None
+    assert artifacts.logs.interactor_run is not None
+    assert not artifacts.logs.cached
+    assert solution_log is not None
+    assert interactor_log is not None
+
+
+async def test_run_coordinated_caches_intermediate_digest_if_dest_changes(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_dest(
+        int_dest: pathlib.Path, sol_dest: pathlib.Path
+    ) -> GradingArtifacts:
+        interactor_executable = DigestOrSource.create(
+            file_cacher.put_file_text('print("hello"); input()')
+        )
+        solution_executable = DigestOrSource.create(
+            file_cacher.put_file_text('print("world")')
+        )
+
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(
+                **interactor_executable.expand(), dest=pathlib.Path('interactor.py')
+            )
+        )
+        artifacts.inputs.append(
+            GradingFileInput(
+                **solution_executable.expand(), dest=pathlib.Path('solution.py')
+            )
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('interactor-out.txt'), dest=int_dest)
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(src=pathlib.Path('solution-out.txt'), dest=sol_dest)
+        )
+
+        from rbx.grading.steps import CoordinatedRunParams
+
+        interactor = CoordinatedRunParams(
+            command=f'{sys.executable} interactor.py',
+            params=SandboxParams(stdout_file=pathlib.Path('interactor-out.txt')),
+        )
+        solution = CoordinatedRunParams(
+            command=f'{sys.executable} solution.py',
+            params=SandboxParams(stdout_file=pathlib.Path('solution-out.txt')),
+        )
+
+        await steps_with_caching.run_coordinated(
+            interactor=interactor,
+            solution=solution,
+            artifacts=artifacts,
+            sandbox=sandbox,
+            dependency_cache=dependency_cache,
+        )
+        return artifacts
+
+    artifacts = await configure_and_run_with_dest(
+        pathlib.Path('int_out.txt'), pathlib.Path('sol_out.txt')
+    )
+    assert (cleandir / 'int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    another_artifacts = await configure_and_run_with_dest(
+        pathlib.Path('another_int_out.txt'), pathlib.Path('another_sol_out.txt')
+    )
+    assert (cleandir / 'another_int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'another_sol_out.txt').read_text().strip() == 'world'
+    assert another_artifacts.logs is not None
+    assert another_artifacts.logs.cached
+
+
+async def test_run_coordinated_evicts_when_retry_index_changes(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    async def configure_and_run_with_retry_index(
+        interactor_retry: Optional[int], solution_retry: Optional[int]
+    ) -> GradingArtifacts:
+        interactor_executable = DigestOrSource.create(
+            file_cacher.put_file_text('print("hello"); input()')
+        )
+        solution_executable = DigestOrSource.create(
+            file_cacher.put_file_text('print("world")')
+        )
+
+        artifacts = GradingArtifacts()
+        artifacts.inputs.append(
+            GradingFileInput(
+                **interactor_executable.expand(), dest=pathlib.Path('interactor.py')
+            )
+        )
+        artifacts.inputs.append(
+            GradingFileInput(
+                **solution_executable.expand(), dest=pathlib.Path('solution.py')
+            )
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('interactor-out.txt'), dest=pathlib.Path('int_out.txt')
+            )
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('solution-out.txt'), dest=pathlib.Path('sol_out.txt')
+            )
+        )
+
+        from rbx.grading.steps import CoordinatedRunParams
+
+        interactor = CoordinatedRunParams(
+            command=f'{sys.executable} interactor.py',
+            params=SandboxParams(stdout_file=pathlib.Path('interactor-out.txt')),
+            metadata=RunLogMetadata(retryIndex=interactor_retry),
+        )
+        solution = CoordinatedRunParams(
+            command=f'{sys.executable} solution.py',
+            params=SandboxParams(stdout_file=pathlib.Path('solution-out.txt')),
+            metadata=RunLogMetadata(retryIndex=solution_retry),
+        )
+
+        await steps_with_caching.run_coordinated(
+            interactor=interactor,
+            solution=solution,
+            artifacts=artifacts,
+            sandbox=sandbox,
+            dependency_cache=dependency_cache,
+        )
+        return artifacts
+
+    artifacts = await configure_and_run_with_retry_index(None, None)
+    assert (cleandir / 'int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+    # Same retry indices should hit cache
+    another_artifacts = await configure_and_run_with_retry_index(None, None)
+    assert (cleandir / 'int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
+    assert another_artifacts.logs is not None
+    assert another_artifacts.logs.cached
+
+    # Different interactor retry index should evict cache
+    third_artifacts = await configure_and_run_with_retry_index(1, None)
+    assert (cleandir / 'int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
+    assert third_artifacts.logs is not None
+    assert not third_artifacts.logs.cached
+
+    # Different solution retry index should evict cache
+    fourth_artifacts = await configure_and_run_with_retry_index(1, 1)
+    assert (cleandir / 'int_out.txt').read_text().strip() == 'hello'
+    assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
+    assert fourth_artifacts.logs is not None
+    assert not fourth_artifacts.logs.cached
