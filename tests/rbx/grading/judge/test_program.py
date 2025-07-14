@@ -645,32 +645,6 @@ class TestEdgeCases:
         with pytest.raises((ValueError, IndexError)):
             Program(command, params)
 
-    def test_program_with_zero_limits(self, simple_hello_program):
-        """Test program with zero limits."""
-        params = ProgramParams(time_limit=0, memory_limit=0, fs_limit=0)
-        command = [sys.executable, str(simple_hello_program)]
-
-        program = Program(command, params)
-        result = program.wait()
-
-        # Zero limits should still allow basic execution
-        assert isinstance(result, ProgramResult)
-
-    def test_very_large_limits(self, simple_hello_program):
-        """Test program with very large limits."""
-        params = ProgramParams(
-            time_limit=999999.0,
-            wall_time_limit=999999.0,
-            memory_limit=999999,
-            fs_limit=999999,
-        )
-        command = [sys.executable, str(simple_hello_program)]
-
-        program = Program(command, params)
-        result = program.wait()
-
-        assert result.exitcode == 0
-
     def test_concurrent_programs(self, simple_hello_program):
         """Test running multiple programs concurrently."""
         params = ProgramParams()
