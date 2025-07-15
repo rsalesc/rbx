@@ -174,7 +174,7 @@ def _ignore_warning_in_cxx_input(input: GradingFileInput):
     input.src = preprocessed_path
 
 
-def _maybe_rename_java_class(
+def maybe_rename_java_class(
     compilable_path: pathlib.Path, file_mapping: FileMapping
 ) -> pathlib.Path:
     mapped_path = PosixPath(file_mapping.compilable)
@@ -540,7 +540,7 @@ def compile_item(
     download.maybe_add_testlib(code, artifacts)
     download.maybe_add_jngen(code, artifacts)
     download.maybe_add_rbx_header(code, artifacts)
-    compilable_path = _maybe_rename_java_class(compilable_path, file_mapping)
+    compilable_path = maybe_rename_java_class(compilable_path, file_mapping)
     artifacts.inputs.append(
         GradingFileInput(src=compilable_path, dest=PosixPath(file_mapping.compilable))
     )
