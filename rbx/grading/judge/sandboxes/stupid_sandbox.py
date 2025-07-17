@@ -316,7 +316,10 @@ class StupidSandbox(SandboxBase):
                     interactor_tee.pipes.output.close()
 
                 if idx == 0 and program_result.exitcode != 0:
-                    os.killpg(group_id, signal.SIGKILL)
+                    try:
+                        os.killpg(group_id, signal.SIGKILL)
+                    except Exception:
+                        pass
             elif pid == program.pid:
                 program_result = program.process_exit(status, ru)
                 results[0] = self._get_sandbox_log(program_result, params)
