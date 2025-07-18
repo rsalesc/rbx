@@ -265,7 +265,9 @@ print('Done')
 
         # Create custom execution config with stricter limits
         custom_config = ExecutionConfig(
-            sandbox=EnvironmentSandbox(timeLimit=1000, memoryLimit=64)  # 1 second, 64MB
+            sandbox=EnvironmentSandbox(
+                timeLimit=1000, memoryLimit=512
+            )  # 1 second, 512MB
         )
 
         # Create output destination
@@ -291,7 +293,7 @@ print('Done')
         assert run_log.metadata is not None
         assert run_log.metadata.timeLimit == 1000
         assert (
-            run_log.metadata.memoryLimit == 64
+            run_log.metadata.memoryLimit == 512
         )  # Memory limit is stored as MiB, not bytes
 
     def test_run_with_retry_index(self, testing_pkg: testing_package.TestingPackage):

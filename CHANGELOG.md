@@ -1,3 +1,14 @@
+## 0.13.7 (2025-07-18)
+
+### Fix
+
+- fix scientific notation in statements
+- optionally call killpg in sandbox
+
+### Refactor
+
+- remove two weird limit tests
+
 ## 0.13.6 (2025-07-14)
 
 ### Fix
