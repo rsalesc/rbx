@@ -119,7 +119,7 @@ def scientific_notation(
     mult, exp, rest = _process_zeroes(value)
     if exp < zeroes:
         return str(value)
-    res = '10' if exp == 1 else f'10^{exp}'
+    res = '10' if exp == 1 else f'10^{{{exp}}}'
     if rest > 0 and len(str(rest)) + 1 >= len(str(value)):
         # Should not convert numbers like 532 to 5*10^2 + 32.
         return str(value)
