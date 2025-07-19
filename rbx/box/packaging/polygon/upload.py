@@ -247,9 +247,15 @@ def _get_statement_for_language(language: str) -> Optional[Statement]:
 def _get_statement_blocks(statement: Statement) -> StatementBlocks:
     # TODO: actually try to convert to rbxTeX
     assert statement.type == StatementType.rbxTeX
+    pkg = package.find_problem_package_or_die()
+    # TODO: pull this from a library, too hacky at the moment
     builder_problem = StatementBuilderProblem(
-        package=package.find_problem_package_or_die(),
+        package=pkg,
         statement=statement,
+        vars={
+            **pkg.expanded_vars,
+            **statement.expanded_vars,
+        },
     )
     with tempfile.TemporaryDirectory() as temp_dir:
         return render_jinja_blocks(
