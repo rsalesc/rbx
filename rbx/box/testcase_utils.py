@@ -181,10 +181,10 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
 
         while line := f.readline().strip():
             if line.startswith(interactor_prefix):
-                stripped = line[len(interactor_prefix) :].strip()
+                stripped = line[len(interactor_prefix) :].rstrip()
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=0))
             elif line.startswith(solution_prefix):
-                stripped = line[len(solution_prefix) :].strip()
+                stripped = line[len(solution_prefix) :].rstrip()
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=1))
             else:
                 raise TestcaseInteractionParsingError(
@@ -204,11 +204,11 @@ def get_alternate_interaction_texts(
     solution_entries = []
     for entry in interaction.entries:
         if entry.pipe == 1:
-            solution_entries.append(entry.data)
-            interactor_entries.extend(['\n'] * entry.data.count('\n'))
+            solution_entries.append(entry.data + '\n')
+            interactor_entries.extend(['\n'] * (entry.data.count('\n') + 1))
         else:
-            interactor_entries.append(entry.data)
-            solution_entries.extend(['\n'] * entry.data.count('\n'))
+            interactor_entries.append(entry.data + '\n')
+            solution_entries.extend(['\n'] * (entry.data.count('\n') + 1))
     return ''.join(interactor_entries), ''.join(solution_entries)
 
 
@@ -219,4 +219,4 @@ def print_interaction(interaction: TestcaseInteraction):
             text.stylize('status')
         else:
             text.stylize('info')
-        console.console.print(text, end='')
+        console.console.print(text)
