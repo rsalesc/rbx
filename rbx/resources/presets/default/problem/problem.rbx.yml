@@ -31,6 +31,8 @@ statements:
     configure:
       - type: "rbx-tex" # Convert rbxTeX to TeX
         template: "statement/template.rbx.tex"
+    vars:
+      show_limits: true
 stresses:
   - name: "stress"
     generator:

@@ -1,9 +1,15 @@
-%- if vars.show_problem is truthy or vars.editorial is falsy
+%- if problem.vars.show_problem is truthy or problem.vars.editorial is falsy
 \includeProblem
 %- if problem.short_name is defined
 	[\VAR{problem.short_name}]
 %- endif
 {\VAR{problem.title | escape}}{
+
+%- if problem.vars.show_limits is truthy
+	\includeLimits{\VAR{problem.package.timeLimit} ms}{\VAR{problem.package.memoryLimit} MiB}
+%- else
+	\vspace{0.55cm}
+%- endif
 
 	\VAR{problem.blocks.legend}
 
@@ -20,7 +26,7 @@
 	%- endif
 
 	%- if problem.samples
-		\vspace{0.3cm}
+		\vspace{0.1cm}
 		\subsection*{\strExamples}
 		%- for sample in problem.samples
 			%- if sample.interaction is not none

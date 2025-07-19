@@ -16,6 +16,7 @@
 \let\mytitleformat\titleformat
 \let\titleformat\relax
 \usepackage{logicpuzzle}
+\let\titleformat\mytitleformat
 \usepackage{enumitem}
 \usepackage{amsfonts}
 \usepackage[brazil]{babel}
@@ -75,6 +76,11 @@
 \setlength{\textheight}{25.5cm}
 
 \setlength{\voffset}{-1in}
+
+% Increase section text sizes
+\titleformat{\section}{\LARGE\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\Large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
 
 \newcommand{\insereArquivo}[1]{
 	\ifnum0\pdffilesize{#1}>0
@@ -137,6 +143,15 @@
 		{\huge{\bf \strProblem #1. #2}}
 	\fi
 	#3
+}
+
+\newcommand{\includeLimits}[2]{
+	\vspace{0.2cm}
+	\begin{center}
+		\textit{\strTimeLimit: #1}\\
+		\textit{\strMemoryLimit: #2}
+	\end{center}
+	\vspace{0.25cm}
 }
 
 \newcommand{\inputdesc}[1]{
@@ -271,11 +286,9 @@
 \newcounter{pcounter}\setcounter{pcounter}{0}
 \newcounter{qcounter}\setcounter{qcounter}{0}
 
-\usepackage{titlesec}
-
-\titlespacing\section{0pt}{6pt plus 4pt minus 2pt}{0pt plus 2pt minus 2pt}
-\titlespacing\subsection{0pt}{6pt plus 4pt minus 2pt}{0pt plus 2pt minus 2pt}
-\titlespacing\subsubsection{0pt}{6t plus 4pt minus 2pt}{0pt plus 2pt minus 2pt}
+\titlespacing\section{0pt}{12pt plus 0pt minus 2pt}{10pt plus 0pt minus 2pt}
+\titlespacing\subsection{0pt}{12pt plus 0pt minus 2pt}{10pt plus 0pt minus 2pt}
+\titlespacing\subsubsection{0pt}{12pt plus 0pt minus 2pt}{10pt plus 0pt minus 2pt}
 
 \newcommand{\InsertTitlePage}
 {

@@ -17,6 +17,10 @@ statements:
       configure:
         - type: "rbx-tex" # Convert rbxTeX to TeX
           template: "statement/template.rbx.tex"
+      vars:
+        # Turn into false to hide time limits and memory limits in the problem statement.
+        # Useful for ICPC-style contests where you distribute a separate info sheet.
+        show_limits: true
   - name: "editorial-en"
     extends: "statement-en"
     override:

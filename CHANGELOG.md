@@ -1,3 +1,10 @@
+## 0.13.8 (2025-07-19)
+
+### Fix
+
+- fix interactive sample line breaks
+- fix Polygon statement build with vars
+
 ## 0.13.7 (2025-07-18)
 
 ### Fix
