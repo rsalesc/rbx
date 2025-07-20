@@ -32,6 +32,7 @@ statements:
       - type: "rbx-tex" # Convert rbxTeX to TeX
         template: "statement/template.rbx.tex"
     vars:
+      # Set to false to hide time limits and memory limits in the problem statement.
       show_limits: true
 stresses:
   - name: "stress"
@@ -53,4 +54,8 @@ unitTests:
 # Can be used in the validator, checker, interactor, stress tests
 # and in the statement.
 vars:
+  # Author name to be displayed in the editorial.
+  author: "John Doe"
+  # Constraints of the problem.
+  MIN_N: 1
   MAX_N: 1000000000

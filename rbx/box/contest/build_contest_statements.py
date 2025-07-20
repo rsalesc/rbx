@@ -94,12 +94,12 @@ def get_statement_builder_contest(
 def get_problems_for_statement(
     contest: Contest,
     contest_statement: ContestStatement,
-    requires_matching_statement: bool = True,
+    requires_matching_statement: bool = False,
 ) -> List[ExtractedProblem]:
     pkgs = get_problems(contest)
-    if not pkgs and not requires_matching_statement:
+    if not pkgs and requires_matching_statement:
         console.console.print(
-            '[error]No problems found in the contest, cannot infer statement type.[/error]'
+            f'[error]No problems found in the contest, cannot infer statement type for statement [item]{contest_statement.name}[/item].[/error]'
         )
         raise typer.Exit(1)
 
@@ -292,7 +292,8 @@ def build_statement_rooted(
     if statement.joiner is None:
         joiner = None
         extracted_problems = get_problems_for_statement(
-            contest, statement, requires_matching_statement=False
+            contest,
+            statement,
         )
     else:
         # Build problem-level statements.

@@ -16,7 +16,10 @@
 {\VAR{problem.title | escape}}{
 
 %- if problem.vars.show_limits is truthy
-	\includeLimits{\VAR{problem.package.timeLimit} ms}{\VAR{problem.package.memoryLimit} MiB}
+	\includeLimits
+		{\VAR{problem.package.timeLimit} ms}
+		{\VAR{problem.package.memoryLimit} MiB}
+		{\VAR{problem.vars.author if problem.vars.author is truthy and problem.vars.editorial is truthy else ''}}
 %- else
 	\vspace{0.55cm}
 %- endif

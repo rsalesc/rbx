@@ -100,6 +100,7 @@
 	\def\strHosted{Realização}
 	\def\strOrganized{Organização}
 	\def\strProblem{Problema }
+	\def\strAuthor{Autor}
 	\def\strExplanation{Explicação do exemplo }
 	\def\strInput{Entrada}
 	\def\strOutput{Saída}
@@ -112,6 +113,10 @@
 	\def\strExamples{Exemplos}
 	\def\strSolution{Solução}
 	\def\strNotes{Observações}
+	\def\strInfoSheet{Folha de Informações}
+	\def\strLimits{Limites}
+	\def\strTimeLimit{Tempo limite}
+	\def\strMemoryLimit{Memória limite}
 \else
 	\def\strTaskSheet{Task Sheet}
 	\def\strSolutionSheet{Solution Sheet}
@@ -119,6 +124,7 @@
 	\def\strHosted{Hosted by}
 	\def\strOrganized{Organized by}
 	\def\strProblem{Problem }
+	\def\strAuthor{Author}
 	\def\strExplanation{Explanation of sample }
 	\def\strInput{Input}
 	\def\strOutput{Output}
@@ -131,6 +137,10 @@
 	\def\strExamples{Examples}
 	\def\strSolution{Solution}
 	\def\strNotes{Notes}
+	\def\strInfoSheet{Information Sheet}
+	\def\strLimits{Limits}
+	\def\strTimeLimit{Time limit}
+	\def\strMemoryLimit{Memory limit}
 \fi
 
 \newcommand{\includeProblem}[3][]
@@ -145,11 +155,16 @@
 	#3
 }
 
-\newcommand{\includeLimits}[2]{
+\newcommand{\includeLimits}[3]{
 	\vspace{0.2cm}
 	\begin{center}
 		\textit{\strTimeLimit: #1}\\
 		\textit{\strMemoryLimit: #2}
+		\ifx#3\empty
+		\else
+			\\
+			\textit{\strAuthor: #3}
+		\fi
 	\end{center}
 	\vspace{0.25cm}
 }

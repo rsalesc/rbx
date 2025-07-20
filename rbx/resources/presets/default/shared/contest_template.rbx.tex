@@ -1,4 +1,3 @@
-%- if problem.vars.show_problem is truthy or problem.vars.editorial is falsy
 \includeProblem
 %- if problem.short_name is defined
 	[\VAR{problem.short_name}]
@@ -6,10 +5,15 @@
 {\VAR{problem.title | escape}}{
 
 %- if problem.vars.show_limits is truthy
-	\includeLimits{\VAR{problem.package.timeLimit} ms}{\VAR{problem.package.memoryLimit} MiB}
+\includeLimits
+{\VAR{problem.package.timeLimit} ms}
+{\VAR{problem.package.memoryLimit} MiB}
+{\VAR{problem.vars.author if problem.vars.author is truthy and problem.vars.editorial is truthy else ''}}
 %- else
-	\vspace{0.55cm}
+\vspace{0.55cm}
 %- endif
+
+%- if problem.vars.show_problem is truthy or problem.vars.editorial is falsy
 
 	\VAR{problem.blocks.legend}
 
@@ -48,8 +52,8 @@
 		\subsection*{\strNotes}
 		\VAR{problem.blocks.notes}
 	%- endif
-}
 %- endif
+}
 %- if problem.blocks.editorial is nonnull and problem.vars.editorial is truthy
 \subsection*{\strSolution}
 \VAR{problem.blocks.editorial}

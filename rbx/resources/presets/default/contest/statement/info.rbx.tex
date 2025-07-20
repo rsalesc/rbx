@@ -1,0 +1,54 @@
+\documentclass{article}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{graphicx}
+\usepackage{amsfonts}
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage[utf8]{inputenc}
+\usepackage{icpc}
+
+%\pagestyle{myheadings}
+\markright{\VAR{contest.title}}
+
+\begin{document}
+
+\begin{titlepage}
+\vspace*{\fill}
+\begin{center}
+\includegraphics[width=4cm]{logo.png}
+
+\vspace{1cm}
+{\huge{\bf \VAR{vars.year}}} \\
+
+\vspace{0.5cm}
+{\huge \bf \strInfoSheet}\\[12pt]
+{\Large \bf \VAR{contest.title}}
+\end{center}
+
+\vspace{2cm}
+
+%\subsection*{\strLimits}
+
+\begin{center}
+\begin{tabular}{c|ccc|c}
+& \multicolumn{3}{c|}{\strTimeLimit (ms)} & \multirow{2}{*}{\strMemoryLimit (MiB)} \\
+%\cline{2-4}
+{\sf \strProblem} & {\sf C/C++} &{\sf Java} & {\sf Python3} & \\
+\hline
+%- for problem in problems:
+\VAR{problem.short_name}
+& \VAR{problem.package.timelimit_for_language('cpp')}
+& \VAR{problem.package.timelimit_for_language('java')}
+& \VAR{problem.package.timelimit_for_language('py')}
+& \VAR{problem.package.memoryLimit}
+\\ \hline
+%- endfor
+\end{tabular}
+\end{center}
+\vspace*{\fill}
+\end{titlepage}
+\end{document}

@@ -27,10 +27,16 @@ statements:
       vars:
         # Whether to show the problem statement in the editorial.
         show_problem: false
+        show_limits: true
         editorial: true
     vars:
-      editorial: true
+      # Whether to render an "EDITORIAL" watermark.
       watermark: false
+      editorial: true
+  - name: "info-en"
+    extends: "statement-en"
+    path: "statement/info.rbx.tex"
+    joiner: null
 vars:
   year: 2025
   date: "2025-06-21"
