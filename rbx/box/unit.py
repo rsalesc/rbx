@@ -1,7 +1,6 @@
 import pathlib
 from typing import List, Optional, Set
 
-import syncer
 from pydantic import BaseModel
 
 from rbx import console
@@ -232,7 +231,6 @@ async def run_checker_unit_tests(progress: StatusProgress):
             console.console.print(f'  [status]Message[/status] {result.message}')
 
 
-@syncer.sync
 async def run_unit_tests(progress: StatusProgress):
     await run_validator_unit_tests(progress)
     await run_checker_unit_tests(progress)

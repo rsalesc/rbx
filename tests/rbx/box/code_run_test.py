@@ -959,13 +959,14 @@ int main() {
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that run_item detects warnings in sanitized executables."""
-        # Create a C++ program that might trigger sanitizer warnings
+        # Create a C++ program that will definitely trigger sanitizer warnings
         cpp_content = """
 #include <iostream>
 int main() {
-    int* ptr = new int(42);
-    std::cout << "Value: " << *ptr << std::endl;
-    // Intentionally not deleting ptr to potentially trigger sanitizer warnings
+    int* ptr = new int[10];
+    std::cout << "Value: " << ptr[0] << std::endl;
+    // Intentionally access out-of-bounds to trigger AddressSanitizer
+    std::cout << "Out of bounds: " << ptr[15] << std::endl;  // heap-buffer-overflow
     return 0;
 }
 """
@@ -982,6 +983,8 @@ int main() {
         # Create output destinations
         output_path = testing_pkg.path('output.txt')
         stdout_dest = DigestOrDest.create(output_path)
+        error_path = testing_pkg.path('error.txt')
+        stderr_dest = DigestOrDest.create(error_path)
 
         # Mock warning stack to test warning detection
         with mock.patch(
@@ -996,18 +999,17 @@ int main() {
                     code_item,
                     executable,
                     stdout=stdout_dest,
+                    stderr=stderr_dest,
                 )
             )
 
             # Verify execution succeeded
             assert run_log is not None
-            assert run_log.exitcode == 0
+            assert run_log.exitcode == -6
 
             # If there were warnings, the warning stack should be called
-            if run_log.warnings:
-                mock_stack.add_sanitizer_warning.assert_called_once()
-            else:
-                mock_stack.add_sanitizer_warning.assert_not_called()
+            assert run_log.warnings
+            mock_stack.add_sanitizer_warning.assert_called_once()
 
     def test_run_python_program_not_sanitized(
         self, testing_pkg: testing_package.TestingPackage

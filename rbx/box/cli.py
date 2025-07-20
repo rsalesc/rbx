@@ -863,11 +863,12 @@ async def validate(
     help='Run unit tests for the validator and checker.',
 )
 @package.within_problem
-def unit_tests():
+@syncer.sync
+async def unit_tests():
     from rbx.box import unit
 
     with utils.StatusProgress('Running unit tests...') as s:
-        unit.run_unit_tests(s)
+        await unit.run_unit_tests(s)
 
 
 @app.command(

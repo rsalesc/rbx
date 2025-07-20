@@ -295,7 +295,7 @@ class TestCheckerUnitTests:
 class TestRunUnitTests:
     """Test the main run_unit_tests function."""
 
-    def test_run_unit_tests_calls_both_functions(
+    async def test_run_unit_tests_calls_both_functions(
         self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
     ):
         """Test that run_unit_tests calls both validator and checker unit tests."""
@@ -320,14 +320,14 @@ class TestRunUnitTests:
             },
         )
 
-        unit.run_unit_tests(mock_progress)
+        await unit.run_unit_tests(mock_progress)
 
         captured = capsys.readouterr()
         # Should print rules for both validator and checker tests
         assert 'Validator tests' in captured.out
         assert 'Checker tests' in captured.out
 
-    def test_run_unit_tests_with_progress(
+    async def test_run_unit_tests_with_progress(
         self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
     ):
         """Test that run_unit_tests works with progress reporting."""
@@ -341,7 +341,7 @@ class TestRunUnitTests:
             files={'unit/validator/valid_test.in': '42\n'},
         )
 
-        unit.run_unit_tests(mock_progress)
+        await unit.run_unit_tests(mock_progress)
 
         # Progress should be updated during the test
         mock_progress.update.assert_called()
