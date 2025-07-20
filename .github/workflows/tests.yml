@@ -60,6 +60,8 @@ jobs:
         with:
           distribution: "zulu"
           java-version: "21"
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasan8
       - name: Run tests
         run: |
           source .venv/bin/activate
