@@ -107,6 +107,16 @@ app.add_typer(
 )
 
 
+def version_callback(value: bool) -> None:
+    if value:
+        import importlib.metadata
+
+        version = importlib.metadata.version('rbx.cp')
+
+        console.console.print(f'rbx version {version}')
+        raise typer.Exit()
+
+
 @app.callback()
 def main(
     cache: Annotated[
@@ -136,6 +146,9 @@ def main(
         '-p',
         help='Whether to profile the execution.',
     ),
+    version: Annotated[
+        bool, typer.Option('--version', '-v', callback=version_callback, is_eager=True)
+    ] = False,
 ):
     if cd.is_problem_package() and not package.is_cache_valid():
         console.console.print(
