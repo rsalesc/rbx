@@ -155,7 +155,7 @@ class StupidSandbox(SandboxBase):
     ) -> SandboxLog:
         return SandboxLog(
             params=params.model_copy(deep=True),
-            execution_time=result.wall_time,
+            execution_time=result.cpu_time,
             memory_used=result.memory_used,
             exitcode=result.exitcode,
             exitstatus=self._get_exit_status(result),
@@ -163,6 +163,7 @@ class StupidSandbox(SandboxBase):
             other_logs={
                 'program_codes': [code.value for code in result.program_codes],
                 'alarm_msg': result.alarm_msg,
+                'wall_time': result.wall_time,
             },
         )
 

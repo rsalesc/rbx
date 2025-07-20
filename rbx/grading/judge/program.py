@@ -236,7 +236,6 @@ class Program:
             cwd=self.params.chdir,
             env={**os.environ, **self.params.env},
             preexec_fn=get_preexec_fn(self.params),
-            close_fds=True,
         )
         self.start_time = monotonic()
 
@@ -244,6 +243,8 @@ class Program:
         threading.Thread(target=self._handle_alarm, daemon=True).start()
 
     def process_exit(self, exitstatus, ru) -> ProgramResult:
+        _maybe_close_files(self._files)
+
         wall_time = monotonic() - self.start_time
         cpu_time = get_cpu_time(ru)
         memory_used = get_memory_usage(ru)
@@ -283,7 +284,7 @@ class Program:
         ):
             program_codes.append(ProgramCode.OL)
 
-        return ProgramResult(
+        result = ProgramResult(
             exitcode=exitcode,
             wall_time=wall_time,
             cpu_time=cpu_time,
@@ -293,6 +294,7 @@ class Program:
             killing_signal=killing_signal,
             alarm_msg=self._alarm_msg or None,
         )
+        return result
 
     def wait(self):
         assert self.popen is not None
