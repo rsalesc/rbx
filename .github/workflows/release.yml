@@ -6,9 +6,26 @@ on:
       - "*.*.*" # Will trigger for every tag, alternative: 'v*'
 
 jobs:
+  wait-for-tests:
+    name: Wait for required checks
+    runs-on: ubuntu-latest
+    # Only wait for tests if this is NOT a release candidate tag
+    if: ${{ !contains(github.ref_name, 'rc') }}
+    steps:
+      - name: Wait for status checks
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "tests" # This should match the job name in tests.yml
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   pypi-publish:
     name: Upload release to PyPI
     runs-on: ubuntu-latest
+    # Wait for tests only if the wait-for-tests job actually ran
+    needs: wait-for-tests
+    if: ${{ always() && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped') }}
     environment:
       name: pypi
       url: https://pypi.org/p/rbx.cp
