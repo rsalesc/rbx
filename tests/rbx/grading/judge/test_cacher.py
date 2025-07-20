@@ -719,3 +719,124 @@ class TestFileCacher:
 
         with pytest.raises(KeyError):
             cacher_with_mock.get_file(digest)
+
+    def test_transient_path_for_symlink_tombstone_raises_error(self, cacher_with_mock):
+        """Test transient_path_for_symlink raises TombstoneError for tombstone."""
+        with pytest.raises(TombstoneError):
+            cacher_with_mock.transient_path_for_symlink(storage.TOMBSTONE)
+
+    def test_transient_path_for_symlink_returns_cached_file_path(
+        self, cacher_with_mock
+    ):
+        """Test transient_path_for_symlink returns path when file is already cached."""
+        digest = 'test_digest'
+        test_content = b'cached content'
+
+        # Put file in cache
+        cache_file = cacher_with_mock.file_dir / digest
+        cache_file.write_bytes(test_content)
+
+        result = cacher_with_mock.transient_path_for_symlink(digest)
+
+        assert result == cache_file
+        assert result.exists()
+        assert result.read_bytes() == test_content
+
+    def test_transient_path_for_symlink_loads_from_backend_when_not_cached(
+        self, cacher_with_mock
+    ):
+        """Test transient_path_for_symlink loads file from backend when not cached."""
+        digest = 'test_digest'
+        test_content = b'backend content'
+
+        # Mock backend to provide file content
+        cacher_with_mock.backend.path_for_symlink.return_value = None
+        cacher_with_mock.backend.get_file.return_value = io.BytesIO(test_content)
+
+        result = cacher_with_mock.transient_path_for_symlink(digest)
+
+        # Verify file was loaded from backend and cached
+        cache_file = cacher_with_mock.file_dir / digest
+        assert result == cache_file
+        assert cache_file.exists()
+        assert cache_file.read_bytes() == test_content
+        cacher_with_mock.backend.get_file.assert_called_once_with(digest)
+
+    def test_transient_path_for_symlink_uses_symlink_when_available(
+        self, cacher_with_mock, temp_dir
+    ):
+        """Test transient_path_for_symlink creates symlink when backend provides path."""
+        digest = 'test_digest'
+        test_content = b'symlink content'
+
+        # Create source file
+        source_file = temp_dir / 'source.txt'
+        source_file.write_bytes(test_content)
+
+        cacher_with_mock.backend.path_for_symlink.return_value = source_file
+
+        result = cacher_with_mock.transient_path_for_symlink(digest)
+
+        cache_file = cacher_with_mock.file_dir / digest
+        assert result == cache_file
+        assert cache_file.is_symlink()
+        # Use resolve() to handle macOS /private symlink differences
+        assert cache_file.resolve().samefile(source_file)
+
+    def test_transient_path_for_symlink_backend_keyerror_propagates(
+        self, cacher_with_mock
+    ):
+        """Test transient_path_for_symlink propagates KeyError when backend file doesn't exist."""
+        digest = 'nonexistent_digest'
+
+        # Mock backend to not provide file
+        cacher_with_mock.backend.path_for_symlink.return_value = None
+        cacher_with_mock.backend.get_file.side_effect = KeyError('File not found')
+
+        with pytest.raises(KeyError, match='File not found'):
+            cacher_with_mock.transient_path_for_symlink(digest)
+
+    def test_transient_path_for_symlink_cache_file_disappears_after_load(
+        self, cacher_with_mock
+    ):
+        """Test transient_path_for_symlink raises FileNotFoundError when cache file disappears after _load."""
+        digest = 'test_digest'
+
+        # Mock _load to succeed but not actually create the file
+        with patch.object(cacher_with_mock, '_load') as mock_load:
+            mock_load.return_value = None  # cache_only=True returns None
+
+            with pytest.raises(
+                FileNotFoundError, match=f'File {digest} not found in cache'
+            ):
+                cacher_with_mock.transient_path_for_symlink(digest)
+
+            mock_load.assert_called_once_with(digest, cache_only=True)
+
+    def test_transient_path_for_symlink_multiple_calls_same_digest(
+        self, cacher_with_mock
+    ):
+        """Test transient_path_for_symlink handles multiple calls for same digest efficiently."""
+        digest = 'test_digest'
+        test_content = b'test content'
+
+        # Mock backend to provide file content
+        cacher_with_mock.backend.path_for_symlink.return_value = None
+        cacher_with_mock.backend.get_file.return_value = io.BytesIO(test_content)
+
+        # First call should load from backend
+        result1 = cacher_with_mock.transient_path_for_symlink(digest)
+
+        # Reset mock to verify second call doesn't hit backend
+        cacher_with_mock.backend.get_file.reset_mock()
+
+        # Second call should use cached file
+        result2 = cacher_with_mock.transient_path_for_symlink(digest)
+
+        assert result1 == result2
+        cache_file = cacher_with_mock.file_dir / digest
+        assert result1 == cache_file
+        assert cache_file.exists()
+
+        # Backend should not be called on second invocation
+        cacher_with_mock.backend.get_file.assert_not_called()

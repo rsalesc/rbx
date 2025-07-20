@@ -359,7 +359,7 @@ class SandboxBase(abc.ABC):
 
         """
         if try_symlink and executable:
-            symlink_path = self.file_cacher.path_for_symlink(digest)
+            symlink_path = self.file_cacher.transient_path_for_symlink(digest)
             if symlink_path is not None:
                 created = self.create_symlink(
                     path,

@@ -243,6 +243,12 @@ class FileCacher:
         return typing.cast(IO[bytes], self._load(digest, False))
 
     def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
+        """Retrieve the symlink path that points to the backend file.
+
+        If the file is not in the cache, or it is stored in a transformed
+        form (such as a compressed file), this function will return None,
+        as creating a symlink to it would not be meaningful.
+        """
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
 
@@ -252,7 +258,37 @@ class FileCacher:
         logger.debug('Getting symlink file path %s.', digest)
         return self.backend.path_for_symlink(digest)
 
+    def transient_path_for_symlink(self, digest: str):
+        """Retrieve a file from the storage and return a path to it.
+
+        Notice that this is different than `path_for_symlink', which
+        returns the path to the file in the backend itself, not a path
+        inside the cacher.
+
+        `path_for_symlink` should be used for persistent links, such as
+        those you create in the package folder and should live across
+        multiple runs of the tool.
+
+        `transient_path_for_symlink` should be used for transient links, such as
+        those created in the sandbox, like test inputs and compiled
+        binaries.
+        """
+        if digest == storage.TOMBSTONE:
+            raise TombstoneError()
+        self._load(digest, cache_only=True)
+
+        cache_file_path = self.file_dir / digest
+        if not cache_file_path.exists():
+            raise FileNotFoundError(f'File {digest} not found in cache.')
+        return cache_file_path
+
     def digest_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+        """Retrieve the digest of the file that the symlink points to.
+
+        This is supposed to be used as a counterpart to `path_for_symlink'.
+        `digest_from_symlink(path_for_symlink(digest))` should be equivalent to
+        `digest`.
+        """
         if grading_context.is_transient():
             return None
 

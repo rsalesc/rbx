@@ -790,3 +790,237 @@ class TestFilesystemStorage:
         metadata_content = json.loads(metadata_file.read_text())
         assert metadata_content['value'] == 'test'
         assert metadata_content['number'] == 42
+
+    def test_filename_from_symlink_chain_resolution(self, storage, temp_dir):
+        """Test filename_from_symlink with a chain of symlinks."""
+        filename = 'target.txt'
+        test_data = b'Target file content'
+
+        # Create and commit target file in storage
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create a chain of symlinks: symlink1 -> symlink2 -> target
+        target_path = temp_dir / filename
+        symlink2_path = temp_dir / 'symlink2.txt'
+        symlink1_path = temp_dir / 'symlink1.txt'
+
+        symlink2_path.symlink_to(target_path)
+        symlink1_path.symlink_to(symlink2_path)
+
+        # Test that the chain is resolved correctly
+        result_filename = storage.filename_from_symlink(symlink1_path)
+        assert result_filename == filename
+
+    def test_filename_from_symlink_outside_storage_returns_none(
+        self, storage, temp_dir
+    ):
+        """Test that filename_from_symlink returns None when target is outside storage path."""
+        # Create a file outside the storage directory
+        external_dir = temp_dir.parent / 'external'
+        external_dir.mkdir(exist_ok=True)
+        external_file = external_dir / 'external.txt'
+        external_file.write_text('external content')
+
+        # Create symlink pointing to external file
+        symlink_path = temp_dir / 'external_symlink.txt'
+        symlink_path.symlink_to(external_file)
+
+        result = storage.filename_from_symlink(symlink_path)
+        assert result is None
+
+    def test_filename_from_symlink_points_to_directory_returns_none(
+        self, storage, temp_dir
+    ):
+        """Test that filename_from_symlink returns None when symlink points to directory."""
+        # Create a directory in storage
+        target_dir = temp_dir / 'target_directory'
+        target_dir.mkdir()
+
+        # Create symlink pointing to directory
+        symlink_path = temp_dir / 'dir_symlink'
+        symlink_path.symlink_to(target_dir)
+
+        result = storage.filename_from_symlink(symlink_path)
+        assert result is None
+
+    def test_filename_from_symlink_broken_chain_returns_none(self, storage, temp_dir):
+        """Test that filename_from_symlink returns None when symlink chain has broken link."""
+        # Create symlink chain with a broken link in the middle
+        broken_target = temp_dir / 'nonexistent.txt'
+        symlink2_path = temp_dir / 'symlink2.txt'
+        symlink1_path = temp_dir / 'symlink1.txt'
+
+        symlink2_path.symlink_to(broken_target)  # Points to nonexistent file
+        symlink1_path.symlink_to(symlink2_path)
+
+        result = storage.filename_from_symlink(symlink1_path)
+        assert result is None
+
+    def test_filename_from_symlink_circular_reference_handling(self, storage, temp_dir):
+        """Test filename_from_symlink behavior with circular symlink references."""
+        symlink1_path = temp_dir / 'symlink1.txt'
+        symlink2_path = temp_dir / 'symlink2.txt'
+
+        # Create circular symlinks
+        symlink1_path.symlink_to(symlink2_path)
+        symlink2_path.symlink_to(symlink1_path)
+
+        # The implementation should detect circular references and return None
+        result = storage.filename_from_symlink(symlink1_path)
+        assert result is None
+
+    def test_filename_from_symlink_subdirectory_file(self, storage, temp_dir):
+        """Test filename_from_symlink with files in subdirectories."""
+        filename = 'subdir/nested.txt'
+        test_data = b'Nested file content'
+
+        # Create subdirectory and file
+        subdir = temp_dir / 'subdir'
+        subdir.mkdir()
+
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create symlink to nested file
+        target_path = temp_dir / filename
+        symlink_path = temp_dir / 'nested_symlink.txt'
+        symlink_path.symlink_to(target_path)
+
+        result_filename = storage.filename_from_symlink(symlink_path)
+        assert result_filename == filename
+
+    def test_filename_from_symlink_relative_vs_absolute_paths(self, storage, temp_dir):
+        """Test filename_from_symlink with both relative and absolute symlink targets."""
+        filename = 'relative_test.txt'
+        test_data = b'Relative path test'
+
+        # Create and commit file
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        target_path = temp_dir / filename
+
+        # Test with relative symlink
+        rel_symlink_path = temp_dir / 'rel_symlink.txt'
+        rel_symlink_path.symlink_to(filename)  # Relative path
+        result = storage.filename_from_symlink(rel_symlink_path)
+        assert result == filename
+
+        # Test with absolute symlink
+        abs_symlink_path = temp_dir / 'abs_symlink.txt'
+        abs_symlink_path.symlink_to(target_path.absolute())  # Absolute path
+        result = storage.filename_from_symlink(abs_symlink_path)
+        assert result == filename
+
+    def test_filename_from_symlink_special_characters_in_path(self, storage, temp_dir):
+        """Test filename_from_symlink with special characters in file paths."""
+        filename = 'special-chars_file!@#$%^&()_test.txt'
+        test_data = b'Special characters test'
+
+        # Create and commit file with special characters
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create symlink
+        target_path = temp_dir / filename
+        symlink_path = temp_dir / 'special_symlink.txt'
+        symlink_path.symlink_to(target_path)
+
+        result_filename = storage.filename_from_symlink(symlink_path)
+        assert result_filename == filename
+
+    def test_filename_from_symlink_with_spaces_in_path(self, storage, temp_dir):
+        """Test filename_from_symlink with spaces in file paths."""
+        filename = 'file with spaces.txt'
+        test_data = b'Spaces in filename test'
+
+        # Create and commit file with spaces
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create symlink
+        target_path = temp_dir / filename
+        symlink_path = temp_dir / 'spaces_symlink.txt'
+        symlink_path.symlink_to(target_path)
+
+        result_filename = storage.filename_from_symlink(symlink_path)
+        assert result_filename == filename
+
+    def test_filename_from_symlink_mixed_chain_types(self, storage, temp_dir):
+        """Test filename_from_symlink with a chain mixing relative and absolute symlinks."""
+        filename = 'mixed_chain_target.txt'
+        test_data = b'Mixed chain test'
+
+        # Create and commit target file
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create chain: symlink1 (absolute) -> symlink2 (relative) -> target
+        symlink2_path = temp_dir / 'symlink2.txt'
+        symlink1_path = temp_dir / 'symlink1.txt'
+
+        symlink2_path.symlink_to(filename)  # Relative
+        symlink1_path.symlink_to(symlink2_path.absolute())  # Absolute
+
+        result_filename = storage.filename_from_symlink(symlink1_path)
+        assert result_filename == filename
+
+    def test_filename_from_symlink_edge_case_empty_storage(self, temp_dir):
+        """Test filename_from_symlink with empty storage directory."""
+        # Create storage with empty directory
+        empty_storage = FilesystemStorage(temp_dir)
+
+        # Create symlink to nonexistent file
+        symlink_path = temp_dir / 'empty_symlink.txt'
+        symlink_path.symlink_to(temp_dir / 'nonexistent.txt')
+
+        result = empty_storage.filename_from_symlink(symlink_path)
+        assert result is None
+
+    def test_filename_from_symlink_case_sensitivity(self, storage, temp_dir):
+        """Test filename_from_symlink case sensitivity behavior."""
+        filename = 'CaseTest.txt'
+        test_data = b'Case sensitivity test'
+
+        # Create and commit file
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create symlink
+        target_path = temp_dir / filename
+        symlink_path = temp_dir / 'case_symlink.txt'
+        symlink_path.symlink_to(target_path)
+
+        result_filename = storage.filename_from_symlink(symlink_path)
+        assert result_filename == filename
+        # Verify exact case is preserved
+        assert result_filename == 'CaseTest.txt'
+
+    def test_filename_from_symlink_max_depth_protection(self, storage, temp_dir):
+        """Test filename_from_symlink respects maximum depth limit."""
+        filename = 'deep_target.txt'
+        test_data = b'Deep chain target'
+
+        # Create and commit target file
+        pending_file = storage.create_file(filename)
+        pending_file.fd.write(test_data)
+        storage.commit_file(pending_file)
+
+        # Create a very deep chain of symlinks (more than the max_depth limit)
+        current_path = temp_dir / filename
+        for i in range(105):  # More than the max_depth of 100
+            next_path = temp_dir / f'link_{i}.txt'
+            next_path.symlink_to(current_path)
+            current_path = next_path
+
+        # The function should return None due to depth limit
+        result = storage.filename_from_symlink(current_path)
+        assert result is None

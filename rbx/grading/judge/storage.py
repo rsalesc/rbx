@@ -415,7 +415,40 @@ class FilesystemStorage(Storage):
     def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
         if not link.is_symlink():
             return None
-        filename = utils.abspath(link.readlink())
-        if not filename.is_file():
+
+        # Track visited symlinks to detect circular references
+        visited = set()
+        current = link
+        max_depth = 100  # Reasonable limit to prevent infinite loops
+        depth = 0
+
+        while current.is_symlink() and depth < max_depth:
+            # Convert to absolute path for consistent comparison
+            abs_current = utils.abspath(current)
+
+            # Check for circular reference
+            if abs_current in visited:
+                return None
+
+            visited.add(abs_current)
+
+            # Read the target of the symlink
+            target = current.readlink()
+
+            # If target is relative, resolve it relative to the symlink's parent directory
+            if not target.is_absolute():
+                current = utils.abspath(current.parent / target)
+            else:
+                current = utils.abspath(target)
+
+            depth += 1
+
+        # If we hit the depth limit, assume circular reference
+        if depth >= max_depth:
             return None
-        return str(filename.relative_to(self.path))
+
+        if not current.is_file():
+            return None
+        if not current.is_relative_to(self.path):
+            return None
+        return str(current.relative_to(self.path))
