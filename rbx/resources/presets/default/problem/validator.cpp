@@ -7,11 +7,12 @@ int main(int argc, char *argv[]) {
   registerValidation(argc, argv);
   prepareOpts(argc, argv);
 
-  int MAX_N = getVar<int>("MAX_N"); // Read from package vars.
+  int MIN_N = getVar<int>("MIN_N"); // Read from package vars.
+  int MAX_N = getVar<int>("MAX_N");
 
-  inf.readInt(1, MAX_N, "A");
+  inf.readInt(MIN_N, MAX_N, "A");
   inf.readSpace();
-  inf.readInt(1, MAX_N, "B");
+  inf.readInt(MIN_N, MAX_N, "B");
   inf.readEoln();
   inf.readEof();
 }
