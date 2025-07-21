@@ -65,8 +65,13 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml -n auto
+          pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n auto
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
