@@ -20,7 +20,7 @@ app = typer.Typer(no_args_is_help=True)
 _FALLBACK_PRESET_URI = 'rsalesc/rbx/rbx/resources/presets/default'
 
 
-def _find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
+def find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     found = root / 'preset.rbx.yml'
     if found.exists():
         return found
@@ -28,7 +28,7 @@ def _find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.P
 
 
 def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
-    found = _find_preset_yaml(root)
+    found = find_preset_yaml(root)
     if not found:
         console.console.print(
             f'[error][item]preset.rbx.yml[/item] not found in [item]{root.absolute()}[/item][/error]'
@@ -45,14 +45,14 @@ def _find_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.P
     return problem_yaml_path
 
 
-def _get_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[PresetLock]:
+def get_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[PresetLock]:
     found = _find_preset_lock(root)
     if not found:
         return None
     return utils.model_from_yaml(PresetLock, found.read_text())
 
 
-def _find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
+def find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
     root = utils.abspath(root)
     problem_yaml_path = root / 'preset.rbx.yml'
     while root != pathlib.PosixPath('/') and not problem_yaml_path.is_file():
@@ -63,7 +63,7 @@ def _find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
     return problem_yaml_path.parent
 
 
-def _find_local_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
+def find_local_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
     original_root = root
     root = utils.abspath(root)
     problem_yaml_path = root / '.local.rbx' / 'preset.rbx.yml'
@@ -71,12 +71,12 @@ def _find_local_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
         root = root.parent
         problem_yaml_path = root / '.local.rbx' / 'preset.rbx.yml'
     if not problem_yaml_path.is_file():
-        return _find_nested_preset(original_root)
+        return find_nested_preset(original_root)
     return problem_yaml_path.parent
 
 
 def _is_installed_preset(root: pathlib.Path = pathlib.Path()) -> bool:
-    preset_path = _find_local_preset(root)
+    preset_path = find_local_preset(root)
     if preset_path is None:
         return False
     resolved_path = utils.abspath(preset_path)
@@ -84,25 +84,25 @@ def _is_installed_preset(root: pathlib.Path = pathlib.Path()) -> bool:
 
 
 def _is_active_preset_nested(root: pathlib.Path = pathlib.Path()) -> bool:
-    preset_path = _find_local_preset(root)
+    preset_path = find_local_preset(root)
     if preset_path is None:
         return False
-    nested_preset_path = _find_nested_preset(root)
+    nested_preset_path = find_nested_preset(root)
     if nested_preset_path is None:
         return False
     return nested_preset_path == preset_path
 
 
-def _is_contest(root: pathlib.Path = pathlib.Path()) -> bool:
+def is_contest(root: pathlib.Path = pathlib.Path()) -> bool:
     return (root / 'contest.rbx.yml').is_file()
 
 
-def _is_problem(root: pathlib.Path = pathlib.Path()) -> bool:
+def is_problem(root: pathlib.Path = pathlib.Path()) -> bool:
     return (root / 'problem.rbx.yml').is_file()
 
 
-def _check_is_valid_package(root: pathlib.Path = pathlib.Path()):
-    if not _is_contest(root) and not _is_problem(root):
+def check_is_valid_package(root: pathlib.Path = pathlib.Path()):
+    if not is_contest(root) and not is_problem(root):
         console.console.print('[error]Not a valid rbx package directory.[/error]')
         raise typer.Exit(1)
 
@@ -133,7 +133,7 @@ def _glob_while_ignoring(
         yield file
 
 
-def _process_globbing(
+def process_globbing(
     assets: Iterable[TrackedAsset], preset_pkg_dir: pathlib.Path
 ) -> List[TrackedAsset]:
     res = []
@@ -156,7 +156,7 @@ def _process_globbing(
     return res
 
 
-def _dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
+def dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
     seen_paths = set()
     res = []
     for asset in assets:
@@ -167,11 +167,11 @@ def _dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
     return res
 
 
-def _get_preset_tracked_assets(
+def get_preset_tracked_assets(
     root: pathlib.Path, is_contest: bool, add_symlinks: bool = False
 ) -> List[TrackedAsset]:
     preset = get_active_preset(root)
-    preset_path = _find_local_preset(root)
+    preset_path = find_local_preset(root)
     assert preset_path is not None
 
     if is_contest:
@@ -179,13 +179,13 @@ def _get_preset_tracked_assets(
             preset.contest is not None
         ), 'Preset does not have a contest package definition.'
         preset_pkg_path = preset_path / preset.contest
-        res = _process_globbing(preset.tracking.contest, preset_pkg_path)
+        res = process_globbing(preset.tracking.contest, preset_pkg_path)
     else:
         assert (
             preset.problem is not None
         ), 'Preset does not have a problem package definition,'
         preset_pkg_path = preset_path / preset.problem
-        res = _process_globbing(preset.tracking.problem, preset_pkg_path)
+        res = process_globbing(preset.tracking.problem, preset_pkg_path)
 
     if add_symlinks:
         for file in _glob_while_ignoring(
@@ -199,7 +199,7 @@ def _get_preset_tracked_assets(
                 TrackedAsset(path=file.relative_to(preset_pkg_path), symlink=True)
             )
 
-    return _dedup_tracked_assets(res)
+    return dedup_tracked_assets(res)
 
 
 def _get_tracked_assets_symlinks(
@@ -212,7 +212,7 @@ def _get_tracked_assets_symlinks(
     return res
 
 
-def _get_symlink_info(
+def get_symlink_info(
     tracked_asset: Union[TrackedAsset, LockedAsset], root: pathlib.Path
 ) -> Optional[SymlinkInfo]:
     asset_path = root / tracked_asset.path
@@ -225,7 +225,7 @@ def _get_symlink_info(
     return SymlinkInfo(target=target, is_broken=is_broken, is_outside=is_outside)
 
 
-def _build_package_locked_assets(
+def build_package_locked_assets(
     tracked_assets: Sequence[Union[TrackedAsset, LockedAsset]],
     root: pathlib.Path = pathlib.Path(),
 ) -> List[LockedAsset]:
@@ -237,7 +237,7 @@ def _build_package_locked_assets(
                 LockedAsset(
                     path=tracked_asset.path,
                     hash=None,
-                    symlink_info=_get_symlink_info(tracked_asset, root),
+                    symlink_info=get_symlink_info(tracked_asset, root),
                 )
             )
             continue
@@ -246,13 +246,13 @@ def _build_package_locked_assets(
                 LockedAsset(
                     path=tracked_asset.path,
                     hash=digest_cooperatively(f),
-                    symlink_info=_get_symlink_info(tracked_asset, root),
+                    symlink_info=get_symlink_info(tracked_asset, root),
                 )
             )
     return res
 
 
-def _find_non_modified_assets(
+def find_non_modified_assets(
     reference: List[LockedAsset], current: List[LockedAsset]
 ) -> List[LockedAsset]:
     reference_by_path = {asset.path: asset for asset in reference}
@@ -273,7 +273,7 @@ def _find_non_modified_assets(
     return res
 
 
-def _find_modified_assets(
+def find_modified_assets(
     reference: List[LockedAsset],
     current: List[LockedAsset],
     seen_symlinks: Set[pathlib.Path],
@@ -297,7 +297,7 @@ def _find_modified_assets(
     return res
 
 
-def _copy_preset_file(
+def copy_preset_file(
     src: pathlib.Path,
     dst: pathlib.Path,
     preset_package_path: pathlib.Path,
@@ -358,19 +358,19 @@ def _copy_updated_assets(
     preset_path = get_active_preset_path(root)
     preset_package_path = _get_active_preset_package_path(root, is_contest)
 
-    preset_tracked_assets = _get_preset_tracked_assets(
+    preset_tracked_assets = get_preset_tracked_assets(
         preset_package_path, is_contest=is_contest, add_symlinks=symlinks
     )
-    current_preset_snapshot = _build_package_locked_assets(
+    current_preset_snapshot = build_package_locked_assets(
         preset_tracked_assets, preset_package_path
     )
 
     # Build current package snapshot based on the current preset snapshot.
-    current_package_snapshot = _build_package_locked_assets(current_preset_snapshot)
+    current_package_snapshot = build_package_locked_assets(current_preset_snapshot)
 
     non_modified_assets = current_package_snapshot
     if not force:
-        non_modified_assets = _find_non_modified_assets(
+        non_modified_assets = find_non_modified_assets(
             preset_lock.assets, current_package_snapshot
         )
 
@@ -386,7 +386,7 @@ def _copy_updated_assets(
 
     seen_symlinks = _get_tracked_assets_symlinks(preset_tracked_assets)
 
-    assets_to_copy = _find_modified_assets(
+    assets_to_copy = find_modified_assets(
         non_modified_assets, current_preset_snapshot, seen_symlinks
     )
 
@@ -402,7 +402,7 @@ def _copy_updated_assets(
     for asset in assets_to_copy:
         src_path = preset_package_path / asset.path
         dst_path = root / asset.path
-        _copy_preset_file(
+        copy_preset_file(
             src_path,
             dst_path,
             preset_package_path,
@@ -415,7 +415,7 @@ def _copy_updated_assets(
 
 
 def get_active_preset_or_null(root: pathlib.Path = pathlib.Path()) -> Optional[Preset]:
-    local_preset = _find_local_preset(root)
+    local_preset = find_local_preset(root)
     if local_preset is not None:
         return get_preset_yaml(local_preset)
     return None
@@ -430,7 +430,7 @@ def get_active_preset(root: pathlib.Path = pathlib.Path()) -> Preset:
 
 
 def get_active_preset_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    preset_path = _find_local_preset(root)
+    preset_path = find_local_preset(root)
     if preset_path is None:
         console.console.print('[error]No preset is active.[/error]')
         raise typer.Exit(1)
@@ -458,7 +458,7 @@ def _get_active_preset_package_path(
     is_contest: bool = False,
 ) -> pathlib.Path:
     preset = get_active_preset(root)
-    preset_path = _find_local_preset(root)
+    preset_path = find_local_preset(root)
     assert preset_path is not None
     if is_contest:
         assert (
@@ -488,26 +488,26 @@ def get_preset_fetch_info_with_fallback(
     return get_preset_fetch_info(uri)
 
 
-def _clean_copied_package_dir(dest: pathlib.Path):
+def clean_copied_package_dir(dest: pathlib.Path):
     for box_dir in dest.rglob('.box'):
         shutil.rmtree(str(box_dir), ignore_errors=True)
     for lock in dest.rglob('.preset-lock.yml'):
         lock.unlink(missing_ok=True)
 
 
-def _clean_copied_contest_dir(dest: pathlib.Path, delete_local_rbx: bool = True):
+def clean_copied_contest_dir(dest: pathlib.Path, delete_local_rbx: bool = True):
     shutil.rmtree(str(dest / 'build'), ignore_errors=True)
     if delete_local_rbx:
         shutil.rmtree(str(dest / '.local.rbx'), ignore_errors=True)
-    _clean_copied_package_dir(dest)
+    clean_copied_package_dir(dest)
 
 
-def _clean_copied_problem_dir(dest: pathlib.Path):
+def clean_copied_problem_dir(dest: pathlib.Path):
     shutil.rmtree(str(dest / 'build'), ignore_errors=True)
-    _clean_copied_package_dir(dest)
+    clean_copied_package_dir(dest)
 
 
-def _install_preset_from_dir(
+def install_preset_from_dir(
     src: pathlib.Path,
     dest: pathlib.Path,
     ensure_contest: bool = False,
@@ -541,11 +541,11 @@ def _install_preset_from_dir(
     shutil.rmtree(str(dest / '.local.rbx'), ignore_errors=True)
 
     if preset.contest is not None:
-        _clean_copied_contest_dir(dest / preset.contest)
+        clean_copied_contest_dir(dest / preset.contest)
     if preset.problem is not None:
-        _clean_copied_problem_dir(dest / preset.problem)
+        clean_copied_problem_dir(dest / preset.problem)
 
-    _clean_copied_package_dir(dest)
+    clean_copied_package_dir(dest)
 
 
 def _install_preset_from_remote(
@@ -569,7 +569,7 @@ def _install_preset_from_remote(
                 f'Installing preset from [item]{fetch_info.inner_dir}[/item].'
             )
             pd = pd / fetch_info.inner_dir
-        _install_preset_from_dir(
+        install_preset_from_dir(
             pd,
             dest,
             ensure_contest,
@@ -591,7 +591,7 @@ def _install_preset_from_local_dir(
     console.console.print(
         f'Installing local preset [item]{preset.name}[/item] into [item]{dest}[/item]...'
     )
-    _install_preset_from_dir(
+    install_preset_from_dir(
         pd,
         dest,
         ensure_contest,
@@ -617,7 +617,7 @@ def _install_preset_from_resources(
     console.console.print(
         f'Installing preset [item]{fetch_info.name}[/item] from resources...'
     )
-    _install_preset_from_dir(
+    install_preset_from_dir(
         rsrc_preset_path,
         dest,
         ensure_contest,
@@ -692,7 +692,7 @@ def _install_package_from_preset(
     ):
         if not file.is_file():
             continue
-        _copy_preset_file(
+        copy_preset_file(
             file,
             dest_pkg / file.relative_to(preset_package_path),
             preset_package_path,
@@ -702,7 +702,7 @@ def _install_package_from_preset(
     for asset in tracked_assets:
         if not asset.symlink:
             continue
-        _copy_preset_file(
+        copy_preset_file(
             preset_package_path / asset.path,
             dest_pkg / asset.path,
             preset_package_path,
@@ -721,7 +721,7 @@ def install_contest(
             ensure_contest=True,
         )
     preset = get_active_preset(dest_pkg)
-    preset_path = _find_local_preset(dest_pkg)
+    preset_path = find_local_preset(dest_pkg)
     assert preset_path is not None
     if preset.contest is None:
         console.console.print(
@@ -735,7 +735,7 @@ def install_contest(
     _install_package_from_preset(
         preset_path, preset.contest, dest_pkg, preset.tracking.contest
     )
-    _clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
+    clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
 
 
 def install_problem(
@@ -748,7 +748,7 @@ def install_problem(
             ensure_problem=True,
         )
     preset = get_active_preset(dest_pkg)
-    preset_path = _find_local_preset(dest_pkg)
+    preset_path = find_local_preset(dest_pkg)
     assert preset_path is not None
     if preset.problem is None:
         console.console.print(
@@ -762,7 +762,7 @@ def install_problem(
     _install_package_from_preset(
         preset_path, preset.problem, dest_pkg, preset.tracking.problem
     )
-    _clean_copied_problem_dir(dest_pkg)
+    clean_copied_problem_dir(dest_pkg)
 
 
 def install_preset(
@@ -774,7 +774,7 @@ def install_preset(
         )
         raise typer.Exit(1)
     if fetch_info is None:
-        _install_preset_from_dir(get_active_preset_path(), dest_pkg)
+        install_preset_from_dir(get_active_preset_path(), dest_pkg)
     else:
         _install_preset_from_fetch_info(fetch_info, dest_pkg)
 
@@ -792,10 +792,10 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
 def generate_lock(root: pathlib.Path = pathlib.Path()):
     preset = get_active_preset(root)
 
-    tracked_assets = _get_preset_tracked_assets(root, is_contest=_is_contest(root))
+    tracked_assets = get_preset_tracked_assets(root, is_contest=is_contest(root))
     preset_lock = PresetLock(
         name=preset.name,
-        assets=_build_package_locked_assets(tracked_assets, root),
+        assets=build_package_locked_assets(tracked_assets, root),
     )
 
     (root / '.preset-lock.yml').write_text(utils.model_to_yaml(preset_lock))
@@ -805,7 +805,7 @@ def generate_lock(root: pathlib.Path = pathlib.Path()):
 
 
 def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False):
-    preset_lock = _get_preset_lock()
+    preset_lock = get_preset_lock()
     if preset_lock is None:
         console.console.print(
             '[error]Package does not have a [item].preset.lock.yml[/item] file and thus cannot be synced.[/error]'
@@ -820,7 +820,7 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
 
     _copy_updated_assets(
         preset_lock,
-        is_contest=_is_contest(),
+        is_contest=is_contest(),
         force=force,
         symlinks=symlinks,
     )
@@ -969,7 +969,7 @@ def update():
     ).ask():
         return
 
-    preset_path = _find_local_preset(pathlib.Path.cwd())
+    preset_path = find_local_preset(pathlib.Path.cwd())
     assert preset_path is not None
     _install_preset_from_fetch_info(preset.fetch_info, dest=preset_path, update=True)
     console.console.print(
@@ -1008,7 +1008,7 @@ def sync(
         ),
     ] = False,
 ):
-    _check_is_valid_package()
+    check_is_valid_package()
     _sync(try_update=update, force=force, symlinks=symlinks)
 
 
@@ -1019,7 +1019,7 @@ def sync(
 )
 @cd.within_closest_package
 def lock():
-    _check_is_valid_package()
+    check_is_valid_package()
     generate_lock()
 
 
@@ -1027,7 +1027,7 @@ def lock():
 @cd.within_closest_package
 def ls():
     preset = get_active_preset()
-    preset_path = _find_local_preset(pathlib.Path.cwd())
+    preset_path = find_local_preset(pathlib.Path.cwd())
     console.console.print(f'Preset: [item]{preset.name}[/item]')
     console.console.print(f'Path: {preset_path}')
     console.console.print(f'URI: {preset.uri}')

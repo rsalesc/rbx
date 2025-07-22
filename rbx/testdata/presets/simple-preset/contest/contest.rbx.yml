@@ -1,0 +1,9 @@
+---
+name: "Test Contest"
+duration: 180
+startTime: "2024-01-01T00:00:00Z"
+problems:
+  - name: "A"
+    label: "Problem A"
+  - name: "B"
+    label: "Problem B"

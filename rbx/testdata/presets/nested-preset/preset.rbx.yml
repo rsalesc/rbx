@@ -1,0 +1,9 @@
+---
+name: "nested-preset"
+uri: "test/nested-preset"
+problem: "problem"
+tracking:
+  problem:
+    - path: "src/**/*.cpp"
+    - path: "src/**/*.hpp"
+    - path: "config.json"

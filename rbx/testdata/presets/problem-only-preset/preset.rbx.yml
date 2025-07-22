@@ -1,0 +1,9 @@
+---
+name: "problem-only"
+uri: "test/problem-only"
+problem: "problem"
+tracking:
+  problem:
+    - path: "main.cpp"
+    - path: "gen.py"
+    - path: "lib/*"

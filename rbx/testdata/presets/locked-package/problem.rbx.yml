@@ -1,0 +1,7 @@
+---
+name: "locked-test-problem"
+timeLimit: 1000
+memoryLimit: 256
+solutions:
+  - path: "main.cpp"
+    outcome: accepted

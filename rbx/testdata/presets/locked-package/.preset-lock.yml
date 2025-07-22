@@ -1,0 +1,13 @@
+---
+name: "simple-preset"
+assets:
+  - path: "template.cpp"
+    hash: "abc123def456"
+  - path: ".gitignore"
+    hash: "def456ghi789"
+  - path: "shared/header.h"
+    hash: "ghi789jkl012"
+    symlinkInfo:
+      target: "../shared/header.h"
+      isBroken: false
+      isOutside: false

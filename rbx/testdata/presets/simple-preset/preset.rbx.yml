@@ -1,0 +1,15 @@
+---
+name: "simple-preset"
+uri: "test/simple-preset"
+problem: "problem"
+contest: "contest"
+env: "env.rbx.yml"
+tracking:
+  problem:
+    - path: "template.cpp"
+    - path: ".gitignore"
+    - path: "shared/header.h"
+      symlink: true
+  contest:
+    - path: ".gitignore"
+    - path: "shared/header.h"

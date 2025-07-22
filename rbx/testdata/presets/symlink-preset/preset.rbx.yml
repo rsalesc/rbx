@@ -1,0 +1,12 @@
+---
+name: "symlink-preset"
+uri: "test/symlink-preset"
+problem: "problem"
+env: "env.rbx.yml"
+tracking:
+  problem:
+    - path: "template.cpp"
+      symlink: true
+    - path: "lib/common.hpp"
+      symlink: true
+    - path: "regular.cpp"
