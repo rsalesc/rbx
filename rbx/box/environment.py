@@ -192,7 +192,7 @@ for the environment will be used.""",
     def get_extension(self, name: str, _: Type[T]) -> Optional[T]:
         if self.extensions is None:
             return None
-        if hasattr(self.extensions, name):
+        if not hasattr(self.extensions, name):
             return None
         return getattr(self.extensions, name)
 

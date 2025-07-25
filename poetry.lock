@@ -3109,6 +3109,17 @@ rich = "*"
 textual = ">=0.66.0"
 
 [[package]]
+name = "throttlex"
+version = "1.0.0"
+description = "TimeStam eXtensions for Python"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "throttlex-1.0.0-py3-none-any.whl", hash = "sha256:a358a321c701a350e55e2591264f15cb85eb0fb09039a9be46d550bfac9f7feb"},
+]
+
+[[package]]
 name = "toml"
 version = "0.10.2"
 description = "Python Library for Tom's Obvious, Minimal Language"
@@ -3489,4 +3500,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.1"
-content-hash = "03293637b6e98ce0622bc0915ce3128a312b03c455825ac80ff55357e030162b"
+content-hash = "80a63921deb639d12d2c1a732e3769ba4421a9f41c431a6263e1a79295fdb890"

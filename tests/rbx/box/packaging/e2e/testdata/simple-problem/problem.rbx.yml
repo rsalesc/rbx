@@ -1,0 +1,22 @@
+name: simple-problem
+timeLimit: 1000
+memoryLimit: 256
+
+validator:
+  path: validators/validator.cpp
+
+solutions:
+  - path: solutions/main.cpp
+    outcome: ac
+  - path: solutions/slow.cpp
+    outcome: tle
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/sample.in
+  - name: main
+    testcaseGlob: tests/*.in
+
+statements:
+  - name: main
+    path: statements/statement.md

@@ -33,6 +33,8 @@ def preset_testing_pkg_from_testdata(
         yield pkg
 
 
+@pytest.mark.e2e
+@pytest.mark.slow
 @pytest.mark.preset_path('problem')
 @pytest.mark.resource_pkg('presets/default')
 def test_default_preset_problem(
@@ -69,6 +71,8 @@ def test_default_preset_problem(
     assert result.exit_code == 0, 'rbx pkg polygon failed'
 
 
+@pytest.mark.e2e
+@pytest.mark.slow
 @pytest.mark.preset_path('')
 @pytest.mark.test_pkg('problems/interactive')
 def test_interactive_problem(

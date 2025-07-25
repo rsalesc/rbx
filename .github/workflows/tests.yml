@@ -19,6 +19,11 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - uses: jdx/mise-action@v2
+        with:
+          version: 2024.12.14 # [default: latest] mise version to install
+          install: true # [default: true] run `mise install`
+          cache: true # [default: true] cache mise using GitHub's cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -65,7 +70,7 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n auto
+          mise run test-cov
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:

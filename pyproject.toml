@@ -50,9 +50,9 @@ gitignore-parser = "^0.1.12"
 pypandoc = "^1.15"
 iso639-lang = "^2.6.1"
 sqlitedict = "^2.1.0"
+throttlex = "^1.0.0"
 
 [tool.poetry.scripts]
-rbc = "rbx.main:app"
 rbx = "rbx.box.main:app"
 
 

@@ -132,3 +132,7 @@ rbx/
 - Test behavior, not implementation details. Avoid mocking private functions unless strictly necessary, and use API mocking sparingly. Assert over entire objects and strings where possible (preferrably in a single line assert call)
 - Avoid change detector tests.
 - Re-use files in the `testdata` folder, or create new ones when necessary, encapsulated inside a folder related to the current test.
+
+### Development Guidelines
+
+- Always ensure the tests you've written work by running them. If necessary, and print statements (for both my understanding and yours), and ask for clarifications.
