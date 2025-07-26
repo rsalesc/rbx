@@ -170,3 +170,4 @@ cython_debug/
 
 .ruff_cache/
 glob_output.txt
+junit.xml
