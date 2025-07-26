@@ -37,3 +37,9 @@ solutions:
     outcome: "tle"
   - path: "ole.cpp"
     outcome: "ole"
+statements:
+  - name: "statement-en"
+    title: "New Problem"
+    path: "dummy.pdf"
+    type: "PDF"
+    language: "en"

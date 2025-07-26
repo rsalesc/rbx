@@ -66,3 +66,9 @@ solutions:
     outcome: WA
   - path: "sols/ac_invalid_format_sigpipe.java"
     outcome: WA
+statements:
+  - name: "statement-en"
+    title: "New Problem"
+    path: "dummy.pdf"
+    type: "PDF"
+    language: "en"

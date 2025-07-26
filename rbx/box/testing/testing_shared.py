@@ -28,7 +28,9 @@ class TestingShared:
             os.chdir(self._old_cwd)
         self.cleanup()
 
-    def path(self, path: PathOrStr) -> pathlib.Path:
+    def path(self, path: Optional[PathOrStr] = None) -> pathlib.Path:
+        if path is None:
+            return self.root
         return self.root / path
 
     def abspath(self, path: PathOrStr) -> pathlib.Path:

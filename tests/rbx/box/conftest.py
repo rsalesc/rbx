@@ -88,6 +88,14 @@ def testing_pkg(pkg_cleandir: pathlib.Path) -> Iterator[testing_package.TestingP
         yield pkg
 
 
+@pytest.fixture
+def testing_pkg_from_testdata(
+    pkg_from_testdata: pathlib.Path,
+) -> Iterator[testing_package.TestingPackage]:
+    with testing_package.TestingPackage(pkg_from_testdata) as pkg:
+        yield pkg
+
+
 @pytest.fixture(autouse=True, scope='session')
 def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
     cache_dir = tmp_path_factory.mktemp('cache')

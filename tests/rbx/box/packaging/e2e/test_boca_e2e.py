@@ -7,8 +7,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+import zipfile
 from pathlib import Path
-from typing import Generator, Iterator
+from typing import Generator, Iterator, List
 
 import pytest
 from throttlex import Throttler
@@ -19,6 +20,8 @@ from rbx.box.cli import app
 from rbx.box.packaging.boca.boca_language_utils import (
     get_boca_language_from_rbx_language,
 )
+from rbx.box.packaging.boca.boca_outcome_utils import simplify_rbx_expected_outcome
+from rbx.box.schema import Solution
 from rbx.box.testing import testing_package
 from rbx.box.tooling.boca import scraper
 from rbx.box.tooling.boca.scraper import BocaScraper
@@ -180,18 +183,18 @@ def temp_problem_dir(test_problem_dir: Path) -> Generator[Path, None, None]:
         yield temp_path
 
 
-@pytest.mark.e2e
-@pytest.mark.slow
-@pytest.mark.docker
-@pytest.mark.preset_path('problem')
-@pytest.mark.resource_pkg('presets/default')
-def test_boca_package_generation_and_upload(
-    preset_testing_pkg_from_resources: testing_package.TestingPackage,
+def _get_eligible_solutions() -> List[Solution]:
+    """Get all solutions that are eligible for testing."""
+    return [s for s in package.get_solutions() if code.find_language_name(s) != 'java']
+
+
+def _run_e2e_test(
+    pkg: testing_package.TestingPackage,
     boca_system_scraper: BocaScraper,
     boca_admin_scraper: BocaScraper,
     boca_judge_scraper: BocaScraper,
 ):
-    """Test that rbx can generate a BOCA package and upload it successfully."""
+    """Run an end-to-end test for a given package."""
     runner = CliRunner()
 
     # Build the package (first we need to build the problem)
@@ -199,12 +202,14 @@ def test_boca_package_generation_and_upload(
     assert build_result.exit_code == 0, f'Build failed: {build_result.output}'
 
     # Generate BOCA package
-    package_result = runner.invoke(app, ['package', 'boca'])
+    package_result = runner.invoke(app, ['package', 'boca', '-v1'])
     assert (
         package_result.exit_code == 0
     ), f'Package generation failed: {package_result.output}'
 
-    package_path = preset_testing_pkg_from_resources.path('build/new_problem.zip')
+    package_files = list(pkg.path().glob('build/*.zip'))
+    assert len(package_files) == 1, 'Expected exactly one package file'
+    package_path = package_files[0]
     assert package_path.exists(), f'Package file not found: {package_path}'
 
     # Verify package was created
@@ -249,8 +254,8 @@ def test_boca_package_generation_and_upload(
 
     print('Submitting solutions...')
     problem_index = snapshot.get_problem_by_shortname('A').index
-    for solution in package.get_solutions():
-        solution_path = preset_testing_pkg_from_resources.path(solution.path)
+    for solution in _get_eligible_solutions():
+        solution_path = pkg.path(solution.path)
         boca_language = get_boca_language_from_rbx_language(
             code.find_language_name(solution)
         )
@@ -267,10 +272,11 @@ def test_boca_package_generation_and_upload(
     runs = boca_judge_scraper.retrieve_runs(only_judged=True)
     runs_snapshot = scraper.ContestSnapshot(detailed_runs=runs)
 
-    for solution in package.get_solutions():
+    for solution in _get_eligible_solutions():
         run = runs_snapshot.get_detailed_run_by_path(solution.path)
+        expected_outcome = simplify_rbx_expected_outcome(solution.outcome)
         assert run.outcome is not None, f'Run {run.run_number} has no outcome'
-        assert solution.outcome.match(
+        assert expected_outcome.match(
             run.outcome
         ), f'Run {run.run_number} for solution {solution.path} has outcome {run.outcome} but expected {solution.outcome}'
         print(
@@ -282,10 +288,66 @@ def test_boca_package_generation_and_upload(
 
 @pytest.mark.e2e
 @pytest.mark.slow
+@pytest.mark.docker
+@pytest.mark.preset_path('problem')
+@pytest.mark.resource_pkg('presets/default')
+def test_preset_boca_package_generation_and_upload(
+    preset_testing_pkg_from_resources: testing_package.TestingPackage,
+    boca_system_scraper: BocaScraper,
+    boca_admin_scraper: BocaScraper,
+    boca_judge_scraper: BocaScraper,
+):
+    """Test that rbx can generate a BOCA package and upload it successfully."""
+    _run_e2e_test(
+        preset_testing_pkg_from_resources,
+        boca_system_scraper,
+        boca_admin_scraper,
+        boca_judge_scraper,
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+@pytest.mark.docker
+@pytest.mark.test_pkg('problems/box1')
+def test_box1_package_generation_and_upload(
+    testing_pkg_from_testdata: testing_package.TestingPackage,
+    boca_system_scraper: BocaScraper,
+    boca_admin_scraper: BocaScraper,
+    boca_judge_scraper: BocaScraper,
+):
+    """Test that rbx can generate a BOCA package and upload it successfully."""
+    _run_e2e_test(
+        testing_pkg_from_testdata,
+        boca_system_scraper,
+        boca_admin_scraper,
+        boca_judge_scraper,
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+@pytest.mark.docker
+@pytest.mark.test_pkg('problems/interactive')
+def test_interactive_package_generation_and_upload(
+    testing_pkg_from_testdata: testing_package.TestingPackage,
+    boca_system_scraper: BocaScraper,
+    boca_admin_scraper: BocaScraper,
+    boca_judge_scraper: BocaScraper,
+):
+    """Test that rbx can generate a BOCA package and upload it successfully."""
+    _run_e2e_test(
+        testing_pkg_from_testdata,
+        boca_system_scraper,
+        boca_admin_scraper,
+        boca_judge_scraper,
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
 def test_boca_package_structure(temp_problem_dir: Path):
     """Test that the generated BOCA package has the correct structure."""
-    import zipfile
-
     runner = CliRunner()
 
     # Change to the problem directory
