@@ -1,14 +1,14 @@
 [tasks.test]
-run = "pytest -n auto -m 'not e2e' -m 'not slow' -m 'not docker'"
+run = "pytest -n auto -m 'not (e2e or slow or docker)'"
 
 [tasks.test-cov]
-run = "pytest -m 'not e2e' -m 'not slow' -m 'not docker' --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n auto"
+run = "pytest -m 'not (e2e or slow or docker)' --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n auto"
 
 [tasks.test-e2e]
-run = "pytest -m 'e2e' -m 'not docker'"
+run = "pytest -m 'e2e and not docker'"
 
 [tasks.test-slow]
-run = "pytest -m 'slow' -m 'not docker'"
+run = "pytest -m 'slow and not docker'"
 
 [tasks.test-docker]
 run = "pytest -m 'docker'"
