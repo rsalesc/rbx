@@ -148,7 +148,7 @@ def add(
 
     creation.create(name, preset=preset, path=pathlib.Path(path))
 
-    contest = find_contest_package_or_die()
+    contest_pkg = find_contest_package_or_die()
 
     ru, contest = contest_package.get_ruyaml()
 
@@ -156,10 +156,16 @@ def add(
         'short_name': short_name,
         'path': path,
     }
-    if 'problems' not in contest:
+    if 'problems' not in contest or not contest_pkg.problems:
         contest['problems'] = [item]
     else:
-        contest['problems'].append(item)
+        idx = 0
+        while (
+            idx < len(contest_pkg.problems)
+            and contest_pkg.problems[idx].short_name <= short_name
+        ):
+            idx += 1
+        contest['problems'].insert(idx, item)
 
     dest = find_contest_yaml()
     assert dest is not None
