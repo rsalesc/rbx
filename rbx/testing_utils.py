@@ -1,4 +1,5 @@
 import importlib.resources
+import os
 import pathlib
 
 import rich.markup
@@ -59,9 +60,24 @@ def walk_directory(
             text_filename = rich.text.Text(path.name, 'green')
             text_filename.highlight_regex(r'\..*$', 'bold red')
             text_filename.stylize(f'link file://{path}')
+
+            # Check if it's a symlink and show the resolved path
+            if path.is_symlink():
+                try:
+                    resolved = path.resolve()
+                    text_filename.append(' → ', 'cyan')
+                    text_filename.append(str(resolved), 'cyan italic')
+                except (OSError, RuntimeError):
+                    text_filename.append(' → ', 'red')
+                    text_filename.append(f'{os.readlink(path)}', 'red italic')
+
             file_size = path.stat().st_size
             text_filename.append(f' ({decimal(file_size)})', 'blue')
-            icon = '🐍 ' if path.suffix == '.py' else '📄 '
+            icon = (
+                '🔗 '
+                if path.is_symlink()
+                else ('🐍 ' if path.suffix == '.py' else '📄 ')
+            )
             tree.add(rich.text.Text(icon) + text_filename)
 
 

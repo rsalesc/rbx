@@ -246,14 +246,14 @@ class TestAssetTracking:
         self, problem_only_preset_testdata, create_tracked_assets
     ):
         """Should expand wildcard patterns to match multiple files."""
-        assets = create_tracked_assets('lib/*')
+        assets = create_tracked_assets('src/*')
         result = presets.process_globbing(
             assets, problem_only_preset_testdata / 'problem'
         )
 
         # Should find utils.hpp and math.hpp
         assert len(result) == 2
-        assert all(asset.path.parent == Path('lib') for asset in result)
+        assert all(asset.path.parent == Path('src') for asset in result)
         assert {asset.path.name for asset in result} == {'utils.hpp', 'math.hpp'}
 
     def test_process_globbing_recursive_pattern(
@@ -753,7 +753,7 @@ memoryLimit: 256
 
         # Verify symlinks are preserved
         assert (package_dir / 'template.cpp').is_symlink()
-        assert (package_dir / 'lib' / 'common.hpp').is_symlink()
+        assert (package_dir / 'src' / 'common.hpp').is_symlink()
         assert not (package_dir / 'regular.cpp').is_symlink()
 
         # Generate lock and verify it tracks symlinks
