@@ -32,6 +32,8 @@ jobs:
           virtualenvs-in-project: true
           installer-parallel: true
           prefer-active-python: true
+      - name: Set Python version on Poetry
+        run: poetry env use $(which python)
       #----------------------------------------------
       #       load cached venv if cache exists
       #----------------------------------------------
@@ -70,7 +72,6 @@ jobs:
           # cache: true # [default: true] cache mise using GitHub's cache
       - name: Run tests
         run: |
-          poetry env use $(which python)
           source .venv/bin/activate
           mise run test-cov
       - name: Upload coverage reports to Codecov
