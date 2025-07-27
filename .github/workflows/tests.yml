@@ -32,8 +32,6 @@ jobs:
           virtualenvs-in-project: true
           installer-parallel: true
           prefer-active-python: true
-      - name: Set Python version on Poetry
-        run: poetry env use $(which python)
       #----------------------------------------------
       #       load cached venv if cache exists
       #----------------------------------------------
@@ -46,6 +44,9 @@ jobs:
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
+      - name: Set Python version on Poetry
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry env use $(which python)
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
