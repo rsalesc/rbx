@@ -757,15 +757,15 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         params = SandboxParams()
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
+        orig_get_file_to_string = sandbox.get_file_to_string
+
         # Mock sandbox to simulate sanitizer warnings in stderr
-        with patch.object(
-            sandbox, 'get_file_to_string', wraps=sandbox.get_file_to_string
-        ) as mock_get_file:
+        with patch.object(sandbox, 'get_file_to_string') as mock_get_file:
 
             def mock_get_file_to_string(path, maxlen=None):
                 if 'stderr' in str(path):
                     return '==1234==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000110'
-                return mock_get_file.return_value
+                return orig_get_file_to_string(path, maxlen)
 
             mock_get_file.side_effect = mock_get_file_to_string
 
