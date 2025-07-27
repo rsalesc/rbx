@@ -7,6 +7,6 @@ tracking:
   problem:
     - path: "template.cpp"
       symlink: true
-    - path: "lib/common.hpp"
+    - path: "src/common.hpp"
       symlink: true
     - path: "regular.cpp"
