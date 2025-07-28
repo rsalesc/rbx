@@ -168,6 +168,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+.timing/
+.limits/
 .ruff_cache/
 glob_output.txt
 junit.xml

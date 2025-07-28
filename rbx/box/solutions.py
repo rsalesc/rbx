@@ -5,7 +5,7 @@ import dataclasses
 import pathlib
 import shutil
 from collections.abc import Iterator
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import rich
 import rich.live
@@ -17,7 +17,7 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, environment, package, remote, state
+from rbx.box import checkers, package, remote, state
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -1106,7 +1106,7 @@ def _print_solution_outcome(
     return report.ok
 
 
-def _consume_and_key_evaluation_items(
+def consume_and_key_evaluation_items(
     items: Iterable[EvaluationItem],
     skeleton: SolutionReportSkeleton,
 ) -> StructuredEvaluation:
@@ -1435,7 +1435,7 @@ async def print_run_report(
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
 
-    structured_evaluations = _consume_and_key_evaluation_items(
+    structured_evaluations = consume_and_key_evaluation_items(
         result.items, result.skeleton
     )
     if detailed:
@@ -1517,88 +1517,3 @@ async def print_run_report(
         )
 
     return ok
-
-
-def _step_up(x: Any, step: int) -> int:
-    x = int(x)
-    return (x + step - 1) // step * step
-
-
-def _step_down(x: Any, step: int) -> int:
-    x = int(x)
-    return x // step * step
-
-
-async def estimate_time_limit(
-    console: rich.console.Console,
-    result: RunSolutionResult,
-) -> Optional[int]:
-    structured_evaluations = _consume_and_key_evaluation_items(
-        result.items, result.skeleton
-    )
-
-    timing_per_solution = {}
-    timing_per_language = {}
-
-    if not result.skeleton.solutions:
-        console.print('[error]No solutions to estimate time limit from.[/error]')
-        return None
-
-    for solution in result.skeleton.solutions:
-        timings = []
-        for evals in structured_evaluations[str(solution.path)].values():
-            for ev in evals:
-                if ev is None:
-                    continue
-                ev = await ev()
-                if ev.log.time is not None:
-                    timings.append(int(ev.log.time * 1000))
-
-        if not timings:
-            console.print(
-                f'[warning]No timings for solution {href(solution.path)}.[/warning]'
-            )
-            continue
-
-        timing_per_solution[str(solution.path)] = max(timings)
-        lang = find_language_name(solution)
-        if lang not in timing_per_language:
-            timing_per_language[lang] = 0
-        timing_per_language[lang] = max(timing_per_language[lang], max(timings))
-
-    console.rule('[status]Time estimation[/status]', style='status')
-
-    fastest_time = min(timing_per_solution.values())
-    slowest_time = max(timing_per_solution.values())
-
-    console.print(f'Fastest solution: {fastest_time} ms')
-    console.print(f'Slowest solution: {slowest_time} ms')
-
-    if len(timing_per_language) > 0:
-        timing_language_list = [(t, lang) for lang, t in timing_per_language.items()]
-        fastest_language_time, fastest_language = min(timing_language_list)
-        slowest_language_time, slowest_language = max(timing_language_list)
-
-        console.print(
-            f'Fastest language: {fastest_language} ({fastest_language_time} ms)'
-        )
-        console.print(
-            f'Slowest language: {slowest_language} ({slowest_language_time} ms)'
-        )
-
-    env = environment.get_environment()
-    estimated_tl = int(
-        eval(
-            env.timing.formula,
-            {
-                'fastest': fastest_time,
-                'slowest': slowest_time,
-                'step_up': _step_up,
-                'step_down': _step_down,
-            },
-        )
-    )
-
-    console.print(f'Using formula: {env.timing.formula}')
-    console.print(f'[success]Estimated time limit:[/success] {estimated_tl} ms')
-    return estimated_tl

@@ -419,6 +419,43 @@ class UnitTests(BaseModel):
     )
 
 
+class Limits(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    inheritFromPackage: bool = Field(
+        default=True,
+        description="""
+Whether to inherit limits from the package.
+""",
+    )
+
+    timeLimit: Optional[int] = Field(
+        default=None, description='Time limit of the problem, in milliseconds.'
+    )
+
+    memoryLimit: Optional[int] = Field(
+        default=None, description='Memory limit of the problem, in MB.'
+    )
+
+    outputLimit: Optional[int] = Field(
+        default=None, description='Output limit of the problem, in KB.'
+    )
+
+    modifiers: Dict[str, LimitModifiers] = Field(
+        default={},
+        description="""
+    Limit modifiers that can be specified per language.
+    """,
+    )
+
+    formula: Optional[str] = Field(
+        default=None,
+        description="""
+A formula to estimate the time limit for the problem.
+""",
+    )
+
+
 class Package(BaseModel):
     model_config = ConfigDict(extra='forbid')
 

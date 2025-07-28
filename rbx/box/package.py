@@ -147,6 +147,16 @@ def get_problem_iruns_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     return iruns_dir
 
 
+def get_limits_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    limits_dir = root / '.limits'
+    limits_dir.mkdir(parents=True, exist_ok=True)
+    return limits_dir
+
+
+def get_limits_file(profile: str, root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    return get_limits_dir(root) / f'{profile}.yml'
+
+
 def get_problem_preprocessed_path(
     item: pathlib.Path, root: pathlib.Path = pathlib.Path()
 ) -> pathlib.Path:

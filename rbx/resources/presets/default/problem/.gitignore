@@ -1,5 +1,6 @@
 .box/
 build/
+.limits/local.yml
 __pycache__/
 
 .DS_Store

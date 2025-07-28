@@ -25,6 +25,7 @@ from rbx.box import (
     presets,
     setter_config,
     state,
+    timing,
     validators,
 )
 from rbx.box.contest import main as contest
@@ -34,7 +35,6 @@ from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
 from rbx.box.solutions import (
-    estimate_time_limit,
     get_exact_matching_solutions,
     get_matching_solutions,
     pick_solutions,
@@ -279,12 +279,6 @@ async def run(
         '-d',
         help='Whether to print a detailed view of the tests using tables.',
     ),
-    timeit: bool = typer.Option(
-        False,
-        '--time',
-        '-t',
-        help='Whether to use estimate a time limit based on accepted solutions.',
-    ),
     sanitized: bool = typer.Option(
         False,
         '--sanitized',
@@ -337,20 +331,6 @@ async def run(
         )
         return
 
-    override_tl = None
-    if timeit:
-        if sanitized:
-            console.console.print(
-                '[error]Sanitizers are known to be time-hungry, so they cannot be used for time estimation.\n'
-                'Remove either the [item]-s[/item] flag or the [item]-t[/item] flag to run solutions without sanitizers.[/error]'
-            )
-            raise typer.Exit(1)
-
-        # Never use sanitizers for time estimation.
-        override_tl = await _time_impl(check=check, detailed=False)
-        if override_tl is None:
-            raise typer.Exit(1)
-
     if sanitized:
         console.console.print(
             '[warning]Sanitizers are running, so the time limit for the problem will be dropped, '
@@ -372,7 +352,6 @@ async def run(
             tracked_solutions=tracked_solutions,
             check=check,
             verification=VerificationLevel(verification),
-            timelimit_override=override_tl,
             sanitized=sanitized,
         )
 
@@ -385,51 +364,6 @@ async def run(
         detailed=detailed,
         skip_printing_limits=sanitized,
     )
-
-
-async def _time_impl(check: bool, detailed: bool, runs: int = 0) -> Optional[int]:
-    if package.get_main_solution() is None:
-        console.console.print(
-            '[warning]No main solution found, so cannot estimate a time limit.[/warning]'
-        )
-        return None
-
-    verification = VerificationLevel.ALL_SOLUTIONS.value
-
-    with utils.StatusProgress('Running ACCEPTED solutions...') as s:
-        tracked_solutions = OrderedSet(
-            str(solution.path)
-            for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
-        )
-        solution_result = run_solutions(
-            progress=s,
-            tracked_solutions=tracked_solutions,
-            check=check,
-            verification=VerificationLevel(verification),
-            timelimit_override=-1,  # Unlimited for time limit estimation
-            nruns=runs,
-        )
-
-    console.console.print()
-    console.console.rule(
-        '[status]Run report (for time estimation)[/status]', style='status'
-    )
-    ok = await print_run_report(
-        solution_result,
-        console.console,
-        VerificationLevel(verification),
-        detailed=detailed,
-        skip_printing_limits=True,
-    )
-
-    if not ok:
-        console.console.print(
-            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
-        )
-        return None
-
-    console.console.print()
-    return await estimate_time_limit(console.console, solution_result)
 
 
 @app.command(
@@ -457,7 +391,51 @@ async def time(
         '-r',
         help='Number of runs to perform for each solution. Zero means the config default.',
     ),
+    profile: str = typer.Option(
+        'local',
+        '--profile',
+        '-p',
+        help='Profile to use for time limit estimation.',
+    ),
 ):
+    import questionary
+
+    formula = environment.get_environment().timing.formula
+    timing_choices = [
+        questionary.Choice(
+            f'Estimate time limits based on the formula {formula} (recommended)',
+            value='estimate',
+        ),
+        questionary.Choice('Inherit from the package.', value='inherit'),
+        questionary.Choice(
+            'Estimate time limits based on a custom formula.', value='estimate_custom'
+        ),
+        questionary.Choice('Provide a custom time limit.', value='custom'),
+    ]
+
+    choice = await questionary.select(
+        'Select how you want to define the time limits for the problem.',
+        choices=timing_choices,
+    ).ask_async()
+
+    formula = environment.get_environment().timing.formula
+
+    if choice == 'inherit':
+        timing.inherit_time_limits(profile=profile)
+        return
+    elif choice == 'custom':
+        timelimit = await questionary.text(
+            'Enter a custom time limit for the problem (ms).',
+            validate=lambda x: x.isdigit() and int(x) > 0,
+        ).ask_async()
+        timing.set_time_limit(int(timelimit), profile=profile)
+        return
+
+    if choice == 'estimate_custom':
+        formula = await questionary.text(
+            'Enter a custom formula for time limit estimation.'
+        ).ask_async()
+
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
@@ -471,7 +449,9 @@ async def time(
     if not await builder.build(verification=verification, output=check):
         return None
 
-    await _time_impl(check, detailed, runs)
+    await timing.compute_time_limits(
+        check, detailed, runs, formula=formula, profile=profile
+    )
 
 
 @app.command(
