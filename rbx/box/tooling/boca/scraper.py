@@ -86,6 +86,17 @@ class BocaRun(BaseModel):
 
     user: Optional[str] = None
 
+    @classmethod
+    def from_run_number(cls, run_number: int, site_number: int):
+        return cls(
+            run_number=run_number,
+            site_number=site_number,
+            problem_shortname='',
+            outcome=None,
+            time=0,
+            status='',
+        )
+
 
 class BocaDetailedRun(BocaRun):
     language_repr: str

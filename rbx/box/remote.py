@@ -8,6 +8,7 @@ import typer
 from rbx import console, utils
 from rbx.box import cd, package
 from rbx.box.formatting import href, ref
+from rbx.box.tooling.boca.scraper import BocaRun
 
 PathLike = Union[str, pathlib.Path]
 
@@ -69,11 +70,10 @@ class BocaExpander(Expander):
             return None
         run_number, site_number = match
 
+        run = BocaRun.from_run_number(run_number, site_number)
         boca_uploader = boca_upload.get_boca_scraper()
         boca_uploader.login()
-        sol_path = boca_uploader.download_run(
-            run_number, site_number, self.get_boca_folder()
-        )
+        sol_path = boca_uploader.download_run(run, self.get_boca_folder())
         console.console.print(f'Downloaded {href(sol_path)} from BOCA...')
         return sol_path
 
