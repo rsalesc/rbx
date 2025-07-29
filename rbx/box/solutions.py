@@ -17,7 +17,7 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, package, remote, state
+from rbx.box import checkers, code, limits_info, package, remote, state
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -91,6 +91,20 @@ class SolutionReportSkeleton(BaseModel):
     limits: Dict[str, Limits]
     verification: VerificationLevel
     capture_pipes: bool = False
+
+    def get_solution_limits(self, solution: Solution) -> Limits:
+        lang = code.find_language_name(solution)
+        if lang is None:
+            return limits_info.get_package_limits_profile(self.verification)
+        return self.limits[lang]
+
+    def get_solution_limits_from_disk(self, solution: Solution) -> Limits:
+        lang = code.find_language_name(solution)
+        return limits_info.get_limits(
+            language=lang,
+            profile=self.get_solution_limits(solution).profile,
+            verification=self.verification,
+        )
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -882,10 +896,10 @@ def get_evals_formatted_time(evals: List[Evaluation]) -> str:
 
 
 def get_capped_evals_formatted_time(
-    solution: Solution, evals: List[Evaluation], verification: VerificationLevel
+    limits: Limits,
+    evals: List[Evaluation],
+    verification: VerificationLevel,
 ) -> str:
-    pkg = package.find_problem_package_or_die()
-
     max_time = _get_evals_time_in_ms(evals)
     has_tle = any(eval.result.outcome.is_slow() for eval in evals)
     has_ile = any(
@@ -902,13 +916,13 @@ def get_capped_evals_formatted_time(
     if timelimits:
         tl = min(timelimits)
     if tl is None:
-        tl = pkg.timelimit_for_language(solution.language)
+        tl = limits.time
 
-        if verification.value >= VerificationLevel.FULL.value:
+        if tl is not None and verification.value >= VerificationLevel.FULL.value:
             # Using double TL for verification.
             tl = tl * 2
 
-    if has_tle and max_time >= tl or has_ile:
+    if tl is not None and has_tle and max_time >= tl or has_ile:
         return f'>{tl} ms'
     return f'{max_time} ms'
 
@@ -930,6 +944,7 @@ def get_truncated_message(message: str, max_length: int = 100) -> str:
 
 class SolutionOutcomeReport(BaseModel):
     solution: Solution
+    limits: Limits
     evals: List[Evaluation]
     ok: bool
     message: Optional[Tuple[TestcaseEntry, str]]
@@ -972,7 +987,7 @@ class SolutionOutcomeReport(BaseModel):
 
     def get_outcome_markup(self, print_message: bool = True) -> str:
         res = self.get_verdict_markup_with_warnings()
-        res += f'\nTime: {get_capped_evals_formatted_time(self.solution, self.evals, self.verification)}'
+        res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
         if print_message and self.message is not None:
             tc, msg = self.message
@@ -989,8 +1004,6 @@ def get_solution_outcome_report(
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
 ) -> SolutionOutcomeReport:
-    pkg = package.find_problem_package_or_die()
-
     has_plain_tle = False
     all_verdicts = set()
     bad_verdicts = set()
@@ -1051,6 +1064,7 @@ def get_solution_outcome_report(
 
     evals_time = _get_evals_time_in_ms(evals)
     expected_outcome_is_tle = solution.outcome.matches_tle_and_is_incorrect()
+    limits = skeleton.get_solution_limits(solution)
     if (
         # Running verification with double TL.
         verification.value >= VerificationLevel.FULL.value
@@ -1061,7 +1075,8 @@ def get_solution_outcome_report(
         # A TLE has happened.
         and Outcome.TIME_LIMIT_EXCEEDED in matched_bad_verdicts
         # The solution runs in double TL.
-        and evals_time < pkg.timelimit_for_language(solution.language) * 2
+        and limits.time is not None
+        and evals_time < limits.time * 2
     ):
         other_verdicts = (bad_verdicts | no_tle_bad_verdicts) - {
             Outcome.TIME_LIMIT_EXCEEDED
@@ -1078,6 +1093,7 @@ def get_solution_outcome_report(
 
     return SolutionOutcomeReport(
         solution=solution,
+        limits=skeleton.get_solution_limits(solution),
         evals=evals,
         ok=not has_failed,
         message=message,
@@ -1169,9 +1185,7 @@ async def _print_timing(
     console: rich.console.Console,
     skeleton: SolutionReportSkeleton,
     evaluations: StructuredEvaluation,
-    verification: VerificationLevel,
 ):
-    pkg = package.find_problem_package_or_die()
     summary = TimingSummary()
     summary_per_language = collections.defaultdict(TimingSummary)
     tls_per_language = {}
@@ -1196,8 +1210,12 @@ async def _print_timing(
         if solution_tls:
             solution_tl = min(solution_tls)
         else:
-            solution_tl = pkg.timelimit_for_language(solution.language)
-            if verification.value >= VerificationLevel.FULL.value:
+            limits = skeleton.get_solution_limits(solution)
+            if limits.time is None:
+                limits = skeleton.get_solution_limits_from_disk(solution)
+            assert limits.time is not None
+            solution_tl = limits.time
+            if limits.isDoubleTL:
                 solution_tl = solution_tl * 2
         all_tls.add(solution_tl)
         for eval in all_evals:
@@ -1306,7 +1324,8 @@ async def _render_detailed_group_table(
                 evals_per_solution[str(solution.path)].append(eval)
 
                 verdict = get_testcase_markup_verdict(eval)
-                time = get_capped_evals_formatted_time(solution, [eval], verification)
+                limits = skeleton.get_solution_limits(solution)
+                time = get_capped_evals_formatted_time(limits, [eval], verification)
                 memory = get_evals_formatted_memory([eval])
                 full_item = (f'[info]#{tc}[/info]', verdict, time, '/', memory, '')
                 if eval.result.sanitizer_warnings:
@@ -1323,8 +1342,9 @@ async def _render_detailed_group_table(
                 if not non_null_evals:
                     summary_row.append('...')
                     continue
+                limits = skeleton.get_solution_limits(solution)
                 formatted_time = get_capped_evals_formatted_time(
-                    solution, non_null_evals, verification
+                    limits, non_null_evals, verification
                 )
                 formatted_memory = get_evals_formatted_memory(non_null_evals)
                 worst_outcome = get_worst_outcome(non_null_evals)
@@ -1398,7 +1418,9 @@ async def _print_detailed_run_report(
 
     if timing:
         await _print_timing(
-            console, result.skeleton, structured_evaluations, verification=verification
+            console,
+            result.skeleton,
+            structured_evaluations,
         )
     return ok
 
@@ -1408,7 +1430,10 @@ def _print_limits(limits: Dict[str, Limits]):
         '[bold][success]Running with the following limits (per language):[/success][/bold]'
     )
     for lang, limit in limits.items():
-        console.console.print(f'[bold][status]{lang}[/status][/bold]')
+        extracted_from = ' (extracted from package)'
+        if limit.profile:
+            extracted_from = f' (extracted from profile [item]{limit.profile}[/item])'
+        console.console.print(f'[bold][status]{lang}[/status][/bold]{extracted_from}')
         time = (
             '<No time limit>' if limit.time is None else get_formatted_time(limit.time)
         )
@@ -1455,6 +1480,7 @@ async def print_run_report(
         if single_solution:
             console.print()
         solution_evals = []
+        limits = result.skeleton.get_solution_limits(solution)
         for group in result.skeleton.groups:
             if not single_solution:
                 console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
@@ -1469,9 +1495,7 @@ async def print_run_report(
                     console.print(f'{group.name}/{i}', end='')
                     if eval.result.sanitizer_warnings:
                         console.print('[warning]*[/warning]', end='')
-                    time = get_capped_evals_formatted_time(
-                        solution, [eval], verification
-                    )
+                    time = get_capped_evals_formatted_time(limits, [eval], verification)
                     memory = get_evals_formatted_memory([eval])
                     console.print(f' ({time}, {memory})', end='')
                     checker_msg = eval.result.message
@@ -1493,7 +1517,7 @@ async def print_run_report(
             if single_solution:
                 console.print(f'  [status]{group.name}[/status]', end=' ')
             console.print(
-                f'({get_capped_evals_formatted_time(solution, group_evals, verification)}, {get_evals_formatted_memory(group_evals)})',
+                f'({get_capped_evals_formatted_time(limits, group_evals, verification)}, {get_evals_formatted_memory(group_evals)})',
                 end='',
             )
             console.print()
@@ -1513,7 +1537,9 @@ async def print_run_report(
 
     if not single_solution:
         await _print_timing(
-            console, result.skeleton, structured_evaluations, verification=verification
+            console,
+            result.skeleton,
+            structured_evaluations,
         )
 
     return ok

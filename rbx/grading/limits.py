@@ -18,6 +18,10 @@ class Limits(BaseModel):
         default=False, description='Whether to use double TL for this language.'
     )
 
+    profile: Optional[str] = Field(
+        default=None, description='The profile that was used to get these limits.'
+    )
+
     def get_expanded_tl(self) -> Optional[int]:
         if self.time is None:
             return None

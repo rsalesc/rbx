@@ -7,11 +7,11 @@ from rbx.box.environment import Environment
 from rbx.box.package import Package
 from rbx.box.presets.lock_schema import PresetLock
 from rbx.box.presets.schema import Preset
-from rbx.box.schema import Limits
+from rbx.box.schema import LimitsProfile
 from rbx.box.statements.schema import Statement
 from rbx.utils import dump_schema_str
 
-models = [Package, Environment, Contest, Preset, PresetLock, Statement, Limits]
+models = [Package, Environment, Contest, Preset, PresetLock, Statement, LimitsProfile]
 
 for model in models:
     path = pathlib.Path('schemas') / f'{model.__name__}.json'

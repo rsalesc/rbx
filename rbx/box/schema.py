@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import pathlib
 import re
 from typing import Annotated, Any, Dict, List, Optional
@@ -419,11 +418,11 @@ class UnitTests(BaseModel):
     )
 
 
-class Limits(BaseModel):
+class LimitsProfile(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     inheritFromPackage: bool = Field(
-        default=True,
+        default=False,
         description="""
 Whether to inherit limits from the package.
 """,
@@ -539,29 +538,6 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     @property
     def expanded_vars(self) -> Dict[str, Primitive]:
         return expand_vars(self.vars)
-
-    def timelimit_for_language(self, language: Optional[str]) -> int:
-        res = self.timeLimit
-        if language is not None and language in self.modifiers:
-            modifier = self.modifiers[language]
-            if modifier.time is not None:
-                res = modifier.time
-            if modifier.timeMultiplier is not None:
-                res = int(res * float(modifier.timeMultiplier))
-        if 'RBX_TIME_MULTIPLIER' in os.environ:
-            res = int(res * float(os.environ['RBX_TIME_MULTIPLIER']))
-        return res
-
-    def memorylimit_for_language(self, language: Optional[str]) -> int:
-        res = self.memoryLimit
-        if language is None:
-            return res
-        if language not in self.modifiers:
-            return res
-        modifier = self.modifiers[language]
-        if modifier.memory is not None:
-            return modifier.memory
-        return res
 
     @model_validator(mode='after')
     def check_first_solution_is_main_if_there_is_ac(self):

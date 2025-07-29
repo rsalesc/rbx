@@ -48,7 +48,9 @@ def pkg_from_testdata(
     if marker is None:
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
-    copytree_honoring_gitignore(testdata, pkg_cleandir, extra_gitignore='.box\nbuild\n')
+    copytree_honoring_gitignore(
+        testdata, pkg_cleandir, extra_gitignore='.box\nbuild\n.limits/\n'
+    )
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
         yield pkg_cleandir

@@ -5,7 +5,7 @@ from typing import List, Optional
 import typer
 
 from rbx import console, utils
-from rbx.box import header, package
+from rbx.box import header, limits_info, package
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging.packager import (
     BaseContestPackager,
@@ -123,10 +123,14 @@ class PolygonPackager(BasePackager):
 
         testcases = self.get_flattened_built_testcases()
 
+        limits = limits_info.get_limits(None, profile='polygon')
+        assert limits.time is not None
+        assert limits.memory is not None
+
         return polygon_schema.Testset(
             name='tests',
-            timelimit=pkg.timelimit_for_language(None),
-            memorylimit=pkg.memorylimit_for_language(None) * 1024 * 1024,
+            timelimit=limits.time,
+            memorylimit=limits.memory * 1024 * 1024,
             size=len(testcases),
             inputPattern='tests/%03d',
             answerPattern='tests/%03d.a',

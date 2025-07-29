@@ -28,7 +28,7 @@ class TimingProfile(BaseModel):
     timeLimitPerLanguage: Dict[str, int] = Field(default_factory=dict)
 
     def to_limits(self):
-        return schema.Limits(
+        return schema.LimitsProfile(
             timeLimit=self.timeLimit,
             formula=self.formula,
             modifiers={
@@ -245,7 +245,7 @@ async def compute_time_limits(
 
 def inherit_time_limits(profile: str = 'local'):
     limits_path = package.get_limits_file(profile)
-    limits = schema.Limits(inheritFromPackage=True)
+    limits = schema.LimitsProfile(inheritFromPackage=True)
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(
@@ -254,7 +254,7 @@ def inherit_time_limits(profile: str = 'local'):
 
 
 def set_time_limit(timelimit: int, profile: str = 'local'):
-    limits = schema.Limits(timeLimit=timelimit)
+    limits = schema.LimitsProfile(timeLimit=timelimit)
     limits_path = package.get_limits_file(profile)
     limits_path.write_text(utils.model_to_yaml(limits))
 

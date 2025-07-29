@@ -110,7 +110,7 @@ def check_is_valid_package(root: pathlib.Path = pathlib.Path()):
 def _glob_while_ignoring(
     dir: pathlib.Path,
     glb: str,
-    extra_gitignore: Optional[str] = '.box\nbuild\n',
+    extra_gitignore: Optional[str] = '.box\nbuild\n.limits/local.yml\n',
     recursive: bool = False,
 ) -> Iterable[pathlib.Path]:
     from gitignore_parser import parse_gitignore, parse_gitignore_str

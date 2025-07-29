@@ -6,7 +6,7 @@ from typing import List
 import typer
 
 from rbx import console
-from rbx.box import header, naming, package
+from rbx.box import header, limits_info, naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
@@ -71,12 +71,14 @@ class BocaPackager(BasePackager):
         )
 
     def _get_pkg_timelimit(self, language: BocaLanguage) -> int:
-        pkg = package.find_problem_package_or_die()
-        return pkg.timelimit_for_language(language)
+        limits = limits_info.get_limits(language, profile='boca')
+        assert limits.time is not None
+        return limits.time
 
     def _get_pkg_memorylimit(self, language: BocaLanguage) -> int:
-        pkg = package.find_problem_package_or_die()
-        return pkg.memorylimit_for_language(language)
+        limits = limits_info.get_limits(language, profile='boca')
+        assert limits.memory is not None
+        return limits.memory
 
     def _get_number_of_runs(self, language: BocaLanguage) -> int:
         pkg = package.find_problem_package_or_die()

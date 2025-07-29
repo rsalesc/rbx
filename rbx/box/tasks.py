@@ -1,7 +1,7 @@
 import pathlib
 from typing import Optional
 
-from rbx.box import checkers, package, state
+from rbx.box import checkers, limits_info, package, state
 from rbx.box.code import CommunicationItem, run_communication, run_item
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
@@ -27,16 +27,12 @@ def get_limits_for_language(
     timelimit_override: Optional[int],
     use_timelimit: bool = True,
 ) -> Limits:
-    pkg = package.find_problem_package_or_die()
-    time = timelimit_override or pkg.timelimit_for_language(lang)
-    isDoubleTL = verification.value >= VerificationLevel.FULL.value
-    memory = pkg.memorylimit_for_language(lang)
-    return Limits(
-        time=time if use_timelimit and time > 0 else None,
-        memory=memory,
-        output=pkg.outputLimit,
-        isDoubleTL=isDoubleTL,
-    )
+    limits = limits_info.get_limits(lang, profile='local', verification=verification)
+    if timelimit_override is not None:
+        limits.time = timelimit_override
+    if limits.time is not None and (not use_timelimit or limits.time <= 0):
+        limits.time = None
+    return limits
 
 
 async def run_solution_on_testcase(

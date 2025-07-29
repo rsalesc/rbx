@@ -49,7 +49,7 @@ class TestTimingProfile:
 
         limits = profile.to_limits()
 
-        assert isinstance(limits, schema.Limits)
+        assert isinstance(limits, schema.LimitsProfile)
         assert limits.timeLimit == 1000
         assert limits.formula == 'slowest * 2'
         assert 'cpp' in limits.modifiers
