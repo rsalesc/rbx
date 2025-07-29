@@ -95,7 +95,7 @@ class SolutionReportSkeleton(BaseModel):
     def get_solution_limits(self, solution: Solution) -> Limits:
         lang = code.find_language_name(solution)
         if lang is None:
-            return limits_info.get_package_limits_profile(self.verification)
+            return limits_info.get_package_limits(self.verification)
         return self.limits[lang]
 
     def get_solution_limits_from_disk(self, solution: Solution) -> Limits:

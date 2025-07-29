@@ -7,7 +7,7 @@ import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import environment, naming, package
+from rbx.box import environment, limits_info, naming, package
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements.builders import (
@@ -264,6 +264,7 @@ def build_statement_bytes(
                     root=pathlib.Path(td),
                 ),
                 item=StatementBuilderProblem(
+                    limits=limits_info.get_limits_profile(),
                     package=pkg,
                     statement=statement,
                     samples=StatementSample.from_testcases(

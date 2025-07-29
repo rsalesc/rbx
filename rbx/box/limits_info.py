@@ -1,4 +1,4 @@
-import os
+import pathlib
 from typing import Optional
 
 import typer
@@ -10,39 +10,10 @@ from rbx.box.schema import LimitsProfile
 from rbx.grading.limits import Limits
 
 
-def _get_timelimit_for_language(
-    limits_profile: LimitsProfile, language: Optional[str]
-) -> int:
-    assert limits_profile.timeLimit is not None
-    res = limits_profile.timeLimit
-    if language is not None and language in limits_profile.modifiers:
-        modifier = limits_profile.modifiers[language]
-        if modifier.time is not None:
-            res = modifier.time
-        if modifier.timeMultiplier is not None:
-            res = int(res * float(modifier.timeMultiplier))
-    if 'RBX_TIME_MULTIPLIER' in os.environ:
-        res = int(res * float(os.environ['RBX_TIME_MULTIPLIER']))
-    return res
-
-
-def _get_memorylimit_for_language(
-    limits_profile: LimitsProfile, language: Optional[str]
-) -> int:
-    assert limits_profile.memoryLimit is not None
-    res = limits_profile.memoryLimit
-    if language is None:
-        return res
-    if language not in limits_profile.modifiers:
-        return res
-    modifier = limits_profile.modifiers[language]
-    if modifier.memory is not None:
-        return modifier.memory
-    return res
-
-
-def _expand_limits_profile(limits_profile: LimitsProfile) -> LimitsProfile:
-    pkg = package.find_problem_package_or_die()
+def _expand_limits_profile(
+    limits_profile: LimitsProfile, root: pathlib.Path
+) -> LimitsProfile:
+    pkg = package.find_problem_package_or_die(root=root)
     res = LimitsProfile(
         timeLimit=pkg.timeLimit,
         memoryLimit=pkg.memoryLimit,
@@ -87,34 +58,61 @@ def _get_limits_from_profile(
     limits_profile: LimitsProfile,
     source_profile: Optional[str],
     verification: VerificationLevel,
+    root: pathlib.Path,
 ) -> Limits:
-    limits_profile = _expand_limits_profile(limits_profile)
+    limits_profile = _expand_limits_profile(limits_profile, root=root)
     return Limits(
-        time=_get_timelimit_for_language(limits_profile, language),
-        memory=_get_memorylimit_for_language(limits_profile, language),
+        time=limits_profile.timelimit_for_language(language),
+        memory=limits_profile.memorylimit_for_language(language),
         output=limits_profile.outputLimit,
         isDoubleTL=verification.value >= VerificationLevel.FULL.value,
         profile=source_profile,
     )
 
 
-def get_limits_profile(profile: str = 'local') -> Optional[LimitsProfile]:
-    limits_path = package.get_limits_file(profile)
+def get_saved_limits_profile(
+    profile: str = 'local', root: pathlib.Path = pathlib.Path()
+) -> Optional[LimitsProfile]:
+    limits_path = package.get_limits_file(profile, root=root)
     if not limits_path.exists():
         return None
     return utils.model_from_yaml(LimitsProfile, limits_path.read_text())
 
 
-def get_package_limits_profile(
-    verification: VerificationLevel = VerificationLevel.NONE,
-) -> Limits:
+def get_package_limits_profile(root: pathlib.Path = pathlib.Path()) -> LimitsProfile:
     profile = LimitsProfile(inheritFromPackage=True)
+    return _expand_limits_profile(profile, root=root)
+
+
+def get_package_limits(
+    verification: VerificationLevel = VerificationLevel.NONE,
+    root: pathlib.Path = pathlib.Path(),
+) -> Limits:
     return _get_limits_from_profile(
         language=None,
-        limits_profile=profile,
+        limits_profile=get_package_limits_profile(root=root),
         source_profile=None,
         verification=verification,
+        root=root,
     )
+
+
+def get_limits_profile(
+    profile: Optional[str] = None,
+    fallback_to_package_profile: bool = True,
+    root: pathlib.Path = pathlib.Path(),
+) -> LimitsProfile:
+    if profile is None:
+        return get_package_limits_profile(root=root)
+    saved_profile = get_saved_limits_profile(profile, root=root)
+    if saved_profile is None:
+        if fallback_to_package_profile:
+            return get_package_limits_profile(root=root)
+        console.console.print(
+            f'[error]Limits profile [item]{profile}[/item] not found.[/error]'
+        )
+        raise typer.Exit(1)
+    return _expand_limits_profile(saved_profile, root=root)
 
 
 def get_limits(
@@ -122,11 +120,12 @@ def get_limits(
     profile: Optional[str] = None,
     fallback_to_package_profile: bool = True,
     verification: VerificationLevel = VerificationLevel.NONE,
+    root: pathlib.Path = pathlib.Path(),
 ) -> Limits:
     source_profile = None
     limits_profile = LimitsProfile(inheritFromPackage=True)
     if profile is not None:
-        specified_limits_profile = get_limits_profile(profile)
+        specified_limits_profile = get_saved_limits_profile(profile, root=root)
         if specified_limits_profile is not None:
             limits_profile = specified_limits_profile
             source_profile = profile
@@ -137,6 +136,6 @@ def get_limits(
             raise typer.Exit(1)
 
     res = _get_limits_from_profile(
-        language, limits_profile, source_profile, verification
+        language, limits_profile, source_profile, verification, root=root
     )
     return res

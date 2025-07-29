@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import pathlib
 import re
 from typing import Annotated, Any, Dict, List, Optional
@@ -453,6 +454,31 @@ Whether to inherit limits from the package.
 A formula to estimate the time limit for the problem.
 """,
     )
+
+    def timelimit_for_language(self, language: Optional[str] = None) -> int:
+        assert self.timeLimit is not None
+        res = self.timeLimit
+        if language is not None and language in self.modifiers:
+            modifier = self.modifiers[language]
+            if modifier.time is not None:
+                res = modifier.time
+            if modifier.timeMultiplier is not None:
+                res = int(res * float(modifier.timeMultiplier))
+        if 'RBX_TIME_MULTIPLIER' in os.environ:
+            res = int(res * float(os.environ['RBX_TIME_MULTIPLIER']))
+        return res
+
+    def memorylimit_for_language(self, language: Optional[str] = None) -> int:
+        assert self.memoryLimit is not None
+        res = self.memoryLimit
+        if language is None:
+            return res
+        if language not in self.modifiers:
+            return res
+        modifier = self.modifiers[language]
+        if modifier.memory is not None:
+            return modifier.memory
+        return res
 
 
 class Package(BaseModel):

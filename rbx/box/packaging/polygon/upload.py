@@ -8,7 +8,7 @@ import rich.progress
 import typer
 
 from rbx import console
-from rbx.box import header, package
+from rbx.box import header, limits_info, package
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.polygon import polygon_api as api
@@ -250,6 +250,7 @@ def _get_statement_blocks(statement: Statement) -> StatementBlocks:
     pkg = package.find_problem_package_or_die()
     # TODO: pull this from a library, too hacky at the moment
     builder_problem = StatementBuilderProblem(
+        limits=limits_info.get_limits_profile(),
         package=pkg,
         statement=statement,
         vars={

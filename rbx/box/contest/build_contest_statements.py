@@ -7,12 +7,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import typer
 
 from rbx import console, testing_utils, utils
-from rbx.box import cd, package
+from rbx.box import cd, limits_info, package
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.fields import Primitive
 from rbx.box.formatting import href
-from rbx.box.schema import Package, Testcase
+from rbx.box.schema import LimitsProfile, Package, Testcase
 from rbx.box.statements import build_statements, latex
 from rbx.box.statements.build_statements import (
     get_builders,
@@ -41,6 +41,7 @@ class ExtractedProblem:
     package: Package
     statement: Statement
     problem: ContestProblem
+    limits: LimitsProfile
     samples: List[Testcase]
     built_statement: Optional[pathlib.Path] = None
 
@@ -52,6 +53,7 @@ class ExtractedProblem:
 
     def get_statement_builder_problem(self) -> StatementBuilderProblem:
         return StatementBuilderProblem(
+            limits=self.limits,
             package=self.package,
             statement=self.statement,
             samples=StatementSample.from_testcases(self.samples),
@@ -122,6 +124,7 @@ def get_problems_for_statement(
             raise typer.Exit(1)
         res.append(
             ExtractedProblem(
+                limits=limits_info.get_limits_profile(root=problem.get_path()),
                 package=pkg,
                 statement=matching_statements[0],
                 problem=problem,
@@ -137,6 +140,7 @@ def get_builder_problems(
 ) -> List[StatementBuilderProblem]:
     return [
         StatementBuilderProblem(
+            limits=ex.limits,
             package=ex.package,
             statement=ex.statement,
             samples=StatementSample.from_testcases(ex.samples),

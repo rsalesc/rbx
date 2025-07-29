@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box.fields import Primitive
-from rbx.box.schema import Package, Testcase
+from rbx.box.schema import LimitsProfile, Package, Testcase
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
     render_latex_template,
@@ -115,6 +115,7 @@ class ExplainedStatementSample(StatementSample):
 class StatementBuilderProblem(StatementBuilderItem):
     package: Package
     statement: Statement
+    limits: LimitsProfile
     samples: List[StatementSample] = dataclasses.field(default_factory=list)
     short_name: Optional[str] = None
 
@@ -130,6 +131,7 @@ class StatementBuilderProblem(StatementBuilderItem):
             'samples': self.samples,
             'vars': JinjaDictWrapper(self.vars or {}, key='vars'),
             'title': self.statement.title or self.package.name,
+            'limits': self.limits,
         }
         if self.short_name is not None:
             kwargs['short_name'] = self.short_name

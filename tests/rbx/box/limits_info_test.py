@@ -86,7 +86,7 @@ class TestGetLimitsProfile:
         profile_path.write_text(model_to_yaml(sample_profile))
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile('test')
+            result = limits_info.get_saved_limits_profile('test')
 
         assert result is not None
         assert result.inheritFromPackage is False
@@ -130,7 +130,7 @@ class TestGetLimitsProfile:
         profile_path.write_text(model_to_yaml(inherit_profile))
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile('inherit')
+            result = limits_info.get_saved_limits_profile('inherit')
 
         assert result is not None
         assert result.inheritFromPackage is True
@@ -154,7 +154,7 @@ class TestGetLimitsProfile:
         profile_path.write_text(model_to_yaml(minimal_profile))
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile('minimal')
+            result = limits_info.get_saved_limits_profile('minimal')
 
         assert result is not None
         assert result.inheritFromPackage is True
@@ -191,7 +191,7 @@ class TestGetLimitsProfile:
         profile_path.write_text(model_to_yaml(complex_profile))
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile('complex')
+            result = limits_info.get_saved_limits_profile('complex')
 
         assert result is not None
         assert len(result.modifiers) == 5
@@ -236,7 +236,7 @@ class TestGetLimitsProfile:
         limits_dir.mkdir()
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile('nonexistent')
+            result = limits_info.get_saved_limits_profile('nonexistent')
 
         assert result is None
 
@@ -247,7 +247,7 @@ class TestGetLimitsProfile:
         test_dir.mkdir()
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile('any_profile')
+            result = limits_info.get_saved_limits_profile('any_profile')
 
         assert result is None
 
@@ -270,7 +270,7 @@ class TestGetLimitsProfile:
         local_profile_path.write_text(model_to_yaml(local_profile))
 
         with pkg_cder(test_dir):
-            result = limits_info.get_limits_profile()  # Should default to 'local'
+            result = limits_info.get_saved_limits_profile()  # Should default to 'local'
 
         assert result is not None
         assert result.timeLimit == 5000
@@ -289,7 +289,7 @@ class TestGetLimitsProfile:
 
         with pkg_cder(test_dir):
             with pytest.raises(yaml.YAMLError):  # Should raise YAML parsing exception
-                limits_info.get_limits_profile('invalid')
+                limits_info.get_saved_limits_profile('invalid')
 
     def test_get_profile_malformed_limits_profile(self, pkg_cder, tmp_path):
         """Test behavior when YAML contains data that doesn't match LimitsProfile schema."""
@@ -308,7 +308,7 @@ class TestGetLimitsProfile:
 
         with pkg_cder(test_dir):
             with pytest.raises(ValidationError):  # Should raise validation exception
-                limits_info.get_limits_profile('malformed')
+                limits_info.get_saved_limits_profile('malformed')
 
     def test_get_profile_empty_yaml_file(self, pkg_cder, tmp_path):
         """Test behavior when YAML file is empty."""
@@ -325,7 +325,173 @@ class TestGetLimitsProfile:
             with pytest.raises(
                 (ValidationError, TypeError)
             ):  # Should raise validation exception for missing required fields
-                limits_info.get_limits_profile('empty')
+                limits_info.get_saved_limits_profile('empty')
+
+
+class TestGetLimitsProfileWithExpansion:
+    """Test get_limits_profile function with expansion and fallback logic."""
+
+    @pytest.fixture
+    def mock_package_for_expansion(self):
+        """Create a mock package for testing expansion in get_limits_profile."""
+        package_mock = mock.MagicMock()
+        package_mock.timeLimit = 3000
+        package_mock.memoryLimit = 512
+        package_mock.outputLimit = 256
+        package_mock.modifiers = {
+            'cpp': schema.LimitModifiers(time=2500, memory=256, timeMultiplier=0.8),
+            'python': schema.LimitModifiers(timeMultiplier=2.0),
+        }
+        return package_mock
+
+    def test_get_limits_profile_with_none_returns_package_profile(
+        self, pkg_cder, tmp_path, mock_package_for_expansion
+    ):
+        """Test that get_limits_profile(None) returns expanded package profile."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+
+        with pkg_cder(test_dir), mock.patch(
+            'rbx.box.package.find_problem_package_or_die',
+            return_value=mock_package_for_expansion,
+        ):
+            result = limits_info.get_limits_profile(profile=None)
+
+        assert result is not None
+        # After expansion, inheritFromPackage becomes False but values come from package
+        assert result.inheritFromPackage is False  # Expansion sets this to False
+        assert result.timeLimit == 3000  # From package
+        assert result.memoryLimit == 512  # From package
+        assert result.outputLimit == 256  # From package
+        assert 'cpp' in result.modifiers
+        assert result.modifiers['cpp'].time == 2500
+
+    def test_get_limits_profile_with_existing_profile_expands(
+        self, pkg_cder, tmp_path, mock_package_for_expansion
+    ):
+        """Test that get_limits_profile with existing profile returns expanded profile."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+        limits_dir = test_dir / '.limits'
+        limits_dir.mkdir()
+
+        # Create a profile that doesn't inherit from package
+        custom_profile = schema.LimitsProfile(
+            inheritFromPackage=False,
+            timeLimit=1500,
+            memoryLimit=256,
+            modifiers={
+                'cpp': schema.LimitModifiers(time=1200),
+            },
+        )
+
+        profile_path = limits_dir / 'custom.yml'
+        profile_path.write_text(model_to_yaml(custom_profile))
+
+        with pkg_cder(test_dir), mock.patch(
+            'rbx.box.package.find_problem_package_or_die',
+            return_value=mock_package_for_expansion,
+        ):
+            result = limits_info.get_limits_profile(profile='custom')
+
+        # Should be expanded version with package as base but overridden by profile
+        assert result.timeLimit == 1500  # From profile override
+        assert result.memoryLimit == 256  # From profile override
+        assert result.outputLimit == 256  # From package (not overridden)
+
+        # Test that expansion worked - should have both package and profile modifiers
+        assert 'cpp' in result.modifiers
+        assert result.modifiers['cpp'].time == 1200  # From profile (overrides package)
+        assert 'python' in result.modifiers  # From package
+        assert result.modifiers['python'].timeMultiplier == 2.0
+
+    def test_get_limits_profile_nonexistent_with_fallback_true(
+        self, pkg_cder, tmp_path, mock_package_for_expansion
+    ):
+        """Test that nonexistent profile with fallback=True returns package profile."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+
+        with pkg_cder(test_dir), mock.patch(
+            'rbx.box.package.find_problem_package_or_die',
+            return_value=mock_package_for_expansion,
+        ):
+            result = limits_info.get_limits_profile(
+                profile='nonexistent', fallback_to_package_profile=True
+            )
+
+        # Should return expanded package profile
+        assert result.timeLimit == 3000  # From package
+        assert result.memoryLimit == 512  # From package
+        assert result.outputLimit == 256  # From package
+
+    def test_get_limits_profile_nonexistent_with_fallback_false(
+        self, pkg_cder, tmp_path
+    ):
+        """Test that nonexistent profile with fallback=False raises typer.Exit."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+
+        with pkg_cder(test_dir):
+            with pytest.raises(typer.Exit) as exc_info:
+                limits_info.get_limits_profile(
+                    profile='nonexistent', fallback_to_package_profile=False
+                )
+
+            assert exc_info.value.exit_code == 1
+
+    def test_get_limits_profile_inherits_from_package(
+        self, pkg_cder, tmp_path, mock_package_for_expansion
+    ):
+        """Test that profile with inheritFromPackage=True is properly expanded."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+        limits_dir = test_dir / '.limits'
+        limits_dir.mkdir()
+
+        # Create a profile that inherits from package
+        inherit_profile = schema.LimitsProfile(
+            inheritFromPackage=True,
+            timeLimit=2000,  # This should be ignored when inheritFromPackage=True
+        )
+
+        profile_path = limits_dir / 'inherit.yml'
+        profile_path.write_text(model_to_yaml(inherit_profile))
+
+        with pkg_cder(test_dir), mock.patch(
+            'rbx.box.package.find_problem_package_or_die',
+            return_value=mock_package_for_expansion,
+        ):
+            result = limits_info.get_limits_profile(profile='inherit')
+
+        # Should return pure package profile (inheritFromPackage=True ignores profile overrides)
+        assert result.timeLimit == 3000  # From package, not profile override
+        assert result.memoryLimit == 512  # From package
+        assert result.outputLimit == 256  # From package
+
+    def test_get_package_limits_profile(
+        self, pkg_cder, tmp_path, mock_package_for_expansion
+    ):
+        """Test get_package_limits_profile function."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+
+        with pkg_cder(test_dir), mock.patch(
+            'rbx.box.package.find_problem_package_or_die',
+            return_value=mock_package_for_expansion,
+        ):
+            result = limits_info.get_package_limits_profile()
+
+        # Should return expanded package profile
+        assert result is not None
+        assert result.inheritFromPackage is False  # After expansion
+        assert result.timeLimit == 3000  # From package
+        assert result.memoryLimit == 512  # From package
+        assert result.outputLimit == 256  # From package
+        assert 'cpp' in result.modifiers
+        assert result.modifiers['cpp'].time == 2500
+        assert 'python' in result.modifiers
+        assert result.modifiers['python'].timeMultiplier == 2.0
 
 
 class TestGetLimits:
@@ -461,7 +627,7 @@ class TestGetLimits:
 
         with pkg_cder(test_dir):
             # Verify that the profile file doesn't exist
-            assert not limits_info.get_limits_profile('nonexistent')
+            assert not limits_info.get_saved_limits_profile('nonexistent')
 
             # Test that typer.Exit is raised with exit code 1
             with pytest.raises(typer.Exit) as exc_info:

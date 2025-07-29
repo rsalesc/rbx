@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import typer
 
-from rbx.box.schema import Package, Statement, Testcase
+from rbx.box.schema import LimitsProfile, Package, Statement, Testcase
 from rbx.box.statements.builders import (
     ExplainedStatementSample,
     JinjaTeXBuilder,
@@ -201,6 +201,11 @@ class TestStatementBuilderProblem:
         )
 
     @pytest.fixture
+    def sample_limits(self):
+        """Create a sample limits profile for testing."""
+        return LimitsProfile(timeLimit=1000, memoryLimit=256)
+
+    @pytest.fixture
     def sample_samples(self, tmp_path):
         """Create sample testcases."""
         samples = []
@@ -217,12 +222,13 @@ class TestStatementBuilderProblem:
         return samples
 
     def test_build_inner_jinja_kwargs_basic(
-        self, sample_package, sample_statement, sample_samples
+        self, sample_package, sample_statement, sample_limits, sample_samples
     ):
         """Test building inner jinja kwargs with basic configuration."""
         problem = StatementBuilderProblem(
             package=sample_package,
             statement=sample_statement,
+            limits=sample_limits,
             samples=sample_samples,
             vars={'TEST_VAR': 42},
         )
@@ -232,16 +238,18 @@ class TestStatementBuilderProblem:
         assert kwargs['package'] == sample_package
         assert kwargs['statement'] == sample_statement
         assert kwargs['samples'] == sample_samples
+        assert kwargs['limits'] == sample_limits
         assert kwargs['title'] == 'Test Problem'
         assert kwargs['vars']['TEST_VAR'] == 42
 
     def test_build_inner_jinja_kwargs_with_short_name(
-        self, sample_package, sample_statement
+        self, sample_package, sample_statement, sample_limits
     ):
         """Test building kwargs with short name."""
         problem = StatementBuilderProblem(
             package=sample_package,
             statement=sample_statement,
+            limits=sample_limits,
             short_name='A',
         )
 
@@ -250,13 +258,14 @@ class TestStatementBuilderProblem:
         assert kwargs['short_name'] == 'A'
 
     def test_build_inner_jinja_kwargs_with_io_path(
-        self, sample_package, sample_statement
+        self, sample_package, sample_statement, sample_limits
     ):
         """Test building kwargs with IO path."""
         io_path = pathlib.Path('/tmp/test.txt')
         problem = StatementBuilderProblem(
             package=sample_package,
             statement=sample_statement,
+            limits=sample_limits,
             io_path=io_path,
         )
 
@@ -264,11 +273,12 @@ class TestStatementBuilderProblem:
 
         assert kwargs['path'] == io_path
 
-    def test_build_jinja_kwargs(self, sample_package, sample_statement):
+    def test_build_jinja_kwargs(self, sample_package, sample_statement, sample_limits):
         """Test building full jinja kwargs structure."""
         problem = StatementBuilderProblem(
             package=sample_package,
             statement=sample_statement,
+            limits=sample_limits,
         )
 
         kwargs = problem.build_jinja_kwargs()
@@ -276,6 +286,7 @@ class TestStatementBuilderProblem:
         assert 'problem' in kwargs
         assert kwargs['problem']['package'] == sample_package
         assert kwargs['problem']['statement'] == sample_statement
+        assert kwargs['problem']['limits'] == sample_limits
 
 
 class TestStatementBuilderContest:
@@ -480,7 +491,10 @@ class TestJinjaTeXBuilder:
             path=pathlib.Path('statement.tex'),
             type=StatementType.JinjaTeX,
         )
-        return StatementBuilderProblem(package=package, statement=statement)
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        return StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
 
     def test_properties(self, builder):
         """Test builder properties."""
@@ -533,7 +547,10 @@ class TestrbxTeXBuilder:
             path=pathlib.Path('statement.rbx.tex'),
             type=StatementType.rbxTeX,
         )
-        return StatementBuilderProblem(package=package, statement=statement)
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        return StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
 
     def test_properties(self, builder):
         """Test builder properties."""
@@ -658,7 +675,10 @@ class TestrbxMarkdownToTeXBuilder:
             path=pathlib.Path('statement.rbx.md'),
             type=StatementType.rbxMarkdown,
         )
-        return StatementBuilderProblem(package=package, statement=statement)
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        return StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
 
     def test_properties(self, builder):
         """Test builder properties."""
@@ -724,7 +744,10 @@ class TestTeX2PDFBuilder:
             path=pathlib.Path('statement.tex'),
             type=StatementType.TeX,
         )
-        return StatementBuilderProblem(package=package, statement=statement)
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        return StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
 
     def test_properties(self, builder):
         """Test builder properties."""
@@ -828,6 +851,7 @@ class TestIntegration:
             path=tmp_path / 'statement.jinja.tex',
             type=StatementType.JinjaTeX,
         )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
 
         # Create test content
         content = (
@@ -842,7 +866,9 @@ class TestIntegration:
             params=jinja_builder.default_params(),
             root=tmp_path,
         )
-        problem = StatementBuilderProblem(package=package, statement=statement)
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
 
         tex_result = jinja_builder.build(content, context, problem)
         assert b'Problem: integration-test' in tex_result
@@ -875,6 +901,7 @@ class TestIntegration:
             path=tmp_path / 'statement.rbx.tex',
             type=StatementType.rbxTeX,
         )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
 
         # Create rbxTeX content - using package.name instead of problem.package.name
         content = b"""
@@ -891,7 +918,9 @@ This is the legend for \\VAR{package.name}.
         context = StatementBuilderContext(
             lang='en', languages=[], params=params, root=tmp_path
         )
-        problem = StatementBuilderProblem(package=package, statement=statement)
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
 
         result = builder.build(content, context, problem)
         assert b'This is the legend for rbx-test' in result

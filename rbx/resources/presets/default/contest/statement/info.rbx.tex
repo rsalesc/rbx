@@ -41,10 +41,10 @@
 \hline
 %- for problem in problems:
 \VAR{problem.short_name}
-& \VAR{problem.package.timelimit_for_language('cpp')}
-& \VAR{problem.package.timelimit_for_language('java')}
-& \VAR{problem.package.timelimit_for_language('py')}
-& \VAR{problem.package.memoryLimit}
+& \VAR{problem.limits.timelimit_for_language('cpp')}
+& \VAR{problem.limits.timelimit_for_language('java')}
+& \VAR{problem.limits.timelimit_for_language('py')}
+& \VAR{problem.limits.memorylimit_for_language()}
 \\ \hline
 %- endfor
 \end{tabular}

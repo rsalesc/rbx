@@ -1,7 +1,7 @@
 import os
 import pathlib
 from typing import List, cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
@@ -320,8 +320,8 @@ class TestGetRelativeAssets:
             os.chdir(original_cwd)
 
 
-class TestBuildStatementBytes:
-    """Test build_statement_bytes function."""
+class TestBuildStatementBytesExtended:
+    """Extended tests for build_statement_bytes function covering untested parameters."""
 
     @pytest.fixture
     def sample_package(self):
@@ -345,8 +345,18 @@ class TestBuildStatementBytes:
             assets=[],
         )
 
+    @pytest.fixture
+    def mock_limits(self):
+        """Mock the limits_info.get_limits_profile function."""
+        with patch(
+            'rbx.box.statements.build_statements.limits_info.get_limits_profile'
+        ) as mock:
+            # Return a simple limits profile mock
+            mock.return_value = MagicMock()
+            yield mock
+
     def test_build_simple_statement(
-        self, sample_package, sample_statement, mock_samples
+        self, sample_package, sample_statement, mock_samples, mock_limits
     ):
         """Test building a simple statement."""
         content, output_type = build_statement_bytes(
@@ -359,7 +369,9 @@ class TestBuildStatementBytes:
         assert output_type == StatementType.TeX
         assert b'Problem: test-problem' in content
 
-    def test_build_with_assets(self, sample_package, chdir_tmp_path, mock_samples):
+    def test_build_with_assets(
+        self, sample_package, chdir_tmp_path, mock_samples, mock_limits
+    ):
         """Test building statement with assets."""
         # Create asset files
         asset_file = chdir_tmp_path / 'style.sty'
@@ -383,9 +395,12 @@ class TestBuildStatementBytes:
         )
 
         assert isinstance(content, bytes)
+        assert output_type == StatementType.TeX
         assert b'Problem content' in content
 
-    def test_build_with_custom_vars(self, sample_package, tmp_path, mock_samples):
+    def test_build_with_custom_vars(
+        self, sample_package, tmp_path, mock_samples, mock_limits
+    ):
         """Test building statement with custom variables."""
         statement_file = tmp_path / 'statement.jinja.tex'
         statement_file.write_text(
@@ -428,6 +443,146 @@ class TestBuildStatementBytes:
                 pkg=sample_package,
             )
 
+    def test_build_with_overridden_params(
+        self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
+    ):
+        """Test building statement with overridden parameters."""
+        # Create a custom template for overridden params
+        custom_template = tmp_path / 'custom.tex'
+        custom_template.write_text(
+            'Custom template content: \\VAR{problem.package.name}'
+        )
+
+        overridden_params = {
+            ConversionType.JinjaTeX: cast(
+                ConversionStep, JinjaTeX(type=ConversionType.JinjaTeX)
+            )
+        }
+
+        content, output_type = build_statement_bytes(
+            statement=sample_statement,
+            pkg=sample_package,
+            output_type=StatementType.TeX,
+            overridden_params=overridden_params,
+            overridden_params_root=tmp_path,
+        )
+
+        assert isinstance(content, bytes)
+        assert output_type == StatementType.TeX
+        # The overridden parameters are passed but the original statement template is still used
+        assert b'Problem: test-problem' in content
+
+    def test_build_with_overridden_assets(
+        self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
+    ):
+        """Test building statement with overridden assets."""
+        # Create custom asset files
+        custom_asset1 = tmp_path / 'custom1.sty'
+        custom_asset1.write_text('% Custom style 1')
+        custom_asset2 = tmp_path / 'custom2.cls'
+        custom_asset2.write_text('% Custom class')
+
+        overridden_assets = [
+            (custom_asset1, pathlib.Path('custom1.sty')),
+            (custom_asset2, pathlib.Path('custom2.cls')),
+        ]
+
+        content, output_type = build_statement_bytes(
+            statement=sample_statement,
+            pkg=sample_package,
+            output_type=StatementType.TeX,
+            overridden_assets=overridden_assets,
+        )
+
+        assert isinstance(content, bytes)
+        assert output_type == StatementType.TeX
+
+    def test_build_with_short_name(
+        self, sample_package, mock_samples, mock_limits, tmp_path
+    ):
+        """Test building statement with custom short_name."""
+        # Create a statement that uses short_name in the template
+        statement_file = tmp_path / 'statement.jinja.tex'
+        statement_file.write_text('Problem: \\VAR{problem.short_name or "Unknown"}')
+
+        statement = Statement(
+            name='test-statement',
+            language='en',
+            title='Test Problem',
+            path=statement_file,
+            type=StatementType.JinjaTeX,
+            assets=[],
+        )
+
+        content, output_type = build_statement_bytes(
+            statement=statement,
+            pkg=sample_package,
+            output_type=StatementType.TeX,
+            short_name='PROB_A',
+        )
+
+        assert isinstance(content, bytes)
+        assert output_type == StatementType.TeX
+        assert b'PROB_A' in content
+
+    def test_build_with_use_samples_false(
+        self, sample_package, sample_statement, mock_limits
+    ):
+        """Test building statement with use_samples=False."""
+        # Don't use mock_samples fixture to test actual behavior
+        with patch(
+            'rbx.box.statements.build_statements.get_samples'
+        ) as mock_get_samples:
+            mock_get_samples.return_value = []
+
+            content, output_type = build_statement_bytes(
+                statement=sample_statement,
+                pkg=sample_package,
+                output_type=StatementType.TeX,
+                use_samples=False,
+            )
+
+            assert isinstance(content, bytes)
+            assert output_type == StatementType.TeX
+            # get_samples should NOT be called when use_samples=False based on the conditional logic
+            mock_get_samples.assert_not_called()
+
+    def test_build_with_combined_overrides(
+        self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
+    ):
+        """Test building statement with multiple override parameters combined."""
+        # Create custom template and assets
+        custom_template = tmp_path / 'combined.tex'
+        custom_template.write_text(
+            'Combined: \\VAR{problem.short_name} - \\VAR{problem.package.name}'
+        )
+        custom_asset = tmp_path / 'combined.sty'
+        custom_asset.write_text('% Combined style')
+
+        overridden_params = {
+            ConversionType.JinjaTeX: cast(
+                ConversionStep, JinjaTeX(type=ConversionType.JinjaTeX)
+            )
+        }
+        overridden_assets = [(custom_asset, pathlib.Path('combined.sty'))]
+
+        content, output_type = build_statement_bytes(
+            statement=sample_statement,
+            pkg=sample_package,
+            output_type=StatementType.TeX,
+            short_name='COMBINED',
+            overridden_params_root=tmp_path,
+            overridden_params=overridden_params,
+            overridden_assets=overridden_assets,
+            use_samples=False,
+            custom_vars={'EXTRA_VAR': 'extra_value'},
+        )
+
+        assert isinstance(content, bytes)
+        assert output_type == StatementType.TeX
+        # The basic template should still be used since overridden_params doesn't specify a custom template
+        assert b'Problem: test-problem' in content
+
 
 class TestBuildStatement:
     """Test build_statement function."""
@@ -441,7 +596,19 @@ class TestBuildStatement:
             memoryLimit=256,
         )
 
-    def test_build_statement_creates_file(self, sample_package, tmp_path, mock_samples):
+    @pytest.fixture
+    def mock_limits(self):
+        """Mock the limits_info.get_limits_profile function."""
+        with patch(
+            'rbx.box.statements.build_statements.limits_info.get_limits_profile'
+        ) as mock:
+            # Return a simple limits profile mock
+            mock.return_value = MagicMock()
+            yield mock
+
+    def test_build_statement_creates_file(
+        self, sample_package, tmp_path, mock_samples, mock_limits, mock_environment
+    ):
         """Test that build_statement creates the output file."""
         statement_file = tmp_path / 'statement.jinja.tex'
         statement_file.write_text('Simple statement content')
