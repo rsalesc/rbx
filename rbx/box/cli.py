@@ -397,7 +397,17 @@ async def time(
         '-p',
         help='Profile to use for time limit estimation.',
     ),
+    integrate: bool = typer.Option(
+        False,
+        '--integrate',
+        '-i',
+        help='Integrate the given limits profile into the package.',
+    ),
 ):
+    if integrate:
+        timing.integrate(profile)
+        return
+
     import questionary
 
     formula = environment.get_environment().timing.formula

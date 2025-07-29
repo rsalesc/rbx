@@ -4,11 +4,12 @@ from typing import Any, Dict, Optional
 import questionary
 import rich
 import rich.console
+import typer
 from ordered_set import OrderedSet
 from pydantic import BaseModel, Field
 
 from rbx import console, utils
-from rbx.box import environment, package, schema
+from rbx.box import environment, limits_info, package, schema
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
 from rbx.box.formatting import href
@@ -260,4 +261,45 @@ def set_time_limit(timelimit: int, profile: str = 'local'):
 
     console.console.print(
         f'[green]Set time limit for profile [item]{profile}[/item] to [item]{timelimit} ms[/item].[/green]'
+    )
+
+
+def integrate(profile: str = 'local'):
+    limits_profile = limits_info.get_saved_limits_profile(profile)
+    if limits_profile is None:
+        console.console.print(
+            f'[error]No limits profile found for profile [item]{profile}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+
+    if limits_profile.inheritFromPackage:
+        console.console.print(
+            f'[warning]Limits profile [item]{profile}[/item] already inherits from package.[/warning]'
+        )
+        console.console.print('[warning]This operation is a no-op.[/warning]')
+        return
+
+    ru, pkg = package.get_ruyaml()
+
+    if limits_profile.timeLimit is not None:
+        pkg['timeLimit'] = limits_profile.timeLimit
+    if limits_profile.memoryLimit is not None:
+        pkg['memoryLimit'] = limits_profile.memoryLimit
+    if limits_profile.outputLimit is not None:
+        pkg['outputLimit'] = limits_profile.outputLimit
+
+    for lang, limits in limits_profile.modifiers.items():
+        if limits.time is not None:
+            pkg['modifiers'][lang]['time'] = limits.time
+        if limits.memory is not None:
+            pkg['modifiers'][lang]['memory'] = limits.memory
+        if limits.timeMultiplier is not None:
+            pkg['modifiers'][lang]['timeMultiplier'] = limits.timeMultiplier
+
+    dest_yml = package.find_problem_yaml()
+    assert dest_yml is not None
+    utils.save_ruyaml(dest_yml, ru, pkg)
+
+    console.console.print(
+        f'[green]Integrated limits profile [item]{profile}[/item] into package.[/green]'
     )
