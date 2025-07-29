@@ -552,7 +552,8 @@ class TestProgramMocks:
 
     @mock.patch('os.setpgid')
     @mock.patch('resource.setrlimit')
-    def test_preexec_fn_behavior(self, mock_setrlimit, mock_setpgid):
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_behavior_linux(self, mock_setrlimit, mock_setpgid):
         """Test that preexec_fn actually calls the expected system functions."""
         import resource as resource_module
 
@@ -564,7 +565,37 @@ class TestProgramMocks:
         # Verify setpgid was called
         mock_setpgid.assert_called_once_with(0, 12345)
 
-        # Verify setrlimit was called for CPU and file size limits
+        # Verify setrlimit was called 3 times.
+        assert mock_setrlimit.call_count == 3
+        calls = mock_setrlimit.call_args_list
+
+        # Check CPU limit call
+        cpu_call = calls[0]
+        assert cpu_call[0][0] == resource_module.RLIMIT_CPU
+
+        # Check file size limit call
+        fs_call = calls[1]
+        assert fs_call[0][0] == resource_module.RLIMIT_FSIZE
+
+        stack_call = calls[2]
+        assert stack_call[0][0] == resource_module.RLIMIT_STACK
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'darwin')
+    def test_preexec_fn_behavior_darwin(self, mock_setrlimit, mock_setpgid):
+        """Test that preexec_fn actually calls the expected system functions."""
+        import resource as resource_module
+
+        params = ProgramParams(time_limit=5.0, fs_limit=1000, pgid=12345)
+
+        preexec_fn = get_preexec_fn(params)
+        preexec_fn()
+
+        # Verify setpgid was called
+        mock_setpgid.assert_called_once_with(0, 12345)
+
+        # Verify setrlimit was called 2 times.
         assert mock_setrlimit.call_count == 2
         calls = mock_setrlimit.call_args_list
 

@@ -550,6 +550,7 @@ int main() {
         # Verify stack limit was checked (may be called multiple times)
         assert mock_check_stack_limit.call_count >= 1
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_disabled_by_config(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -605,6 +606,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_disabled_by_cli_state(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -660,6 +662,63 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'linux')
+    def test_stack_limit_check_disabled_on_linux(
+        self, testing_pkg: testing_package.TestingPackage, capsys
+    ):
+        """Test that stack limit checking is disabled when not run through CLI."""
+        # Create a simple program
+        py_file = testing_pkg.add_file('hello.py', src='program_test/simple_hello.py')
+        code_item = CodeItem(path=py_file, language='py')
+
+        # Mock the setter config to enable stack checking
+        with mock.patch('rbx.box.code.setter_config.get_setter_config') as mock_config:
+            mock_judging_config = mock.Mock()
+            mock_judging_config.check_stack = True
+            mock_config_obj = mock.Mock()
+            mock_config_obj.judging = mock_judging_config
+            mock_config_obj.substitute_command = mock.Mock(
+                side_effect=lambda cmd, sanitized=False: cmd
+            )
+            mock_config.return_value = mock_config_obj
+
+            # Enable CLI mode to allow stack checking
+            original_cli_state = state.STATE.run_through_cli
+            state.STATE.run_through_cli = True
+
+            try:
+                # Mock resource.getrlimit to return low stack limit
+                with mock.patch('rbx.box.code.resource.getrlimit') as mock_getrlimit:
+                    mock_getrlimit.return_value = (
+                        8 * 1024 * 1024,
+                        256 * 1024 * 1024,
+                    )  # 8MB soft, 256MB hard
+
+                    # Compile the program
+                    executable_digest = code.compile_item(code_item)
+                    executable = DigestOrSource.create(executable_digest)
+
+                    # Run the program
+                    run_log = asyncio.run(
+                        code.run_item(
+                            code_item,
+                            executable,
+                        )
+                    )
+
+                    # Verify execution succeeded
+                    assert run_log is not None
+                    assert run_log.exitcode == 0
+
+                    # Verify no stack limit warning was printed
+                    captured = capsys.readouterr()
+                    assert 'Stack limit is too low' not in captured.out
+                    assert 'Stack limit is too low' not in captured.err
+
+            finally:
+                state.STATE.run_through_cli = original_cli_state
+
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_warns_on_low_stack_limit(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -706,6 +765,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_no_warning_on_sufficient_stack_limit(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -761,6 +821,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_no_warning_on_unlimited_stack(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -816,6 +877,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_formats_memory_correctly(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -860,6 +922,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_handles_getrlimit_exception(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
@@ -912,6 +975,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
+    @mock.patch('sys.platform', 'darwin')
     def test_stack_limit_check_calculates_target_correctly_with_hard_limit(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):

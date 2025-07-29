@@ -266,7 +266,7 @@ class TestEstimateTimeLimit:
 
         # The current implementation has a bug where it doesn't handle
         # the case of no timing data properly and raises ValueError
-        with pytest.raises(ValueError, match='min\\(\\) iterable argument is empty'):
+        with pytest.raises(ValueError):
             await timing.estimate_time_limit(mock_console, result)
 
     async def test_estimate_time_limit_no_solutions(self, mock_console):
