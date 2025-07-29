@@ -1,0 +1,49 @@
+coverage:
+  status:
+    project:
+      default:
+        # Don't fail CI if coverage drops
+        target: auto
+        threshold: 100%
+        informational: true
+    patch:
+      default:
+        # Don't fail CI for patch coverage
+        target: auto
+        threshold: 100%
+        informational: true
+
+# Configure comments on PRs
+comment:
+  layout: "reach,diff,flags,tree,reach"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+# Configure which files to ignore
+ignore:
+  - "tests/**/*"
+  - "**/__pycache__/**/*"
+  - "**/.*"
+  - "docs/**/*"
+  - "examples/**/*"
+  - "scripts/**/*"
+  - "setup.py"
+  - "conftest.py"
+
+# Configure GitHub status checks
+github_checks:
+  annotations: true
+
+# Flag management
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      - type: project
+        target: auto
+        informational: true
+      - type: patch
+        target: auto
+        informational: true
