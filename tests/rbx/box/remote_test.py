@@ -7,6 +7,7 @@ import typer
 from rbx.box import package, remote
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.testing import testing_package
+from rbx.box.tooling.boca.scraper import BocaRun
 
 
 class TestExpander:
@@ -171,7 +172,7 @@ class TestBocaExpander:
         # Verify scraper was called correctly
         mock_scraper.login.assert_called_once()
         mock_scraper.download_run.assert_called_once_with(
-            123, 2, expander.get_boca_folder()
+            BocaRun.from_run_number(123, 2), expander.get_boca_folder()
         )
 
         assert result == downloaded_file
