@@ -8,7 +8,7 @@ from typing import List, Tuple, Type
 import typer
 
 from rbx import console
-from rbx.box import environment, header, naming, package
+from rbx.box import environment, header, limits_info, naming, package
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.formatting import href
@@ -103,8 +103,9 @@ class BasePackager(ABC):
 
 
 class BaseContestPackager(ABC):
+    @classmethod
     @abstractmethod
-    def name(self) -> str:
+    def name(cls) -> str:
         pass
 
     @abstractmethod
@@ -180,11 +181,17 @@ async def run_packager(
 
     header.generate_header()
 
-    if not await builder.verify(verification=verification):
+    if limits_info.get_saved_limits_profile(packager_cls.name()) is not None:
         console.console.print(
-            '[error]Build or verification failed, check the report.[/error]'
+            f'[warning]Using saved limits profile for [item]{packager_cls.name()}[/item].[/warning]'
         )
-        raise typer.Exit(1)
+
+    with limits_info.use_profile(packager_cls.name()):
+        if not await builder.verify(verification=verification):
+            console.console.print(
+                '[error]Build or verification failed, check the report.[/error]'
+            )
+            raise typer.Exit(1)
 
     pkg = package.find_problem_package_or_die()
 
@@ -199,18 +206,21 @@ async def run_packager(
     statement_types = packager.statement_types()
     built_statements = []
 
-    for statement_type in statement_types:
-        languages = packager.languages()
-        for language in languages:
-            statement = packager.get_statement_for_language(language)
-            statement_path = build_statement(statement, pkg, statement_type)
-            built_statements.append(
-                BuiltStatement(statement, statement_path, statement_type)
-            )
+    with limits_info.use_profile(packager_cls.name()):
+        for statement_type in statement_types:
+            languages = packager.languages()
+            for language in languages:
+                statement = packager.get_statement_for_language(language)
+                statement_path = build_statement(statement, pkg, statement_type)
+                built_statements.append(
+                    BuiltStatement(statement, statement_path, statement_type)
+                )
 
     console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
 
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory() as td, limits_info.use_profile(
+        packager_cls.name()
+    ):
         result_path = packager.package(
             package.get_build_path(), pathlib.Path(td), built_statements
         )

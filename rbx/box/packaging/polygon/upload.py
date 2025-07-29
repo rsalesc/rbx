@@ -250,7 +250,7 @@ def _get_statement_blocks(statement: Statement) -> StatementBlocks:
     pkg = package.find_problem_package_or_die()
     # TODO: pull this from a library, too hacky at the moment
     builder_problem = StatementBuilderProblem(
-        limits=limits_info.get_limits_profile(),
+        limits=limits_info.get_limits_profile(profile='polygon'),
         package=pkg,
         statement=statement,
         vars={

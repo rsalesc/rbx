@@ -17,8 +17,8 @@
 
 %- if problem.vars.show_limits is truthy
 	\includeLimits
-		{\VAR{problem.package.timeLimit} ms}
-		{\VAR{problem.package.memoryLimit} MiB}
+		{\VAR{problem.limits.timeLimit} ms}
+		{\VAR{problem.limits.memoryLimit} MiB}
 		{\VAR{problem.vars.author if problem.vars.author is truthy and problem.vars.editorial is truthy else ''}}
 %- else
 	\vspace{0.55cm}

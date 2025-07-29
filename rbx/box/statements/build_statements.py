@@ -264,7 +264,9 @@ def build_statement_bytes(
                     root=pathlib.Path(td),
                 ),
                 item=StatementBuilderProblem(
-                    limits=limits_info.get_limits_profile(),
+                    limits=limits_info.get_limits_profile(
+                        profile=limits_info.get_active_profile()
+                    ),
                     package=pkg,
                     statement=statement,
                     samples=StatementSample.from_testcases(
@@ -303,6 +305,14 @@ def build_statement(
     statement_path = (package.get_build_path() / statement.name).with_suffix(
         last_output.get_file_suffix()
     )
+    active_profile = limits_info.get_active_profile()
+    if (
+        active_profile is not None
+        and limits_info.get_saved_limits_profile(active_profile) is not None
+    ):
+        statement_path = statement_path.with_stem(
+            f'{statement_path.stem}-{active_profile}'
+        )
     statement_path.parent.mkdir(parents=True, exist_ok=True)
     statement_path.write_bytes(last_content)
     console.console.print(

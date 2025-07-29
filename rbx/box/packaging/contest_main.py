@@ -6,7 +6,7 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import cd, environment, package
+from rbx.box import cd, environment, limits_info, package
 from rbx.box.contest import build_contest_statements, contest_package
 from rbx.box.packaging.packager import (
     BaseContestPackager,
@@ -27,6 +27,11 @@ async def run_contest_packager(
     **kwargs,
 ):
     contest = contest_package.find_contest_package_or_die()
+
+    if limits_info.get_saved_limits_profile(contest_packager_cls.name()) is not None:
+        console.console.print(
+            f'[warning]Using saved limits profile for [item]{contest_packager_cls.name()}[/item].[/warning]'
+        )
 
     # Build problem-level packages.
     built_packages = []
@@ -52,21 +57,24 @@ async def run_contest_packager(
     statement_types = packager.statement_types()
     built_statements = []
 
-    for statement_type in statement_types:
-        languages = packager.languages()
-        for language in languages:
-            statement = packager.get_statement_for_language(language)
-            statement_path = build_contest_statements.build_statement(
-                statement, contest, statement_type
-            )
-            built_statements.append(
-                BuiltContestStatement(statement, statement_path, statement_type)
-            )
+    with limits_info.use_profile(contest_packager_cls.name()):
+        for statement_type in statement_types:
+            languages = packager.languages()
+            for language in languages:
+                statement = packager.get_statement_for_language(language)
+                statement_path = build_contest_statements.build_statement(
+                    statement, contest, statement_type
+                )
+                built_statements.append(
+                    BuiltContestStatement(statement, statement_path, statement_type)
+                )
 
     console.console.print(f'Packaging contest for [item]{packager.name()}[/item]...')
 
     # Build contest-level package.
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory() as td, limits_info.use_profile(
+        contest_packager_cls.name()
+    ):
         result_path = packager.package(
             built_packages, pathlib.Path('build'), pathlib.Path(td), built_statements
         )

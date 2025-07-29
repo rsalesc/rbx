@@ -1,3 +1,4 @@
+import contextvars
 import pathlib
 from typing import Optional
 
@@ -8,6 +9,25 @@ from rbx.box import package
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import LimitsProfile
 from rbx.grading.limits import Limits
+
+profile_var = contextvars.ContextVar[Optional[str]]('profile', default=None)
+
+
+def get_active_profile() -> Optional[str]:
+    return profile_var.get()
+
+
+class use_profile:
+    def __init__(self, profile: Optional[str]):
+        self.profile = profile
+        self.token = None
+
+    def __enter__(self):
+        self.token = profile_var.set(self.profile)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.token is not None:
+            profile_var.reset(self.token)
 
 
 def _expand_limits_profile(

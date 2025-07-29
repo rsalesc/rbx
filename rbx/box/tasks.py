@@ -27,7 +27,11 @@ def get_limits_for_language(
     timelimit_override: Optional[int],
     use_timelimit: bool = True,
 ) -> Limits:
-    limits = limits_info.get_limits(lang, profile='local', verification=verification)
+    limits = limits_info.get_limits(
+        lang,
+        profile=limits_info.get_active_profile() or 'local',
+        verification=verification,
+    )
     if timelimit_override is not None:
         limits.time = timelimit_override
     if limits.time is not None and (not use_timelimit or limits.time <= 0):
