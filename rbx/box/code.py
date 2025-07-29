@@ -466,9 +466,7 @@ def _precompile_header(
 
     assert precompiled_digest.value is not None
 
-    digest_path = dependency_cache.cacher.transient_path_for_symlink(
-        precompiled_digest.value
-    )
+    digest_path = dependency_cache.cacher.path_for_symlink(precompiled_digest.value)
     if digest_path is not None and digest_path.is_file():
         # If storage backend supports symlinks, use it as the grading input.
         input = DigestOrSource.create(digest_path)
