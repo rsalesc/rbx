@@ -89,6 +89,14 @@ def get_preexec_fn(params: ProgramParams):
         if params.fs_limit is not None:
             fs_limit = params.fs_limit * 1024  # in bytes
             resource.setrlimit(resource.RLIMIT_FSIZE, (fs_limit + 1, fs_limit * 2))
+        if sys.platform != 'darwin':
+            try:
+                resource.setrlimit(
+                    resource.RLIMIT_STACK,
+                    (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+                )
+            except ValueError:
+                pass
 
     return preexec_fn
 

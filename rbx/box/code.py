@@ -3,6 +3,7 @@ import pathlib
 import re
 import resource
 import shlex
+import sys
 from enum import Enum
 from pathlib import PosixPath
 from typing import List, Optional
@@ -213,6 +214,8 @@ def _check_stack_limit():
     if not cfg.judging.check_stack:
         return
     if not state.STATE.run_through_cli:
+        return
+    if sys.platform != 'darwin':
         return
     soft, hard = resource.RLIM_INFINITY, resource.RLIM_INFINITY
 
