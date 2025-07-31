@@ -183,22 +183,28 @@ def _build_problem_statements(
         with cd.new_package_cd(extracted_problem.problem.get_path()):
             package.clear_package_cache()
             # TODO: respect steps override
-            content, _ = build_statements.build_statement_bytes(
-                extracted_problem.statement,
-                extracted_problem.package,
-                output_type=output_type,
-                short_name=extracted_problem.problem.short_name,
-                overridden_params={
-                    cfg.type: cfg for cfg in statement.override.configure
-                }
-                if statement.override is not None
-                else {},  # overridden configure params
-                overridden_assets=contest_assets,  # overridden assets
-                overridden_params_root=contest_cwd_absolute,
-                use_samples=use_samples,
-                # Use custom var overriding and problem-level overriding.
-                custom_vars=extra_vars,
-            )
+            try:
+                content, _ = build_statements.build_statement_bytes(
+                    extracted_problem.statement,
+                    extracted_problem.package,
+                    output_type=output_type,
+                    short_name=extracted_problem.problem.short_name,
+                    overridden_params={
+                        cfg.type: cfg for cfg in statement.override.configure
+                    }
+                    if statement.override is not None
+                    else {},  # overridden configure params
+                    overridden_assets=contest_assets,  # overridden assets
+                    overridden_params_root=contest_cwd_absolute,
+                    use_samples=use_samples,
+                    # Use custom var overriding and problem-level overriding.
+                    custom_vars=extra_vars,
+                )
+            except Exception as e:
+                console.console.print(
+                    f'[error]Error building statement for problem {extracted_problem.problem.short_name}: {e}[/error]'
+                )
+                continue
         dest_dir = root / '.problems' / extracted_problem.problem.short_name
         dest_path = dest_dir / f'statement{output_type.get_file_suffix()}'
         dest_dir.mkdir(parents=True, exist_ok=True)
