@@ -129,7 +129,7 @@ class StatementBuilderProblem(StatementBuilderItem):
             'package': self.package,
             'statement': self.statement,
             'samples': self.samples,
-            'vars': JinjaDictWrapper(self.vars or {}, key='vars'),
+            'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
             'title': self.statement.title or self.package.name,
             'limits': self.limits,
         }
@@ -168,7 +168,7 @@ class StatementBuilderContest(StatementBuilderItem):
             'problems': [
                 problem.build_inner_jinja_kwargs() for problem in self.problems
             ],
-            'vars': JinjaDictWrapper(self.vars or {}, key='vars'),
+            'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
         }
         return res
 

@@ -15,10 +15,10 @@ std::optional<std::string> getStringVar(std::string name) {
 }
 
 std::optional<int64_t> getIntVar(std::string name) {
-    if (name == "MAX_N") {
+    if (name == "N.max") {
     return static_cast<int64_t>(1000000000);
   }
-  if (name == "MIN_N") {
+  if (name == "N.min") {
     return static_cast<int64_t>(1);
   }
 

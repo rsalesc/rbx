@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pathlib
 from enum import Enum
-from typing import Annotated, Dict, List, Literal, Optional, Union
+from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import FNameField, Primitive, expand_var
+from rbx.box.fields import FNameField, RecVars, Vars, expand_vars
 from rbx.box.lang import is_valid_lang_code
 
 
@@ -144,9 +144,8 @@ class Statement(BaseModel):
         default=StatementType.rbxTeX, description='Type of the input statement file.'
     )
 
-    steps: List[ConversionStep] = Field(
+    steps: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
         default=[],
-        discriminator='type',
         description="""
 Describes a sequence of conversion steps that should be applied to the statement file.
 
@@ -156,9 +155,8 @@ certain conversion steps to happen.
 """,
     )
 
-    configure: List[ConversionStep] = Field(
+    configure: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
         default=[],
-        discriminator='type',
         description="""
 Configure how certain conversion steps should happen when applied to the statement file.
 
@@ -176,11 +174,11 @@ their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
 """,
     )
 
-    vars: Dict[str, Primitive] = Field(
+    vars: RecVars = Field(
         default={},
         description='Variables to be used in the statement.',
     )
 
     @property
-    def expanded_vars(self) -> Dict[str, Primitive]:
-        return {key: expand_var(value) for key, value in self.vars.items()}
+    def expanded_vars(self) -> Vars:
+        return expand_vars(self.vars)

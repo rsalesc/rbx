@@ -230,7 +230,7 @@ class TestStatementBuilderProblem:
             statement=sample_statement,
             limits=sample_limits,
             samples=sample_samples,
-            vars={'TEST_VAR': 42},
+            vars={'TEST_VAR': 42, 'NESTED.KEY': 'VALUE'},
         )
 
         kwargs = problem.build_inner_jinja_kwargs()
@@ -241,6 +241,7 @@ class TestStatementBuilderProblem:
         assert kwargs['limits'] == sample_limits
         assert kwargs['title'] == 'Test Problem'
         assert kwargs['vars']['TEST_VAR'] == 42
+        assert kwargs['vars']['NESTED']['KEY'] == 'VALUE'
 
     def test_build_inner_jinja_kwargs_with_short_name(
         self, sample_package, sample_statement, sample_limits
@@ -320,7 +321,7 @@ class TestStatementBuilderContest:
         """Test building full contest jinja kwargs."""
         contest = StatementBuilderContest(
             title='Test Contest',
-            vars={'CONTEST_TIME': 300},
+            vars={'CONTEST_TIME': 300, 'NESTED.KEY': 'VALUE'},
         )
 
         kwargs = contest.build_jinja_kwargs()
@@ -331,6 +332,7 @@ class TestStatementBuilderContest:
         assert kwargs['contest']['title'] == 'Test Contest'
         assert kwargs['problems'] == []
         assert kwargs['vars']['CONTEST_TIME'] == 300
+        assert kwargs['vars']['NESTED']['KEY'] == 'VALUE'
 
 
 class TestPrepareAssets:
@@ -383,14 +385,15 @@ class TestRenderJinja:
 
     def test_render_jinja_with_complex_vars(self, tmp_path):
         """Test jinja rendering with complex variables."""
-        content = b'Problem: \\VAR{problem.title}, Max: \\VAR{vars.MAX_N}'
+        content = b'Problem: \\VAR{problem.title}, Max: \\VAR{vars.MAX_N}, Nested: \\VAR{vars.NESTED.KEY}'
         problem = {'title': 'Test Problem'}
-        vars_dict = {'MAX_N': 1000}
+        vars_dict = {'MAX_N': 1000, 'NESTED': {'KEY': 'VALUE'}}
 
         result = render_jinja(tmp_path, content, problem=problem, vars=vars_dict)
 
         assert b'Problem: Test Problem' in result
         assert b'Max: 1000' in result
+        assert b'Nested: VALUE' in result
 
 
 class TestRenderJinjaBlocks:

@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 import pathlib
 import re
+import typing
 from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import NameField, Primitive, expand_vars
+from rbx.box.fields import NameField, Primitive, RecVars, Vars, expand_vars
 from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import Statement
 from rbx.grading.steps import Outcome
@@ -52,7 +53,7 @@ def convert_to_primitive(value: Any) -> Primitive:
 
 def expand_any_vars(vars: Dict[str, Any]) -> Dict[str, Primitive]:
     converted_vars = {key: convert_to_primitive(value) for key, value in vars.items()}
-    return expand_vars(converted_vars)
+    return expand_vars(typing.cast(RecVars, converted_vars))
 
 
 def is_unique_by_name(statements: List['Statement']) -> List['Statement']:
@@ -548,7 +549,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     # Vars to be re-used across the package.
     #   - It will be passed as --key=value arguments to the validator.
     #   - It will be available as \VAR{key} variables in the rbx statement.
-    vars: Dict[str, Primitive] = Field(
+    vars: RecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 
@@ -562,7 +563,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
         return expand_statements(self.statements)
 
     @property
-    def expanded_vars(self) -> Dict[str, Primitive]:
+    def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)
 
     @model_validator(mode='after')

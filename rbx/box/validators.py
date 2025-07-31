@@ -94,10 +94,6 @@ async def _validate_testcase(
     vars: Optional[Dict[str, Primitive]] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
     vars = vars or {}
-    for var in vars:
-        assert (
-            var.isidentifier()
-        ), f'Variable {var} should be a valid Python identifier.'
     # TODO: check if needs to do some escaping
     var_args = [f'--{k}={v}' for k, v in vars.items()]
     var_args.extend(['--testOverviewLogFileName', 'validator.log'])

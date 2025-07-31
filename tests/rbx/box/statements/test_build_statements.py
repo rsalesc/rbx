@@ -404,7 +404,7 @@ class TestBuildStatementBytesExtended:
         """Test building statement with custom variables."""
         statement_file = tmp_path / 'statement.jinja.tex'
         statement_file.write_text(
-            'Max N: \\VAR{problem.vars.MAX_N}, Custom: \\VAR{problem.vars.CUSTOM_VAR}'
+            'Max N: \\VAR{problem.vars.MAX_N}, Custom: \\VAR{problem.vars.CUSTOM_VAR}, Nested: \\VAR{problem.vars.NESTED.KEY}'
         )
 
         statement = Statement(
@@ -418,11 +418,12 @@ class TestBuildStatementBytesExtended:
             statement=statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
-            custom_vars={'CUSTOM_VAR': 'custom_value'},
+            custom_vars={'CUSTOM_VAR': 'custom_value', 'NESTED.KEY': 'VALUE'},
         )
 
         assert b'Max N: 1000' in content
         assert b'Custom: custom_value' in content
+        assert b'Nested: VALUE' in content
 
     def test_build_nonexistent_statement_file_raises_exit(
         self, sample_package, tmp_path

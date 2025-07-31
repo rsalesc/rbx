@@ -50,6 +50,14 @@ class TestParseFunction:
         var_nodes = list(tree.find_data('var'))
         assert len(var_nodes) == 1
 
+    def test_parse_variable_expression_with_dot(self):
+        """Test parsing expressions with nested variables."""
+        tree = parse('<MAX.N>')
+
+        assert tree is not None
+        var_nodes = list(tree.find_data('var'))
+        assert len(var_nodes) == 1
+
     def test_parse_range_expression(self):
         """Test parsing range expressions."""
         tree = parse('[1..10]')

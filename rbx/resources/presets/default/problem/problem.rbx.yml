@@ -48,7 +48,7 @@ stresses:
   - name: "stress"
     generator:
       name: "gens/gen"
-      args: "[1..<MAX_N>] @" # `@` generates a random string
+      args: "[1..<N.max>] @" # `@` generates a random string
     finder: "[sols/wa.cpp] ~ INCORRECT"
 unitTests:
   validator:
@@ -67,5 +67,6 @@ vars:
   # Author name to be displayed in the editorial.
   author: "John Doe"
   # Constraints of the problem.
-  MIN_N: 1
-  MAX_N: 1000000000
+  N:
+    min: 1
+    max: 1000000000

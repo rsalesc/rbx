@@ -6,10 +6,11 @@ with Latex.
 import pathlib
 import re
 import typing
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import jinja2
 import jinja2.runtime
+import rich.pretty
 import typer
 
 from rbx import console
@@ -188,17 +189,62 @@ class StrictChainableUndefined(jinja2.StrictUndefined):
         return self
 
 
+class VarWrapperUndefinedError(jinja2.UndefinedError):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def vars(self) -> Dict[str, Any]:
+        return {}
+
+
 class JinjaDictWrapper(dict):
-    def __init__(self, *args, key='dict object', **kwargs):
+    def __init__(
+        self,
+        *args,
+        key='dict object',
+        prefix='',
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.key = key
+        self.prefix = prefix
+        self.ancestor_d: Optional[Dict[str, Any]] = None
 
-    def __getitem__(self, key):
+        slf = self
+
+        class _AccessError(VarWrapperUndefinedError):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            def vars(self) -> Dict[str, Any]:
+                return slf.ancestor_d or slf
+
+        self.exc = _AccessError
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any], wrapper_key: str) -> 'JinjaDictWrapper':
+        res = cls(key=wrapper_key)
+        for key, value in d.items():
+            splits = key.split('.')
+            prefix = ''
+            acc = res
+            for split in splits[:-1]:
+                prefix = f'{prefix}.{split}'.strip('.')
+                if split not in acc or not isinstance(acc[split], dict):
+                    acc[split] = JinjaDictWrapper(key=wrapper_key, prefix=prefix)
+                    acc[split].ancestor_d = res
+                acc = acc[split]
+            acc[splits[-1]] = value
+        return res
+
+    def __getitem__(self, key: str) -> Any:
         try:
             return super().__getitem__(key)
         except KeyError:
+            final_key = f'{self.prefix}.{key}'.strip('.')
             return StrictChainableUndefined(
-                hint=f'"{key}" was not found in "{self.key}"'
+                hint=f'"{final_key}" was not found in "{self.key}"',
+                exc=self.exc,
             )
 
 
@@ -214,6 +260,22 @@ def add_builtin_tests(j2_env: jinja2.Environment):
     j2_env.tests['falsy'] = test_var_falsy
     j2_env.tests['null'] = test_var_null
     j2_env.tests['nonnull'] = test_var_nonnull
+
+
+def _handle_rendering_undefined(
+    err: jinja2.UndefinedError,
+) -> str:
+    console.console.print('[error]Error while rendering Jinja2 template:', end=' ')
+    console.console.print(err)
+    console.console.print(
+        '[warning]This usually happens when accessing an undefined variable.[/warning]'
+    )
+    if isinstance(err, VarWrapperUndefinedError):
+        vars = err.vars()
+        if vars:
+            console.console.print('[warning]Defined variables are[/warning] ', end='')
+            console.console.print(rich.pretty.Pretty(vars))
+    raise typer.Abort() from err
 
 
 def render_latex_template(path_templates, template_filename, template_vars=None) -> str:
@@ -237,12 +299,8 @@ def render_latex_template(path_templates, template_filename, template_vars=None)
     try:
         return template.render(**var_dict)  # type: ignore
     except jinja2.UndefinedError as err:
-        console.console.print('[error]Error while rendering Jinja2 template:', end=' ')
-        console.console.print(err)
-        console.console.print(
-            '[warning]This usually happens when accessing an undefined variable.[/warning]'
-        )
-        raise typer.Abort() from err
+        _handle_rendering_undefined(err)
+        raise
 
 
 def render_latex_template_blocks(
@@ -269,12 +327,8 @@ def render_latex_template_blocks(
     try:
         return {key: ''.join(value(ctx)) for key, value in template.blocks.items()}
     except jinja2.UndefinedError as err:
-        console.console.print('[error]Error while rendering Jinja2 template:', end=' ')
-        console.console.print(err)
-        console.console.print(
-            '[warning]This usually happens when accessing an undefined variable.[/warning]'
-        )
-        raise typer.Abort() from err
+        _handle_rendering_undefined(err)
+        raise
 
 
 def render_markdown_template_blocks(
@@ -301,9 +355,5 @@ def render_markdown_template_blocks(
     try:
         return {key: ''.join(value(ctx)) for key, value in template.blocks.items()}
     except jinja2.UndefinedError as err:
-        console.console.print('[error]Error while rendering Jinja2 template:', end=' ')
-        console.console.print(err)
-        console.console.print(
-            '[warning]This usually happens when accessing an undefined variable.[/warning]'
-        )
-        raise typer.Abort() from err
+        _handle_rendering_undefined(err)
+        raise

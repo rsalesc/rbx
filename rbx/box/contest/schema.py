@@ -3,7 +3,14 @@ from typing import Annotated, Dict, List, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from rbx.box.fields import FNameField, NameField, Primitive, expand_var
+from rbx.box.fields import (
+    FNameField,
+    NameField,
+    Primitive,
+    RecVars,
+    Vars,
+    expand_vars,
+)
 from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import (
     ConversionStep,
@@ -27,9 +34,8 @@ def is_unique_by_name(statements: List['ContestStatement']) -> List['ContestStat
 class ProblemStatementOverride(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    configure: List[ConversionStep] = Field(
+    configure: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
         default=[],
-        discriminator='type',
         description="""
 Configure how certain conversion steps should happen when applied to the statement file.
 
@@ -84,9 +90,8 @@ Joiner to be used to build the statement.
 This determines how problem statements will be joined into a single contest statement.""",
     )
 
-    steps: List[ConversionStep] = Field(
+    steps: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
         default=[],
-        discriminator='type',
         description="""
 Describes a sequence of conversion steps that should be applied to the statement file
 of this contest.
@@ -97,9 +102,8 @@ certain conversion steps to happen.
 """,
     )
 
-    configure: List[ConversionStep] = Field(
+    configure: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
         default=[],
-        discriminator='type',
         description="""
 Configure how certain conversion steps should happen when applied to the statement file of
 this contest.
@@ -133,13 +137,13 @@ Can be glob pattern as well, such as `imgs/*.png`.
 
     # Vars to be re-used in the statement.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
-    vars: Dict[str, Primitive] = Field(
+    vars: RecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 
     @property
-    def expanded_vars(self) -> Dict[str, Primitive]:
-        return {key: expand_var(value) for key, value in self.vars.items()}
+    def expanded_vars(self) -> Vars:
+        return expand_vars(self.vars)
 
 
 class ContestProblem(BaseModel):
@@ -234,7 +238,7 @@ class Contest(BaseModel):
 
     # Vars to be re-used in the statements.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
-    vars: Dict[str, Primitive] = Field(
+    vars: RecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 
@@ -243,5 +247,5 @@ class Contest(BaseModel):
         return expand_statements(self.statements)
 
     @property
-    def expanded_vars(self) -> Dict[str, Primitive]:
-        return {key: expand_var(value) for key, value in self.vars.items()}
+    def expanded_vars(self) -> Vars:
+        return expand_vars(self.vars)

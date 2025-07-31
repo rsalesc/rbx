@@ -24,7 +24,7 @@ _expr: var | range | select
 _ticked: "`" _expr "`"
 
 // Variables
-var: "<" CNAME ">"
+var: "<" RECNAME ">"
 
 // Select
 select: "(" select_value ("|" select_value)* ")"
@@ -45,6 +45,8 @@ TEXT: (/[^ \t\f\r\n\[\]\(\)\<\>\|\`]/ | ESCAPED_STRING)+
 
 // Whitespace
 _WS: WS
+
+RECNAME: /[a-zA-Z0-9_]/+ /(\.[a-zA-Z0-9_])/*
 
 %import common.WS
 %import common.CNAME

@@ -1,4 +1,4 @@
-from typing import Dict, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, TypeAliasType, TypeVar, Union
 
 from deepmerge import always_merger
 from pydantic import BaseModel, Field
@@ -35,7 +35,12 @@ def merge_pydantic_models(base: T, nxt: T) -> T:
     return base.model_validate(merged_dict)
 
 
-Primitive = Union[str, int, float, bool]
+Primitive = Union[int, float, bool, str]
+Vars = Dict[str, Primitive]
+if TYPE_CHECKING:
+    RecVars = Dict[str, Union[Primitive, 'RecVars']]
+else:
+    RecVars = TypeAliasType('RecVars', "Dict[str, Union[Primitive, 'RecVars']]")
 
 
 def expand_var(value: Primitive) -> Primitive:
@@ -55,5 +60,17 @@ def expand_var(value: Primitive) -> Primitive:
     )
 
 
-def expand_vars(vars: Dict[str, Primitive]) -> Dict[str, Primitive]:
-    return {key: expand_var(value) for key, value in vars.items()}
+def expand_vars(recvars: RecVars) -> Vars:
+    vars = {}
+
+    def solve(rec: RecVars, prefix: str) -> None:
+        nonlocal vars
+        for k, v in rec.items():
+            if isinstance(v, dict):
+                solve(v, f'{prefix}.{k}')
+            else:
+                key = f'{prefix}.{k}'.strip('.')
+                vars[key] = expand_var(v)
+
+    solve(recvars, '')
+    return vars
