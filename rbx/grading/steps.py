@@ -14,7 +14,7 @@ import typer
 from pydantic import BaseModel, Field
 from rich.text import Text
 
-from rbx import utils
+from rbx import testing_utils, utils
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import grading_context
@@ -389,7 +389,7 @@ def jngen_grading_input() -> GradingFileInput:
 def _expand_part(part: str, sandbox: SandboxBase) -> List[str]:
     part = part.strip()
     if part.startswith('@glob:'):
-        return [shlex.quote(str(path)) for path in sandbox.glob(part[6:])]
+        return [str(path) for path in sandbox.glob(part[6:])]
     return [part]
 
 
@@ -736,6 +736,7 @@ def compile(
         )
         console.print(f'[error]Summary:[/error] {logs[-1].get_summary()}')
         console.print(Text.from_ansi(logs[-1].log), style='default')
+        testing_utils.print_directory_tree(sandbox.get_root_path())
         return False
 
     return _process_output_artifacts(artifacts, sandbox)
