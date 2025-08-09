@@ -115,6 +115,7 @@ class GenerationTestcaseEntry(BaseModel):
     metadata: GenerationMetadata
     validator: Optional[CodeItem] = None
     extra_validators: List[CodeItem] = []
+    model_solution: Optional[CodeItem] = None
 
 
 class TestcaseVisitor(abc.ABC):
@@ -151,6 +152,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         prefix: List[str],
         validator: Optional[CodeItem] = None,
         extra_validators: Optional[List[CodeItem]] = None,
+        model_solution: Optional[CodeItem] = None,
     ):
         extra_validators = extra_validators or []
 
@@ -192,6 +194,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     ),
                     validator=validator,
                     extra_validators=extra_validators,
+                    model_solution=model_solution,
                 )
             )
             i += 1
@@ -215,6 +218,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         ),
                         validator=validator,
                         extra_validators=extra_validators,
+                        model_solution=model_solution,
                     )
                 )
                 i += 1
@@ -231,6 +235,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     ),
                     validator=validator,
                     extra_validators=extra_validators,
+                    model_solution=model_solution,
                 )
             )
             i += 1
@@ -259,6 +264,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         ),
                         validator=validator,
                         extra_validators=extra_validators,
+                        model_solution=model_solution,
                     )
                 )
                 i += 1
@@ -278,6 +284,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             [group.name],
             validator=group_validator,
             extra_validators=extra_validators,
+            model_solution=group.model_solution,
         )
 
         for i, subgroup in enumerate(group.subgroups):
@@ -287,6 +294,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                 [group.name, subgroup.name],
                 validator=group_validator,
                 extra_validators=extra_validators + subgroup.extraValidators,
+                model_solution=group.model_solution,
             )
 
 

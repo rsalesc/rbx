@@ -331,6 +331,26 @@ problems that have points.
 """,
     )
 
+    model_solution: Optional[CodeItem] = Field(
+        default=None,
+        description="""
+The solution to be used to generate outputs for this testgroup.
+
+Can only be set for the "samples" testgroup.
+""",
+    )
+
+    @model_validator(mode='after')
+    def check_model_solution_for_samples(self):
+        if self.name == 'samples':
+            return self
+        if self.model_solution is not None:
+            raise PydanticCustomError(
+                'MODEL_SOLUTION_NOT_ALLOWED',
+                'Model solution can only be set for the "samples" testgroup.',
+            )
+        return self
+
 
 class Generator(CodeItem):
     model_config = ConfigDict(extra='forbid')

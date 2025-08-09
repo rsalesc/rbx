@@ -378,7 +378,8 @@ async def generate_testcases(
 
 
 async def generate_output_for_testcase(
-    main_solution_digest: str,
+    model_solution: CodeItem,
+    model_solution_digest: str,
     testcase: Testcase,
     interactor_digest: Optional[str] = None,
     capture_pipes: Optional[bool] = None,
@@ -387,13 +388,9 @@ async def generate_output_for_testcase(
     testcase.inputPath.parent.mkdir(parents=True, exist_ok=True)
     testcase.outputPath.parent.mkdir(parents=True, exist_ok=True)
 
-    main_solution = package.get_main_solution()
-    if main_solution is None:
-        return
-
     eval: Evaluation = await run_solution_on_testcase(
-        main_solution,
-        main_solution_digest,
+        model_solution,
+        model_solution_digest,
         None,
         testcase,
         interactor_digest=interactor_digest,
@@ -439,7 +436,7 @@ async def generate_outputs_for_testcases(
     needs_output = _needs_output(generation_entries)
 
     main_solution = package.get_main_solution()
-    solution_digest: Optional[str] = None
+    solution_digest_map = {}
 
     pkg = package.find_problem_package_or_die()
 
@@ -452,10 +449,29 @@ async def generate_outputs_for_testcases(
         if progress:
             progress.update('Compiling main solution...')
         try:
-            solution_digest = compile_item(main_solution)
+            solution_digest_map[main_solution.path] = compile_item(main_solution)
         except:
             console.console.print('[error]Failed compiling main solution.[/error]')
             raise
+
+    for entry in generation_entries:
+        if (
+            entry.model_solution is not None
+            and entry.model_solution.path not in solution_digest_map
+        ):
+            if progress:
+                progress.update(
+                    f'Compiling model solution [item]{entry.model_solution.path}[/item]...'
+                )
+            try:
+                solution_digest_map[entry.model_solution.path] = compile_item(
+                    entry.model_solution
+                )
+            except:
+                console.console.print(
+                    f'[error]Failed compiling model solution [item]{entry.model_solution.path}[/item].[/error]'
+                )
+                raise
 
     gen_runs_dir = package.get_problem_runs_dir() / '.gen'
     shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
@@ -476,15 +492,17 @@ async def generate_outputs_for_testcases(
             continue
 
         assert needs_output
+        model_solution = entry.model_solution or main_solution
         if (
-            main_solution is None or solution_digest is None
+            model_solution is None or model_solution.path not in solution_digest_map
         ) and not tc.outputPath.is_file():
             console.console.print(
-                '[error]No main solution found to generate outputs for testcases.[/error]',
+                '[error]No main/model solution found to generate outputs for testcases.[/error]',
             )
             raise typer.Exit(1)
 
-        assert solution_digest is not None
+        assert model_solution is not None
+        model_solution_digest = solution_digest_map[model_solution.path]
         capture_pipes = None
         if (
             pkg.type == TaskType.COMMUNICATION
@@ -497,7 +515,8 @@ async def generate_outputs_for_testcases(
             )
 
         await generate_output_for_testcase(
-            solution_digest,
+            model_solution,
+            model_solution_digest,
             tc,
             interactor_digest=interactor_digest,
             capture_pipes=capture_pipes,

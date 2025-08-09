@@ -549,11 +549,13 @@ async def _generate_testcase_interactively(
         if progress:
             progress.update('Generating output for test...')
         # TODO: Add stderr path
-        await generate_output_for_testcase(
-            main_solution_digest,
-            testcase,
-            interactor_digest=interactor_digest,
-        )
+        if main_solution is not None:
+            await generate_output_for_testcase(
+                main_solution,
+                main_solution_digest,
+                testcase,
+                interactor_digest=interactor_digest,
+            )
 
     if check and testcase.outputPath is not None and not testcase.outputPath.is_file():
         # Output was not created, throw an error.
