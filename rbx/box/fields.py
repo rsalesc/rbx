@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING, Dict, TypeAliasType, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, TypeVar, Union
 
 from deepmerge import always_merger
 from pydantic import BaseModel, Field
+from typing_extensions import TypeAliasType
 
 
 def NameField(**kwargs):
