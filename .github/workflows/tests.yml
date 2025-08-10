@@ -1,6 +1,8 @@
 name: tests
 on:
   push:
+    tags:
+      - "*.*.*" # Will trigger for every tag, alternative: 'v*'
     branches:
       - master
       - main
