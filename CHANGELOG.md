@@ -1,3 +1,40 @@
+## 0.14.0 (2025-08-10)
+
+### Feat
+
+- add sol failures to issue stack
+- add issue stack with contest-level error aggregation
+- add model solution field to testsets
+- build statements partially when one breaks
+- add nested variables
+- add option to integrate limits profile into package
+- add limits to statements
+- add new timing feature
+
+### Fix
+
+- add typing_extensions for compatibility with python<3.12 and TypeAliasType
+- unqoute paths in sandbox glob
+- add testlib to default preset
+- improve solutions structure on preset
+- fix a few tests
+- use packager-specific limits profile when packaging
+- fix caching issue with precompilation
+- check for stack limit only on darwin
+- use time profiles everywhere
+- fix boca expander after refactor
+- add problems to contest in lex order
+- **cache**: symlink to cacher when copying compressed executable to sandbox
+- fix a few unit tests
+- fix time reporting on program.py
+- add ridiculously buggy version flag
+- ensure preset MIN_N variables is used in validator
+- several improvements to preset statements
+
+### Refactor
+
+- delete other rbc stuff
+
 ## 0.13.8 (2025-07-19)
 
 ### Fix
