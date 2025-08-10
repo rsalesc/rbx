@@ -1,14 +1,6 @@
-\documentclass{article}
-\usepackage[a4paper, margin=1in]{geometry}
-\usepackage{multirow}
-\usepackage{multicol}
-\usepackage{graphicx}
-\usepackage{amsfonts}
-\usepackage[brazil]{babel}
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
+\documentclass[a4paper, 11pt]{article}
 
-\usepackage[utf8]{inputenc}
+\def\lang{\VAR{lang}}
 \usepackage{icpc}
 
 %\pagestyle{myheadings}
@@ -35,7 +27,7 @@
 
 \begin{center}
 \begin{tabular}{c|ccc|c}
-& \multicolumn{3}{c|}{\strTimeLimit (ms)} & \multirow{2}{*}{\strMemoryLimit (MiB)} \\
+& \multicolumn{3}{c|}{{\strTimeLimit} (ms)} & \multirow{2}{*}{{\strMemoryLimit} (MiB)} \\
 %\cline{2-4}
 {\sf \strProblem} & {\sf C/C++} &{\sf Java} & {\sf Python3} & \\
 \hline
