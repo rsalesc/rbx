@@ -55,7 +55,11 @@ class IssueAccumulator:
     def get_overview_sections(self) -> IssueSection:
         return self.get_sections_by(lambda issue: issue.get_overview_section())
 
-    def print_report_by(self, section_fn: Callable[[], IssueSection]):
+    def _print_report_by(
+        self,
+        section_fn: Callable[[], IssueSection],
+        message_fn: Callable[[Issue], str],
+    ):
         from rich.tree import Tree
 
         tree = Tree('Issues')
@@ -67,7 +71,7 @@ class IssueAccumulator:
                 if isinstance(value, OrderedDict):
                     print_section(value, child)
                 else:
-                    child.add(f'[error]{value.get_overview_message()}[/error]')
+                    child.add(f'[error]{message_fn(value)}[/error]')
 
         print_section(sections, tree)
 
@@ -77,10 +81,14 @@ class IssueAccumulator:
                 console.console.print(child)
 
     def print_detailed_report(self):
-        self.print_report_by(self.get_detailed_sections)
+        self._print_report_by(
+            self.get_detailed_sections, lambda issue: issue.get_detailed_message()
+        )
 
     def print_overview_report(self):
-        self.print_report_by(self.get_overview_sections)
+        self._print_report_by(
+            self.get_overview_sections, lambda issue: issue.get_overview_message()
+        )
 
 
 issue_stack_var = contextvars.ContextVar('issue_stack', default=[IssueAccumulator()])

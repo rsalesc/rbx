@@ -34,6 +34,7 @@ from rbx.box.generators import (
     generate_output_for_testcase,
     generate_standalone,
 )
+from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
@@ -143,6 +144,17 @@ class RunSolutionResult:
 
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         return self.skeleton.empty_structured_evaluation()
+
+
+class FailedSolutionIssue(issue_stack.Issue):
+    def __init__(self, solution: Solution):
+        self.solution = solution
+
+    def get_detailed_section(self) -> Tuple[str, ...]:
+        return ('solutions',)
+
+    def get_detailed_message(self) -> str:
+        return f'[item]{href(self.solution.path)}[/item] has an unexpected outcome.'
 
 
 def is_fast(solution: Solution) -> bool:
@@ -1120,6 +1132,8 @@ def _print_solution_outcome(
     report = get_solution_outcome_report(
         solution, skeleton, evals, verification, subset
     )
+    if not report.ok:
+        issue_stack.add_issue(FailedSolutionIssue(solution))
     console.print(report.get_outcome_markup(print_message))
     return report.ok
 

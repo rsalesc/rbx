@@ -12,6 +12,7 @@ from rbx import console, utils
 from rbx.box import cd, global_package
 from rbx.box.environment import get_sandbox_type
 from rbx.box.global_package import get_cache_fingerprint
+from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
@@ -80,7 +81,13 @@ def within_problem(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         with cd.new_package_cd(find_problem()):
-            return func(*args, **kwargs)
+            issue_level_token = issue_stack.issue_level_var.set(
+                issue_stack.IssueLevel.DETAILED
+            )
+            ret = func(*args, **kwargs)
+            issue_stack.print_current_report()
+            issue_stack.issue_level_var.reset(issue_level_token)
+            return ret
 
     return wrapper
 
