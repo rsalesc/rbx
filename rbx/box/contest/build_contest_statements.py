@@ -12,6 +12,8 @@ from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.fields import Primitive
 from rbx.box.formatting import href
+from rbx.box.sanitizers import issue_stack
+from rbx.box.sanitizers.issue_stack import Issue
 from rbx.box.schema import LimitsProfile, Package, Testcase
 from rbx.box.statements import build_statements, latex
 from rbx.box.statements.build_statements import (
@@ -62,10 +64,28 @@ class ExtractedProblem:
         )
 
 
+class StatementBuildIssue(Issue):
+    def __init__(self, problem: ContestProblem):
+        self.problem = problem
+
+    def get_overview_section(self) -> Optional[Tuple[str, ...]]:
+        return ('statement',)
+
+    def get_overview_message(self) -> str:
+        return f'Error building statement for problem [item]{self.problem.short_name}[/item].'
+
+
 def _get_samples(problem: ContestProblem) -> List[Testcase]:
     with cd.new_package_cd(problem.get_path()):
         package.clear_package_cache()
-        return get_samples()
+        try:
+            return get_samples()
+        except Exception as e:
+            console.console.print(
+                f'[error]Error getting samples for problem {problem.short_name}: {e}[/error]'
+            )
+            issue_stack.add_issue(StatementBuildIssue(problem))
+            return []
 
 
 def get_statement_builder_problems(
@@ -204,6 +224,7 @@ def _build_problem_statements(
                 console.console.print(
                     f'[error]Error building statement for problem {extracted_problem.problem.short_name}: {e}[/error]'
                 )
+                issue_stack.add_issue(StatementBuildIssue(extracted_problem.problem))
                 continue
         dest_dir = root / '.problems' / extracted_problem.problem.short_name
         dest_path = dest_dir / f'statement{output_type.get_file_suffix()}'

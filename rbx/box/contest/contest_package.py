@@ -10,6 +10,7 @@ from rbx import console, utils
 from rbx.box import cd
 from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die
+from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import Package
 
 YAML_NAME = 'contest.rbx.yml'
@@ -60,7 +61,13 @@ def within_contest(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         with cd.new_package_cd(find_contest()):
-            return func(*args, **kwargs)
+            issue_level_token = issue_stack.issue_level_var.set(
+                issue_stack.IssueLevel.OVERVIEW
+            )
+            ret = func(*args, **kwargs)
+            issue_stack.print_current_report()
+            issue_stack.issue_level_var.reset(issue_level_token)
+            return ret
 
     return wrapper
 

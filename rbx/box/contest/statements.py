@@ -5,13 +5,17 @@ import typer
 
 from rbx import annotations, console
 from rbx.box import cd, environment, package
-from rbx.box.contest.build_contest_statements import build_statement
+from rbx.box.contest.build_contest_statements import (
+    StatementBuildIssue,
+    build_statement,
+)
 from rbx.box.contest.contest_package import (
     find_contest_package_or_die,
     within_contest,
 )
 from rbx.box.contest.schema import ContestStatement
 from rbx.box.formatting import href
+from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import expand_any_vars
 from rbx.box.statements.schema import StatementType
 
@@ -70,13 +74,13 @@ async def build(
             with cd.new_package_cd(problem.get_path()):
                 package.clear_package_cache()
 
-                if not await builder.build(
-                    verification=verification, groups=set(['samples']), output=None
-                ):
-                    console.console.print(
-                        '[error]Failed to build statements with samples, aborting.[/error]'
-                    )
-                    raise typer.Exit(1)
+                try:
+                    if not await builder.build(
+                        verification=verification, groups=set(['samples']), output=None
+                    ):
+                        issue_stack.add_issue(StatementBuildIssue(problem))
+                except Exception:
+                    issue_stack.add_issue(StatementBuildIssue(problem))
 
     contest = find_contest_package_or_die()
 
