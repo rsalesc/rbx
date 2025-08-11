@@ -1,8 +1,9 @@
 import pathlib
 from typing import List, Optional
 
+import semver
 import typer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from rbx import console
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
@@ -42,6 +43,9 @@ class Preset(BaseModel):
     # Should usually be a GitHub repository.
     uri: str
 
+    # Minimum version of rbx.cp required to use this preset.
+    min_version: str = '0.14.0'
+
     # Path to the environment file that will be installed with this preset.
     # When copied to the box environment, the environment will be named `name`.
     env: Optional[pathlib.Path] = None
@@ -56,6 +60,17 @@ class Preset(BaseModel):
     # preset has an update. Usually useful when a common library used by the
     # package changes in the preset, or when a latex template is changed.
     tracking: Tracking = Field(default_factory=Tracking)
+
+    @field_validator('min_version')
+    @classmethod
+    def validate_min_version(cls, value: str) -> str:
+        try:
+            semver.Version.parse(value)
+        except ValueError as err:
+            raise ValueError(
+                "min_version must be a valid SemVer string (e.g., '1.2.3' or '1.2.3-rc.1')"
+            ) from err
+        return value
 
     @property
     def fetch_info(self) -> PresetFetchInfo:

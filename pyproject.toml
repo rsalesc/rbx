@@ -52,6 +52,7 @@ iso639-lang = "^2.6.1"
 sqlitedict = "^2.1.0"
 throttlex = "^1.0.0"
 typing-extensions = "^4.14.1"
+semver = "^3.0.4"
 
 [tool.poetry.scripts]
 rbx = "rbx.box.main:app"
@@ -83,7 +84,10 @@ version_provider = "poetry"
 update_changelog_on_bump = true
 major_version_zero = true
 annotated_tag = true
-version_files = ["rbx/__version__.py"]
+version_files = [
+  "rbx/__version__.py",
+  "rbx/resources/presets/default/preset.rbx.yml:^version",
+]
 
 [build-system]
 requires = ["poetry-core"]
