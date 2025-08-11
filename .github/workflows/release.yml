@@ -9,14 +9,18 @@ jobs:
   wait-for-tests:
     name: Wait for required checks
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      checks: read
+      contents: read
     # Only wait for tests if this is NOT a release candidate tag
     if: ${{ !contains(github.ref_name, 'rc') }}
     steps:
       - name: Wait for status checks
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
-          ref: ${{ github.sha }}
-          check-name: "tests" # This should match the job name in tests.yml
+          ref: ${{ github.ref }}
+          check-regexp: '^ubuntu-latest - Python \d+\.\d+\.x$'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
 
