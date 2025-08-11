@@ -1,5 +1,9 @@
 name: tests
 on:
+  pull_request:
+    branches:
+      - master
+      - main
   push:
     tags:
       - "*.*.*" # Will trigger for every tag, alternative: 'v*'
