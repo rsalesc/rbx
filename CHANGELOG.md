@@ -1,3 +1,15 @@
+## 0.15.0 (2025-08-11)
+
+### Feat
+
+- add commitizen version files
+- **presets/info**: fix spacing in table
+- **presets/icpc**: fix spacing in markright
+- **presets/info**: fix eol
+- **presets/info**: remove packages imported by icpc
+- **presets/info**: declare \lang before importing icpc
+- **presets/info**: declare geometry on documentclass
+
 ## 0.14.0 (2025-08-10)
 
 ### Feat
