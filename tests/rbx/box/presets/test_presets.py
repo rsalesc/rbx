@@ -548,6 +548,36 @@ duration: 180
         # Verify installation
         assert (package_dir / 'contest.rbx.yml').exists()
 
+    def test_install_preset_from_dir_incompatible_prints_message(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Should print standardized error then exit on compatibility failure."""
+        # Create a minimal preset dir
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        with TestingPreset(preset_dir) as tp:
+            tp.initialize()
+            tp.set_name('compat-fail')
+            # Require 1.2.0
+            tp.yml.min_version = '1.2.0'
+            tp.save()
+
+        # Bypass internal check in get_preset_yaml and force failure on the wrapper check
+        # by returning a simple object with the necessary attributes.
+        preset_stub = SimpleNamespace(
+            name='compat-fail', min_version='1.2.0', contest=None, problem=None
+        )
+        monkeypatch.setattr(
+            'rbx.box.presets.get_preset_yaml', lambda *_a, **_k: preset_stub
+        )
+        monkeypatch.setattr('rbx.utils.get_version', lambda: '1.1.0')
+
+        with pytest.raises(click.exceptions.Exit):
+            presets.install_preset_from_dir(preset_dir, tmp_path / 'dst')
+
+        out, _ = capsys.readouterr()
+        assert 'Error updating preset compat-fail to its latest version.' in out
+
 
 class TestInstallFromResourcesCompatibility:
     """Test installing presets from resources with version gate behavior."""

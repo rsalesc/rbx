@@ -561,6 +561,15 @@ def install_preset_from_dir(
             f'[error]Preset [item]{preset.name}[/item] does not have a problem package definition.[/error]'
         )
         raise typer.Exit(1)
+
+    try:
+        _check_preset_compatibility(preset.name, preset.min_version)
+    except Exception:
+        console.console.print(
+            f'[error]Error updating preset [item]{preset.name}[/item] to its latest version.[/error]'
+        )
+        raise
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     copy_tree_normalizing_gitdir(src, dest, update=update)
 
