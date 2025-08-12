@@ -1,3 +1,4 @@
+import functools
 import os
 import pathlib
 import shutil
@@ -27,6 +28,30 @@ def find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Pa
     return None
 
 
+@functools.cache
+def _check_preset_compatibility(preset_name: str, preset_version: str) -> None:
+    compatibility = utils.check_version_compatibility(preset_version)
+    if compatibility == utils.SemVerCompatibility.OUTDATED:
+        console.console.print(
+            f'[error]Preset [item]{preset_name}[/item] requires rbx at version [item]{preset_version}[/item], but the current version is [item]{utils.get_version()}[/item].[/error]'
+        )
+        console.console.print(
+            f'[error]Please update rbx.cp to the latest compatible version using [item]{utils.get_upgrade_command(preset_version)}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+    if compatibility == utils.SemVerCompatibility.BREAKING_CHANGE:
+        console.console.print(
+            f'[error]Preset [item]{preset_name}[/item] requires rbx at version [item]{preset_version}[/item], but the current version is [item]{utils.get_version()}[/item].[/error]'
+        )
+        console.console.print(
+            '[error]rbx version is newer, but is in a later major version, which might have introduced breaking changes.[/error]'
+        )
+        console.console.print(
+            '[error]If you are sure that the preset is compatible with the current rbx version, you can change the [item]min_version[/item] field in the preset file ([item].local.rbx/preset.rbx.yml)[/item] to the current version.[/error]'
+        )
+        raise typer.Exit(1)
+
+
 def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
     found = find_preset_yaml(root)
     if not found:
@@ -34,7 +59,9 @@ def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
             f'[error][item]preset.rbx.yml[/item] not found in [item]{root.absolute()}[/item][/error]'
         )
         raise typer.Exit(1)
-    return utils.model_from_yaml(Preset, found.read_text())
+    preset = utils.model_from_yaml(Preset, found.read_text())
+    _check_preset_compatibility(preset.name, preset.min_version)
+    return preset
 
 
 def _find_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:

@@ -223,6 +223,58 @@ class TestPresetLoading:
         with pytest.raises(click.exceptions.Exit):
             presets.get_active_preset(tmp_path)
 
+    # New tests: version compatibility behavior through public API
+    def test_load_preset_yaml_incompatible_outdated_raises(self, tmp_path, monkeypatch):
+        """Should exit when installed version is older than required (OUTDATED)."""
+        # Create a minimal preset with a higher required version
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        with TestingPreset(preset_dir) as tp:
+            tp.initialize()
+            tp.set_name('compat-outdated')
+            tp.yml.min_version = '1.2.0'
+            tp.save()
+
+        # Simulate installed version older than required
+        monkeypatch.setattr('rbx.utils.get_version', lambda: '1.1.0')
+
+        with pytest.raises(click.exceptions.Exit):
+            presets.get_preset_yaml(preset_dir)
+
+    def test_load_preset_yaml_incompatible_breaking_change_raises(
+        self, tmp_path, monkeypatch
+    ):
+        """Should exit when installed major version is newer than required (BREAKING_CHANGE)."""
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        with TestingPreset(preset_dir) as tp:
+            tp.initialize()
+            tp.set_name('compat-breaking')
+            tp.yml.min_version = '1.5.0'
+            tp.save()
+
+        # Simulate installed version with higher major
+        monkeypatch.setattr('rbx.utils.get_version', lambda: '2.0.0')
+
+        with pytest.raises(click.exceptions.Exit):
+            presets.get_preset_yaml(preset_dir)
+
+    def test_load_preset_yaml_compatible_version(self, tmp_path, monkeypatch):
+        """Should load successfully when versions are compatible."""
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        with TestingPreset(preset_dir) as tp:
+            tp.initialize()
+            tp.set_name('compat-ok')
+            tp.yml.min_version = '1.2.0'
+            tp.save()
+
+        # Simulate installed version equal to required
+        monkeypatch.setattr('rbx.utils.get_version', lambda: '1.2.0')
+
+        preset = presets.get_preset_yaml(preset_dir)
+        assert preset.name == 'compat-ok'
+
 
 # ==========================
 # Test Asset Tracking

@@ -1,4 +1,5 @@
 import contextlib
+import enum
 import fcntl
 import functools
 import json
@@ -17,17 +18,54 @@ import rich.markup
 import rich.prompt
 import rich.status
 import ruyaml
+import semver
 import typer
 import yaml
 from pydantic import BaseModel
 from rich import text
 from rich.highlighter import JSONHighlighter
 
+from rbx import __version__
 from rbx.console import console
 
 T = TypeVar('T', bound=BaseModel)
 APP_NAME = 'rbx'
+PIP_NAME = 'rbx.cp'
 PathOrStr = Union[pathlib.Path, str]
+
+
+class SemVerCompatibility(enum.Enum):
+    COMPATIBLE = 'compatible'
+    OUTDATED = 'outdated'
+    BREAKING_CHANGE = 'breaking_change'
+
+
+def get_version() -> str:
+    return __version__.__version__
+
+
+def get_upgrade_command(version: Optional[str] = None) -> str:
+    version = version or get_version()
+    parsed_version = semver.VersionInfo.parse(version)
+    return f'pipx install --upgrade {PIP_NAME}@{parsed_version.major}'
+
+
+def check_version_compatibility_between(
+    installed: str,
+    required: str,
+) -> SemVerCompatibility:
+    installed_version = semver.VersionInfo.parse(installed)
+    required_version = semver.VersionInfo.parse(required)
+    if installed_version < required_version:
+        return SemVerCompatibility.OUTDATED
+    if installed_version.major > required_version.major:
+        return SemVerCompatibility.BREAKING_CHANGE
+    return SemVerCompatibility.COMPATIBLE
+
+
+def check_version_compatibility(required: str) -> SemVerCompatibility:
+    installed = get_version()
+    return check_version_compatibility_between(installed, required)
 
 
 def create_and_write(path: pathlib.Path, *args, **kwargs):

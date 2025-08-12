@@ -591,3 +591,58 @@ class TestYamlRoundtrip:
 
         assert reconstructed_model.tags == original_model.tags
         assert reconstructed_model.metadata == original_model.metadata
+
+
+class TestVersionUtils:
+    """Tests for version utility functions in rbx.utils."""
+
+    def test_get_upgrade_command_with_explicit_version(self):
+        from rbx.utils import get_upgrade_command
+
+        # When an explicit version is provided, only its major version is used in the command
+        cmd = get_upgrade_command('1.2.3')
+        assert cmd == 'pipx install --upgrade rbx.cp@1'
+
+    def test_get_upgrade_command_without_argument_uses_get_version(self, monkeypatch):
+        from rbx import utils as utils_mod
+
+        # Mock get_version() so the function behavior is deterministic
+        monkeypatch.setattr(utils_mod, 'get_version', lambda: '3.1.4')
+        cmd = utils_mod.get_upgrade_command()
+        assert cmd == 'pipx install --upgrade rbx.cp@3'
+
+    @pytest.mark.parametrize(
+        'installed,required,expected',
+        [
+            ('1.2.3', '1.2.3', 'COMPATIBLE'),
+            ('1.2.0', '1.3.0', 'OUTDATED'),
+            ('2.0.0', '1.9.9', 'BREAKING_CHANGE'),
+            ('1.5.0', '1.2.0', 'COMPATIBLE'),
+            ('1.0.9', '1.0.10', 'OUTDATED'),
+        ],
+    )
+    def test_check_version_compatibility_between(self, installed, required, expected):
+        from rbx.utils import SemVerCompatibility, check_version_compatibility_between
+
+        result = check_version_compatibility_between(installed, required)
+        assert result == getattr(SemVerCompatibility, expected)
+
+    @pytest.mark.parametrize(
+        'installed,required,expected',
+        [
+            ('1.2.3', '1.2.3', 'COMPATIBLE'),
+            ('1.2.3', '2.0.0', 'OUTDATED'),
+            ('2.1.0', '1.9.0', 'BREAKING_CHANGE'),
+            ('1.5.0', '1.2.0', 'COMPATIBLE'),
+        ],
+    )
+    def test_check_version_compatibility(
+        self, installed, required, expected, monkeypatch
+    ):
+        from rbx import utils as utils_mod
+        from rbx.utils import SemVerCompatibility
+
+        # Mock get_version() to control the installed version
+        monkeypatch.setattr(utils_mod, 'get_version', lambda: installed)
+        result = utils_mod.check_version_compatibility(required)
+        assert result == getattr(SemVerCompatibility, expected)
