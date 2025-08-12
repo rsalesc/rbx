@@ -1,3 +1,15 @@
+## 0.16.0 (2025-08-12)
+
+### Feat
+
+- add min version field to presets
+
+### Fix
+
+- check for preset compatibility when installing/updating a preset
+- fetch built-in presets from resources and check their version
+- honor min_version checks when using a preset
+
 ## 0.15.0 (2025-08-11)
 
 ### Feat
