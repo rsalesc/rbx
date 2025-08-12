@@ -5,12 +5,19 @@ import shutil
 import tempfile
 from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
+import questionary
 import ruyaml
+import semver
 import typer
 
 from rbx import console, utils
 from rbx.box import cd
-from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
+from rbx.box.git_utils import latest_remote_tag
+from rbx.box.presets.fetch import (
+    PresetFetchInfo,
+    get_preset_fetch_info,
+    get_remote_uri_from_tool_preset,
+)
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock, SymlinkInfo
 from rbx.box.presets.schema import Preset, TrackedAsset
 from rbx.config import get_default_app_path
@@ -18,7 +25,7 @@ from rbx.grading.judge.digester import digest_cooperatively
 
 app = typer.Typer(no_args_is_help=True)
 
-_FALLBACK_PRESET_URI = 'rsalesc/rbx/rbx/resources/presets/default'
+_FALLBACK_PRESET_NAME = 'default'
 
 
 def find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
@@ -505,7 +512,7 @@ def get_preset_fetch_info_with_fallback(
         # Use active preset if any, otherwise use the default preset.
         if get_active_preset_or_null() is not None:
             return None
-        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_URI)
+        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_NAME)
         if default_preset is None:
             console.console.print(
                 '[error]Internal error: could not find [item]default[/item] preset.[/error]'
@@ -641,6 +648,29 @@ def _install_preset_from_resources(
     yaml_path = rsrc_preset_path / 'preset.rbx.yml'
     if not yaml_path.is_file():
         return False
+    preset_uri = get_remote_uri_from_tool_preset(fetch_info.name)
+    remote_fetch_info = get_preset_fetch_info(preset_uri)
+    if remote_fetch_info is None or remote_fetch_info.fetch_uri is None:
+        console.console.print(
+            f'[error]Preset [item]{fetch_info.name}[/item] not found.[/error]'
+        )
+        raise typer.Exit(1)
+
+    # Check if the latest release has breaking changes.
+    latest_tag = latest_remote_tag(remote_fetch_info.fetch_uri)
+    latest_version = semver.VersionInfo.parse(latest_tag)
+    if latest_version.major > utils.get_semver().major:
+        console.console.print(
+            f'[error]You are not in rbx.cp latest major version ({latest_version.major}), but are installing a built-in preset from rbx.cp.[/error]'
+        )
+        console.console.print(
+            f'[error]To allow for a better experience for users that clone your repository, please update rbx.cp to the latest major version using [item]{utils.get_upgrade_command(latest_version)}[/item].[/error]'
+        )
+        if not questionary.confirm(
+            'If you want to proceed anyway, press [y]', default=False
+        ).ask():
+            raise typer.Exit(1)
+
     console.console.print(
         f'Installing preset [item]{fetch_info.name}[/item] from resources...'
     )
@@ -649,7 +679,7 @@ def _install_preset_from_resources(
         dest,
         ensure_contest,
         ensure_problem,
-        override_uri=str(utils.abspath(rsrc_preset_path)),
+        override_uri=preset_uri,
         update=update,
     )
     return True
@@ -680,15 +710,14 @@ def _install_preset_from_fetch_info(
             update=update,
         )
         return
-    # NOTE: Disabled for now.
-    # if _install_preset_from_resources(
-    #     fetch_info,
-    #     dest,
-    #     ensure_contest=ensure_contest,
-    #     ensure_problem=ensure_problem,
-    #     update=update,
-    # ):
-    #     return
+    if _install_preset_from_resources(
+        fetch_info,
+        dest,
+        ensure_contest=ensure_contest,
+        ensure_problem=ensure_problem,
+        update=update,
+    ):
+        return
     console.console.print(
         f'[error]Preset [item]{fetch_info.name}[/item] not found.[/error]'
     )

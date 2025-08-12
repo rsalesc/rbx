@@ -25,6 +25,14 @@ class PresetFetchInfo(BaseModel):
         return bool(self.inner_dir) and not self.is_remote()
 
 
+def get_inner_dir_from_tool_preset(tool_preset: str) -> str:
+    return f'rbx/resources/presets/{tool_preset}'
+
+
+def get_remote_uri_from_tool_preset(tool_preset: str) -> str:
+    return f'rsalesc/rbx/{get_inner_dir_from_tool_preset(tool_preset)}'
+
+
 def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
     if uri is None:
         return None
@@ -64,7 +72,7 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
             return None
         return PresetFetchInfo(name=path.name, inner_dir=str(path))
 
-    def get_local_fetch_info(s: str) -> Optional[PresetFetchInfo]:
+    def get_tool_fetch_info(s: str) -> Optional[PresetFetchInfo]:
         pattern = r'[\w\-]+'
         compiled = re.compile(pattern)
         match = compiled.match(s)
@@ -76,7 +84,7 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
         get_github_fetch_info,
         get_short_github_fetch_info,
         get_local_dir_fetch_info,
-        get_local_fetch_info,
+        get_tool_fetch_info,
     ]
 
     for extract in extractors:

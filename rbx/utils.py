@@ -44,9 +44,16 @@ def get_version() -> str:
     return __version__.__version__
 
 
-def get_upgrade_command(version: Optional[str] = None) -> str:
-    version = version or get_version()
-    parsed_version = semver.VersionInfo.parse(version)
+def get_semver() -> semver.VersionInfo:
+    return semver.VersionInfo.parse(get_version())
+
+
+def get_upgrade_command(
+    version: Optional[Union[str, semver.VersionInfo]] = None,
+) -> str:
+    parsed_version = (
+        semver.VersionInfo.parse(version) if isinstance(version, str) else version
+    ) or get_semver()
     return f'pipx install --upgrade {PIP_NAME}@{parsed_version.major}'
 
 
