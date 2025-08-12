@@ -86,7 +86,7 @@ major_version_zero = true
 annotated_tag = true
 version_files = [
   "rbx/__version__.py",
-  "rbx/resources/presets/default/preset.rbx.yml:^version",
+  "rbx/resources/presets/default/preset.rbx.yml:^min_version",
 ]
 
 [build-system]
