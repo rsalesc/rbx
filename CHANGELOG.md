@@ -1,3 +1,10 @@
+## 0.16.1 (2025-08-12)
+
+### Fix
+
+- manually bump default preset version
+- fix version files signature and update preset min version accordingly
+
 ## 0.16.0 (2025-08-12)
 
 ### Feat
