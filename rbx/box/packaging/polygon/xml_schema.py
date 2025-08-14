@@ -27,11 +27,13 @@ class File(BaseXmlModel):
 
 
 class Test(BaseXmlModel):
-    method: Literal['manual', 'generated'] = attr()
+    method: Literal['manual', 'generated'] = attr(default='manual')
 
     sample: Optional[bool] = attr(default=None)
 
     description: Optional[str] = attr(default=None)
+
+    verdict: Optional[str] = attr(default=None)
 
 
 class Testset(BaseXmlModel):
@@ -60,7 +62,7 @@ class Judging(BaseXmlModel):
 
 class Checker(BaseXmlModel):
     name: Optional[str] = attr(default=None)
-    type: Literal['testlib'] = attr()
+    type: Literal['testlib'] = attr(default='testlib')
     source: File = element()
     binary: Optional[File] = element(default=None)
     cpy: Optional[File] = element(tag='copy', default=None)
