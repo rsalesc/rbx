@@ -1,3 +1,10 @@
+## 0.16.2 (2025-08-14)
+
+### Fix
+
+- add a few sensible defaults for Polygon xml
+- ensure built-in presets are fetch from remote from a specific tag
+
 ## 0.16.1 (2025-08-12)
 
 ### Fix
