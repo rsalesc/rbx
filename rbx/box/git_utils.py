@@ -48,9 +48,33 @@ def ls_remote_tags(uri: str) -> List[str]:
     ]
 
 
-def latest_remote_tag(uri: str) -> str:
+def ls_version_remote_tags(uri: str) -> List[str]:
     tags = ls_remote_tags(uri)
     valid_tags = [tag for tag in tags if semver.Version.is_valid(tag)]
-    if not valid_tags:
+    return valid_tags
+
+
+def latest_remote_tag(
+    uri: str, before: Optional[str] = None, after: Optional[str] = None
+) -> str:
+    tags = ls_version_remote_tags(uri)
+    if not tags:
         raise ValueError(f'No valid tags found for {uri}')
-    return sorted(valid_tags, key=semver.VersionInfo.parse)[-1]
+    if before is not None:
+        tags = [
+            tag
+            for tag in tags
+            if semver.VersionInfo.parse(tag) <= semver.VersionInfo.parse(before)
+        ]
+    if after is not None:
+        tags = [
+            tag
+            for tag in tags
+            if semver.VersionInfo.parse(tag) >= semver.VersionInfo.parse(after)
+        ]
+    return sorted(tags, key=semver.VersionInfo.parse)[-1]
+
+
+def has_remote_tag(uri: str, tag: str) -> bool:
+    tags = ls_remote_tags(uri)
+    return tag in tags

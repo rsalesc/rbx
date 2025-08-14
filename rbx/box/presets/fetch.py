@@ -4,6 +4,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+_RBX_REMOTE_URI = 'https://github.com/rsalesc/rbx'
+
 
 class PresetFetchInfo(BaseModel):
     # The actual name of this preset.
@@ -18,11 +20,17 @@ class PresetFetchInfo(BaseModel):
     # Inner directory from where to pull the preset.
     inner_dir: str = ''
 
+    # Tool tag.
+    tool_tag: Optional[str] = None
+
     def is_remote(self) -> bool:
         return self.fetch_uri is not None
 
     def is_local_dir(self) -> bool:
         return bool(self.inner_dir) and not self.is_remote()
+
+    def is_tool(self) -> bool:
+        return self.tool_tag is not None
 
 
 def get_inner_dir_from_tool_preset(tool_preset: str) -> str:
@@ -78,6 +86,7 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
         match = compiled.match(s)
         if match is None:
             return None
+        # Treat as a plain local preset name (no implicit tool tag resolution).
         return PresetFetchInfo(name=s)
 
     extractors = [

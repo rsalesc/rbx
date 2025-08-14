@@ -16,7 +16,8 @@ import click
 import pytest
 
 from rbx.box import presets
-from rbx.box.presets.lock_schema import LockedAsset, SymlinkInfo, TrackedAsset
+from rbx.box.presets.lock_schema import LockedAsset, SymlinkInfo
+from rbx.box.presets.schema import TrackedAsset
 from rbx.box.testing.testing_preset import TestingPreset
 
 # ===================
@@ -579,70 +580,72 @@ duration: 180
         assert 'Error updating preset compat-fail to its latest version.' in out
 
 
-class TestInstallFromResourcesCompatibility:
-    """Test installing presets from resources with version gate behavior."""
-
-    def test_install_from_resources_blocks_on_major_mismatch_decline(
-        self, tmp_path, monkeypatch
-    ):
-        # Simulate local rbx major version 1 and remote latest tag 2.0.0
-        monkeypatch.setattr('rbx.utils.get_semver', lambda: SimpleNamespace(major=1))
-        monkeypatch.setattr(
-            'rbx.box.presets.latest_remote_tag', lambda fetch_uri: '2.0.0'
-        )
-        monkeypatch.setattr(
-            'rbx.box.presets.questionary.confirm',
-            lambda *a, **k: SimpleNamespace(ask=lambda: False),
-        )
-
-        dst = tmp_path / 'installed'
-        fetch_info = presets.get_preset_fetch_info('default')
-
-        with pytest.raises(click.exceptions.Exit):
-            presets.install_preset(dst, fetch_info)
-
-        assert not (dst / 'preset.rbx.yml').exists()
-
-    def test_install_from_resources_proceeds_on_major_mismatch_accept(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr('rbx.utils.get_semver', lambda: SimpleNamespace(major=1))
-        monkeypatch.setattr(
-            'rbx.box.presets.latest_remote_tag', lambda fetch_uri: '2.0.0'
-        )
-        monkeypatch.setattr(
-            'rbx.box.presets.questionary.confirm',
-            lambda *a, **k: SimpleNamespace(ask=lambda: True),
-        )
-
-        dst = tmp_path / 'installed'
-        fetch_info = presets.get_preset_fetch_info('default')
-        presets.install_preset(dst, fetch_info)
-
-        # Verify preset installed from resources
-        assert (dst / 'preset.rbx.yml').exists()
-        assert (dst / 'problem').exists()
-
-    def test_install_from_resources_no_prompt_when_same_major(
-        self, tmp_path, monkeypatch
-    ):
-        # Same major (1), should not prompt
-        monkeypatch.setattr('rbx.utils.get_semver', lambda: SimpleNamespace(major=1))
-        monkeypatch.setattr(
-            'rbx.box.presets.latest_remote_tag', lambda fetch_uri: '1.9.0'
-        )
-
-        # If confirm is called, fail the test
-        def _unexpected_confirm(*args, **kwargs):
-            raise AssertionError('questionary.confirm should not be called')
-
-        monkeypatch.setattr('rbx.box.presets.questionary.confirm', _unexpected_confirm)
-
-        dst = tmp_path / 'installed'
-        fetch_info = presets.get_preset_fetch_info('default')
-        presets.install_preset(dst, fetch_info)
-
-        assert (dst / 'preset.rbx.yml').exists()
+# NOTE: TestInstallFromResourcesCompatibility is commented out because the
+# install_from_resources functionality has been removed from the codebase
+# class TestInstallFromResourcesCompatibility:
+#     """Test installing presets from resources with version gate behavior."""
+#
+#     def test_install_from_resources_blocks_on_major_mismatch_decline(
+#         self, tmp_path, monkeypatch
+#     ):
+#         # Simulate local rbx major version 1 and remote latest tag 2.0.0
+#         monkeypatch.setattr('rbx.utils.get_semver', lambda: SimpleNamespace(major=1))
+#         monkeypatch.setattr(
+#             'rbx.box.presets.latest_remote_tag', lambda fetch_uri: '2.0.0'
+#         )
+#         monkeypatch.setattr(
+#             'rbx.box.presets.questionary.confirm',
+#             lambda *a, **k: SimpleNamespace(ask=lambda: False),
+#         )
+#
+#         dst = tmp_path / 'installed'
+#         fetch_info = presets.get_preset_fetch_info('default')
+#
+#         with pytest.raises(click.exceptions.Exit):
+#             presets.install_preset(dst, fetch_info)
+#
+#         assert not (dst / 'preset.rbx.yml').exists()
+#
+#     def test_install_from_resources_proceeds_on_major_mismatch_accept(
+#         self, tmp_path, monkeypatch
+#     ):
+#         monkeypatch.setattr('rbx.utils.get_semver', lambda: SimpleNamespace(major=1))
+#         monkeypatch.setattr(
+#             'rbx.box.presets.latest_remote_tag', lambda fetch_uri: '2.0.0'
+#         )
+#         monkeypatch.setattr(
+#             'rbx.box.presets.questionary.confirm',
+#             lambda *a, **k: SimpleNamespace(ask=lambda: True),
+#         )
+#
+#         dst = tmp_path / 'installed'
+#         fetch_info = presets.get_preset_fetch_info('default')
+#         presets.install_preset(dst, fetch_info)
+#
+#         # Verify preset installed from resources
+#         assert (dst / 'preset.rbx.yml').exists()
+#         assert (dst / 'problem').exists()
+#
+#     def test_install_from_resources_no_prompt_when_same_major(
+#         self, tmp_path, monkeypatch
+#     ):
+#         # Same major (1), should not prompt
+#         monkeypatch.setattr('rbx.utils.get_semver', lambda: SimpleNamespace(major=1))
+#         monkeypatch.setattr(
+#             'rbx.box.presets.latest_remote_tag', lambda fetch_uri: '1.9.0'
+#         )
+#
+#         # If confirm is called, fail the test
+#         def _unexpected_confirm(*args, **kwargs):
+#             raise AssertionError('questionary.confirm should not be called')
+#
+#         monkeypatch.setattr('rbx.box.presets.questionary.confirm', _unexpected_confirm)
+#
+#         dst = tmp_path / 'installed'
+#         fetch_info = presets.get_preset_fetch_info('default')
+#         presets.install_preset(dst, fetch_info)
+#
+#         assert (dst / 'preset.rbx.yml').exists()
 
 
 # ==========================

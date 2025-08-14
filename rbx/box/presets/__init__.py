@@ -11,7 +11,7 @@ import semver
 import typer
 
 from rbx import console, utils
-from rbx.box import cd
+from rbx.box import cd, git_utils
 from rbx.box.git_utils import latest_remote_tag
 from rbx.box.presets.fetch import (
     PresetFetchInfo,
@@ -605,7 +605,18 @@ def _install_preset_from_remote(
         console.console.print(
             f'Cloning preset from [item]{fetch_info.fetch_uri}[/item]...'
         )
-        git.Repo.clone_from(fetch_info.fetch_uri, d)
+        repo = git.Repo.clone_from(fetch_info.fetch_uri, d)
+        if fetch_info.tool_tag is not None:
+            console.console.print(
+                f'Checking out tool tag [item]{fetch_info.tool_tag}[/item]...'
+            )
+            try:
+                repo.git.checkout(fetch_info.tool_tag)
+            except Exception as e:
+                console.console.print(
+                    f'[error]Could not checkout tool tag [item]{fetch_info.tool_tag}[/item] for preset [item]{fetch_info.name}[/item].[/error]'
+                )
+                raise typer.Exit(1) from e
         pd = pathlib.Path(d)
         if fetch_info.inner_dir:
             console.console.print(
@@ -719,14 +730,32 @@ def _install_preset_from_fetch_info(
             update=update,
         )
         return
-    if _install_preset_from_resources(
-        fetch_info,
-        dest,
-        ensure_contest=ensure_contest,
-        ensure_problem=ensure_problem,
-        update=update,
-    ):
+    if fetch_info.is_tool():
+        # Fallback to the remote tool tag if it exists.
+        assert fetch_info.tool_tag is not None
+        remote_fetch_info = get_preset_fetch_info(
+            get_remote_uri_from_tool_preset(fetch_info.name)
+        )
+        assert remote_fetch_info is not None
+        remote_fetch_info.tool_tag = fetch_info.tool_tag
+
+        _install_preset_from_remote(
+            remote_fetch_info,
+            dest,
+            ensure_contest=ensure_contest,
+            ensure_problem=ensure_problem,
+            update=update,
+        )
         return
+
+    # if _install_preset_from_resources(
+    #     fetch_info,
+    #     dest,
+    #     ensure_contest=ensure_contest,
+    #     ensure_problem=ensure_problem,
+    #     update=update,
+    # ):
+    #     return
     console.console.print(
         f'[error]Preset [item]{fetch_info.name}[/item] not found.[/error]'
     )
@@ -895,8 +924,6 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
 def copy_tree_normalizing_gitdir(
     src_path: pathlib.Path, dst_path: pathlib.Path, update: bool = False
 ):
-    from rbx.box import git_utils
-
     shutil.copytree(str(src_path), str(dst_path), dirs_exist_ok=update, symlinks=True)
 
     if not (src_path / '.git').is_file():
@@ -917,8 +944,6 @@ def copy_local_preset(
     preset_path: pathlib.Path, dest_path: pathlib.Path, remote_uri: Optional[str] = None
 ):
     copy_tree_normalizing_gitdir(preset_path, dest_path / '.local.rbx')
-
-    from rbx.box import git_utils
 
     preset_repo = git_utils.get_repo_or_nil(preset_path)
     current_repo = git_utils.get_repo_or_nil(
