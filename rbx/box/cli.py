@@ -109,9 +109,7 @@ app.add_typer(
 
 def version_callback(value: bool) -> None:
     if value:
-        import importlib.metadata
-
-        version = importlib.metadata.version('rbx.cp')
+        version = utils.get_version()
 
         console.console.print(f'rbx version {version}')
         raise typer.Exit()
