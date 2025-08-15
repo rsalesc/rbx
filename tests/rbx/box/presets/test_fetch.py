@@ -1,5 +1,6 @@
 import pathlib
 
+from rbx import utils
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
 
 
@@ -223,7 +224,7 @@ class TestGetPresetFetchInfo:
         uri = 'simple-preset'
         result = get_preset_fetch_info(uri)
 
-        expected = PresetFetchInfo(name='simple-preset')
+        expected = PresetFetchInfo(name='simple-preset', tool_tag=utils.get_version())
         assert result == expected
 
     def test_local_preset_name_with_underscores(self):
@@ -231,7 +232,7 @@ class TestGetPresetFetchInfo:
         uri = 'my_preset_name'
         result = get_preset_fetch_info(uri)
 
-        expected = PresetFetchInfo(name='my_preset_name')
+        expected = PresetFetchInfo(name='my_preset_name', tool_tag=utils.get_version())
         assert result == expected
 
     def test_invalid_github_url_no_user_repo(self):
@@ -240,7 +241,9 @@ class TestGetPresetFetchInfo:
         result = get_preset_fetch_info(uri)
 
         # Falls back to local preset name extractor
-        expected = PresetFetchInfo(name='https://github.com/')
+        expected = PresetFetchInfo(
+            name='https://github.com/', tool_tag=utils.get_version()
+        )
         assert result == expected
 
     def test_invalid_url_format(self):
@@ -249,7 +252,9 @@ class TestGetPresetFetchInfo:
         result = get_preset_fetch_info(uri)
 
         # Falls back to local preset name extractor (partial match)
-        expected = PresetFetchInfo(name='not-a-valid-format://example')
+        expected = PresetFetchInfo(
+            name='not-a-valid-format://example', tool_tag=utils.get_version()
+        )
         assert result == expected
 
     def test_empty_string(self):
@@ -296,7 +301,9 @@ class TestGetPresetFetchInfo:
         result = get_preset_fetch_info(uri)
 
         # Regex matches the beginning but not the full string, still returns result
-        expected = PresetFetchInfo(name='preset@special#chars')
+        expected = PresetFetchInfo(
+            name='preset@special#chars', tool_tag=utils.get_version()
+        )
         assert result == expected
 
     def test_path_with_exception_handling(self, monkeypatch):
@@ -314,5 +321,5 @@ class TestGetPresetFetchInfo:
         result = get_preset_fetch_info('some-path')
 
         # Should fall back to local preset name due to exception
-        expected = PresetFetchInfo(name='some-path')
+        expected = PresetFetchInfo(name='some-path', tool_tag=utils.get_version())
         assert result == expected
