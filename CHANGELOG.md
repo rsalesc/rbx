@@ -1,3 +1,10 @@
+## 0.16.3 (2025-08-15)
+
+### Fix
+
+- fix tool fetch
+- get current version from __version__py
+
 ## 0.16.2 (2025-08-14)
 
 ### Fix

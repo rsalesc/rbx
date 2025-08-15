@@ -26,7 +26,8 @@ async def polygon(
         None,
         '--language',
         '-l',
-        help='If set, will use the given language as the main language.',
+        help='If set, will use the given language as the main language. '
+        'Leave unset if your problem has no statements.',
     ),
     upload_as_english: bool = typer.Option(
         False,

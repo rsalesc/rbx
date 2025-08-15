@@ -1,7 +1,7 @@
 import pathlib
 import shutil
 from math import fabs
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -29,19 +29,21 @@ class BocaPackager(BasePackager):
     def task_types(cls) -> List[TaskType]:
         return [TaskType.BATCH, TaskType.COMMUNICATION]
 
-    def _get_main_statement(self) -> Statement:
+    def _get_main_statement(self) -> Optional[Statement]:
         pkg = package.find_problem_package_or_die()
 
         if not pkg.expanded_statements:
-            console.console.print('[error]No statements found.[/error]')
-            raise typer.Exit(1)
+            return None
 
         return pkg.expanded_statements[0]
 
     def _get_main_built_statement(
         self, built_statements: List[BuiltStatement]
-    ) -> BuiltStatement:
+    ) -> Optional[BuiltStatement]:
         statement = self._get_main_statement()
+        if statement is None:
+            return None
+
         for built_statement in built_statements:
             if built_statement.statement == statement:
                 return built_statement
@@ -322,13 +324,15 @@ class BocaPackager(BasePackager):
             (tests_path / language).write_text('exit 0\n')
 
         # Problem statement
-        description_path = into_path / 'description'
-        description_path.mkdir(parents=True, exist_ok=True)
-        (description_path / 'problem.info').write_text(self._get_problem_info())
-        shutil.copyfile(
-            self._get_main_built_statement(built_statements).path,
-            (description_path / self._get_problem_basename()).with_suffix('.pdf'),
-        )
+        main_built_statement = self._get_main_built_statement(built_statements)
+        if main_built_statement is not None:
+            description_path = into_path / 'description'
+            description_path.mkdir(parents=True, exist_ok=True)
+            (description_path / 'problem.info').write_text(self._get_problem_info())
+            shutil.copyfile(
+                self._get_main_built_statement(built_statements).path,
+                (description_path / self._get_problem_basename()).with_suffix('.pdf'),
+            )
 
         # Copy solutions
         solutions_path = into_path / 'solutions'
