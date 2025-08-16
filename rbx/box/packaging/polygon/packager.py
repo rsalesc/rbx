@@ -73,7 +73,7 @@ class PolygonPackager(BasePackager):
                 raise typer.Exit(1)
 
     def _get_name(self, lang: str) -> polygon_schema.Name:
-        statement = self.get_statement_for_language(lang)
+        statement = self.get_statement_for_language_or_null(lang)
         return polygon_schema.Name(
             language=code_to_langs([lang])[0],
             value=naming.get_title(lang, statement),

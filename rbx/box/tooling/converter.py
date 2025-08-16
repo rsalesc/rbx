@@ -63,7 +63,7 @@ async def convert(
         built_statements = []
         for statement_type in packager.statement_types():
             for language in packager.languages():
-                statement = packager.get_statement_for_language(language)
+                statement = packager.get_statement_for_language_or_die(language)
                 statement_path = build_statement(statement, pkg, statement_type)
                 built_statements.append(
                     BuiltStatement(statement, statement_path, statement_type)

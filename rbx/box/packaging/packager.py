@@ -3,7 +3,7 @@ import pathlib
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Type
+from typing import List, Optional, Tuple, Type
 
 import typer
 
@@ -94,12 +94,17 @@ class BasePackager(ABC):
             res.extend(tests_per_group[group.name])
         return res
 
-    def get_statement_for_language(self, lang: str) -> Statement:
+    def get_statement_for_language_or_null(self, lang: str) -> Optional[Statement]:
         pkg = package.find_problem_package_or_die()
         for statement in pkg.expanded_statements:
             if statement.language == lang:
                 return statement
-        raise
+        return None
+
+    def get_statement_for_language_or_die(self, lang: str) -> Statement:
+        statement = self.get_statement_for_language_or_null(lang)
+        if statement is None:
+            raise ValueError(f'No statement for language {lang} found.')
 
 
 class BaseContestPackager(ABC):
@@ -210,7 +215,7 @@ async def run_packager(
         for statement_type in statement_types:
             languages = packager.languages()
             for language in languages:
-                statement = packager.get_statement_for_language(language)
+                statement = packager.get_statement_for_language_or_die(language)
                 statement_path = build_statement(statement, pkg, statement_type)
                 built_statements.append(
                     BuiltStatement(statement, statement_path, statement_type)
