@@ -124,12 +124,13 @@ class TestGetTitle:
         with pytest.raises(typer.Exit):
             naming.get_title(lang=None, pkg=pkg, fallback_to_title=True)
 
-    def test_fallback_to_title_true_with_no_titles_raises_error(self):
+    def test_fallback_to_title_true_with_no_titles_fallback_to_name(self):
         """When fallback_to_title=True but pkg has no titles, should raise error since len(titles) != 1"""
         pkg = Package(name='base-name', timeLimit=1000, memoryLimit=256)
 
-        with pytest.raises(typer.Exit):
-            naming.get_title(lang=None, pkg=pkg, fallback_to_title=True)
+        assert (
+            naming.get_title(lang=None, pkg=pkg, fallback_to_title=True) == 'base-name'
+        )
 
     def test_fallback_to_title_true_with_statement_title_uses_statement_title(self):
         """When fallback_to_title=True but statement has title, should prioritize statement title"""
