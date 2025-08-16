@@ -1,3 +1,14 @@
+## 0.17.0 (2025-08-16)
+
+### Feat
+
+- add names section in package
+
+### Fix
+
+- ensure title is not tied to statement in Polygon packager
+- ensure title is not tied to statement in boca packager
+
 ## 0.16.4 (2025-08-15)
 
 ### Fix
