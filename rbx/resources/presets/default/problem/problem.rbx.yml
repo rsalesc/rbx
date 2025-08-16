@@ -3,6 +3,8 @@
 name: "new-problem"
 timeLimit: 1000 # ms
 memoryLimit: 256 # MiB
+titles:
+  en: "New problem"
 checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
 validator: {path: "validator.cpp"}
 testcases:
@@ -31,7 +33,6 @@ solutions:
     outcome: "INCORRECT"
 statements:
   - name: "statement-en"
-    title: "New Problem"
     path: "statement/statement.rbx.tex" # Open this file to edit your statement.
     type: "rbxTeX"
     language: "en"

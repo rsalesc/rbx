@@ -3,6 +3,8 @@ from typing import Optional, Tuple
 from rbx.box import package
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem
+from rbx.box.schema import Package
+from rbx.box.statements.schema import Statement
 
 
 def get_problem_entry_in_contest() -> Optional[Tuple[int, ContestProblem]]:
@@ -44,3 +46,14 @@ def get_problem_name_with_contest_info() -> str:
     if contest is None or short_name is None:
         return problem.name
     return f'{contest.name}-{short_name}-{problem.name}'
+
+
+def get_title(
+    lang: str, statement: Optional[Statement] = None, pkg: Optional[Package] = None
+) -> str:
+    if pkg is None:
+        pkg = package.find_problem_package_or_die()
+    title = pkg.titles.get(lang) or pkg.name
+    if statement is not None:
+        title = statement.title or title
+    return title

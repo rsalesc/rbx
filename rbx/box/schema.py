@@ -508,6 +508,12 @@ class Package(BaseModel):
     # Name of the problem.
     name: str = NameField(description='The name of the problem.')
 
+    titles: Dict[str, str] = Field(
+        default={},
+        description='Titles for the problem in each language. '
+        'Languages should be specified as lowercase ISO 639-1 codes.',
+    )
+
     type: TaskType = Field(
         default=TaskType.BATCH, description='The type of the problem.'
     )

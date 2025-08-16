@@ -132,8 +132,11 @@ class Statement(BaseModel):
         default='en', description='Language code of this statement (ISO 639-1).'
     )
 
-    title: str = Field(
-        default='', description='Name of the problem, as it appears in the statement.'
+    title: Optional[str] = Field(
+        default=None,
+        description='Title of the problem, as it appears in the statement. '
+        'Can be left unset if the problem has no title or if title comes '
+        'from the `titles` field of the package.',
     )
 
     path: pathlib.Path = Field(

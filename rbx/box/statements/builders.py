@@ -11,6 +11,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
+from rbx.box import naming
 from rbx.box.fields import Primitive
 from rbx.box.schema import LimitsProfile, Package, Testcase
 from rbx.box.statements.latex_jinja import (
@@ -130,7 +131,9 @@ class StatementBuilderProblem(StatementBuilderItem):
             'statement': self.statement,
             'samples': self.samples,
             'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
-            'title': self.statement.title or self.package.name,
+            'title': naming.get_title(
+                self.statement.language, self.statement, self.package
+            ),
             'limits': self.limits,
         }
         if self.short_name is not None:

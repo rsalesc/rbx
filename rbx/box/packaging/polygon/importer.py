@@ -70,6 +70,11 @@ def _populate_tests(
     ]
 
 
+def _populate_titles(problem: Problem, pkg: Package):
+    for name in problem.names:
+        pkg.titles[name.language] = name.value
+
+
 def _populate_statements(
     problem: Problem,
     pkg: Package,
@@ -83,9 +88,6 @@ def _populate_statements(
     found_main = False
 
     for statement in pdf_statements:
-        if statement.language not in name_per_language:
-            continue
-        name = name_per_language[statement.language]
         statement_path = into_path / _get_statement_path(statement)
         statement_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(pkg_path / statement.path, statement_path)
@@ -93,8 +95,7 @@ def _populate_statements(
         iso639_code = lang.lang_to_code(statement.language)
 
         pkg_statement = BoxStatement(
-            name=f'statement-{name.language}',
-            title=name.value,
+            name=f'statement-{statement.language}',
             language=iso639_code,
             path=_get_statement_path(statement),
             type=StatementType.PDF,
@@ -110,7 +111,8 @@ def _populate_statements(
             found_main = True
             continue
 
-        if name.main and not found_main:
+        name = name_per_language.get(statement.language)
+        if name is not None and name.main and not found_main:
             # If main statement, add it to the front of the list
             pkg_statements = [pkg_statement] + pkg_statements
             found_main = True
@@ -224,6 +226,7 @@ class PolygonImporter(BaseImporter):
         )
 
         _populate_tests(testset, pkg, pkg_path, into_path)
+        _populate_titles(problem, pkg)
         _populate_statements(problem, pkg, pkg_path, into_path, self.main_language)
         _copy_checker(problem, pkg, pkg_path, into_path)
         _copy_interactor(problem, pkg, pkg_path, into_path)

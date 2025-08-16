@@ -66,9 +66,10 @@ class BocaPackager(BasePackager):
 
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()
+        title = naming.get_title(statement.language, statement)
         return (
             f'basename={self._get_problem_basename()}\n'
-            f'fullname={statement.title}\n'
+            f'fullname={title}\n'
             f'descfile={self._get_problem_basename()}.pdf\n'
         )
 

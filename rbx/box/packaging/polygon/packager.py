@@ -5,7 +5,7 @@ from typing import List, Optional
 import typer
 
 from rbx import console, utils
-from rbx.box import header, limits_info, package
+from rbx.box import header, limits_info, naming, package
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging.packager import (
     BaseContestPackager,
@@ -62,7 +62,7 @@ class PolygonPackager(BasePackager):
 
         lang_codes = set()
         for statement in pkg.expanded_statements:
-            lang_codes.add(statement.title)
+            lang_codes.add(statement.language)
 
         for lang in langs:
             if lang not in lang_codes:
@@ -72,14 +72,15 @@ class PolygonPackager(BasePackager):
                 )
                 raise typer.Exit(1)
 
+    def _get_name(self, lang: str) -> polygon_schema.Name:
+        statement = self.get_statement_for_language(lang)
+        return polygon_schema.Name(
+            language=code_to_langs([lang])[0],
+            value=naming.get_title(lang, statement),
+        )
+
     def _get_names(self) -> List[polygon_schema.Name]:
-        names = [
-            polygon_schema.Name(
-                language=code_to_langs([lang])[0],
-                value=self.get_statement_for_language(lang).title,
-            )
-            for lang in self.languages()
-        ]
+        names = [self._get_name(lang) for lang in self.languages()]
 
         _select_main_language(names, self.main_language)
 

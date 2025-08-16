@@ -8,7 +8,7 @@ import rich.progress
 import typer
 
 from rbx import console
-from rbx.box import header, limits_info, package
+from rbx.box import header, limits_info, naming, package
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.polygon import polygon_api as api
@@ -353,7 +353,7 @@ def _upload_statement(
         blocks = _get_statement_blocks(statement)
         polygon_statement = api.Statement(
             encoding='utf-8',
-            name=statement.title,
+            name=naming.get_title(statement.language, statement, pkg),
             legend=blocks.blocks.get('legend') or '',
             input=blocks.blocks.get('input') or '',
             output=blocks.blocks.get('output') or '',
