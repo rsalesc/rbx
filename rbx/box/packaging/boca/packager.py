@@ -48,10 +48,7 @@ class BocaPackager(BasePackager):
             if built_statement.statement == statement:
                 return built_statement
 
-        console.console.print(
-            '[error]Main statement not found among built statements.[/error]'
-        )
-        raise typer.Exit(1)
+        return None
 
     def _get_problem_name(self) -> str:
         # BOCA forces Java class names to be the name of the problem.
@@ -66,7 +63,8 @@ class BocaPackager(BasePackager):
 
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()
-        title = naming.get_title(statement.language, statement)
+        lang = statement.language if statement is not None else None
+        title = naming.get_title(lang, statement, fallback_to_title=True)
         return (
             f'basename={self._get_problem_basename()}\n'
             f'fullname={title}\n'

@@ -71,8 +71,11 @@ def _populate_tests(
 
 
 def _populate_titles(problem: Problem, pkg: Package):
+    titles = {}
     for name in problem.names:
-        pkg.titles[name.language] = name.value
+        iso639_code = lang.lang_to_code(name.language)
+        titles[iso639_code] = name.value
+    pkg.titles = titles
 
 
 def _populate_statements(
@@ -126,7 +129,16 @@ def _populate_statements(
         console.console.print(
             f'[error]Main statement of language [item]{main_language}[/item] not found.[/error]',
         )
+        console.console.print(
+            'If you want no statement in your imported package, '
+            'leave the [item]--main-language[/item] flag unset.'
+        )
         raise typer.Exit(1)
+
+    if not pkg_statements:
+        console.console.print(
+            '[warning]Imported problem has no statements. Continuing without a statement.[/warning]',
+        )
 
 
 def _is_cpp_source(source: File) -> bool:
