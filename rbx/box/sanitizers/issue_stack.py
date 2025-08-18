@@ -1,7 +1,7 @@
 import contextvars
 import enum
 from collections import OrderedDict
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 from rbx import console
 
@@ -25,7 +25,7 @@ class Issue:
         return ''
 
 
-IssueSection = OrderedDict[str, Union[Issue, 'IssueSection']]
+IssueSection = OrderedDict[str, Union[List[Issue], 'IssueSection']]
 
 
 class IssueAccumulator:
@@ -46,7 +46,9 @@ class IssueAccumulator:
             current = sections
             for k in section_key[:-1]:
                 current = current.setdefault(k, OrderedDict())
-            current[section_key[-1]] = issue
+            current.setdefault(section_key[-1], [])
+            current[section_key[-1]].append(issue)
+
         return sections
 
     def get_detailed_sections(self) -> IssueSection:
@@ -70,8 +72,9 @@ class IssueAccumulator:
                 child = tree.add(key)
                 if isinstance(value, OrderedDict):
                     print_section(value, child)
-                else:
-                    child.add(f'[error]{message_fn(value)}[/error]')
+                    continue
+                for issue in value:
+                    child.add(f'[error]{message_fn(issue)}[/error]')
 
         print_section(sections, tree)
 
