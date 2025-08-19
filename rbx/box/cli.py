@@ -667,6 +667,12 @@ async def stress(
         '-s',
         help='Whether to compile the solutions with sanitizers enabled.',
     ),
+    description: Optional[str] = typer.Option(
+        None,
+        '--description',
+        '-d',
+        help='Optional description of the stress test.',
+    ),
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
