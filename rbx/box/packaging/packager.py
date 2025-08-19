@@ -105,6 +105,7 @@ class BasePackager(ABC):
         statement = self.get_statement_for_language_or_null(lang)
         if statement is None:
             raise ValueError(f'No statement for language {lang} found.')
+        return statement
 
 
 class BaseContestPackager(ABC):

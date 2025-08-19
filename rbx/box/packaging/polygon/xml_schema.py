@@ -3,13 +3,13 @@ from typing import List, Literal, Optional
 from pydantic_xml import BaseXmlModel, attr, element, wrapped
 
 
-class Name(BaseXmlModel):
+class Name(BaseXmlModel, search_mode='unordered'):
     language: str = attr()
     value: str = attr()
     main: bool = attr(default=False)
 
 
-class Statement(BaseXmlModel):
+class Statement(BaseXmlModel, search_mode='unordered'):
     charset: Optional[str] = attr(default=None)
 
     language: str = attr()
@@ -21,12 +21,16 @@ class Statement(BaseXmlModel):
     type: Literal['application/x-tex', 'application/pdf', 'text/html'] = attr()
 
 
-class File(BaseXmlModel):
+class Tutorial(BaseXmlModel, search_mode='unordered'):
+    pass
+
+
+class File(BaseXmlModel, search_mode='unordered'):
     path: str = attr()
     type: Optional[str] = attr(default=None)
 
 
-class Test(BaseXmlModel):
+class Test(BaseXmlModel, search_mode='unordered'):
     method: Literal['manual', 'generated'] = attr(default='manual')
 
     sample: Optional[bool] = attr(default=None)
@@ -36,7 +40,7 @@ class Test(BaseXmlModel):
     verdict: Optional[str] = attr(default=None)
 
 
-class Testset(BaseXmlModel):
+class Testset(BaseXmlModel, search_mode='unordered'):
     name: Optional[str] = attr(default=None)
 
     timelimit: Optional[int] = element('time-limit', default=1000)
@@ -53,14 +57,14 @@ class Testset(BaseXmlModel):
     )
 
 
-class Judging(BaseXmlModel):
+class Judging(BaseXmlModel, search_mode='unordered'):
     inputFile: str = attr(default='')
     outputFile: str = attr(default='')
 
     testsets: List[Testset] = element(tag='testset', default_factory=list)
 
 
-class Checker(BaseXmlModel):
+class Checker(BaseXmlModel, search_mode='unordered'):
     name: Optional[str] = attr(default=None)
     type: Literal['testlib'] = attr(default='testlib')
     source: File = element()
@@ -70,11 +74,11 @@ class Checker(BaseXmlModel):
     testset: Optional[Testset] = element(default=None)
 
 
-class Interactor(BaseXmlModel):
+class Interactor(BaseXmlModel, search_mode='unordered'):
     source: File = element()
 
 
-class Problem(BaseXmlModel, tag='problem'):
+class Problem(BaseXmlModel, tag='problem', search_mode='unordered'):
     short_name: str = attr('short-name')
 
     names: List[Name] = wrapped('names', element(tag='name'), default_factory=list)
@@ -102,12 +106,12 @@ class Problem(BaseXmlModel, tag='problem'):
     )
 
 
-class ContestProblem(BaseXmlModel):
+class ContestProblem(BaseXmlModel, search_mode='unordered'):
     index: str = attr()
     path: str = attr()
 
 
-class Contest(BaseXmlModel, tag='contest'):
+class Contest(BaseXmlModel, tag='contest', search_mode='unordered'):
     names: List[Name] = wrapped('names', element(tag='name'), default_factory=list)
 
     statements: List[Statement] = wrapped(
