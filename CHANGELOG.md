@@ -1,3 +1,9 @@
+## 0.17.3 (2025-08-19)
+
+### Fix
+
+- make XML parser less strict with polygon packages
+
 ## 0.17.2 (2025-08-19)
 
 ### Fix
