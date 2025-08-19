@@ -1,3 +1,9 @@
+## 0.17.2 (2025-08-19)
+
+### Fix
+
+- add optional description to the stress test
+
 ## 0.17.1 (2025-08-18)
 
 ### Fix
