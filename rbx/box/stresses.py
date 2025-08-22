@@ -56,6 +56,7 @@ async def run_stress(
     verbose: bool = False,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
+    print_descriptors: bool = False,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
 
@@ -133,6 +134,9 @@ async def run_stress(
     while len(findings) < findingsLimit:
         if time.monotonic() - startTime > timeoutInSeconds:
             break
+
+        if print_descriptors:
+            utils.print_open_fd_count()
 
         executed += 1
 

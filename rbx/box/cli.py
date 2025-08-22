@@ -673,6 +673,13 @@ async def stress(
         '-d',
         help='Optional description of the stress test.',
     ),
+    print_descriptors: bool = typer.Option(
+        False,
+        '--descriptors',
+        '-D',
+        help='Whether to print descriptors of the stress test.',
+        hidden=True,
+    ),
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
@@ -693,6 +700,7 @@ async def stress(
                 progress=s,
                 verbose=verbose,
                 sanitized=sanitized,
+                print_descriptors=print_descriptors,
             )
 
     stresses.print_stress_report(report)

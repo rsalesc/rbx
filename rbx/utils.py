@@ -75,6 +75,19 @@ def check_version_compatibility(required: str) -> SemVerCompatibility:
     return check_version_compatibility_between(installed, required)
 
 
+def print_open_fd_count() -> int:
+    import psutil
+
+    try:
+        current_process = psutil.Process()
+        open_fds = len(current_process.open_files())
+        print(f'Number of opened file descriptors: {open_fds}')
+    except psutil.AccessDenied:
+        print('Access denied. Run with appropriate permissions (e.g., sudo) if needed.')
+    except Exception as e:
+        print(f'An error occurred: {e}')
+
+
 def create_and_write(path: pathlib.Path, *args, **kwargs):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(*args, **kwargs)
