@@ -1,3 +1,11 @@
+## 0.17.4 (2025-08-22)
+
+### Fix
+
+- add option to print number of fds in tests to debug
+- sort in a few globs to ensure deterministic ordering
+- fix generator parser RECNAME expression
+
 ## 0.17.3 (2025-08-19)
 
 ### Fix
