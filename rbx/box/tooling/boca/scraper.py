@@ -359,7 +359,8 @@ class BocaScraper:
         form['problemnumber'] = f'{problem_index + 1}'
         form['problemname'] = problem_shortname
         form['confirmation'] = 'confirm'
-        form['autojudge_new_sel'] = ['all']
+        if form.find_control('autojudge_new_sel'):
+            form['autojudge_new_sel'] = ['all']
         form['Submit3'] = 'Send'
 
         with file.open('rb') as f:
