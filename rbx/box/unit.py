@@ -45,7 +45,7 @@ def extract_validator_test_entries(
 ) -> List[ValidatorTestEntry]:
     res: List[ValidatorTestEntry] = []
     for test in tests:
-        for input in pathlib.Path().glob(str(test.glob)):
+        for input in sorted(pathlib.Path().glob(str(test.glob))):
             if not input.is_file():
                 continue
             res.append(
@@ -60,7 +60,7 @@ def extract_checker_test_entries(tests: List[CheckerTest]) -> List[CheckerTestEn
     res: List[CheckerTestEntry] = []
     seen: Set[pathlib.Path] = set()
     for test in tests:
-        for file in pathlib.Path().glob(str(test.glob)):
+        for file in sorted(pathlib.Path().glob(str(test.glob))):
             if not file.is_file():
                 continue
             if file.suffix not in ['.in', '.out', '.ans']:

@@ -352,7 +352,7 @@ def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
 
     for entry in package.solutions:
         if '*' in str(entry.path):
-            for file in root.glob(str(entry.path)):
+            for file in sorted(root.glob(str(entry.path))):
                 relative_file = file.relative_to(root)
                 add_solution(
                     Solution.model_copy(

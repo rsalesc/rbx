@@ -360,7 +360,7 @@ class FilesystemStorage(Storage):
     def list_metadata(self, filename: str) -> List[str]:
         return [
             path.stem.split('__')[1]
-            for path in (self.path / '.metadata').glob(f'{filename}__*.json')
+            for path in sorted((self.path / '.metadata').glob(f'{filename}__*.json'))
         ]
 
     def exists(self, filename: str) -> bool:
