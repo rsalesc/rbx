@@ -46,7 +46,7 @@ TEXT: (/[^ \t\f\r\n\[\]\(\)\<\>\|\`]/ | ESCAPED_STRING)+
 // Whitespace
 _WS: WS
 
-RECNAME: /[a-zA-Z0-9_]/+ /(\.[a-zA-Z0-9_])/*
+RECNAME: /[a-zA-Z0-9_]/+ /(\.[a-zA-Z0-9_]+)/*
 
 %import common.WS
 %import common.CNAME
