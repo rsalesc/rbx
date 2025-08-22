@@ -60,8 +60,10 @@ This is useful to maintain consistency when changing constraints of your problem
 
 ```yaml
 vars:
-  MAX_N: 10000
-  MAX_A: 100000
+  N:
+    max: 10000
+  A:
+    max: 100000
   MOD: py`10**9+7` # Backticks force the var to be evaluated as a Python expression.
 ```
 
@@ -71,7 +73,7 @@ vars:
 #include "rbx.h"
 
 int main() {
-  int MAX_N = getVar<int>("MAX_N");
+  int MAX_N = getVar<int>("N.max");
   // Rest of your code...
 }
 ```
@@ -361,7 +363,7 @@ You can pass variables to validators in two different ways.
     int main(int argc, char *argv[]) {
         registerValidation(argc, argv);
 
-        int MAX_N = getVar<int>("MAX_N"); // Read from package vars.
+        int MAX_N = getVar<int>("N.max"); // Read from package vars.
 
         inf.readInt(1, MAX_N, "N");
         inf.readEoln();
@@ -425,7 +427,7 @@ stresses:
   - name: "stress1"
     generator:
       name: "gen"
-      args: "--MAX_N=[1..1000] @"
+      args: "--N.max=[1..1000] @"
     finder: "[sols/wa.cpp] ~ INCORRECT"
 ```
 
@@ -434,7 +436,7 @@ stresses:
   - `name`: the name of the generator
   - `args`: args *pattern* to be passed to generator.
     - You can pass a random integer by writing something like `[1..1000]`.
-    - You can pass variables defined in the `vars` section with something like `<MAX_N>`.
+    - You can pass variables defined in the `vars` section with something like `<N.max>`.
     - You can pass a random choice by writing something like `(a|b|c)`.
     - You can pass a random hex string by passing `@`.
 - `finder`: a [finder expression](/setters/stress-testing#finder-expressions) that, when evaluated to true, consider the given generated test as a match

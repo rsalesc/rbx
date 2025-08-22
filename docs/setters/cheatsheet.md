@@ -237,9 +237,12 @@ The variables below can be reused across validators and statements.
 
 ```yaml
 vars:
-  "MAX_N": 1000
-  "MAX_V": 100000
-  "MOD": py`10**9+7` # Backticks force the var to be evaluated as a Python expression.
+  N:
+    min: 1
+    max: 1000
+  V:
+    max: 100000
+  MOD: py`10**9+7` # Backticks force the var to be evaluated as a Python expression.
 ```
 
 #### Use variables
@@ -251,7 +254,8 @@ vars:
     int32_t main() {
       registerValidation(argc, argv);
 
-      int MAX_N = getVar<int>("MAX_N"); // Read from package vars.
+      int MIN_N = getVar<int>("N.min"); // Read from package vars.
+      int MAX_N = getVar<int>("N.max"); // Read from package vars.
 
       // Rest of the validator
     }
@@ -259,10 +263,10 @@ vars:
 
 === "In statements"
     ```tex
-    The maximum value of N is \VAR{vars.MAX_N | sci} % (1)!
+    The maximum value of N is \VAR{vars.N.max | sci} % (1)!
     ```
 
-    1.   If `MAX_N` has lots of trailing zeroes, `sci` converts it to scientific notation.
+    1.   If `N.max` has lots of trailing zeroes, `sci` converts it to scientific notation.
 
 ### Add statements
 
@@ -336,14 +340,14 @@ stresses:
   - name: "my-stress"
     generator:
       name: 'gen'
-      args: '[1..<MAX_N>] @' # (1)!
+      args: '[1..<N.max>] @' # (1)!
     finder: "[sols/my-wa-solution.cpp] ~ INCORRECT" # (2)!
 ```
 
-1. The `<MAX_N>` variable expands into the `vars.MAX_N` value that could be declared in
+1. The `<N.max>` variable expands into the `vars.N.max` value that could be declared in
     `problem.rbx.yml`.
 
-    The `[1..<MAX_N>]` picks a random number in this interval before generating every test in the stress run.
+    The `[1..<N.max>]` picks a random number in this interval before generating every test in the stress run.
 
     The `@` appends a few extra random characters to the end of the generator call to re-seed the generator.
 

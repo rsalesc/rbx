@@ -16,8 +16,12 @@ Variables are defined in the `vars` section of your `problem.rbx.yml` file.
 ```yaml title="problem.rbx.yml"
 # ...
 vars:
-  MAX_N: 100000
-  MAX_M: 200000
+  N:
+    min: 1
+    max: 100000
+  M:
+    min: 1
+    max: 200000
 ```
 
 They're defined as key-value pairs. The keys should be valid Python identifiers
@@ -30,8 +34,10 @@ types, using the ``py`...` `` syntax.
 ```yaml title="problem.rbx.yml"
 # ...
 vars:
-  MAX_N: py`10**5`
-  MAX_M: py`2*10**5`
+  N:
+    max: py`10**5`
+  M:
+    max: py`2*10**5`
 ```
 
 ## Using variables
@@ -60,8 +66,8 @@ This header can be directly included in your validator/checker files.
     int main(int argc, char* argv[]) {
         registerValidation(argc, argv);
 
-        int n = getVar<int>("MAX_N");
-        int m = getVar<int>("MAX_M");
+        int n = getVar<int>("N.max");
+        int m = getVar<int>("M.max");
       
         // Single line with two numbers.
         inf.readInt(1, n, "n");
@@ -81,8 +87,8 @@ This header can be directly included in your validator/checker files.
     int main(int argc, char* argv[]) {
         registerTestlibCmd(argc, argv);
 
-        int n = getVar<int>("MAX_N");
-        int m = getVar<int>("MAX_M");
+        int n = getVar<int>("N.max");
+        int m = getVar<int>("M.max");
         
         // ...
     }
@@ -94,7 +100,7 @@ Validators also receive the variables as command-line arguments. This means that
 for the `problem.rbx.yml` above, your validator would be called roughly as follows:
 
 ```bash
-./validator.exe --MAX_N=100000 --MAX_M=200000
+./validator.exe --N.max=100000 --M.max=200000
 ```
 
 You can freely parse those arguments in your language of choice.
@@ -114,7 +120,7 @@ the `vars.` prefix.
 
 ```latex title="statement.rbx.tex"
 % ...
-You're given a graph with \VAR{vars.MAX_N} vertices and \VAR{vars.MAX_M} edges.
+You're given a graph with \VAR{vars.N.max} vertices and \VAR{vars.M.max} edges.
 % ...
 ```
 
@@ -123,7 +129,7 @@ conditionals.
 
 ```latex title="statement.rbx.tex"
 % ...
-%- if vars.MAX_N < 1000:
+%- if vars.N.max < 1000:
 This problem is easy.
 %- else:
 This problem is hard.
@@ -137,12 +143,12 @@ a number with many trailing zeroes in scientific notation.
 
 ```latex title="statement.rbx.tex"
 % ...
-You're given a graph with \VAR{vars.MAX_N | sci} vertices
-and \VAR{vars.MAX_M | sci} edges.
+You're given a graph with \VAR{vars.N.max | sci} vertices
+and \VAR{vars.M.max | sci} edges.
 % ...
 ```
 
-The `sci` builtin will make `MAX_N` and `MAX_M` be rendered as something like
+The `sci` builtin will make `N.max` and `M.max` be rendered as something like
 `10^5` and `2 x 10^5` respectively.
 
 ### Stress tests
@@ -150,6 +156,6 @@ The `sci` builtin will make `MAX_N` and `MAX_M` be rendered as something like
 Variables can also be used in [generator expressions](/setters/stress-testing/#generator-expression) in stress tests with the `<variable>` notation.
 
 ```
-rbx stress -g "gen [1..<MAX_N>]" -f "[sols/wa.cpp] ~ INCORRECT"
+rbx stress -g "gen [1..<N.max>]" -f "[sols/wa.cpp] ~ INCORRECT"
 ```
 

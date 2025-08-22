@@ -100,7 +100,7 @@ You can see in the commented code below how to read from each of the files avail
         int N = inf.readInt(); // (1)!
         int S = inf.readInt();
 
-        int MAX_Q = getVar<int>("MAX_Q"); // (2)!
+        int MAX_Q = getVar<int>("Q.max"); // (2)!
 
         for(int i = 0; i < MAX_Q; i++) {
           int X = ouf.readInt(1, N); // (3)!
@@ -151,7 +151,8 @@ You can see in the commented code below how to read from each of the files avail
       path: 'interactor.cpp'
     # ...
     vars:
-      MAX_Q: 10
+      Q:
+        max: 10
     ```
 
 ## Executing solutions against the interactor
@@ -258,7 +259,7 @@ Then, you could split the previously defined interactor into two files as such:
         int N = inf.readInt();
         int S = inf.readInt();
 
-        int MAX_Q = getVar<int>("MAX_Q");
+        int MAX_Q = getVar<int>("Q.max");
 
         int p_guesses = ouf.readInt();
 

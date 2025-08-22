@@ -212,8 +212,8 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
     int main(int argc, char *argv[]) {
         registerValidation(argc, argv);
 
-        int MAX_N = getVar<int>("MAX_N"); // (1)!
-        int MAX_A = getVar<int>("MAX_A");
+        int MAX_N = getVar<int>("N.max"); // (1)!
+        int MAX_A = getVar<int>("A.max");
 
         for (int i = 0; i < n; i++) {
             if (i) inf.readSpace();
@@ -224,7 +224,7 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
     }
     ```
 
-    1.  `MAX_N` is a variable defined in `problem.rbx.yaml` that is accessible
+    1.  `N.max` is a variable defined in `problem.rbx.yaml` that is accessible
         in the validator. It allows you to change the constraints of the problem,
         and instantly replicate the change in validators and statements.
 
@@ -256,7 +256,7 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
     }
     ```
 
-    1.  The generator now receive two parameters `MAX_N` (accessed through `#!c++ opt<int>(1)`) and `MAX_A` (accessed through `#!c++ opt<int>(2)`).
+    1.  The generator now receive two parameters `N.max` (accessed through `#!c++ opt<int>(1)`) and `A.max` (accessed through `#!c++ opt<int>(2)`).
 
 === "random.txt (static)"
     ```
@@ -331,7 +331,7 @@ If you open it, you will find something like the following:
 
     %- block input
     The input is a single line containing two integers $A$ and $B$
-    ($1 \leq A, B \leq \VAR{vars.MAX_N | sci}$). % (1)!
+    ($1 \leq A, B \leq \VAR{vars.N.max | sci}$). % (1)!
     %- endblock
 
     %- block output
@@ -365,8 +365,8 @@ Let's change each corresponding block to match our new problem description.
 
     %- block input
     The input has a single line containing $N$ 
-    ($1 \leq N \leq \VAR{vars.MAX_N | sci}$) numbers. 
-    These numbers range from 1 to $\VAR{vars.MAX_A | sci}$.
+    ($1 \leq N \leq \VAR{vars.N.max | sci}$) numbers. 
+    These numbers range from 1 to $\VAR{vars.A.max | sci}$.
     %- endblock
 
     %- block output

@@ -104,8 +104,8 @@ Let's do the following modifications to our problem to make it safer:
 
     int main(int argc, char *argv[]) {
       registerValidation(argc, argv);
-      int MIN_N = getVar<int>("MIN_N");
-      int MAX_N = getVar<int>("MAX_N");
+      int MIN_N = getVar<int>("N.min");
+      int MAX_N = getVar<int>("N.max");
 
       int n = inf.readInt(MIN_N, MAX_N, "N");
       // ...rest of the validator...
@@ -116,8 +116,9 @@ Let's do the following modifications to our problem to make it safer:
     ```yaml
     # ...rest of the problem.rbx.yml...
     vars:
-      MIN_N: 2
-      MAX_N: 1000
+      N:
+        min: 2
+        max: 1000
     ```
 
 {{rbx}} will automatically generate an `rbx.h` header file for you, which will include the variables
@@ -160,8 +161,8 @@ bool checkConnected(const vector<vector<int>> &adj, int n) {
 
 int main(int argc, char *argv[]) {
   registerValidation(argc, argv);
-  int MIN_N = getVar<int>("MIN_N");
-  int MAX_N = getVar<int>("MAX_N");
+  int MIN_N = getVar<int>("N.min");
+  int MAX_N = getVar<int>("N.max");
 
   int n = inf.readInt(MIN_N, MAX_N, "N");
   inf.readSpace();

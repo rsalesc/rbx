@@ -40,8 +40,8 @@ gen 100 @
 # Generates a number N between 1 and 100, and then generate a number between 1 and N.
 gen [1..100] @
 
-# Generates a number between 1 and MAX_N, where MAX_N is a variable defined for the problem.
-gen <MAX_N> @
+# Generates a number between 1 and N.max, where N.max is a variable defined for the problem.
+gen <N.max> @
 ```
 
 Thus, a generator expression supports a set of operators and, when evaluated, produces a generator call.
@@ -54,10 +54,10 @@ In the table below, you can see the supported operators and their semantics.
 +==========================+====================================+================================+
 | `@`                      | Random 8-char string               | `gen 100 @`                    |
 +--------------------------+------------------------------------+--------------------------------+
-| `<var>`                  | Variable defined for the problem   | `gen <MAX_N> @`                |
+| `<var>`                  | Variable defined for the problem   | `gen <N.max> @`                |
 +--------------------------+------------------------------------+--------------------------------+
 | `[a..b]`                 | Random integer between `a` and `b` | `gen [1..100] @`               |
-|                          |                                    | `gen [1..<MAX_N>] @`           |
+|                          |                                    | `gen [1..<N.max>] @`           |
 +--------------------------+------------------------------------+--------------------------------+
 | (`a` &VerticalLine; `b`) | Random element `a` or `b`          | `gen (a` &VerticalLine; `b) @` |
 +--------------------------+------------------------------------+--------------------------------+
