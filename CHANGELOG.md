@@ -1,3 +1,9 @@
+## 0.17.5 (2025-08-22)
+
+### Fix
+
+- ensure autojudge_new_sel is only checked for in newer versions of BOCA
+
 ## 0.17.4 (2025-08-22)
 
 ### Fix
