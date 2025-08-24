@@ -1,13 +1,11 @@
 import contextlib
 import enum
-import fcntl
 import functools
 import json
 import os
 import os.path
 import pathlib
 import re
-import resource
 import shutil
 import subprocess
 import sys
@@ -75,17 +73,39 @@ def check_version_compatibility(required: str) -> SemVerCompatibility:
     return check_version_compatibility_between(installed, required)
 
 
-def print_open_fd_count() -> int:
+def print_open_fd_count(id: Optional[str] = None) -> int:
     import psutil
 
     try:
-        current_process = psutil.Process()
-        open_fds = len(current_process.open_files())
-        print(f'Number of opened file descriptors: {open_fds}')
+        open_fds = get_open_fds()
+        print(f'Number of opened file descriptors for {id or "..."}: {open_fds}')
     except psutil.AccessDenied:
         print('Access denied. Run with appropriate permissions (e.g., sudo) if needed.')
     except Exception as e:
         print(f'An error occurred: {e}')
+
+
+class FdLeakDetector:
+    def __init__(self, id: Optional[str] = None, diff: bool = False):
+        self.open_fds = 0
+        self.id = id
+        self.diff = diff
+
+    def __enter__(self):
+        self.open_fds = get_open_fds()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        open_fds = get_open_fds()
+        if open_fds > self.open_fds:
+            print(
+                f'File descriptor leak detected for {self.id or "..."}: {open_fds - self.open_fds} new file descriptors opened'
+            )
+        elif self.diff and open_fds < self.open_fds:
+            print(
+                f'File descriptor diff detected for {self.id or "..."}: {self.open_fds - open_fds} file descriptors closed'
+            )
+        self.open_fds = open_fds
 
 
 def create_and_write(path: pathlib.Path, *args, **kwargs):
@@ -256,16 +276,28 @@ def confirm_on_status(status: Optional[rich.status.Status], *args, **kwargs) -> 
     return res
 
 
-def get_open_fds():
-    fds = []
-    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    for fd in range(0, soft):
-        try:
-            fcntl.fcntl(fd, fcntl.F_GETFD)
-        except IOError:
-            continue
-        fds.append(fd)
-    return fds
+def get_open_fds() -> int:
+    import psutil
+
+    try:
+        current_process = psutil.Process()
+        open_fds = current_process.num_fds()
+        return open_fds
+    except psutil.AccessDenied:
+        return 0
+    except Exception as e:
+        print(f'An error occurred: {e}')
+        return 0
+
+    # fds = []
+    # soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    # for fd in range(0, soft):
+    #     try:
+    #         fcntl.fcntl(fd, fcntl.F_GETFD)
+    #     except IOError:
+    #         continue
+    #     fds.append(fd)
+    # return fds
 
 
 def command_exists(command):

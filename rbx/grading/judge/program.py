@@ -20,8 +20,12 @@ FileLike = Union[PathOrStr, IO[bytes], int]
 def _maybe_close_files(files):
     for fobj in files:
         if isinstance(fobj, int):
-            continue
-        fobj.close()
+            try:
+                os.close(fobj)
+            except OSError:
+                pass
+        else:
+            fobj.close()
 
 
 def _is_pathlike(obj: Any) -> bool:
@@ -250,6 +254,20 @@ class Program:
         threading.Thread(target=self._handle_wall, daemon=True).start()
         threading.Thread(target=self._handle_alarm, daemon=True).start()
 
+    def close_pipes(self):
+        if self.popen is None:
+            return
+        if self.params.io.input == subprocess.PIPE and self.pipes.input is not None:
+            self.pipes.input.close()
+        if self.params.io.output == subprocess.PIPE and self.pipes.output is not None:
+            self.pipes.output.close()
+        if self.params.io.stderr == subprocess.PIPE and self.pipes.stderr is not None:
+            self.pipes.stderr.close()
+
+    def close(self):
+        self.close_pipes()
+        _maybe_close_files(self._files)
+
     def process_exit(self, exitstatus, ru) -> ProgramResult:
         _maybe_close_files(self._files)
 
@@ -307,4 +325,6 @@ class Program:
     def wait(self):
         assert self.popen is not None
         _, exitstatus, ru = os.wait4(self.pid, 0)
-        return self.process_exit(exitstatus, ru)
+        res = self.process_exit(exitstatus, ru)
+        self.close_pipes()
+        return res

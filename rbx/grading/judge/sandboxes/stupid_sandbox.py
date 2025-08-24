@@ -335,6 +335,9 @@ class StupidSandbox(SandboxBase):
             else:
                 raise RuntimeError(f'Unknown pid: {pid}')
 
+        for p in (interactor, program, solution_tee, interactor_tee):
+            p.close()
+
         return typing.cast(Tuple[SandboxLog, SandboxLog], tuple(results))
 
     def cleanup(self, delete=False):

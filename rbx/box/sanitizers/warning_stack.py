@@ -29,9 +29,9 @@ class WarningStack:
         f = reference.get_file(cacher)
         if f is None:
             return
-        with dest_path.open('wb') as fout:
-            shutil.copyfileobj(f, fout)
-        f.close()
+        with f:
+            with dest_path.open('wb') as fout:
+                shutil.copyfileobj(f, fout)
         self.sanitizer_warnings[code.path] = dest_path
 
     def clear(self):
