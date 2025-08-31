@@ -106,6 +106,11 @@ class ExpectedOutcome(AutoEnum):
 
     Especially useful for environments where TLE and RTE are indistinguishable."""
 
+    JUDGE_FAILED = alias('judge failed', 'jf')  # type: ignore
+    """Expected outcome for solutions that finish with a judge failed verdict.
+    
+    Only useful for checker tests."""
+
     def style(self) -> str:
         if self == ExpectedOutcome.ANY:
             return 'orange'
@@ -161,6 +166,8 @@ class ExpectedOutcome(AutoEnum):
             return outcome in {Outcome.RUNTIME_ERROR} or outcome.is_slow()
         if self == ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED:
             return outcome == Outcome.OUTPUT_LIMIT_EXCEEDED
+        if self == ExpectedOutcome.JUDGE_FAILED:
+            return outcome == Outcome.JUDGE_FAILED
         return False
 
     def get_matches(self) -> List[Outcome]:
