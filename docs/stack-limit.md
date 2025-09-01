@@ -40,7 +40,7 @@ while your soft stack limit is less than your hard stack limit.
 Do not worry, the fix -- which consists of adding some lines to your `.bashrc` (or the equivalent for other shells) -- is really simple and will be shown along the error message.
 
 !!! tip
-    You should ensure the lines added to the file are definitely after the lines where `pipx` paths are added to `$PATH$`, otherwise the `rbx` command will not be found.
+    You should ensure the lines added to the file are definitely after the lines where `uv` and `pipx` paths are added to `$PATH$`, otherwise the `rbx` command will not be found.
 
 ## Increase the hard stack limit
 

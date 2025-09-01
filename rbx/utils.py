@@ -52,7 +52,7 @@ def get_upgrade_command(
     parsed_version = (
         semver.VersionInfo.parse(version) if isinstance(version, str) else version
     ) or get_semver()
-    return f'pipx install --upgrade {PIP_NAME}@{parsed_version.major}'
+    return f'uv tool install {PIP_NAME}@{parsed_version.major}'
 
 
 def check_version_compatibility_between(

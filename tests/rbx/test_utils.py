@@ -601,7 +601,7 @@ class TestVersionUtils:
 
         # When an explicit version is provided, only its major version is used in the command
         cmd = get_upgrade_command('1.2.3')
-        assert cmd == 'pipx install --upgrade rbx.cp@1'
+        assert cmd == 'uv tool install rbx.cp@1'
 
     def test_get_upgrade_command_without_argument_uses_get_version(self, monkeypatch):
         from rbx import utils as utils_mod
@@ -609,7 +609,7 @@ class TestVersionUtils:
         # Mock get_version() so the function behavior is deterministic
         monkeypatch.setattr(utils_mod, 'get_version', lambda: '3.1.4')
         cmd = utils_mod.get_upgrade_command()
-        assert cmd == 'pipx install --upgrade rbx.cp@3'
+        assert cmd == 'uv tool install rbx.cp@3'
 
     @pytest.mark.parametrize(
         'installed,required,expected',

@@ -10,7 +10,7 @@ Quick walkthroughs to get you started with {{rbx}}.
 
     ---
 
-    Install {{rbx}} with `pipx` on Linux or macOS.
+    Install {{rbx}} with `uv` on Linux or macOS.
 
     [:octicons-arrow-right-24: Installation](/intro/installation)
 

@@ -1,6 +1,6 @@
 # Installation
 
-You can install {{rbx}} with a single command, either using `pip` or `pipx`. Prefer using `pipx` to have a better isolation between the dependencies. Read more about `pipx` [here](https://pipx.pypa.io/stable/installation/).
+You can install {{rbx}} with a single command, either using `pip`, `pipx` or `uv`. Prefer using `uv` or `pipx` to have a better isolation between the dependencies. Read more about how to install and use `uv` [here](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Requirements
 
@@ -13,7 +13,7 @@ You can install {{rbx}} with a single command, either using `pip` or `pipx`. Pre
 ## From PyPI
 
 ```bash
-$ pipx install rbx.cp
+$ uv tool install rbx.cp
 ```
 
 ## From the repository
@@ -21,7 +21,7 @@ $ pipx install rbx.cp
 ```bash
 $ git clone https://github.com/rsalesc/rbx
 $ cd rbx
-$ pipx install .
+$ uv tool install .
 ```
 
 ## Verify installation
