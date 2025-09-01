@@ -44,4 +44,4 @@ folder and mounting it into the WSL instance **will not work** since symlinks wi
 
 ---
 
-Proceed to the [Configuration](configuration.md) section.
+Proceed to the [First Steps](../setters/first-steps.md) section.
