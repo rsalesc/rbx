@@ -113,6 +113,12 @@ CXX_WARNING_FLAGS = (
 )
 
 
+def add_color_flags_to_command(command: str) -> str:
+    if is_cxx_command(command):
+        return command + ' -fdiagnostics-color=always'
+    return command
+
+
 def add_warning_flags_to_command(command: str) -> str:
     if is_cxx_command(command):
         return command + ' ' + CXX_WARNING_FLAGS
@@ -121,6 +127,7 @@ def add_warning_flags_to_command(command: str) -> str:
 
 def add_warning_flags(commands: List[str], force_warnings: bool) -> List[str]:
     cfg = setter_config.get_setter_config()
+    commands = [add_color_flags_to_command(command) for command in commands]
     if cfg.warnings.enabled or force_warnings:
         return [add_warning_flags_to_command(command) for command in commands]
     return commands
@@ -512,6 +519,7 @@ def compile_item(
     dependency_cache = package.get_dependency_cache()
     sandbox = package.get_singleton_sandbox()
     sandbox_params = get_sandbox_params_from_config(compilation_options.sandbox)
+    sandbox_params.set_env['CLICOLOR_FORCE'] = '1'
 
     if not compilation_options.commands:
         # Language is not compiled.

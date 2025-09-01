@@ -617,6 +617,7 @@ _WARNING_RE = re.compile(r'([^:]+):\d+:\d+:[ ]+warning:.*')
 def _check_for_compilation_warnings_in_line(line: str) -> bool:
     if line.startswith('./'):
         return False
+    line = utils.strip_ansi_codes(line)
     match = _WARNING_RE.match(line)
     if match is None:
         return False

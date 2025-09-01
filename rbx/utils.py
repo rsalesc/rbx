@@ -123,6 +123,16 @@ def escape_markup(s: str) -> str:
     return rich.markup.escape(s, _escape=re.compile(r'(\\*)(\[)').sub)
 
 
+ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def strip_ansi_codes(text: str) -> str:
+    """
+    Removes ANSI escape codes (including color codes) from a string.
+    """
+    return ANSI_RE.sub('', text)
+
+
 def abspath(path: pathlib.Path) -> pathlib.Path:
     return pathlib.Path(os.path.abspath(path))
 
