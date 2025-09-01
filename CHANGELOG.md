@@ -1,3 +1,10 @@
+## 0.17.9 (2025-09-01)
+
+### Fix
+
+- add colors for c++ compilation
+- add href to a few missing places
+
 ## 0.17.8 (2025-09-01)
 
 ### Fix
