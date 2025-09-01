@@ -22,9 +22,8 @@ def scrape_boca(into_path: pathlib.Path):
 
         def work(run: BocaRun):
             scraper.download_run(
-                run.run_number,
-                run.site_number,
-                pathlib.Path(into_path) / run.problem_shortname,
+                run,
+                pathlib.Path(into_path),
                 name=f'{run.run_number}-{run.site_number}-{run.outcome.short_name().lower()}',
             )
 
