@@ -1,3 +1,11 @@
+## 0.17.7 (2025-09-01)
+
+### Fix
+
+- update docs with pointers to uv
+- add judge failed expected outcome for checker tests
+- fix tee unbound variables
+
 ## 0.17.6 (2025-08-24)
 
 ### Fix
