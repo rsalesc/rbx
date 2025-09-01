@@ -4,7 +4,6 @@ import hashlib
 import os
 import pathlib
 import re
-import shutil
 import time
 import typing
 from typing import Any, Callable, List, NoReturn, Optional, Tuple, Union
@@ -635,7 +634,7 @@ class BocaScraper:
         )
         final_path = into_dir / filename
         final_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(detailed_run.code, final_path)
+        final_path.write_text(detailed_run.code)
         return final_path
 
     def _set_starttime(
