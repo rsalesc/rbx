@@ -1,7 +1,6 @@
 import datetime
 import functools
 import hashlib
-import os
 import pathlib
 import re
 import time
@@ -15,7 +14,7 @@ from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
 from throttlex import Throttler
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import naming
 from rbx.box.tooling.boca.debug_utils import pretty_print_request_data
 from rbx.grading.steps import Outcome
@@ -31,7 +30,7 @@ UPLOAD_LOG_REGEX = re.compile(r'Problem (\d+) \([^\)]+\) updated')
 def _parse_env_var(var: str, override: Optional[str]) -> str:
     if override is not None:
         return override
-    value = os.environ.get(var)
+    value = utils.environ().get(var)
     if value is None:
         console.console.print(
             f'[error][item]{var}[/item] is not set. Set it as an environment variable.[/error]'

@@ -9,8 +9,9 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Optional, Type, TypeVar, Union
+from typing import Any, Dict, Optional, Type, TypeVar, Union
 
+import dotenv
 import rich
 import rich.markup
 import rich.prompt
@@ -413,3 +414,27 @@ class StatusProgress(rich.status.Status):
     def step(self, delta: int = 1):
         self.processed += delta
         self.update_with_progress(self.processed)
+
+
+@functools.cache
+def _read_envrc_at(path: pathlib.Path) -> Dict[str, str]:
+    entries = []
+    while os.path.dirname(str(path)) != str(path):
+        envrc = path / '.envrc'
+        envrc_local = path / '.envrc.local'
+        if envrc_local.is_file():
+            entries.append(dotenv.dotenv_values(envrc_local))
+        if envrc.is_file():
+            entries.append(dotenv.dotenv_values(envrc))
+        path = path.parent
+
+    res = {}
+    for entry in reversed(entries):
+        res.update(entry)
+    return res
+
+
+def environ() -> Dict[str, str]:
+    res = os.environ.copy()
+    res.update(_read_envrc_at(pathlib.Path.cwd()))
+    return res

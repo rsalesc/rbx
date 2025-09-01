@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import pathlib
 import re
 import typing
@@ -9,6 +8,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
+from rbx import utils
 from rbx.autoenum import AutoEnum, alias
 from rbx.box.fields import NameField, Primitive, RecVars, Vars, expand_vars
 from rbx.box.statements.expander import expand_statements
@@ -492,8 +492,8 @@ A formula to estimate the time limit for the problem.
                 res = modifier.time
             if modifier.timeMultiplier is not None:
                 res = int(res * float(modifier.timeMultiplier))
-        if 'RBX_TIME_MULTIPLIER' in os.environ:
-            res = int(res * float(os.environ['RBX_TIME_MULTIPLIER']))
+        if 'RBX_TIME_MULTIPLIER' in utils.environ():
+            res = int(res * float(utils.environ()['RBX_TIME_MULTIPLIER']))
         return res
 
     def memorylimit_for_language(self, language: Optional[str] = None) -> int:

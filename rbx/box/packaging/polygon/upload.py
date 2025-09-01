@@ -1,4 +1,3 @@
-import os
 import pathlib
 import tempfile
 from typing import Any, Dict, Optional
@@ -7,7 +6,7 @@ import rich
 import rich.progress
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.lang import code_to_langs, is_valid_lang_code
@@ -28,11 +27,14 @@ from rbx.box.testcase_utils import (
 
 _API_URL = 'https://polygon.codeforces.com/api'
 
-POLY = api.Polygon(
-    _API_URL,
-    os.environ.get('POLYGON_API_KEY', '').strip(),
-    os.environ.get('POLYGON_API_SECRET', '').strip(),
-)
+
+def _get_polygon_api() -> api.Polygon:
+    env = utils.environ()
+    return api.Polygon(
+        _API_URL,
+        env.get('POLYGON_API_KEY', '').strip(),
+        env.get('POLYGON_API_SECRET', '').strip(),
+    )
 
 
 def _get_source_type(code: CodeItem):
@@ -56,7 +58,8 @@ def _get_solution_tag(solution: Solution, is_first: bool = False) -> api.Solutio
 
 
 def _find_or_create_problem(problem_name: str) -> api.Problem:
-    results = POLY.problems_list(name=problem_name)
+    api = _get_polygon_api()
+    results = api.problems_list(name=problem_name)
     for result in results:
         if result.name == problem_name:
             console.console.print(
@@ -64,7 +67,7 @@ def _find_or_create_problem(problem_name: str) -> api.Problem:
             )
             return result
     console.console.print(f'Creating new problem [item]{problem_name}[/item].')
-    return POLY.problem_create(problem_name)
+    return api.problem_create(problem_name)
 
 
 def _update_problem_info(problem: api.Problem):
