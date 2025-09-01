@@ -1,3 +1,10 @@
+## 0.17.8 (2025-09-01)
+
+### Fix
+
+- fix manual scraper
+- fix downlaod of remote solution
+
 ## 0.17.7 (2025-09-01)
 
 ### Fix
