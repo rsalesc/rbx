@@ -742,14 +742,14 @@ async def run_and_print_interactive_solutions(
                 stdout_path = stdout_path.with_suffix('.pout')
 
             if stdout_path.is_file():
-                console.console.print(f'[status]Output:[/status] {stdout_path}')
+                console.console.print(f'[status]Output:[/status] {href(stdout_path)}')
             if stdout_path.with_suffix('.pio').is_file():
                 console.console.print(
-                    f'[status]Interaction:[/status] {stdout_path.with_suffix(".pio")}'
+                    f'[status]Interaction:[/status] {href(stdout_path.with_suffix(".pio"))}'
                 )
             if eval.log.stderr_absolute_path is not None:
                 console.console.print(
-                    f'[status]Stderr:[/status] {eval.log.stderr_absolute_path}'
+                    f'[status]Stderr:[/status] {href(eval.log.stderr_absolute_path)}'
                 )
             console.console.print()
 
