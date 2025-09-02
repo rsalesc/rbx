@@ -17,19 +17,19 @@ testcases:
     generatorScript:
       path: "testplan/random.py" # Generator script written programatically.
 solutions:
-  - path: "sols/main.cpp"
+  - path: "sols/main*.*"
     outcome: "ACCEPTED"
-  - path: "sols/ac-*.cpp"
+  - path: "sols/ac-*.*"
     outcome: "ACCEPTED"
-  - path: "sols/wa-*.cpp"
+  - path: "sols/wa-*.*"
     outcome: "WRONG_ANSWER"
-  - path: "sols/tle-*.cpp"
+  - path: "sols/tle-*.*"
     outcome: "TIME_LIMIT_EXCEEDED"
-  - path: "sols/mle-*.cpp"
+  - path: "sols/mle-*.*"
     outcome: "MEMORY_LIMIT_EXCEEDED"
-  - path: "sols/re-*.cpp"
+  - path: "sols/re-*.*"
     outcome: "RUNTIME_ERROR"
-  - path: "sols/fail-*.cpp"
+  - path: "sols/fail-*.*"
     outcome: "INCORRECT"
 statements:
   - name: "statement-en"
