@@ -23,6 +23,7 @@ from rbx.box.environment import (
     get_execution_config,
     get_file_mapping,
     get_language,
+    get_language_by_extension,
     get_mapped_command,
     get_mapped_commands,
     get_sandbox_params_from_config,
@@ -81,7 +82,7 @@ def get_extension(code: CodeItem) -> str:
 def find_language_name(code: CodeItem) -> str:
     if code.language is not None:
         return get_language(code.language).name
-    return get_language(get_extension(code)).name
+    return get_language_by_extension(get_extension(code)).name
 
 
 def is_executable_sanitized(executable: DigestOrSource) -> bool:

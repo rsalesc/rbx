@@ -302,6 +302,17 @@ def get_language(name: str) -> EnvironmentLanguage:
     raise typer.Exit()
 
 
+@functools.cache
+def get_language_by_extension(extension: str) -> EnvironmentLanguage:
+    for lang in get_environment().languages:
+        if lang.extension == extension:
+            return lang
+    console.console.print(
+        f'Language with extension [item]{extension}[/item] not found.', style='error'
+    )
+    raise typer.Exit()
+
+
 def install_environment(name: str, file: pathlib.Path):
     if not file.is_file():
         console.console.print(
