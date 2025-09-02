@@ -1,3 +1,11 @@
+## 0.18.0 (2025-09-02)
+
+### Feat
+
+- support kotlin in boca
+- add support for kotlin
+- add support for envrc
+
 ## 0.17.9 (2025-09-01)
 
 ### Fix
