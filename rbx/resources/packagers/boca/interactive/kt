@@ -70,9 +70,17 @@ if [ "$1" == "" -o "$2" == "" -o "$3" == "" ]; then
   echo "parameter problem"
   exit 43
 fi
-if [ ! -x "$1" ]; then
-  echo "$1 not found (or is not in the current dir) or it's not executable"
-  exit 44
+if [ -r run.exe ]; then
+  rm -f run.jar
+  cp run.exe run.jar
+fi
+if [ -r "$1" ]; then
+  rm -f run.jar
+  cp "$1" run.jar
+fi
+if [ ! -r run.jar ]; then
+  echo "ERROR: file run.jar not found - possible error during compilation"
+  exit 1
 fi
 name=$(basename "$1")
 if [ "${name##*.}" == "class" -a "${name##*.}" == "CLASS" ]; then
@@ -114,6 +122,7 @@ if [ "$5" != "" ]; then
     maxm=${5}000
   fi
 fi
+let "maxms = $maxm / 10"
 maxf=1024
 if [ "$6" != "" ]; then
   if [ "$6" -gt "0" ]; then
@@ -143,14 +152,13 @@ if [ $? -eq 0 ]; then
   cd "$cdir"
   [ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
   [ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
-  kotlin=$(which kotlin)
-  [ -x "\$kotlin" ] || kotlin=/usr/bin/kotlin
-  if [ ! -x "\$kotlin" ]; then
-      echo "\$kotlin not found or it's not executable"
+  java=$(which java)
+  [ -x "\$java" ] || java=/usr/bin/java
+  if [ ! -x "\$java" ]; then
+      echo "\$java not found or it's not executable"
       exit 47
   fi
-  export CLASSPATH=.:./run.jar:$CLASSPATH
-  ./runit.sh "$cdir" "$sf" "$ttime" -r$nruns -t$time -T$ttime -F512 -u512 -U$bocau -G$bocag -n0 -C. -d40000000000 -m40000000000 -- "\$kotlin" -cp run.jar -J-Xmx${maxm}K -J-Xss${maxms}K -J-Xms${maxm}K "$name"
+  ./runit.sh "$cdir" "$sf" "$ttime" -r$nruns -t$time -T$ttime -F256 -u256 -U$bocau -G$bocag -n0 -C. -f20000 -d20000000 -m20000000 -- "\$java" -cp run.jar -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K MainKt
   retval=\$?
   echo \$retval > runch.exitcode
   if [ ! -d /bocajail ]; then

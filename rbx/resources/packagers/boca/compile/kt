@@ -98,36 +98,31 @@ fi
 
 maxms=100
 
-if [ "$2" == "" ]; then
-	jarfile=run.jar
-else
-	jarfile=$2
-fi
+jarfile=run.jar
 
 cdir=$(pwd)
 echo "Current directory is $cdir" >&2
-mainname=$(echo $name | cut -d'.' -f1)
-if [ "$mainname" == "" ]; then
-	mainname=Main
-fi
+
+mv "src/$name" "src/Main.kt"
 
 cat <<EOF >compileit.sh
 #!/bin/bash
-kotlinc=/snap/kotlin/24/bin/kotlinc
+kotlinc=$(which kotlinc)
+[ -x "\$kotlinc" ] || kotlinc=/snap/kotlin/24/bin/kotlinc
 [ -x "\$kotlinc" ] || kotlinc=/snap/bin/kotlinc
+[ -x "\$kotlinc" ] || kotlinc=/opt/kotlinc/bin/kotlinc
 if [ ! -x \$kotlinc ]; then
     echo "\$kotlinc not found or it's not executable"
     exit 47
 fi
 cd src
-\$kotlinc -J-Xmx${maxm}M -J-Xss${maxms}M -J-Xms${maxm}M -d ../$jarfile -include-runtime $name
+\$kotlinc -d ../$jarfile -include-runtime Main.kt
 echo \$? > ../compileit.retcode
 
 exit 0
 EOF
 chmod 755 compileit.sh
 
-echo "COMPILATION IS NOT BEING CHROOTED -- THIS IS NOT AN IDEAL SETTING"
 #$kotlinc "$name"
 $sf -r1 -t20 -T32 -istdin0 -F512 -u512 -U$bocau -G$bocag -n0 -C. -d40000000000 -m40000000000 ./compileit.sh
 #./compileit.sh
@@ -148,4 +143,5 @@ if [ "$ret" != "0" ]; then
 	echo "Compilation Error: $ret"
 	ret=1
 fi
+echo "Kotlin compilation successful with return code $ret"
 exit $ret

@@ -111,7 +111,7 @@ if [ "$4" != "" ]; then
     nruns=$4
   fi
 fi
-maxm=1024000
+maxm=512000
 if [ "$5" != "" ]; then
   if [ "$5" -gt "0" ]; then
     maxm=${5}000
@@ -130,18 +130,52 @@ cp "$2" stdin0 2>/dev/null
 
 cdir=$(pwd)
 echo "Current directory is $cdir" >&2
-echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-kotlin=/snap/kotlin/24/bin/kotlin
-[ -x "$kotlin" ] || kotlin=/usr/bin/kotlin
-if [ ! -x "$kotlin" ]; then
-  echo "$kotlin not found or it's not executable"
-  exit 47
+echo $cdir | grep -q "/bocajail"
+if [ $? == 0 ]; then
+  cdir=$(echo $cdir | sed "s/.*\/bocajail//")
+  cat <<EOF >runit.sh
+#!/bin/bash
+cd "$cdir"
+[ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
+#/bin/mount --bind /dev /dev
+[ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
+java=$(which java)
+[ -x "\$java" ] || java=/usr/bin/java
+if [ ! -x "\$java" ]; then
+    echo "\$java not found or it's not executable"
+    exit 47
 fi
-"$sf" -r$nruns -t$time -T$ttime -istdin0 -F512 -u512 -U$bocau -G$bocag -ostdout0 -estderr0 -n0 -C. -d40000000000 -m40000000000 -- "$kotlin" -cp run.jar -J-Xmx${maxm}K -J-Xss${maxms}K -J-Xms${maxm}K "$name"
-#"$kotlin" -cp run.jar -J-Xmx${maxm}K -J-Xss${maxms}K -J-Xms${maxm}K "$name"
-ret=$?
+"$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -ostdout0 -estderr0 -U$bocau -G$bocag -n0 -C. -f20000 -d20000000 -m20000000 -- "\$java" -cp run.jar -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K MainKt
+retval=\$?
+echo \$retval > runit.retcode
+if [ ! -d /bocajail ]; then
+  /bin/umount /proc 2>/dev/null
+  #/bin/umount /dev
+  /bin/umount /sys 2>/dev/null
+fi
+EOF
+  chmod 755 runit.sh
+  chroot /bocajail "$cdir/runit.sh"
+  if [ -r runit.retcode ]; then
+    ret=$(cat runit.retcode)
+  fi
+  if [ "$ret" == "" ]; then
+    echo "Execution error - check autojudging"
+    exit 49
+  fi
+else
+  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  java=$(which java)
+  [ -x "$java" ] || java=/usr/bin/java
+  if [ ! -x "$java" ]; then
+    echo "$java not found or it's not executable"
+    exit 47
+  fi
+  "$sf" -r$nruns -t$time -T$ttime -istdin0 -F256 -u256 -U$bocau -G$bocag -ostdout0 -estderr0 -n0 -C. -d20000000 -m20000000 -- "$java" -jar run.jar -Xmx${maxm}K -Xss${maxms}K -Xms${maxm}K
+  ret=$?
+fi
 if [ $ret -gt 10 ]; then
   if [ -r stderr0 ]; then
     grep -q "not find or load main class" stderr0
