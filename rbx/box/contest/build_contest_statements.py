@@ -126,8 +126,6 @@ def get_problems_for_statement(
         raise typer.Exit(1)
 
     def matches(statement: Statement) -> bool:
-        if not requires_matching_statement:
-            return True
         if contest_statement.match is None:
             return statement.language == contest_statement.language
         return statement.name == contest_statement.match
@@ -137,6 +135,8 @@ def get_problems_for_statement(
         matching_statements = [
             statement for statement in pkg.expanded_statements if matches(statement)
         ]
+        if not matching_statements and requires_matching_statement:
+            matching_statements = pkg.expanded_statements
         if not matching_statements:
             console.console.print(
                 f'[error]No statement found for language {contest_statement.language} in problem {problem.short_name}[/error]'
@@ -188,7 +188,9 @@ def _build_problem_statements(
     custom_vars: Optional[Dict[str, Any]] = None,
 ) -> List[ExtractedProblem]:
     console.console.print('Building problem-level statements...')
-    extracted_problems = get_problems_for_statement(contest, statement)
+    extracted_problems = get_problems_for_statement(
+        contest, statement, requires_matching_statement=True
+    )
     res = []
     contest_cwd_absolute = utils.abspath(pathlib.Path())
     contest_assets = get_relative_assets(statement.path, statement.assets)
