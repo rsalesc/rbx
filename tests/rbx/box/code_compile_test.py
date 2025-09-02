@@ -60,7 +60,7 @@ class TestCompileItem:
         assert isinstance(commands, list)
         assert len(commands) == 1
         # Should be the exact C++ compilation command with all modifications
-        expected_cmd = 'g++ -std=c++20 -O2 -o executable compilable.cpp -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts -I.'
+        expected_cmd = 'g++ -std=c++20 -O2 -o executable compilable.cpp -fdiagnostics-color=always -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts -I.'
         assert commands[0] == expected_cmd
 
     def test_compile_java_commands_content(
