@@ -1,3 +1,10 @@
+## 0.18.2 (2025-09-03)
+
+### Fix
+
+- fix default BOCA flags in env
+- update preset to match all files
+
 ## 0.18.1 (2025-09-02)
 
 ### Fix
