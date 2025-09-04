@@ -1,3 +1,9 @@
+## 0.18.3 (2025-09-04)
+
+### Fix
+
+- fix several rbx/boca language integration issues
+
 ## 0.18.2 (2025-09-03)
 
 ### Fix
