@@ -66,6 +66,9 @@ solutions:
     outcome: WA
   - path: "sols/ac_invalid_format_sigpipe.java"
     outcome: WA
+  # Kotlin solutions.
+  - path: "sols/ac.kt"
+    outcome: AC
 statements:
   - name: "statement-en"
     title: "New Problem"

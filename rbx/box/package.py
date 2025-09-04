@@ -356,7 +356,7 @@ def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
                 relative_file = file.relative_to(root)
                 if (
                     entry.language is not None
-                    or get_language_by_extension(relative_file.suffix) is not None
+                    or get_language_by_extension(relative_file.suffix[1:]) is not None
                 ):
                     add_solution(
                         Solution.model_copy(

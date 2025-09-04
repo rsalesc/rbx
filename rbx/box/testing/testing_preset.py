@@ -9,6 +9,7 @@ class TestingPreset(TestingShared):
     def __init__(self, root: PathOrStr):
         super().__init__(root)
         self._yml = None
+        self.initialize()
 
     def initialize(self):
         if not self.yml_path.exists():

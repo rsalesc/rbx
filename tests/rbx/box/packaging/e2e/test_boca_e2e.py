@@ -239,7 +239,10 @@ def _run_e2e_test(
     print(f'Uploading package: {package_path}')
     boca_admin_scraper.upload(package_path, testing=True)
 
-    print('\n=== STEP 3.1: Contest Snapshot ===')
+    print('\n=== STEP 3.1: Languages Configuration ===')
+    boca_admin_scraper.configure_languages(scraper.get_boca_languages())
+
+    print('\n=== STEP 3.2: Contest Snapshot ===')
     snapshot = scraper.create_snapshot(boca_admin_scraper)
 
     print('\n=== STEP 4: Judge Account Creation ===')

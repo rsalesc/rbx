@@ -294,11 +294,18 @@ def get_environment(env: Optional[str] = None) -> Environment:
 
 
 @functools.cache
-def get_language(name: str) -> EnvironmentLanguage:
+def get_language_or_nil(name: str) -> Optional[EnvironmentLanguage]:
     for lang in get_environment().languages:
         if lang.name == name:
             return lang
-    console.console.print(f'Language [item]{name}[/item] not found.', style='error')
+    return None
+
+
+def get_language(name: str) -> EnvironmentLanguage:
+    lang = get_language_or_nil(name)
+    if lang is not None:
+        return lang
+    console.console.print(f'[error]Language [item]{name}[/item] not found.[/error]')
     raise typer.Exit()
 
 
@@ -315,7 +322,7 @@ def get_language_by_extension(extension: str) -> EnvironmentLanguage:
     if lang is not None:
         return lang
     console.console.print(
-        f'Language with extension [item]{extension}[/item] not found.', style='error'
+        f'[error]Language with extension [item]{extension}[/item] not found.[/error]'
     )
     raise typer.Exit()
 

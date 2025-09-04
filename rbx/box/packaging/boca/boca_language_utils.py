@@ -5,12 +5,18 @@ from rbx.box.packaging.boca.extension import BocaLanguage, BocaLanguageExtension
 
 
 def get_rbx_language_from_boca_language(boca_language: BocaLanguage) -> str:
+    # First by BOCA language name.
     for language in get_environment().languages:
         language_extension = language.get_extension_or_default(
-            language.name, BocaLanguageExtension
+            'boca', BocaLanguageExtension
         )
         if language_extension.bocaLanguage == boca_language:
             return language.name
+    # Then by rbx language extension.
+    for language in get_environment().languages:
+        if language.extension == boca_language:
+            return language.name
+    # Then by rbx language name.
     return boca_language
 
 

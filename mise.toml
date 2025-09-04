@@ -11,4 +11,4 @@ run = "pytest -m 'e2e and not docker'"
 run = "pytest -m 'slow and not docker'"
 
 [tasks.test-docker]
-run = "pytest -m 'docker'"
+run = "pytest -m 'docker' -v -s"

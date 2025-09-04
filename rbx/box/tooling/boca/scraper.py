@@ -16,6 +16,13 @@ from throttlex import Throttler
 
 from rbx import console, utils
 from rbx.box import naming
+from rbx.box.environment import (
+    get_environment,
+    get_language_or_nil,
+)
+from rbx.box.packaging.boca.boca_language_utils import (
+    get_rbx_language_from_boca_language,
+)
 from rbx.box.tooling.boca.debug_utils import pretty_print_request_data
 from rbx.grading.steps import Outcome
 
@@ -102,6 +109,24 @@ class BocaDetailedRun(BocaRun):
     filename: pathlib.Path
 
     autojudge_answer: str
+
+
+def get_boca_languages() -> List[BocaLanguage]:
+    env = get_environment()
+    res = []
+    for bocaLanguage in env.extensions.boca.languages:
+        rbxLanguage = get_rbx_language_from_boca_language(bocaLanguage)
+        rbxLanguage = get_language_or_nil(rbxLanguage)
+        if rbxLanguage is None:
+            continue
+        res.append(
+            BocaLanguage(
+                index=len(res) + 1,
+                name=rbxLanguage.readableName,
+                extension=bocaLanguage,
+            )
+        )
+    return res
 
 
 class BocaScraper:
@@ -777,6 +802,35 @@ class BocaScraper:
         pretty_print_request_data(req)
         self.open(req)
         self.log('Main site configured successfully')
+
+    def configure_languages(self, languages: List[BocaLanguage]):
+        self.open(
+            f'{self.base_url}/admin/language.php',
+            error_msg='Error while configuring languages in BOCA',
+        )
+        try:
+            self.br.select_form(name='form1')
+        except mechanize.FormNotFoundError:
+            self.error(
+                'Languages configuration form not found in BOCA website. This might happen when the login failed.'
+            )
+
+        reqs = []
+        for language in languages:
+            form = typing.cast(mechanize.HTMLForm, self.br.form)
+            form.set_all_readonly(False)
+            form['confirmation'] = 'confirm'
+
+            form['langnumber'] = f'{language.index}'
+            form['langname'] = language.name
+            form['langextension'] = language.extension
+
+            reqs.append(self.br.click(name='Submit3', type='submit'))
+
+        for req in reqs:
+            pretty_print_request_data(req)
+            self.open(req)
+        self.log('Languages configured successfully')
 
     def create_judge_account(self, password: str = 'boca'):
         _, html = self.open(
