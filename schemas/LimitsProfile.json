@@ -1,0 +1,121 @@
+{
+    "$defs": {
+        "LimitModifiers": {
+            "properties": {
+                "timeMultiplier": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Multiplier for time limit.",
+                    "title": "Timemultiplier"
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override time limit with, in milliseconds.",
+                    "title": "Time"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override memory limit with, in MB.",
+                    "title": "Memory"
+                }
+            },
+            "title": "LimitModifiers",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "inheritFromPackage": {
+            "default": false,
+            "description": "\nWhether to inherit limits from the package.\n",
+            "title": "Inheritfrompackage",
+            "type": "boolean"
+        },
+        "timeLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Time limit of the problem, in milliseconds.",
+            "title": "Timelimit"
+        },
+        "memoryLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Memory limit of the problem, in MB.",
+            "title": "Memorylimit"
+        },
+        "outputLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Output limit of the problem, in KB.",
+            "title": "Outputlimit"
+        },
+        "modifiers": {
+            "additionalProperties": {
+                "$ref": "#/$defs/LimitModifiers"
+            },
+            "default": {},
+            "description": "\n    Limit modifiers that can be specified per language.\n    ",
+            "title": "Modifiers",
+            "type": "object"
+        },
+        "formula": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nA formula to estimate the time limit for the problem.\n",
+            "title": "Formula"
+        }
+    },
+    "title": "LimitsProfile",
+    "type": "object"
+}
