@@ -252,7 +252,7 @@ execution config can be individually overridden in the language configuration.""
 
 
 def get_app_environment_path(env: str) -> pathlib.Path:
-    return config.get_resources_file(pathlib.PosixPath('envs') / f'{env}.rbx.yml')
+    return config.get_resources_file(pathlib.PosixPath('presets') / env / 'env.rbx.yml')
 
 
 def get_active_environment_path() -> pathlib.Path:

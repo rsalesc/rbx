@@ -185,7 +185,11 @@ def temp_problem_dir(test_problem_dir: Path) -> Generator[Path, None, None]:
 
 def _get_eligible_solutions() -> List[Solution]:
     """Get all solutions that are eligible for testing."""
-    return [s for s in package.get_solutions() if code.find_language_name(s) != 'java']
+    return [
+        s
+        for s in package.get_solutions()
+        if code.find_language_name(s) not in ['java', 'kt']
+    ]
 
 
 def _run_e2e_test(
