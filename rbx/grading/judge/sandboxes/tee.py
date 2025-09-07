@@ -20,12 +20,18 @@ with open(extra, 'w') as f:
         rd = sys.stdin.read(1)
         if rd == '':
             break
-        sys.stdout.write(rd)
-        sys.stdout.flush()
+
+        # Write merged capture first.
         if new:
             sys.stderr.write(c)
         sys.stderr.write(rd)
         sys.stderr.flush()
 
+        # Write to program.
+        sys.stdout.write(rd)
+        sys.stdout.flush()
+
+        # Write to extra file kind of
+        # asynchronously.
         f.write(rd)
         new = rd == '\n'
