@@ -27,16 +27,14 @@ def clear_steps_cache():
 class TestStepsCompile:
     """Test the steps.compile function."""
 
-    def test_compile_empty_commands_returns_true(
+    def test_compile_empty_commands_no_fail(
         self, sandbox: SandboxBase, cleandir: pathlib.Path
     ):
         """Test that compile returns True when no commands are provided."""
         params = SandboxParams()
         artifacts = GradingArtifacts(root=cleandir)
 
-        result = steps.compile([], params, sandbox, artifacts)
-
-        assert result is True
+        steps.compile([], params, sandbox, artifacts)
 
     def test_compile_successful_cpp_compilation(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
@@ -61,9 +59,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
         assert artifacts.logs.preprocess is not None
@@ -85,9 +82,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = []  # Python doesn't need compilation
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert artifacts.logs.preprocess is None or len(artifacts.logs.preprocess) == 0
 
     def test_compile_java_compilation_removes_memory_constraints(
@@ -114,9 +110,8 @@ class TestStepsCompile:
 
         # Use mock to capture the params passed to sandbox.run
         with patch.object(sandbox, 'run', wraps=sandbox.run) as mock_run:
-            result = steps.compile(commands, params, sandbox, artifacts)
+            steps.compile(commands, params, sandbox, artifacts)
 
-            assert result is True
             assert output_file.exists()
             # Original params should not be modified
             assert params.address_space == 1024
@@ -149,9 +144,9 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o error error.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        with pytest.raises(steps.CompilationError):
+            steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is False
         assert not output_file.exists()  # No output file should be created on error
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
@@ -180,9 +175,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -Wall -o warning warning.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
         assert artifacts.logs.preprocess is not None
@@ -242,9 +236,9 @@ class TestStepsCompile:
             "echo 'This should not run' > third_output.txt",  # This should not be executed
         ]
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        with pytest.raises(steps.CompilationError):
+            steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is False
         # When compilation fails, no output artifacts are processed
         # So even though the first command succeeded, no files are copied out
         assert not output_file1.exists()  # No output artifacts processed on failure
@@ -288,9 +282,8 @@ class TestStepsCompile:
             'g++ -o multi_step multi_step.o',  # Link to executable
         ]
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert object_file.exists()
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
@@ -320,9 +313,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
 
@@ -348,9 +340,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
-
-        assert result is False
+        with pytest.raises(steps.CompilationError):
+            steps.compile(commands, params, sandbox, artifacts)
 
     def test_compile_optional_output_artifacts_dont_cause_failure(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
@@ -381,9 +372,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert output_file.exists()
 
     def test_compile_creates_stdout_stderr_files_in_sandbox(
@@ -401,9 +391,9 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o error error.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        with pytest.raises(steps.CompilationError):
+            steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is False
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
 
@@ -438,13 +428,15 @@ class TestStepsCompile:
         # Use a sanitizer flag that should work on most systems
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        try:
+            steps.compile(commands, params, sandbox, artifacts)
 
-        # Note: This might fail on some systems without proper sanitizer support
-        # but we're testing the function's behavior, not the compiler's capabilities
-        if result:
+            # Note: This might fail on some systems without proper sanitizer support
+            # but we're testing the function's behavior, not the compiler's capabilities
             assert output_file.exists()
             assert output_file.stat().st_mode & 0o111  # Check executable bit
+        except steps.CompilationError:
+            pass
 
         # Regardless of success/failure, logs should be created
         assert artifacts.logs.preprocess is not None
@@ -472,9 +464,8 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
         log = artifacts.logs.preprocess[0]
@@ -525,9 +516,8 @@ class TestStepsCompile:
         # Compile multiple files together
         commands = ['g++ -o combined main_with_utils.cpp math_utils.cpp']
 
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert result is True
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
         assert artifacts.logs.preprocess is not None
@@ -602,11 +592,10 @@ gcc version 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.2)"""
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         # This should not raise an exception on Linux with GCC
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
         # The compilation might fail due to missing sanitizer libraries,
         # but the function should not exit or complain about the platform
-        assert isinstance(result, bool)
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
 
@@ -679,11 +668,10 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         commands = ['clang++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         # This should not raise an exception on macOS with Clang
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
         # The compilation might fail due to missing sanitizer libraries,
         # but the function should not exit or complain about the platform
-        assert isinstance(result, bool)
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
 
@@ -718,9 +706,8 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         # Should not crash when version check fails
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
-        assert isinstance(result, bool)
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
 
@@ -842,11 +829,10 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         commands = ['g++ -o simple simple.cpp']  # No sanitizer flags
 
         # This should work fine without any version checks
-        result = steps.compile(commands, params, sandbox, artifacts)
+        steps.compile(commands, params, sandbox, artifacts)
 
         # _get_cxx_version_output should not have been called for non-sanitizer commands
         mock_version_output.assert_not_called()
 
-        assert isinstance(result, bool)
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1

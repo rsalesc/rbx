@@ -14,7 +14,8 @@ import typer
 from pydantic import BaseModel, Field
 from rich.text import Text
 
-from rbx import testing_utils, utils
+from rbx import utils
+from rbx.box.exception import RbxException
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import grading_context
@@ -672,12 +673,16 @@ def _build_run_log(
     return run_log
 
 
+class CompilationError(RbxException):
+    pass
+
+
 def compile(
     commands: List[str],
     params: SandboxParams,
     sandbox: SandboxBase,
     artifacts: GradingArtifacts,
-) -> bool:
+):
     sandbox.reset()
 
     commands = _try_following_alias_for_commands(commands)
@@ -685,7 +690,7 @@ def compile(
 
     if not commands:
         # Code does not need preprocessing of any kind.
-        return True
+        return
 
     logs: List[PreprocessLog] = []
     params = params.model_copy(deep=True)  # Copy to allow further modification.
@@ -731,16 +736,17 @@ def compile(
         artifacts.logs.preprocess = logs
 
     if logs and logs[-1].exitcode != 0:
-        console.print(
-            '[error]FAILED[/error] Preprocessing failed with command',
-            utils.highlight_json_obj(logs[-1].cmd),
-        )
-        console.print(f'[error]Summary:[/error] {logs[-1].get_summary()}')
-        console.print(Text.from_ansi(logs[-1].log), style='default')
-        testing_utils.print_directory_tree(sandbox.get_root_path())
-        return False
+        with CompilationError() as err:
+            err.print(
+                '[error]FAILED[/error] Preprocessing failed with command',
+                utils.highlight_json_obj(logs[-1].cmd),
+            )
+            err.print(f'[error]Summary:[/error] {logs[-1].get_summary()}')
+            err.print(Text.from_ansi(logs[-1].log), style='default')
+            # testing_utils.print_directory_tree(sandbox.get_root_path())
 
-    return _process_output_artifacts(artifacts, sandbox)
+    if not _process_output_artifacts(artifacts, sandbox):
+        raise CompilationError()
 
 
 async def run(

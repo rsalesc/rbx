@@ -2,12 +2,14 @@ import pytest
 import typer
 
 from rbx.box.generators import (
+    ValidationError,
     generate_standalone,
     generate_testcases,
 )
 from rbx.box.schema import GeneratorCall, Testcase
 from rbx.box.testcase_extractors import GenerationMetadata
 from rbx.box.testing import testing_package
+from rbx.grading import steps
 
 
 async def test_generator_in_testplan(
@@ -281,7 +283,7 @@ async def test_generator_not_compile(
     )
     testing_pkg.add_testgroup_from_plan('main', 'gens/gen.cpp 123')
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(steps.CompilationError):
         await generate_testcases()
 
     out = capsys.readouterr().out
@@ -349,7 +351,6 @@ async def test_generate_standalone_validation_works(
 
 async def test_generate_standalone_validation_fails(
     testing_pkg: testing_package.TestingPackage,
-    capsys: pytest.CaptureFixture[str],
 ):
     testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
 
@@ -364,8 +365,7 @@ async def test_generate_standalone_validation_fails(
         ),
     )
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(ValidationError) as e:
         await generate_standalone(spec)
 
-    out = capsys.readouterr().out
-    assert 'failed validating testcase' in out
+        assert 'failed validating testcase' in str(e)

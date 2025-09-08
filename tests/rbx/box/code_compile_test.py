@@ -7,6 +7,7 @@ import typer
 from rbx.box import code, package
 from rbx.box.schema import CodeItem
 from rbx.box.testing import testing_package
+from rbx.grading import steps
 from rbx.grading.steps import GradingFileInput
 
 
@@ -646,17 +647,17 @@ int custom_function();
         # Should be a different file (preprocessed version)
         assert custom_header_input.src != custom_header
 
-    def test_compile_failure_raises_exit(
+    def test_compile_failure_raises_compilation_error(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test that compilation failure raises typer.Exit."""
+        """Test that compilation failure raises CompilationError."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         with mock.patch('rbx.box.code.steps_with_caching.compile') as mock_compile:
-            mock_compile.return_value = False
+            mock_compile.side_effect = steps.CompilationError()
 
-            with pytest.raises(typer.Exit):
+            with pytest.raises(steps.CompilationError):
                 code.compile_item(code_item)
 
     def test_compile_nonexistent_file_raises_exit(

@@ -55,7 +55,7 @@ from rbx.box.testcase_utils import (
     parse_interaction,
     print_interaction,
 )
-from rbx.grading import grading_context
+from rbx.grading import grading_context, steps
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     Evaluation,
@@ -90,6 +90,7 @@ class SolutionReportSkeleton(BaseModel):
     entries: List[TestcaseEntry]
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
+    compiled_solutions: Dict[str, str]
     verification: VerificationLevel
     capture_pipes: bool = False
 
@@ -124,6 +125,9 @@ class SolutionReportSkeleton(BaseModel):
             if sol.path == solution.path:
                 return i
         return None
+
+    def get_solution_compiled_digest(self, solution: Solution) -> str:
+        return self.compiled_solutions[str(solution.path)]
 
     def get_solution_path_set(self) -> Set[str]:
         return set(str(sol.path) for sol in self.solutions)
@@ -179,10 +183,22 @@ def get_exact_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solu
     return res
 
 
+class FailedToCompileSolutionIssue(issue_stack.Issue):
+    def __init__(self, solution: Solution):
+        self.solution = solution
+
+    def get_detailed_section(self) -> Tuple[str, ...]:
+        return ('solutions',)
+
+    def get_detailed_message(self) -> str:
+        return f'[item]{href(self.solution.path)}[/item] could not be compiled and was skipped.'
+
+
 def compile_solutions(
     progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Set[str]] = None,
     sanitized: bool = False,
+    fail_if_one: bool = True,
 ) -> Dict[pathlib.Path, str]:
     compiled_solutions = {}
 
@@ -199,6 +215,10 @@ def compile_solutions(
                 if sanitized
                 else SanitizationLevel.NONE,
             )
+        except steps.CompilationError:
+            if fail_if_one and len(tracked_solutions) <= 1:
+                raise
+            issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
         except:
             console.console.print(
                 f'[error]Failed compiling solution {href(solution.path)}.[/error]'
@@ -283,13 +303,48 @@ def _get_solutions_for_skeleton(
     return solutions
 
 
+def _get_compiled_solutions_for_skeleton(
+    tracked_solutions: Optional[Iterable[str]] = None,
+    progress: Optional[StatusProgress] = None,
+    sanitized: bool = False,
+    verification: VerificationLevel = VerificationLevel.NONE,
+) -> Tuple[List[Solution], Dict[str, str]]:
+    solutions_to_compile = _get_solutions_for_skeleton(tracked_solutions, verification)
+
+    compiled_solutions = compile_solutions(
+        progress=progress,
+        tracked_solutions=set(str(solution.path) for solution in solutions_to_compile),
+        sanitized=sanitized,
+    )
+
+    # TODO: Handle solutions that failed to compile.
+    solutions = [
+        solution
+        for solution in solutions_to_compile
+        if solution.path in compiled_solutions
+    ]
+
+    return solutions, {
+        str(solution_path): digest
+        for solution_path, digest in compiled_solutions.items()
+    }
+
+
 def _get_report_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
+    progress: Optional[StatusProgress] = None,
+    sanitized: bool = False,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
-    solutions = _get_solutions_for_skeleton(tracked_solutions, verification)
+
+    solutions, compiled_solutions = _get_compiled_solutions_for_skeleton(
+        tracked_solutions=tracked_solutions,
+        verification=verification,
+        progress=progress,
+        sanitized=sanitized,
+    )
 
     langs = set(find_language_name(solution) for solution in solutions)
     limits = {
@@ -324,6 +379,7 @@ def _get_report_skeleton(
         groups=groups,
         limits=limits,
         entries=entries,
+        compiled_solutions=compiled_solutions,
         verification=verification,
         capture_pipes=state.STATE.debug_logs,
     )
@@ -340,7 +396,6 @@ def _produce_solution_items(
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     timelimit_override: Optional[int] = None,
-    sanitized: bool = False,
     nruns: int = 0,
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
@@ -354,12 +409,6 @@ def _produce_solution_items(
         checker_digest = checkers.compile_checker() if check else None
         interactor_digest = None
 
-    compiled_solutions = compile_solutions(
-        progress=progress,
-        tracked_solutions=skeleton.get_solution_path_set(),
-        sanitized=sanitized,
-    )
-
     def yield_items(
         solution: SolutionSkeleton, group_name: str
     ) -> List[EvaluationItem]:
@@ -367,7 +416,7 @@ def _produce_solution_items(
         for i, eval in enumerate(
             _run_solution(
                 solution,
-                compiled_solutions[solution.path],
+                skeleton.get_solution_compiled_digest(solution),
                 checker_digest,
                 solution.runs_dir,
                 group_name,
@@ -425,9 +474,11 @@ def run_solutions(
     nruns: int = 0,
 ) -> RunSolutionResult:
     skeleton = _get_report_skeleton(
-        tracked_solutions,
+        progress=progress,
+        tracked_solutions=tracked_solutions,
         verification=verification,
         timelimit_override=timelimit_override,
+        sanitized=sanitized,
     )
     result = RunSolutionResult(
         skeleton=skeleton,
@@ -437,7 +488,6 @@ def run_solutions(
             verification=verification,
             check=check,
             timelimit_override=timelimit_override,
-            sanitized=sanitized,
             nruns=nruns,
         ),
     )
@@ -588,7 +638,6 @@ def _run_interactive_solutions(
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
-    sanitized: bool = False,
 ) -> Iterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
@@ -599,12 +648,6 @@ def _run_interactive_solutions(
         checker_digest = checkers.compile_checker() if check else None
         interactor_digest = None
 
-    compiled_solutions = compile_solutions(
-        progress=progress,
-        tracked_solutions=skeleton.get_solution_path_set(),
-        sanitized=sanitized,
-    )
-
     if progress:
         progress.update('Running solutions...')
 
@@ -614,7 +657,7 @@ def _run_interactive_solutions(
         async def run_fn(solution=solution, output_dir=output_dir):
             return await run_solution_on_testcase(
                 solution,
-                compiled_solutions[solution.path],
+                skeleton.get_solution_compiled_digest(solution),
                 checker_digest,
                 testcase,
                 output_dir=output_dir,
@@ -632,9 +675,16 @@ def _run_interactive_solutions(
 
 def _get_interactive_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
+    progress: Optional[StatusProgress] = None,
+    sanitized: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
 ) -> SolutionReportSkeleton:
-    solutions = _get_solutions_for_skeleton(tracked_solutions, verification)
+    solutions, compiled_solutions = _get_compiled_solutions_for_skeleton(
+        tracked_solutions,
+        verification=verification,
+        progress=progress,
+        sanitized=sanitized,
+    )
 
     langs = set(find_language_name(solution) for solution in solutions)
     limits = {
@@ -660,6 +710,7 @@ def _get_interactive_skeleton(
         limits=limits,
         entries=[],
         verification=verification,
+        compiled_solutions=compiled_solutions,
         capture_pipes=True,
     )
 
@@ -682,8 +733,10 @@ async def run_and_print_interactive_solutions(
 ):
     pkg = package.find_problem_package_or_die()
     skeleton = _get_interactive_skeleton(
-        tracked_solutions,
+        tracked_solutions=tracked_solutions,
         verification=verification,
+        sanitized=sanitized,
+        progress=progress,
     )
 
     should_cache = testcase_entry is not None
@@ -705,7 +758,6 @@ async def run_and_print_interactive_solutions(
             progress=progress,
             verification=verification,
             check=check,
-            sanitized=sanitized,
         )
 
     for item in items:

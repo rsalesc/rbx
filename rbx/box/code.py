@@ -443,17 +443,19 @@ def _precompile_header(
     )
 
     with profiling.PushContext('code.precompile_header'):
-        if not steps_with_caching.compile(
-            commands,
-            params=sandbox_params,
-            artifacts=precompilation_artifacts,
-            sandbox=sandbox,
-            dependency_cache=dependency_cache,
-        ):
-            console.console.print(
+        try:
+            steps_with_caching.compile(
+                commands,
+                params=sandbox_params,
+                artifacts=precompilation_artifacts,
+                sandbox=sandbox,
+                dependency_cache=dependency_cache,
+            )
+        except steps.CompilationError as e:
+            e.print(
                 f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
             )
-            raise typer.Exit(1)
+            raise
 
         if verbose:
             console.console.print(
@@ -609,14 +611,19 @@ def compile_item(
             grading_context.CacheLevel.NO_CACHE,
             when=lambda: is_path_remote(code.path),
         ):
-            if not steps_with_caching.compile(
-                commands,
-                params=sandbox_params,
-                artifacts=artifacts,
-                sandbox=sandbox,
-                dependency_cache=dependency_cache,
-            ):
-                raise typer.Exit(1)
+            try:
+                steps_with_caching.compile(
+                    commands,
+                    params=sandbox_params,
+                    artifacts=artifacts,
+                    sandbox=sandbox,
+                    dependency_cache=dependency_cache,
+                )
+            except steps.CompilationError as e:
+                e.print(
+                    f'[error]Failed to compile item: [item]{code.path}[/item][/error]'
+                )
+                raise
 
     assert compiled_digest.value is not None
 

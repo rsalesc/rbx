@@ -5,6 +5,7 @@ from rbx.box.generators import generate_outputs_for_testcases, generate_testcase
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testing import testing_package
+from rbx.grading import steps
 
 _SOL_DOUBLE_NUMBER = """
 #include <iostream>
@@ -130,7 +131,7 @@ async def test_generator_outputs_main_solution_does_not_compile_and_needs_output
     # Ensure outputs are generated.
     entries = [TestcaseEntry(group='main', index=0)]
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(steps.CompilationError):
         await generate_outputs_for_testcases(entries)
 
     out = capsys.readouterr().out
@@ -278,7 +279,7 @@ async def test_generator_outputs_model_solution_compilation_failure(
     # Ensure outputs generation fails with proper error
     entries = [TestcaseEntry(group='samples', index=0)]
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(steps.CompilationError):
         await generate_outputs_for_testcases(entries)
 
     out = capsys.readouterr().out
