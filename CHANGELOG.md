@@ -1,3 +1,17 @@
+## 0.18.4 (2025-09-08)
+
+### Fix
+
+- dump statement build artifacts of contest into a dir
+- ensure compilation errors are skipped in rbx run
+- add option to skip invalid tests in stress
+- invert order of teeing to make interactive merged output less flaky
+- fix more tests
+
+### Refactor
+
+- small cosmetics changes
+
 ## 0.18.3 (2025-09-04)
 
 ### Fix
