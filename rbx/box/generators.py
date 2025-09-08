@@ -4,10 +4,12 @@ import shutil
 from typing import Dict, List, Optional, Set
 
 import typer
+from rich.console import Console
 
 from rbx import console
 from rbx.box import checkers, package, testcase_utils, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box.exception import RbxException
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
@@ -35,6 +37,10 @@ from rbx.grading.steps import (
     Outcome,
 )
 from rbx.utils import StatusProgress
+
+
+class ValidationError(RbxException):
+    pass
 
 
 def _compile_generator(generator: CodeItem) -> str:
@@ -261,7 +267,7 @@ async def generate_standalone(
     validator_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
 ):
-    def _print_error_header(text: Optional[str] = None):
+    def _print_error_header(console: Console, text: Optional[str] = None):
         prefix = 'Failed generating test'
         if group_entry is not None:
             prefix += (
@@ -271,11 +277,11 @@ async def generate_standalone(
         if text:
             suffix = f': {text}'
         if spec.generator_call is not None:
-            console.console.print(
+            console.print(
                 f'[error]{prefix} using generator call [info]{spec.generator_call.name} {spec.generator_call.args}[/info]{suffix}[/error]'
             )
         else:
-            console.console.print(f'[error]{prefix}{suffix}[/error]')
+            console.print(f'[error]{prefix}{suffix}[/error]')
 
     if spec.generator_call is not None:
         call = spec.generator_call
@@ -333,12 +339,12 @@ async def generate_standalone(
             validator_digest,
         )
         if not validation_info.ok:
-            _print_error_header('failed validating testcase.')
-            console.console.print(f'[error]Message:[/error] {validation_info.message}')
-            console.console.print(
-                f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
-            )
-            raise typer.Exit(1)
+            with ValidationError() as err:
+                _print_error_header(err.console, 'failed validating testcase.')
+                err.print(f'[error]Message:[/error] {validation_info.message}')
+                err.print(
+                    f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
+                )
 
 
 async def generate_testcases(

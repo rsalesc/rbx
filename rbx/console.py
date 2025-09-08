@@ -22,6 +22,10 @@ console = Console(theme=theme, style='info', highlight=False)
 stderr_console = Console(theme=theme, style='info', highlight=False, stderr=True)
 
 
+def new_console():
+    return Console(theme=theme, style='info', highlight=False)
+
+
 def multiline_prompt(text: str) -> str:
     console.print(f'{text} (Ctrl-D to finish):\n')
     lines = sys.stdin.readlines()

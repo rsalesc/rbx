@@ -680,6 +680,12 @@ async def stress(
         help='Whether to print descriptors of the stress test.',
         hidden=True,
     ),
+    skip_invalid_testcases: bool = typer.Option(
+        False,
+        '--skip-invalid',
+        '--skip',
+        help='Whether to skip invalid testcases.',
+    ),
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
@@ -701,6 +707,7 @@ async def stress(
                 verbose=verbose,
                 sanitized=sanitized,
                 print_descriptors=print_descriptors,
+                skip_invalid_testcases=skip_invalid_testcases,
             )
 
     stresses.print_stress_report(report)

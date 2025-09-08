@@ -14,6 +14,7 @@ from rbx.box import checkers, generators, package, tasks, validators
 from rbx.box.code import SanitizationLevel, compile_item
 from rbx.box.generators import (
     GenerationMetadata,
+    ValidationError,
     expand_generator_call,
     generate_standalone,
 )
@@ -34,6 +35,7 @@ class StressFinding(BaseModel):
 class StressReport(BaseModel):
     findings: List[StressFinding] = []
     executed: int = 0
+    skipped: int = 0
 
 
 def _compile_finder(finder: CodeItem) -> str:
@@ -57,6 +59,7 @@ async def run_stress(
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
     print_descriptors: bool = False,
+    skip_invalid_testcases: bool = False,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
 
@@ -129,6 +132,7 @@ async def run_stress(
     startTime = time.monotonic()
 
     executed = 0
+    skipped = 0
     findings = []
 
     while len(findings) < findingsLimit:
@@ -142,9 +146,11 @@ async def run_stress(
 
         if progress:
             seconds = timeoutInSeconds - int(time.monotonic() - startTime)
+            skipped_str = f'skipped [item]{skipped}[/item], ' if skipped else ''
             progress.update(
                 f'Stress testing: found [item]{len(findings)}[/item] tests, '
                 f'executed [item]{executed}[/item], '
+                f'{skipped_str}'
                 f'[item]{seconds}[/item] second(s) remaining...'
             )
 
@@ -152,16 +158,26 @@ async def run_stress(
         input_path.parent.mkdir(parents=True, exist_ok=True)
 
         expanded_generator_call = expand_generator_call(stress.generator)
-        await generate_standalone(
-            GenerationMetadata(
-                generator_call=expanded_generator_call,
-                copied_to=Testcase(inputPath=input_path),
-            ),
-            generator_digest=generator_digest,
-            validator_digest=compiled_validator[1]
-            if compiled_validator is not None
-            else None,
-        )
+        try:
+            await generate_standalone(
+                GenerationMetadata(
+                    generator_call=expanded_generator_call,
+                    copied_to=Testcase(inputPath=input_path),
+                ),
+                generator_digest=generator_digest,
+                validator_digest=compiled_validator[1]
+                if compiled_validator is not None
+                else None,
+            )
+        except ValidationError as err:
+            if skip_invalid_testcases:
+                skipped += 1
+                continue
+            with err:
+                err.print('[warning]Invalid testcase generated.[/warning]')
+                err.print(
+                    '[warning]You can use the [item]--skip[/item] flag to skip invalid testcases without halting.[/warning]'
+                )
 
         @async_lru.alru_cache(maxsize=None)
         async def run_solution_fn(
@@ -303,12 +319,14 @@ async def run_stress(
         # Be cooperative.
         time.sleep(0.001)
 
-    return StressReport(findings=findings, executed=executed)
+    return StressReport(findings=findings, executed=executed, skipped=skipped)
 
 
 def print_stress_report(report: StressReport):
     console.console.rule('Stress test report', style='status')
     console.console.print(f'Executed [item]{report.executed}[/item] tests.')
+    if report.skipped:
+        console.console.print(f'Skipped [item]{report.skipped}[/item] invalid tests.')
     if not report.findings:
         console.console.print('No stress test findings.')
         return
