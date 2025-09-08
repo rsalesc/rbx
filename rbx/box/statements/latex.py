@@ -37,16 +37,17 @@ class Latex:
         self.latex = latex
 
     def build_pdf(self, temp_dir: pathlib.Path) -> LatexResult:
-        temp_path = temp_dir / 'statement.tex'
+        temp_path = pathlib.Path('statement.tex')
         output_path = temp_path.with_suffix('.pdf')
         args = ['pdflatex', '-interaction', 'nonstopmode', str(temp_path)]
-        temp_path.write_text(self.latex)
+
+        (temp_dir / temp_path).write_text(self.latex)
 
         completed = subprocess.run(args, timeout=15, capture_output=True, cwd=temp_dir)
-        if completed.returncode != 0 or not output_path.exists():
+        if completed.returncode != 0 or not (temp_dir / output_path).exists():
             return LatexResult(result=completed, pdf=None)
 
-        return LatexResult(result=completed, pdf=output_path.read_bytes())
+        return LatexResult(result=completed, pdf=(temp_dir / output_path).read_bytes())
 
 
 def install_tex_packages(path: pathlib.Path, cwd: pathlib.Path):

@@ -1,5 +1,6 @@
 import dataclasses
 import pathlib
+import shutil
 import tempfile
 import typing
 from typing import Any, Dict, List, Optional, Tuple
@@ -228,10 +229,10 @@ def _build_problem_statements(
                 )
                 issue_stack.add_issue(StatementBuildIssue(extracted_problem.problem))
                 continue
-        dest_dir = root / '.problems' / extracted_problem.problem.short_name
+        dest_dir = pathlib.Path('.problems') / extracted_problem.problem.short_name
         dest_path = dest_dir / f'statement{output_type.get_file_suffix()}'
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_path.write_bytes(content)
+        (root / dest_dir).mkdir(parents=True, exist_ok=True)
+        (root / dest_path).write_bytes(content)
 
         problem_assets = (
             get_relative_assets(
@@ -240,7 +241,7 @@ def _build_problem_statements(
             )
             + contest_assets
         )
-        prepare_assets(problem_assets, dest_dir)
+        prepare_assets(problem_assets, root / dest_dir)
 
         res.append(dataclasses.replace(extracted_problem, built_statement=dest_path))
     return res
@@ -393,6 +394,10 @@ def build_statement_rooted(
     return last_content, last_output
 
 
+def get_statement_build_dir(statement: ContestStatement) -> pathlib.Path:
+    return pathlib.Path('build') / 'statement_build' / statement.name
+
+
 def build_statement(
     statement: ContestStatement,
     contest: Contest,
@@ -401,17 +406,18 @@ def build_statement(
     custom_vars: Optional[Dict[str, Any]] = None,
     install_tex: bool = False,
 ) -> pathlib.Path:
-    with tempfile.TemporaryDirectory() as td:
-        root = pathlib.Path(td)
-        last_content, last_output = build_statement_rooted(
-            statement,
-            contest,
-            root,
-            output_type=output_type,
-            use_samples=use_samples,
-            custom_vars=custom_vars,
-            install_tex=install_tex,
-        )
+    root = get_statement_build_dir(statement)
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    last_content, last_output = build_statement_rooted(
+        statement,
+        contest,
+        root,
+        output_type=output_type,
+        use_samples=use_samples,
+        custom_vars=custom_vars,
+        install_tex=install_tex,
+    )
 
     statement_path = (pathlib.Path('build') / statement.name).with_suffix(
         last_output.get_file_suffix()
