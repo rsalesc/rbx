@@ -489,13 +489,14 @@ def _precompile_header(
             ):
                 input = DigestOrSource.create(local_cacher.put_file_from_fobj(f))
 
-    return GradingFileInput(
+    res = GradingFileInput(
         **input.expand(),
         dest=input_artifact.dest.with_suffix('.h.gch'),
         # Do not track fingerprint of the precompiled header file,
         # trust the compilation step above.
         hash=False,
     )
+    return res
 
 
 # Compile code item and return its digest in the storage.

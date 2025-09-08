@@ -743,8 +743,8 @@ def compile(
             )
             err.print(f'[error]Summary:[/error] {logs[-1].get_summary()}')
             err.print(Text.from_ansi(logs[-1].log), style='default')
-            # testing_utils.print_directory_tree(sandbox.get_root_path())
 
+    # testing_utils.print_directory_tree(sandbox.get_root_path())
     if not _process_output_artifacts(artifacts, sandbox):
         raise CompilationError()
 
