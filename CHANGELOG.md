@@ -1,3 +1,9 @@
+## 0.18.5 (2025-09-09)
+
+### Fix
+
+- small fix on print error header
+
 ## 0.18.4 (2025-09-08)
 
 ### Fix
