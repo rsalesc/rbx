@@ -1,3 +1,9 @@
+## 0.18.6 (2025-09-09)
+
+### Fix
+
+- skip invalid tests when generation fails in stress
+
 ## 0.18.5 (2025-09-09)
 
 ### Fix
