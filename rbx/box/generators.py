@@ -43,6 +43,10 @@ class ValidationError(RbxException):
     pass
 
 
+class GenerationError(RbxException):
+    pass
+
+
 def _compile_generator(generator: CodeItem) -> str:
     return compile_item(generator, sanitized=SanitizationLevel.PREFER)
 
@@ -307,18 +311,15 @@ async def generate_standalone(
             extra_args=call.args or None,
         )
         if not generation_log or generation_log.exitcode != 0:
-            _print_error_header(console.console)
-            if generation_log is not None:
-                console.console.print(
-                    f'[error]Summary:[/error] {generation_log.get_summary()}'
-                )
-            if generation_stderr.value is not None:
-                console.console.print('[error]Stderr:[/error]')
-                console.console.print(
-                    package.get_digest_as_string(generation_stderr.value) or ''
-                )
-
-            raise typer.Exit(1)
+            with GenerationError() as err:
+                _print_error_header(err.console)
+                if generation_log is not None:
+                    err.print(f'[error]Summary:[/error] {generation_log.get_summary()}')
+                if generation_stderr.value is not None:
+                    err.print('[error]Stderr:[/error]')
+                    err.print(
+                        package.get_digest_as_string(generation_stderr.value) or '',
+                    )
     elif spec.copied_from is not None:
         _copy_testcase_over(spec.copied_from, spec.copied_to)
 

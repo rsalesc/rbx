@@ -13,6 +13,7 @@ from rbx import console, utils
 from rbx.box import checkers, generators, package, tasks, validators
 from rbx.box.code import SanitizationLevel, compile_item
 from rbx.box.generators import (
+    GenerationError,
     GenerationMetadata,
     ValidationError,
     expand_generator_call,
@@ -169,7 +170,7 @@ async def run_stress(
                 if compiled_validator is not None
                 else None,
             )
-        except ValidationError as err:
+        except (ValidationError, GenerationError) as err:
             if skip_invalid_testcases:
                 skipped += 1
                 continue
