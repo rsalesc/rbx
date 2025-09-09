@@ -307,7 +307,7 @@ async def generate_standalone(
             extra_args=call.args or None,
         )
         if not generation_log or generation_log.exitcode != 0:
-            _print_error_header()
+            _print_error_header(console.console)
             if generation_log is not None:
                 console.console.print(
                     f'[error]Summary:[/error] {generation_log.get_summary()}'
