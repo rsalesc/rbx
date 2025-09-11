@@ -119,8 +119,8 @@ cd "$cdir"
 [ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
 #/bin/mount --bind /dev /dev
 [ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
-python3=$(which python3)
-[ -x "\$python3" ] || python3=/usr/bin/python3
+python3=$(which {{rbxPython3}})
+[ -x "\$python3" ] || python3=/usr/bin/{{rbxPython3}}
 if [ ! -x "\$python3" ]; then
     echo "\$python3 not found or it's not executable"
     exit 47
@@ -147,8 +147,8 @@ else
   echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
   echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
   echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  python3=$(which python3)
-  [ -x "$python3" ] || python3=/usr/bin/python3
+  python3=$(which {{rbxPython3}})
+  [ -x "$python3" ] || python3=/usr/bin/{{rbxPython3}}
   if [ ! -x "$python3" ]; then
     echo "$python3 not found or it's not executable"
     exit 47

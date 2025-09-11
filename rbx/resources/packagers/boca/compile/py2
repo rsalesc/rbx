@@ -119,7 +119,7 @@ cd src
 #     exit 0
 # fi
 
-echo "#!/usr/bin/python2" | cat - "$name" > "../$exe"
+echo "#!\$cc" | cat - "$name" > "../$exe"
 chmod 755 "../$exe"
 echo \$? > ../compileit.retcode
 exit 0

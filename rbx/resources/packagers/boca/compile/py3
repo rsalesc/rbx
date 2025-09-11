@@ -101,25 +101,27 @@ else
   exe=$2
 fi
 
+chmod -R 775 src
+
 rm -f "$exe" compileit.retcode runit.retcode 2>/dev/null
 cat <<EOF >compileit.sh
 #!/bin/bash
-cc=\`which python3\`
-[ -x "\$cc" ] || cc=/usr/bin/python3
+cc=\`which {{rbxPython3}}\`
+[ -x "\$cc" ] || cc=/usr/bin/{{rbxPython3}}
 if [ ! -x "\$cc" ]; then
     echo "\$cc not found or it's not executable"
     exit 47
 fi
 cd src
-# "\$cc" -m py_compile "$name"
-# pyc_ret=\$?
-# if [ "\$pyc_ret" != "0" ]; then
-#     echo "python syntax check failed: \$pyc_ret"
-#     echo \$pyc_ret > ../compileit.retcode
-#     exit 0
-# fi
+"\$cc" -m py_compile "$name"
+pyc_ret=\$?
+if [ "\$pyc_ret" != "0" ]; then
+    echo "python syntax check failed: \$pyc_ret"
+    echo \$pyc_ret > ../compileit.retcode
+    exit 0
+fi
 
-echo "#!/usr/bin/python3" | cat - "$name" > "../$exe"
+echo "#!\$cc" | cat - "$name" > "../$exe"
 chmod 755 "../$exe"
 echo \$? > ../compileit.retcode
 exit 0

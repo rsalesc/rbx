@@ -130,8 +130,8 @@ if [ $? -eq 0 ]; then
   cd "$cdir"
   [ -f /proc/cpuinfo ] || /bin/mount -t proc proc /proc
   [ -d /sys/kernel ] || /bin/mount -t sysfs sysfs /sys
-  python3=$(which python3)
-  [ -x "\$python3" ] || python3=/usr/bin/python3
+  python3=$(which {{rbxPython3}})
+  [ -x "\$python3" ] || python3=/usr/bin/{{rbxPython3}}
   if [ ! -x "\$python3" ]; then
       echo "\$python3 not found or it's not executable"
       exit 47

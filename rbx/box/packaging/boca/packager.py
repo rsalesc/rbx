@@ -149,9 +149,16 @@ class BocaPackager(BasePackager):
             raise typer.Exit(1)
         return compare_path.read_text()
 
-    def _get_checker(self) -> str:
+    def _replace_common(self, text: str, lang: str) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
+        flags = extension.flags_with_defaults()
+        if lang in flags:
+            text = text.replace('{{rbxFlags}}', flags[lang])
+        return text.replace(
+            '{{rbxPython3}}', 'pypy3' if extension.usePypy else 'python3'
+        )
 
+    def _get_checker(self) -> str:
         checker_path = get_default_app_path() / 'packagers' / 'boca' / 'checker.sh'
         if not checker_path.exists():
             console.console.print(
@@ -163,15 +170,13 @@ class BocaPackager(BasePackager):
         checker = package.get_checker().path.read_text()
         rbx_header = header.get_header().read_text()
         return (
-            checker_text.replace('{{rbxFlags}}', extension.flags_with_defaults()['cc'])
+            self._replace_common(checker_text, 'cc')
             .replace('{{testlib_content}}', testlib)
             .replace('{{rbx_header_content}}', rbx_header)
             .replace('{{checker_content}}', checker)
         )
 
     def _get_interactor(self) -> str:
-        extension = get_extension_or_default('boca', BocaExtension)
-
         interactor_path = (
             get_default_app_path() / 'packagers' / 'boca' / 'interactor_compile.sh'
         )
@@ -183,9 +188,9 @@ class BocaPackager(BasePackager):
 
         interactor_text = interactor_path.read_text()
         interactor = package.get_interactor().path.read_text()
-        return interactor_text.replace(
-            '{{rbxFlags}}', extension.flags_with_defaults()['cc']
-        ).replace('{{interactor_content}}', interactor)
+        return self._replace_common(interactor_text, 'cc').replace(
+            '{{interactor_content}}', interactor
+        )
 
     def _get_safeexec(self) -> str:
         safeexec_script_path = (
@@ -208,7 +213,6 @@ class BocaPackager(BasePackager):
 
     def _get_compile(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
-        extension = get_extension_or_default('boca', BocaExtension)
 
         compile_path = (
             get_default_app_path() / 'packagers' / 'boca' / 'compile' / language
@@ -233,9 +237,7 @@ class BocaPackager(BasePackager):
             'umask 0022', 'umask 0022\n\n' + self._get_checker()
         )
 
-        flags = extension.flags_with_defaults()
-        if language in flags:
-            compile_text = compile_text.replace('{{rbxFlags}}', flags[language])
+        compile_text = self._replace_common(compile_text, language)
         return compile_text
 
     def _copy_solutions(self, into_path: pathlib.Path):
@@ -250,18 +252,17 @@ class BocaPackager(BasePackager):
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(str(solution.path), dest_path)
 
-    def _expand_run_script(self, run_path: pathlib.Path):
+    def _expand_run_script(self, run_path: pathlib.Path, language: BocaLanguage):
         pkg = package.find_problem_package_or_die()
+        content = run_path.read_text()
         if pkg.type == TaskType.COMMUNICATION:
             runit_content = (
                 get_default_app_path() / 'packagers' / 'boca' / 'interactor_run.sh'
             ).read_text()
-            run_path.write_text(
-                run_path.read_text().replace(
-                    '{{runit_content}}',
-                    runit_content,
-                )
-            )
+            content = content.replace('{{runit_content}}', runit_content)
+
+        content = self._replace_common(content, language)
+        run_path.write_text(content)
 
     @classmethod
     def name(cls) -> str:
@@ -308,7 +309,7 @@ class BocaPackager(BasePackager):
                 )
                 raise typer.Exit(1)
             shutil.copyfile(run_orig_path, run_path / language)
-            self._expand_run_script(run_path / language)
+            self._expand_run_script(run_path / language, language)
 
         # Prepare compile.
         compile_path = into_path / 'compile'
