@@ -62,6 +62,7 @@ async def estimate_time_limit(
     console: rich.console.Console,
     result: RunSolutionResult,
     formula: Optional[str] = None,
+    auto: bool = False,
 ) -> Optional[TimingProfile]:
     structured_evaluations = consume_and_key_evaluation_items(
         result.items, result.skeleton
@@ -160,7 +161,7 @@ async def estimate_time_limit(
             console.print(f'Estimated time limit for {lang}: {tl} ms')
 
         all_distinct_tls = set(estimated_tl_per_language.values())
-        if len(all_distinct_tls) > 1:
+        if len(all_distinct_tls) > 1 and not auto:
             console.print()
             console.print('It seems your problem has solutions for multiple languages!')
             selected_langs = await questionary.checkbox(
@@ -187,6 +188,7 @@ async def compute_time_limits(
     runs: int = 0,
     profile: str = 'local',
     formula: Optional[str] = None,
+    auto: bool = False,
 ):
     if package.get_main_solution() is None:
         console.console.print(
@@ -228,7 +230,9 @@ async def compute_time_limits(
         )
         return None
 
-    estimated_tl = await estimate_time_limit(console.console, solution_result, formula)
+    estimated_tl = await estimate_time_limit(
+        console.console, solution_result, formula, auto=auto
+    )
     if estimated_tl is None:
         return None
 

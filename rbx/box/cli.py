@@ -383,6 +383,18 @@ async def time(
         '-d',
         help='Whether to print a detailed view of the tests using tables.',
     ),
+    strategy: Optional[str] = typer.Option(
+        'estimate',
+        '--strategy',
+        '-s',
+        help='Strategy to use for time limit estimation (estimate, inherit).',
+    ),
+    auto: bool = typer.Option(
+        False,
+        '--auto',
+        '-a',
+        help='Whether to automatically estimate the time limit.',
+    ),
     runs: int = typer.Option(
         0,
         '--runs',
@@ -406,6 +418,9 @@ async def time(
         timing.integrate(profile)
         return
 
+    if auto:
+        strategy = 'estimate'
+
     import questionary
 
     formula = environment.get_environment().timing.formula
@@ -421,10 +436,13 @@ async def time(
         questionary.Choice('Provide a custom time limit.', value='custom'),
     ]
 
-    choice = await questionary.select(
-        'Select how you want to define the time limits for the problem.',
-        choices=timing_choices,
-    ).ask_async()
+    choice = (
+        strategy
+        or await questionary.select(
+            'Select how you want to define the time limits for the problem.',
+            choices=timing_choices,
+        ).ask_async()
+    )
 
     formula = environment.get_environment().timing.formula
 
@@ -458,7 +476,7 @@ async def time(
         return None
 
     await timing.compute_time_limits(
-        check, detailed, runs, formula=formula, profile=profile
+        check, detailed, runs, formula=formula, profile=profile, auto=auto
     )
 
 
