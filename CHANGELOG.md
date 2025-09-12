@@ -1,3 +1,10 @@
+## 0.18.8 (2025-09-12)
+
+### Fix
+
+- rollback Java class detection logic in BOCA
+- add ability to specify language when building boca package
+
 ## 0.18.7 (2025-09-11)
 
 ### Fix
