@@ -62,10 +62,19 @@ async def boca(
         '-u',
         help='If set, will upload the package to BOCA.',
     ),
+    language: Optional[str] = typer.Option(
+        None,
+        '--language',
+        '-l',
+        help='If set, will use the given language as the main language. '
+        'Leave unset if you want to use the language of the topmost statement.',
+    ),
 ):
     from rbx.box.packaging.boca.packager import BocaPackager
 
-    result_path = await run_packager(BocaPackager, verification=verification)
+    result_path = await run_packager(
+        BocaPackager, verification=verification, language=language
+    )
 
     if upload:
         from rbx.box.tooling.boca.scraper import get_boca_scraper

@@ -25,6 +25,14 @@ def test_time(time):
 
 
 class BocaPackager(BasePackager):
+    def __init__(self, language: Optional[str] = None):
+        self.language = language
+
+    def languages(self) -> List[str]:
+        if self.language is None:
+            return super().languages()
+        return [self.language]
+
     @classmethod
     def task_types(cls) -> List[TaskType]:
         return [TaskType.BATCH, TaskType.COMMUNICATION]
@@ -35,7 +43,14 @@ class BocaPackager(BasePackager):
         if not pkg.expanded_statements:
             return None
 
-        return pkg.expanded_statements[0]
+        if self.language is None:
+            return pkg.expanded_statements[0]
+
+        for statement in pkg.expanded_statements:
+            if statement.language == self.language:
+                return statement
+
+        return None
 
     def _get_main_built_statement(
         self, built_statements: List[BuiltStatement]
@@ -53,6 +68,11 @@ class BocaPackager(BasePackager):
     def _get_problem_name(self) -> str:
         # BOCA forces Java class names to be the name of the problem.
         return self.package_basename().replace('-', '_')
+
+    def _get_zip_filename(self) -> str:
+        if self.language is None:
+            return self._get_problem_name()
+        return f'{self._get_problem_name()}-{self.language}'
 
     def _get_problem_basename(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
@@ -355,7 +375,7 @@ class BocaPackager(BasePackager):
 
         # Zip all.
         shutil.make_archive(
-            str(build_path / self._get_problem_name()), 'zip', into_path
+            str(build_path / self._get_zip_filename()), 'zip', into_path
         )
 
-        return (build_path / self._get_problem_name()).with_suffix('.zip')
+        return (build_path / self._get_zip_filename()).with_suffix('.zip')
