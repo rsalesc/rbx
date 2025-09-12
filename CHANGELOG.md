@@ -1,3 +1,9 @@
+## 0.18.10 (2025-09-12)
+
+### Fix
+
+- show tls for BOCA packaging
+
 ## 0.18.9 (2025-09-12)
 
 ### Fix
