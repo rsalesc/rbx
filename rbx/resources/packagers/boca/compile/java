@@ -101,15 +101,10 @@ jarfile=run.jar
 cdir=$(pwd)
 echo "Current directory is $cdir" >&2
 
-# Make sure the class name is Main.
-regex="public[[:space:]]+class[[:space:]]+[A-Za-z0-9_\\$]+([^A-Za-z0-9_\\$])"
-klass=$(basename "$name" .java)
-if [ -n "$(sed -n -E "/$regex/p" src/$name)" ]; then
-  klass="Main"
-  mv "src/$name" "src/Main.java"
-  sed -i -E "s/$regex/public class Main\1/" src/Main.java
+klass=`echo $name | cut -d'.' -f1`
+if [ "$klass" == "" ]; then
+  klass=Main
 fi
-
 echo "Klass is $klass"
 
 cat <<EOF >src/Manifest.txt
