@@ -9,7 +9,7 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel, Field
 
 from rbx import console, utils
-from rbx.box import environment, limits_info, package, schema
+from rbx.box import environment, limits_info, package, safeeval, schema
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
 from rbx.box.formatting import href
@@ -116,13 +116,11 @@ async def estimate_time_limit(
 
     def _eval(fastest_time: int, slowest_time: int) -> int:
         return int(
-            eval(
+            safeeval.eval_int(
                 formula,
                 {
                     'fastest': fastest_time,
                     'slowest': slowest_time,
-                    'step_up': step_up,
-                    'step_down': step_down,
                 },
             )
         )

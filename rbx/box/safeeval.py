@@ -1,5 +1,6 @@
 import math
 import pathlib
+from functools import reduce
 from typing import Any, Callable, Optional, Union
 
 import simpleeval
@@ -65,6 +66,13 @@ def _get_functions(functions: Optional[dict[str, Any]]) -> dict[str, Any]:
         abs=abs,
         step_down=_step_down,
         step_up=_step_up,
+        max=max,
+        min=min,
+        sum=sum,
+        map=map,
+        zip=zip,
+        filter=filter,
+        reduce=reduce,
         # Path functions.
         stem=_path_fn(_path_stem),
         parent=_path_fn(_path_parent),
