@@ -7,7 +7,7 @@ import typer
 from rbx import console, utils
 from rbx.box import package
 from rbx.box.environment import VerificationLevel
-from rbx.box.schema import LimitsProfile
+from rbx.box.schema import LimitModifiers, LimitsProfile
 from rbx.grading.limits import Limits
 
 profile_var = contextvars.ContextVar[Optional[str]]('profile', default=None)
@@ -65,11 +65,15 @@ def _expand_limits_profile(
 
     for language, modifier in limits_profile.modifiers.items():
         if modifier.time is not None:
-            res.modifiers[language].time = modifier.time
+            res.modifiers.setdefault(language, LimitModifiers()).time = modifier.time
         if modifier.timeMultiplier is not None:
-            res.modifiers[language].timeMultiplier = modifier.timeMultiplier
+            res.modifiers.setdefault(
+                language, LimitModifiers()
+            ).timeMultiplier = modifier.timeMultiplier
         if modifier.memory is not None:
-            res.modifiers[language].memory = modifier.memory
+            res.modifiers.setdefault(
+                language, LimitModifiers()
+            ).memory = modifier.memory
     return res
 
 
