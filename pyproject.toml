@@ -54,6 +54,7 @@ throttlex = "^1.0.0"
 typing-extensions = "^4.14.1"
 semver = "^3.0.4"
 python-dotenv = "^1.1.1"
+simpleeval = "^1.0.3"
 
 [tool.poetry.scripts]
 rbx = "rbx.box.main:app"

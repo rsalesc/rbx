@@ -1,13 +1,13 @@
 import functools
 import pathlib
 from enum import Enum
-from typing import Annotated, List, Optional, Type, TypeVar
+from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar
 
 import typer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rbx import config, console, utils
-from rbx.box import presets
+from rbx.box import presets, safeeval
 from rbx.box.extensions import Extensions, LanguageExtensions
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
@@ -410,20 +410,45 @@ def get_execution_config(language: str) -> ExecutionConfig:
     )
 
 
-@functools.cache
-def get_file_mapping(language: str, file_prefix: Optional[str] = None) -> FileMapping:
+def _evaluate_mapping(
+    mapping: FileMapping, variables: Optional[dict[str, Any]] = None
+) -> FileMapping:
+    res = FileMapping()
+    vars = (variables or {}).copy()
+    res.compilable = safeeval.eval_as_fstring(mapping.compilable, vars)
+    vars['compilable'] = res.compilable
+    res.executable = safeeval.eval_as_fstring(mapping.executable, vars)
+    vars['executable'] = res.executable
+
+    res.input = safeeval.eval_as_fstring(mapping.input, vars)
+    vars['input'] = res.input
+    res.output = safeeval.eval_as_fstring(mapping.output, vars)
+    vars['output'] = res.output
+    res.error = safeeval.eval_as_fstring(mapping.error, vars)
+    res.capture = safeeval.eval_as_fstring(mapping.capture, vars)
+    return res
+
+
+def get_file_mapping(
+    language: str,
+    variables: Dict[str, Any],
+    file_prefix: Optional[str] = None,
+) -> FileMapping:
     environment = get_environment()
     mapping = _merge_shallow_models(
         FileMapping,
         environment.defaultFileMapping or FileMapping(),
         get_language(language).fileMapping or FileMapping(),
     )
+    mapping = _evaluate_mapping(mapping, variables)
     if file_prefix is not None:
         mapping.input = f'{file_prefix}_{mapping.input}'
         mapping.output = f'{file_prefix}_{mapping.output}'
         mapping.error = f'{file_prefix}_{mapping.error}'
-        mapping.compilable = f'{file_prefix}_{mapping.compilable}'
-        mapping.executable = f'{file_prefix}_{mapping.executable}'
+        if 'javaClass' not in variables:
+            # Do not apply file prefixing to Java classes.
+            mapping.compilable = f'{file_prefix}_{mapping.compilable}'
+            mapping.executable = f'{file_prefix}_{mapping.executable}'
     return mapping
 
 

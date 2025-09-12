@@ -6,7 +6,7 @@ import shlex
 import sys
 from enum import Enum
 from pathlib import PosixPath
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import rich
 import rich.text
@@ -183,9 +183,35 @@ def _ignore_warning_in_cxx_input(input: GradingFileInput):
     input.src = preprocessed_path
 
 
+def _get_java_class_name(compilable_path: pathlib.Path) -> Optional[str]:
+    if compilable_path.suffix != '.java':
+        return None
+
+    java_content = compilable_path.read_text()
+    regex = re.compile(r'public\s+class\s+[A-Za-z0-9_$]+([^A-Za-z0-9_$])')
+    match = regex.search(java_content)
+    if match is None:
+        return compilable_path.name
+    return match.group(1)
+
+
+def _get_code_variables(code: CodeItem, language: str) -> dict[str, Any]:
+    res = {'source': code.path.name, 'language': language}
+    java_klass = _get_java_class_name(code.path)
+    if java_klass is not None:
+        res['javaClass'] = java_klass
+    return res
+
+
 def maybe_rename_java_class(
     compilable_path: pathlib.Path, file_mapping: FileMapping
 ) -> pathlib.Path:
+    if file_mapping.compilable != 'Main.java':
+        # This function is only kept here for backwards compatibility.
+        # It should only be run when the file mapping is set to 'Main.java'.
+        # TODO: remove this function.
+        return compilable_path
+
     mapped_path = PosixPath(file_mapping.compilable)
     if mapped_path.suffix != '.java':
         return compilable_path
@@ -294,7 +320,9 @@ def _prepare_run(
     execution_options = get_execution_config(language)
     if extra_config is not None:
         execution_options = merge_execution_configs([execution_options, extra_config])
-    file_mapping = get_file_mapping(language, file_prefix)
+    file_mapping = get_file_mapping(
+        language, _get_code_variables(code, language), file_prefix
+    )
     sandbox_params = get_sandbox_params_from_config(execution_options.sandbox)
 
     # Sanitization parameters.
@@ -519,7 +547,7 @@ def compile_item(
 
     language = find_language_name(code)
     compilation_options = get_compilation_config(language)
-    file_mapping = get_file_mapping(language)
+    file_mapping = get_file_mapping(language, _get_code_variables(code, language))
     dependency_cache = package.get_dependency_cache()
     sandbox = package.get_singleton_sandbox()
     sandbox_params = get_sandbox_params_from_config(compilation_options.sandbox)
