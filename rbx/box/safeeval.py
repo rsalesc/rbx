@@ -5,6 +5,9 @@ from typing import Any, Callable, Optional, Union
 
 import simpleeval
 
+NameNotDefined = simpleeval.NameNotDefined
+AttributeDoesNotExist = simpleeval.AttributeDoesNotExist
+
 PathLike = Union[str, pathlib.Path]
 
 
@@ -16,6 +19,11 @@ def _step_down(x: Any, step: int) -> int:
 def _step_up(x: Any, step: int) -> int:
     x = int(x)
     return (x + step - 1) // step * step
+
+
+def _step_closest(x: Any, step: int) -> int:
+    x = int(x)
+    return round(x / step) * step
 
 
 def _path_ext(path: pathlib.Path) -> str:
@@ -63,9 +71,11 @@ def _get_functions(functions: Optional[dict[str, Any]]) -> dict[str, Any]:
         str=str,
         floor=math.floor,
         ceil=math.ceil,
+        round=round,
         abs=abs,
         step_down=_step_down,
         step_up=_step_up,
+        step_closest=_step_closest,
         max=max,
         min=min,
         sum=sum,

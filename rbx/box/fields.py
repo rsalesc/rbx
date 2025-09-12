@@ -1,8 +1,10 @@
-from typing import TYPE_CHECKING, Dict, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, Optional, TypeVar, Union
 
 from deepmerge import always_merger
 from pydantic import BaseModel, Field
 from typing_extensions import TypeAliasType
+
+from rbx.box import safeeval
 
 
 def NameField(**kwargs):
@@ -44,14 +46,14 @@ else:
     RecVars = TypeAliasType('RecVars', "Dict[str, Union[Primitive, 'RecVars']]")
 
 
-def expand_var(value: Primitive) -> Primitive:
+def expand_var(value: Primitive, ctx: Optional[RecVars] = None) -> Primitive:
     if not isinstance(value, str):
         return value
     if value.startswith('\\'):
         return value[1:]
     if not value.startswith('py`') or not value.endswith('`'):
         return value
-    res = eval(value[3:-1])
+    res = safeeval.eval(value[3:-1], {'vars': ctx or {}})
     for supported_type in [str, int, float, bool]:
         if isinstance(res, supported_type):
             return res
@@ -62,16 +64,55 @@ def expand_var(value: Primitive) -> Primitive:
 
 
 def expand_vars(recvars: RecVars) -> Vars:
+    def count_primitives(rec: RecVars) -> int:
+        res = 0
+        for v in rec.values():
+            if isinstance(v, dict):
+                res += count_primitives(v)
+            else:
+                res += 1
+        return res
+
+    num_vars = count_primitives(recvars)
+    ctx: RecVars = {}
+
+    def solve_step(rec: RecVars, new_ctx: RecVars):
+        nonlocal ctx
+        for k, v in rec.items():
+            if isinstance(v, dict):
+                solve_step(v, new_ctx.setdefault(k, {}))
+            else:
+                try:
+                    new_ctx[k] = expand_var(v, ctx)
+                except (safeeval.NameNotDefined, safeeval.AttributeDoesNotExist):
+                    pass
+
+    for _ in range(num_vars):
+        next_ctx: RecVars = {}
+        solve_step(recvars, next_ctx)
+        ctx = next_ctx
+        num_expanded = count_primitives(ctx)
+        if num_expanded == num_vars:
+            # All variables were expanded.
+            break
+
+    num_expanded = count_primitives(ctx)
+    if num_expanded != num_vars:
+        raise ValueError(
+            f'Failed to expand variables: only {num_expanded} out of {num_vars} were expanded.\n'
+            'This probably means that there is a cyclic reference.'
+        )
+
     vars = {}
 
-    def solve(rec: RecVars, prefix: str) -> None:
+    def expand_keys(rec: RecVars, prefix: str) -> None:
         nonlocal vars
         for k, v in rec.items():
             if isinstance(v, dict):
-                solve(v, f'{prefix}.{k}')
+                expand_keys(v, f'{prefix}.{k}')
             else:
                 key = f'{prefix}.{k}'.strip('.')
-                vars[key] = expand_var(v)
+                vars[key] = v
 
-    solve(recvars, '')
+    expand_keys(ctx, '')
     return vars
