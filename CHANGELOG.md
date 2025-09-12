@@ -1,3 +1,12 @@
+## 0.18.9 (2025-09-12)
+
+### Fix
+
+- fix issue with limit modifiers
+- use safeeval for timing formulae
+- use safeeval for commands
+- add safeeval for file mapping
+
 ## 0.18.8 (2025-09-12)
 
 ### Fix
