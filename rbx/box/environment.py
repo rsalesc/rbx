@@ -64,7 +64,7 @@ relative to the sandbox root.""",
     )
 
     compilable: str = Field(
-        default='compilable',
+        default='{source}',
         description="""Path where to copy the compilable file to before compiling the program,
 relative to the sandbox root.""",
     )
@@ -429,17 +429,21 @@ def _evaluate_mapping(
     return res
 
 
+def get_raw_file_mapping(language: str) -> FileMapping:
+    environment = get_environment()
+    return _merge_shallow_models(
+        FileMapping,
+        environment.defaultFileMapping or FileMapping(),
+        get_language(language).fileMapping or FileMapping(),
+    )
+
+
 def get_file_mapping(
     language: str,
     variables: Dict[str, Any],
     file_prefix: Optional[str] = None,
 ) -> FileMapping:
-    environment = get_environment()
-    mapping = _merge_shallow_models(
-        FileMapping,
-        environment.defaultFileMapping or FileMapping(),
-        get_language(language).fileMapping or FileMapping(),
-    )
+    mapping = get_raw_file_mapping(language)
     mapping = _evaluate_mapping(mapping, variables)
     if file_prefix is not None:
         mapping.input = f'{file_prefix}_{mapping.input}'
@@ -461,14 +465,32 @@ def get_sandbox_type() -> Type[SandboxBase]:
 
 
 def get_mapped_commands(
-    commands: List[str], mapping: Optional[FileMapping] = None
+    commands: List[str],
+    mapping: Optional[FileMapping] = None,
+    variables: Optional[Dict[str, Any]] = None,
+    passthrough: Optional[List[str]] = None,
 ) -> List[str]:
     mapping = mapping or FileMapping()
-    return [cmd.format(**mapping.model_dump()) for cmd in commands]
+    variables = (variables or {}).copy()
+    variables['compilable'] = mapping.compilable
+    variables['executable'] = mapping.executable
+    variables['input'] = mapping.input
+    variables['output'] = mapping.output
+    variables['error'] = mapping.error
+    variables['capture'] = mapping.capture
+
+    for var in passthrough:
+        variables[var] = f'{{{var}}}'
+    return [safeeval.eval_as_fstring(cmd, variables) for cmd in commands]
 
 
-def get_mapped_command(command: str, mapping: Optional[FileMapping] = None) -> str:
-    return get_mapped_commands([command], mapping)[0]
+def get_mapped_command(
+    command: str,
+    mapping: Optional[FileMapping] = None,
+    variables: Optional[Dict[str, Any]] = None,
+    passthrough: Optional[List[str]] = None,
+) -> str:
+    return get_mapped_commands([command], mapping, variables, passthrough)[0]
 
 
 def get_sandbox_params_from_config(

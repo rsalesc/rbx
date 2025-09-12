@@ -1,5 +1,7 @@
 #ifndef _RBX_H
 #define _RBX_H
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -9,7 +11,7 @@ std::optional<std::string> getStringVar(std::string name) {
   return std::nullopt;
 }
 
-std::optional<int> getIntVar(std::string name) {
+std::optional<int64_t> getIntVar(std::string name) {
   
   return std::nullopt;
 }
@@ -26,7 +28,46 @@ std::optional<bool> getBoolVar(std::string name) {
 
 template <typename T> T getVar(std::string name);
 
-template <> int getVar<int>(std::string name) {
+template <> int32_t getVar<int32_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  if (opt.value() < std::numeric_limits<int32_t>::min() ||
+      opt.value() > std::numeric_limits<int32_t>::max()) {
+    throw std::runtime_error("Variable " + name + " of value " +
+                             std::to_string(opt.value()) +
+                             " does not fit in int32_t");
+  }
+  return opt.value();
+}
+
+template <> uint32_t getVar<uint32_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  if (opt.value() < std::numeric_limits<uint32_t>::min() ||
+      opt.value() > std::numeric_limits<uint32_t>::max()) {
+    throw std::runtime_error("Variable " + name + " of value " +
+                             std::to_string(opt.value()) +
+                             " does not fit in uint32_t");
+  }
+  return opt.value();
+}
+
+template <> int64_t getVar<int64_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  return opt.value();
+}
+
+template <> uint64_t getVar<uint64_t>(std::string name) {
   auto opt = getIntVar(name);
   if (!opt.has_value()) {
     throw std::runtime_error("Variable " + name +

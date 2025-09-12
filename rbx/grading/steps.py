@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from rich.text import Text
 
 from rbx import utils
+from rbx.box import safeeval
 from rbx.box.exception import RbxException
 from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
@@ -406,7 +407,10 @@ def _split_and_expand(
 ) -> List[str]:
     res = []
     max_mem, init_mem = _get_java_memory_limits(params)
-    parts = shlex.split(command.format(memory=max_mem, initialMemory=init_mem))
+    command = safeeval.eval_as_fstring(
+        command, {'memory': max_mem, 'initialMemory': init_mem}
+    )
+    parts = shlex.split(command)
     for part in parts:
         res.extend(_expand_part(part, sandbox))
     return res

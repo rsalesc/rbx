@@ -117,4 +117,7 @@ def eval_as_fstring(
     names: Optional[dict[str, Any]] = None,
     functions: Optional[dict[str, Any]] = None,
 ) -> str:
+    # Escape single quotes in the expression so f-string is
+    # parsed correctly.
+    expression = expression.replace("'", "\\'")
     return eval_string(f"f'{expression}'", names, functions)

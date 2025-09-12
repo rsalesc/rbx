@@ -61,7 +61,7 @@ class TestCompileItem:
         assert isinstance(commands, list)
         assert len(commands) == 1
         # Should be the exact C++ compilation command with all modifications
-        expected_cmd = 'g++ -std=c++20 -O2 -o executable compilable.cpp -fdiagnostics-color=always -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts -I.'
+        expected_cmd = 'g++ -std=c++20 -O2 -o executable solution.cpp -fdiagnostics-color=always -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts -I.'
         assert commands[0] == expected_cmd
 
     def test_compile_java_commands_content(
@@ -81,7 +81,9 @@ class TestCompileItem:
         assert isinstance(commands, list)
         assert len(commands) == 2
         # Should be the exact Java compilation commands from default.rbx.yml
-        assert commands[0] == 'javac -Xlint -encoding UTF-8 Main.java'
+        # Notice how the source file gets renamed to Simple.java,
+        # which is the name of the Java class contained in Solution.java.
+        assert commands[0] == 'javac -Xlint -encoding UTF-8 Simple.java'
         assert commands[1] == 'jar cvf Main.jar @glob:*.class'
 
     def test_compile_python_no_compilation(
@@ -166,7 +168,7 @@ class TestCompileItem:
 
         # Should include the main source file (mapped to compilable.cpp)
         main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'compilable.cpp'), None
+            (inp for inp in artifacts.inputs if inp.dest.name == 'solution.cpp'), None
         )
         assert main_source_input is not None
         assert main_source_input.src == cpp_file
@@ -355,246 +357,6 @@ class TestCompileItem:
 
         # Should not call precompile_header
         mock_precompile_header.assert_not_called()
-
-    def test_compile_java_class_renaming_basic(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that Java class names are properly renamed to match file mapping."""
-        # Create a Java file with a class that needs renaming
-        java_content = """public class Solution {
-    public static void main(String[] args) {
-        System.out.println("Hello World");
-    }
-}"""
-        java_file = testing_pkg.add_file('Solution.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'Main.java'), None
-        )
-        assert main_source_input is not None
-
-        # Check that the content was modified to rename the class
-        actual_content = main_source_input.src.read_text()
-        assert 'public class Main {' in actual_content
-        assert 'public class Solution {' not in actual_content
-        assert (
-            'System.out.println("Hello World");' in actual_content
-        )  # Rest should be unchanged
-
-    def test_compile_java_class_renaming_no_change_needed(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that Java files with correct class name are not modified."""
-        # Create a Java file with class name that already matches expected name
-        java_content = """public class Main {
-    public static void main(String[] args) {
-        System.out.println("Hello World");
-    }
-}"""
-        java_file = testing_pkg.add_file('Main.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'Main.java'), None
-        )
-        assert main_source_input is not None
-
-        # Should point to the original file since no change was needed
-        assert main_source_input.src == java_file
-
-    def test_compile_java_class_renaming_with_whitespace_variations(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that Java class renaming handles various whitespace patterns."""
-        # Test with different whitespace patterns
-        java_content = """public   class    MyClass   {
-    public static void main(String[] args) {
-        System.out.println("Hello World");
-    }
-}"""
-        java_file = testing_pkg.add_file('MyClass.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'Main.java'), None
-        )
-        assert main_source_input is not None
-
-        # Check that the content was modified correctly
-        actual_content = main_source_input.src.read_text()
-        assert 'public class Main   {' in actual_content
-        assert 'MyClass' not in actual_content
-
-    def test_compile_java_class_renaming_with_complex_class_name(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that Java class renaming handles complex class names with underscores and numbers."""
-        java_content = """public class Complex_Class_123$ {
-    public static void main(String[] args) {
-        System.out.println("Hello World");
-    }
-}"""
-        java_file = testing_pkg.add_file('Complex.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'Main.java'), None
-        )
-        assert main_source_input is not None
-
-        # Check that the content was modified correctly
-        actual_content = main_source_input.src.read_text()
-        assert 'public class Main {' in actual_content
-        assert 'Complex_Class_123$' not in actual_content
-
-    def test_compile_java_class_renaming_no_public_class_raises_exit(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that Java files without public class raise typer.Exit."""
-        # Create a Java file without public class
-        java_content = """class Solution {
-    public static void main(String[] args) {
-        System.out.println("Hello World");
-    }
-}"""
-        java_file = testing_pkg.add_file('Solution.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        # Should raise typer.Exit due to missing public class
-        with pytest.raises(typer.Exit):
-            code.compile_item(code_item)
-
-    def test_compile_java_class_renaming_multiple_classes_renames_only_public(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that only the public class is renamed when multiple classes exist."""
-        java_content = """class Helper {
-    void help() {}
-}
-
-public class Solution {
-    public static void main(String[] args) {
-        Helper h = new Helper();
-        h.help();
-    }
-}
-
-class Another {
-    void another() {}
-}"""
-        java_file = testing_pkg.add_file('Solution.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'Main.java'), None
-        )
-        assert main_source_input is not None
-
-        # Check that only the public class was renamed
-        actual_content = main_source_input.src.read_text()
-        assert 'public class Main {' in actual_content
-        assert 'public class Solution {' not in actual_content
-        assert 'class Helper {' in actual_content  # Non-public classes unchanged
-        assert 'class Another {' in actual_content
-
-    def test_compile_java_class_renaming_preserves_comments_and_imports(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that class renaming preserves comments and imports."""
-        java_content = """// This is a comment
-import java.util.*;
-
-/**
- * Main class documentation
- */
-public class Solution {
-    public static void main(String[] args) {
-        // Another comment
-        System.out.println("Hello World");
-    }
-}"""
-        java_file = testing_pkg.add_file('Solution.java')
-        java_file.write_text(java_content)
-        code_item = CodeItem(path=java_file, language='java')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'Main.java'), None
-        )
-        assert main_source_input is not None
-
-        # Check that comments and imports are preserved
-        actual_content = main_source_input.src.read_text()
-        assert '// This is a comment' in actual_content
-        assert 'import java.util.*;' in actual_content
-        assert '/**' in actual_content
-        assert 'Main class documentation' in actual_content
-        assert '// Another comment' in actual_content
-        assert 'public class Main {' in actual_content
-        assert 'public class Solution {' not in actual_content
-
-    def test_compile_non_java_file_unchanged(
-        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
-    ):
-        """Test that non-Java files are not affected by class renaming logic."""
-        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
-        code_item = CodeItem(path=cpp_file, language='cpp')
-
-        code.compile_item(code_item)
-
-        call_args = mock_steps_with_caching.call_args
-        artifacts = call_args.kwargs['artifacts']
-
-        # Find the main source input artifact
-        main_source_input = next(
-            (inp for inp in artifacts.inputs if inp.dest.name == 'compilable.cpp'), None
-        )
-        assert main_source_input is not None
-
-        # Should point to the original file since it's not Java
-        assert main_source_input.src == cpp_file
 
     def test_compile_warning_pragmas_processed(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching

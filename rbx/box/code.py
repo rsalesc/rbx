@@ -52,6 +52,8 @@ from rbx.grading.steps import (
 
 MERGED_CAPTURE_FILENAME = 'merged_capture.pio'
 
+PASSTHROUGH_VARIABLES = ['initialMemory', 'memory']
+
 
 class SanitizationLevel(Enum):
     NONE = 0
@@ -188,7 +190,7 @@ def _get_java_class_name(compilable_path: pathlib.Path) -> Optional[str]:
         return None
 
     java_content = compilable_path.read_text()
-    regex = re.compile(r'public\s+class\s+[A-Za-z0-9_$]+([^A-Za-z0-9_$])')
+    regex = re.compile(r'public\s+class\s+([A-Za-z0-9_$]+)')
     match = regex.search(java_content)
     if match is None:
         return compilable_path.name
@@ -204,7 +206,8 @@ def _get_code_variables(code: CodeItem, language: str) -> dict[str, Any]:
 
 
 def maybe_rename_java_class(
-    compilable_path: pathlib.Path, file_mapping: FileMapping
+    compilable_path: pathlib.Path,
+    file_mapping: FileMapping,
 ) -> pathlib.Path:
     if file_mapping.compilable != 'Main.java':
         # This function is only kept here for backwards compatibility.
@@ -320,9 +323,8 @@ def _prepare_run(
     execution_options = get_execution_config(language)
     if extra_config is not None:
         execution_options = merge_execution_configs([execution_options, extra_config])
-    file_mapping = get_file_mapping(
-        language, _get_code_variables(code, language), file_prefix
-    )
+    code_variables = _get_code_variables(code, language)
+    file_mapping = get_file_mapping(language, code_variables, file_prefix)
     sandbox_params = get_sandbox_params_from_config(execution_options.sandbox)
 
     # Sanitization parameters.
@@ -346,7 +348,12 @@ def _prepare_run(
     )
 
     assert execution_options.command
-    command = get_mapped_command(execution_options.command, file_mapping)
+    command = get_mapped_command(
+        execution_options.command,
+        file_mapping,
+        code_variables,
+        passthrough=PASSTHROUGH_VARIABLES,
+    )
     command = substitute_commands([command], sanitized=sanitized)[0]
 
     if extra_args is not None:
@@ -438,6 +445,7 @@ def _precompile_header(
             compilable='precompilable.h',
             executable='precompilable.h.gch',
         ),
+        passthrough=PASSTHROUGH_VARIABLES,
     )
     commands = add_warning_flags(commands, force_warnings)
     commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
@@ -547,7 +555,8 @@ def compile_item(
 
     language = find_language_name(code)
     compilation_options = get_compilation_config(language)
-    file_mapping = get_file_mapping(language, _get_code_variables(code, language))
+    code_variables = _get_code_variables(code, language)
+    file_mapping = get_file_mapping(language, code_variables)
     dependency_cache = package.get_dependency_cache()
     sandbox = package.get_singleton_sandbox()
     sandbox_params = get_sandbox_params_from_config(compilation_options.sandbox)
@@ -557,7 +566,12 @@ def compile_item(
         # Language is not compiled.
         return sandbox.file_cacher.put_file_from_path(compilable_path)
 
-    commands = get_mapped_commands(compilation_options.commands, file_mapping)
+    commands = get_mapped_commands(
+        compilation_options.commands,
+        file_mapping,
+        code_variables,
+        passthrough=PASSTHROUGH_VARIABLES,
+    )
     commands = add_warning_flags(commands, force_warnings)
     commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
