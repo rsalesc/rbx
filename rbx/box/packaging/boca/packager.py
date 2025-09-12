@@ -108,6 +108,9 @@ class BocaPackager(BasePackager):
         time = pkg_timelimit / 1000  # convert to seconds
 
         if time >= _MAX_REP_TIME:
+            console.console.print(
+                f'[warning]Use time limit of {time} seconds instead of {pkg_timelimit}ms because TL is too large.[/warning]'
+            )
             return 1
 
         def rounding_error(time):
@@ -115,9 +118,6 @@ class BocaPackager(BasePackager):
 
         def error_percentage(time, runs):
             return rounding_error(time * runs) / (time * runs)
-
-        if error_percentage(time, 1) < 1e-6:
-            return 1
 
         for i in range(1, _MAX_REPS + 1):
             if error_percentage(time, i) <= extension.maximumTimeError:
