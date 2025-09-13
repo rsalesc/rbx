@@ -384,7 +384,7 @@ async def time(
         help='Whether to print a detailed view of the tests using tables.',
     ),
     strategy: Optional[str] = typer.Option(
-        'estimate',
+        None,
         '--strategy',
         '-s',
         help='Strategy to use for time limit estimation (estimate, inherit).',
