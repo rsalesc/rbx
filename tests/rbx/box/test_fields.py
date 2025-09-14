@@ -1,4 +1,5 @@
 import pytest
+import simpleeval
 
 from rbx.box.fields import RecVars, expand_var, expand_vars
 
@@ -65,20 +66,17 @@ class TestExpandVar:
     def test_expand_var_unsupported_types_raise_error(self):
         """Test that unsupported types raise TypeError."""
         with pytest.raises(
-            TypeError,
-            match='Variable with backticks should evaluate to a primitive Python type',
+            simpleeval.FeatureNotAvailable,
         ):
             expand_var('py`[1, 2, 3]`')
 
         with pytest.raises(
-            TypeError,
-            match='Variable with backticks should evaluate to a primitive Python type',
+            simpleeval.FeatureNotAvailable,
         ):
             expand_var('py`{"key": "value"}`')
 
         with pytest.raises(
             TypeError,
-            match='Variable with backticks should evaluate to a primitive Python type',
         ):
             expand_var('py`None`')
 
@@ -87,7 +85,7 @@ class TestExpandVar:
         with pytest.raises(SyntaxError):
             expand_var('py`1 +`')
 
-        with pytest.raises(NameError):
+        with pytest.raises(simpleeval.NameNotDefined):
             expand_var('py`undefined_variable`')
 
         with pytest.raises(ZeroDivisionError):
@@ -96,7 +94,7 @@ class TestExpandVar:
     def test_expand_var_edge_cases(self):
         """Test edge cases with backtick expressions."""
         # Empty expression
-        with pytest.raises(SyntaxError):
+        with pytest.raises(simpleeval.InvalidExpression):
             expand_var('py``')
 
         # py` without closing backtick - doesn't match the pattern, returned as-is
@@ -304,8 +302,7 @@ class TestExpandVars:
         }
 
         with pytest.raises(
-            TypeError,
-            match='Variable with backticks should evaluate to a primitive Python type',
+            simpleeval.FeatureNotAvailable,
         ):
             expand_vars(input_vars)
 
@@ -320,7 +317,7 @@ class TestExpandVars:
             },
         }
 
-        with pytest.raises(NameError):
+        with pytest.raises(simpleeval.NameNotDefined):
             expand_vars(input_vars)
 
     def test_expand_vars_preserves_key_order_flat(self):

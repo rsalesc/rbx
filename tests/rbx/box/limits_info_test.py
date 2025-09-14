@@ -1079,10 +1079,10 @@ class TestExpandLimitsProfileBehavior:
             assert rust_result.time == 1500  # Profile base time
             assert rust_result.memory == 400  # Profile base memory
 
-    def test_new_language_in_profile_modifiers_causes_keyerror(
+    def test_new_language_in_profile_modifiers_works(
         self, pkg_cder, tmp_path, mock_package_complex
     ):
-        """Test that adding modifiers for languages not in package causes KeyError."""
+        """Test that adding modifiers for languages not in package works."""
         test_dir = tmp_path / 'test_problem'
         test_dir.mkdir()
         limits_dir = test_dir / '.limits'
@@ -1107,6 +1107,6 @@ class TestExpandLimitsProfileBehavior:
             'rbx.box.package.find_problem_package_or_die',
             return_value=mock_package_complex,
         ):
-            # This should raise a KeyError because 'rust' is not in package modifiers
-            with pytest.raises(KeyError, match='rust'):
-                limits_info.get_limits(language='rust', profile='new_lang')
+            rust_result = limits_info.get_limits(language='rust', profile='new_lang')
+            assert rust_result.time == 1620
+            assert rust_result.memory == 800

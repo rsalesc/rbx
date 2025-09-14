@@ -69,6 +69,8 @@ def _get_functions(functions: Optional[dict[str, Any]]) -> dict[str, Any]:
         int=int,
         float=float,
         str=str,
+        bool=bool,
+        len=len,
         floor=math.floor,
         ceil=math.ceil,
         round=round,

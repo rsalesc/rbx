@@ -76,16 +76,17 @@ def expand_vars(recvars: RecVars) -> Vars:
     num_vars = count_primitives(recvars)
     ctx: RecVars = {}
 
-    def solve_step(rec: RecVars, new_ctx: RecVars):
+    def solve_step(rec: RecVars, new_ctx: RecVars, should_raise: bool = False):
         nonlocal ctx
         for k, v in rec.items():
             if isinstance(v, dict):
-                solve_step(v, new_ctx.setdefault(k, {}))
+                solve_step(v, new_ctx.setdefault(k, {}), should_raise=should_raise)
             else:
                 try:
                     new_ctx[k] = expand_var(v, ctx)
                 except (safeeval.NameNotDefined, safeeval.AttributeDoesNotExist):
-                    pass
+                    if should_raise:
+                        raise
 
     for _ in range(num_vars):
         next_ctx: RecVars = {}
@@ -98,6 +99,10 @@ def expand_vars(recvars: RecVars) -> Vars:
 
     num_expanded = count_primitives(ctx)
     if num_expanded != num_vars:
+        try:
+            solve_step(recvars, {}, should_raise=True)
+        except Exception as err:
+            raise err
         raise ValueError(
             f'Failed to expand variables: only {num_expanded} out of {num_vars} were expanded.\n'
             'This probably means that there is a cyclic reference.'
