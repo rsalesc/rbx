@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import functools
+
 from agents import Agent
 
 from rbx.box.wizard.supported_models import get_model_settings
 
 
+@functools.cache
 def create_icpc_problem_reviewer(model_name: str) -> Agent:
     """Create an Agent for ICPC problem review."""
 
@@ -23,6 +26,7 @@ def create_icpc_problem_reviewer(model_name: str) -> Agent:
     )
 
 
+@functools.cache
 def create_icpc_statement_language_reviewer(model_name: str) -> Agent:
     """Create an Agent focused on statement language review."""
 

@@ -89,20 +89,6 @@ def _build_review_prompt(payload: ReviewRequest) -> str:
     )
 
 
-_AGENT = None  # Lazy-initialized agent instance
-
-
-def _get_agent(model: Optional[str] = None):
-    """Create or reuse the LLM agent configured for Markdown outputs."""
-
-    global _AGENT
-    if _AGENT is not None:
-        return _AGENT
-
-    _AGENT = create_icpc_problem_reviewer(model or DEFAULT_MODEL_NAME)
-    return _AGENT
-
-
 @router.post('/review', response_class=PlainTextResponse)
 async def review_endpoint(payload: ReviewRequest) -> PlainTextResponse:
     """Review an ICPC problem and return a Markdown report."""
@@ -110,7 +96,7 @@ async def review_endpoint(payload: ReviewRequest) -> PlainTextResponse:
     prompt = _build_review_prompt(payload)
 
     try:
-        agent = _get_agent(payload.model)
+        agent = create_icpc_problem_reviewer(payload.model or DEFAULT_MODEL_NAME)
         run_result = await Runner.run(agent, prompt)
 
         output = getattr(run_result, 'final_output', None)
@@ -163,22 +149,6 @@ def _build_language_review_prompt(payload: StatementLanguageReviewRequest) -> st
     ).format(language=code_to_lang(payload.language), statement=payload.statement)
 
 
-_LANGUAGE_AGENT = None  # Lazy-initialized agent for language review
-
-
-def _get_language_agent(model: Optional[str] = None):
-    """Create or reuse the LLM agent specialized in language review outputting Markdown."""
-
-    global _LANGUAGE_AGENT
-    if _LANGUAGE_AGENT is not None:
-        return _LANGUAGE_AGENT
-
-    _LANGUAGE_AGENT = create_icpc_statement_language_reviewer(
-        model or DEFAULT_MODEL_NAME
-    )
-    return _LANGUAGE_AGENT
-
-
 @router.post('/review/statement', response_class=PlainTextResponse)
 async def review_statement_language(
     payload: StatementLanguageReviewRequest,
@@ -188,7 +158,9 @@ async def review_statement_language(
     prompt = _build_language_review_prompt(payload)
 
     try:
-        agent = _get_language_agent(payload.model)
+        agent = create_icpc_statement_language_reviewer(
+            payload.model or DEFAULT_MODEL_NAME
+        )
         run_result = await Runner.run(agent, prompt)
 
         output = getattr(run_result, 'final_output', None)
