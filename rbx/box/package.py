@@ -24,6 +24,7 @@ from rbx.box.schema import (
     TestcaseGroup,
     TestcaseSubgroup,
 )
+from rbx.box.statements.schema import Statement
 from rbx.config import get_builtin_checker
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
@@ -428,6 +429,16 @@ def get_test_groups_by_name(
             res[f'{testgroup.name}.{subgroup.name}'] = subgroup
 
     return res
+
+
+def get_statement_or_nil(
+    name: str, root: pathlib.Path = pathlib.Path()
+) -> Optional[Statement]:
+    pkg = find_problem_package_or_die(root)
+    for statement in pkg.expanded_statements:
+        if statement.name == name:
+            return statement
+    return None
 
 
 # Return each compilation file and to where it should be moved inside

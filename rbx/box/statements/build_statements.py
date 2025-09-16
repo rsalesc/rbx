@@ -287,6 +287,20 @@ def build_statement_bytes(
     return last_content, last_output
 
 
+def get_statement_build_path(
+    statement: Statement, output_type: StatementType, profile: Optional[str] = None
+) -> pathlib.Path:
+    path = (package.get_build_path() / statement.name).with_suffix(
+        output_type.get_file_suffix()
+    )
+    if (
+        profile is not None
+        and limits_info.get_saved_limits_profile(profile) is not None
+    ):
+        path = path.with_stem(f'{path.stem}-{profile}')
+    return path
+
+
 def build_statement(
     statement: Statement,
     pkg: Package,
@@ -302,17 +316,8 @@ def build_statement(
         custom_vars=custom_vars,
         short_name=naming.get_problem_shortname(),
     )
-    statement_path = (package.get_build_path() / statement.name).with_suffix(
-        last_output.get_file_suffix()
-    )
     active_profile = limits_info.get_active_profile()
-    if (
-        active_profile is not None
-        and limits_info.get_saved_limits_profile(active_profile) is not None
-    ):
-        statement_path = statement_path.with_stem(
-            f'{statement_path.stem}-{active_profile}'
-        )
+    statement_path = get_statement_build_path(statement, output_type, active_profile)
     statement_path.parent.mkdir(parents=True, exist_ok=True)
     statement_path.write_bytes(last_content)
     console.console.print(
@@ -323,42 +328,14 @@ def build_statement(
     return statement_path
 
 
-@app.command('build, b', help='Build statements.')
-@package.within_problem
-@syncer.sync
-async def build(
+async def execute_build(
     verification: environment.VerificationParam,
-    names: Annotated[
-        Optional[List[str]],
-        typer.Argument(
-            help='Names of statements to build.',
-        ),
-    ] = None,
-    languages: Annotated[
-        Optional[List[str]],
-        typer.Option(
-            help='Languages to build statements for. If not specified, build statements for all available languages.',
-        ),
-    ] = None,
-    output: Annotated[
-        Optional[StatementType],
-        typer.Option(
-            case_sensitive=False,
-            help='Output type to be generated. If not specified, will infer from the conversion steps specified in the package.',
-        ),
-    ] = StatementType.PDF,
-    samples: Annotated[
-        bool,
-        typer.Option(help='Whether to build the statement with samples or not.'),
-    ] = True,
-    vars: Annotated[
-        Optional[List[str]],
-        typer.Option(
-            '--vars',
-            help='Variables to be used in the statements.',
-        ),
-    ] = None,
-):
+    names: Optional[List[str]] = None,
+    languages: Optional[List[str]] = None,
+    output: Optional[StatementType] = StatementType.PDF,
+    samples: bool = True,
+    vars: Optional[List[str]] = None,
+) -> None:
     # At most run the validators, only in samples.
     if samples:
         from rbx.box import builder
@@ -400,6 +377,45 @@ async def build(
             use_samples=samples,
             custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
         )
+
+
+@app.command('build, b', help='Build statements.')
+@package.within_problem
+@syncer.sync
+async def build(
+    verification: environment.VerificationParam,
+    names: Annotated[
+        Optional[List[str]],
+        typer.Argument(
+            help='Names of statements to build.',
+        ),
+    ] = None,
+    languages: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            help='Languages to build statements for. If not specified, build statements for all available languages.',
+        ),
+    ] = None,
+    output: Annotated[
+        Optional[StatementType],
+        typer.Option(
+            case_sensitive=False,
+            help='Output type to be generated. If not specified, will infer from the conversion steps specified in the package.',
+        ),
+    ] = StatementType.PDF,
+    samples: Annotated[
+        bool,
+        typer.Option(help='Whether to build the statement with samples or not.'),
+    ] = True,
+    vars: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '--vars',
+            help='Variables to be used in the statements.',
+        ),
+    ] = None,
+):
+    await execute_build(verification, names, languages, output, samples, vars)
 
 
 @app.callback()

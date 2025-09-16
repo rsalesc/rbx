@@ -1009,6 +1009,18 @@ def fix(print_diff: bool = typer.Option(False, '--print-diff', '-p')):
     linting.fix_package(print_diff=print_diff)
 
 
+@app.command(
+    'wizard',
+    rich_help_panel='Management',
+    help='Run the wizard.',
+)
+@cd.within_closest_package
+def wizard():
+    from rbx.box.wizard.server import run_server
+
+    run_server()
+
+
 @cd.within_closest_package
 def _clear_package_cache():
     console.console.print('Cleaning cache and build directories...')
