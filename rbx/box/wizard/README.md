@@ -1,5 +1,7 @@
 # Robox.io WebServer
 
+* THIS WAS VIBE CODED AND IS JUST A BETA EXPERIMENT.
+
 A simple FastAPI server for robox.io.
 
 ## Features
