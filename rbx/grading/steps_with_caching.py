@@ -64,12 +64,16 @@ async def run(
 ) -> Optional[RunLog]:
     artifacts.logs = GradingLogsHolder()
 
+    is_sanitized = metadata is not None and metadata.is_sanitized
+
     cacheable_params = params.get_cacheable_params()
     if metadata is not None and metadata.retryIndex is not None:
         cacheable_params['__retry_index__'] = metadata.retryIndex
 
     with grading_context.cache_level(
-        grading_context.CacheLevel.NO_CACHE,
+        grading_context.CacheLevel.CACHE_TRANSIENTLY
+        if is_sanitized
+        else grading_context.CacheLevel.NO_CACHE,
         when=grading_context.is_compilation_only,
     ):
         cached_profile = profiling.Profiler('steps.run[cached]', start=True)
@@ -101,6 +105,13 @@ async def run_coordinated(
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     artifacts.logs = GradingLogsHolder()
 
+    is_sanitized = (
+        interactor.metadata is not None
+        and interactor.metadata.is_sanitized
+        or solution.metadata is not None
+        and solution.metadata.is_sanitized
+    )
+
     cacheable_params = {
         **_get_prefixed_cacheable_params(
             interactor.params.get_cacheable_params(), 'interactor'
@@ -117,7 +128,9 @@ async def run_coordinated(
         cacheable_params['solution.__retry_index__'] = solution.metadata.retryIndex
 
     with grading_context.cache_level(
-        grading_context.CacheLevel.NO_CACHE,
+        grading_context.CacheLevel.CACHE_TRANSIENTLY
+        if is_sanitized
+        else grading_context.CacheLevel.NO_CACHE,
         when=grading_context.is_compilation_only,
     ):
         cached_profile = profiling.Profiler('steps.run_coordinated[cached]', start=True)
