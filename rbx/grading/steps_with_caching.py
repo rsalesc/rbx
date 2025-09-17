@@ -97,6 +97,7 @@ async def run_coordinated(
     sandbox: SandboxBase,
     dependency_cache: DependencyCache,
     merged_capture: Optional[pathlib.Path] = None,
+    line_capture: bool = False,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     artifacts.logs = GradingLogsHolder()
 
@@ -108,6 +109,7 @@ async def run_coordinated(
             solution.params.get_cacheable_params(), 'solution'
         ),
     }
+    cacheable_params['line_capture'] = line_capture
 
     if interactor.metadata is not None and interactor.metadata.retryIndex is not None:
         cacheable_params['interactor.__retry_index__'] = interactor.metadata.retryIndex
@@ -133,6 +135,7 @@ async def run_coordinated(
                         artifacts,
                         sandbox,
                         merged_capture=merged_capture,
+                        line_capture=line_capture,
                     )
             else:
                 cached_profile.stop()

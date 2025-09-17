@@ -787,6 +787,7 @@ async def run_communication(
     interactor: CommunicationItem,
     solution: CommunicationItem,
     merged_capture: Optional[DigestOrDest] = None,
+    line_capture: bool = False,
     retry_index: Optional[int] = None,
 ):
     interactor_prepared = interactor.prepare()
@@ -835,4 +836,5 @@ async def run_communication(
             artifacts=grading_artifacts,
             dependency_cache=package.get_dependency_cache(),
             merged_capture=merged_capture_path,
+            line_capture=line_capture,
         )

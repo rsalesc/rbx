@@ -52,6 +52,7 @@ async def run_solution_on_testcase(
     use_retries: bool = True,
     use_timelimit: bool = True,
     capture_pipes: Optional[bool] = None,
+    line_capture: bool = False,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -73,6 +74,7 @@ async def run_solution_on_testcase(
             nruns=nruns,
             filestem=filestem,
             is_stress=is_stress,
+            line_capture=line_capture,
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
@@ -176,6 +178,7 @@ async def _run_communication_solution_on_testcase(
     use_retries: bool = True,
     use_timelimit: bool = True,
     capture_pipes: Optional[bool] = None,
+    line_capture: bool = False,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -268,6 +271,7 @@ async def _run_communication_solution_on_testcase(
             merged_capture=DigestOrDest.create(merged_capture_path)
             if merged_capture_path
             else None,
+            line_capture=line_capture,
         )
 
         checker_result = await checkers.check_communication(

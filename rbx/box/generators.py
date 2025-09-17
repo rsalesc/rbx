@@ -390,6 +390,7 @@ async def generate_output_for_testcase(
     testcase: Testcase,
     interactor_digest: Optional[str] = None,
     capture_pipes: Optional[bool] = None,
+    line_capture: bool = False,
 ):
     assert testcase.outputPath is not None
     testcase.inputPath.parent.mkdir(parents=True, exist_ok=True)
@@ -404,6 +405,7 @@ async def generate_output_for_testcase(
         use_retries=False,
         use_timelimit=False,
         capture_pipes=capture_pipes,
+        line_capture=line_capture,
     )
 
     if eval.result.outcome.is_slow() and eval.result.no_tle_outcome == Outcome.ACCEPTED:
@@ -527,6 +529,7 @@ async def generate_outputs_for_testcases(
             tc,
             interactor_digest=interactor_digest,
             capture_pipes=capture_pipes,
+            line_capture=entry.is_sample(),
         )
         if entry.metadata.copied_from is not None:
             # Copy remaining pipe files.

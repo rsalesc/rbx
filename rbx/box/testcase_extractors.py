@@ -117,6 +117,9 @@ class GenerationTestcaseEntry(BaseModel):
     extra_validators: List[CodeItem] = []
     model_solution: Optional[CodeItem] = None
 
+    def is_sample(self) -> bool:
+        return self.group_entry.group == 'samples'
+
 
 class TestcaseVisitor(abc.ABC):
     @abc.abstractmethod

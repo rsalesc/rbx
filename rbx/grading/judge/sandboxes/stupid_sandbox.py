@@ -23,6 +23,7 @@ from rbx.grading.judge.program import (
     ProgramResult,
 )
 from rbx.grading.judge.sandbox import (
+    CommuncationParams,
     SandboxBase,
     SandboxLog,
     SandboxParams,
@@ -179,7 +180,18 @@ class StupidSandbox(SandboxBase):
             or merged_capture is not None
         )
 
-    def _get_tee_executable(self) -> pathlib.Path:
+    def _get_tee_executable(
+        self, communication_params: CommuncationParams
+    ) -> pathlib.Path:
+        if communication_params.tee_mode == 'line':
+            with importlib.resources.as_file(
+                importlib.resources.files('rbx')
+                / 'grading'
+                / 'judge'
+                / 'sandboxes'
+                / 'line_tee.py'
+            ) as file:
+                return file
         with importlib.resources.as_file(
             importlib.resources.files('rbx')
             / 'grading'
@@ -189,10 +201,15 @@ class StupidSandbox(SandboxBase):
         ) as file:
             return file
 
-    def _get_tee_command(self, char: str, extra: Optional[str] = None) -> List[str]:
+    def _get_tee_command(
+        self,
+        char: str,
+        communication_params: CommuncationParams,
+        extra: Optional[str] = None,
+    ) -> List[str]:
         return [
             sys.executable,
-            str(utils.abspath(self._get_tee_executable())),
+            str(utils.abspath(self._get_tee_executable(communication_params))),
             char,
             extra or '/dev/null',
         ]
@@ -202,16 +219,20 @@ class StupidSandbox(SandboxBase):
         char: str,
         stdin: FileLike,
         stdout: FileLike,
+        communication_params: CommuncationParams,
         pgid: int,
         capture: Optional[pathlib.Path] = None,
-        merged_capture: Optional[pathlib.Path] = None,
     ) -> Program:
         io = ProgramIO(input=stdin, output=stdout, stderr=subprocess.DEVNULL)
-        if merged_capture:
-            io.stderr = self.relative_path(merged_capture).open('ab')
+        if communication_params.merged_capture:
+            io.stderr = self.relative_path(communication_params.merged_capture).open(
+                'ab'
+            )
         return Program(
             self._get_tee_command(
-                char, str(self.relative_path(capture)) if capture else None
+                char,
+                communication_params,
+                str(self.relative_path(capture)) if capture else None,
             ),
             self._get_tee_program_params(io, pgid),
         )
@@ -243,8 +264,9 @@ class StupidSandbox(SandboxBase):
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
-        merged_capture: Optional[pathlib.Path] = None,
+        communication_params: Optional[CommuncationParams] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
+        communication_params = communication_params or CommuncationParams()
         self.exec_num += 1
 
         logger.debug(
@@ -267,26 +289,30 @@ class StupidSandbox(SandboxBase):
         solution_output_pipe = interactor.pipes.input
 
         group_id = os.getpgid(interactor.pid)
-        should_tee = self._needs_teeing(params, interactor_params, merged_capture)
+        should_tee = self._needs_teeing(
+            params, interactor_params, communication_params.merged_capture
+        )
 
         if should_tee:
-            if merged_capture:
-                self.create_file_from_string(merged_capture, '<\n>\n', override=True)
+            if communication_params.merged_capture:
+                self.create_file_from_string(
+                    communication_params.merged_capture, '<\n>\n', override=True
+                )
 
             solution_tee = self._get_tee_program(
                 '>',
                 stdin=subprocess.PIPE,
                 stdout=interactor.pipes.input,
                 capture=self._get_pathlike_stdout(self._get_io(params)),
-                merged_capture=merged_capture,
                 pgid=group_id,
+                communication_params=communication_params,
             )
             interactor_tee = self._get_tee_program(
                 '<',
                 stdin=interactor.pipes.output,
                 stdout=subprocess.PIPE,
                 capture=self._get_pathlike_stdout(self._get_io(interactor_params)),
-                merged_capture=merged_capture,
+                communication_params=communication_params,
                 pgid=group_id,
             )
             assert solution_tee.pipes.input is not None

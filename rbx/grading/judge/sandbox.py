@@ -11,7 +11,7 @@ import stat
 import subprocess
 import sys
 import typing
-from typing import IO, Any, Dict, List, Optional, Tuple
+from typing import IO, Any, Dict, List, Literal, Optional, Tuple
 
 import pydantic
 
@@ -201,6 +201,13 @@ class SandboxParams(pydantic.BaseModel):
         if ignore_if_not_existing and not src.exists():
             return
         self.dirs.append(DirectoryMount(src, dest, options))
+
+
+class CommuncationParams(pydantic.BaseModel):
+    """Parameters for the communication."""
+
+    merged_capture: Optional[pathlib.Path] = None
+    tee_mode: Optional[Literal['char', 'line']] = 'char'
 
 
 class SandboxLog(pydantic.BaseModel):
@@ -577,7 +584,7 @@ class SandboxBase(abc.ABC):
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
-        merged_capture: Optional[pathlib.Path] = None,
+        communication_params: Optional[CommuncationParams] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
         pass
 

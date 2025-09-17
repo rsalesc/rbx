@@ -21,7 +21,12 @@ from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
-from rbx.grading.judge.sandbox import SandboxBase, SandboxLog, SandboxParams
+from rbx.grading.judge.sandbox import (
+    CommuncationParams,
+    SandboxBase,
+    SandboxLog,
+    SandboxParams,
+)
 from rbx.grading.judge.storage import copyfileobj
 from rbx.grading.limits import Limits
 
@@ -795,6 +800,7 @@ async def run_coordinated(
     artifacts: GradingArtifacts,
     sandbox: SandboxBase,
     merged_capture: Optional[pathlib.Path] = None,
+    line_capture: bool = False,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     sandbox.reset()
 
@@ -815,7 +821,9 @@ async def run_coordinated(
         solution_params,
         interactor_cmd,
         interactor_params,
-        merged_capture,
+        CommuncationParams(
+            merged_capture=merged_capture, tee_mode='line' if line_capture else 'char'
+        ),
     )
 
     if not _process_output_artifacts(artifacts, sandbox):
