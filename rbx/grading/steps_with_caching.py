@@ -64,7 +64,11 @@ async def run(
 ) -> Optional[RunLog]:
     artifacts.logs = GradingLogsHolder()
 
-    is_sanitized = metadata is not None and metadata.is_sanitized
+    transient_fallback = (
+        metadata is not None
+        and metadata.is_sanitized
+        and not grading_context.is_stress()
+    )
 
     cacheable_params = params.get_cacheable_params()
     if metadata is not None and metadata.retryIndex is not None:
@@ -72,7 +76,7 @@ async def run(
 
     with grading_context.cache_level(
         grading_context.CacheLevel.CACHE_TRANSIENTLY
-        if is_sanitized
+        if transient_fallback
         else grading_context.CacheLevel.NO_CACHE,
         when=grading_context.is_compilation_only,
     ):
@@ -105,12 +109,15 @@ async def run_coordinated(
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     artifacts.logs = GradingLogsHolder()
 
-    is_sanitized = (
+    transient_fallback = (
         interactor.metadata is not None
         and interactor.metadata.is_sanitized
         or solution.metadata is not None
         and solution.metadata.is_sanitized
     )
+
+    if grading_context.is_stress():
+        transient_fallback = False
 
     cacheable_params = {
         **_get_prefixed_cacheable_params(
@@ -129,7 +136,7 @@ async def run_coordinated(
 
     with grading_context.cache_level(
         grading_context.CacheLevel.CACHE_TRANSIENTLY
-        if is_sanitized
+        if transient_fallback
         else grading_context.CacheLevel.NO_CACHE,
         when=grading_context.is_compilation_only,
     ):

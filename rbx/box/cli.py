@@ -714,19 +714,22 @@ async def stress(
     from rbx.box import stresses
 
     with utils.StatusProgress('Running stress...') as s:
-        with grading_context.cache_level(grading_context.CacheLevel.CACHE_COMPILATION):
-            report = await stresses.run_stress(
-                timeout,
-                name=name,
-                generator_call=generator_args,
-                finder=finder,
-                findingsLimit=findings,
-                progress=s,
-                verbose=verbose,
-                sanitized=sanitized,
-                print_descriptors=print_descriptors,
-                skip_invalid_testcases=skip_invalid_testcases,
-            )
+        with grading_context.stress(True):
+            with grading_context.cache_level(
+                grading_context.CacheLevel.CACHE_COMPILATION
+            ):
+                report = await stresses.run_stress(
+                    timeout,
+                    name=name,
+                    generator_call=generator_args,
+                    finder=finder,
+                    findingsLimit=findings,
+                    progress=s,
+                    verbose=verbose,
+                    sanitized=sanitized,
+                    print_descriptors=print_descriptors,
+                    skip_invalid_testcases=skip_invalid_testcases,
+                )
 
     stresses.print_stress_report(report)
 

@@ -120,3 +120,28 @@ class check_integrity(ConditionedContext):
         if self.token is not None:
             check_integrity_var.reset(self.token)
         return None
+
+
+is_stress_var = contextvars.ContextVar('is_stress', default=False)
+
+
+def is_stress() -> bool:
+    return is_stress_var.get()
+
+
+class stress(ConditionedContext):
+    def __init__(self, is_stress: bool, when: Condition = True):
+        super().__init__(when)
+        self.is_stress = is_stress
+        self.token = None
+
+    def __enter__(self):
+        if not self.should_enter():
+            return self
+        self.token = is_stress_var.set(self.is_stress)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.token is not None:
+            is_stress_var.reset(self.token)
+        return None
