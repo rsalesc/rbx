@@ -1,3 +1,23 @@
+## 0.19.0 (2025-10-08)
+
+### Feat
+
+- add box testplan format
+- add @copy to generator scripts
+- add beta wizard backkend
+
+### Fix
+
+- use builtin checkers automagically
+- use generator script root only for generators
+- fix lookup by extension
+- fix sanitization in irun
+- cache transiently when sanitization is enabled
+- use line flush when building samples
+- add warning that wizard was vibe coded
+- fix model routing
+- fix default value for strategy
+
 ## 0.18.12 (2025-09-12)
 
 ### Fix
