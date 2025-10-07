@@ -10,7 +10,10 @@ from pydantic import ValidationError
 
 from rbx import console, utils
 from rbx.box import cd, global_package
-from rbx.box.environment import get_language_by_extension, get_sandbox_type
+from rbx.box.environment import (
+    get_language_by_extension_or_nil,
+    get_sandbox_type,
+)
 from rbx.box.global_package import get_cache_fingerprint
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
@@ -357,7 +360,8 @@ def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
                 relative_file = file.relative_to(root)
                 if (
                     entry.language is not None
-                    or get_language_by_extension(relative_file.suffix[1:]) is not None
+                    or get_language_by_extension_or_nil(relative_file.suffix[1:])
+                    is not None
                 ):
                     add_solution(
                         Solution.model_copy(
