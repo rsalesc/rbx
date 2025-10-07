@@ -1,5 +1,9 @@
 import pathlib
 
+import pytest
+import typer
+
+from rbx.box.schema import GeneratorScript, TestcaseGroup
 from rbx.box.testcase_extractors import (
     TestcaseGroupVisitor,
     TestcaseVisitor,
@@ -586,6 +590,273 @@ gen1 final_arg"""
         # Output paths should match input paths but with .out extension
         assert str(entry1.metadata.copied_to.outputPath).endswith('1-sub1-000.out')
         assert str(entry2.metadata.copied_to.outputPath).endswith('2-sub2-000.out')
+
+
+class TestNewFeatures:
+    """Test new features for box format and generator resolution."""
+
+    async def test_box_format_script_parsing(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that box format scripts are correctly parsed with semicolon syntax."""
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Create a box format generator script
+        box_script_content = """# Comment line
+1; gen1 first_test
+2; gen1 "quoted arg" second_arg
+
+# Another comment
+3; gen1 final_test"""
+
+        # Create the testplan file and modify the package to use box format
+        plan_path = testing_pkg.add_testplan('box_script')
+        plan_path.write_text(box_script_content)
+
+        # Manually modify the package to set box format
+        pkg = testing_pkg.yml
+        from rbx.box.schema import GeneratorScript
+
+        pkg.testcases = pkg.testcases + [
+            TestcaseGroup(
+                name='box_formatted',
+                generatorScript=GeneratorScript(path=plan_path, format='box'),
+            )
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        # Should have 3 entries (comments and empty lines ignored)
+        assert len(visited_entries) == 3
+
+        # Check that arguments are correctly parsed
+        assert visited_entries[0].metadata.generator_call.args == 'first_test'
+        assert (
+            visited_entries[1].metadata.generator_call.args == "'quoted arg' second_arg"
+        )
+        assert visited_entries[2].metadata.generator_call.args == 'final_test'
+
+        # Check that line numbers are tracked correctly
+        assert visited_entries[0].metadata.generator_script.line == 2
+        assert visited_entries[1].metadata.generator_script.line == 3
+        assert visited_entries[2].metadata.generator_script.line == 6
+
+    async def test_box_format_exe_stripping(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that .exe extensions are stripped in box format."""
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Create a box format script with .exe extensions
+        box_script_content = """1; gen1.exe test_arg
+2; gen1 normal_arg"""
+
+        plan_path = testing_pkg.add_testplan('box_exe_script')
+        plan_path.write_text(box_script_content)
+
+        # Manually modify the package to set box format
+        pkg = testing_pkg.yml
+        from rbx.box.schema import GeneratorScript
+
+        pkg.testcases = pkg.testcases + [
+            TestcaseGroup(
+                name='box_exe_test',
+                generatorScript=GeneratorScript(path=plan_path, format='box'),
+            )
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 2
+        # Both should resolve to 'gen1' (without .exe)
+        assert visited_entries[0].metadata.generator_call.name == 'gen1'
+        assert visited_entries[1].metadata.generator_call.name == 'gen1'
+
+    async def test_copy_command_uses_script_root(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that @copy command resolves paths relative to script root."""
+        # Create test files in different directories
+        testing_pkg.add_file('tests/manual1.in').write_text('manual test 1')
+        testing_pkg.add_file('testplan/data/manual2.in').write_text('manual test 2')
+
+        # Create generator script that uses @copy
+        script_content = """@copy ../tests/manual1.in
+@copy data/manual2.in"""
+
+        plan_path = testing_pkg.add_testplan('copy_script')
+        plan_path.write_text(script_content)
+
+        # Manually set the root directory for the generator script
+        pkg = testing_pkg.yml
+        from rbx.box.schema import GeneratorScript
+
+        pkg.testcases = pkg.testcases + [
+            TestcaseGroup(
+                name='copy_test',
+                generatorScript=GeneratorScript(
+                    path=plan_path,
+                    root=pathlib.Path('testplan'),  # Set root to testplan directory
+                ),
+            )
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 2
+
+        # Check that both entries have copied_from metadata
+        assert visited_entries[0].metadata.copied_from is not None
+        assert visited_entries[1].metadata.copied_from is not None
+
+        # Check that the paths are resolved correctly relative to the root
+        assert visited_entries[0].metadata.copied_from.inputPath == pathlib.Path(
+            'testplan/../tests/manual1.in'
+        )
+        assert visited_entries[1].metadata.copied_from.inputPath == pathlib.Path(
+            'testplan/data/manual2.in'
+        )
+
+        # Check that @copy is preserved in generator_call
+        assert visited_entries[0].metadata.generator_call.name == '@copy'
+        assert visited_entries[0].metadata.generator_call.args == '../tests/manual1.in'
+        assert visited_entries[1].metadata.generator_call.name == '@copy'
+        assert visited_entries[1].metadata.generator_call.args == 'data/manual2.in'
+
+    async def test_box_format_copy_command(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that 'copy' is converted to '@copy' in box format."""
+        # Create test file
+        testing_pkg.add_file('tests/manual.in').write_text('manual test')
+
+        # Create box format script with 'copy' command
+        box_script_content = """1; copy tests/manual.in"""
+
+        plan_path = testing_pkg.add_testplan('box_copy_script')
+        plan_path.write_text(box_script_content)
+
+        pkg = testing_pkg.yml
+        from rbx.box.schema import GeneratorScript
+
+        pkg.testcases = pkg.testcases + [
+            TestcaseGroup(
+                name='box_copy_test',
+                generatorScript=GeneratorScript(path=plan_path, format='box'),
+            )
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+
+        # Check that 'copy' was converted to '@copy'
+        assert visited_entries[0].metadata.generator_call.name == '@copy'
+        assert visited_entries[0].metadata.copied_from is not None
+
+    async def test_generator_resolution_with_alias(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that generator aliases are resolved correctly."""
+        # Add generator with alias
+        testing_pkg.add_generator(
+            'gens/my_gen.cpp', alias='gen_alias', src='generators/gen-id.cpp'
+        )
+
+        # Create script using the alias
+        script_content = """gen_alias test_arg"""
+
+        # Create the testplan file
+        plan_path = testing_pkg.add_testplan('alias_test')
+        plan_path.write_text(script_content)
+
+        # Manually create the testgroup with GeneratorScript
+        pkg = testing_pkg.yml
+        pkg.testcases = pkg.testcases + [
+            TestcaseGroup(
+                name='alias_test', generatorScript=GeneratorScript(path=plan_path)
+            )
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        # The alias should be resolved to the actual generator name
+        assert visited_entries[0].metadata.generator_call.name == 'gen_alias'
+
+    async def test_generator_resolution_rejects_at_prefix(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that generator names starting with @ are rejected."""
+        # This test verifies the error path, so we need to catch the exit
+        script_content = """@invalid_gen test_arg"""
+
+        # Create the testplan file
+        plan_path = testing_pkg.add_testplan('invalid_test')
+        plan_path.write_text(script_content)
+
+        # Manually create the testgroup with GeneratorScript
+        pkg = testing_pkg.yml
+        pkg.testcases = pkg.testcases + [
+            TestcaseGroup(
+                name='invalid_test', generatorScript=GeneratorScript(path=plan_path)
+            )
+        ]
+        testing_pkg.save()
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                pass
+
+        visitor = CollectingVisitor()
+
+        # The _resolve_generator_name function should raise typer.Exit(1) for @ prefix
+        with pytest.raises(typer.Exit) as exc_info:
+            await run_testcase_visitor(visitor)
+
+        assert exc_info.value.exit_code == 1
 
 
 class TestComplexScenarios:

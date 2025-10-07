@@ -11,6 +11,7 @@ from rbx.box.schema import (
     ExpectedOutcome,
     Generator,
     GeneratorCall,
+    GeneratorScript,
     Interactor,
     Package,
     Solution,
@@ -198,7 +199,7 @@ class TestingPackage(TestingShared):
         self.yml.testcases = self.yml.testcases + [
             TestcaseGroup(
                 name=name,
-                generatorScript=CodeItem(path=plan_path),
+                generatorScript=GeneratorScript(path=plan_path),
                 validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
                 extraValidators=[
                     CodeItem(path=pathlib.Path(v)) for v in extra_validators

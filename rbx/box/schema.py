@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import re
 import typing
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
@@ -218,6 +218,19 @@ Testlib and jngen are already included by default.
     )
 
 
+class GeneratorScript(CodeItem):
+    model_config = ConfigDict(extra='forbid')
+
+    root: pathlib.Path = Field(
+        default_factory=pathlib.Path,
+        description="""The root directory where the generators and testcases should be fetched from.""",
+    )
+
+    format: Literal['rbx', 'box'] = Field(
+        default='rbx', description="""The format of the generator script."""
+    )
+
+
 class Interactor(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
@@ -283,7 +296,7 @@ A list of generators to call to generate testcases for this group.
 """,
     )
 
-    generatorScript: Optional[CodeItem] = Field(
+    generatorScript: Optional[GeneratorScript] = Field(
         default=None,
         description="""
 A generator script to call to generate testcases for this group.
