@@ -252,19 +252,29 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
 
             # Run each line from generator script.
             for generator_name, args, line_number in _extract_script_lines(script):
-                call = GeneratorCall(name=generator_name, args=args)
+                generator_script_entry = GeneratorScriptEntry(
+                    path=subgroup.generatorScript.path,
+                    line=line_number,
+                )
+                if generator_name == '@copy':
+                    tc = Testcase(inputPath=pathlib.Path(args.strip()))
+                    metadata = GenerationMetadata(
+                        copied_from=fill_output_for_defined_testcase(tc),
+                        copied_to=_copied_to(i),
+                        generator_script=generator_script_entry,
+                    )
+                else:
+                    call = GeneratorCall(name=generator_name, args=args)
+                    metadata = GenerationMetadata(
+                        generator_call=call,
+                        generator_script=generator_script_entry,
+                        copied_to=_copied_to(i),
+                    )
                 await visitor.visit(
                     GenerationTestcaseEntry(
                         group_entry=_entry(i),
                         subgroup_entry=_sub_entry(i),
-                        metadata=GenerationMetadata(
-                            generator_call=call,
-                            generator_script=GeneratorScriptEntry(
-                                path=subgroup.generatorScript.path,
-                                line=line_number,
-                            ),
-                            copied_to=_copied_to(i),
-                        ),
+                        metadata=metadata,
                         validator=validator,
                         extra_validators=extra_validators,
                         model_solution=model_solution,
