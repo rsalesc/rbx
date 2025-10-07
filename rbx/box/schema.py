@@ -223,7 +223,7 @@ class GeneratorScript(CodeItem):
 
     root: pathlib.Path = Field(
         default_factory=pathlib.Path,
-        description="""The root directory where the generators and testcases should be fetched from.""",
+        description="""The root directory where the generators should be fetched from.""",
     )
 
     format: Literal['rbx', 'box'] = Field(

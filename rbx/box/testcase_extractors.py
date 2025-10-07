@@ -321,9 +321,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     line=line_number,
                 )
                 if generator_name == '@copy':
-                    tc = Testcase(
-                        inputPath=subgroup.generatorScript.root / args.strip()
-                    )
+                    tc = Testcase(inputPath=pathlib.Path(args.strip()))
                     metadata = GenerationMetadata(
                         copied_from=fill_output_for_defined_testcase(tc),
                         copied_to=_copied_to(i),

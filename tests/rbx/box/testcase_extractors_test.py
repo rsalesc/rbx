@@ -690,65 +690,6 @@ class TestNewFeatures:
         assert visited_entries[0].metadata.generator_call.name == 'gen1'
         assert visited_entries[1].metadata.generator_call.name == 'gen1'
 
-    async def test_copy_command_uses_script_root(
-        self, testing_pkg: testing_package.TestingPackage
-    ):
-        """Test that @copy command resolves paths relative to script root."""
-        # Create test files in different directories
-        testing_pkg.add_file('tests/manual1.in').write_text('manual test 1')
-        testing_pkg.add_file('testplan/data/manual2.in').write_text('manual test 2')
-
-        # Create generator script that uses @copy
-        script_content = """@copy ../tests/manual1.in
-@copy data/manual2.in"""
-
-        plan_path = testing_pkg.add_testplan('copy_script')
-        plan_path.write_text(script_content)
-
-        # Manually set the root directory for the generator script
-        pkg = testing_pkg.yml
-        from rbx.box.schema import GeneratorScript
-
-        pkg.testcases = pkg.testcases + [
-            TestcaseGroup(
-                name='copy_test',
-                generatorScript=GeneratorScript(
-                    path=plan_path,
-                    root=pathlib.Path('testplan'),  # Set root to testplan directory
-                ),
-            )
-        ]
-        testing_pkg.save()
-
-        visited_entries = []
-
-        class CollectingVisitor(TestcaseVisitor):
-            async def visit(self, entry):
-                visited_entries.append(entry)
-
-        visitor = CollectingVisitor()
-        await run_testcase_visitor(visitor)
-
-        assert len(visited_entries) == 2
-
-        # Check that both entries have copied_from metadata
-        assert visited_entries[0].metadata.copied_from is not None
-        assert visited_entries[1].metadata.copied_from is not None
-
-        # Check that the paths are resolved correctly relative to the root
-        assert visited_entries[0].metadata.copied_from.inputPath == pathlib.Path(
-            'testplan/../tests/manual1.in'
-        )
-        assert visited_entries[1].metadata.copied_from.inputPath == pathlib.Path(
-            'testplan/data/manual2.in'
-        )
-
-        # Check that @copy is preserved in generator_call
-        assert visited_entries[0].metadata.generator_call.name == '@copy'
-        assert visited_entries[0].metadata.generator_call.args == '../tests/manual1.in'
-        assert visited_entries[1].metadata.generator_call.name == '@copy'
-        assert visited_entries[1].metadata.generator_call.args == 'data/manual2.in'
-
     async def test_box_format_copy_command(
         self, testing_pkg: testing_package.TestingPackage
     ):
