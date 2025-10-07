@@ -6,6 +6,7 @@ import typer
 from rbx import console
 from rbx.box import code, package
 from rbx.box.schema import Testcase
+from rbx.config import get_builtin_checker
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     CheckerResult,
@@ -24,6 +25,11 @@ def compile_checker(progress: Optional[StatusProgress] = None) -> str:
 
     if progress:
         progress.update('Compiling checker...')
+
+    if not checker.path.is_file():
+        builtin_checker = get_builtin_checker(checker.path.name)
+        if builtin_checker.is_file():
+            checker.path = builtin_checker
 
     try:
         digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
