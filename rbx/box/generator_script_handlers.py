@@ -50,7 +50,7 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
             self.script += f'\n# {comment}'
         for call in calls:
             name = self.normalize_call_name(call.name)
-            self.script += f'\n{name} {call.args or ''}'
+            self.script += f"\n{name} {call.args or ''}"
 
 
 def _parse_box_testplan_line(line: str) -> Tuple[int, str, str]:
@@ -109,7 +109,7 @@ class BoxGeneratorScriptHandler(GeneratorScriptHandler):
         group = _get_last_group(self.script) + 1
         for call in calls:
             name = pathlib.Path(self.normalize_call_name(call.name)).with_suffix('.exe')
-            self.script += f'\n{group} ; {name} {call.args or ''}'
+            self.script += f"\n{group} ; {name} {call.args or ''}"
 
 
 REGISTERED_HANDLERS = {
