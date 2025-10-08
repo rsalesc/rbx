@@ -114,7 +114,8 @@ to define it in the `problem.rbx.yml` file.
       - name: 'samples'
         testcaseGlob: 'tests/*.in'
       - name: 'secret'
-        generatorScript: 'testplan.txt'
+        generatorScript:
+          path: 'testplan.txt'
     ```
 
 #### Dynamic generator script
@@ -138,7 +139,8 @@ Below, there's an example of a dynamic generator script for a problem that has a
       - name: 'samples'
         testcaseGlob: 'tests/*.in'
       - name: 'secret'
-        generatorScript: 'testplan.py'
+        generatorScript:
+          path: 'testplan.py'
     ```
 
 The script spits a testplan with exactly 10 random tests, each one generated from a different argument between

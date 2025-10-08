@@ -778,7 +778,7 @@ async def stress(
             problem_yml['testcases'].append(
                 {
                     'name': testgroup,
-                    'generatorScript': new_script_path.name,
+                    'generatorScript': {'path': new_script_path.name},
                 }
             )
             dest = package.find_problem_yaml()
