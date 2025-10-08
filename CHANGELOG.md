@@ -1,3 +1,16 @@
+## 0.19.1 (2025-10-08)
+
+### Fix
+
+- add extraValidators globally
+- add glob support for extraValidators
+- refactor get_globbed_code_items
+- fix f-string quoting
+- support adding stress findings to box testplans
+- make sure stress tests add generatorScript.path to the yml
+- only use generators with a matching extension/language
+- add custom build dirs to presets
+
 ## 0.19.0 (2025-10-08)
 
 ### Feat
