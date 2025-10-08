@@ -271,6 +271,11 @@ def get_generator_or_nil(
     matching_files = list(
         file.relative_to(root) for file in root.glob(str(path_pattern))
     )
+    matching_files = [
+        file
+        for file in matching_files
+        if get_language_by_extension_or_nil(file.suffix[1:]) is not None
+    ]
 
     if len(matching_files) > 1:
         console.console.print(
