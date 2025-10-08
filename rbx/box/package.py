@@ -2,7 +2,7 @@ import atexit
 import functools
 import pathlib
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TypeVar
 
 import ruyaml
 import typer
@@ -268,14 +268,8 @@ def get_generator_or_nil(
         return Generator(name=name, path=path)
 
     path_pattern = path.with_suffix('.*')
-    matching_files = list(
-        file.relative_to(root) for file in root.glob(str(path_pattern))
-    )
-    matching_files = [
-        file
-        for file in matching_files
-        if get_language_by_extension_or_nil(file.suffix[1:]) is not None
-    ]
+    matching_items = get_globbed_code_items([CodeItem(path=path_pattern)], root)
+    matching_files = [item.path for item in matching_items]
 
     if len(matching_files) > 1:
         console.console.print(
@@ -352,35 +346,42 @@ def get_interactor(root: pathlib.Path = pathlib.Path()) -> CodeItem:
     return interactor
 
 
-@functools.cache
-def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
-    package = find_problem_package_or_die(root)
-    seen_paths = set()
-    res = []
+CodeItemLike = TypeVar('CodeItemLike', bound=CodeItem)
 
-    def add_solution(entry: Solution):
+
+def get_globbed_code_items(
+    items: List[CodeItemLike], root: pathlib.Path = pathlib.Path()
+) -> List[CodeItemLike]:
+    res = []
+    seen_paths = set()
+
+    def add_item(entry: CodeItemLike):
         if entry.path in seen_paths:
             return
         seen_paths.add(entry.path)
         res.append(entry)
 
-    for entry in package.solutions:
+    for entry in items:
         if '*' in str(entry.path):
             for file in sorted(root.glob(str(entry.path))):
                 relative_file = file.relative_to(root)
                 if (
-                    entry.language is not None
-                    or get_language_by_extension_or_nil(relative_file.suffix[1:])
-                    is not None
+                    entry.language is None
+                    and get_language_by_extension_or_nil(relative_file.suffix[1:])
+                    is None
                 ):
-                    add_solution(
-                        Solution.model_copy(
-                            entry, update={'path': relative_file}, deep=True
-                        )
-                    )
-            continue
-        add_solution(entry)
+                    # Cannot infer valid language for this globbed item, skip it.
+                    continue
+                add_item(entry.model_copy(update={'path': relative_file}, deep=True))
+        else:
+            add_item(entry)
     return res
+
+
+@functools.cache
+def get_solutions(root: pathlib.Path = pathlib.Path()) -> List[Solution]:
+    package = find_problem_package_or_die(root)
+    return get_globbed_code_items(package.solutions, root)
 
 
 @functools.cache
