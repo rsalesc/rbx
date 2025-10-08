@@ -314,7 +314,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         if group.validator is not None:
             group_validator = group.validator
 
-        extra_validators = group.extraValidators
+        extra_validators = pkg.extraValidators + group.extraValidators
         await _explore_subgroup(
             group,
             0 if group.subgroups else None,

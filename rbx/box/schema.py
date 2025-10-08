@@ -565,6 +565,10 @@ class Package(BaseModel):
         default=None, description='The validator for this problem.'
     )
 
+    extraValidators: List[CodeItem] = Field(
+        default=[], description='Extra validators for this problem.'
+    )
+
     generators: List[Generator] = Field(
         default=[], description='Generators for this problem.'
     )
