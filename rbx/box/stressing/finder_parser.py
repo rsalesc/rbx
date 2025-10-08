@@ -8,7 +8,7 @@ import lark
 import typer
 
 from rbx import console
-from rbx.box import package
+from rbx.box import checkers, package
 from rbx.box.schema import CodeItem, ExpectedOutcome
 from rbx.box.solutions import expand_solutions
 from rbx.grading.steps import CheckerResult, Outcome, RunLog, TestcaseLog
@@ -288,7 +288,7 @@ def validate(tree: lark.ParseTree):
 
     all_checkers = get_all_checkers(tree)
     for checker in all_checkers:
-        if not pathlib.Path(checker).is_file():
+        if not checkers.is_valid_checker(pathlib.Path(checker)):
             console.console.print(
                 f'[error]Finder expression references non-existing checker [item]{checker}[/item][/error]'
             )

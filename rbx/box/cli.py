@@ -19,6 +19,7 @@ from rbx.box import (
     creation,
     download,
     environment,
+    generator_script_handlers,
     generators,
     global_package,
     package,
@@ -792,18 +793,16 @@ async def stress(
             subgroup = groups_by_name[testgroup]
             assert subgroup.generatorScript is not None
             generator_script = pathlib.Path(subgroup.generatorScript.path)
+            handler = generator_script_handlers.get_generator_script_handler(
+                subgroup.generatorScript, generator_script.read_text()
+            )
 
-            finding_lines = []
-            for finding in report.findings:
-                line = finding.generator.name
-                if finding.generator.args is not None:
-                    line = f'{line} {finding.generator.args}'
-                finding_lines.append(line)
-
-            with generator_script.open('a') as f:
-                stress_text = f'# Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
-                finding_text = '\n'.join(finding_lines)
-                f.write(f'\n{stress_text}\n{finding_text}\n')
+            stress_text = f'# Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
+            handler.append(
+                [finding.generator for finding in report.findings],
+                comment=stress_text,
+            )
+            generator_script.write_text(handler.script)
 
             console.console.print(
                 f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at [item]{subgroup.generatorScript.path}[/item]"

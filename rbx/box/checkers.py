@@ -5,7 +5,7 @@ import typer
 
 from rbx import console
 from rbx.box import code, package
-from rbx.box.schema import Testcase
+from rbx.box.schema import CodeItem, Testcase
 from rbx.config import get_builtin_checker
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
@@ -20,21 +20,29 @@ from rbx.grading.steps import (
 from rbx.utils import StatusProgress
 
 
-def compile_checker(progress: Optional[StatusProgress] = None) -> str:
-    checker = package.get_checker()
+def is_valid_checker(checker_path: pathlib.Path) -> bool:
+    return checker_path.is_file() or get_builtin_checker(checker_path.name) is not None
+
+
+def compile_checker(
+    progress: Optional[StatusProgress] = None, custom_checker: Optional[CodeItem] = None
+) -> str:
+    checker = custom_checker or package.get_checker()
 
     if progress:
-        progress.update('Compiling checker...')
+        progress.update(f'Compiling checker [item]{checker.path}[/item]...')
 
     if not checker.path.is_file():
         builtin_checker = get_builtin_checker(checker.path.name)
         if builtin_checker.is_file():
-            checker.path = builtin_checker
+            checker = checker.model_copy(update={'path': builtin_checker})
 
     try:
         digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
     except Exception as e:
-        console.console.print('[error]Failed compiling checker[/error]')
+        console.console.print(
+            f'[error]Failed compiling checker [item]{checker.path}[/item][/error]'
+        )
         raise typer.Exit(1) from e
     return digest
 

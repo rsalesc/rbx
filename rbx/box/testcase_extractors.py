@@ -1,6 +1,5 @@
 import abc
 import pathlib
-import shlex
 from typing import Iterable, List, Optional, Set, Tuple
 
 import typer
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import package
 from rbx.box.code import compile_item, run_item
+from rbx.box.generator_script_handlers import get_generator_script_handler
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
@@ -87,59 +87,10 @@ async def run_generator_script(testcase: TestcaseSubgroup) -> str:
     return script
 
 
-def _extract_rbx_script_lines(script: str) -> Iterable[Tuple[str, str, int]]:
-    lines = script.splitlines()
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('#'):
-            continue
-        yield shlex.split(line)[0], shlex.join(shlex.split(line)[1:]), i + 1
-
-
-def _parse_box_testplan_line(line: str) -> Tuple[str, str]:
-    comma_parts = line.split(';', maxsplit=1)
-    if len(comma_parts) != 2:
-        console.console.print(f'[error]Invalid testplan line: {line}[/error]')
-        raise typer.Exit(1)
-    line = comma_parts[1].strip()
-    if not line:
-        console.console.print(f'[error]Invalid testplan line: {line}[/error]')
-        raise typer.Exit(1)
-
-    call = shlex.split(line)[0]
-    args = shlex.join(shlex.split(line)[1:])
-
-    if call.strip() == 'copy':
-        call = '@copy'
-    if call.endswith('.exe'):
-        call = call[:-4]
-
-    return call, args
-
-
-def _extract_box_script_lines(script: str) -> Iterable[Tuple[str, str, int]]:
-    lines = script.splitlines()
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('#'):
-            continue
-        call, args = _parse_box_testplan_line(line)
-        yield call, args, i + 1
-
-
 def _extract_script_lines(
     script: str, script_entry: GeneratorScript
 ) -> Iterable[Tuple[str, str, int]]:
-    if script_entry.format == 'rbx':
-        return _extract_rbx_script_lines(script)
-    elif script_entry.format == 'box':
-        return _extract_box_script_lines(script)
-    else:
-        raise ValueError(f'Invalid generator script format: {script_entry.format}')
+    return get_generator_script_handler(script_entry, script).parse()
 
 
 def _resolve_generator_name(generator_name: str, script_entry: GeneratorScript) -> str:
