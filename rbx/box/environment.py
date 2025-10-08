@@ -250,6 +250,11 @@ execution config can be individually overridden in the language configuration.""
         description="""Extensions to be added to the environment.""",
     )
 
+    buildDir: pathlib.Path = Field(
+        default=pathlib.Path('build'),
+        description="""Directory to store the build files.""",
+    )
+
 
 def get_app_environment_path(env: str) -> pathlib.Path:
     return config.get_resources_file(pathlib.PosixPath('presets') / env / 'env.rbx.yml')
@@ -325,6 +330,10 @@ def get_language_by_extension(extension: str) -> EnvironmentLanguage:
         f'[error]Language with extension [item]{extension}[/item] not found.[/error]'
     )
     raise typer.Exit()
+
+
+def get_build_dir() -> pathlib.Path:
+    return get_environment().buildDir
 
 
 def install_environment(name: str, file: pathlib.Path):

@@ -1027,8 +1027,8 @@ def wizard():
 @cd.within_closest_package
 def _clear_package_cache():
     console.console.print('Cleaning cache and build directories...')
-    shutil.rmtree('.box', ignore_errors=True)
-    shutil.rmtree('build', ignore_errors=True)
+    shutil.rmtree(package.get_build_path(), ignore_errors=True)
+    shutil.rmtree(package.get_problem_cache_path(), ignore_errors=True)
 
 
 @app.command(

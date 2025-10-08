@@ -9,7 +9,7 @@ import typer
 from pydantic import ValidationError
 
 from rbx import console, utils
-from rbx.box import cd, global_package
+from rbx.box import cd, environment, global_package
 from rbx.box.environment import (
     get_language_by_extension_or_nil,
     get_sandbox_type,
@@ -117,8 +117,13 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
 
 
 @functools.cache
+def get_problem_cache_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    return find_problem(root) / '.box'
+
+
+@functools.cache
 def get_problem_cache_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    cache_dir = find_problem(root) / '.box'
+    cache_dir = get_problem_cache_path(root)
     cache_dir.mkdir(parents=True, exist_ok=True)
     fingerprint_file = cache_dir / 'fingerprint'
     if not fingerprint_file.is_file():
@@ -232,7 +237,7 @@ def get_singleton_interactor_sandbox(
 
 @functools.cache
 def get_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    return find_problem(root) / 'build'
+    return find_problem(root) / environment.get_build_dir()
 
 
 @functools.cache

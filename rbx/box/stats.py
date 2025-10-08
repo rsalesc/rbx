@@ -9,6 +9,7 @@ from rbx.box.cd import (
 )
 from rbx.box.contest.contest_package import find_contest, find_contest_package_or_die
 from rbx.box.formatting import get_formatted_memory
+from rbx.box.package import get_build_path, get_problem_cache_path
 
 
 def find_problem_packages_from_contest(
@@ -51,12 +52,12 @@ def get_dir_size(path: pathlib.Path) -> int:
 
 
 def get_cache_size(root: pathlib.Path = pathlib.Path()) -> int:
-    cache_dir = root / '.box'
+    cache_dir = get_problem_cache_path(root)
     return get_dir_size(cache_dir)
 
 
 def get_build_size(root: pathlib.Path = pathlib.Path()) -> int:
-    build_dir = root / 'build'
+    build_dir = get_build_path(root)
     return get_dir_size(build_dir)
 
 
