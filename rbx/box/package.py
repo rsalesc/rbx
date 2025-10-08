@@ -350,10 +350,15 @@ CodeItemLike = TypeVar('CodeItemLike', bound=CodeItem)
 
 
 def get_globbed_code_items(
-    items: List[CodeItemLike], root: pathlib.Path = pathlib.Path()
+    items: List[CodeItemLike],
+    root: pathlib.Path = pathlib.Path(),
+    preexisting_items: Optional[List[CodeItemLike]] = None,
 ) -> List[CodeItemLike]:
+    preexisting_items = (
+        get_globbed_code_items(preexisting_items, root) if preexisting_items else []
+    )
     res = []
-    seen_paths = set()
+    seen_paths = {item.path for item in preexisting_items}
 
     def add_item(entry: CodeItemLike):
         if entry.path in seen_paths:

@@ -170,7 +170,10 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         extra_validators: Optional[List[CodeItem]] = None,
         model_solution: Optional[CodeItem] = None,
     ):
-        extra_validators = extra_validators or []
+        extra_validators = package.get_globbed_code_items(
+            extra_validators or [],
+            preexisting_items=[validator] if validator is not None else None,
+        )
 
         assert prefix and len(prefix) >= 1 and len(prefix) <= 2
         group_path = prefix[0]

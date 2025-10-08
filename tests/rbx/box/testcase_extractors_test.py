@@ -359,6 +359,218 @@ class TestRunTestcaseVisitor:
         assert len(direct_calls) == 1  # from main/sub1
         assert len(script_calls) == 1  # from scripted (because we allow scripted group)
 
+    async def test_run_testcase_visitor_with_glob_validators(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test running visitor with glob patterns in extra validators."""
+        # Create multiple validator files
+        testing_pkg.add_file(
+            'validators/int_validator.cpp', src='validators/int-validator.cpp'
+        )
+        testing_pkg.add_file(
+            'validators/bounded_validator.cpp',
+            src='validators/int-validator-bounded.cpp',
+        )
+        testing_pkg.add_file(
+            'validators/odd_validator.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.add_file(
+            'other/not_validator.cpp', src='validators/int-validator.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup with glob pattern for extra validators
+        testing_pkg.add_testgroup_with_generators(
+            'validated',
+            [{'name': 'gen1', 'args': 'test'}],
+            extra_validators=['validators/*.cpp'],  # Should match 3 files
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        # Should have expanded the glob to include all 3 validators
+        assert len(visited_entries[0].extra_validators) == 3
+        validator_paths = {v.path for v in visited_entries[0].extra_validators}
+        expected_paths = {
+            pathlib.Path('validators/int_validator.cpp'),
+            pathlib.Path('validators/bounded_validator.cpp'),
+            pathlib.Path('validators/odd_validator.cpp'),
+        }
+        assert validator_paths == expected_paths
+
+    async def test_run_testcase_visitor_validator_deduplication(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that extra validators don't duplicate the main validator."""
+        # Set main validator
+        testing_pkg.set_validator(
+            'validators/main.cpp', src='validators/int-validator.cpp'
+        )
+
+        # Create additional validator files
+        testing_pkg.add_file(
+            'validators/extra1.cpp', src='validators/int-validator-bounded.cpp'
+        )
+        testing_pkg.add_file(
+            'validators/extra2.cpp', src='validators/extra-validator-odd.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup with extra validators including the main validator path
+        testing_pkg.add_testgroup_with_generators(
+            'deduplicated',
+            [{'name': 'gen1', 'args': 'test'}],
+            extra_validators=[
+                'validators/main.cpp',
+                'validators/extra1.cpp',
+                'validators/extra2.cpp',
+            ],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        # Main validator should be set
+        assert visited_entries[0].validator.path == pathlib.Path('validators/main.cpp')
+        # Extra validators should not include the main validator (deduplicated)
+        assert len(visited_entries[0].extra_validators) == 2
+        extra_paths = {v.path for v in visited_entries[0].extra_validators}
+        assert pathlib.Path('validators/main.cpp') not in extra_paths
+        assert pathlib.Path('validators/extra1.cpp') in extra_paths
+        assert pathlib.Path('validators/extra2.cpp') in extra_paths
+
+    async def test_run_testcase_visitor_nested_glob_expansion(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that nested subgroups properly expand and deduplicate glob patterns."""
+        # Create validator files in different directories
+        testing_pkg.add_file('validators/base1.cpp', src='validators/int-validator.cpp')
+        testing_pkg.add_file(
+            'validators/base2.cpp', src='validators/int-validator-bounded.cpp'
+        )
+        testing_pkg.add_file(
+            'validators/sub1.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.add_file('validators/sub2.cpp', src='validators/int-validator.cpp')
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Create a complex hierarchy where group has glob validators
+        # and subgroup adds more glob validators
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {
+                    'name': 'subgroup1',
+                    'generators': [{'name': 'gen1', 'args': 'test1'}],
+                    # This will add to the group's glob pattern
+                    'extraValidators': ['validators/sub*.cpp'],
+                },
+            ],
+            # Group level glob pattern
+            extra_validators=['validators/base*.cpp'],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+
+        # Should have all validators: base1, base2 (from group) + sub1, sub2 (from subgroup)
+        # The glob expansion should happen for both levels
+        assert len(visited_entries[0].extra_validators) == 4
+        validator_paths = {v.path for v in visited_entries[0].extra_validators}
+        expected_paths = {
+            pathlib.Path('validators/base1.cpp'),
+            pathlib.Path('validators/base2.cpp'),
+            pathlib.Path('validators/sub1.cpp'),
+            pathlib.Path('validators/sub2.cpp'),
+        }
+        assert validator_paths == expected_paths
+
+    async def test_run_testcase_visitor_overlapping_glob_deduplication(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that overlapping glob patterns between levels are properly deduplicated."""
+        # Create validator files that match multiple patterns
+        testing_pkg.add_file(
+            'validators/common1.cpp', src='validators/int-validator.cpp'
+        )
+        testing_pkg.add_file(
+            'validators/common2.cpp', src='validators/int-validator-bounded.cpp'
+        )
+        testing_pkg.add_file(
+            'validators/specific.cpp', src='validators/extra-validator-odd.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Create hierarchy with overlapping glob patterns
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {
+                    'name': 'subgroup1',
+                    'generators': [{'name': 'gen1', 'args': 'test1'}],
+                    # This glob overlaps with the group level glob
+                    'extraValidators': [
+                        'validators/common*.cpp',
+                        'validators/specific.cpp',
+                    ],
+                },
+            ],
+            # Group level glob that will match common1.cpp and common2.cpp
+            extra_validators=['validators/common*.cpp'],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+
+        # Should have 3 validators total, with common files deduplicated
+        assert len(visited_entries[0].extra_validators) == 3
+        validator_paths = {v.path for v in visited_entries[0].extra_validators}
+        expected_paths = {
+            pathlib.Path('validators/common1.cpp'),
+            pathlib.Path('validators/common2.cpp'),
+            pathlib.Path('validators/specific.cpp'),
+        }
+        assert validator_paths == expected_paths
+
 
 class TestExtractionFunctions:
     """Test the main extraction functions."""
@@ -944,3 +1156,79 @@ class TestComplexScenarios:
             'extra_validator.cpp'
         )
         assert len(sub2_entry.extra_validators) == 0
+
+    async def test_subgroup_validators_with_globs_inheritance(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that subgroups properly inherit and expand glob patterns in validators."""
+        # Create multiple validator files
+        testing_pkg.add_file('validators/base1.cpp', src='validators/int-validator.cpp')
+        testing_pkg.add_file(
+            'validators/base2.cpp', src='validators/int-validator-bounded.cpp'
+        )
+        testing_pkg.add_file(
+            'validators/sub_extra.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.add_file('validators/ignored.txt').write_text('not a validator')
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup with glob pattern extra validators at group level
+        # and additional validators at subgroup level
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {
+                    'name': 'sub1',
+                    'generators': [{'name': 'gen1', 'args': 'arg1'}],
+                    'extraValidators': [
+                        'validators/sub_extra.cpp'
+                    ],  # Additional validator
+                },
+                {
+                    'name': 'sub2',
+                    'generators': [{'name': 'gen1', 'args': 'arg2'}],
+                    # No additional validators
+                },
+            ],
+            extra_validators=['validators/base*.cpp'],  # Glob pattern at group level
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 2
+
+        # Get entries for each subgroup
+        sub1_entry = next(
+            e for e in visited_entries if e.subgroup_entry.group == 'main/sub1'
+        )
+        sub2_entry = next(
+            e for e in visited_entries if e.subgroup_entry.group == 'main/sub2'
+        )
+
+        # Sub1 should have group validators (expanded from glob) + its own extra validator
+        sub1_paths = {v.path for v in sub1_entry.extra_validators}
+        expected_sub1 = {
+            pathlib.Path('validators/base1.cpp'),
+            pathlib.Path('validators/base2.cpp'),
+            pathlib.Path('validators/sub_extra.cpp'),
+        }
+        assert sub1_paths == expected_sub1
+        assert len(sub1_entry.extra_validators) == 3
+
+        # Sub2 should only have group validators (expanded from glob)
+        sub2_paths = {v.path for v in sub2_entry.extra_validators}
+        expected_sub2 = {
+            pathlib.Path('validators/base1.cpp'),
+            pathlib.Path('validators/base2.cpp'),
+        }
+        assert sub2_paths == expected_sub2
+        assert len(sub2_entry.extra_validators) == 2
