@@ -1,3 +1,11 @@
+## 0.19.3 (2025-10-09)
+
+### Fix
+
+- ensure boca language utils honor env language finding per extension
+- add support for additional extensions in languages
+- ensure .limits folder is not created when reading limits file
+
 ## 0.19.2 (2025-10-09)
 
 ### Fix
