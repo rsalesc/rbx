@@ -231,6 +231,15 @@ class GeneratorScript(CodeItem):
     )
 
 
+class Checker(CodeItem):
+    model_config = ConfigDict(extra='forbid')
+
+    fallback_to: Optional[CodeItem] = Field(
+        default=None,
+        description="""Checker to fall back to if the mainly specified checker does not exist.""",
+    )
+
+
 class Interactor(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
@@ -553,7 +562,7 @@ class Package(BaseModel):
     """,
     )
 
-    checker: Optional[CodeItem] = Field(
+    checker: Optional[Checker] = Field(
         default=None, description='The checker for this problem.'
     )
 
