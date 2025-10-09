@@ -165,7 +165,6 @@ def get_problem_iruns_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
 
 def get_limits_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     limits_dir = root / '.limits'
-    limits_dir.mkdir(parents=True, exist_ok=True)
     return limits_dir
 
 

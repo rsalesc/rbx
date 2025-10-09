@@ -241,6 +241,7 @@ async def compute_time_limits(
         f'[green]Writing the following timing profile to [item]{href(limits_path)}[/item].[/green]'
     )
     console.console.print(estimated_tl, highlight=True)
+    limits_path.parent.mkdir(parents=True, exist_ok=True)
     limits_path.write_text(utils.model_to_yaml(estimated_tl.to_limits()))
 
     return estimated_tl
@@ -249,6 +250,7 @@ async def compute_time_limits(
 def inherit_time_limits(profile: str = 'local'):
     limits_path = package.get_limits_file(profile)
     limits = schema.LimitsProfile(inheritFromPackage=True)
+    limits_path.parent.mkdir(parents=True, exist_ok=True)
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(
@@ -259,6 +261,7 @@ def inherit_time_limits(profile: str = 'local'):
 def set_time_limit(timelimit: int, profile: str = 'local'):
     limits = schema.LimitsProfile(timeLimit=timelimit)
     limits_path = package.get_limits_file(profile)
+    limits_path.parent.mkdir(parents=True, exist_ok=True)
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(
