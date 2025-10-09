@@ -323,10 +323,14 @@ def get_default_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
 
 
 @functools.cache
-def get_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
+def get_checker_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeItem]:
     package = find_problem_package_or_die(root)
+    return package.checker
 
-    return package.checker or get_default_checker(root)
+
+@functools.cache
+def get_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
+    return get_checker_or_nil(root) or get_default_checker(root)
 
 
 @functools.cache

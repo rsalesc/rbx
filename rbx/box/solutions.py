@@ -402,7 +402,9 @@ def _produce_solution_items(
 
     if pkg.type == TaskType.COMMUNICATION:
         checker_digest = (
-            checkers.compile_checker() if check and pkg.checker is not None else None
+            checkers.compile_checker()
+            if check and package.get_checker_or_nil() is not None
+            else None
         )
         interactor_digest = checkers.compile_interactor()
     else:

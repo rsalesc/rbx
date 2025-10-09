@@ -57,9 +57,10 @@ def any(path: str, sanitized: bool = False, warnings: bool = False):
             )
             return
 
-    if pkg.checker is not None and pkg.checker.path == pathlib.Path(path):
+    checker = package.get_checker_or_nil()
+    if checker is not None and checker.path == pathlib.Path(path):
         _compile(
-            pkg.checker,
+            checker,
             sanitized=SanitizationLevel.FORCE
             if sanitized
             else SanitizationLevel.PREFER,
