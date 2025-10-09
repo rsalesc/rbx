@@ -169,6 +169,12 @@ that supports a certain file extension in the environment, the tool
 will automatically identify the language based on such extension."""
     )
 
+    extraExtensions: List[str] = Field(
+        default_factory=list,
+        description="""Extra file extensions supported by this language. If not specified, the tool
+will automatically identify the language based on such extensions.""",
+    )
+
     compilation: Optional[CompilationConfig] = Field(
         default=None,
         description="""Compilation config to use when compiling programs for this language.""",
@@ -318,6 +324,9 @@ def get_language(name: str) -> EnvironmentLanguage:
 def get_language_by_extension_or_nil(extension: str) -> Optional[EnvironmentLanguage]:
     for lang in get_environment().languages:
         if lang.extension == extension:
+            return lang
+    for lang in get_environment().languages:
+        if extension in lang.extraExtensions:
             return lang
     return None
 
