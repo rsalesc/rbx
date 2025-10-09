@@ -1,6 +1,10 @@
 import typing
 
-from rbx.box.environment import get_environment, get_language
+from rbx.box.environment import (
+    get_environment,
+    get_language,
+    get_language_by_extension_or_nil,
+)
 from rbx.box.packaging.boca.extension import BocaLanguage, BocaLanguageExtension
 
 
@@ -13,9 +17,9 @@ def get_rbx_language_from_boca_language(boca_language: BocaLanguage) -> str:
         if language_extension.bocaLanguage == boca_language:
             return language.name
     # Then by rbx language extension.
-    for language in get_environment().languages:
-        if language.extension == boca_language:
-            return language.name
+    language_by_extension = get_language_by_extension_or_nil(boca_language)
+    if language_by_extension is not None:
+        return language_by_extension.name
     # Then by rbx language name.
     return boca_language
 
