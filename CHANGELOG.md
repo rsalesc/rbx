@@ -1,3 +1,13 @@
+## 0.19.2 (2025-10-09)
+
+### Fix
+
+- add configuration for fallback checker to match box behavior
+
+### Refactor
+
+- use get_checker_or_nil functions to check for main checker
+
 ## 0.19.1 (2025-10-08)
 
 ### Fix
