@@ -7,7 +7,7 @@ import typer
 
 from rbx.box import checkers
 from rbx.box.checkers import compile_checker, compile_interactor
-from rbx.box.schema import CodeItem, Testcase
+from rbx.box.schema import Checker, CodeItem, Testcase
 from rbx.box.testing import testing_package
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
@@ -141,7 +141,9 @@ def test_compile_checker_with_progress(
     result = compile_checker(progress)
 
     assert result == 'test_digest'
-    progress.update.assert_called_once_with('Compiling checker...')
+    progress.update.assert_called_once_with(
+        'Compiling checker [item]checker.cpp[/item]...'
+    )
 
 
 @mock.patch('rbx.box.code.compile_item')
@@ -835,7 +837,7 @@ async def test_checker_item_run_log_is_none(
         )
 
     mock_run_item.assert_awaited_with(
-        CodeItem(
+        Checker(
             path=pathlib.Path('checker.cpp'),
         ),
         DigestOrSource.create(checker_digest),
@@ -872,7 +874,7 @@ async def test_checker_item_has_sandbox_error(
         )
 
     mock_run_item.assert_awaited_with(
-        CodeItem(
+        Checker(
             path=pathlib.Path('checker.cpp'),
         ),
         DigestOrSource.create(checker_digest),
@@ -880,3 +882,18 @@ async def test_checker_item_has_sandbox_error(
         inputs=mock.ANY,
         extra_args=mock.ANY,
     )
+
+
+# Test that process_checker_run_log uses last line of message
+def test_process_checker_run_log_uses_last_line() -> None:
+    """Test that process_checker_run_log extracts the last line from multi-line messages."""
+    checker_run_log = RunLog(
+        exitcode=1,
+        exitstatus=SandboxBase.EXIT_NONZERO_RETURN,
+    )
+    multi_line_message = 'Debug info\nMore debug\nActual error message'
+
+    result = checkers.process_checker_run_log(checker_run_log, multi_line_message)
+
+    assert result.outcome == Outcome.WRONG_ANSWER
+    assert result.message == 'Actual error message'

@@ -17,6 +17,7 @@ from rbx.box.environment import (
 from rbx.box.global_package import get_cache_fingerprint
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
+    Checker,
     CodeItem,
     ExpectedOutcome,
     Generator,
@@ -314,23 +315,25 @@ def get_validator_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeIt
 
 
 @functools.cache
-def get_default_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
+def get_default_checker(root: pathlib.Path = pathlib.Path()) -> Checker:
     package = find_problem_package_or_die(root)
     if package.type == TaskType.COMMUNICATION:
-        return CodeItem(path=get_builtin_checker(_NOOP_CHECKER).absolute())
-    return CodeItem(path=get_builtin_checker(_DEFAULT_CHECKER).absolute())
+        return Checker(path=get_builtin_checker(_NOOP_CHECKER).absolute())
+    return Checker(path=get_builtin_checker(_DEFAULT_CHECKER).absolute())
 
 
 @functools.cache
-def get_checker_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeItem]:
+def get_checker_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[Checker]:
     package = find_problem_package_or_die(root)
+    if package.checker is None:
+        return None
     if not (root / package.checker.path).is_file():
         return package.checker.fallback_to
     return package.checker
 
 
 @functools.cache
-def get_checker(root: pathlib.Path = pathlib.Path()) -> CodeItem:
+def get_checker(root: pathlib.Path = pathlib.Path()) -> Checker:
     return get_checker_or_nil(root) or get_default_checker(root)
 
 

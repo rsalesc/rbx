@@ -57,7 +57,10 @@ def ls_version_remote_tags(uri: str) -> List[str]:
 def latest_remote_tag(
     uri: str, before: Optional[str] = None, after: Optional[str] = None
 ) -> str:
-    tags = ls_version_remote_tags(uri)
+    try:
+        tags = ls_version_remote_tags(uri)
+    except subprocess.CalledProcessError as ex:
+        raise ValueError(f'Could not fetch tags for {uri}') from ex
     if not tags:
         raise ValueError(f'No valid tags found for {uri}')
     if before is not None:

@@ -662,6 +662,10 @@ def _install_preset_from_resources(
     ensure_problem: bool = False,
     update: bool = False,
 ):
+    if not questionary.confirm(
+        'Do you really want to install this preset from its local copy? This is usually unsafe for mature projects, and means that youre not online.'
+    ).ask():
+        raise typer.Exit(1)
     rsrc_preset_path = get_default_app_path() / 'presets' / fetch_info.name
     if not rsrc_preset_path.exists():
         return False
@@ -677,19 +681,22 @@ def _install_preset_from_resources(
         raise typer.Exit(1)
 
     # Check if the latest release has breaking changes.
-    latest_tag = latest_remote_tag(remote_fetch_info.fetch_uri)
-    latest_version = semver.VersionInfo.parse(latest_tag)
-    if latest_version.major > utils.get_semver().major:
-        console.console.print(
-            f'[error]You are not in rbx.cp latest major version ({latest_version.major}), but are installing a built-in preset from rbx.cp.[/error]'
-        )
-        console.console.print(
-            f'[error]To allow for a better experience for users that clone your repository, please update rbx.cp to the latest major version using [item]{utils.get_upgrade_command(latest_version)}[/item].[/error]'
-        )
-        if not questionary.confirm(
-            'If you want to proceed anyway, press [y]', default=False
-        ).ask():
-            raise typer.Exit(1)
+    try:
+        latest_tag = latest_remote_tag(remote_fetch_info.fetch_uri)
+        latest_version = semver.VersionInfo.parse(latest_tag)
+        if latest_version.major > utils.get_semver().major:
+            console.console.print(
+                f'[error]You are not in rbx.cp latest major version ({latest_version.major}), but are installing a built-in preset from rbx.cp.[/error]'
+            )
+            console.console.print(
+                f'[error]To allow for a better experience for users that clone your repository, please update rbx.cp to the latest major version using [item]{utils.get_upgrade_command(latest_version)}[/item].[/error]'
+            )
+            if not questionary.confirm(
+                'If you want to proceed anyway, press [y]', default=False
+            ).ask():
+                raise typer.Exit(1)
+    except ValueError:
+        pass
 
     console.console.print(
         f'Installing preset [item]{fetch_info.name}[/item] from resources...'
@@ -748,14 +755,14 @@ def _install_preset_from_fetch_info(
         )
         return
 
-    # if _install_preset_from_resources(
-    #     fetch_info,
-    #     dest,
-    #     ensure_contest=ensure_contest,
-    #     ensure_problem=ensure_problem,
-    #     update=update,
-    # ):
-    #     return
+    if _install_preset_from_resources(
+        fetch_info,
+        dest,
+        ensure_contest=ensure_contest,
+        ensure_problem=ensure_problem,
+        update=update,
+    ):
+        return
     console.console.print(
         f'[error]Preset [item]{fetch_info.name}[/item] not found.[/error]'
     )

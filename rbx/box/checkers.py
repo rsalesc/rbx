@@ -1,5 +1,6 @@
 import pathlib
-from typing import List, Optional
+from abc import abstractmethod
+from typing import List, Optional, Tuple
 
 import typer
 
@@ -18,6 +19,61 @@ from rbx.grading.steps import (
     RunLog,
 )
 from rbx.utils import StatusProgress
+
+
+class CheckerMode:
+    @abstractmethod
+    def get_args(self, input: str, output: str, answer: str) -> str:
+        pass
+
+    @abstractmethod
+    def get_exit_status(self, code: int, status: str) -> Tuple[int, str]:
+        pass
+
+    def convert_run_log(self, run_log: Optional[RunLog]) -> Optional[RunLog]:
+        if run_log is None:
+            return None
+        new_exitcode, new_exitstatus = self.get_exit_status(
+            run_log.exitcode, run_log.exitstatus
+        )
+        return run_log.model_copy(
+            update={'exitcode': new_exitcode, 'exitstatus': new_exitstatus}
+        )
+
+
+class TestlibCheckerMode(CheckerMode):
+    def get_args(self, input: str, output: str, answer: str) -> str:
+        return f'{input} {output} {answer}'
+
+    def get_exit_status(self, code: int, status: str) -> Tuple[int, str]:
+        return code, status
+
+
+class BocaCheckerMode(CheckerMode):
+    def get_args(self, input: str, output: str, answer: str) -> str:
+        return f'{output} {answer} {input}'
+
+    def get_exit_status(self, code: int, status: str) -> Tuple[int, str]:
+        if code == 4:
+            return 0, SandboxBase.EXIT_OK
+        if code == 6:
+            return 1, SandboxBase.EXIT_NONZERO_RETURN
+        if code == 43:
+            return 3, SandboxBase.EXIT_NONZERO_RETURN
+        return code, status
+
+
+REGISTERED_CHECKER_MODES = {
+    'testlib': TestlibCheckerMode,
+    'boca': BocaCheckerMode,
+}
+
+
+def get_checker_mode(mode: str) -> CheckerMode:
+    if mode not in REGISTERED_CHECKER_MODES:
+        console.console.print(f'[error]Checker mode {mode} not registered.[/error]')
+        raise typer.Exit(1)
+    return REGISTERED_CHECKER_MODES[mode]()
 
 
 def is_valid_checker(checker_path: pathlib.Path) -> bool:
@@ -243,12 +299,16 @@ async def _check(
             dest=pathlib.PosixPath('output.txt'),
         ),
     ]
-    checker_run_log = await code.run_item(
-        package.get_checker(),
-        DigestOrSource.create(checker_digest),
-        stderr=DigestOrDest.create(error),
-        inputs=inputs,
-        extra_args='input.txt output.txt expected.txt',
+    checker = package.get_checker()
+    checker_mode = get_checker_mode(checker.mode)
+    checker_run_log = checker_mode.convert_run_log(
+        await code.run_item(
+            checker,
+            DigestOrSource.create(checker_digest),
+            stderr=DigestOrDest.create(error),
+            inputs=inputs,
+            extra_args=checker_mode.get_args('input.txt', 'output.txt', 'expected.txt'),
+        )
     )
     message = package.get_digest_as_string(error.value) or ''
 

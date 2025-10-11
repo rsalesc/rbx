@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from rbx import utils
+from rbx import console, utils
 from rbx.box import git_utils
 
 _RBX_REMOTE_URI = 'https://github.com/rsalesc/rbx'
@@ -89,9 +89,15 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
         match = compiled.match(s)
         if match is None:
             return None
-        tool_tag = git_utils.latest_remote_tag(
-            _RBX_REMOTE_URI, before=utils.get_version()
-        )
+        try:
+            tool_tag = git_utils.latest_remote_tag(
+                _RBX_REMOTE_URI, before=utils.get_version()
+            )
+        except ValueError:
+            console.console.print(
+                '[warning]Could not fetch tags for tool preset. Falling back to local resources.[/warning]'
+            )
+            tool_tag = None
         return PresetFetchInfo(name=s, tool_tag=tool_tag)
 
     extractors = [

@@ -234,9 +234,14 @@ class GeneratorScript(CodeItem):
 class Checker(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
-    fallback_to: Optional[CodeItem] = Field(
+    fallback_to: Optional[Checker] = Field(
         default=None,
         description="""Checker to fall back to if the mainly specified checker does not exist.""",
+    )
+
+    mode: Literal['testlib', 'boca'] = Field(
+        default='testlib',
+        description="""In which compatibility mode the checker should be run.""",
     )
 
 
