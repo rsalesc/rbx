@@ -1,3 +1,9 @@
+## 0.19.4 (2025-10-11)
+
+### Fix
+
+- add mode to checker to support custom BOCA checkers
+
 ## 0.19.3 (2025-10-09)
 
 ### Fix
