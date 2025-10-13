@@ -11,6 +11,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import utils
+from rbx.box.formatting import href
 from rbx.console import console
 from rbx.grading.judge.storage import copyfileobj
 
@@ -224,7 +225,7 @@ def get_config_path() -> pathlib.Path:
 
 
 def get_editor():
-    return get_config().editor or os.environ.get('EDITOR', None)
+    return os.environ.get('EDITOR', None) or get_config().editor
 
 
 def is_vim_editor() -> bool:
@@ -238,7 +239,17 @@ def open_editor(path: Any, *args):
     editor = get_editor()
     if editor is None:
         raise Exception('No editor found. Please set the EDITOR environment variable.')
-    subprocess.run([editor, str(path), *[str(arg) for arg in args]])
+    try:
+        subprocess.run([editor, str(path), *[str(arg) for arg in args]])
+    except FileNotFoundError:
+        console.print(f'[error]Editor [item]{editor}[/item] not found.[/error]')
+        console.print(
+            '[error]Please set the [item]EDITOR[/item] environment variable to the path of your editor.[/error]'
+        )
+        console.print(
+            f'[error]You can also permanently set the editor in the rbx config file that can be found at [item]{href(get_config_path())}[/item].[/error]'
+        )
+        raise typer.Exit(1) from None
 
 
 def _readonly_copy(path: pathlib.Path) -> pathlib.Path:
