@@ -11,7 +11,6 @@ import typer
 from pydantic import BaseModel
 
 from rbx import utils
-from rbx.box.formatting import href
 from rbx.console import console
 from rbx.grading.judge.storage import copyfileobj
 
@@ -247,7 +246,7 @@ def open_editor(path: Any, *args):
             '[error]Please set the [item]EDITOR[/item] environment variable to the path of your editor.[/error]'
         )
         console.print(
-            f'[error]You can also permanently set the editor in the rbx config file that can be found at [item]{href(get_config_path())}[/item].[/error]'
+            f'[error]You can also permanently set the editor in the rbx config file that can be found at [item]{get_config_path()}[/item].[/error]'
         )
         raise typer.Exit(1) from None
 

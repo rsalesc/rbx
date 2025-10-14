@@ -410,7 +410,7 @@ def merge_compilation_configs(
             continue
         base_cfg: BaseCompilationConfig = cfg
         if solution:
-            if cfg.solutionOverrides.commands is not None:
+            if cfg.solutionOverrides.commands:
                 base_cfg.commands = cfg.solutionOverrides.commands
             if cfg.solutionOverrides.sandbox is not None:
                 base_cfg.sandbox = cfg.solutionOverrides.sandbox
@@ -445,12 +445,10 @@ def merge_execution_configs(
             continue
         base_cfg: BaseExecutionConfig = cfg
         if solution:
-            if cfg.solutionOverrides.command is not None:
+            if cfg.solutionOverrides.command:
                 base_cfg.command = cfg.solutionOverrides.command
             if cfg.solutionOverrides.sandbox is not None:
                 base_cfg.sandbox = cfg.solutionOverrides.sandbox
-            if cfg.solutionOverrides.problemLimits is not None:
-                base_cfg.problemLimits = cfg.solutionOverrides.problemLimits
         merged_cfg.command = base_cfg.command or merged_cfg.command
         if base_cfg.sandbox is not None:
             merged_cfg.sandbox = _merge_shallow_models(
