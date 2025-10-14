@@ -13,6 +13,7 @@ from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
     GeneratorScript,
+    Solution,
     Testcase,
     TestcaseSubgroup,
 )
@@ -128,7 +129,7 @@ class GenerationTestcaseEntry(BaseModel):
     metadata: GenerationMetadata
     validator: Optional[CodeItem] = None
     extra_validators: List[CodeItem] = []
-    model_solution: Optional[CodeItem] = None
+    model_solution: Optional[Solution] = None
 
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'
@@ -168,7 +169,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         prefix: List[str],
         validator: Optional[CodeItem] = None,
         extra_validators: Optional[List[CodeItem]] = None,
-        model_solution: Optional[CodeItem] = None,
+        model_solution: Optional[Solution] = None,
     ):
         extra_validators = package.get_globbed_code_items(
             extra_validators or [],

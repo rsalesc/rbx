@@ -120,7 +120,9 @@ class EnvironmentSandbox(BaseModel):
     )
 
 
-class CompilationConfig(BaseModel):
+class BaseCompilationConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     commands: Optional[List[str]] = Field(
         default=[],
         description="""Commands to compile the program.""",
@@ -132,7 +134,18 @@ class CompilationConfig(BaseModel):
     )
 
 
-class ExecutionConfig(BaseModel):
+class SolutionCompilationOverrides(BaseCompilationConfig):
+    pass
+
+
+class CompilationConfig(BaseCompilationConfig):
+    solutionOverrides: SolutionCompilationOverrides = Field(
+        default_factory=SolutionCompilationOverrides,
+        description="""Overrides to apply when compiling solutions for this language.""",
+    )
+
+
+class BaseExecutionConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     command: Optional[str] = Field(
@@ -148,6 +161,17 @@ class ExecutionConfig(BaseModel):
     problemLimits: Limits = Field(
         default_factory=Limits,
         description="""Original limits of the problem.""",
+    )
+
+
+class SolutionExecutionOverrides(BaseExecutionConfig):
+    pass
+
+
+class ExecutionConfig(BaseExecutionConfig):
+    solutionOverrides: SolutionExecutionOverrides = Field(
+        default_factory=SolutionExecutionOverrides,
+        description="""Overrides to apply when executing solutions for this language.""",
     )
 
 
@@ -370,8 +394,9 @@ def _merge_shallow_models(model: Type[T], base: T, override: T) -> T:
 
 def merge_compilation_configs(
     compilation_configs: List[Optional[CompilationConfig]],
-) -> CompilationConfig:
-    merged_cfg = CompilationConfig()
+    solution: bool = False,
+) -> BaseCompilationConfig:
+    merged_cfg = BaseCompilationConfig()
     merged_cfg.sandbox = EnvironmentSandbox(
         maxProcesses=None,
         timeLimit=10000,
@@ -383,48 +408,67 @@ def merge_compilation_configs(
     for cfg in compilation_configs:
         if cfg is None:
             continue
-        merged_cfg.commands = cfg.commands or merged_cfg.commands
-        if cfg.sandbox is not None:
+        base_cfg: BaseCompilationConfig = cfg
+        if solution:
+            if cfg.solutionOverrides.commands is not None:
+                base_cfg.commands = cfg.solutionOverrides.commands
+            if cfg.solutionOverrides.sandbox is not None:
+                base_cfg.sandbox = cfg.solutionOverrides.sandbox
+        merged_cfg.commands = base_cfg.commands or merged_cfg.commands
+        if base_cfg.sandbox is not None:
             merged_cfg.sandbox = _merge_shallow_models(
-                EnvironmentSandbox, merged_cfg.sandbox, cfg.sandbox
+                EnvironmentSandbox, merged_cfg.sandbox, base_cfg.sandbox
             )
     return merged_cfg
 
 
 @functools.cache
-def get_compilation_config(language: str) -> CompilationConfig:
+def get_compilation_config(
+    language: str, solution: bool = False
+) -> BaseCompilationConfig:
     environment = get_environment()
     return merge_compilation_configs(
-        [environment.defaultCompilation, get_language(language).compilation]
+        [environment.defaultCompilation, get_language(language).compilation],
+        solution,
     )
 
 
 def merge_execution_configs(
     execution_configs: List[Optional[ExecutionConfig]],
-) -> ExecutionConfig:
-    merged_cfg = ExecutionConfig()
+    solution: bool = False,
+) -> BaseExecutionConfig:
+    merged_cfg = BaseExecutionConfig()
     merged_cfg.sandbox = EnvironmentSandbox()
     merged_cfg.problemLimits = Limits()
     for cfg in execution_configs:
         if cfg is None:
             continue
-        merged_cfg.command = cfg.command or merged_cfg.command
-        if cfg.sandbox is not None:
+        base_cfg: BaseExecutionConfig = cfg
+        if solution:
+            if cfg.solutionOverrides.command is not None:
+                base_cfg.command = cfg.solutionOverrides.command
+            if cfg.solutionOverrides.sandbox is not None:
+                base_cfg.sandbox = cfg.solutionOverrides.sandbox
+            if cfg.solutionOverrides.problemLimits is not None:
+                base_cfg.problemLimits = cfg.solutionOverrides.problemLimits
+        merged_cfg.command = base_cfg.command or merged_cfg.command
+        if base_cfg.sandbox is not None:
             merged_cfg.sandbox = _merge_shallow_models(
-                EnvironmentSandbox, merged_cfg.sandbox, cfg.sandbox
+                EnvironmentSandbox, merged_cfg.sandbox, base_cfg.sandbox
             )
-        if cfg.problemLimits is not None:
+        if base_cfg.problemLimits is not None:
             merged_cfg.problemLimits = _merge_shallow_models(
-                Limits, merged_cfg.problemLimits, cfg.problemLimits
+                Limits, merged_cfg.problemLimits, base_cfg.problemLimits
             )
     return merged_cfg
 
 
 @functools.cache
-def get_execution_config(language: str) -> ExecutionConfig:
+def get_execution_config(language: str, solution: bool = False) -> BaseExecutionConfig:
     environment = get_environment()
     return merge_execution_configs(
-        [environment.defaultExecution, get_language(language).execution]
+        [environment.defaultExecution, get_language(language).execution],
+        solution,
     )
 
 

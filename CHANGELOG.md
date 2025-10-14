@@ -1,3 +1,9 @@
+## 0.19.5 (2025-10-14)
+
+### Fix
+
+- show a nice error when editor is not found
+
 ## 0.19.4 (2025-10-11)
 
 ### Fix

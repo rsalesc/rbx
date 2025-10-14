@@ -365,7 +365,7 @@ problems that have points.
 """,
     )
 
-    model_solution: Optional[CodeItem] = Field(
+    model_solution: Optional[Solution] = Field(
         default=None,
         description="""
 The solution to be used to generate outputs for this testgroup.
@@ -396,7 +396,8 @@ class Solution(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
     outcome: ExpectedOutcome = Field(
-        description="""The expected outcome of this solution."""
+        default=ExpectedOutcome.ACCEPTED,
+        description="""The expected outcome of this solution.""",
     )
 
 

@@ -179,10 +179,10 @@ async def test_generator_outputs_with_model_solution_in_samples_group(
     # Manually configure samples group with model solution
     import pathlib
 
-    from rbx.box.schema import CodeItem
+    from rbx.box.schema import Solution
 
     samples_group = testing_pkg.yml.testcases[0]
-    samples_group.model_solution = CodeItem(path=pathlib.Path('model_sol.cpp'))
+    samples_group.model_solution = Solution(path=pathlib.Path('model_sol.cpp'))
     testing_pkg.save()
 
     # Ensure cases are generated.
@@ -216,11 +216,11 @@ async def test_generator_outputs_with_multiple_model_solutions(
     # Configure multiple testgroups with different model solutions
     import pathlib
 
-    from rbx.box.schema import CodeItem
+    from rbx.box.schema import Solution
 
     testing_pkg.add_testgroup_from_plan('samples', 'gens/gen.cpp 123')
     samples_group = testing_pkg.yml.testcases[0]
-    samples_group.model_solution = CodeItem(path=pathlib.Path('model_sol1.cpp'))
+    samples_group.model_solution = Solution(path=pathlib.Path('model_sol1.cpp'))
 
     testing_pkg.add_testgroup_from_plan('group2', 'gens/gen.cpp 456')
     # Note: group2 will use main solution since only samples can have model_solution
@@ -267,10 +267,10 @@ async def test_generator_outputs_model_solution_compilation_failure(
     # Configure samples group with broken model solution
     import pathlib
 
-    from rbx.box.schema import CodeItem
+    from rbx.box.schema import Solution
 
     samples_group = testing_pkg.yml.testcases[0]
-    samples_group.model_solution = CodeItem(path=pathlib.Path('model_sol.cpp'))
+    samples_group.model_solution = Solution(path=pathlib.Path('model_sol.cpp'))
     testing_pkg.save()
 
     # Ensure cases are generated.
@@ -312,10 +312,10 @@ gens/gen.cpp 789
     # Configure samples group with model solution
     import pathlib
 
-    from rbx.box.schema import CodeItem
+    from rbx.box.schema import Solution
 
     samples_group = testing_pkg.yml.testcases[0]
-    samples_group.model_solution = CodeItem(path=pathlib.Path('model_sol.cpp'))
+    samples_group.model_solution = Solution(path=pathlib.Path('model_sol.cpp'))
     testing_pkg.save()
 
     # Ensure cases are generated.

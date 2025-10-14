@@ -32,7 +32,7 @@ from rbx.box.environment import (
 from rbx.box.formatting import get_formatted_memory
 from rbx.box.remote import is_path_remote
 from rbx.box.sanitizers import warning_stack
-from rbx.box.schema import CodeItem
+from rbx.box.schema import CodeItem, Solution
 from rbx.grading import grading_context, profiling, steps, steps_with_caching
 from rbx.grading.judge.sandbox import SandboxParams
 from rbx.grading.steps import (
@@ -320,7 +320,9 @@ def _prepare_run(
     file_prefix: Optional[str] = None,
 ):
     language = find_language_name(code)
-    execution_options = get_execution_config(language)
+    execution_options = get_execution_config(
+        language, solution=isinstance(code, Solution)
+    )
     if extra_config is not None:
         execution_options = merge_execution_configs([execution_options, extra_config])
     code_variables = _get_code_variables(code, language)
@@ -554,7 +556,9 @@ def compile_item(
         raise typer.Exit(1)
 
     language = find_language_name(code)
-    compilation_options = get_compilation_config(language)
+    compilation_options = get_compilation_config(
+        language, solution=isinstance(code, Solution)
+    )
     code_variables = _get_code_variables(code, language)
     file_mapping = get_file_mapping(language, code_variables)
     dependency_cache = package.get_dependency_cache()

@@ -37,10 +37,14 @@ def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
     res = []
     for language in env.languages:
         cmd = ''
-        compilation_cfg = environment.get_compilation_config(language.name)
+        compilation_cfg = environment.get_compilation_config(
+            language.name, solution=True
+        )
         cmd = ' && '.join(compilation_cfg.commands or [])
         if not cmd:
-            execution_cfg = environment.get_execution_config(language.name)
+            execution_cfg = environment.get_execution_config(
+                language.name, solution=True
+            )
             cmd = execution_cfg.command
 
         res.append(
