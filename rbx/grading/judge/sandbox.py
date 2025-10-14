@@ -203,7 +203,7 @@ class SandboxParams(pydantic.BaseModel):
         self.dirs.append(DirectoryMount(src, dest, options))
 
 
-class CommuncationParams(pydantic.BaseModel):
+class CommunicationParams(pydantic.BaseModel):
     """Parameters for the communication."""
 
     merged_capture: Optional[pathlib.Path] = None
@@ -584,7 +584,7 @@ class SandboxBase(abc.ABC):
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
-        communication_params: Optional[CommuncationParams] = None,
+        communication_params: Optional[CommunicationParams] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
         pass
 

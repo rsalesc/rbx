@@ -156,6 +156,35 @@ class TestStepsRun:
         assert artifacts.logs.run is not None
         assert artifacts.logs.run.exitcode == 42
 
+    async def test_run_handles_program_error_and_returns_sandbox_error(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """ProgramError should yield a RunLog with sandbox error status."""
+        script_file = testdata_path / 'steps_run_test' / 'simple_output.py'
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.append(
+            GradingFileInput(src=script_file, dest=pathlib.Path('script.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('output.txt'), dest=pathlib.Path('output.txt')
+            )
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        params = SandboxParams(stdout_file=pathlib.Path('output.txt'))
+        command = f'{sys.executable} script.py'
+
+        from rbx.grading.judge.program import ProgramError
+
+        with patch.object(sandbox, 'run', side_effect=ProgramError('boom')):
+            result = await steps.run(command, params, sandbox, artifacts)
+
+        assert result is not None
+        assert result.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR
+        assert result.exitcode == 1
+        assert artifacts.logs.run is not None
+
     async def test_run_with_timeout(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):

@@ -133,6 +133,11 @@ class BaseCompilationConfig(BaseModel):
         description="""Sandbox configuration to use when compiling for this language.""",
     )
 
+    passthrough: Optional[bool] = Field(
+        default=None,
+        description="""Whether to pass through the compilable as an executable file.""",
+    )
+
 
 class SolutionCompilationOverrides(BaseCompilationConfig):
     pass
@@ -414,11 +419,15 @@ def merge_compilation_configs(
                 base_cfg.commands = cfg.solutionOverrides.commands
             if cfg.solutionOverrides.sandbox is not None:
                 base_cfg.sandbox = cfg.solutionOverrides.sandbox
+            if cfg.solutionOverrides.passthrough is not None:
+                base_cfg.passthrough = cfg.solutionOverrides.passthrough
         merged_cfg.commands = base_cfg.commands or merged_cfg.commands
         if base_cfg.sandbox is not None:
             merged_cfg.sandbox = _merge_shallow_models(
                 EnvironmentSandbox, merged_cfg.sandbox, base_cfg.sandbox
             )
+        if base_cfg.passthrough is not None:
+            merged_cfg.passthrough = base_cfg.passthrough
     return merged_cfg
 
 

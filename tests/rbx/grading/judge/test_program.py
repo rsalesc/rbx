@@ -10,6 +10,7 @@ import pytest
 from rbx.grading.judge.program import (
     Program,
     ProgramCode,
+    ProgramError,
     ProgramIO,
     ProgramParams,
     ProgramResult,
@@ -665,7 +666,7 @@ class TestEdgeCases:
         params = ProgramParams()
         command = ['/nonexistent/program']
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ProgramError):
             Program(command, params)
 
     def test_empty_command(self):

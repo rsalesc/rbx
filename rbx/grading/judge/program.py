@@ -178,6 +178,10 @@ class ProgramResult:
     alarm_msg: Optional[str] = None
 
 
+class ProgramError(Exception):
+    pass
+
+
 class Program:
     def __init__(self, command: List[str], params: ProgramParams):
         self.command = command
@@ -240,15 +244,20 @@ class Program:
 
     def _run(self):
         self._files = self.params.io.get_file_objects()
-        self.popen = subprocess.Popen(
-            self.command,
-            stdin=self._files[0],
-            stdout=self._files[1],
-            stderr=self._files[2],
-            cwd=self.params.chdir,
-            env={**os.environ, **self.params.env},
-            preexec_fn=get_preexec_fn(self.params),
-        )
+        try:
+            self.popen = subprocess.Popen(
+                self.command,
+                stdin=self._files[0],
+                stdout=self._files[1],
+                stderr=self._files[2],
+                cwd=self.params.chdir,
+                env={**os.environ, **self.params.env},
+                preexec_fn=get_preexec_fn(self.params),
+            )
+        except FileNotFoundError as e:
+            raise ProgramError(f'Command {self.command[0]} not found') from e
+        except PermissionError as e:
+            raise ProgramError(f'Permission denied for command {self.command}') from e
         self.start_time = monotonic()
 
         threading.Thread(target=self._handle_wall, daemon=True).start()

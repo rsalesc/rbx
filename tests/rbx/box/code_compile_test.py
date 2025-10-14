@@ -197,6 +197,52 @@ class TestCompileItem:
         assert output.executable is True
         assert output.digest is not None
 
+    def test_compile_non_passthrough_uses_executable_output_src(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """When passthrough is not set, output src should be executable."""
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        code.compile_item(code_item)
+
+        call_args = mock_steps_with_caching.call_args
+        artifacts = call_args.kwargs['artifacts']
+        output = artifacts.outputs[0]
+
+        assert output.src.name == 'executable'
+
+    def test_compile_passthrough_uses_compilable_output_src(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """When passthrough is set, output src should be compilable (source file)."""
+        from rbx.box import environment as env
+
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        # Force passthrough in compilation config without mutating cached object
+        with mock.patch('rbx.box.code.get_compilation_config') as mock_get_cfg:
+
+            def _side_effect(language, solution=False):
+                orig = env.get_compilation_config(language, solution)
+                return env.BaseCompilationConfig(
+                    commands=orig.commands,
+                    sandbox=orig.sandbox,
+                    passthrough=True,
+                )
+
+            mock_get_cfg.side_effect = _side_effect
+
+            code.compile_item(code_item)
+
+        call_args = mock_steps_with_caching.call_args
+        artifacts = call_args.kwargs['artifacts']
+        output = artifacts.outputs[0]
+
+        # Should point to the compilable (mapped source) instead of executable
+        assert output.src.name == 'solution.cpp'
+
     def test_compile_artifacts_with_testlib(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):

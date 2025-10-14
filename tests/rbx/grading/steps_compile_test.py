@@ -67,6 +67,33 @@ class TestStepsCompile:
         assert len(artifacts.logs.preprocess) == 1
         assert artifacts.logs.preprocess[0].exitcode == 0
 
+    def test_compile_program_error_raises_compilation_error(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """ProgramError from sandbox.run should surface as CompilationError."""
+        source_file = testdata_path / 'compile_test' / 'simple.cpp'
+        output_file = cleandir / 'simple'
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.append(
+            GradingFileInput(src=source_file, dest=pathlib.Path('simple.cpp'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('simple'), dest=pathlib.Path('simple'), executable=True
+            )
+        )
+
+        params = SandboxParams()
+        commands = ['g++ -o simple simple.cpp']
+
+        from rbx.grading.judge.program import ProgramError
+
+        with patch.object(sandbox, 'run', side_effect=ProgramError('boom')):
+            with pytest.raises(steps.CompilationError):
+                steps.compile(commands, params, sandbox, artifacts)
+
+        assert not output_file.exists()
+
     def test_compile_successful_python_no_compilation(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):

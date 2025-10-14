@@ -23,7 +23,7 @@ from rbx.grading.judge.program import (
     ProgramResult,
 )
 from rbx.grading.judge.sandbox import (
-    CommuncationParams,
+    CommunicationParams,
     SandboxBase,
     SandboxLog,
     SandboxParams,
@@ -181,7 +181,7 @@ class StupidSandbox(SandboxBase):
         )
 
     def _get_tee_executable(
-        self, communication_params: CommuncationParams
+        self, communication_params: CommunicationParams
     ) -> pathlib.Path:
         if communication_params.tee_mode == 'line':
             with importlib.resources.as_file(
@@ -204,7 +204,7 @@ class StupidSandbox(SandboxBase):
     def _get_tee_command(
         self,
         char: str,
-        communication_params: CommuncationParams,
+        communication_params: CommunicationParams,
         extra: Optional[str] = None,
     ) -> List[str]:
         return [
@@ -219,7 +219,7 @@ class StupidSandbox(SandboxBase):
         char: str,
         stdin: FileLike,
         stdout: FileLike,
-        communication_params: CommuncationParams,
+        communication_params: CommunicationParams,
         pgid: int,
         capture: Optional[pathlib.Path] = None,
     ) -> Program:
@@ -264,9 +264,9 @@ class StupidSandbox(SandboxBase):
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
-        communication_params: Optional[CommuncationParams] = None,
+        communication_params: Optional[CommunicationParams] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
-        communication_params = communication_params or CommuncationParams()
+        communication_params = communication_params or CommunicationParams()
         self.exec_num += 1
 
         logger.debug(

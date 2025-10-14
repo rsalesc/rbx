@@ -83,7 +83,7 @@ def mock_environment():
         mock_env = type('Environment', (), {'languages': languages})()
         mock_get_env.return_value = mock_env
 
-        def mock_compilation_config(lang_name):
+        def mock_compilation_config(lang_name, solution=False):
             # Return real CompilationConfig objects
             if lang_name == 'cpp':
                 return CompilationConfig(commands=['g++ -std=c++17', 'echo compiled'])

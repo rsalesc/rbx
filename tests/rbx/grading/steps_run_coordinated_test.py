@@ -525,6 +525,46 @@ class TestStepsRunCoordinated:
         assert solution_log.exitcode == 0
         assert interactor_log.exitcode == 0
 
+    async def test_run_coordinated_handles_program_error(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """ProgramError from run_communication should map to sandbox error RunLogs."""
+        interactor_file = testdata_path / 'steps_run_test' / 'simple_interactor.py'
+        solution_file = testdata_path / 'steps_run_test' / 'simple_solution.py'
+
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.extend(
+            [
+                GradingFileInput(
+                    src=interactor_file, dest=pathlib.Path('interactor.py')
+                ),
+                GradingFileInput(src=solution_file, dest=pathlib.Path('solution.py')),
+            ]
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        interactor_params = CoordinatedRunParams(
+            command=f'{sys.executable} interactor.py',
+            params=SandboxParams(timeout=5000),
+        )
+        solution_params = CoordinatedRunParams(
+            command=f'{sys.executable} solution.py', params=SandboxParams(timeout=5000)
+        )
+
+        from rbx.grading.judge.program import ProgramError
+
+        with patch.object(
+            sandbox, 'run_communication', side_effect=ProgramError('boom')
+        ):
+            solution_log, interactor_log = await steps.run_coordinated(
+                interactor_params, solution_params, artifacts, sandbox
+            )
+
+        assert solution_log is not None and interactor_log is not None
+        assert solution_log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR
+        assert interactor_log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR
+        assert solution_log.exitcode == 1 and interactor_log.exitcode == 1
+
     async def test_run_coordinated_sandbox_reset_called(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):

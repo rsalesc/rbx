@@ -21,8 +21,9 @@ from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
 from rbx.console import console
 from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
+from rbx.grading.judge.program import ProgramError
 from rbx.grading.judge.sandbox import (
-    CommuncationParams,
+    CommunicationParams,
     SandboxBase,
     SandboxLog,
     SandboxParams,
@@ -652,6 +653,20 @@ def _check_for_compilation_warnings(
         )
 
 
+def _build_program_error_run_log(
+    e: ProgramError, metadata: Optional[RunLogMetadata] = None
+) -> RunLog:
+    return RunLog(
+        exitcode=1,
+        exitstatus=SandboxBase.EXIT_SANDBOX_ERROR,
+        time=0.0,
+        memory=0,
+        metadata=metadata,
+        sandbox=str(e),
+        exitindex=0,
+    )
+
+
 def _build_run_log(
     sandbox_log: SandboxLog,
     sandbox: SandboxBase,
@@ -715,7 +730,15 @@ def compile(
         if is_java_like_command(get_exe_from_command(command)):
             params.address_space = None
 
-        sandbox_log = sandbox.run(cmd, params)
+        try:
+            sandbox_log = sandbox.run(cmd, params)
+        except ProgramError as e:
+            with CompilationError() as err:
+                err.print(
+                    '[error]FAILED[/error] Preprocessing failed with command',
+                    utils.highlight_json_obj(cmd),
+                )
+                err.print(e)
 
         std_outputs = [
             sandbox.get_file_to_string(stderr_file, maxlen=None)
@@ -776,12 +799,16 @@ async def run(
     if is_java_like_command(get_exe_from_command(command)):
         params.address_space = None
 
-    sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
+    try:
+        sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
 
-    if not _process_output_artifacts(artifacts, sandbox):
-        return None
+        if not _process_output_artifacts(artifacts, sandbox):
+            return None
 
-    run_log = _build_run_log(sandbox_log, sandbox, params, metadata)
+        run_log = _build_run_log(sandbox_log, sandbox, params, metadata)
+    except ProgramError as e:
+        run_log = _build_program_error_run_log(e, metadata)
+
     if artifacts.logs is not None:
         artifacts.logs.run = run_log.model_copy()
     return run_log
@@ -816,25 +843,30 @@ async def run_coordinated(
     if is_java_like_command(get_exe_from_command(solution.command)):
         solution_params.address_space = None
 
-    solution_sandbox_log, interactor_sandbox_log = sandbox.run_communication(
-        solution_cmd,
-        solution_params,
-        interactor_cmd,
-        interactor_params,
-        CommuncationParams(
-            merged_capture=merged_capture, tee_mode='line' if line_capture else 'char'
-        ),
-    )
+    try:
+        solution_sandbox_log, interactor_sandbox_log = sandbox.run_communication(
+            solution_cmd,
+            solution_params,
+            interactor_cmd,
+            interactor_params,
+            CommunicationParams(
+                merged_capture=merged_capture,
+                tee_mode='line' if line_capture else 'char',
+            ),
+        )
 
-    if not _process_output_artifacts(artifacts, sandbox):
-        return None, None
+        if not _process_output_artifacts(artifacts, sandbox):
+            return None, None
 
-    solution_log = _build_run_log(
-        solution_sandbox_log, sandbox, solution.params, solution.metadata
-    )
-    interactor_log = _build_run_log(
-        interactor_sandbox_log, sandbox, interactor.params, interactor.metadata
-    )
+        solution_log = _build_run_log(
+            solution_sandbox_log, sandbox, solution.params, solution.metadata
+        )
+        interactor_log = _build_run_log(
+            interactor_sandbox_log, sandbox, interactor.params, interactor.metadata
+        )
+    except ProgramError as e:
+        solution_log = _build_program_error_run_log(e, solution.metadata)
+        interactor_log = _build_program_error_run_log(e, interactor.metadata)
 
     if artifacts.logs is not None:
         artifacts.logs.run = solution_log

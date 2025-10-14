@@ -608,7 +608,9 @@ def compile_item(
 
     artifacts.outputs.append(
         GradingFileOutput(
-            src=PosixPath(file_mapping.executable),
+            src=PosixPath(file_mapping.executable)
+            if not compilation_options.passthrough
+            else PosixPath(file_mapping.compilable),
             digest=compiled_digest,
             executable=True,
         )
