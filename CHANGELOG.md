@@ -1,3 +1,9 @@
+## 0.19.7 (2025-10-14)
+
+### Fix
+
+- add overrides for pypy compilation
+
 ## 0.19.6 (2025-10-14)
 
 ### Fix
