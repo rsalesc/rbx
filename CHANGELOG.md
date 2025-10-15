@@ -1,3 +1,9 @@
+## 0.19.8 (2025-10-14)
+
+### Fix
+
+- fix GenerationMetadata for @copy entries
+
 ## 0.19.7 (2025-10-14)
 
 ### Fix
