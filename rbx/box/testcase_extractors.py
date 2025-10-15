@@ -281,7 +281,6 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         copied_from=fill_output_for_defined_testcase(tc),
                         copied_to=_copied_to(i),
                         generator_script=generator_script_entry,
-                        generator_call=GeneratorCall(name=generator_name, args=args),
                     )
                 else:
                     call = GeneratorCall(
