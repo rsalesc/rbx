@@ -937,8 +937,7 @@ class TestNewFeatures:
 
         assert len(visited_entries) == 1
 
-        # Check that 'copy' was converted to '@copy'
-        assert visited_entries[0].metadata.generator_call.name == '@copy'
+        assert visited_entries[0].metadata.generator_script is not None
         assert visited_entries[0].metadata.copied_from is not None
 
     async def test_generator_resolution_with_alias(

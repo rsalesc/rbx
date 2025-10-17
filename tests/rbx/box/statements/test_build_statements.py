@@ -90,7 +90,7 @@ def mock_environment():
             else:
                 return CompilationConfig(commands=None)
 
-        def mock_execution_config(lang_name):
+        def mock_execution_config(lang_name, solution=False):
             # Return real ExecutionConfig objects
             if lang_name == 'python':
                 return ExecutionConfig(command='python')
