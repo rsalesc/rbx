@@ -118,9 +118,12 @@ async def run_stress(
     if pkg.type == TaskType.COMMUNICATION:
         interactor_digest = checkers.compile_interactor(progress=progress)
 
+    all_validators = package.get_all_validators()
     if progress:
-        progress.update('Compiling validator...')
-    compiled_validator = validators.compile_main_validator()
+        progress.update('Compiling validators...')
+    validators_digests = validators.compile_validators(
+        all_validators, progress=progress
+    )
 
     # Erase old stress directory
     runs_dir = package.get_problem_runs_dir()
@@ -166,9 +169,7 @@ async def run_stress(
                     copied_to=Testcase(inputPath=input_path),
                 ),
                 generator_digest=generator_digest,
-                validator_digest=compiled_validator[1]
-                if compiled_validator is not None
-                else None,
+                validators_digests=validators_digests,
             )
         except (ValidationError, GenerationError) as err:
             if skip_invalid_testcases:

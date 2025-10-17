@@ -1,9 +1,10 @@
+import pathlib
 from unittest import mock
 
 import pytest
 
 from rbx.box import unit
-from rbx.box.schema import ExpectedOutcome, ValidatorOutcome
+from rbx.box.schema import CodeItem, ExpectedOutcome, ValidatorOutcome
 from rbx.box.testing import testing_package
 from rbx.utils import StatusProgress
 
@@ -112,7 +113,67 @@ class TestValidatorUnitTests:
         assert 'OK Unit test #1' in captured.out
         assert 'OK Unit test #2' in captured.out
         assert 'Expected VALID' in captured.out
-        assert 'Expected INVALID' in captured.out
+
+    async def test_validator_unit_tests_with_extra_validators_all_ok(
+        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+    ):
+        # Set main validator and a global extra validator
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+        testing_pkg.add_from_testdata(
+            'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.yml.extraValidators = [
+            CodeItem(path=pathlib.Path('extra-validator-odd.cpp'))
+        ]
+        testing_pkg.save()
+
+        # Input 3 should be valid for both validators
+        testing_pkg.add_validator_unit_test(
+            glob='unit/validator/t*.in',
+            outcome=ValidatorOutcome.VALID,
+            files={'unit/validator/test.in': '3\n'},
+        )
+
+        await unit.run_validator_unit_tests(mock_progress)
+
+        out = capsys.readouterr().out
+        assert 'Validator tests' in out
+        assert 'OK Unit test #1' in out
+        # When multiple validators are run, per-validator sections are printed
+        assert 'Validator validator.cpp' in out
+        assert 'Validator extra-validator-odd.cpp' in out
+        assert 'Expected VALID' in out
+
+    async def test_validator_unit_tests_with_extra_validators_expected_invalid(
+        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+    ):
+        # Set main validator and a global extra validator
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+        testing_pkg.add_from_testdata(
+            'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.yml.extraValidators = [
+            CodeItem(path=pathlib.Path('extra-validator-odd.cpp'))
+        ]
+        testing_pkg.save()
+
+        # Input 4: main validator OK, extra (odd) validator should fail
+        testing_pkg.add_validator_unit_test(
+            glob='unit/validator/t*.in',
+            outcome=ValidatorOutcome.INVALID,
+            files={'unit/validator/test.in': '4\n'},
+        )
+
+        await unit.run_validator_unit_tests(mock_progress)
+
+        out = capsys.readouterr().out
+        # Overall should be OK because at least one validator fails and expected is INVALID
+        assert 'OK Unit test #1' in out
+        assert 'Validator validator.cpp' in out
+        assert 'Validator extra-validator-odd.cpp' in out
+        assert 'Expected INVALID' in out
+        # The passing validator prints Actual VALID (mismatch with expected)
+        assert 'Actual VALID' in out
 
     async def test_validator_unit_tests_with_custom_validator(
         self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys

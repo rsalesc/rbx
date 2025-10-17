@@ -861,12 +861,13 @@ async def validate(
         typer.Option('--path', '-p', help='Path to the testcase to validate.'),
     ] = None,
 ):
-    validator_tuple = validators.compile_main_validator()
-    if validator_tuple is None:
+    all_validators = package.get_all_validators()
+    if not all_validators:
         console.console.print('[error]No validator found for this problem.[/error]')
         raise typer.Exit(1)
 
-    validator, validator_digest = validator_tuple
+    with utils.StatusProgress('Compiling validators...') as s:
+        validators_digests = validators.compile_validators(all_validators, progress=s)
 
     input = console.multiline_prompt('Testcase input')
 
@@ -875,15 +876,15 @@ async def validate(
             tmppath = pathlib.Path(tmpdir) / '000.in'
             tmppath.write_text(input)
 
-            info = await validators.validate_one_off(
-                pathlib.Path(tmppath), validator, validator_digest
+            infos = await validators.validate_one_off(
+                pathlib.Path(tmppath), all_validators, validators_digests
             )
     else:
-        info = await validators.validate_one_off(
-            pathlib.Path(path), validator, validator_digest
+        infos = await validators.validate_one_off(
+            pathlib.Path(path), all_validators, validators_digests
         )
 
-    validators.print_validation_report([info])
+    validators.print_validation_report(infos)
 
 
 @app.command(

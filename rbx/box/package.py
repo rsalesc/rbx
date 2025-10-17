@@ -315,6 +315,16 @@ def get_validator_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeIt
 
 
 @functools.cache
+def get_all_validators(root: pathlib.Path = pathlib.Path()) -> List[CodeItem]:
+    package = find_problem_package_or_die(root)
+    validator = get_validator_or_nil(root)
+    return get_globbed_code_items(
+        ([validator] if validator is not None else []) + package.extraValidators,
+        root,
+    )
+
+
+@functools.cache
 def get_default_checker(root: pathlib.Path = pathlib.Path()) -> Checker:
     package = find_problem_package_or_die(root)
     if package.type == TaskType.COMMUNICATION:

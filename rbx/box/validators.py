@@ -160,19 +160,29 @@ def compile_main_validator() -> Optional[Tuple[CodeItem, str]]:
 
 async def validate_one_off(
     testcase: pathlib.Path,
-    validator: CodeItem,
-    validator_digest: str,
-) -> TestcaseValidationInfo:
-    ok, message, _ = await _validate_test(testcase, validator, validator_digest)
-    info = TestcaseValidationInfo(
-        validator=validator,
-        group='interactive',
-        path=testcase,
-        ok=ok,
-        hit_bounds={},
-        message=message,
-    )
-    return info
+    validators: List[CodeItem],
+    validator_digests: Dict[str, str],
+) -> List[TestcaseValidationInfo]:
+    res = []
+    for validator in validators:
+        validator_digest = validator_digests.get(str(validator.path))
+        if validator_digest is None:
+            console.console.print(
+                f'[warning]Validator [item]{validator.path}[/item] not compiled, skipping validation.[/warning]'
+            )
+            continue
+        ok, message, _ = await _validate_test(testcase, validator, validator_digest)
+        res.append(
+            TestcaseValidationInfo(
+                validator=validator,
+                group='interactive',
+                path=testcase,
+                ok=ok,
+                hit_bounds={},
+                message=message,
+            )
+        )
+    return res
 
 
 def compile_validators(

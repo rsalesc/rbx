@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set
 import typer
 from rich.console import Console
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import checkers, package, testcase_utils, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.exception import RbxException
@@ -268,7 +268,7 @@ async def generate_standalone(
     validate: bool = True,
     group_entry: Optional[TestcaseEntry] = None,
     generator_digest: Optional[str] = None,
-    validator_digest: Optional[str] = None,
+    validators_digests: Optional[Dict[str, str]] = None,
     progress: Optional[StatusProgress] = None,
 ):
     def _print_error_header(console: Console, text: Optional[str] = None):
@@ -323,29 +323,39 @@ async def generate_standalone(
     elif spec.copied_from is not None:
         _copy_testcase_over(spec.copied_from, spec.copied_to)
 
-    validator = package.get_validator_or_nil()
+    all_validators = package.get_all_validators()
     # Run validator, if it is available.
-    if validator is not None and validate:
-        if validator_digest is None:
-            if progress:
-                progress.update('Compiling validator...')
-            validator_tp = validators.compile_main_validator()
-            assert validator_tp is not None
-            _, validator_digest = validator_tp
+    if validate and all_validators:
+        validators_digests = validators_digests or {}
+        for validator in all_validators:
+            # Compile validator if not already compiled.
+            if str(validator.path) not in validators_digests:
+                validators_digests[str(validator.path)] = (
+                    validators.compile_validators([validator], progress=progress)
+                )[str(validator.path)]
+
         if progress:
             progress.update('Validating test...')
-        validation_info = await validators.validate_one_off(
+        validation_infos = await validators.validate_one_off(
             spec.copied_to.inputPath,
-            validator,
-            validator_digest,
+            all_validators,
+            validators_digests,
         )
-        if not validation_info.ok:
+        if not all(info.ok for info in validation_infos):
             with ValidationError() as err:
                 _print_error_header(err.console, 'failed validating testcase.')
-                err.print(f'[error]Message:[/error] {validation_info.message}')
-                err.print(
-                    f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
-                )
+                for info in validation_infos:
+                    if info.ok:
+                        continue
+                    err.print(
+                        f'[error]Validator [item]{info.validator.path}[/item] failed validation:[/error]'
+                    )
+                    err.print(
+                        f'[error]Message:[/error] {utils.escape_markup(info.message.strip())}'
+                    )
+                    err.print(
+                        f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
+                    )
 
 
 async def generate_testcases(

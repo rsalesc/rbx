@@ -1,12 +1,15 @@
+import pathlib
+
 import pytest
 import typer
 
+from rbx.box import validators as validators_mod
 from rbx.box.generators import (
     ValidationError,
     generate_standalone,
     generate_testcases,
 )
-from rbx.box.schema import GeneratorCall, Testcase
+from rbx.box.schema import CodeItem, GeneratorCall, Testcase
 from rbx.box.testcase_extractors import GenerationMetadata
 from rbx.box.testing import testing_package
 from rbx.grading import steps
@@ -369,3 +372,119 @@ async def test_generate_standalone_validation_fails(
         await generate_standalone(spec)
 
         assert 'failed validating testcase' in str(e)
+
+
+async def test_generate_standalone_package_extra_validator_passes(
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Add a package-level extra validator that requires odd integers
+    testing_pkg.add_from_testdata(
+        'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+    )
+    testing_pkg.yml.extraValidators = testing_pkg.yml.extraValidators + [
+        CodeItem(path=pathlib.Path('extra-validator-odd.cpp'))
+    ]
+    testing_pkg.save()
+
+    # Input satisfies odd constraint
+    input_file = testing_pkg.add_file('manual_tests/000.in')
+    input_file.write_text('123\n')
+
+    tmpd = testing_pkg.mkdtemp()
+    spec = GenerationMetadata(
+        copied_to=Testcase(inputPath=tmpd / '000.in'),
+        copied_from=Testcase(
+            inputPath=input_file,
+        ),
+    )
+    await generate_standalone(spec)
+
+    assert (tmpd / '000.in').read_bytes() == b'123\n'
+
+
+async def test_generate_standalone_package_extra_validator_fails(
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Add a package-level extra validator that requires odd integers
+    testing_pkg.add_from_testdata(
+        'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+    )
+    testing_pkg.yml.extraValidators = testing_pkg.yml.extraValidators + [
+        CodeItem(path=pathlib.Path('extra-validator-odd.cpp'))
+    ]
+    testing_pkg.save()
+
+    # Input violates odd constraint
+    input_file = testing_pkg.add_file('manual_tests/000.in')
+    input_file.write_text('100\n')
+
+    tmpd = testing_pkg.mkdtemp()
+    spec = GenerationMetadata(
+        copied_to=Testcase(inputPath=tmpd / '000.in'),
+        copied_from=Testcase(
+            inputPath=input_file,
+        ),
+    )
+
+    with pytest.raises(ValidationError):
+        await generate_standalone(spec)
+
+
+async def test_generate_standalone_reuses_validators_digests_cache(
+    testing_pkg: testing_package.TestingPackage, monkeypatch: pytest.MonkeyPatch
+):
+    # Configure main and extra validators
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+    testing_pkg.add_from_testdata(
+        'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+    )
+    testing_pkg.yml.extraValidators = testing_pkg.yml.extraValidators + [
+        CodeItem(path=pathlib.Path('extra-validator-odd.cpp'))
+    ]
+    testing_pkg.save()
+
+    # Precompile digests before monkeypatching
+    all_validators = validators_mod.compile_validators(
+        validators=[
+            CodeItem(path=pathlib.Path('validator.cpp')),
+            CodeItem(path=pathlib.Path('extra-validator-odd.cpp')),
+        ]
+    )
+
+    calls = []
+
+    def fake_compile_validators(validators, progress=None):
+        paths = [str(v.path) for v in validators]
+        calls.append(paths)
+        return {p: all_validators[p] for p in paths}
+
+    monkeypatch.setattr(
+        validators_mod, 'compile_validators', fake_compile_validators, raising=True
+    )
+
+    # Input satisfies all validators
+    input_file = testing_pkg.add_file('manual_tests/000.in')
+    input_file.write_text('123\n')
+
+    tmpd = testing_pkg.mkdtemp()
+    spec = GenerationMetadata(
+        copied_to=Testcase(inputPath=tmpd / '000.in'),
+        copied_from=Testcase(
+            inputPath=input_file,
+        ),
+    )
+
+    # 1) Provide only main validator digest -> extra should be compiled once
+    await generate_standalone(
+        spec,
+        validators_digests={'validator.cpp': all_validators['validator.cpp']},
+    )
+    assert calls == [['extra-validator-odd.cpp']]
+
+    # 2) Provide both digests -> no compilation should happen
+    calls.clear()
+    await generate_standalone(
+        spec,
+        validators_digests=all_validators,
+    )
+    assert calls == []

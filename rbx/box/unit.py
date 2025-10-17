@@ -3,7 +3,7 @@ from typing import List, Optional, Set
 
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import checkers, package, validators
 from rbx.box.schema import (
     CheckerTest,
@@ -83,11 +83,10 @@ def extract_checker_test_entries(tests: List[CheckerTest]) -> List[CheckerTestEn
     return res
 
 
-def _get_validator_for_test(test: ValidatorTestEntry) -> Optional[CodeItem]:
-    pkg = package.find_problem_package_or_die()
+def _get_validators_for_test(test: ValidatorTestEntry) -> List[CodeItem]:
     if test.validator is not None:
-        return test.validator
-    return pkg.validator
+        return [test.validator]
+    return package.get_all_validators()
 
 
 async def run_validator_unit_tests(progress: StatusProgress):
@@ -97,9 +96,7 @@ async def run_validator_unit_tests(progress: StatusProgress):
 
     vals: List[CodeItem] = []
     for test in entries:
-        val = _get_validator_for_test(test)
-        if val is not None:
-            vals.append(val)
+        vals.extend(_get_validators_for_test(test))
 
     console.console.rule('Validator tests', style='info')
     if not entries:
@@ -112,38 +109,47 @@ async def run_validator_unit_tests(progress: StatusProgress):
         progress.update('Running validator unit tests...')
 
     for i, test in enumerate(entries):
-        val = _get_validator_for_test(test)
-        if val is None:
+        vals_for_test = _get_validators_for_test(test)
+        if not vals_for_test:
             console.console.print(
-                f'[warning]No validator found for test [item]#{i + 1}[/item], skipping.[/warning]'
+                f'[warning]No validators found for test [item]#{i + 1}[/item], skipping.[/warning]'
             )
+            console.console.print()
             continue
 
-        compiled_digest = compiled_validators[str(val.path)]
-        info = await validators.validate_one_off(
+        infos = await validators.validate_one_off(
             test.input,
-            val,
-            compiled_digest,
+            vals_for_test,
+            compiled_validators,
         )
 
         is_valid = test.outcome == ValidatorOutcome.VALID
-
         markup = (
-            '[success]OK[/success]' if info.ok == is_valid else '[error]FAIL[/error]'
+            '[success]OK[/success]'
+            if all(info.ok for info in infos) == is_valid
+            else '[error]FAIL[/error]'
         )
-
         console.console.print(
             f'{markup} Unit test [item]#{i + 1}[/item] for [item]{test.input}[/item]'
         )
-        console.console.print(f'  [status]Expected[/status] {test.outcome.value}')
-        if info.ok != is_valid:
-            if info.ok:
-                console.console.print('  [status]Actual[/status] VALID')
-            else:
-                console.console.print('  [status]Actual[/status] INVALID')
+        for info in infos:
+            if len(infos) > 1:
+                console.console.print(
+                    f'  [status]Validator[/status] {info.validator.path}'
+                )
 
-        if info.message:
-            console.console.print(f'  [status]Message[/status] {info.message}')
+            console.console.print(f'  [status]Expected[/status] {test.outcome.value}')
+            if info.ok != is_valid:
+                if info.ok:
+                    console.console.print('  [status]Actual[/status] VALID')
+                else:
+                    console.console.print('  [status]Actual[/status] INVALID')
+
+            if info.message:
+                console.console.print(
+                    f'  [status]Message[/status] {utils.escape_markup(info.message.strip())}'
+                )
+            console.console.print()
 
 
 async def run_checker_unit_tests(progress: StatusProgress):
@@ -228,7 +234,9 @@ async def run_checker_unit_tests(progress: StatusProgress):
         if not test.outcome.match(result.outcome):
             console.console.print(f'  [status]Actual[/status] {result.outcome.name}')
         if result.message:
-            console.console.print(f'  [status]Message[/status] {result.message}')
+            console.console.print(
+                f'  [status]Message[/status] {utils.escape_markup(result.message.strip())}'
+            )
 
 
 async def run_unit_tests(progress: StatusProgress):
