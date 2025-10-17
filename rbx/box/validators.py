@@ -223,6 +223,12 @@ async def validate_testcases(
         validation_entries, progress=progress
     )
 
+    if not validator_to_compiled_digest:
+        console.console.print(
+            '[warning]No validators found, skipping validation.[/warning]'
+        )
+        return []
+
     validation_info = []
 
     for entry in validation_entries:

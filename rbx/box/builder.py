@@ -38,29 +38,22 @@ async def build(
         await generate_testcases(s, groups=groups)
 
     if verification > 0:
-        validator = package.get_validator_or_nil()
-        if validator is None:
-            console.console.print(
-                '[warning]No validator found, skipping validation.[/warning]'
+        with utils.StatusProgress(
+            'Validating testcases...',
+            'Validated [item]{processed}[/item] testcases...',
+            keep=True,
+        ) as s:
+            infos = await validate_testcases(
+                s,
+                groups=groups,
             )
+            print_validation_report(infos)
 
-        if validator is not None:
-            with utils.StatusProgress(
-                'Validating testcases...',
-                'Validated [item]{processed}[/item] testcases...',
-                keep=True,
-            ) as s:
-                infos = await validate_testcases(
-                    s,
-                    groups=groups,
-                )
-                print_validation_report(infos)
-
-            if has_validation_errors(infos):
-                console.console.print(
-                    '[error]Validation failed, check the report above.[/error]'
-                )
-                return False
+        if has_validation_errors(infos):
+            console.console.print(
+                '[error]Validation failed, check the report above.[/error]'
+            )
+            return False
 
     with utils.StatusProgress(
         'Building outputs for testcases...',
