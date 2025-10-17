@@ -1,3 +1,9 @@
+## 0.19.10 (2025-10-17)
+
+### Fix
+
+- passes through all validators in one off commands
+
 ## 0.19.9 (2025-10-17)
 
 ### Fix
