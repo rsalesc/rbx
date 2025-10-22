@@ -1,3 +1,9 @@
+## 0.19.11 (2025-10-21)
+
+### Fix
+
+- fix compilation issue with stress tests
+
 ## 0.19.10 (2025-10-17)
 
 ### Fix
