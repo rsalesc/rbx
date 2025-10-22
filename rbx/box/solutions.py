@@ -199,6 +199,7 @@ def compile_solutions(
     tracked_solutions: Optional[Set[str]] = None,
     sanitized: bool = False,
     fail_if_one: bool = True,
+    skip_if_fail: bool = False,
 ) -> Dict[pathlib.Path, str]:
     compiled_solutions = {}
 
@@ -217,6 +218,8 @@ def compile_solutions(
             )
         except steps.CompilationError:
             if fail_if_one and len(tracked_solutions) <= 1:
+                raise
+            if not skip_if_fail:
                 raise
             issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
         except:
@@ -315,6 +318,7 @@ def _get_compiled_solutions_for_skeleton(
         progress=progress,
         tracked_solutions=set(str(solution.path) for solution in solutions_to_compile),
         sanitized=sanitized,
+        skip_if_fail=True,
     )
 
     # TODO: Handle solutions that failed to compile.
