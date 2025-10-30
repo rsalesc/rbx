@@ -95,11 +95,11 @@ def compile_checker(
 
     try:
         digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
-    except Exception as e:
+    except:
         console.console.print(
             f'[error]Failed compiling checker [item]{checker.path}[/item][/error]'
         )
-        raise typer.Exit(1) from e
+        raise
     return digest
 
 

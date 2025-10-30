@@ -42,11 +42,11 @@ class StressReport(BaseModel):
 def _compile_finder(finder: CodeItem) -> str:
     try:
         digest = checkers.compile_checker(custom_checker=finder)
-    except Exception as e:
+    except:
         console.console.print(
             f'[error]Failed compiling checker [item]{finder.path}[/item][/error]'
         )
-        raise typer.Exit(1) from e
+        raise
     return digest
 
 
