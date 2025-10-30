@@ -444,6 +444,11 @@ async def time(
             choices=timing_choices,
         ).ask_async()
     )
+    if choice is None:
+        console.console.print(
+            '[error]No time limit strategy selected. Exiting.[/error]'
+        )
+        raise typer.Exit(1)
 
     formula = environment.get_environment().timing.formula
 
@@ -455,6 +460,11 @@ async def time(
             'Enter a custom time limit for the problem (ms).',
             validate=lambda x: x.isdigit() and int(x) > 0,
         ).ask_async()
+        if timelimit is None:
+            console.console.print(
+                '[error]No custom time limit provided. Exiting.[/error]'
+            )
+            raise typer.Exit(1)
         timing.set_time_limit(int(timelimit), profile=profile)
         return
 
@@ -462,7 +472,9 @@ async def time(
         formula = await questionary.text(
             'Enter a custom formula for time limit estimation.'
         ).ask_async()
-
+        if formula is None:
+            console.console.print('[error]No custom formula provided. Exiting.[/error]')
+            raise typer.Exit(1)
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
