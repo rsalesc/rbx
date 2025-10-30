@@ -536,7 +536,7 @@ async def irun(
     output: bool = typer.Option(
         False,
         '--output',
-        '-o',
+        '-O',
         help='Whether to ask user for custom output.',
     ),
     print: bool = typer.Option(
