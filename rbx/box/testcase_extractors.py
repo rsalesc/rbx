@@ -5,7 +5,7 @@ from typing import Iterable, List, Optional, Set, Tuple
 import typer
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import package
 from rbx.box.code import compile_item, run_item
 from rbx.box.generator_script_handlers import get_generator_script_handler
@@ -133,6 +133,32 @@ class GenerationTestcaseEntry(BaseModel):
 
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'
+
+
+def get_testcase_metadata_markup(entry: GenerationTestcaseEntry) -> str:
+    lines = []
+    lines.append(
+        f'[b bright_white]{entry.group_entry.group}[/b bright_white] / [b bright_white]{entry.group_entry.index}[/b bright_white]'
+    )
+    lines.append(get_generation_metadata_markup(entry.metadata))
+    return '\n'.join(lines)
+
+
+def get_generation_metadata_markup(metadata: GenerationMetadata) -> str:
+    lines = []
+    if metadata.copied_from is not None:
+        lines.append(
+            f'[b bright_white]Copied from:[/b bright_white] {metadata.copied_from.inputPath}'
+        )
+    if metadata.generator_call is not None:
+        lines.append(
+            f'[b bright_white]Gen. call:[/b bright_white] {utils.escape_markup(str(metadata.generator_call))}'
+        )
+    if metadata.generator_script is not None:
+        lines.append(
+            f'[b bright_white]Gen. script:[/b bright_white] {utils.escape_markup(str(metadata.generator_script))}'
+        )
+    return '\n'.join(lines)
 
 
 class TestcaseVisitor(abc.ABC):

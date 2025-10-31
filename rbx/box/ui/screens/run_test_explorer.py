@@ -12,10 +12,10 @@ from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases,
+    get_testcase_metadata_markup,
 )
 from rbx.box.ui.screens.rich_log_modal import RichLogModal
 from rbx.box.ui.utils.run_ui import (
-    get_metadata_markup,
     get_run_testcase_markup,
     get_run_testcase_metadata_markup,
 )
@@ -180,7 +180,7 @@ class RunTestExplorerScreen(Screen):
         entry = self._entries[list_view.index]
         self.app.push_screen(
             RichLogModal(
-                get_metadata_markup(entry),
+                get_testcase_metadata_markup(entry),
                 title='Testcase metadata',
             )
         )

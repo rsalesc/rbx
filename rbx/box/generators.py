@@ -340,6 +340,7 @@ async def generate_standalone(
             spec.copied_to.inputPath,
             all_validators,
             validators_digests,
+            generation_metadata=spec,
         )
         if not all(info.ok for info in validation_infos):
             with ValidationError() as err:

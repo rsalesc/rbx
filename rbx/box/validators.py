@@ -11,9 +11,12 @@ from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.fields import Primitive
 from rbx.box.schema import CodeItem
 from rbx.box.testcase_extractors import (
+    GenerationMetadata,
     GenerationTestcaseEntry,
     extract_generation_testcases_from_groups,
+    get_generation_metadata_markup,
 )
+from rbx.box.testcase_utils import TestcaseEntry
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     DigestHolder,
@@ -28,7 +31,8 @@ HitBounds = Dict[str, Tuple[bool, bool]]
 
 class TestcaseValidationInfo(BaseModel):
     validator: CodeItem
-    group: str
+    testcase: Optional[TestcaseEntry]
+    generation_metadata: Optional[GenerationMetadata]
     path: pathlib.Path
     ok: bool
     hit_bounds: HitBounds
@@ -162,6 +166,7 @@ async def validate_one_off(
     testcase: pathlib.Path,
     validators: List[CodeItem],
     validator_digests: Dict[str, str],
+    generation_metadata: Optional[GenerationMetadata] = None,
 ) -> List[TestcaseValidationInfo]:
     res = []
     for validator in validators:
@@ -175,7 +180,8 @@ async def validate_one_off(
         res.append(
             TestcaseValidationInfo(
                 validator=validator,
-                group='interactive',
+                testcase=None,
+                generation_metadata=generation_metadata,
                 path=testcase,
                 ok=ok,
                 hit_bounds={},
@@ -255,7 +261,8 @@ async def validate_testcases(
             validation_info.append(
                 TestcaseValidationInfo(
                     validator=entry.validator,
-                    group=entry.group_entry.group,
+                    testccase=entry.group_entry,
+                    generation_metadata=entry.metadata,
                     path=input_path,
                     ok=ok,
                     hit_bounds=hit_bounds,
@@ -271,7 +278,8 @@ async def validate_testcases(
             validation_info.append(
                 TestcaseValidationInfo(
                     validator=extra_validator,
-                    group=entry.group_entry.group,
+                    testcase=entry.group_entry,
+                    generation_metadata=entry.metadata,
                     path=input_path,
                     ok=ok,
                     hit_bounds=hit_bounds,
@@ -297,14 +305,21 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
             console.console.print(
                 f'[error]Testcase [item]{info.path}[/item] failed verification on validator [item]{info.validator.path}[/item]:[/error]'
             )
+            if info.generation_metadata is not None:
+                metadata_markup = get_generation_metadata_markup(
+                    info.generation_metadata
+                )
+                console.console.print(metadata_markup)
             console.console.print(info.message)
             any_failure = True
             continue
 
-        if info.group not in hit_bounds_per_group:
-            hit_bounds_per_group[info.group] = {}
-        hit_bounds_per_group[info.group] = _merge_hit_bounds(
-            [hit_bounds_per_group[info.group], info.hit_bounds]
+        if info.testcase is None:
+            continue
+        if info.testcase.group not in hit_bounds_per_group:
+            hit_bounds_per_group[info.testcase.group] = {}
+        hit_bounds_per_group[info.testcase.group] = _merge_hit_bounds(
+            [hit_bounds_per_group[info.testcase.group], info.hit_bounds]
         )
 
     if not hit_bounds_per_group:
@@ -325,7 +340,7 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
         if _is_hit_bound_good(v) and k != 'samples'
     }
 
-    all_groups = set(info.group for info in infos)
+    all_groups = set(info.testcase.group for info in infos if info.testcase is not None)
     if len(all_groups) == 1 and 'samples' in all_groups:
         # If there's only the samples group, do not check for hit bounds.
         hit_bounds_per_group = {}
