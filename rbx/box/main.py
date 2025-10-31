@@ -1,16 +1,25 @@
 # flake8: noqa
-import nest_asyncio
+
+import os
 import sys
 
-from rbx.box.exception import RbxException
 
-nest_asyncio.apply()
-
-from rbx.box.cli import app as app_cli
+def _check_completions():
+    if os.environ.get('_TYPER_COMPLETE_ARGS'):
+        sys.exit(0)
 
 
 def app():
+    # _check_completions()
+
+    from rbx.box.exception import RbxException
+
     try:
+        import nest_asyncio
+
+        nest_asyncio.apply()
+        from rbx.box.cli import app as app_cli
+
         app_cli()
     except RbxException as e:
         print(str(e))

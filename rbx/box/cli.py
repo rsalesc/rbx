@@ -49,7 +49,9 @@ from rbx.box.testcases import main as testcases
 from rbx.box.tooling import main as tooling
 from rbx.grading import grading_context
 
-app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+app = typer.Typer(
+    no_args_is_help=True, add_completion=False, cls=annotations.AliasGroup
+)
 app.add_typer(
     setter_config.app,
     name='config, cfg',
