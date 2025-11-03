@@ -1032,7 +1032,7 @@ class SolutionOutcomeReport(BaseModel):
     sanitizerWarnings: bool
     verification: VerificationLevel
 
-    def get_verdict_markup(self, incomplete: bool = False, subset: bool = True) -> str:
+    def get_verdict_markup(self, incomplete: bool = False, subset: bool = False) -> str:
         success_str = '[bold green]OK[/] '
         if subset:
             success_str = ''
@@ -1053,7 +1053,7 @@ class SolutionOutcomeReport(BaseModel):
             verdict_str = f'Got: {got_verdict_names}'
         return f'{success_str}{verdict_str}'
 
-    def get_verdict_markup_with_warnings(self, subset: bool = True) -> str:
+    def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
         res = self.get_verdict_markup(subset=subset)
         if self.runUnderDoubleTl:
             if self.doubleTlVerdicts:
@@ -1065,7 +1065,7 @@ class SolutionOutcomeReport(BaseModel):
         return res
 
     def get_outcome_markup(
-        self, subset: bool = True, print_message: bool = True
+        self, subset: bool = False, print_message: bool = True
     ) -> str:
         res = self.get_verdict_markup_with_warnings(subset=subset)
         res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
@@ -1198,7 +1198,7 @@ def _print_solution_outcome(
     )
     if not report.ok:
         issue_stack.add_issue(FailedSolutionIssue(solution))
-    console.print(report.get_outcome_markup(print_message))
+    console.print(report.get_outcome_markup(subset=subset, print_message=print_message))
     return report.ok
 
 
