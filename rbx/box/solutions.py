@@ -84,6 +84,10 @@ class SolutionSkeleton(Solution):
     def get_entry_prefix(self, entry: TestcaseEntry) -> pathlib.Path:
         return self.runs_dir / entry.group / f'{entry.index:03d}'
 
+    def runs_dir_href(self) -> str:
+        relpath = self.runs_dir.relative_to(package.find_problem())
+        return href(self.runs_dir, relpath, style='bright_black')
+
 
 class SolutionReportSkeleton(BaseModel):
     solutions: List[SolutionSkeleton]
@@ -1219,7 +1223,7 @@ def _print_solution_header(
     console: rich.console.Console,
 ):
     console.print(solution.href(), end=' ')
-    console.print(f'({href(solution.runs_dir, style="info")})')
+    console.print(f'({solution.runs_dir_href()})')
 
 
 @dataclasses.dataclass
