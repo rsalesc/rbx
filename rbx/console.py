@@ -10,6 +10,7 @@ theme = Theme(
         'default': 'bright_white',
         'rbx': 'bold italic yellow',
         'info': 'bright_black',
+        'hilite': 'color(243)',
         'status': 'bright_white',
         'item': 'bold blue',
         'error': 'bold red',

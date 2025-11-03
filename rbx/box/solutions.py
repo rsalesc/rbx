@@ -1545,8 +1545,8 @@ def _print_limits(limits: Dict[str, Limits]):
             if limit.memory is None
             else get_formatted_memory(limit.memory * 1024 * 1024)
         )
-        console.console.print(f'Time: {time}')
-        console.console.print(f'Memory: {memory}')
+        console.console.print(f'[status]Time: [hilite]{time}[/hilite][/status]')
+        console.console.print(f'[status]Memory: [hilite]{memory}[/hilite][/status]')
         if limit.isDoubleTL:
             console.console.print('[warning]Running with 2*TL[/warning]')
     console.console.print()
