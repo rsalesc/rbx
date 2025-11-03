@@ -195,7 +195,7 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
         return ('solutions',)
 
     def get_detailed_message(self) -> str:
-        return f'[item]{href(self.solution.path)}[/item] could not be compiled and was skipped.'
+        return f'{self.solution.href()} could not be compiled and was skipped.'
 
 
 def compile_solutions(
@@ -228,7 +228,7 @@ def compile_solutions(
             issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
         except:
             console.console.print(
-                f'[error]Failed compiling solution {href(solution.path)}.[/error]'
+                f'[error]Failed compiling solution {solution.href()}.[/error]'
             )
             raise
 
