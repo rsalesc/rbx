@@ -1,3 +1,9 @@
+## 0.20.0rc2 (2025-11-03)
+
+### Fix
+
+- update packaging module
+
 ## 0.20.0rc1 (2025-11-03)
 
 ### Fix
