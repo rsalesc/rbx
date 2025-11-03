@@ -79,7 +79,7 @@ class IssueAccumulator:
         print_section(sections, tree)
 
         if tree.children:
-            console.console.rule('Issues', style='error')
+            console.console.rule('[error]Issues[/error]', style='error')
             for child in tree.children:
                 console.console.print(child)
 
