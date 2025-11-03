@@ -12,4 +12,4 @@ for v in versions:
 PY
 )"; \
 echo "Installing rbx.cp==$ver"; \
-uv tool install "rbx.cp==$ver"
+uv tool install --prerelease=explicit "rbx.cp==$ver" --no-cache
