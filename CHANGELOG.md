@@ -1,3 +1,10 @@
+## 0.20.0rc6 (2025-11-03)
+
+### Fix
+
+- reintroduce OK to rbx run
+- add TL in timing summary and color appropriately things that should be info
+
 ## 0.20.0rc5 (2025-11-03)
 
 ### Fix
