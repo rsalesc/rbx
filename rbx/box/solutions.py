@@ -1642,7 +1642,10 @@ class FullRunReporter(TraditionalRunReporter):
         return ok
 
     def render_group(self, group: TestcaseGroup):
-        self.console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
+        self.console.print(
+            f'[bold][status]{group.name} ({len(group.testcases)})[/status][/bold]',
+            end='',
+        )
 
     def render_group_end(self, group: TestcaseGroup):
         self.console.print(
@@ -1670,7 +1673,7 @@ class LiveRunReporter(FullRunReporter):
         if self.live is None:
             return
         renderable = rich.text.Text.from_markup(
-            f'[bold bright_white]{self.current_group.name}[/bold bright_white] '
+            f'[bold bright_white]{self.current_group.name} ({len(self.current_group.testcases)})[/bold bright_white] '
         )
         for i in range(self.pre_evaluated):
             if i >= self.post_evaluated:
