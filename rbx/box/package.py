@@ -490,13 +490,13 @@ def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Pa
         if not compilation_file_path.is_file():
             console.console.print(
                 f'[error]Compilation file [item]{compilation_file}[/item] for '
-                f'code [item]{code.path}[/item] does not exist.[/error]',
+                f'code {code.href()} does not exist.[/error]',
             )
             raise typer.Exit(1)
         if not compilation_file_path.is_relative_to(code_dir):
             console.console.print(
                 f'[error]Compilation file [item]{compilation_file}[/item] for '
-                f"code [item]{code.path}[/item] is not under the code's folder.[/error]",
+                f"code {code.href()} is not under the code's folder.[/error]",
             )
             raise typer.Exit(1)
 

@@ -86,7 +86,7 @@ def compile_checker(
     checker = custom_checker or package.get_checker()
 
     if progress:
-        progress.update(f'Compiling checker [item]{checker.path}[/item]...')
+        progress.update(f'Compiling checker {checker.href()}...')
 
     if not checker.path.is_file():
         builtin_checker = get_builtin_checker(checker.path.name)
@@ -97,7 +97,7 @@ def compile_checker(
         digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
     except:
         console.console.print(
-            f'[error]Failed compiling checker [item]{checker.path}[/item][/error]'
+            f'[error]Failed compiling checker {checker.href()}[/error]'
         )
         raise
     return digest
@@ -315,7 +315,7 @@ async def _check(
     processed_checker_result = process_checker_run_log(checker_run_log, message)
     if processed_checker_result.outcome == Outcome.INTERNAL_ERROR:
         console.console.print(
-            f'[error]Checker [item]{package.get_checker().path}[/item] failed unexpectedly.[/error]'
+            f'[error]Checker {package.get_checker().href()} failed unexpectedly.[/error]'
         )
         if checker_run_log is not None:
             console.console.print(

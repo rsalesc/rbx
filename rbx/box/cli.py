@@ -819,7 +819,7 @@ async def stress(
             generator_script.write_text(handler.script)
 
             console.console.print(
-                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at [item]{subgroup.generatorScript.path}[/item]"
+                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at {subgroup.generatorScript.href()}"
             )
         except typer.Exit:
             continue

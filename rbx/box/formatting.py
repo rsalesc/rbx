@@ -10,12 +10,20 @@ def ref(text: Any) -> str:
     return f'[item]{text}[/item]'
 
 
-def href(url: os.PathLike[str], text: Optional[str] = None, style: str = 'item') -> str:
+def href(
+    url: os.PathLike[str],
+    text: Optional[str] = None,
+    style: str = 'item',
+    hyperlink: bool = True,
+) -> str:
     custom_text = False
     if text is None:
         text = str(url)
     else:
         custom_text = True
+
+    if not hyperlink:
+        return f'[{style}]{text}[/{style}]'
 
     if not custom_text:
         if not setter_config.get_setter_config().hyperlinks:

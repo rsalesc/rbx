@@ -229,7 +229,7 @@ def _upload_solutions(problem: api.Problem):
 
     for i, solution in enumerate(package.get_solutions()):
         console.console.print(
-            f'Uploading solution [item]{solution.path.name}[/item] (tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
+            f'Uploading solution {solution.href()} (tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
         )
         problem.save_solution(
             solution.path.name,

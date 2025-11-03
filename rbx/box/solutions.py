@@ -158,7 +158,7 @@ class FailedSolutionIssue(issue_stack.Issue):
         return ('solutions',)
 
     def get_detailed_message(self) -> str:
-        return f'[item]{href(self.solution.path)}[/item] has an unexpected outcome.'
+        return f'{self.solution.href()} has an unexpected outcome.'
 
 
 def is_fast(solution: Solution) -> bool:
@@ -1218,7 +1218,7 @@ def _print_solution_header(
     solution: SolutionSkeleton,
     console: rich.console.Console,
 ):
-    console.print(f'{href(solution.path)}', end=' ')
+    console.print(solution.href(), end=' ')
     console.print(f'({href(solution.runs_dir, style="info")})')
 
 
@@ -1244,14 +1244,14 @@ class TimingSummary:
     def print(self, console: rich.console.Console, tl: Optional[int] = None):
         if self.slowest_good is not None:
             console.print(
-                f'Slowest [success]OK[/success] solution: {self.slowest_good.time} ms, {href(self.slowest_good.solution.path)}'
+                f'Slowest [success]OK[/success] solution: {self.slowest_good.time} ms, {self.slowest_good.solution.href()}'
             )
         if self.fastest_slow is not None:
             fastest_slow = self.fastest_slow.time
             if tl is not None and self.fastest_slow.time > tl:
                 fastest_slow = f'>{tl}'
             console.print(
-                f'Fastest [error]slow[/error] solution: {fastest_slow} ms, {href(self.fastest_slow.solution.path)}'
+                f'Fastest [error]slow[/error] solution: {fastest_slow} ms, {self.fastest_slow.solution.href()}'
             )
 
 
@@ -1378,7 +1378,7 @@ async def _render_detailed_group_table(
     ) -> rich.table.Table:
         table = rich.table.Table()
         for solution in skeleton.solutions:
-            table.add_column(f'{href(solution.path)}', justify='full')
+            table.add_column(f'{solution.href()}', justify='full')
 
         padded_rows = []
 

@@ -44,7 +44,7 @@ def _compile_finder(finder: CodeItem) -> str:
         digest = checkers.compile_checker(custom_checker=finder)
     except:
         console.console.print(
-            f'[error]Failed compiling checker [item]{finder.path}[/item][/error]'
+            f'[error]Failed compiling checker {finder.href()}.[/error]'
         )
         raise
     return digest

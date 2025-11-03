@@ -135,7 +135,7 @@ async def run_validator_unit_tests(progress: StatusProgress):
         for info in infos:
             if len(infos) > 1:
                 console.console.print(
-                    f'  [status]Validator[/status] {info.validator.path}'
+                    f'  [status]Validator[/status] {info.validator.href()}'
                 )
 
             console.console.print(f'  [status]Expected[/status] {test.outcome.value}')

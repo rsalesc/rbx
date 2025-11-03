@@ -16,7 +16,7 @@ def _compile_out():
 
 
 def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
-    console.console.print(f'Compiling [item]{item.path}[/item]...')
+    console.console.print(f'Compiling {item.href()}...')
     digest = code.compile_item(item, sanitized, force_warnings=warnings, verbose=True)
     cacher = package.get_file_cacher()
     out_path = _compile_out()

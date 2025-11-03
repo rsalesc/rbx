@@ -349,7 +349,7 @@ async def generate_standalone(
                     if info.ok:
                         continue
                     err.print(
-                        f'[error]Validator [item]{info.validator.path}[/item] failed validation:[/error]'
+                        f'[error]Validator {info.validator.href()} failed validation:[/error]'
                     )
                     err.print(
                         f'[error]Message:[/error] {utils.escape_markup(info.message.strip())}'
@@ -481,7 +481,7 @@ async def generate_outputs_for_testcases(
         ):
             if progress:
                 progress.update(
-                    f'Compiling model solution [item]{entry.model_solution.path}[/item]...'
+                    f'Compiling model solution {entry.model_solution.href()}...'
                 )
             try:
                 solution_digest_map[entry.model_solution.path] = compile_item(
@@ -489,7 +489,7 @@ async def generate_outputs_for_testcases(
                 )
             except:
                 console.console.print(
-                    f'[error]Failed compiling model solution [item]{entry.model_solution.path}[/item].[/error]'
+                    f'[error]Failed compiling model solution {entry.model_solution.href()}.[/error]'
                 )
                 raise
 

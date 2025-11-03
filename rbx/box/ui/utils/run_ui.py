@@ -47,7 +47,7 @@ def get_solution_evals_or_null(
 def get_solution_markup(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton
 ) -> str:
-    header = f'[b $accent]{solution.path}[/b $accent] ({solution.path})'
+    header = solution.display()
 
     evals = get_solution_evals_or_null(skeleton, solution)
     report = solutions.get_solution_outcome_report(

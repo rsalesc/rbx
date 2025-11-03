@@ -87,7 +87,7 @@ async def estimate_time_limit(
 
         if not timings:
             console.print(
-                f'[warning]No timings for solution {href(solution.path)}.[/warning]'
+                f'[warning]No timings for solution {solution.href()}.[/warning]'
             )
             continue
 

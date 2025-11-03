@@ -11,6 +11,7 @@ from pydantic_core import PydanticCustomError
 from rbx import utils
 from rbx.autoenum import AutoEnum, alias
 from rbx.box.fields import NameField, Primitive, RecVars, Vars, expand_vars
+from rbx.box.formatting import href
 from rbx.box.statements.expander import expand_statements
 from rbx.box.statements.schema import Statement
 from rbx.grading.steps import Outcome
@@ -114,7 +115,7 @@ class ExpectedOutcome(AutoEnum):
     def style(self) -> str:
         if self == ExpectedOutcome.ANY:
             return 'orange'
-        if self == ExpectedOutcome.ACCEPTED:
+        if self.match(Outcome.ACCEPTED):
             return 'green'
         if self == ExpectedOutcome.WRONG_ANSWER:
             return 'red'
@@ -127,6 +128,12 @@ class ExpectedOutcome(AutoEnum):
         if self.match(Outcome.MEMORY_LIMIT_EXCEEDED):
             return 'yellow'
         return 'magenta'
+
+    def full_style(self) -> str:
+        style = self.style()
+        if self == ExpectedOutcome.ACCEPTED:
+            return f'bold {style}'
+        return style
 
     def is_slow(self) -> bool:
         return self in [ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TLE_OR_RTE]
@@ -216,6 +223,12 @@ relative to the `path` directory.
 Testlib and jngen are already included by default.
 """,
     )
+
+    def href(self, hyperlink: bool = True) -> str:
+        return href(self.path, hyperlink=hyperlink)
+
+    def display(self) -> str:
+        return self.href(hyperlink=False)
 
 
 class GeneratorScript(CodeItem):
@@ -399,6 +412,9 @@ class Solution(CodeItem):
         default=ExpectedOutcome.ACCEPTED,
         description="""The expected outcome of this solution.""",
     )
+
+    def href(self, hyperlink: bool = True) -> str:
+        return href(self.path, style=self.outcome.full_style(), hyperlink=hyperlink)
 
 
 class Stress(BaseModel):

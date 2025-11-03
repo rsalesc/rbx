@@ -29,7 +29,7 @@ def _build_solution_selection_label(sol: Solution) -> Text:
     outcome = sol.outcome if main is None or main.path != sol.path else 'MAIN'
 
     style = sol.outcome.style()
-    text = Text(f'{sol.path}')
+    text = Text.from_markup(sol.href())
     text.append(f' {outcome}', style=style)
     return text
 

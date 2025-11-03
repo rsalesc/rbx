@@ -669,15 +669,13 @@ def compile_item(
                     dependency_cache=dependency_cache,
                 )
             except steps.CompilationError as e:
-                e.print(
-                    f'[error]Failed to compile item: [item]{code.path}[/item][/error]'
-                )
+                e.print(f'[error]Failed to compile item: {code.href()}[/error]')
                 raise
 
     assert compiled_digest.value is not None
 
     if verbose and artifacts.logs is not None and artifacts.logs.preprocess is not None:
-        console.console.print(f'[status]Compiled item: [item]{code.path}[/item]')
+        console.console.print(f'[status]Compiled item: {code.href()}')
         for log in artifacts.logs.preprocess:
             console.console.print(f'[status]Command:[/status] {log.get_command()}')
             console.console.print(f'[status]Summary:[/status] {log.get_summary()}')

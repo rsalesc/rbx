@@ -44,7 +44,7 @@ async def run_generator_script(testcase: TestcaseSubgroup) -> str:
 
     if not testcase.generatorScript.path.is_file():
         console.console.print(
-            f'[error]Generator script not found: [item]{testcase.generatorScript.path}[/item][/error]'
+            f'[error]Generator script not found: [item]{testcase.generatorScript.href()}[/item][/error]'
         )
         raise typer.Exit(1)
 

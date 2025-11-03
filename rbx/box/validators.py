@@ -38,13 +38,16 @@ class TestcaseValidationInfo(BaseModel):
     hit_bounds: HitBounds
     message: Optional[str] = None
 
+    def href(self) -> str:
+        return CodeItem(path=self.path).href()
+
 
 def _compile_validator(validator: CodeItem) -> str:
     try:
         digest = compile_item(validator, sanitized=SanitizationLevel.PREFER)
     except:
         console.console.print(
-            f'[error]Failed compiling validator [item]{validator.path}[/item][/error]'
+            f'[error]Failed compiling validator {validator.href()}.[/error]'
         )
         raise
     return digest
@@ -126,7 +129,7 @@ async def _validate_testcase(
         and run_log.exitstatus != SandboxBase.EXIT_NONZERO_RETURN
     ):
         console.console.print(
-            f'[error]Validator [item]{validator.path}[/item] failed unexpectedly.[/error]'
+            f'[error]Validator {validator.href()} failed unexpectedly.[/error]'
         )
         console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
         console.console.print(f'[error]Message:[/error] {message}')
@@ -173,7 +176,7 @@ async def validate_one_off(
         validator_digest = validator_digests.get(str(validator.path))
         if validator_digest is None:
             console.console.print(
-                f'[warning]Validator [item]{validator.path}[/item] not compiled, skipping validation.[/warning]'
+                f'[warning]Validator {validator.href()} not compiled, skipping validation.[/warning]'
             )
             continue
         ok, message, _ = await _validate_test(testcase, validator, validator_digest)
@@ -204,7 +207,7 @@ def compile_validators(
             continue
 
         if progress:
-            progress.update(f'Compiling validator [item]{validator.path}[/item]...')
+            progress.update(f'Compiling validator {validator.href()}...')
         validator_to_compiled_digest[str(validator.path)] = _compile_validator(
             validator
         )
@@ -261,7 +264,7 @@ async def validate_testcases(
             validation_info.append(
                 TestcaseValidationInfo(
                     validator=entry.validator,
-                    testccase=entry.group_entry,
+                    testcase=entry.group_entry,
                     generation_metadata=entry.metadata,
                     path=input_path,
                     ok=ok,
@@ -303,7 +306,7 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
     for info in infos:
         if not info.ok:
             console.console.print(
-                f'[error]Testcase [item]{info.path}[/item] failed verification on validator [item]{info.validator.path}[/item]:[/error]'
+                f'[error]Testcase {info.href()} failed verification on validator {info.validator.href()}:[/error]'
             )
             if info.generation_metadata is not None:
                 metadata_markup = get_generation_metadata_markup(

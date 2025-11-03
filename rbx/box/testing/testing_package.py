@@ -222,7 +222,7 @@ class TestingPackage(TestingShared):
         self.yml.testcases = self.yml.testcases + [
             TestcaseGroup(
                 name=name,
-                generatorScript=CodeItem(path=script_path),
+                generatorScript=GeneratorScript(path=script_path),
                 validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
                 extraValidators=[
                     CodeItem(path=pathlib.Path(v)) for v in extra_validators
