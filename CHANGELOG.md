@@ -1,3 +1,11 @@
+## 0.20.0rc3 (2025-11-03)
+
+### Fix
+
+- use red background for failed
+- use relative runs folder in solution header
+- fix prerelease script
+
 ## 0.20.0rc2 (2025-11-03)
 
 ### Fix
