@@ -1,3 +1,12 @@
+## 0.20.0rc4 (2025-11-03)
+
+### Fix
+
+- put rbx irun back in a state similar to rbx run
+- ensure issues stack rule is printed as red
+- ensure "slow" is printed as a TLE verdict
+- print number of testcases in each group
+
 ## 0.20.0rc3 (2025-11-03)
 
 ### Fix
