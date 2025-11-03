@@ -1,7 +1,7 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
 name: "default"
-min_version: "0.19.11"
+min_version: "0.20.0rc0"
 uri: "rsalesc/rbx/rbx/resources/presets/default"
 problem: "problem"
 contest: "contest"

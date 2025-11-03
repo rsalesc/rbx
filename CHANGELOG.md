@@ -1,3 +1,18 @@
+## 0.20.0rc0 (2025-11-03)
+
+### Feat
+
+- colorize solutions with href
+- add live run reporter
+
+### Fix
+
+- disable typer autocompletion
+- show test metadata when testcase fails the validation
+- fix checker compilation error
+- fix duplicate parameter -o in irun
+- handle kbi in ask commands in rbx time
+
 ## 0.19.11 (2025-10-21)
 
 ### Fix
