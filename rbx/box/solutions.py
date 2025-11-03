@@ -1523,6 +1523,243 @@ def _print_limits(limits: Dict[str, Limits]):
     console.console.print()
 
 
+class TraditionalRunReporter:
+    def __init__(
+        self,
+        result: RunSolutionResult,
+        verification: VerificationLevel,
+        console: rich.console.Console,
+    ):
+        self.result = result
+        self.console = console
+        self.verification = verification
+        self.structured_evaluations = consume_and_key_evaluation_items(
+            result.items, result.skeleton
+        )
+        self.limits_per_solution = {
+            str(solution.path): result.skeleton.get_solution_limits(solution)
+            for solution in result.skeleton.solutions
+        }
+        self.current_solution = None
+        self.current_group = None
+        self.current_index = None
+        self.current_solution_evals: List[Evaluation] = []
+        self.current_group_evals: List[Evaluation] = []
+        self.current_group_evals_per_index: Dict[int, Evaluation] = {}
+
+    def get_limits(self, solution: Solution) -> Limits:
+        return self.limits_per_solution[str(solution.path)]
+
+    def get_current_limits(self) -> Limits:
+        if self.current_solution is None:
+            raise ValueError('No current solution')
+        return self.get_limits(self.current_solution)
+
+    def get_evaluation(
+        self, solution: Solution, group: TestcaseGroup, index: int
+    ) -> Optional[Deferred[Evaluation]]:
+        return self.structured_evaluations[str(solution.path)][group.name][index]
+
+    def get_current_evaluation(self) -> Optional[Deferred[Evaluation]]:
+        if (
+            self.current_solution is None
+            or self.current_group is None
+            or self.current_index is None
+        ):
+            return None
+        return self.get_evaluation(
+            self.current_solution, self.current_group, self.current_index
+        )
+
+    def start_solution(self, solution: Solution):
+        self.current_solution = solution
+        self.render_solution(solution)
+
+    def render_solution(self, solution: Solution):
+        pass
+
+    def finish_solution(self) -> bool:
+        ok = self.render_solution_end(self.current_solution)
+        self.current_solution = None
+        self.current_solution_evals = []
+        return ok
+
+    def render_solution_end(self, solution: Solution) -> bool:
+        return True
+
+    def start_group(self, group: TestcaseGroup):
+        self.current_group = group
+        self.render_group(group)
+
+    def render_group(self, group: TestcaseGroup):
+        pass
+
+    def finish_group(self):
+        self.render_group_end(self.current_group)
+        self.current_group = None
+        self.current_group_evals = []
+        self.current_group_evals_per_index = {}
+
+    def render_group_end(self, group: TestcaseGroup):
+        pass
+
+    def start_testcase(self, index: int):
+        self.current_index = index
+        self.render_pre_evaluation(index)
+
+    def render_pre_evaluation(self, index: int):
+        pass
+
+    def finish_testcase(self, evaluation: Optional[Evaluation]):
+        self.current_group_evals.append(evaluation)
+        self.current_solution_evals.append(evaluation)
+        self.current_group_evals_per_index[self.current_index] = evaluation
+        self.render_post_evaluation(self.current_index, evaluation)
+        self.current_index = None
+
+    def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
+        pass
+
+
+class FullRunReporter(TraditionalRunReporter):
+    def render_solution(self, solution: Solution):
+        _print_solution_header(solution, self.console)
+
+    def render_solution_end(self, solution: Solution) -> bool:
+        ok = _print_solution_outcome(
+            solution,
+            self.result.skeleton,
+            self.current_solution_evals,
+            self.console,
+            verification=self.verification,
+            print_message=True,
+        )
+        self.console.print()
+        return ok
+
+    def render_group(self, group: TestcaseGroup):
+        self.console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
+
+    def render_group_end(self, group: TestcaseGroup):
+        self.console.print(
+            f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
+        )
+
+    def render_pre_evaluation(self, index: int):
+        self.console.print(f'{index}/', end='')
+
+    def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
+        self.console.print(get_testcase_markup_verdict(evaluation), end='')
+        if evaluation.result.sanitizer_warnings:
+            self.console.print('[warning]*[/warning]', end='')
+        self.console.print(' ', end='')
+
+
+class LiveRunReporter(FullRunReporter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.live: Optional[rich.live.Live] = None
+        self.pre_evaluated = 0
+        self.post_evaluated = 0
+
+    def _update_live(self):
+        if self.live is None:
+            return
+        renderable = rich.text.Text.from_markup(
+            f'[bold bright_white]{self.current_group.name}[/bold bright_white] '
+        )
+        for i in range(self.pre_evaluated):
+            if i >= self.post_evaluated:
+                # Was not evaluated yet.
+                renderable.append(rich.text.Text(f'{i}/.. ', style='dim', end=''))
+                continue
+            if i not in self.current_group_evals_per_index:
+                continue
+            eval = self.current_group_evals_per_index[i]
+            if eval.result.outcome == Outcome.ACCEPTED:
+                # Skip accepted verdicts.
+                continue
+            renderable.append(rich.text.Text(f'{i}/', style='bright_black', end=''))
+            renderable.append(
+                rich.text.Text.from_markup(get_testcase_markup_verdict(eval), end='')
+            )
+            if eval.result.sanitizer_warnings:
+                renderable.append(
+                    rich.text.Text.from_markup('[warning]*[/warning]', end='')
+                )
+            renderable.append(rich.text.Text(' ', end=''))
+
+        renderable.append(
+            rich.text.Text.from_markup(
+                f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
+                style='bright_black',
+                end='',
+            )
+        )
+        self.live.update(renderable, refresh=True)
+
+    def render_group(self, group: TestcaseGroup):
+        self.live = rich.live.Live(
+            self.console,
+            refresh_per_second=5,
+        )
+        self.live.start()
+        self._update_live()
+
+    def render_group_end(self, group: TestcaseGroup):
+        self.live.stop()
+        self.live = None
+
+    def render_pre_evaluation(self, index: int):
+        self.pre_evaluated = index + 1
+        self._update_live()
+
+    def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
+        self.post_evaluated = index + 1
+        self._update_live()
+
+
+class SingleSolutionRunReporter(TraditionalRunReporter):
+    def render_solution(self, solution: Solution):
+        _print_solution_header(solution, self.console)
+        self.console.print()
+
+    def render_solution_end(self, solution: Solution) -> bool:
+        ok = _print_solution_outcome(
+            solution,
+            self.result.skeleton,
+            self.current_solution_evals,
+            self.console,
+            verification=self.verification,
+            print_message=False,
+        )
+        self.console.print()
+        return ok
+
+    def render_group_end(self, group: TestcaseGroup):
+        self.console.print(f'  [status]{group.name}[/status]', end=' ')
+        self.console.print(
+            f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
+        )
+        self.console.print()
+
+    def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
+        self.console.print(get_testcase_markup_verdict(evaluation), end=' ')
+        self.console.print(f'{self.current_group.name}/{index}', end='')
+        if evaluation.result.sanitizer_warnings:
+            self.console.print('[warning]*[/warning]', end='')
+        time = get_capped_evals_formatted_time(
+            self.get_current_limits(), [evaluation], self.verification
+        )
+        memory = get_evals_formatted_memory([evaluation])
+        self.console.print(f' ({time}, {memory})', end='')
+        checker_msg = evaluation.result.message
+        if checker_msg:
+            checker_msg = get_truncated_message(checker_msg, 150)
+            self.console.print(f': [i]{utils.escape_markup(checker_msg)}[/i]', end='')
+        self.console.print()
+
+
 async def print_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
@@ -1534,86 +1771,41 @@ async def print_run_report(
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
 
-    structured_evaluations = consume_and_key_evaluation_items(
-        result.items, result.skeleton
-    )
+    single_solution = len(result.skeleton.solutions) == 1
+    report_cls = SingleSolutionRunReporter if single_solution else LiveRunReporter
+    reporter = report_cls(result, verification, console)
+
     if detailed:
         return await _print_detailed_run_report(
             result,
             console,
-            structured_evaluations,
+            reporter.structured_evaluations,
             verification=verification,
             timing=timing,
         )
 
     ok = True
-    single_solution = len(result.skeleton.solutions) == 1
 
     for solution in result.skeleton.solutions:
-        _print_solution_header(solution, console)
-        if single_solution:
-            console.print()
-        solution_evals = []
-        limits = result.skeleton.get_solution_limits(solution)
+        reporter.start_solution(solution)
         for group in result.skeleton.groups:
-            if not single_solution:
-                console.print(f'[bold][status]{group.name}[/status][/bold] ', end='')
-            group_evals = []
+            reporter.start_group(group)
             for i, _ in enumerate(group.testcases):
-                eval = structured_evaluations[str(solution.path)][group.name][i]
-                if eval is None:
-                    continue
-                eval = await eval()
-                if single_solution:
-                    console.print(get_testcase_markup_verdict(eval), end=' ')
-                    console.print(f'{group.name}/{i}', end='')
-                    if eval.result.sanitizer_warnings:
-                        console.print('[warning]*[/warning]', end='')
-                    time = get_capped_evals_formatted_time(limits, [eval], verification)
-                    memory = get_evals_formatted_memory([eval])
-                    console.print(f' ({time}, {memory})', end='')
-                    checker_msg = eval.result.message
-                    if checker_msg:
-                        checker_msg = get_truncated_message(checker_msg, 150)
-                        console.print(
-                            f': [i]{utils.escape_markup(checker_msg)}[/i]', end=''
-                        )
-                else:
-                    console.print(f'{i}/', end='')
-                    console.print(get_testcase_markup_verdict(eval), end='')
-                    if eval.result.sanitizer_warnings:
-                        console.print('[warning]*[/warning]', end='')
-
-                console.print('', end='\n' if single_solution else ' ')
-                group_evals.append(eval)
-                solution_evals.append(eval)
-
-            if single_solution:
-                console.print(f'  [status]{group.name}[/status]', end=' ')
-            console.print(
-                f'({get_capped_evals_formatted_time(limits, group_evals, verification)}, {get_evals_formatted_memory(group_evals)})',
-                end='',
-            )
-            console.print()
-            if single_solution:
-                console.print()
-
-        cur_ok = _print_solution_outcome(
-            solution,
-            result.skeleton,
-            solution_evals,
-            console,
-            verification=verification,
-            print_message=not single_solution,
-        )
+                reporter.start_testcase(i)
+                eval = reporter.get_current_evaluation()
+                evaled = None
+                if eval is not None:
+                    evaled = await eval()
+                reporter.finish_testcase(evaled)
+            reporter.finish_group()
+        cur_ok = reporter.finish_solution()
         ok = ok and cur_ok
-        console.print()
 
     if not single_solution:
         await _print_timing(
             console,
             result.skeleton,
-            structured_evaluations,
+            reporter.structured_evaluations,
         )
 
     return ok
