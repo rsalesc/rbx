@@ -1254,8 +1254,9 @@ class TimingSummary:
             fastest_slow = self.fastest_slow.time
             if tl is not None and self.fastest_slow.time > tl:
                 fastest_slow = f'>{tl}'
+            slow_style = ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
             console.print(
-                f'Fastest [error]slow[/error] solution: {fastest_slow} ms, {self.fastest_slow.solution.href()}'
+                f'Fastest [{slow_style}]slow[/] solution: {fastest_slow} ms, {self.fastest_slow.solution.href()}'
             )
 
 
