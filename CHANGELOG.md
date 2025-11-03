@@ -1,3 +1,10 @@
+## 0.20.0rc5 (2025-11-03)
+
+### Fix
+
+- add hilite
+- split good and pass in timing summary
+
 ## 0.20.0rc4 (2025-11-03)
 
 ### Fix
