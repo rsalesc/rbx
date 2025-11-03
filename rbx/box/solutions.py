@@ -1032,11 +1032,11 @@ class SolutionOutcomeReport(BaseModel):
     verification: VerificationLevel
 
     def get_verdict_markup(self, incomplete: bool = False) -> str:
-        success_str = '[bold green]OK[/bold green]'
+        success_str = '[bold green]OK[/]'
         if not self.ok:
-            success_str = '[bold red]FAILED[/bold red]'
+            success_str = '[bold white on red]FAILED[/]'
         if incomplete:
-            success_str = '[bold yellow]INCOMPLETE[/bold yellow]'
+            success_str = '[bold white on yellow]INCOMPLETE[/]'
 
         gotVerdicts = self.gotVerdicts if not incomplete else {}
 
