@@ -1237,6 +1237,7 @@ class SolutionTiming:
 @dataclasses.dataclass
 class TimingSummary:
     slowest_good: Optional[SolutionTiming] = None
+    slowest_pass: Optional[SolutionTiming] = None
     fastest_slow: Optional[SolutionTiming] = None
 
     def add_good(self, time: int, solution: Solution):
@@ -1247,10 +1248,25 @@ class TimingSummary:
         if self.fastest_slow is None or time < self.fastest_slow.time:
             self.fastest_slow = SolutionTiming(time, solution)
 
+    def add_pass(self, time: int, solution: Solution):
+        if self.slowest_pass is None or time > self.slowest_pass.time:
+            self.slowest_pass = SolutionTiming(time, solution)
+
+    def has_timings(self) -> bool:
+        return (
+            self.slowest_good is not None
+            or self.slowest_pass is not None
+            or self.fastest_slow is not None
+        )
+
     def print(self, console: rich.console.Console, tl: Optional[int] = None):
         if self.slowest_good is not None:
             console.print(
-                f'Slowest [success]OK[/success] solution: {self.slowest_good.time} ms, {self.slowest_good.solution.href()}'
+                f'Slowest [success]AC[/success] solution: {self.slowest_good.time} ms, {self.slowest_good.solution.href()}'
+            )
+        if self.slowest_pass is not None:
+            console.print(
+                f'Slowest [success][not bold]AC or TLE[/][/success] solution: {self.slowest_pass.time} ms, {self.slowest_pass.solution.href()}'
             )
         if self.fastest_slow is not None:
             fastest_slow = self.fastest_slow.time
@@ -1304,14 +1320,20 @@ async def _print_timing(
                 tls_per_language[eval.log.get_run_language()] = solution_tl
 
         # Get solution timings.
-        if solution.outcome.match(Outcome.ACCEPTED):
+        if solution.outcome == ExpectedOutcome.ACCEPTED:
             summary.add_good(solution_time, solution)
             summary_per_language[solution.language].add_good(solution_time, solution)
+        if solution.outcome in [
+            ExpectedOutcome.ACCEPTED,
+            ExpectedOutcome.ACCEPTED_OR_TLE,
+        ]:
+            summary.add_pass(solution_time, solution)
+            summary_per_language[solution.language].add_pass(solution_time, solution)
         if solution.outcome.is_slow():
             summary.add_slow(solution_time, solution)
             summary_per_language[solution.language].add_slow(solution_time, solution)
 
-    if summary.slowest_good is None and summary.fastest_slow is None:
+    if not summary.has_timings():
         return
 
     all_languages = set(summary_per_language)
