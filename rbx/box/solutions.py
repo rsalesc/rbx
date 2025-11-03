@@ -678,7 +678,7 @@ def _run_interactive_solutions(
 
         yield EvaluationItem(
             solution=solution,
-            testcase_entry=TestcaseEntry(group='irun', index=0),
+            testcase_entry=TestcaseEntry.make_interactive(),
             eval=Deferred(run_fn),
         )
 
@@ -718,7 +718,9 @@ def _get_interactive_skeleton(
         ],
         groups=[],
         limits=limits,
-        entries=[],
+        # Entry does not correspond to a real test.
+        # TODO: RECONSIDER THIS
+        entries=[TestcaseEntry.make_interactive()],
         verification=verification,
         compiled_solutions=compiled_solutions,
         capture_pipes=True,
@@ -780,7 +782,6 @@ async def run_and_print_interactive_solutions(
         eval = await item.eval()
 
         with utils.no_progress(progress):
-            console.console.print(get_testcase_markup_verdict(eval), end=' ')
             _print_solution_header(sol, console.console)
             _print_solution_outcome(
                 sol, skeleton, [eval], console.console, verification, subset=True
@@ -1031,12 +1032,14 @@ class SolutionOutcomeReport(BaseModel):
     sanitizerWarnings: bool
     verification: VerificationLevel
 
-    def get_verdict_markup(self, incomplete: bool = False) -> str:
-        success_str = '[bold green]OK[/]'
+    def get_verdict_markup(self, incomplete: bool = False, subset: bool = True) -> str:
+        success_str = '[bold green]OK[/] '
+        if subset:
+            success_str = ''
         if not self.ok:
-            success_str = '[bold white on red]FAILED[/]'
+            success_str = '[bold white on red]FAILED[/] '
         if incomplete:
-            success_str = '[bold white on yellow]INCOMPLETE[/]'
+            success_str = '[bold white on yellow]INCOMPLETE[/] '
 
         gotVerdicts = self.gotVerdicts if not incomplete else {}
 
@@ -1048,10 +1051,10 @@ class SolutionOutcomeReport(BaseModel):
                 verdict_str += f', got: {got_verdict_names}'
         elif gotVerdicts:
             verdict_str = f'Got: {got_verdict_names}'
-        return f'{success_str} {verdict_str}'
+        return f'{success_str}{verdict_str}'
 
-    def get_verdict_markup_with_warnings(self) -> str:
-        res = self.get_verdict_markup()
+    def get_verdict_markup_with_warnings(self, subset: bool = True) -> str:
+        res = self.get_verdict_markup(subset=subset)
         if self.runUnderDoubleTl:
             if self.doubleTlVerdicts:
                 res += f'\n[bold yellow]WARNING[/bold yellow] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
@@ -1061,8 +1064,10 @@ class SolutionOutcomeReport(BaseModel):
             res += '\n[bold yellow]WARNING[/bold yellow] The solution had sanitizer errors or warnings, marked with [bold yellow]*[/bold yellow]. See their stderr for more details.'
         return res
 
-    def get_outcome_markup(self, print_message: bool = True) -> str:
-        res = self.get_verdict_markup_with_warnings()
+    def get_outcome_markup(
+        self, subset: bool = True, print_message: bool = True
+    ) -> str:
+        res = self.get_verdict_markup_with_warnings(subset=subset)
         res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
         if print_message and self.message is not None:
@@ -1121,18 +1126,15 @@ def get_solution_outcome_report(
         expected_outcome_is_bad and not matched_bad_verdicts and not subset
     )
 
-    report_expected_outcome = None
+    report_expected_outcome = solution.outcome
     report_got_verdicts = set()
     report_run_under_double_tl = False
     report_double_tl_verdicts = set()
     report_sanitizer_warnings = False
-    if has_failed or not subset:
-        report_expected_outcome = solution.outcome
-    elif subset:
+    if subset and not has_failed:
         report_got_verdicts = all_verdicts
 
-    if has_failed or not subset:
-        # Only print verdicts if not subset.
+    if has_failed:
         if unmatched_bad_verdicts:
             report_got_verdicts = unmatched_bad_verdicts
         elif expected_outcome_is_bad and not matched_bad_verdicts and not subset:

@@ -19,10 +19,16 @@ class TestcaseEntry(BaseModel):
     group: str
     index: int
 
+    @staticmethod
+    def make_interactive() -> 'TestcaseEntry':
+        return TestcaseEntry(group='interactive', index=0)
+
     def key(self) -> Tuple[str, int]:
         return self.group, self.index
 
     def __str__(self) -> str:
+        if self.group == 'interactive':
+            return 'interactive testcase'
         return f'{self.group}/{self.index}'
 
     @classmethod
