@@ -17,9 +17,10 @@ import rich.markup
 import rich.prompt
 import rich.status
 import ruyaml
-import semver
 import typer
 import yaml
+from packaging.version import InvalidVersion
+from packaging.version import Version as PyPIVersion
 from pydantic import BaseModel
 from rich import text
 from rich.highlighter import JSONHighlighter
@@ -43,15 +44,23 @@ def get_version() -> str:
     return __version__.__version__
 
 
-def get_semver() -> semver.VersionInfo:
-    return semver.VersionInfo.parse(get_version())
+def get_semver(pypi_version: Optional[str] = None) -> PyPIVersion:
+    return PyPIVersion(pypi_version or get_version())
+
+
+def is_valid_semver(version: str) -> bool:
+    try:
+        PyPIVersion(version)
+        return True
+    except InvalidVersion:
+        return False
 
 
 def get_upgrade_command(
-    version: Optional[Union[str, semver.VersionInfo]] = None,
+    version: Optional[Union[str, PyPIVersion]] = None,
 ) -> str:
     parsed_version = (
-        semver.VersionInfo.parse(version) if isinstance(version, str) else version
+        get_semver(version) if isinstance(version, str) else version
     ) or get_semver()
     return f'uv tool install {PIP_NAME}@{parsed_version.major}'
 
@@ -60,8 +69,8 @@ def check_version_compatibility_between(
     installed: str,
     required: str,
 ) -> SemVerCompatibility:
-    installed_version = semver.VersionInfo.parse(installed)
-    required_version = semver.VersionInfo.parse(required)
+    installed_version = get_semver(installed)
+    required_version = get_semver(required)
     if installed_version < required_version:
         return SemVerCompatibility.OUTDATED
     if installed_version.major > required_version.major:

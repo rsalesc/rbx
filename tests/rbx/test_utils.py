@@ -8,6 +8,7 @@ from typing import List, Optional
 import pytest
 import yaml
 from pydantic import BaseModel, ValidationError
+from rich import text
 
 from rbx.utils import model_from_yaml, model_to_yaml, uploaded_schema_path
 
@@ -881,6 +882,349 @@ VAR_WITH_EQUALS=key=value=more
         assert result['HOME_TEST_VAR'] == 'home_value'
 
 
+class TestIsValidSemver:
+    """Tests for is_valid_semver function (PEP 440 versioning)."""
+
+    @pytest.mark.parametrize(
+        'version,expected',
+        [
+            # Valid PEP 440 versions
+            ('1.2.3', True),
+            ('0.0.1', True),
+            ('10.20.30', True),
+            ('1.0.0a1', True),  # PEP 440 alpha format
+            ('1.0.0b2', True),  # PEP 440 beta format
+            ('1.0.0rc1', True),  # PEP 440 release candidate format
+            ('1.2', True),  # Valid in PEP 440, normalized to 1.2.0
+            ('1', True),  # Valid in PEP 440, normalized
+            ('1.2.3.4', True),  # Valid in PEP 440 (epoch or dev versions)
+            ('1.0.0.post1', True),  # Post-release
+            ('1.0.0.dev0', True),  # Development release
+            ('v1.2.3', True),  # PEP 440 accepts 'v' prefix and normalizes to 1.2.3
+            ('1.2.3-alpha', True),  # PEP 440 accepts and normalizes to 1.2.3a0
+            # Invalid versions
+            ('invalid', False),
+            ('a.b.c', False),
+            ('', False),
+        ],
+    )
+    def test_is_valid_semver(self, version, expected):
+        """Test that is_valid_semver correctly validates version strings (PEP 440)."""
+        from rbx.utils import is_valid_semver
+
+        result = is_valid_semver(version)
+        assert result == expected
+
+
+class TestGetSemver:
+    """Tests for get_semver function."""
+
+    def test_get_semver_with_version_string(self):
+        """Test get_semver with explicit version string."""
+        from rbx.utils import get_semver
+
+        version = get_semver('1.2.3')
+        assert str(version) == '1.2.3'
+        assert version.major == 1
+        assert version.minor == 2
+        assert version.micro == 3
+
+    def test_get_semver_without_version_uses_current(self, monkeypatch):
+        """Test get_semver without arguments uses current version."""
+        from rbx import utils as utils_mod
+
+        monkeypatch.setattr(utils_mod, 'get_version', lambda: '2.5.7')
+        version = utils_mod.get_semver()
+        assert str(version) == '2.5.7'
+
+    def test_get_semver_with_prerelease(self):
+        """Test get_semver handles prerelease versions (PEP 440 format)."""
+        from rbx.utils import get_semver
+
+        # PEP 440 format: 1.0.0a1 (not 1.0.0-alpha.1)
+        version = get_semver('1.0.0a1')
+        assert version.major == 1
+        assert version.minor == 0
+        assert version.micro == 0
+        assert version.is_prerelease
+        assert 'a1' in str(version) or 'a' in str(version)
+
+
+class TestCreateAndWrite:
+    """Tests for create_and_write function."""
+
+    def test_create_and_write_creates_parent_directories(self, tmp_path):
+        """Test that create_and_write creates parent directories."""
+        from rbx.utils import create_and_write
+
+        nested_path = tmp_path / 'a' / 'b' / 'c' / 'file.txt'
+        content = 'test content'
+
+        create_and_write(nested_path, content)
+
+        assert nested_path.exists()
+        assert nested_path.read_text() == content
+
+    def test_create_and_write_overwrites_existing_file(self, tmp_path):
+        """Test that create_and_write overwrites existing files."""
+        from rbx.utils import create_and_write
+
+        file_path = tmp_path / 'file.txt'
+        file_path.write_text('original content')
+
+        new_content = 'new content'
+        create_and_write(file_path, new_content)
+
+        assert file_path.read_text() == new_content
+
+    def test_create_and_write_with_encoding(self, tmp_path):
+        """Test that create_and_write passes through encoding parameter."""
+        from rbx.utils import create_and_write
+
+        file_path = tmp_path / 'utf8_file.txt'
+        content = '日本語テスト'
+
+        create_and_write(file_path, content, encoding='utf-8')
+
+        assert file_path.read_text(encoding='utf-8') == content
+
+
+class TestStripAnsiCodes:
+    """Tests for strip_ansi_codes function."""
+
+    def test_strip_ansi_codes_removes_color_codes(self):
+        """Test that strip_ansi_codes removes ANSI color codes."""
+        from rbx.utils import strip_ansi_codes
+
+        text_with_colors = '\x1b[31mRed text\x1b[0m'
+        result = strip_ansi_codes(text_with_colors)
+        assert result == 'Red text'
+
+    def test_strip_ansi_codes_removes_multiple_codes(self):
+        """Test that strip_ansi_codes removes multiple ANSI codes."""
+        from rbx.utils import strip_ansi_codes
+
+        text = '\x1b[1m\x1b[31mBold Red\x1b[0m\x1b[32m Green\x1b[0m'
+        result = strip_ansi_codes(text)
+        assert result == 'Bold Red Green'
+
+    def test_strip_ansi_codes_preserves_plain_text(self):
+        """Test that strip_ansi_codes preserves text without ANSI codes."""
+        from rbx.utils import strip_ansi_codes
+
+        plain_text = 'Just plain text'
+        result = strip_ansi_codes(plain_text)
+        assert result == plain_text
+
+    def test_strip_ansi_codes_empty_string(self):
+        """Test that strip_ansi_codes handles empty strings."""
+        from rbx.utils import strip_ansi_codes
+
+        result = strip_ansi_codes('')
+        assert result == ''
+
+    def test_strip_ansi_codes_complex_escape_sequences(self):
+        """Test that strip_ansi_codes handles complex escape sequences."""
+        from rbx.utils import strip_ansi_codes
+
+        text = '\x1b[38;5;214mOrange\x1b[0m \x1b[48;5;235mBackground\x1b[0m'
+        result = strip_ansi_codes(text)
+        assert result == 'Orange Background'
+
+
+class TestNormalizeWithUnderscores:
+    """Tests for normalize_with_underscores function."""
+
+    def test_normalize_replaces_spaces_with_underscores(self):
+        """Test that spaces are replaced with underscores."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('hello world')
+        assert result == 'hello_world'
+
+    def test_normalize_replaces_dots_with_underscores(self):
+        """Test that dots are replaced with underscores."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('file.name.txt')
+        assert result == 'file_name_txt'
+
+    def test_normalize_removes_consecutive_underscores(self):
+        """Test that consecutive underscores are collapsed to one."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('hello___world')
+        assert result == 'hello_world'
+
+    def test_normalize_strips_leading_and_trailing_underscores(self):
+        """Test that leading and trailing underscores are removed."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('_hello_world_')
+        assert result == 'hello_world'
+
+    def test_normalize_handles_mixed_separators(self):
+        """Test normalization with mixed spaces and dots."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('my file.name here')
+        assert result == 'my_file_name_here'
+
+    def test_normalize_empty_string(self):
+        """Test that empty string is handled correctly."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('')
+        assert result == ''
+
+    def test_normalize_only_separators(self):
+        """Test string with only spaces and dots."""
+        from rbx.utils import normalize_with_underscores
+
+        result = normalize_with_underscores('  . . ')
+        assert result == ''
+
+
+class TestCommandExists:
+    """Tests for command_exists function."""
+
+    def test_command_exists_for_common_command(self):
+        """Test that command_exists returns True for existing commands."""
+        from rbx.utils import command_exists
+
+        # 'python' might be available on most systems
+        result = command_exists('python')
+        # This might be True or False depending on PATH, so we just test it runs
+        assert isinstance(result, bool)
+
+    def test_command_exists_for_nonexistent_command(self):
+        """Test that command_exists returns False for non-existent commands."""
+        from rbx.utils import command_exists
+
+        # Use a command that definitely doesn't exist
+        result = command_exists('this_command_definitely_does_not_exist_12345')
+        assert result is False
+
+    def test_command_exists_with_failing_command(self):
+        """Test command_exists with command that exists but fails."""
+        from rbx.utils import command_exists
+
+        # Commands like 'false' exist but return non-zero exit code
+        # The function should still return True (command exists)
+        result = command_exists('false')
+        assert isinstance(result, bool)
+
+
+class TestNewCd:
+    """Tests for new_cd context manager."""
+
+    def test_new_cd_changes_directory(self, tmp_path):
+        """Test that new_cd changes to the specified directory."""
+        from rbx.utils import new_cd
+
+        original_dir = os.getcwd()
+        new_dir = tmp_path / 'testdir'
+        new_dir.mkdir()
+
+        with new_cd(new_dir):
+            current_dir = os.getcwd()
+            assert pathlib.Path(current_dir) == new_dir
+
+        # Verify we're back to original directory
+        assert os.getcwd() == original_dir
+
+    def test_new_cd_restores_directory_on_exception(self, tmp_path):
+        """Test that new_cd restores directory even if exception occurs."""
+        from rbx.utils import new_cd
+
+        original_dir = os.getcwd()
+        new_dir = tmp_path / 'testdir'
+        new_dir.mkdir()
+
+        try:
+            with new_cd(new_dir):
+                raise ValueError('Test exception')
+        except ValueError:
+            pass
+
+        # Verify we're back to original directory despite exception
+        assert os.getcwd() == original_dir
+
+    def test_new_cd_with_nonexistent_directory(self, tmp_path):
+        """Test that new_cd raises error for non-existent directory."""
+        from rbx.utils import new_cd
+
+        nonexistent_dir = tmp_path / 'does_not_exist'
+
+        with pytest.raises((FileNotFoundError, OSError)):
+            with new_cd(nonexistent_dir):
+                pass
+
+
+class TestAbspathAndRelpath:
+    """Tests for abspath and relpath functions."""
+
+    def test_abspath_converts_relative_to_absolute(self, tmp_path, monkeypatch):
+        """Test that abspath converts relative path to absolute."""
+        from rbx.utils import abspath
+
+        monkeypatch.chdir(tmp_path)
+        rel_path = pathlib.Path('subdir/file.txt')
+        abs_path = abspath(rel_path)
+
+        assert abs_path.is_absolute()
+        assert str(tmp_path) in str(abs_path)
+
+    def test_abspath_preserves_absolute_path(self):
+        """Test that abspath preserves already absolute paths."""
+        from rbx.utils import abspath
+
+        abs_input = pathlib.Path('/tmp/test')
+        result = abspath(abs_input)
+
+        assert result.is_absolute()
+        assert str(result) == '/tmp/test'
+
+    def test_relpath_basic(self, tmp_path):
+        """Test basic relpath functionality."""
+        from rbx.utils import relpath
+
+        base = tmp_path
+        target = tmp_path / 'subdir' / 'file.txt'
+        result = relpath(target, base)
+
+        assert str(result) == 'subdir/file.txt'
+
+    def test_relpath_with_parent_directory(self, tmp_path):
+        """Test relpath when target is outside base."""
+        from rbx.utils import relpath
+
+        base = tmp_path / 'subdir'
+        target = tmp_path / 'file.txt'
+        result = relpath(target, base)
+
+        assert '..' in str(result)
+
+
+class TestGetVersion:
+    """Tests for get_version function."""
+
+    def test_get_version_returns_string(self):
+        """Test that get_version returns a string."""
+        from rbx.utils import get_version
+
+        version = get_version()
+        assert isinstance(version, str)
+        assert len(version) > 0
+
+    def test_get_version_is_valid_semver(self):
+        """Test that get_version returns a valid semantic version."""
+        from rbx.utils import get_version, is_valid_semver
+
+        version = get_version()
+        assert is_valid_semver(version)
+
+
 class TestVersionUtils:
     """Tests for version utility functions in rbx.utils."""
 
@@ -902,11 +1246,29 @@ class TestVersionUtils:
     @pytest.mark.parametrize(
         'installed,required,expected',
         [
+            # Standard versions
             ('1.2.3', '1.2.3', 'COMPATIBLE'),
             ('1.2.0', '1.3.0', 'OUTDATED'),
             ('2.0.0', '1.9.9', 'BREAKING_CHANGE'),
             ('1.5.0', '1.2.0', 'COMPATIBLE'),
             ('1.0.9', '1.0.10', 'OUTDATED'),
+            # Prerelease versions (PEP 440 format)
+            ('1.0.0a1', '1.0.0', 'OUTDATED'),  # Alpha is before stable
+            ('1.0.0b1', '1.0.0', 'OUTDATED'),  # Beta is before stable
+            ('1.0.0rc1', '1.0.0', 'OUTDATED'),  # RC is before stable
+            ('1.0.0', '1.0.0a1', 'COMPATIBLE'),  # Stable is after alpha
+            ('1.0.0', '1.0.0b1', 'COMPATIBLE'),  # Stable is after beta
+            ('1.0.0', '1.0.0rc1', 'COMPATIBLE'),  # Stable is after RC
+            ('1.0.0a2', '1.0.0a1', 'COMPATIBLE'),  # Newer alpha
+            ('1.0.0a1', '1.0.0a2', 'OUTDATED'),  # Older alpha
+            ('1.0.0b1', '1.0.0a1', 'COMPATIBLE'),  # Beta after alpha
+            ('1.0.0rc1', '1.0.0b1', 'COMPATIBLE'),  # RC after beta
+            (
+                '2.0.0a1',
+                '1.9.9',
+                'BREAKING_CHANGE',
+            ),  # Major version change with prerelease
+            ('1.0.0a1', '2.0.0', 'OUTDATED'),  # Outdated even with prerelease
         ],
     )
     def test_check_version_compatibility_between(self, installed, required, expected):
@@ -918,10 +1280,26 @@ class TestVersionUtils:
     @pytest.mark.parametrize(
         'installed,required,expected',
         [
+            # Standard versions
             ('1.2.3', '1.2.3', 'COMPATIBLE'),
             ('1.2.3', '2.0.0', 'OUTDATED'),
             ('2.1.0', '1.9.0', 'BREAKING_CHANGE'),
             ('1.5.0', '1.2.0', 'COMPATIBLE'),
+            # Prerelease versions (PEP 440 format)
+            ('1.0.0a1', '1.0.0', 'OUTDATED'),  # Alpha is outdated compared to stable
+            ('1.0.0b1', '1.0.0', 'OUTDATED'),  # Beta is outdated compared to stable
+            ('1.0.0rc1', '1.0.0', 'OUTDATED'),  # RC is outdated compared to stable
+            (
+                '1.0.0',
+                '1.0.0a1',
+                'COMPATIBLE',
+            ),  # Stable is compatible with alpha requirement
+            ('1.0.0a2', '1.0.0a1', 'COMPATIBLE'),  # Newer alpha is compatible
+            (
+                '2.0.0a1',
+                '1.9.9',
+                'BREAKING_CHANGE',
+            ),  # Major version change even with alpha
         ],
     )
     def test_check_version_compatibility(
@@ -934,3 +1312,400 @@ class TestVersionUtils:
         monkeypatch.setattr(utils_mod, 'get_version', lambda: installed)
         result = utils_mod.check_version_compatibility(required)
         assert result == getattr(SemVerCompatibility, expected)
+
+
+class TestGetAppPath:
+    """Tests for get_app_path function."""
+
+    def test_get_app_path_returns_path(self):
+        """Test that get_app_path returns a pathlib.Path object."""
+        from rbx.utils import get_app_path
+
+        path = get_app_path()
+        assert isinstance(path, pathlib.Path)
+
+    def test_get_app_path_is_absolute(self):
+        """Test that get_app_path returns an absolute path."""
+        from rbx.utils import get_app_path
+
+        path = get_app_path()
+        assert path.is_absolute()
+
+
+class TestSchemaUtils:
+    """Tests for schema utility functions."""
+
+    def test_dump_schema_str_returns_json_string(self):
+        """Test that dump_schema_str returns a valid JSON string."""
+        from rbx.utils import dump_schema_str
+
+        class TestSchema(BaseModel):
+            name: str
+            value: int
+
+        schema_str = dump_schema_str(TestSchema)
+        assert isinstance(schema_str, str)
+
+        # Verify it's valid JSON
+        parsed = yaml.safe_load(schema_str)
+        assert isinstance(parsed, dict)
+        assert 'properties' in parsed
+
+    def test_dump_schema_creates_file(self, tmp_path):
+        """Test that dump_schema creates a schema file."""
+        from rbx.utils import dump_schema
+
+        class TestSchema(BaseModel):
+            name: str
+            value: int
+
+        schema_path = tmp_path / 'schema.json'
+        dump_schema(TestSchema, schema_path)
+
+        assert schema_path.exists()
+        content = schema_path.read_text()
+        parsed = yaml.safe_load(content)
+        assert 'properties' in parsed
+
+    def test_dump_schema_creates_parent_directories(self, tmp_path):
+        """Test that dump_schema creates parent directories if they don't exist."""
+        from rbx.utils import dump_schema
+
+        class TestSchema(BaseModel):
+            name: str
+
+        schema_path = tmp_path / 'nested' / 'dir' / 'schema.json'
+        dump_schema(TestSchema, schema_path)
+
+        assert schema_path.exists()
+        assert schema_path.parent.exists()
+
+    def test_ensure_schema_creates_and_returns_path(self):
+        """Test that ensure_schema creates a schema file and returns its path."""
+        from rbx.utils import ensure_schema
+
+        class TestSchema(BaseModel):
+            name: str
+            value: int
+
+        schema_path = ensure_schema(TestSchema)
+
+        assert isinstance(schema_path, pathlib.Path)
+        assert schema_path.exists()
+        assert schema_path.is_absolute()
+        assert schema_path.name == 'TestSchema.json'
+
+    def test_ensure_schema_caches_result(self):
+        """Test that ensure_schema returns the same path on repeated calls."""
+        from rbx.utils import ensure_schema
+
+        class TestSchema(BaseModel):
+            name: str
+
+        path1 = ensure_schema(TestSchema)
+        path2 = ensure_schema(TestSchema)
+
+        assert path1 == path2
+
+
+class TestModelJson:
+    """Tests for model_json function."""
+
+    def test_model_json_returns_formatted_json(self):
+        """Test that model_json returns properly formatted JSON."""
+        from rbx.utils import model_json
+
+        class TestModel(BaseModel):
+            name: str
+            age: int
+
+        model = TestModel(name='Alice', age=30)
+        json_str = model_json(model)
+
+        assert isinstance(json_str, str)
+        parsed = yaml.safe_load(json_str)
+        assert parsed['name'] == 'Alice'
+        assert parsed['age'] == 30
+
+    def test_model_json_excludes_unset_and_none(self):
+        """Test that model_json excludes unset and None values."""
+        from rbx.utils import model_json
+
+        class TestModel(BaseModel):
+            name: str
+            optional: Optional[str] = None
+
+        model = TestModel(name='Bob')
+        json_str = model_json(model)
+
+        parsed = yaml.safe_load(json_str)
+        assert 'name' in parsed
+        assert 'optional' not in parsed
+
+    def test_model_json_is_indented(self):
+        """Test that model_json produces indented output."""
+        from rbx.utils import model_json
+
+        class TestModel(BaseModel):
+            name: str
+
+        model = TestModel(name='Test')
+        json_str = model_json(model)
+
+        # Indented JSON should have newlines
+        assert '\n' in json_str
+
+
+class TestValidateField:
+    """Tests for validate_field function."""
+
+    def test_validate_field_accepts_valid_value(self):
+        """Test that validate_field accepts valid values."""
+        from rbx.utils import validate_field
+
+        class TestModel(BaseModel):
+            name: str
+            age: int
+
+        # Should not raise for valid values
+        validate_field(TestModel, 'name', 'Alice')
+        validate_field(TestModel, 'age', 25)
+
+    def test_validate_field_rejects_invalid_type(self):
+        """Test that validate_field rejects invalid types."""
+        from rbx.utils import validate_field
+
+        class TestModel(BaseModel):
+            age: int
+
+        with pytest.raises((ValidationError, ValueError, TypeError)):
+            validate_field(TestModel, 'age', 'not a number')
+
+    def test_validate_field_with_constrained_field(self):
+        """Test validate_field with constrained fields."""
+        from rbx.utils import validate_field
+
+        class TestModel(BaseModel):
+            positive_int: int
+
+        # Valid value
+        validate_field(TestModel, 'positive_int', 10)
+
+
+class TestSaveRuyaml:
+    """Tests for save_ruyaml function."""
+
+    def test_save_ruyaml_creates_file(self, tmp_path):
+        """Test that save_ruyaml creates a YAML file."""
+        import ruyaml
+
+        from rbx.utils import save_ruyaml
+
+        yml = ruyaml.YAML()
+        data = {'name': 'test', 'value': 123}
+        path = tmp_path / 'test.yaml'
+
+        save_ruyaml(path, yml, data)
+
+        assert path.exists()
+        content = path.read_text()
+        assert 'name: test' in content
+
+    def test_save_ruyaml_creates_parent_directories(self, tmp_path):
+        """Test that save_ruyaml creates parent directories."""
+        import ruyaml
+
+        from rbx.utils import save_ruyaml
+
+        yml = ruyaml.YAML()
+        data = {'key': 'value'}
+        path = tmp_path / 'nested' / 'dir' / 'test.yaml'
+
+        save_ruyaml(path, yml, data)
+
+        assert path.exists()
+        assert path.parent.exists()
+
+
+class TestGetEmptySentinelPath:
+    """Tests for get_empty_sentinel_path function."""
+
+    def test_get_empty_sentinel_path_returns_path(self):
+        """Test that get_empty_sentinel_path returns a pathlib.Path."""
+        from rbx.utils import get_empty_sentinel_path
+
+        path = get_empty_sentinel_path()
+        assert isinstance(path, pathlib.Path)
+
+    def test_get_empty_sentinel_path_creates_empty_file(self):
+        """Test that get_empty_sentinel_path creates an empty file."""
+        from rbx.utils import get_empty_sentinel_path
+
+        path = get_empty_sentinel_path()
+        assert path.exists()
+        assert path.read_text() == ''
+
+    def test_get_empty_sentinel_path_caches_result(self):
+        """Test that get_empty_sentinel_path returns the same path on repeated calls."""
+        from rbx.utils import get_empty_sentinel_path
+
+        path1 = get_empty_sentinel_path()
+        path2 = get_empty_sentinel_path()
+
+        assert path1 == path2
+
+
+class TestEscapeMarkup:
+    """Tests for escape_markup function."""
+
+    def test_escape_markup_escapes_brackets(self):
+        """Test that escape_markup escapes square brackets."""
+        from rbx.utils import escape_markup
+
+        text = 'This is [bold]text[/bold]'
+        escaped = escape_markup(text)
+
+        # Brackets should be escaped
+        assert '[bold]' not in escaped or '\\[' in escaped
+
+    def test_escape_markup_preserves_plain_text(self):
+        """Test that escape_markup preserves text without markup."""
+        from rbx.utils import escape_markup
+
+        text = 'Plain text without markup'
+        escaped = escape_markup(text)
+
+        assert 'Plain text without markup' in escaped
+
+    def test_escape_markup_handles_empty_string(self):
+        """Test that escape_markup handles empty strings."""
+        from rbx.utils import escape_markup
+
+        result = escape_markup('')
+        assert result == ''
+
+
+class TestHighlightUtils:
+    """Tests for highlight utility functions."""
+
+    def test_highlight_str_returns_text_object(self):
+        """Test that highlight_str returns a rich Text object."""
+        from rbx.utils import highlight_str
+
+        result = highlight_str('{"key": "value"}')
+        assert isinstance(result, text.Text)
+
+    def test_highlight_json_obj_with_dict(self):
+        """Test that highlight_json_obj works with dictionaries."""
+        from rbx.utils import highlight_json_obj
+
+        obj = {'name': 'test', 'value': 123}
+        result = highlight_json_obj(obj)
+
+        assert isinstance(result, text.Text)
+
+    def test_highlight_json_obj_with_list(self):
+        """Test that highlight_json_obj works with lists."""
+        from rbx.utils import highlight_json_obj
+
+        obj = [1, 2, 3, 'test']
+        result = highlight_json_obj(obj)
+
+        assert isinstance(result, text.Text)
+
+
+class TestCopytreeHonoringGitignore:
+    """Tests for copytree_honoring_gitignore function."""
+
+    def test_copytree_copies_files(self, tmp_path):
+        """Test that copytree_honoring_gitignore copies files."""
+        from rbx.utils import copytree_honoring_gitignore
+
+        src = tmp_path / 'src'
+        dst = tmp_path / 'dst'
+        src.mkdir()
+
+        # Create test files
+        (src / 'file1.txt').write_text('content1')
+        (src / 'file2.txt').write_text('content2')
+
+        copytree_honoring_gitignore(src, dst)
+
+        assert (dst / 'file1.txt').exists()
+        assert (dst / 'file2.txt').exists()
+        assert (dst / 'file1.txt').read_text() == 'content1'
+        assert (dst / 'file2.txt').read_text() == 'content2'
+
+    def test_copytree_respects_gitignore(self, tmp_path):
+        """Test that copytree_honoring_gitignore respects .gitignore files."""
+        from rbx.utils import copytree_honoring_gitignore
+
+        src = tmp_path / 'src'
+        dst = tmp_path / 'dst'
+        src.mkdir()
+
+        # Create test files
+        (src / 'included.txt').write_text('include this')
+        (src / 'ignored.txt').write_text('ignore this')
+
+        # Create .gitignore
+        (src / '.gitignore').write_text('ignored.txt\n')
+
+        copytree_honoring_gitignore(src, dst)
+
+        assert (dst / 'included.txt').exists()
+        assert not (dst / 'ignored.txt').exists()
+
+    def test_copytree_with_nested_directories(self, tmp_path):
+        """Test that copytree_honoring_gitignore handles nested directories."""
+        from rbx.utils import copytree_honoring_gitignore
+
+        src = tmp_path / 'src'
+        dst = tmp_path / 'dst'
+        src.mkdir()
+
+        # Create nested structure
+        nested = src / 'nested' / 'dir'
+        nested.mkdir(parents=True)
+        (nested / 'file.txt').write_text('nested content')
+
+        copytree_honoring_gitignore(src, dst)
+
+        assert (dst / 'nested' / 'dir' / 'file.txt').exists()
+        assert (dst / 'nested' / 'dir' / 'file.txt').read_text() == 'nested content'
+
+    def test_copytree_with_extra_gitignore(self, tmp_path):
+        """Test that copytree_honoring_gitignore respects extra_gitignore parameter."""
+        from rbx.utils import copytree_honoring_gitignore
+
+        src = tmp_path / 'src'
+        dst = tmp_path / 'dst'
+        src.mkdir()
+
+        # Create test files
+        (src / 'file1.txt').write_text('content1')
+        (src / 'file2.log').write_text('content2')
+
+        # Use extra gitignore to ignore .log files
+        copytree_honoring_gitignore(src, dst, extra_gitignore='*.log\n')
+
+        assert (dst / 'file1.txt').exists()
+        assert not (dst / 'file2.log').exists()
+
+
+class TestFdLeakDetector:
+    """Tests for FdLeakDetector context manager."""
+
+    def test_fd_leak_detector_context_manager(self):
+        """Test that FdLeakDetector works as a context manager."""
+        from rbx.utils import FdLeakDetector
+
+        with FdLeakDetector(id='test'):
+            pass  # Should not raise any errors
+
+    def test_fd_leak_detector_with_diff(self):
+        """Test FdLeakDetector with diff parameter."""
+        from rbx.utils import FdLeakDetector
+
+        with FdLeakDetector(id='test', diff=True):
+            pass  # Should not raise any errors

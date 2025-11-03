@@ -7,7 +7,6 @@ from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Un
 
 import questionary
 import ruyaml
-import semver
 import typer
 
 from rbx import console, utils
@@ -607,6 +606,21 @@ def _install_preset_from_remote(
         )
         repo = git.Repo.clone_from(fetch_info.fetch_uri, d)
         if fetch_info.tool_tag is not None:
+            if (
+                utils.is_valid_semver(fetch_info.tool_tag)
+                and utils.get_semver(fetch_info.tool_tag).is_prerelease
+            ):
+                console.console.print(
+                    f'[warning]Tool tag [item]{fetch_info.tool_tag}[/item] is a prerelease tag. This may not be what you want.[/warning]'
+                )
+                console.console.print(
+                    f'[warning]You are in [item]rbx.cp[/item] prerelease version {utils.get_semver()}, which means projects '
+                    'will be created from prerelease presets. Consider installing a stable release for better compatibility with other users.[/warning]'
+                )
+                if not questionary.confirm(
+                    'If you want to proceed anyway, press [y]', default=False
+                ).ask():
+                    raise typer.Exit(1)
             console.console.print(
                 f'Checking out tool tag [item]{fetch_info.tool_tag}[/item]...'
             )
@@ -683,7 +697,7 @@ def _install_preset_from_resources(
     # Check if the latest release has breaking changes.
     try:
         latest_tag = latest_remote_tag(remote_fetch_info.fetch_uri)
-        latest_version = semver.VersionInfo.parse(latest_tag)
+        latest_version = utils.get_semver(latest_tag)
         if latest_version.major > utils.get_semver().major:
             console.console.print(
                 f'[error]You are not in rbx.cp latest major version ({latest_version.major}), but are installing a built-in preset from rbx.cp.[/error]'

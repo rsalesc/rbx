@@ -3,7 +3,8 @@ import subprocess
 from typing import List, Optional
 
 import git
-import semver
+
+from rbx import utils
 
 
 def get_repo_or_nil(
@@ -50,32 +51,31 @@ def ls_remote_tags(uri: str) -> List[str]:
 
 def ls_version_remote_tags(uri: str) -> List[str]:
     tags = ls_remote_tags(uri)
-    valid_tags = [tag for tag in tags if semver.Version.is_valid(tag)]
+    valid_tags = [tag for tag in tags if utils.is_valid_semver(tag)]
     return valid_tags
 
 
 def latest_remote_tag(
-    uri: str, before: Optional[str] = None, after: Optional[str] = None
+    uri: str,
+    before: Optional[str] = None,
+    after: Optional[str] = None,
+    include_prerelease: bool = False,
 ) -> str:
     try:
         tags = ls_version_remote_tags(uri)
+        if not include_prerelease:
+            tags = [tag for tag in tags if not utils.get_semver(tag).is_prerelease]
     except subprocess.CalledProcessError as ex:
         raise ValueError(f'Could not fetch tags for {uri}') from ex
     if not tags:
         raise ValueError(f'No valid tags found for {uri}')
     if before is not None:
         tags = [
-            tag
-            for tag in tags
-            if semver.VersionInfo.parse(tag) <= semver.VersionInfo.parse(before)
+            tag for tag in tags if utils.get_semver(tag) <= utils.get_semver(before)
         ]
     if after is not None:
-        tags = [
-            tag
-            for tag in tags
-            if semver.VersionInfo.parse(tag) >= semver.VersionInfo.parse(after)
-        ]
-    return sorted(tags, key=semver.VersionInfo.parse)[-1]
+        tags = [tag for tag in tags if utils.get_semver(tag) >= utils.get_semver(after)]
+    return sorted(tags, key=utils.get_semver)[-1]
 
 
 def has_remote_tag(uri: str, tag: str) -> bool:

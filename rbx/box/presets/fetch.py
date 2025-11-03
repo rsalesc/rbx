@@ -91,7 +91,9 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
             return None
         try:
             tool_tag = git_utils.latest_remote_tag(
-                _RBX_REMOTE_URI, before=utils.get_version()
+                _RBX_REMOTE_URI,
+                before=utils.get_version(),
+                include_prerelease=utils.get_semver().is_prerelease,
             )
         except ValueError:
             console.console.print(

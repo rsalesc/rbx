@@ -1,11 +1,10 @@
 import pathlib
 from typing import List, Optional
 
-import semver
 import typer
 from pydantic import BaseModel, Field, field_validator
 
-from rbx import console
+from rbx import console, utils
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
 
 
@@ -65,10 +64,10 @@ class Preset(BaseModel):
     @classmethod
     def validate_min_version(cls, value: str) -> str:
         try:
-            semver.Version.parse(value)
+            utils.get_semver(value)
         except ValueError as err:
             raise ValueError(
-                "min_version must be a valid SemVer string (e.g., '1.2.3' or '1.2.3-rc.1')"
+                "min_version must be a valid PEP440 SemVer string (e.g., '1.2.3' or '1.2.3-rc.1')"
             ) from err
         return value
 
