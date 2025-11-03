@@ -1260,13 +1260,15 @@ class TimingSummary:
         )
 
     def print(self, console: rich.console.Console, tl: Optional[int] = None):
+        if tl is not None:
+            console.print(f'Time limit: [hilite]{get_formatted_time(tl)}[/hilite]')
         if self.slowest_good is not None:
             console.print(
-                f'Slowest [success]AC[/success] solution: {self.slowest_good.time} ms, {self.slowest_good.solution.href()}'
+                f'Slowest [success]AC[/success] solution: {get_formatted_time(self.slowest_good.time)} ms, {self.slowest_good.solution.href()}'
             )
         if self.slowest_pass is not None:
             console.print(
-                f'Slowest [success][not bold]AC or TLE[/][/success] solution: {self.slowest_pass.time} ms, {self.slowest_pass.solution.href()}'
+                f'Slowest [success][not bold]AC or TLE[/][/success] solution: {get_formatted_time(self.slowest_pass.time)} ms, {self.slowest_pass.solution.href()}'
             )
         if self.fastest_slow is not None:
             fastest_slow = self.fastest_slow.time
@@ -1274,7 +1276,7 @@ class TimingSummary:
                 fastest_slow = f'>{tl}'
             slow_style = ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
             console.print(
-                f'Fastest [{slow_style}]slow[/] solution: {fastest_slow} ms, {self.fastest_slow.solution.href()}'
+                f'Fastest [{slow_style}]slow[/] solution: {get_formatted_time(fastest_slow)} ms, {self.fastest_slow.solution.href()}'
             )
 
 
@@ -1674,11 +1676,11 @@ class FullRunReporter(TraditionalRunReporter):
 
     def render_group_end(self, group: TestcaseGroup):
         self.console.print(
-            f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
+            f'[info]({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})[/info]',
         )
 
     def render_pre_evaluation(self, index: int):
-        self.console.print(f'{index}/', end='')
+        self.console.print(f'[info]{index}/[/info]', end='')
 
     def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
         self.console.print(get_testcase_markup_verdict(evaluation), end='')
@@ -1703,7 +1705,9 @@ class LiveRunReporter(FullRunReporter):
         for i in range(self.pre_evaluated):
             if i >= self.post_evaluated:
                 # Was not evaluated yet.
-                renderable.append(rich.text.Text(f'{i}/.. ', style='dim', end=''))
+                renderable.append(
+                    rich.text.Text(f'{i}/.. ', style='bright_black', end='')
+                )
                 continue
             if i not in self.current_group_evals_per_index:
                 continue

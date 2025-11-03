@@ -276,7 +276,7 @@ def get_generator_or_nil(
             f'[error]Multiple candidate generators found for [item]{name}[/item]: {matching_files}[/error]'
         )
         console.console.print(
-            '[info]Please specify the generator path explicitly, including the extension, or rename the conflicting files.[/info]'
+            'Please specify the generator path explicitly, including the extension, or rename the conflicting files.'
         )
         raise typer.Exit(1)
 

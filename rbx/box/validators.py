@@ -349,7 +349,7 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
         hit_bounds_per_group = {}
 
     if not hit_bounds_per_group and not any_failure:
-        console.console.print('[info]No validation issues found.[/info]')
+        console.console.print('No validation issues found.')
         return
 
     for group, hit_bounds in hit_bounds_per_group.items():
