@@ -1,3 +1,9 @@
+## 0.20.0rc8 (2025-11-04)
+
+### Fix
+
+- optimize detailed table
+
 ## 0.20.0rc7 (2025-11-04)
 
 ### Fix
