@@ -97,6 +97,12 @@ def within_problem(func):
     return wrapper
 
 
+def relpath(path: pathlib.Path, root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    path = utils.abspath(path)
+    root = utils.abspath(root)
+    return path.relative_to(root, walk_up=True)
+
+
 def save_package(
     package: Optional[Package] = None, root: pathlib.Path = pathlib.Path()
 ) -> None:
