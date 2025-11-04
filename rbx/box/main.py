@@ -1,5 +1,6 @@
 # flake8: noqa
 
+import asyncio
 import os
 import signal
 import sys
@@ -13,16 +14,37 @@ def _check_completions():
         sys.exit(0)
 
 
-def _keyboard_interrupt_handler(signum: int, frame: FrameType | None):
+def _ignore_task_exceptions(loop, context):
+    exc = context.get('exception')
+
+    # Completely suppress cancellation/keyboard interrupts
+    if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt)):
+        return
+
+    # Optional: swallow ALL task exceptions
+    # return
+
+    # Otherwise let Python handle others normally
+    loop.default_exception_handler(context)
+
+
+def _abort():
     Console().show_cursor()
-    raise typer.Abort()  # pyright: ignore[reportUndefinedVariable]
+    sys.exit(1)
+
+
+def run_app_cli():
+    from rbx.box.cli import app as app_cli
+
+    app_cli()
 
 
 def app():
     # _check_completions()
 
     # TODO: do not install this handler when in dev mode
-    signal.signal(signal.SIGINT, _keyboard_interrupt_handler)
+    loop = asyncio.get_event_loop()
+    loop.set_exception_handler(_ignore_task_exceptions)
 
     from rbx.box.exception import RbxException
 
@@ -30,9 +52,12 @@ def app():
         import nest_asyncio
 
         nest_asyncio.apply()
-        from rbx.box.cli import app as app_cli
 
-        app_cli()
+        run_app_cli()
+    except (KeyboardInterrupt, typer.Abort):
+        _abort()
     except RbxException as e:
         print(str(e))
         sys.exit(1)
+    finally:
+        Console().show_cursor()
