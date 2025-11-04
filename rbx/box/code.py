@@ -6,7 +6,7 @@ import shlex
 import sys
 from enum import Enum
 from pathlib import PosixPath
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple, Union
 
 import rich
 import rich.text
@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import download, global_package, package, setter_config, state
 from rbx.box.environment import (
+    BaseCompilationConfig,
     CompilationConfig,
     ExecutionConfig,
     FileMapping,
@@ -421,7 +422,7 @@ def _should_precompile(commands: List[str]) -> bool:
 
 
 def _precompile_header(
-    compilation_options: CompilationConfig,
+    compilation_options: Union[CompilationConfig, BaseCompilationConfig],
     sanitized: SanitizationLevel,
     sandbox_params: SandboxParams,
     artifacts: GradingArtifacts,
@@ -793,7 +794,7 @@ async def run_communication(
     merged_capture: Optional[DigestOrDest] = None,
     line_capture: bool = False,
     retry_index: Optional[int] = None,
-):
+) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     interactor_prepared = interactor.prepare()
     solution_prepared = solution.prepare()
 

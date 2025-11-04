@@ -72,7 +72,7 @@ class ExpectedOutcome(AutoEnum):
     """Expected outcome for correct solutions (AC)."""
 
     ACCEPTED_OR_TLE = alias(
-        'accepted or time limit exceeded',
+        'accepted or time limit exceeded',  # type: ignore
         'accepted or tle',
         'ac or tle',
         'ac/tle',

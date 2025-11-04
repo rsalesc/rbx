@@ -351,9 +351,10 @@ async def generate_standalone(
                     err.print(
                         f'[error]Validator {info.validator.href()} failed validation:[/error]'
                     )
-                    err.print(
-                        f'[error]Message:[/error] {utils.escape_markup(info.message.strip())}'
-                    )
+                    if info.message is not None:
+                        err.print(
+                            f'[error]Message:[/error] {utils.escape_markup(info.message.strip())}'
+                        )
                     err.print(
                         f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
                     )

@@ -5,7 +5,7 @@ import dataclasses
 import pathlib
 import shutil
 from collections.abc import Iterator
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import rich
 import rich.live
@@ -86,7 +86,7 @@ class SolutionSkeleton(Solution):
 
     def runs_dir_href(self) -> str:
         relpath = self.runs_dir.relative_to(package.find_problem())
-        return href(self.runs_dir, relpath, style='bright_black')
+        return href(self.runs_dir, str(relpath), style='bright_black')
 
 
 class SolutionReportSkeleton(BaseModel):
@@ -1284,12 +1284,12 @@ class TimingSummary:
                 f'Slowest [success][not bold]AC or TLE[/][/success] solution: {get_formatted_time(self.slowest_pass.time)} ms, {self.slowest_pass.solution.href()}'
             )
         if self.fastest_slow is not None:
-            fastest_slow = self.fastest_slow.time
+            fastest_slow = get_formatted_time(self.fastest_slow.time)
             if expanded_tl is not None and self.fastest_slow.time > expanded_tl:
-                fastest_slow = f'>{expanded_tl}'
+                fastest_slow = f'>{get_formatted_time(expanded_tl)}'
             slow_style = ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
             console.print(
-                f'Fastest [{slow_style}]slow[/] solution: {get_formatted_time(fastest_slow)} ms, {self.fastest_slow.solution.href()}'
+                f'Fastest [{slow_style}]slow[/] solution: {fastest_slow}, {self.fastest_slow.solution.href()}'
             )
 
 
@@ -1316,7 +1316,9 @@ async def _print_timing(
         tls = [
             eval.log.metadata.limits.time
             for eval in all_evals
-            if eval.log.metadata is not None and eval.log.metadata.limits is not None
+            if eval.log.metadata is not None
+            and eval.log.metadata.limits is not None
+            and eval.log.metadata.limits.time is not None
         ]
         expanded_tls = [
             eval.log.metadata.limits.get_expanded_tl()
@@ -1621,7 +1623,7 @@ class TraditionalRunReporter:
         return self.get_limits(self.current_solution)
 
     def get_evaluation(
-        self, solution: Solution, group: TestcaseGroup, index: int
+        self, solution: Solution, group: Union[GroupSkeleton, TestcaseGroup], index: int
     ) -> Optional[Deferred[Evaluation]]:
         return self.structured_evaluations[str(solution.path)][group.name][index]
 
@@ -1644,6 +1646,7 @@ class TraditionalRunReporter:
         pass
 
     def finish_solution(self) -> bool:
+        assert self.current_solution is not None
         ok = self.render_solution_end(self.current_solution)
         self.current_solution = None
         self.current_solution_evals = []
@@ -1652,20 +1655,21 @@ class TraditionalRunReporter:
     def render_solution_end(self, solution: Solution) -> bool:
         return True
 
-    def start_group(self, group: TestcaseGroup):
+    def start_group(self, group: GroupSkeleton):
         self.current_group = group
         self.render_group(group)
 
-    def render_group(self, group: TestcaseGroup):
+    def render_group(self, group: GroupSkeleton):
         pass
 
     def finish_group(self):
+        assert self.current_group is not None
         self.render_group_end(self.current_group)
         self.current_group = None
         self.current_group_evals = []
         self.current_group_evals_per_index = {}
 
-    def render_group_end(self, group: TestcaseGroup):
+    def render_group_end(self, group: GroupSkeleton):
         pass
 
     def start_testcase(self, index: int):
@@ -1676,10 +1680,12 @@ class TraditionalRunReporter:
         pass
 
     def finish_testcase(self, evaluation: Optional[Evaluation]):
-        self.current_group_evals.append(evaluation)
-        self.current_solution_evals.append(evaluation)
-        self.current_group_evals_per_index[self.current_index] = evaluation
-        self.render_post_evaluation(self.current_index, evaluation)
+        assert self.current_index is not None
+        if evaluation is not None:
+            self.current_group_evals.append(evaluation)
+            self.current_solution_evals.append(evaluation)
+            self.current_group_evals_per_index[self.current_index] = evaluation
+            self.render_post_evaluation(self.current_index, evaluation)
         self.current_index = None
 
     def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
@@ -1688,7 +1694,12 @@ class TraditionalRunReporter:
 
 class FullRunReporter(TraditionalRunReporter):
     def render_solution(self, solution: Solution):
-        _print_solution_header(solution, self.console)
+        solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
+        assert solution_skeleton is not None
+        _print_solution_header(
+            solution_skeleton,
+            self.console,
+        )
 
     def render_solution_end(self, solution: Solution) -> bool:
         ok = _print_solution_outcome(
@@ -1702,13 +1713,13 @@ class FullRunReporter(TraditionalRunReporter):
         self.console.print()
         return ok
 
-    def render_group(self, group: TestcaseGroup):
+    def render_group(self, group: GroupSkeleton):
         self.console.print(
             f'[bold][status]{group.name} ({len(group.testcases)})[/status][/bold]',
             end='',
         )
 
-    def render_group_end(self, group: TestcaseGroup):
+    def render_group_end(self, group: GroupSkeleton):
         self.console.print(
             f'[info]({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})[/info]',
         )
@@ -1717,6 +1728,9 @@ class FullRunReporter(TraditionalRunReporter):
         self.console.print(f'[info]{index}/[/info]', end='')
 
     def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
+        if evaluation is None:
+            self.console.print('x ', end='')
+            return
         self.console.print(get_testcase_markup_verdict(evaluation), end='')
         if evaluation.result.sanitizer_warnings:
             self.console.print('[warning]*[/warning]', end='')
@@ -1733,6 +1747,7 @@ class LiveRunReporter(FullRunReporter):
     def _update_live(self):
         if self.live is None:
             return
+        assert self.current_group is not None
         renderable = rich.text.Text.from_markup(
             f'[bold bright_white]{self.current_group.name} ({len(self.current_group.testcases)})[/bold bright_white] '
         )
@@ -1768,15 +1783,16 @@ class LiveRunReporter(FullRunReporter):
         )
         self.live.update(renderable, refresh=True)
 
-    def render_group(self, group: TestcaseGroup):
+    def render_group(self, group: GroupSkeleton):
         self.live = rich.live.Live(
-            self.console,
+            console=self.console,
             refresh_per_second=5,
         )
         self.live.start()
         self._update_live()
 
-    def render_group_end(self, group: TestcaseGroup):
+    def render_group_end(self, group: GroupSkeleton):
+        assert self.live is not None
         self.live.stop()
         self.live = None
 
@@ -1791,7 +1807,9 @@ class LiveRunReporter(FullRunReporter):
 
 class SingleSolutionRunReporter(TraditionalRunReporter):
     def render_solution(self, solution: Solution):
-        _print_solution_header(solution, self.console)
+        solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
+        assert solution_skeleton is not None
+        _print_solution_header(solution_skeleton, self.console)
         self.console.print()
 
     def render_solution_end(self, solution: Solution) -> bool:
@@ -1806,7 +1824,7 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print()
         return ok
 
-    def render_group_end(self, group: TestcaseGroup):
+    def render_group_end(self, group: GroupSkeleton):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')
         self.console.print(
             f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
@@ -1814,6 +1832,9 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print()
 
     def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):
+        if evaluation is None:
+            return
+        assert self.current_group is not None
         self.console.print(get_testcase_markup_verdict(evaluation), end=' ')
         self.console.print(f'{self.current_group.name}/{index}', end='')
         if evaluation.result.sanitizer_warnings:

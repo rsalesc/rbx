@@ -1,7 +1,7 @@
 import functools
 import pathlib
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar
+from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar, Union
 
 import typer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -443,7 +443,7 @@ def get_compilation_config(
 
 
 def merge_execution_configs(
-    execution_configs: List[Optional[ExecutionConfig]],
+    execution_configs: List[Optional[Union[ExecutionConfig, BaseExecutionConfig]]],
     solution: bool = False,
 ) -> BaseExecutionConfig:
     merged_cfg = BaseExecutionConfig()
@@ -453,7 +453,7 @@ def merge_execution_configs(
         if cfg is None:
             continue
         base_cfg: BaseExecutionConfig = cfg
-        if solution:
+        if solution and isinstance(cfg, ExecutionConfig):
             if cfg.solutionOverrides.command:
                 base_cfg.command = cfg.solutionOverrides.command
             if cfg.solutionOverrides.sandbox is not None:
@@ -548,7 +548,7 @@ def get_mapped_commands(
     variables['error'] = mapping.error
     variables['capture'] = mapping.capture
 
-    for var in passthrough:
+    for var in passthrough or []:
         variables[var] = f'{{{var}}}'
     return [safeeval.eval_as_fstring(cmd, variables) for cmd in commands]
 

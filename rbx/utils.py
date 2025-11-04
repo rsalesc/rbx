@@ -83,7 +83,7 @@ def check_version_compatibility(required: str) -> SemVerCompatibility:
     return check_version_compatibility_between(installed, required)
 
 
-def print_open_fd_count(id: Optional[str] = None) -> int:
+def print_open_fd_count(id: Optional[str] = None) -> None:
     import psutil
 
     try:
