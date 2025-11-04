@@ -2,7 +2,12 @@ import pathlib
 from typing import Optional
 
 from rbx.box import checkers, limits_info, package, state
-from rbx.box.code import CommunicationItem, run_communication, run_item
+from rbx.box.code import (
+    CommunicationItem,
+    find_language_name,
+    run_communication,
+    run_item,
+)
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
 from rbx.box.schema import CodeItem, Testcase
@@ -80,8 +85,9 @@ async def run_solution_on_testcase(
     async def run_fn(retry_index: int) -> Evaluation:
         actual_sandbox = package.get_singleton_sandbox()
 
+        language = find_language_name(solution)
         limits = get_limits_for_language(
-            solution.language,
+            language,
             verification,
             timelimit_override,
             use_timelimit=use_timelimit,
@@ -190,8 +196,9 @@ async def _run_communication_solution_on_testcase(
         actual_sandbox = package.get_singleton_sandbox()
         interactor_sandbox = package.get_singleton_interactor_sandbox()
 
+        language = find_language_name(solution)
         limits = get_limits_for_language(
-            solution.language,
+            language,
             verification,
             timelimit_override,
             use_timelimit=use_timelimit,

@@ -406,7 +406,7 @@ def _prepare_run(
         sanitized=sanitized,
         file_mapping=file_mapping,
         metadata=RunLogMetadata(
-            language=code.language,
+            language=language,
             is_sanitized=sanitized,
             timeLimit=sandbox_params.timeout,
             memoryLimit=sandbox_params.address_space,

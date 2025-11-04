@@ -1259,9 +1259,22 @@ class TimingSummary:
             or self.fastest_slow is not None
         )
 
-    def print(self, console: rich.console.Console, tl: Optional[int] = None):
+    def print(
+        self,
+        console: rich.console.Console,
+        tl: Optional[int] = None,
+        expanded_tl: Optional[int] = None,
+    ):
         if tl is not None:
-            console.print(f'Time limit: [hilite]{get_formatted_time(tl)}[/hilite]')
+            console.print(
+                f'Time limit: [hilite]{get_formatted_time(tl)}[/hilite]', end=''
+            )
+            if expanded_tl is not None and expanded_tl != tl:
+                console.print(
+                    f' (actual: [hilite]{get_formatted_time(expanded_tl)}[/hilite])',
+                    end='',
+                )
+            console.print()
         if self.slowest_good is not None:
             console.print(
                 f'Slowest [success]AC[/success] solution: {get_formatted_time(self.slowest_good.time)} ms, {self.slowest_good.solution.href()}'
@@ -1272,8 +1285,8 @@ class TimingSummary:
             )
         if self.fastest_slow is not None:
             fastest_slow = self.fastest_slow.time
-            if tl is not None and self.fastest_slow.time > tl:
-                fastest_slow = f'>{tl}'
+            if expanded_tl is not None and self.fastest_slow.time > expanded_tl:
+                fastest_slow = f'>{expanded_tl}'
             slow_style = ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
             console.print(
                 f'Fastest [{slow_style}]slow[/] solution: {get_formatted_time(fastest_slow)} ms, {self.fastest_slow.solution.href()}'
@@ -1288,7 +1301,9 @@ async def _print_timing(
     summary = TimingSummary()
     summary_per_language = collections.defaultdict(TimingSummary)
     tls_per_language = {}
+    expanded_tls_per_language = {}
     all_tls = set()
+    all_expanded_tls = set()
     for solution in skeleton.solutions:
         all_evals: List[Evaluation] = []
         for evals in evaluations[str(solution.path)].values():
@@ -1298,61 +1313,80 @@ async def _print_timing(
 
         # Get solution TL.
         solution_time = _get_evals_time_in_ms(all_evals)
-        solution_tls = [
+        tls = [
+            eval.log.metadata.limits.time
+            for eval in all_evals
+            if eval.log.metadata is not None and eval.log.metadata.limits is not None
+        ]
+        expanded_tls = [
             eval.log.metadata.limits.get_expanded_tl()
             for eval in all_evals
             if eval.log.metadata is not None
         ]
-        solution_tls = [tl for tl in solution_tls if tl is not None]
+        expanded_tls = [tl for tl in expanded_tls if tl is not None]
 
-        solution_tl = 0
-        if solution_tls:
-            solution_tl = min(solution_tls)
+        tl = 0
+        expanded_tl = 0
+        if expanded_tls:
+            tl = min(tls)
+            expanded_tl = min(expanded_tls)
         else:
             limits = skeleton.get_solution_limits(solution)
             if limits.time is None:
                 limits = skeleton.get_solution_limits_from_disk(solution)
             assert limits.time is not None
-            solution_tl = limits.time
+            tl = limits.time
+            expanded_tl = limits.time
             if limits.isDoubleTL:
-                solution_tl = solution_tl * 2
-        all_tls.add(solution_tl)
+                expanded_tl = expanded_tl * 2
+        all_tls.add(tl)
+        all_expanded_tls.add(expanded_tl)
         for eval in all_evals:
-            if eval.log.get_run_language() is not None:
-                tls_per_language[eval.log.get_run_language()] = solution_tl
+            eval_language = eval.log.get_run_language()
+            if eval_language is not None:
+                tls_per_language[eval_language] = tl
+                expanded_tls_per_language[eval_language] = expanded_tl
 
+        language = find_language_name(solution)
         # Get solution timings.
         if solution.outcome == ExpectedOutcome.ACCEPTED:
             summary.add_good(solution_time, solution)
-            summary_per_language[solution.language].add_good(solution_time, solution)
+            summary_per_language[language].add_good(solution_time, solution)
         if solution.outcome in [
             ExpectedOutcome.ACCEPTED,
             ExpectedOutcome.ACCEPTED_OR_TLE,
         ]:
             summary.add_pass(solution_time, solution)
-            summary_per_language[solution.language].add_pass(solution_time, solution)
+            summary_per_language[language].add_pass(solution_time, solution)
         if solution.outcome.is_slow():
             summary.add_slow(solution_time, solution)
-            summary_per_language[solution.language].add_slow(solution_time, solution)
+            summary_per_language[language].add_slow(solution_time, solution)
 
     if not summary.has_timings():
         return
 
     all_languages = set(summary_per_language)
     all_tl = min(all_tls) if all_tls else None
-    console.print('[status]Timing summary:[/status]')
+    all_expanded_tl = min(all_expanded_tls) if all_expanded_tls else None
+    console.print('[bold][status]Timing summary:[/status][/bold]')
 
-    if len(all_languages) <= 1 or len(all_tls) <= 1:
-        summary.print(console, tl=all_tl)
+    if len(all_languages) <= 1 or (len(all_tls) <= 1 and len(all_expanded_tls) <= 1):
+        summary.print(console, tl=all_tl, expanded_tl=all_expanded_tl)
         return
 
     # Otherwise, print per language.
-    for lang in sorted(all_languages):
-        console.print(f'[status]{lang}[/status]')
-        summary_per_language[lang].print(
-            console, tl=tls_per_language.get(lang) or all_tl
+    # TODO: reconsider having the concept of a global language time limit.
+    for eval_language in sorted(all_languages):
+        cur_tl = tls_per_language.get(eval_language) or all_tl
+        cur_expanded_tl = (
+            expanded_tls_per_language.get(eval_language) or all_expanded_tl
         )
-        console.print()
+        console.print(f'[status]{eval_language}[/status]')
+        summary_per_language[eval_language].print(
+            console,
+            tl=cur_tl,
+            expanded_tl=cur_expanded_tl,
+        )
 
 
 def _length_markup(markup: str) -> int:
