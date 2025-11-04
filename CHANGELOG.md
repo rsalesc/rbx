@@ -1,3 +1,11 @@
+## 0.20.0rc7 (2025-11-04)
+
+### Fix
+
+- fix issues with typing
+- fix timing per language
+- fix solution href in compilation error
+
 ## 0.20.0rc6 (2025-11-03)
 
 ### Fix
