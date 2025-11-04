@@ -1,3 +1,12 @@
+## 0.20.0rc9 (2025-11-04)
+
+### Fix
+
+- handle ctrl+C in stress tests
+- handle ctrl+C through a try-catch block
+- make paths relative in irun
+- ensure ctrl+C does not show stacktrace
+
 ## 0.20.0rc8 (2025-11-04)
 
 ### Fix
