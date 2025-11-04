@@ -4,6 +4,7 @@ import collections
 import dataclasses
 import pathlib
 import shutil
+import typing
 from collections.abc import Iterator
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
@@ -34,6 +35,7 @@ from rbx.box.generators import (
     generate_output_for_testcase,
     generate_standalone,
 )
+from rbx.box.rendering import CellSlot, Throttling
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -1277,11 +1279,11 @@ class TimingSummary:
             console.print()
         if self.slowest_good is not None:
             console.print(
-                f'Slowest [success]AC[/success] solution: {get_formatted_time(self.slowest_good.time)} ms, {self.slowest_good.solution.href()}'
+                f'Slowest [success]AC[/success] solution: {get_formatted_time(self.slowest_good.time)}, {self.slowest_good.solution.href()}'
             )
         if self.slowest_pass is not None:
             console.print(
-                f'Slowest [success][not bold]AC or TLE[/][/success] solution: {get_formatted_time(self.slowest_pass.time)} ms, {self.slowest_pass.solution.href()}'
+                f'Slowest [success][not bold]AC or TLE[/][/success] solution: {get_formatted_time(self.slowest_pass.time)}, {self.slowest_pass.solution.href()}'
             )
         if self.fastest_slow is not None:
             fastest_slow = get_formatted_time(self.fastest_slow.time)
@@ -1410,6 +1412,17 @@ def _get_indented_text(s: str, width: int):
     return text
 
 
+def _render_padded_column(column: List[Tuple[str, ...]]) -> List[rich.text.Text]:
+    max_widths_per_column = _max_pointwise(_length_pointwise(cell) for cell in column)
+    return [
+        rich.text.Text(' ').join(
+            _get_indented_text(item, width)
+            for item, width in zip(cell, max_widths_per_column, strict=True)
+        )
+        for cell in column
+    ]
+
+
 def _render_padded_rows(
     rows: List[List[Tuple[str, ...]]],
 ) -> List[List[rich.text.Text]]:
@@ -1440,81 +1453,111 @@ async def _render_detailed_group_table(
     group_skeleton = skeleton.find_group_skeleton(group.name)
     assert group_skeleton is not None
 
-    async def generate_table(
-        structured_evaluation: StructuredEvaluation, group_name: str
-    ) -> rich.table.Table:
+    limits_per_solution = {
+        str(solution.path): skeleton.get_solution_limits(solution)
+        for solution in skeleton.solutions
+    }
+    structured_renderables: Dict[str, List[CellSlot]] = collections.defaultdict(list)
+    structured_cells: Dict[str, List[Tuple[str, ...]]] = collections.defaultdict(list)
+
+    async def generate_initial_table() -> rich.table.Table:
         table = rich.table.Table()
         for solution in skeleton.solutions:
-            table.add_column(f'{solution.href()}', justify='full')
+            table.add_column(f'{solution.href()}', justify='full', no_wrap=True)
 
-        padded_rows = []
+        padded_rows: List[List[Tuple[str, ...]]] = []
 
-        evals_per_solution = collections.defaultdict(list)
         for tc, _ in enumerate(group_skeleton.testcases):
-            row = []
+            row: List[Tuple[str, ...]] = []
             for solution in skeleton.solutions:
-                eval = structured_evaluation[str(solution.path)][group_name][tc]
-                if eval is None:
-                    row.append((f'[info]#{tc}[/info]', '', '...', '', '', ''))
-                    continue
-                eval = eval.peek()
-                if eval is None:
-                    row.append((f'[info]#{tc}[/info]', '', '...', '', '', ''))
-                    continue
-
-                evals_per_solution[str(solution.path)].append(eval)
-
-                verdict = get_testcase_markup_verdict(eval)
-                limits = skeleton.get_solution_limits(solution)
-                time = get_capped_evals_formatted_time(limits, [eval], verification)
-                memory = get_evals_formatted_memory([eval])
-                full_item = (f'[info]#{tc}[/info]', verdict, time, '/', memory, '')
-                if eval.result.sanitizer_warnings:
-                    full_item = (*full_item[:-1], '[warning]*[/warning]')
-
-                row.append(full_item)
+                entry = (f'[info]#{tc}[/info]', '', '...', '', '', '')
+                structured_cells[str(solution.path)].append(entry)
+                row.append(entry)
             padded_rows.append(row)
 
         if padded_rows:
-            summary_row = []
+            summary_row: List[Tuple[str, ...]] = []
             for solution in skeleton.solutions:
-                evals = evals_per_solution[str(solution.path)]
-                non_null_evals = [eval for eval in evals if eval is not None]
-                if not non_null_evals:
-                    summary_row.append('...')
-                    continue
-                limits = skeleton.get_solution_limits(solution)
-                formatted_time = get_capped_evals_formatted_time(
-                    limits, non_null_evals, verification
-                )
-                formatted_memory = get_evals_formatted_memory(non_null_evals)
-                worst_outcome = get_worst_outcome(non_null_evals)
-                verdict = get_outcome_markup_verdict(worst_outcome)
-                summary_row.append(
-                    ('', verdict, formatted_time, '/', formatted_memory, '')
-                )
+                entry = ('', '', '...', '', '', '')
+                structured_cells[str(solution.path)].append(entry)
+                summary_row.append(entry)
             padded_rows.append(summary_row)
 
-        for row in _render_padded_rows(padded_rows):
-            table.add_row(*row)
+        for padded_row in _render_padded_rows(padded_rows):
+            padded_slots = []
+            for cell, solution in zip(
+                padded_row,
+                skeleton.solutions,
+                strict=True,
+            ):
+                slot = CellSlot(cell)
+                structured_renderables[str(solution.path)].append(slot)
+                padded_slots.append(slot)
+            table.add_row(*padded_slots)
 
         if padded_rows:
             table.rows[-2].end_section = True
         return table
 
+    async def update_table(
+        structured_evaluations: StructuredEvaluation,
+        group_name: str,
+        solution: SolutionSkeleton,
+        tc: int,
+    ):
+        cells = structured_cells[str(solution.path)]
+        renderables = structured_renderables[str(solution.path)]
+        eval = structured_evaluations[str(solution.path)][group_name][tc]
+        if eval is None or eval.peek() is None:
+            cells[tc] = (f'[info]#{tc}[/info]', '', '...', '', '', '')
+        else:
+            eval = eval.peek()
+            assert eval is not None
+            verdict = get_testcase_markup_verdict(eval)
+            limits = limits_per_solution[str(solution.path)]
+            time = get_capped_evals_formatted_time(limits, [eval], verification)
+            memory = get_evals_formatted_memory([eval])
+            full_item = (f'[info]#{tc}[/info]', verdict, time, '/', memory, '')
+            if eval.result.sanitizer_warnings:
+                full_item = (*full_item[:-1], '[warning]*[/warning]')
+            cells[tc] = full_item
+
+        evals = structured_evaluations[str(solution.path)][group.name]
+        non_null_evals = typing.cast(
+            List[Evaluation],
+            [
+                eval.peek()
+                for eval in evals
+                if eval is not None and eval.peek() is not None
+            ],
+        )
+        if non_null_evals:
+            limits = limits_per_solution[str(solution.path)]
+            formatted_time = get_capped_evals_formatted_time(
+                limits, non_null_evals, verification
+            )
+            formatted_memory = get_evals_formatted_memory(non_null_evals)
+            worst_outcome = get_worst_outcome(non_null_evals)
+            verdict = get_outcome_markup_verdict(worst_outcome)
+            cells[-1] = ('', verdict, formatted_time, '/', formatted_memory, '')
+
+        for i, padded_column in enumerate(_render_padded_column(cells)):
+            renderables[i].update(padded_column)
+
     with rich.live.Live(
-        await generate_table(skeleton.empty_structured_evaluation(), group.name),
-        refresh_per_second=5,
+        await generate_initial_table(),
+        auto_refresh=False,
         console=console,
     ) as live:
+        throttled_update = Throttling(live.refresh, 0.3)
         for solution in skeleton.solutions:
             for tc, _ in enumerate(group_skeleton.testcases):
                 eval = structured_evaluations[str(solution.path)][group.name][tc]
                 if eval is None:
                     continue
                 await eval()
-                live.update(await generate_table(structured_evaluations, group.name))
-                live.refresh()
+                await update_table(structured_evaluations, group.name, solution, tc)
+                throttled_update()
 
 
 async def _print_detailed_run_report(
@@ -1534,7 +1577,6 @@ async def _print_detailed_run_report(
             console,
             verification=verification,
         )
-        continue
 
     ok = True
     for solution in result.skeleton.solutions:
@@ -1784,10 +1826,7 @@ class LiveRunReporter(FullRunReporter):
         self.live.update(renderable, refresh=True)
 
     def render_group(self, group: GroupSkeleton):
-        self.live = rich.live.Live(
-            console=self.console,
-            refresh_per_second=5,
-        )
+        self.live = rich.live.Live(console=self.console, auto_refresh=False)
         self.live.start()
         self._update_live()
 
