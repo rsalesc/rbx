@@ -129,11 +129,35 @@ class ExpectedOutcome(AutoEnum):
             return 'yellow'
         return 'magenta'
 
+    def icon(self) -> str:
+        if self == ExpectedOutcome.ANY:
+            return '?'
+        if self.match(Outcome.ACCEPTED):
+            return '✓'
+        if self.is_slow():
+            return '⧖'
+        return '✗'
+
+    def icon_markup(self, styled: bool = True) -> str:
+        icon = self.icon()
+        if styled:
+            style = self.style()
+            icon = f'[{style}]{icon}[/{style}]'
+        return icon
+
     def full_style(self) -> str:
         style = self.style()
         if self == ExpectedOutcome.ACCEPTED:
             return f'bold {style}'
         return style
+
+    def full_markup(self, styled: bool = True) -> str:
+        icon = self.icon_markup()
+        name = self.name
+        if styled:
+            style = self.style()
+            name = f'[{style}]{name}[/{style}]'
+        return f'{icon} {name}'
 
     def is_slow(self) -> bool:
         return self in [ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TLE_OR_RTE]

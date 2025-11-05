@@ -928,9 +928,13 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
     return res
 
 
-def get_full_outcome_markup_verdict(outcome: Outcome) -> str:
-    style = get_outcome_style_verdict(outcome)
-    res = f'[{style}]{outcome.name}[/{style}]'
+def get_full_outcome_markup_verdict(outcome: Outcome, styled: bool = True) -> str:
+    icon = get_outcome_markup_verdict(outcome)
+    name = outcome.name
+    if styled:
+        style = get_outcome_style_verdict(outcome)
+        name = f'[{style}]{name}[/{style}]'
+    res = f'{icon} {name}'
     return res
 
 
@@ -1828,6 +1832,8 @@ class LiveRunReporter(FullRunReporter):
         self.live.update(renderable, refresh=True)
 
     def render_group(self, group: GroupSkeleton):
+        self.pre_evaluated = 0
+        self.post_evaluated = 0
         self.live = rich.live.Live(console=self.console, auto_refresh=False)
         self.live.start()
         self._update_live()

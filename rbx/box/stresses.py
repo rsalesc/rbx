@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from rbx import console, utils
 from rbx.box import checkers, generators, package, tasks, validators
 from rbx.box.code import SanitizationLevel, compile_item
+from rbx.box.formatting import href
 from rbx.box.generators import (
     GenerationError,
     GenerationMetadata,
@@ -340,7 +341,7 @@ def print_stress_report(report: StressReport):
     console.console.print(f'Found [item]{len(report.findings)}[/item] testcases.')
 
     findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-    console.console.print(f'Findings: {utils.abspath(findings_dir)}')
+    console.console.print(f'Findings: {href(package.relpath(findings_dir))}')
     console.console.print()
 
     for i, finding in enumerate(report.findings):
