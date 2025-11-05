@@ -1,3 +1,12 @@
+## 0.20.0rc10 (2025-11-04)
+
+### Fix
+
+- fix a few typing errors
+- fix function in rbx_ui
+- schedule hard kill if program does not finish fast enough after interrupt
+- fix hanging 0 testcase
+
 ## 0.20.0rc9 (2025-11-04)
 
 ### Fix
