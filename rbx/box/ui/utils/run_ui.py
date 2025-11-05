@@ -78,8 +78,9 @@ def get_run_testcase_metadata_markup(
     eval = get_solution_eval(solution, entry)
     if eval is None:
         return None
+    limits = skeleton.get_solution_limits(solution)
     time_str = solutions.get_capped_evals_formatted_time(
-        solution, [eval], skeleton.verification
+        limits, [eval], skeleton.verification
     )
     memory_str = solutions.get_evals_formatted_memory([eval])
 
