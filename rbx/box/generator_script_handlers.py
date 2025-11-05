@@ -10,6 +10,9 @@ from rbx.box.schema import GeneratorCall, GeneratorScript
 
 
 class GeneratorScriptHandler:
+    script: str
+    script_entry: GeneratorScript
+
     def __init__(self, script: str, script_entry: GeneratorScript):
         self.script = script
         self.script_entry = script_entry
@@ -19,7 +22,7 @@ class GeneratorScriptHandler:
         pass
 
     @abstractmethod
-    def append(self, call: GeneratorCall, comment: Optional[str] = None):
+    def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
         pass
 
     def normalize_call_name(self, call_name: str) -> str:
@@ -50,7 +53,7 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
             self.script += f'\n# {comment}'
         for call in calls:
             name = self.normalize_call_name(call.name)
-            self.script += f"\n{name} {call.args or ''}"
+            self.script += f'\n{name} {call.args or ""}'
 
 
 def _parse_box_testplan_line(line: str) -> Tuple[int, str, str]:
@@ -109,7 +112,7 @@ class BoxGeneratorScriptHandler(GeneratorScriptHandler):
         group = _get_last_group(self.script) + 1
         for call in calls:
             name = pathlib.Path(self.normalize_call_name(call.name)).with_suffix('.exe')
-            self.script += f"\n{group} ; {name} {call.args or ''}"
+            self.script += f'\n{group} ; {name} {call.args or ""}'
 
 
 REGISTERED_HANDLERS = {

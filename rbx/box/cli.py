@@ -34,7 +34,7 @@ from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.environment import VerificationLevel, get_app_environment_path
 from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
-from rbx.box.schema import CodeItem, ExpectedOutcome, TestcaseGroup
+from rbx.box.schema import ExpectedOutcome, GeneratorScript, TestcaseGroup
 from rbx.box.solutions import (
     get_exact_matching_solutions,
     get_matching_solutions,
@@ -785,7 +785,7 @@ async def stress(
             # Temporarily create a new testgroup with the new script.
             testgroup = new_script_path.stem
             groups_by_name[testgroup] = TestcaseGroup(
-                name=testgroup, generatorScript=CodeItem(path=new_script_path)
+                name=testgroup, generatorScript=GeneratorScript(path=new_script_path)
             )
             ru, problem_yml = package.get_ruyaml()
             if 'testcases' not in problem_yml:
