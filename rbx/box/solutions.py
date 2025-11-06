@@ -1809,8 +1809,11 @@ class LiveRunReporter(FullRunReporter):
             if i not in self.current_group_evals_per_index:
                 continue
             eval = self.current_group_evals_per_index[i]
-            if eval.result.outcome == Outcome.ACCEPTED:
-                # Skip accepted verdicts.
+            if (
+                eval.result.outcome == Outcome.ACCEPTED
+                and not eval.result.sanitizer_warnings
+            ):
+                # Skip accepted verdicts with no warnings.
                 continue
             renderable.append(rich.text.Text(f'{i}/', style='bright_black', end=''))
             renderable.append(
