@@ -1293,7 +1293,7 @@ class TimingSummary:
             )
         if self.fastest_slow is not None:
             fastest_slow = get_formatted_time(self.fastest_slow.time)
-            if expanded_tl is not None and self.fastest_slow.time > expanded_tl:
+            if expanded_tl is not None and self.fastest_slow.time >= expanded_tl:
                 fastest_slow = f'>{get_formatted_time(expanded_tl)}'
             slow_style = ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
             console.print(
