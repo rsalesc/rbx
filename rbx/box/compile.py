@@ -5,6 +5,7 @@ import typer
 from rbx import annotations, console
 from rbx.box import code, package, remote
 from rbx.box.code import SanitizationLevel
+from rbx.box.formatting import href
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem
 
@@ -28,7 +29,7 @@ def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
     warning_stack.get_warning_stack().clear()
 
     console.console.print(
-        f'[success]Compiled file written at [item]{out_path}[/item][/success]'
+        f'[success]Compiled file written at {href(package.relpath(out_path))}[/success]'
     )
 
 
