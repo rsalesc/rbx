@@ -1,3 +1,15 @@
+## 0.20.0 (2025-11-07)
+
+### Fix
+
+- fix boca scraper for remote download runs
+- fix no caching of remote solutions
+- add empty statement in BOCA when one is not present
+- ensure builtin checker is read when path does not exist
+- change > to >= when checking for TL when printing operator along with the time
+- ensure AC testcases with warnings are render by live run reporter
+- make compiled file relative to package
+
 ## 0.20.0rc11 (2025-11-06)
 
 ### Fix
