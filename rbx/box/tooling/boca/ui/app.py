@@ -626,6 +626,7 @@ class BocaRunsApp(App):
     async def _on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         # Track highlighted key for diff action
         self._highlighted_key = self._extract_key_str(event.row_key)
+        await self._on_row_selected(event)  # pyright: ignore[reportArgumentType]
         self.log(
             f'RowHighlighted: event.row_key={event.row_key!r} -> highlighted={self._highlighted_key!r}'
         )
