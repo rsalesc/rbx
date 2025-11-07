@@ -187,7 +187,7 @@ class BocaPackager(BasePackager):
             raise typer.Exit(1)
         checker_text = checker_path.read_text()
         testlib = get_testlib().read_text()
-        checker = package.get_checker().path.read_text()
+        checker = package.get_checker_or_builtin().path.read_text()
         rbx_header = header.get_header().read_text()
         return (
             self._replace_common(checker_text, 'cc')

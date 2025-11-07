@@ -54,7 +54,7 @@ class MojPackager(BocaPackager):
                 '[error]MOJ template compare script not found.[/error]'
             )
             raise typer.Exit(1)
-        with package.get_checker().path.open('rb') as f:
+        with package.get_checker_or_builtin().path.open('rb') as f:
             checker_hash = digest_cooperatively(f)
         return (
             compare_path.read_text()
@@ -63,7 +63,7 @@ class MojPackager(BocaPackager):
         )
 
     def _get_checker(self) -> str:
-        return package.get_checker().path.read_text()
+        return package.get_checker_or_builtin().path.read_text()
 
     def _get_interactor(self) -> str:
         return package.get_interactor().path.read_text()

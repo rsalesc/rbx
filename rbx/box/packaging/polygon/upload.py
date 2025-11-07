@@ -110,7 +110,7 @@ def _update_rbx_header(problem: api.Problem):
 
 def _update_checker(problem: api.Problem):
     console.console.print('Uploading checker...')
-    checker = package.get_checker()
+    checker = package.get_checker_or_builtin()
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_checker_name(),

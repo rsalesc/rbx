@@ -6,7 +6,7 @@ import typer
 
 from rbx import console
 from rbx.box import code, package
-from rbx.box.schema import CodeItem, Testcase
+from rbx.box.schema import Checker, Testcase
 from rbx.config import get_builtin_checker
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
@@ -81,17 +81,13 @@ def is_valid_checker(checker_path: pathlib.Path) -> bool:
 
 
 def compile_checker(
-    progress: Optional[StatusProgress] = None, custom_checker: Optional[CodeItem] = None
+    progress: Optional[StatusProgress] = None,
+    custom_checker: Optional[Checker] = None,
 ) -> str:
-    checker = custom_checker or package.get_checker()
+    checker = package.get_checker_or_builtin(custom_checker)
 
     if progress:
         progress.update(f'Compiling checker {checker.href()}...')
-
-    if not checker.path.is_file():
-        builtin_checker = get_builtin_checker(checker.path.name)
-        if builtin_checker.is_file():
-            checker = checker.model_copy(update={'path': builtin_checker})
 
     try:
         digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
@@ -299,7 +295,7 @@ async def _check(
             dest=pathlib.PosixPath('output.txt'),
         ),
     ]
-    checker = package.get_checker()
+    checker = package.get_checker_or_builtin()
     checker_mode = get_checker_mode(checker.mode)
     checker_run_log = checker_mode.convert_run_log(
         await code.run_item(

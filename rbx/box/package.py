@@ -14,6 +14,7 @@ from rbx.box.environment import (
     get_language_by_extension_or_nil,
     get_sandbox_type,
 )
+from rbx.box.formatting import href
 from rbx.box.global_package import get_cache_fingerprint
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
@@ -351,6 +352,21 @@ def get_checker_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[Checker]
 @functools.cache
 def get_checker(root: pathlib.Path = pathlib.Path()) -> Checker:
     return get_checker_or_nil(root) or get_default_checker(root)
+
+
+def get_checker_or_builtin(
+    custom_checker: Optional[Checker] = None, root: pathlib.Path = pathlib.Path()
+) -> Checker:
+    checker = custom_checker or get_checker(root)
+    if not checker.path.is_file():
+        builtin_checker = get_builtin_checker(checker.path.name)
+        if not builtin_checker.is_file():
+            console.console.print(
+                f'[error]Builtin checker {href(checker.path)} not found[/error]'
+            )
+            raise typer.Exit(1)
+        return checker.model_copy(update={'path': builtin_checker})
+    return checker
 
 
 @functools.cache

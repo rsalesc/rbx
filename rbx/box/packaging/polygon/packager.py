@@ -212,8 +212,8 @@ class PolygonPackager(BasePackager):
         files_path.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(get_testlib(), files_path / 'testlib.h')
         shutil.copyfile(header.get_header(), files_path / 'rbx.h')
-        shutil.copyfile(package.get_checker().path, files_path / 'check.cpp')
-        shutil.copyfile(package.get_checker().path, into_path / 'check.cpp')
+        shutil.copyfile(package.get_checker_or_builtin().path, files_path / 'check.cpp')
+        shutil.copyfile(package.get_checker_or_builtin().path, into_path / 'check.cpp')
         if pkg.interactor is not None:
             shutil.copyfile(pkg.interactor.path, files_path / 'interactor.cpp')
 
