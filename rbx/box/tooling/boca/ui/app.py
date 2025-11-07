@@ -324,7 +324,8 @@ class BocaRunsApp(App):
     BINDINGS = [
         ('r', 'refresh', 'Refresh'),
         ('m', 'toggle_mode', 'Toggle mode'),
-        ('s', 'show_diff', 'Show diff'),
+        ('d', 'show_diff', 'Last diff'),
+        ('D', 'show_non_ac_diff', 'Last non-AC diff'),
         ('q', 'quit', 'Quit'),
     ]
 
@@ -406,7 +407,10 @@ class BocaRunsApp(App):
     def action_quit(self) -> None:
         self.exit()
 
-    async def action_show_diff(self) -> None:
+    async def action_show_non_ac_diff(self) -> None:
+        await self.action_show_diff(last_non_ac=True)
+
+    async def action_show_diff(self, last_non_ac: bool = False) -> None:
         # Use currently highlighted row; selection not required
         key_str = self._highlighted_key
         if key_str is None:
@@ -430,7 +434,7 @@ class BocaRunsApp(App):
             and (r.user or '').strip() == team
             and r.site_number == site_number
             and r.outcome is not None
-            # and r.outcome != Outcome.ACCEPTED
+            and (not last_non_ac or r.outcome != Outcome.ACCEPTED)
             and (
                 (r.time < run.time)
                 or (r.time == run.time and r.run_number < run.run_number)
