@@ -10,8 +10,14 @@ from textual.widgets import RichLog
 
 def detect_language(path: pathlib.Path) -> str:
     ext = path.suffix.lower().lstrip('.')
-    if ext in {'py', 'cpp', 'cc', 'cxx', 'hpp', 'hxx', 'h'}:
-        return 'cpp' if ext in {'cpp', 'cc', 'cxx', 'hpp', 'hxx', 'h'} else 'python'
+    if ext in {'py', 'pyw'}:
+        return 'python'
+    if ext in {'cpp', 'cc', 'cxx', 'hpp', 'hxx', 'h'}:
+        return 'cpp'
+    if ext in {'java'}:
+        return 'java'
+    if ext in {'kt', 'kts'}:
+        return 'kotlin'
     if ext in {
         'json',
         'yml',
