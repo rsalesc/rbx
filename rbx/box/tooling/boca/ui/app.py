@@ -316,7 +316,10 @@ class BocaRunsApp(App):
             while True:
                 try:
                     await asyncio.sleep(max(1, int(self.refresh_interval)))
-                    await self._refresh_runs()
+                    if self.refresh_interval > 0:
+                        await self._refresh_runs()
+                    else:
+                        await asyncio.sleep(1)
                 except asyncio.CancelledError:
                     break
                 except Exception:
