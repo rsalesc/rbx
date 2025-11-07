@@ -137,14 +137,11 @@ class BocaScraper:
         password: Optional[str] = None,
         throttler: Optional[Throttler] = None,
         verbose: bool = False,
-        is_judge: bool = False,
+        is_judge: Optional[bool] = None,
     ):
-        self.base_url = _parse_env_var('BOCA_BASE_URL', base_url)
-        self.username = _parse_env_var('BOCA_USERNAME', username)
-        self.password = _parse_env_var('BOCA_PASSWORD', password)
+        self._fill_credentials(base_url, username, password, is_judge)
         self.verbose = verbose
         self.loggedIn = False
-        self.is_judge = is_judge
         self.throttler = throttler or Throttler(max_req=1, period=1)
         self.br = mechanize.Browser()
         self.br.set_handle_robots(False)
@@ -154,6 +151,37 @@ class BocaScraper:
                 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.1) Gecko/2008071615 Fedora/3.0.1-1.fc9 Firefox/3.0.1',
             )
         ]
+
+    def _fill_credentials(
+        self,
+        base_url: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        is_judge: Optional[bool] = None,
+    ):
+        self.base_url = None
+        self.username = None
+        self.password = None
+        self.is_judge = None
+        if base_url is not None:
+            self.base_url = base_url
+        if username is not None:
+            self.username = username
+        if password is not None:
+            self.password = password
+        if is_judge is not None:
+            self.is_judge = is_judge
+        else:
+            # If BOCA_USERNAME is set, this is a judge.
+            self.is_judge = not utils.environ().get('BOCA_USERNAME')
+
+        self.base_url = _parse_env_var('BOCA_BASE_URL', self.base_url)
+        if self.is_judge:
+            self.username = _parse_env_var('BOCA_JUDGE_USERNAME', self.username)
+            self.password = _parse_env_var('BOCA_JUDGE_PASSWORD', self.password)
+        else:
+            self.username = _parse_env_var('BOCA_USERNAME', self.username)
+            self.password = _parse_env_var('BOCA_PASSWORD', self.password)
 
     def log(self, message: str):
         if self.verbose:
@@ -940,8 +968,9 @@ def get_boca_scraper(
     base_url: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
+    is_judge: Optional[bool] = None,
 ) -> BocaScraper:
-    return BocaScraper(base_url, username, password)
+    return BocaScraper(base_url, username, password, is_judge=is_judge)
 
 
 class ContestSnapshot:
