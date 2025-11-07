@@ -38,7 +38,7 @@ class BocaRunsApp(App):
     # Compact layout styling for filters, mode indicator and teams panel
     CSS = """
         #left_panel {
-            width: 2fr;
+            width: 3fr;
         }
         #right_panel {
             width: 3fr;
@@ -298,7 +298,7 @@ class BocaRunsApp(App):
             if run.outcome is not None and run.outcome == Outcome.ACCEPTED:
                 flag = self._small_diff_flags.get(row_key)
                 if flag:
-                    star = '*'
+                    star = '[red]*[/red]'
             table.add_row(
                 f'{run.run_number}{star}',
                 str(run.site_number),
