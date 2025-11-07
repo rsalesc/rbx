@@ -1,3 +1,15 @@
+## 0.20.1rc4 (2025-11-07)
+
+### Fix
+
+- ensure view refreshes do not deselected things
+- pause refresh with zero
+- ui friendly magenta
+
+### Refactor
+
+- \remove unused code
+
 ## 0.20.1rc3 (2025-11-07)
 
 ### Fix
