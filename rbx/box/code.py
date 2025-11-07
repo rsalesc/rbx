@@ -695,12 +695,18 @@ def compile_item(
 
     # Create sentinel to indicate this executable is sanitized.
     cacher = package.get_file_cacher()
-    if sanitized.should_sanitize():
-        cacher.set_metadata(
-            compiled_digest.value, 'compilation', CompilationMetadata(is_sanitized=True)
-        )
-    else:
-        cacher.set_metadata(compiled_digest.value, 'compilation', None)
+    with grading_context.cache_level(
+        grading_context.CacheLevel.NO_CACHE,
+        when=lambda: is_path_remote(code.path),
+    ):
+        if sanitized.should_sanitize():
+            cacher.set_metadata(
+                compiled_digest.value,
+                'compilation',
+                CompilationMetadata(is_sanitized=True),
+            )
+        else:
+            cacher.set_metadata(compiled_digest.value, 'compilation', None)
 
     return compiled_digest.value
 
