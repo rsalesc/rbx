@@ -1,3 +1,9 @@
+## 0.20.1rc3 (2025-11-07)
+
+### Fix
+
+- fix compilation error in scraping
+
 ## 0.20.1rc2 (2025-11-07)
 
 ### Fix
