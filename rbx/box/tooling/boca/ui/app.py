@@ -60,6 +60,7 @@ class BocaRunsApp(App):
         #refresh_input { width: 12; }
         #diff_label { width: 4; }
         #diff_input { width: 10; }
+            #team_input { width: 1fr; }
         #mode_indicator {
             height: 1;
             padding: 0 1;
@@ -72,6 +73,7 @@ class BocaRunsApp(App):
     pending_requests: reactive[int] = reactive(0)
     verdict_filter: reactive[Optional[str]] = reactive(None)
     problem_filter: reactive[Optional[str]] = reactive(None)
+    team_filter: reactive[Optional[str]] = reactive(None)
     refresh_interval: reactive[int] = reactive(30)
     contest_id: reactive[Optional[str]] = reactive(None)
 
@@ -123,6 +125,10 @@ class BocaRunsApp(App):
                             str(self.small_diff_threshold),
                             id='diff_input',
                             placeholder='5',
+                        )
+                        yield Input(
+                            placeholder='Team filter (substring, case-insensitive)',
+                            id='team_input',
                         )
                 table = DataTable(id='runs_table')
                 table.add_columns(
@@ -235,6 +241,10 @@ class BocaRunsApp(App):
     def _passes_filters(self, run: BocaRun) -> bool:
         if self.problem_filter and self.problem_filter != '__all__':
             if run.problem_shortname != self.problem_filter:
+                return False
+        if self.team_filter:
+            team_name = (run.user or '').strip()
+            if self.team_filter.lower() not in team_name.lower():
                 return False
         if self.mode in ('judged', 'both'):
             if self.verdict_filter and self.verdict_filter != '__all__':
@@ -566,6 +576,12 @@ class BocaRunsApp(App):
             self.small_diff_threshold = new_value
         except ValueError:
             return
+
+    @on(Input.Changed, '#team_input')
+    def _on_team_filter_changed(self, event: Input.Changed) -> None:
+        raw = (event.value or '').strip()
+        self.team_filter = raw if raw else None
+        self._reload_table()
 
     # --- Small diff threshold configuration ---
     small_diff_threshold: reactive[int] = reactive(5)
