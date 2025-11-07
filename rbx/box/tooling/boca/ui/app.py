@@ -259,24 +259,6 @@ class BocaRunsApp(App):
                     return False
         return True
 
-    def _outcome_to_expected(self, outcome: Outcome) -> ExpectedOutcome:
-        if outcome == Outcome.ACCEPTED:
-            return ExpectedOutcome.ACCEPTED
-        if outcome == Outcome.WRONG_ANSWER:
-            return ExpectedOutcome.WRONG_ANSWER
-        if outcome in (Outcome.TIME_LIMIT_EXCEEDED, Outcome.IDLENESS_LIMIT_EXCEEDED):
-            return ExpectedOutcome.TIME_LIMIT_EXCEEDED
-        if outcome == Outcome.MEMORY_LIMIT_EXCEEDED:
-            return ExpectedOutcome.MEMORY_LIMIT_EXCEEDED
-        if outcome == Outcome.RUNTIME_ERROR:
-            return ExpectedOutcome.RUNTIME_ERROR
-        if outcome == Outcome.OUTPUT_LIMIT_EXCEEDED:
-            return ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED
-        if outcome == Outcome.JUDGE_FAILED:
-            return ExpectedOutcome.JUDGE_FAILED
-        # Fallback
-        return ExpectedOutcome.INCORRECT
-
     def _reload_table(self) -> None:
         table = self.query_one('#runs_table', DataTable)
         table.clear()
