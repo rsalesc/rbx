@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, List, Optional
@@ -48,22 +49,23 @@ class BocaRunsApp(App):
                 margin: 0 1;
             }
         #filters {
-            height: 3;
             padding: 0 1;
             margin: 0 1;
         }
+        #filters_row1 { }
+        #filters_row2 { }
         #problem_select { width: 24; }
         #verdict_select { width: 20; }
-        #refresh_label { width: 18; }
-        #refresh_input { width: 8; }
+        #refresh_label { width: 6; }
+        #refresh_input { width: 12; }
+        #diff_label { width: 4; }
+        #diff_input { width: 10; }
         #mode_indicator {
             height: 1;
             padding: 0 1;
             margin: 0 1;
         }
-        DataTable {
-            height: 1fr;
-        }
+        #runs_table { height: 3fr; }
         """
 
     mode: reactive[str] = reactive('judged')
@@ -88,6 +90,8 @@ class BocaRunsApp(App):
         self._cache_base: Optional[Path] = None
         self._runs_dir: Optional[Path] = None
         self._prefetch_inflight: set[str] = set()
+        # Small diff detection cache: run_key -> is_small_diff
+        self._small_diff_flags: dict[str, bool] = {}
         # Prioritized scraper executor (serializes calls, honors priority)
         self.PRIORITY_USER = 0
         self.PRIORITY_NORMAL = 5
@@ -103,13 +107,23 @@ class BocaRunsApp(App):
         with Horizontal():
             with Vertical(id='left_panel'):
                 yield Static('', id='mode_indicator')
-                with Horizontal(id='filters'):
-                    yield Select([], prompt='Problem', id='problem_select')
-                    yield Select([], prompt='Verdict', id='verdict_select')
-                    yield Static('Ref (s):', id='refresh_label')
-                    yield Input(
-                        str(self.refresh_interval), id='refresh_input', placeholder='30'
-                    )
+                with Vertical(id='filters'):
+                    with Horizontal(id='filters_row1'):
+                        yield Select([], prompt='Problem', id='problem_select')
+                        yield Select([], prompt='Verdict', id='verdict_select')
+                    with Horizontal(id='filters_row2'):
+                        yield Static('Ref:', id='refresh_label')
+                        yield Input(
+                            str(self.refresh_interval),
+                            id='refresh_input',
+                            placeholder='30',
+                        )
+                        yield Static('Δ:', id='diff_label')
+                        yield Input(
+                            str(self.small_diff_threshold),
+                            id='diff_input',
+                            placeholder='5',
+                        )
                 table = DataTable(id='runs_table')
                 table.add_columns(
                     'Run',
@@ -122,6 +136,7 @@ class BocaRunsApp(App):
                 )
                 table.cursor_type = 'row'
                 yield table
+                yield Static('', id='left_spacer')
             with Vertical(id='right_panel'):
                 # Shows which submission is currently selected
                 yield Static('No run selected.', id='selection_info')
@@ -214,6 +229,8 @@ class BocaRunsApp(App):
         self._update_mode_indicator()
         # Prefetch codes for runs not yet cached (non-blocking)
         asyncio.create_task(self._prefetch_missing_runs())
+        # Compute small-diff markers in background (non-blocking)
+        asyncio.create_task(self._compute_small_diffs())
 
     def _passes_filters(self, run: BocaRun) -> bool:
         if self.problem_filter and self.problem_filter != '__all__':
@@ -267,8 +284,13 @@ class BocaRunsApp(App):
             self.log(
                 f'_reload_table: add row key={row_key} problem={run.problem_shortname} team={(run.user or "").strip()} verdict={verdict} status={run.status}'
             )
+            star = ''
+            if run.outcome is not None and run.outcome == Outcome.ACCEPTED:
+                flag = self._small_diff_flags.get(row_key)
+                if flag:
+                    star = '*'
             table.add_row(
-                str(run.run_number),
+                f'{run.run_number}{star}',
                 str(run.site_number),
                 run.problem_shortname,
                 verdict,
@@ -407,6 +429,43 @@ class BocaRunsApp(App):
     def action_quit(self) -> None:
         self.exit()
 
+    async def action_show_options(self) -> None:
+        # Open options without waiting; handle result in on_screen_dismissed
+        try:
+            self.push_screen(
+                _OptionsScreen(self.refresh_interval, self.small_diff_threshold)
+            )
+        except Exception:
+            return
+
+    def on_screen_dismissed(self, event) -> None:  # type: ignore[override]
+        # Capture result from options modal
+        if isinstance(event.screen, _OptionsScreen):
+            result = getattr(event, 'result', None)
+            self.log(f'on_screen_dismissed: options result={result!r}')
+            if not isinstance(result, dict):
+                return
+            try:
+                new_refresh = int(result.get('refresh_interval', self.refresh_interval))
+                if new_refresh > 0:
+                    self.refresh_interval = new_refresh
+                    self.log(f'on_screen_dismissed: applied refresh={new_refresh}')
+            except Exception:
+                pass
+            try:
+                new_delta = int(
+                    result.get('small_diff_threshold', self.small_diff_threshold)
+                )
+                if new_delta > 0:
+                    self.small_diff_threshold = new_delta
+                    self.log(f'on_screen_dismissed: applied diff={new_delta}')
+            except Exception:
+                pass
+            try:
+                self.notify('Options saved', severity='information')
+            except Exception:
+                pass
+
     async def action_show_non_ac_diff(self) -> None:
         await self.action_show_diff(last_non_ac=True)
 
@@ -425,30 +484,34 @@ class BocaRunsApp(App):
         problem = run.problem_shortname
         site_number = run.site_number
 
-        # Find latest previous run for same problem and team (same site),
-        # ordered by time, tie-broken by run number
-        candidates = [
-            r
-            for r in self._runs
-            if r.problem_shortname == problem
-            and (r.user or '').strip() == team
-            and r.site_number == site_number
-            and r.outcome is not None
-            and (not last_non_ac or r.outcome != Outcome.ACCEPTED)
-            and (
-                (r.time < run.time)
-                or (r.time == run.time and r.run_number < run.run_number)
-            )
-        ]
-
-        if not candidates:
-            self.notify(
-                'No previous non-AC run found for this team and problem.',
-                severity='error',
-            )
-            return
-
-        prev = max(candidates, key=lambda r: (r.time, r.run_number))
+        # Find latest previous run according to chosen mode
+        if last_non_ac:
+            prev = self._find_last_non_ac_before(run)
+            if prev is None:
+                self.notify(
+                    'No previous non-AC run found for this team and problem.',
+                    severity='error',
+                )
+                return
+        else:
+            candidates = [
+                r
+                for r in self._runs
+                if r.problem_shortname == problem
+                and (r.user or '').strip() == team
+                and r.site_number == site_number
+                and r.outcome is not None
+                and (
+                    (r.time < run.time)
+                    or (r.time == run.time and r.run_number < run.run_number)
+                )
+            ]
+            if not candidates:
+                self.notify(
+                    'No previous run found for this team and problem.', severity='error'
+                )
+                return
+            prev = max(candidates, key=lambda r: (r.time, r.run_number))
 
         try:
             path_current, path_prev = await asyncio.gather(
@@ -492,6 +555,24 @@ class BocaRunsApp(App):
         value = event.value
         self.verdict_filter = None if value is None else str(value)
         self._reload_table()
+
+    @on(Input.Changed, '#diff_input')
+    def _on_small_diff_threshold_changed(self, event: Input.Changed) -> None:
+        raw = (event.value or '').strip()
+        try:
+            new_value = int(raw)
+            if new_value <= 0:
+                return
+            self.small_diff_threshold = new_value
+        except ValueError:
+            return
+
+    # --- Small diff threshold configuration ---
+    small_diff_threshold: reactive[int] = reactive(5)
+
+    def watch_small_diff_threshold(self, value: int) -> None:  # called on change
+        # Recompute markers with new threshold
+        asyncio.create_task(self._compute_small_diffs())
 
     @on(DataTable.RowSelected, '#runs_table')
     async def _on_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -557,6 +638,28 @@ class BocaRunsApp(App):
         path.write_text(detailed.code)
         self.log(f'_write_temp_code: wrote code to {path} (len={len(detailed.code)})')
         return path
+
+    # --- Previous run helpers ---
+    def _find_last_non_ac_before(self, run: BocaRun) -> Optional[BocaRun]:
+        team = (run.user or '').strip()
+        problem = run.problem_shortname
+        site_number = run.site_number
+        candidates = [
+            r
+            for r in self._runs
+            if r.problem_shortname == problem
+            and (r.user or '').strip() == team
+            and r.site_number == site_number
+            and r.outcome is not None
+            # and r.outcome != Outcome.ACCEPTED
+            and (
+                (r.time < run.time)
+                or (r.time == run.time and r.run_number < run.run_number)
+            )
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda r: (r.time, r.run_number))
 
     # --- Request management & loading indicator ---
     async def _run_in_thread(
@@ -729,6 +832,65 @@ class BocaRunsApp(App):
                 # Ignore individual failures
                 pass
 
+    async def _compute_small_diffs(self) -> None:
+        """Compute and cache 'small diff' markers for AC runs.
+        A run is marked if its diff to the last non-AC run for same team/problem/site
+        has changed-line count <= small_diff_threshold.
+        """
+        # Reset flags and recompute for current runs
+        flags: dict[str, bool] = {}
+        threshold = int(self.small_diff_threshold)
+        for run in list(self._runs):
+            try:
+                if run.outcome is None or run.outcome != Outcome.ACCEPTED:
+                    continue
+                prev = self._find_last_non_ac_before(run)
+                if prev is None:
+                    continue
+                # Ensure both are cached (serialize via scraper worker)
+                path_current, path_prev = await asyncio.gather(
+                    self._ensure_cached_run(
+                        run, is_prefetch=True, priority=self.PRIORITY_PREFETCH
+                    ),
+                    self._ensure_cached_run(
+                        prev, is_prefetch=True, priority=self.PRIORITY_PREFETCH
+                    ),
+                )
+                if path_current is None or path_prev is None:
+                    continue
+                try:
+                    a = path_prev.read_text().splitlines()
+                    b = path_current.read_text().splitlines()
+                except Exception:
+                    continue
+                diff_iter = difflib.unified_diff(a, b, lineterm='')
+                changed = 0
+                for line in diff_iter:
+                    if not line:
+                        continue
+                    # Skip headers
+                    if (
+                        line.startswith('---')
+                        or line.startswith('+++')
+                        or line.startswith('@@')
+                    ):
+                        continue
+                    if line[0] == '+' or line[0] == '-':
+                        changed += 1
+                        if changed > threshold:
+                            break
+                key = self._run_key(run)
+                flags[key] = changed <= threshold
+            except Exception:
+                # Ignore per-run compute failures
+                pass
+        # Update cache and refresh table UI
+        self._small_diff_flags = flags
+        try:
+            self._reload_table()
+        except Exception:
+            pass
+
 
 def run_app() -> None:
     app = BocaRunsApp()
@@ -794,3 +956,85 @@ class _ContestIdScreen(Screen):
             # Keep screen open until non-empty
             return
         self.dismiss(value)
+
+
+class _OptionsScreen(Screen):
+    BINDINGS = [
+        ('enter', 'save', 'Save'),
+        ('escape', 'cancel', 'Cancel'),
+        ('q', 'cancel', 'Quit'),
+    ]
+
+    def __init__(self, refresh_interval: int, small_diff_threshold: int):
+        super().__init__()
+        self._initial_refresh = int(refresh_interval)
+        self._initial_diff = int(small_diff_threshold)
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Footer()
+        with Vertical():
+            yield Static('Options: Set values and press Enter to save')
+            yield Static('Auto refresh period (seconds):')
+            yield Input(value=str(self._initial_refresh), id='opt_refresh_input')
+            yield Static('Delta lines threshold (<= changes):')
+            yield Input(value=str(self._initial_diff), id='opt_diff_input')
+
+    def on_mount(self) -> None:
+        try:
+            inp = self.query_one('#opt_refresh_input', Input)
+            self.set_focus(inp)
+        except Exception:
+            pass
+
+    def _submit(self) -> None:
+        try:
+            refresh_inp = self.query_one('#opt_refresh_input', Input)
+            diff_inp = self.query_one('#opt_diff_input', Input)
+            refresh_raw = (refresh_inp.value or '').strip()
+            diff_raw = (diff_inp.value or '').strip()
+            self.log(
+                f'_OptionsScreen._submit: raw values refresh={refresh_raw!r} diff={diff_raw!r}'
+            )
+        except Exception:
+            self.log('_OptionsScreen._submit: failed to read inputs; dismissing None')
+            self.dismiss(None)
+            return
+        # Fallback to initial values on invalid/empty
+        try:
+            refresh_val = int(refresh_raw) if refresh_raw else self._initial_refresh
+            if refresh_val <= 0:
+                refresh_val = self._initial_refresh
+            self.log(f'_OptionsScreen._submit: parsed refresh={refresh_val}')
+        except Exception:
+            self.log(
+                f'_OptionsScreen._submit: invalid refresh={refresh_raw!r}; using {self._initial_refresh}'
+            )
+            refresh_val = self._initial_refresh
+        try:
+            diff_val = int(diff_raw) if diff_raw else self._initial_diff
+            if diff_val <= 0:
+                diff_val = self._initial_diff
+            self.log(f'_OptionsScreen._submit: parsed diff={diff_val}')
+        except Exception:
+            self.log(
+                f'_OptionsScreen._submit: invalid diff={diff_raw!r}; using {self._initial_diff}'
+            )
+            diff_val = self._initial_diff
+        payload = {'refresh_interval': refresh_val, 'small_diff_threshold': diff_val}
+        self.log(f'_OptionsScreen._submit: dismissing with {payload!r}')
+        self.dismiss(payload)
+
+    @on(Input.Submitted, '#opt_refresh_input')
+    def _on_submit_refresh(self, event: Input.Submitted) -> None:
+        self._submit()
+
+    @on(Input.Submitted, '#opt_diff_input')
+    def _on_submit_diff(self, event: Input.Submitted) -> None:
+        self._submit()
+
+    def action_save(self) -> None:
+        self._submit()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
