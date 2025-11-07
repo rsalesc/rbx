@@ -8,6 +8,7 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.coordinate import Coordinate
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, Select, Static
@@ -202,7 +203,12 @@ class BocaRunsApp(App):
         problem_options = [('All', '__all__')] + [
             (name, name) for name in problem_values
         ]
-        current_problem_value = getattr(problem_select, 'value', None)
+        # Prefer the stored filter value if present; otherwise use current widget value
+        current_problem_value = (
+            self.problem_filter
+            if self.problem_filter is not None
+            else getattr(problem_select, 'value', None)
+        )
         problem_select.set_options(problem_options)
         valid_values = {v for _, v in problem_options}
         problem_select.value = (
@@ -215,7 +221,18 @@ class BocaRunsApp(App):
             (eo.name.replace('_', ' ').title(), eo.name) for eo in ExpectedOutcome
         ]
         verdict_select.set_options(verdict_options)
-        verdict_select.value = '__all__'
+        # Preserve verdict selection similarly
+        current_verdict_value = (
+            self.verdict_filter
+            if self.verdict_filter is not None
+            else getattr(verdict_select, 'value', None)
+        )
+        verdict_valid_values = {v for _, v in verdict_options}
+        verdict_select.value = (
+            current_verdict_value
+            if current_verdict_value in verdict_valid_values
+            else '__all__'
+        )
 
     async def _refresh_runs(self) -> None:
         self.log(f'_refresh_runs: fetching runs (mode={self.mode})')
@@ -263,6 +280,8 @@ class BocaRunsApp(App):
 
     def _reload_table(self) -> None:
         table = self.query_one('#runs_table', DataTable)
+        # Remember current highlighted key to restore after reload
+        prev_highlight = self._highlighted_key
         table.clear()
         rows_added = 0
         first_key: Optional[str] = None
@@ -299,8 +318,30 @@ class BocaRunsApp(App):
             if first_key is None:
                 first_key = row_key
         self.log(f'_reload_table: added {rows_added} rows')
-        if self._highlighted_key is None and first_key is not None:
-            self._highlighted_key = first_key
+        # Try to restore previously highlighted row if it still exists
+        if prev_highlight is not None:
+            try:
+                row_idx = table.get_row_index(prev_highlight)
+                table.cursor_coordinate = Coordinate(row=row_idx, column=0)
+                self._highlighted_key = prev_highlight
+            except Exception:
+                # Fallback to first row if previous no longer exists
+                if first_key is not None:
+                    try:
+                        row_idx = table.get_row_index(first_key)
+                        table.cursor_coordinate = Coordinate(row=row_idx, column=0)
+                        self._highlighted_key = first_key
+                    except Exception:
+                        # As a last resort, just record the key
+                        self._highlighted_key = first_key
+        else:
+            if first_key is not None:
+                try:
+                    row_idx = table.get_row_index(first_key)
+                    table.cursor_coordinate = Coordinate(row=row_idx, column=0)
+                except Exception:
+                    pass
+                self._highlighted_key = first_key
 
     # --- Auto-refresh management ---
     def _cancel_auto_refresh_task(self) -> None:
