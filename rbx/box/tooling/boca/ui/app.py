@@ -13,7 +13,9 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, Select, Static
 
 from rbx.box.schema import ExpectedOutcome
-from rbx.box.solutions import get_full_outcome_markup_verdict
+from rbx.box.solutions import (
+    get_full_ui_friendly_outcome_markup_verdict,
+)
 from rbx.box.tooling.boca.scraper import (
     BocaDetailedRun,
     BocaProblem,
@@ -268,7 +270,9 @@ class BocaRunsApp(App):
             if not self._passes_filters(run):
                 continue
             if run.outcome is not None:
-                verdict = Text.from_markup(get_full_outcome_markup_verdict(run.outcome))
+                verdict = Text.from_markup(
+                    get_full_ui_friendly_outcome_markup_verdict(run.outcome)
+                )
             else:
                 verdict = '—'
             time_s = _format_time(run.time)

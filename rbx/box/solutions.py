@@ -917,6 +917,13 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
     return 'magenta'
 
 
+def get_ui_friendly_outcome_style_verdict(outcome: Outcome) -> str:
+    style = get_outcome_style_verdict(outcome)
+    if style == 'magenta':
+        return 'white on magenta'
+    return style
+
+
 def get_outcome_markup_verdict(outcome: Outcome) -> str:
     res = '✓'
     if outcome != Outcome.ACCEPTED:
@@ -936,8 +943,18 @@ def get_full_outcome_markup_verdict(outcome: Outcome, styled: bool = True) -> st
     if styled:
         style = get_outcome_style_verdict(outcome)
         name = f'[{style}]{name}[/{style}]'
-    res = f'{icon} {name}'
-    return res
+    return f'{icon} {name}'
+
+
+def get_full_ui_friendly_outcome_markup_verdict(
+    outcome: Outcome, styled: bool = True
+) -> str:
+    icon = get_outcome_markup_verdict(outcome)
+    name = outcome.name
+    if styled:
+        style = get_ui_friendly_outcome_style_verdict(outcome)
+        name = f'[{style}]{name}[/{style}]'
+    return f'{icon} {name}'
 
 
 def get_testcase_markup_verdict(eval: Evaluation) -> str:
