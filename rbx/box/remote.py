@@ -9,11 +9,15 @@ from rbx import console, utils
 from rbx.box import cd, package
 from rbx.box.formatting import href, ref
 from rbx.box.tooling.boca.scraper import BocaRun
+from rbx.box.ui.review_app import start_review
 
 PathLike = Union[str, pathlib.Path]
 
 
 class Expander(ABC):
+    def needs_review(self) -> bool:
+        return False
+
     def get_remote_path(self, path: pathlib.Path) -> pathlib.Path:
         return package.get_problem_remote_dir() / path
 
@@ -40,6 +44,9 @@ class MainExpander(Expander):
 
 class BocaExpander(Expander):
     BOCA_REGEX = re.compile(r'\@boca\/(\d+)(?:\-(\d+))?')
+
+    def needs_review(self) -> bool:
+        return True
 
     def get_match(self, path_str: str) -> Optional[Tuple[int, int]]:
         match = self.BOCA_REGEX.match(path_str)
@@ -131,6 +138,12 @@ def _expand_path(path: pathlib.Path) -> Optional[pathlib.Path]:
             return cached
         expanded = expander.expand(path)
         if expanded is not None:
+            if expander.needs_review() and not start_review(expanded):
+                console.console.print(
+                    f'[warning]Review approval required for {ref(expanded)}. Skipping.[/warning]'
+                )
+                expanded.unlink(missing_ok=True)
+                return None
             return _relative_to_pkg(expanded)
     return None
 

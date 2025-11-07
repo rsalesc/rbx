@@ -58,7 +58,7 @@ def start():
 
 
 def start_differ(path1: pathlib.Path, path2: pathlib.Path):
-    path1, path2 = remote.expand_files([path1, path2])
+    path1, path2 = remote.expand_files([str(path1), str(path2)])
 
     app = rbxDifferApp(path1, path2)
     app.run()
