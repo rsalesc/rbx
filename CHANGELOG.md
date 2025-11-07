@@ -1,3 +1,10 @@
+## 0.20.1rc1 (2025-11-07)
+
+### Fix
+
+- add substring team filter
+- select code and show on row highligh
+
 ## 0.20.1rc0 (2025-11-07)
 
 ### Fix
