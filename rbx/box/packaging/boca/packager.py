@@ -345,14 +345,17 @@ class BocaPackager(BasePackager):
 
         # Problem statement
         main_built_statement = self._get_main_built_statement(built_statements)
+        description_path = into_path / 'description'
+        description_path.mkdir(parents=True, exist_ok=True)
+        (description_path / 'problem.info').write_text(self._get_problem_info())
+        pdf_path = (description_path / self._get_problem_basename()).with_suffix('.pdf')
         if main_built_statement is not None:
-            description_path = into_path / 'description'
-            description_path.mkdir(parents=True, exist_ok=True)
-            (description_path / 'problem.info').write_text(self._get_problem_info())
             shutil.copyfile(
-                self._get_main_built_statement(built_statements).path,
-                (description_path / self._get_problem_basename()).with_suffix('.pdf'),
+                main_built_statement.path,
+                pdf_path,
             )
+        else:
+            pdf_path.touch(exist_ok=True)
 
         # Copy solutions
         solutions_path = into_path / 'solutions'
