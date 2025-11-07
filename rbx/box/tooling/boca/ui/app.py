@@ -21,6 +21,7 @@ from rbx.box.tooling.boca.scraper import (
 )
 from rbx.box.ui.widgets.code_box import CodeBox
 from rbx.box.ui.widgets.diff_box import DiffBox
+from rbx.config import get_app_path
 from rbx.grading.steps import Outcome
 
 
@@ -70,6 +71,7 @@ class BocaRunsApp(App):
     verdict_filter: reactive[Optional[str]] = reactive(None)
     problem_filter: reactive[Optional[str]] = reactive(None)
     refresh_interval: reactive[int] = reactive(30)
+    contest_id: reactive[Optional[str]] = reactive(None)
 
     def __init__(self, scraper: Optional[BocaScraper] = None):
         super().__init__()
@@ -80,9 +82,19 @@ class BocaRunsApp(App):
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
         self._selected_key: Optional[str] = None
         self._highlighted_key: Optional[str] = None
-        # Serialize all scraper calls to avoid crashes caused by parallelism
-        self._scraper_lock = asyncio.Lock()
+        # Background tasks
         self._refresh_task: Optional[asyncio.Task] = None
+        # Persistent cache
+        self._cache_base: Optional[Path] = None
+        self._runs_dir: Optional[Path] = None
+        self._prefetch_inflight: set[str] = set()
+        # Prioritized scraper executor (serializes calls, honors priority)
+        self.PRIORITY_USER = 0
+        self.PRIORITY_NORMAL = 5
+        self.PRIORITY_PREFETCH = 10
+        self._scraper_queue: 'asyncio.PriorityQueue[tuple[int, int, Callable[..., Any], tuple[Any, ...], dict[str, Any], asyncio.Future]]' = asyncio.PriorityQueue()  # type: ignore[type-arg]
+        self._scraper_seq: int = 0
+        self._scraper_worker_task: Optional[asyncio.Task] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -94,7 +106,7 @@ class BocaRunsApp(App):
                 with Horizontal(id='filters'):
                     yield Select([], prompt='Problem', id='problem_select')
                     yield Select([], prompt='Verdict', id='verdict_select')
-                    yield Static('Auto-refresh (s):', id='refresh_label')
+                    yield Static('Ref (s):', id='refresh_label')
                     yield Input(
                         str(self.refresh_interval), id='refresh_input', placeholder='30'
                     )
@@ -118,6 +130,17 @@ class BocaRunsApp(App):
         yield Footer()
 
     async def on_mount(self) -> None:
+        # Prompt for contest id before starting network work
+        try:
+            contest_id = await self.push_screen_wait(_ContestIdScreen())
+        except Exception:
+            contest_id = None
+        if not contest_id or not str(contest_id).strip():
+            # If user cancels or empty, fall back to 'default'
+            contest_id = 'default'
+        self.contest_id = str(contest_id).strip()
+        self._init_cache_paths()
+
         self.log('on_mount: scheduling login and initial refresh in background')
         # Run initial login + refresh in background to avoid blocking UI render
         asyncio.create_task(self._initial_load())
@@ -132,6 +155,7 @@ class BocaRunsApp(App):
         self.log('on_mount: completed')
         # Start auto-refresh loop
         self._start_auto_refresh_task()
+        self._start_scraper_worker()
 
     async def _initial_load(self) -> None:
         try:
@@ -143,7 +167,7 @@ class BocaRunsApp(App):
 
     async def _ensure_login(self) -> None:
         self.log('ensure_login: logging into BOCA via scraper')
-        await self._run_scraper(self.scraper.login)
+        await self._run_scraper(self.scraper.login, priority=self.PRIORITY_USER)
         self.log('ensure_login: login complete')
 
     def _populate_filters(self) -> None:
@@ -172,7 +196,9 @@ class BocaRunsApp(App):
     async def _refresh_runs(self) -> None:
         self.log(f'_refresh_runs: fetching runs (mode={self.mode})')
         only_judged = True if self.mode == 'judged' else False
-        runs = await self._run_scraper(self.scraper.list_runs, only_judged)
+        runs = await self._run_scraper(
+            self.scraper.list_runs, only_judged, priority=self.PRIORITY_NORMAL
+        )
         if self.mode == 'queue':
             runs = [r for r in runs if (r.outcome is None or r.status != 'judged')]
         elif self.mode == 'judged':
@@ -186,6 +212,8 @@ class BocaRunsApp(App):
         self._populate_filters()
         self._reload_table()
         self._update_mode_indicator()
+        # Prefetch codes for runs not yet cached (non-blocking)
+        asyncio.create_task(self._prefetch_missing_runs())
 
     def _passes_filters(self, run: BocaRun) -> bool:
         if self.problem_filter and self.problem_filter != '__all__':
@@ -419,18 +447,19 @@ class BocaRunsApp(App):
         prev = max(candidates, key=lambda r: (r.time, r.run_number))
 
         try:
-            detailed_current, detailed_prev = await asyncio.gather(
-                self._run_scraper(self.scraper.retrieve_run, run),
-                self._run_scraper(self.scraper.retrieve_run, prev),
+            path_current, path_prev = await asyncio.gather(
+                self._ensure_cached_run(
+                    run, is_prefetch=False, priority=self.PRIORITY_USER
+                ),
+                self._ensure_cached_run(
+                    prev, is_prefetch=False, priority=self.PRIORITY_USER
+                ),
             )
         except Exception:
-            self.notify('Failed to retrieve runs for diff.', severity='error')
+            self.notify('Failed to prepare runs for diff.', severity='error')
             return
 
-        try:
-            path_current = self._write_temp_code(detailed_current)
-            path_prev = self._write_temp_code(detailed_prev)
-        except Exception:
+        if path_current is None or path_prev is None:
             self.notify('Failed to prepare files for diff.', severity='error')
             return
 
@@ -482,14 +511,25 @@ class BocaRunsApp(App):
         self, run: BocaRun, expected_key: Optional[str]
     ) -> None:
         try:
-            detailed: BocaDetailedRun = await self._run_scraper(
-                self.scraper.retrieve_run, run
+            # If already cached, use immediately
+            cached = self._find_cached_run_path(run)
+            if cached is not None:
+                if expected_key is None or self._selected_key == expected_key:
+                    self.code_box.path = cached
+                else:
+                    self.log(
+                        f'_load_and_display_run: discard stale cached expected={expected_key} current={self._selected_key}'
+                    )
+                return
+
+            # Otherwise, ensure cached in background and then display
+            path = await self._ensure_cached_run(
+                run, is_prefetch=False, priority=self.PRIORITY_USER
             )
-            path = self._write_temp_code(detailed)
+            if path is None:
+                return
             if expected_key is None or self._selected_key == expected_key:
                 self.code_box.path = path
-                # Update info with filename after loading
-                self._update_selection_info(run, detailed)
             else:
                 self.log(
                     f'_load_and_display_run: discard stale result expected={expected_key} current={self._selected_key}'
@@ -525,16 +565,69 @@ class BocaRunsApp(App):
             self.pending_requests -= 1
 
     async def _run_scraper(
-        self, func: Callable[..., Any], *args: Any, **kwargs: Any
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        priority: int = 5,
+        **kwargs: Any,
     ) -> Any:
-        """Run a scraper call with serialization to prevent parallel execution.
+        """Schedule a scraper call with priority; executes serially in a worker."""
+        # Create a future to await result
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future = loop.create_future()
+        # Use sequence to keep FIFO within same priority
+        self._scraper_seq += 1
+        item = (priority, self._scraper_seq, func, args, kwargs, fut)
+        await self._scraper_queue.put(item)
+        # Ensure worker is running
+        self._start_scraper_worker()
+        return await fut
 
-        This wraps the blocking scraper function to ensure only one scraper
-        operation is in-flight at a time, while still leveraging the common
-        thread-offloading and pending-request tracking.
-        """
-        async with self._scraper_lock:
-            return await self._run_in_thread(func, *args, **kwargs)
+    def _start_scraper_worker(self) -> None:
+        if (
+            self._scraper_worker_task is not None
+            and not self._scraper_worker_task.done()
+        ):
+            return
+
+        async def _worker() -> None:
+            while True:
+                try:
+                    (
+                        priority,
+                        seq,
+                        func,
+                        args,
+                        kwargs,
+                        fut,
+                    ) = await self._scraper_queue.get()  # type: ignore[misc]
+                except asyncio.CancelledError:
+                    break
+                except Exception:
+                    # Should not happen; continue loop
+                    await asyncio.sleep(0)
+                    continue
+                try:
+                    if not fut.cancelled():
+                        result = await self._run_in_thread(func, *args, **kwargs)
+                        fut.set_result(result)
+                except asyncio.CancelledError:
+                    if not fut.cancelled():
+                        fut.set_exception(asyncio.CancelledError())
+                    break
+                except Exception as exc:
+                    if not fut.cancelled():
+                        fut.set_exception(exc)
+                finally:
+                    self._scraper_queue.task_done()
+
+        self._scraper_worker_task = asyncio.create_task(_worker())
+
+    def _cancel_scraper_worker(self) -> None:
+        task = self._scraper_worker_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._scraper_worker_task = None
 
     def watch_pending_requests(self, value: int) -> None:  # called on change
         self._update_loading_indicator()
@@ -544,14 +637,93 @@ class BocaRunsApp(App):
             indicator = self.query_one('#loading_indicator', Static)
         except Exception:
             return
+        prefetch_count = 0
+        try:
+            prefetch_count = len(self._prefetch_inflight)
+        except Exception:
+            prefetch_count = 0
         if self.pending_requests > 0:
-            indicator.update('⏳ Loading…')
+            if prefetch_count > 0:
+                indicator.update(f'⏳ Loading… (prefetch {prefetch_count})')
+            else:
+                indicator.update('⏳ Loading…')
+        elif prefetch_count > 0:
+            indicator.update(f'Prefetch in-flight: {prefetch_count}')
         else:
             indicator.update('')
 
     def on_unmount(self) -> None:
         # Ensure background tasks are stopped cleanly
         self._cancel_auto_refresh_task()
+        self._cancel_scraper_worker()
+
+    # --- Persistent cache helpers ---
+    def _init_cache_paths(self) -> None:
+        base = get_app_path() / 'boca' / 'contests' / (self.contest_id or 'default')
+        runs_dir = base / 'runs'
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        self._cache_base = base
+        self._runs_dir = runs_dir
+
+    def _run_key(self, run: BocaRun) -> str:
+        return f'{run.run_number}:{run.site_number}'
+
+    def _find_cached_run_path(self, run: BocaRun) -> Optional[Path]:
+        if self._runs_dir is None:
+            return None
+        pattern = f'{run.run_number}-{run.site_number}-*'
+        try:
+            for p in self._runs_dir.glob(pattern):
+                if p.is_file():
+                    return p
+        except Exception:
+            return None
+        return None
+
+    async def _ensure_cached_run(
+        self, run: BocaRun, *, is_prefetch: bool, priority: int
+    ) -> Optional[Path]:
+        # Check existing
+        existing = self._find_cached_run_path(run)
+        if existing is not None:
+            return existing
+        key = self._run_key(run)
+        # Track only prefetch tasks in the inflight set (for UI)
+        if is_prefetch:
+            self._prefetch_inflight.add(key)
+            self._update_loading_indicator()
+        try:
+            detailed: BocaDetailedRun = await self._run_scraper(
+                self.scraper.retrieve_run, run, priority=priority
+            )
+            filename = detailed.filename.name
+            safe_name = f'{detailed.run_number}-{detailed.site_number}-{filename}'
+            if self._runs_dir is None:
+                return None
+            path = self._runs_dir / safe_name
+            path.write_text(detailed.code)
+            self.log(
+                f'_ensure_cached_run: cached code to {path} (len={len(detailed.code)})'
+            )
+            return path
+        except Exception:
+            return None
+        finally:
+            if is_prefetch:
+                self._prefetch_inflight.discard(key)
+                self._update_loading_indicator()
+
+    async def _prefetch_missing_runs(self) -> None:
+        # Sequentially prefetch to honor scraper serialization
+        for run in list(self._runs):
+            try:
+                if self._find_cached_run_path(run) is None:
+                    await self._ensure_cached_run(
+                        run, is_prefetch=True, priority=self.PRIORITY_PREFETCH
+                    )
+            except Exception:
+                # Ignore individual failures
+                pass
 
 
 def run_app() -> None:
@@ -578,3 +750,43 @@ class _BocaDifferScreen(Screen):
     def on_mount(self) -> None:
         diff = self.query_one(DiffBox)
         diff.paths = (self._path1, self._path2)
+
+
+class _ContestIdScreen(Screen):
+    BINDINGS = [
+        ('q', 'app.pop_screen', 'Quit'),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Footer()
+        with Vertical():
+            yield Static('Enter Contest ID (existing data will be reused):')
+            existing = self._list_existing()
+            if existing:
+                yield Static('Existing: ' + ', '.join(existing))
+            yield Input(placeholder='contest-123', id='contest_input')
+
+    def on_mount(self) -> None:
+        try:
+            inp = self.query_one('#contest_input', Input)
+            self.set_focus(inp)
+        except Exception:
+            pass
+
+    def _list_existing(self) -> List[str]:
+        base = get_app_path() / 'boca' / 'contests'
+        if not base.exists():
+            return []
+        try:
+            return [p.name for p in base.iterdir() if p.is_dir()]
+        except Exception:
+            return []
+
+    @on(Input.Submitted, '#contest_input')
+    def _on_submit(self, event: Input.Submitted) -> None:
+        value = (event.value or '').strip()
+        if not value:
+            # Keep screen open until non-empty
+            return
+        self.dismiss(value)
