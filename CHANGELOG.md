@@ -1,3 +1,13 @@
+## 0.20.1rc0 (2025-11-07)
+
+### Fix
+
+- deal with small diffs
+- add two types of diffs
+- prefetch solutions in boca scraper view
+- vibe code a boca view
+- add code review for remote boca run
+
 ## 0.20.0 (2025-11-07)
 
 ### Fix
