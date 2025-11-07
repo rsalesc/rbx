@@ -56,6 +56,10 @@ def _parse_answer_as_outcome(answer: str) -> Optional[Outcome]:
         return Outcome.TIME_LIMIT_EXCEEDED
     if 'runtime error' in answer:
         return Outcome.RUNTIME_ERROR
+    if 'compilation error' in answer:
+        return Outcome.COMPILATION_ERROR
+    if 'contact staff' in answer:
+        return Outcome.JUDGE_FAILED
     return None
 
 

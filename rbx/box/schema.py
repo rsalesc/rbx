@@ -112,6 +112,11 @@ class ExpectedOutcome(AutoEnum):
     
     Only useful for checker tests."""
 
+    COMPILATION_ERROR = alias('compilation error', 'ce')  # type: ignore
+    """Expected outcome for solutions that finish with a compilation error verdict.
+    
+    Only useful for checker tests."""
+
     def style(self) -> str:
         if self == ExpectedOutcome.ANY:
             return 'orange'
@@ -127,6 +132,8 @@ class ExpectedOutcome(AutoEnum):
             return 'blue'
         if self.match(Outcome.MEMORY_LIMIT_EXCEEDED):
             return 'yellow'
+        if self.match(Outcome.COMPILATION_ERROR):
+            return 'blue'
         return 'magenta'
 
     def icon(self) -> str:
@@ -170,6 +177,8 @@ class ExpectedOutcome(AutoEnum):
     def match(self, outcome: Outcome) -> bool:
         if self == ExpectedOutcome.ANY:
             return True
+        if self == ExpectedOutcome.COMPILATION_ERROR:
+            return outcome == Outcome.COMPILATION_ERROR
         if self == ExpectedOutcome.ACCEPTED:
             return outcome == Outcome.ACCEPTED
         if self == ExpectedOutcome.ACCEPTED_OR_TLE:

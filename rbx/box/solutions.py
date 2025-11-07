@@ -912,6 +912,8 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
         return 'blue'
     if outcome == Outcome.MEMORY_LIMIT_EXCEEDED:
         return 'yellow'
+    if outcome == Outcome.COMPILATION_ERROR:
+        return 'blue'
     return 'magenta'
 
 

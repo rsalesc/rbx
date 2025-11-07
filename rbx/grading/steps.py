@@ -44,6 +44,7 @@ class Outcome(Enum):
     OUTPUT_LIMIT_EXCEEDED = 'output-limit-exceeded'
     JUDGE_FAILED = 'judge-failed'
     INTERNAL_ERROR = 'internal-error'
+    COMPILATION_ERROR = 'compilation-error'
 
     @classmethod
     def worst_outcome(cls, outcomes: Iterable['Outcome']) -> 'Outcome':
@@ -77,6 +78,8 @@ class Outcome(Enum):
             return 'FL'
         if self == Outcome.INTERNAL_ERROR:
             return 'IE'
+        if self == Outcome.COMPILATION_ERROR:
+            return 'CE'
         return 'XX'
 
 
