@@ -442,7 +442,11 @@ class BocaRunsApp(App):
         return run
 
     def _update_selection_info(
-        self, run: BocaRun, detailed: Optional[BocaDetailedRun] = None
+        self,
+        run: BocaRun,
+        detailed: Optional[BocaDetailedRun] = None,
+        *,
+        loading: bool = False,
     ) -> None:
         info = []
         verdict = run.outcome.name if run.outcome is not None else '—'
@@ -455,6 +459,8 @@ class BocaRunsApp(App):
         )
         if detailed is not None:
             info.append(f'File {detailed.filename.name}')
+        if loading:
+            info.append('⏳ [yellow]Loading code…[/yellow]')
         self.query_one('#selection_info', Static).update('\n'.join(info))
 
     def _update_mode_indicator(self) -> None:
@@ -652,6 +658,8 @@ class BocaRunsApp(App):
             if cached is not None:
                 if expected_key is None or self._selected_key == expected_key:
                     self.code_box.path = cached
+                    # Ensure selection info reflects final (not loading) state
+                    self._update_selection_info(run, loading=False)
                 else:
                     self.log(
                         f'_load_and_display_run: discard stale cached expected={expected_key} current={self._selected_key}'
@@ -659,6 +667,12 @@ class BocaRunsApp(App):
                 return
 
             # Otherwise, ensure cached in background and then display
+            # Indicate loading on the right panel and in the code box
+            if expected_key is None or self._selected_key == expected_key:
+                try:
+                    self._update_selection_info(run, loading=True)
+                except Exception:
+                    pass
             path = await self._ensure_cached_run(
                 run, is_prefetch=False, priority=self.PRIORITY_USER
             )
@@ -666,6 +680,8 @@ class BocaRunsApp(App):
                 return
             if expected_key is None or self._selected_key == expected_key:
                 self.code_box.path = path
+                # Clear loading indicator now that code is displayed
+                self._update_selection_info(run, loading=False)
             else:
                 self.log(
                     f'_load_and_display_run: discard stale result expected={expected_key} current={self._selected_key}'
