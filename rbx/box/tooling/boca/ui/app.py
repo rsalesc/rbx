@@ -89,6 +89,10 @@ class BocaRunsApp(App):
         self.scraper = scraper or get_boca_scraper()
         self._problems: List[BocaProblem] = []
         self._runs: List[BocaRun] = []
+        # Indexes for fast lookup/filtering
+        self._runs_by_problem: dict[str, List[BocaRun]] = {}
+        self._runs_by_team: dict[str, List[BocaRun]] = {}
+        self._runs_by_problem_user: dict[tuple[str, str], List[BocaRun]] = {}
         self._tmp_dir = Path(tempfile.gettempdir()) / 'rbx_boca_viewer'
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
         self._selected_key: Optional[str] = None
@@ -251,6 +255,8 @@ class BocaRunsApp(App):
             pass
         self._runs = runs
         self.log(f'_refresh_runs: fetched {len(self._runs)} runs')
+        # rebuild indexes for fast queries
+        self._rebuild_run_indexes()
         # refresh problem filter based on current runs
         self._populate_filters()
         self._reload_table()
@@ -259,6 +265,31 @@ class BocaRunsApp(App):
         asyncio.create_task(self._prefetch_missing_runs())
         # Compute small-diff markers in background (non-blocking)
         asyncio.create_task(self._compute_small_diffs())
+
+    def _rebuild_run_indexes(self) -> None:
+        by_problem: dict[str, List[BocaRun]] = {}
+        by_team: dict[str, List[BocaRun]] = {}
+        by_problem_user: dict[tuple[str, str], List[BocaRun]] = {}
+        for run in self._runs:
+            problem = run.problem_shortname
+            team = (run.user or '').strip()
+            by_problem.setdefault(problem, []).append(run)
+            by_team.setdefault(team, []).append(run)
+            by_problem_user.setdefault((problem, team), []).append(run)
+
+        # Sort each list to allow efficient previous-run scans
+        def _key_fn(r: BocaRun):
+            return (r.time, r.run_number)
+
+        for lst in by_problem.values():
+            lst.sort(key=_key_fn)
+        for lst in by_team.values():
+            lst.sort(key=_key_fn)
+        for lst in by_problem_user.values():
+            lst.sort(key=_key_fn)
+        self._runs_by_problem = by_problem
+        self._runs_by_team = by_team
+        self._runs_by_problem_user = by_problem_user
 
     def _passes_filters(self, run: BocaRun) -> bool:
         if self.problem_filter and self.problem_filter != '__all__':
@@ -545,12 +576,12 @@ class BocaRunsApp(App):
                 )
                 return
         else:
+            # Use indexed runs for (problem, team) and filter by site/time
+            indexed = self._runs_by_problem_user.get((problem, team), [])
             candidates = [
                 r
-                for r in self._runs
-                if r.problem_shortname == problem
-                and (r.user or '').strip() == team
-                and r.site_number == site_number
+                for r in indexed
+                if r.site_number == site_number
                 and r.outcome is not None
                 and (
                     (r.time < run.time)
@@ -712,22 +743,19 @@ class BocaRunsApp(App):
         team = (run.user or '').strip()
         problem = run.problem_shortname
         site_number = run.site_number
-        candidates = [
-            r
-            for r in self._runs
-            if r.problem_shortname == problem
-            and (r.user or '').strip() == team
-            and r.site_number == site_number
-            and r.outcome is not None
-            and r.outcome != Outcome.ACCEPTED
-            and (
-                (r.time < run.time)
-                or (r.time == run.time and r.run_number < run.run_number)
-            )
-        ]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda r: (r.time, r.run_number))
+        # Use pre-indexed list for (problem, team)
+        indexed = self._runs_by_problem_user.get((problem, team), [])
+        # List is sorted by (time, run_number); scan from the end for efficiency
+        for prev in reversed(indexed):
+            if prev.site_number != site_number:
+                continue
+            if prev.outcome is None or prev.outcome == Outcome.ACCEPTED:
+                continue
+            if (prev.time < run.time) or (
+                prev.time == run.time and prev.run_number < run.run_number
+            ):
+                return prev
+        return None
 
     # --- Request management & loading indicator ---
     async def _run_in_thread(
