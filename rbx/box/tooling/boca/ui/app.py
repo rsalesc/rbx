@@ -117,6 +117,9 @@ class BocaRunsApp(App):
         self._small_diff_cache: dict[str, dict[str, Any]] = {}
         # Contest id provided externally (defaults to 'default' if not provided)
         self.contest_id = str(contest_id).strip() if contest_id else 'default'
+        # Track last "team zoom" to allow restoring previous filter
+        self._team_zoom_prev_filter: Optional[str] = None
+        self._team_zoom_active_team: Optional[str] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -422,6 +425,8 @@ class BocaRunsApp(App):
         ('m', 'toggle_mode', 'Toggle mode'),
         ('d', 'show_diff', 'Last diff'),
         ('D', 'show_non_ac_diff', 'Last non-AC diff'),
+        ('p', 'toggle_problem_filter', 'Toggle problem filter'),
+        ('t', 'toggle_team_filter', 'Toggle team filter'),
         ('q', 'quit', 'Quit'),
     ]
 
@@ -507,6 +512,65 @@ class BocaRunsApp(App):
 
     async def action_refresh(self) -> None:
         await self._refresh_runs()
+
+    def action_toggle_problem_filter(self) -> None:
+        # Toggle between "All" and highlighted run's problem
+        try:
+            problem_select = self.query_one('#problem_select', Select)
+        except Exception:
+            return
+        # Zoom out first regardless of highlight state
+        if self.problem_filter and self.problem_filter != '__all__':
+            self.problem_filter = '__all__'
+            problem_select.value = '__all__'
+            self._reload_table()
+            return
+        # Zoom in requires a highlighted row
+        key_str = self._highlighted_key
+        run = self._run_from_row_key(key_str) if key_str is not None else None
+        if run is None:
+            try:
+                self.notify('Highlight a run first.', severity='error')
+            except Exception:
+                pass
+            return
+        self.problem_filter = run.problem_shortname
+        problem_select.value = run.problem_shortname
+        self._reload_table()
+
+    def action_toggle_team_filter(self) -> None:
+        # First press: save current filter and zoom to highlighted team.
+        # Second press: restore the saved filter.
+        try:
+            team_input = self.query_one('#team_input', Input)
+        except Exception:
+            return
+        # Zoom out (restore previous) does not require highlight
+        if self._team_zoom_prev_filter is not None:
+            prev = self._team_zoom_prev_filter
+            self._team_zoom_prev_filter = None
+            self._team_zoom_active_team = None
+            team_input.value = prev
+            self.team_filter = prev if prev else None
+            self._reload_table()
+            return
+        # Zoom in requires a highlighted row
+        key_str = self._highlighted_key
+        run = self._run_from_row_key(key_str) if key_str is not None else None
+        if run is None:
+            try:
+                self.notify('Highlight a run first.', severity='error')
+            except Exception:
+                pass
+            return
+        team_name = (run.user or '').strip()
+        # Save current filter and zoom into highlighted team
+        current_value = (team_input.value or '').strip()
+        self._team_zoom_prev_filter = current_value
+        self._team_zoom_active_team = team_name
+        team_input.value = team_name
+        self.team_filter = team_name if team_name else None
+        self._reload_table()
 
     def action_quit(self) -> None:
         self.exit()
