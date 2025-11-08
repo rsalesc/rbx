@@ -52,9 +52,7 @@ class Testset(BaseXmlModel, search_mode='unordered'):
     outputPattern: Optional[str] = element('output-path-pattern', default=None)
     answerPattern: Optional[str] = element('answer-path-pattern', default=None)
 
-    tests: List[Test] = wrapped(
-        'tests', element(tag='test', default=None), default_factory=list
-    )
+    tests: List[Test] = wrapped('tests', element(tag='test'), default_factory=list)
 
 
 class Judging(BaseXmlModel, search_mode='unordered'):
