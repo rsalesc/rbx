@@ -1,6 +1,6 @@
 import pathlib
 import tempfile
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional, Set
 
 import rich
 import rich.progress
@@ -26,6 +26,10 @@ from rbx.box.testcase_utils import (
 )
 
 _API_URL = 'https://polygon.codeforces.com/api'
+
+ParamChoices = Literal['statements', 'solutions', 'tests', 'files']
+
+ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
 
 
 def _get_polygon_api() -> api.Polygon:
@@ -378,29 +382,48 @@ def _normalize_problem_name(name: str) -> str:
 
 
 async def upload_problem(
-    name: str, main_language: Optional[str], upload_as_english: bool = False
+    name: str,
+    main_language: Optional[str],
+    upload_as_english: bool = False,
+    upload_only: Optional[Set[str]] = None,
+    dont_upload: Optional[Set[str]] = None,
 ):
+    if upload_only is None:
+        upload_only = set()
+    if dont_upload is None:
+        dont_upload = set()
+
+    if not upload_only:
+        upload_only = set(ALL_PARAMS_CHOICES)
+
+    which_upload = upload_only - dont_upload
     pkg = package.find_problem_package_or_die()
     name = _normalize_problem_name(name)
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
-    _update_rbx_header(problem)
-    _update_checker(problem)
+
+    if 'files' in which_upload:
+        _update_rbx_header(problem)
+        _update_checker(problem)
 
     if (
         pkg.type == TaskType.COMMUNICATION
         and package.get_interactor_or_nil() is not None
     ):
-        _update_interactor(problem)
+        if 'files' in which_upload:
+            _update_interactor(problem)
 
     # if pkg.validator is not None:
     #     _upload_validator(problem)
 
-    _upload_solutions(problem)
-    _upload_testcases(problem)
-    _upload_statement(
-        problem, main_language=main_language, upload_as_english=upload_as_english
-    )
+    if 'solutions' in which_upload:
+        _upload_solutions(problem)
+    if 'tests' in which_upload:
+        _upload_testcases(problem)
+    if 'statements' in which_upload:
+        _upload_statement(
+            problem, main_language=main_language, upload_as_english=upload_as_english
+        )
 
     # Commit.
     console.console.print('Committing changes...')

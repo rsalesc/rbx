@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 import syncer
 import typer
@@ -34,22 +34,16 @@ async def polygon(
         '--upload-as-english',
         help='If set, will force the main statement to be uploaded in English.',
     ),
-    # upload_only: List[str] = typer.Option(
-    #     [],
-    #     '--upload-only',
-    #     help='Only upload the following types of assets to Polygon.',
-    #     case_sensitive=False,
-    #     multiple=True,
-    #     choices=['statements', 'tests', 'solutions', 'files'],
-    # ),
-    # dont_upload: List[str] = typer.Option(
-    #     [],
-    #     '--upload-skip',
-    #     help='Skip uploading the following types of assets to Polygon.',
-    #     case_sensitive=False,
-    #     multiple=True,
-    #     choices=['statements', 'tests', 'solutions', 'files'],
-    # ),
+    upload_only: Optional[List[str]] = typer.Option(  # noqa: B008  # type: ignore
+        None,
+        '--upload-only',
+        help='Only upload the following types of assets to Polygon.',
+    ),
+    dont_upload: Optional[List[str]] = typer.Option(  # noqa: B008  # type: ignore
+        None,
+        '--upload-skip',
+        help='Skip uploading the following types of assets to Polygon.',
+    ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
@@ -64,6 +58,8 @@ async def polygon(
             name=get_problem_name_with_contest_info(),
             main_language=language,
             upload_as_english=upload_as_english,
+            upload_only=set(upload_only or []),
+            dont_upload=set(dont_upload or []),
         )
 
 
