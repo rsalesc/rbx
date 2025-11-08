@@ -15,5 +15,15 @@ def scrape() -> None:
 
 
 @app.command('view', help='Open Textual UI to visualize BOCA submissions.')
-def view() -> None:
-    run_app()
+def view(
+    contest_id: str = typer.Option(
+        None,
+        '--contest-id',
+        '-c',
+        prompt='Contest ID',
+        help='Contest identifier to load (stored under app data).',
+    ),
+) -> None:
+    # Normalize empty input to None to let the UI apply default
+    cid = (contest_id or '').strip() or None
+    run_app(contest_id=cid)

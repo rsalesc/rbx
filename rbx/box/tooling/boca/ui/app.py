@@ -1,5 +1,6 @@
 import asyncio
 import difflib
+import json
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, List, Optional
@@ -81,7 +82,9 @@ class BocaRunsApp(App):
     refresh_interval: reactive[int] = reactive(30)
     contest_id: reactive[Optional[str]] = reactive(None)
 
-    def __init__(self, scraper: Optional[BocaScraper] = None):
+    def __init__(
+        self, scraper: Optional[BocaScraper] = None, contest_id: Optional[str] = None
+    ):
         super().__init__()
         self.scraper = scraper or get_boca_scraper()
         self._problems: List[BocaProblem] = []
@@ -105,6 +108,11 @@ class BocaRunsApp(App):
         self._scraper_queue: 'asyncio.PriorityQueue[tuple[int, int, Callable[..., Any], tuple[Any, ...], dict[str, Any], asyncio.Future]]' = asyncio.PriorityQueue()  # type: ignore[type-arg]
         self._scraper_seq: int = 0
         self._scraper_worker_task: Optional[asyncio.Task] = None
+        # Small diff result cache: run_key -> metadata/results
+        # Used to avoid recomputing on every refresh and to drive UI status.
+        self._small_diff_cache: dict[str, dict[str, Any]] = {}
+        # Contest id provided externally (defaults to 'default' if not provided)
+        self.contest_id = str(contest_id).strip() if contest_id else 'default'
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -143,6 +151,7 @@ class BocaRunsApp(App):
                     'Time',
                     'Status',
                     'Team',
+                    'BG',
                 )
                 table.cursor_type = 'row'
                 yield table
@@ -155,18 +164,9 @@ class BocaRunsApp(App):
         yield Footer()
 
     async def on_mount(self) -> None:
-        # Prompt for contest id before starting network work
-        try:
-            contest_id = await self.push_screen_wait(_ContestIdScreen())
-        except Exception:
-            contest_id = None
-        if not contest_id or not str(contest_id).strip():
-            # If user cancels or empty, fall back to 'default'
-            contest_id = 'default'
-        self.contest_id = str(contest_id).strip()
+        # Initialize cache paths based on pre-configured contest id
         self._init_cache_paths()
-
-        self.log('on_mount: scheduling login and initial refresh in background')
+        self.log(f'on_mount: using contest_id={self.contest_id!r}')
         # Run initial login + refresh in background to avoid blocking UI render
         asyncio.create_task(self._initial_load())
         self._update_mode_indicator()
@@ -178,9 +178,11 @@ class BocaRunsApp(App):
         except Exception:
             self.log('on_mount: failed to set focus to runs_table')
         self.log('on_mount: completed')
-        # Start auto-refresh loop
+        # Start auto-refresh loop and scraper worker
         self._start_auto_refresh_task()
         self._start_scraper_worker()
+
+    # Contest id is now provided externally (CLI); in-app prompt removed
 
     async def _initial_load(self) -> None:
         try:
@@ -312,6 +314,7 @@ class BocaRunsApp(App):
                 time_s,
                 run.status,
                 run.user or '',
+                self._bg_status_for_run(run),
                 key=row_key,
             )
             rows_added += 1
@@ -461,7 +464,9 @@ class BocaRunsApp(App):
             'queue': 'Queue',
             'both': 'Both',
         }.get(self.mode, self.mode)
-        indicator.update(f'Mode: {label} (press "m" to change)')
+        indicator.update(
+            f'Contest: {self.contest_id or "?"} | Mode: {label} (press "m" to change)'
+        )
 
     async def action_refresh(self) -> None:
         await self._refresh_runs()
@@ -698,7 +703,7 @@ class BocaRunsApp(App):
             and (r.user or '').strip() == team
             and r.site_number == site_number
             and r.outcome is not None
-            # and r.outcome != Outcome.ACCEPTED
+            and r.outcome != Outcome.ACCEPTED
             and (
                 (r.time < run.time)
                 or (r.time == run.time and r.run_number < run.run_number)
@@ -825,11 +830,10 @@ class BocaRunsApp(App):
     def _find_cached_run_path(self, run: BocaRun) -> Optional[Path]:
         if self._runs_dir is None:
             return None
-        pattern = f'{run.run_number}-{run.site_number}-*'
         try:
-            for p in self._runs_dir.glob(pattern):
-                if p.is_file():
-                    return p
+            candidate = self._runs_dir / f'{run.run_number}-{run.site_number}'
+            if candidate.is_file():
+                return candidate
         except Exception:
             return None
         return None
@@ -850,12 +854,26 @@ class BocaRunsApp(App):
             detailed: BocaDetailedRun = await self._run_scraper(
                 self.scraper.retrieve_run, run, priority=priority
             )
-            filename = detailed.filename.name
-            safe_name = f'{detailed.run_number}-{detailed.site_number}-{filename}'
             if self._runs_dir is None:
                 return None
-            path = self._runs_dir / safe_name
+            # Write code file with simplified name '<run>-<site>'
+            base_name = f'{detailed.run_number}-{detailed.site_number}'
+            path = self._runs_dir / base_name
             path.write_text(detailed.code)
+            # Write metadata sidecar JSON with same stem
+            meta = {
+                'run_number': detailed.run_number,
+                'site_number': detailed.site_number,
+                'filename': str(getattr(detailed.filename, 'name', '')),
+                'language': str(getattr(detailed, 'language_repr', '') or ''),
+            }
+            try:
+                (self._runs_dir / f'{base_name}.json').write_text(
+                    json.dumps(meta, ensure_ascii=False)
+                )
+            except Exception:
+                # Metadata failures should not break caching
+                pass
             self.log(
                 f'_ensure_cached_run: cached code to {path} (len={len(detailed.code)})'
             )
@@ -879,31 +897,66 @@ class BocaRunsApp(App):
                 # Ignore individual failures
                 pass
 
+    def _is_small_diff_done_for_run(self, run: BocaRun) -> bool:
+        if run.outcome is None or run.outcome != Outcome.ACCEPTED:
+            return False
+        key = self._run_key(run)
+        entry = self._small_diff_cache.get(key)
+        if entry is None:
+            return False
+        try:
+            return (
+                int(entry.get('threshold', -1)) == int(self.small_diff_threshold)
+                and entry.get('verdict') == run.outcome.name
+            )
+        except Exception:
+            return False
+
+    def _bg_status_for_run(self, run: BocaRun) -> str:
+        has_p = self._find_cached_run_path(run) is not None
+        has_d = self._is_small_diff_done_for_run(run)
+        if has_p and has_d:
+            return 'PD'
+        if has_p:
+            return 'P'
+        if has_d:
+            return 'D'
+        return ''
+
     async def _compute_small_diffs(self) -> None:
         """Compute and cache 'small diff' markers for AC runs.
         A run is marked if its diff to the last non-AC run for same team/problem/site
         has changed-line count <= small_diff_threshold.
         """
-        # Reset flags and recompute for current runs
-        flags: dict[str, bool] = {}
         threshold = int(self.small_diff_threshold)
+        # Compute only for runs with missing/invalid cache
         for run in list(self._runs):
             try:
                 if run.outcome is None or run.outcome != Outcome.ACCEPTED:
                     continue
+                key = self._run_key(run)
+                cached = self._small_diff_cache.get(key)
+                verdict_name = run.outcome.name
+                if cached is not None:
+                    if (
+                        int(cached.get('threshold', -1)) == threshold
+                        and cached.get('verdict') == verdict_name
+                    ):
+                        # Cache is valid; skip recompute
+                        continue
+                # 1) If current submission has not been prefetched yet, skip for now
+                path_current = self._find_cached_run_path(run)
+                if path_current is None:
+                    continue
+                # 2) Ensure previous candidate is prefetched (fire request if needed)
                 prev = self._find_last_non_ac_before(run)
                 if prev is None:
+                    # No previous non-AC to compare against
                     continue
-                # Ensure both are cached (serialize via scraper worker)
-                path_current, path_prev = await asyncio.gather(
-                    self._ensure_cached_run(
-                        run, is_prefetch=True, priority=self.PRIORITY_PREFETCH
-                    ),
-                    self._ensure_cached_run(
-                        prev, is_prefetch=True, priority=self.PRIORITY_PREFETCH
-                    ),
+                path_prev = await self._ensure_cached_run(
+                    prev, is_prefetch=True, priority=self.PRIORITY_PREFETCH
                 )
-                if path_current is None or path_prev is None:
+                if path_prev is None:
                     continue
                 try:
                     a = path_prev.read_text().splitlines()
@@ -926,12 +979,32 @@ class BocaRunsApp(App):
                         changed += 1
                         if changed > threshold:
                             break
-                key = self._run_key(run)
-                flags[key] = changed <= threshold
+                self._small_diff_cache[key] = {
+                    'flag': changed <= threshold,
+                    'changed': changed,
+                    'threshold': threshold,
+                    'verdict': verdict_name,
+                }
             except Exception:
                 # Ignore per-run compute failures
                 pass
-        # Update cache and refresh table UI
+        # Update flags for current runs from valid cache
+        flags: dict[str, bool] = {}
+        for run in list(self._runs):
+            try:
+                if run.outcome is None or run.outcome != Outcome.ACCEPTED:
+                    continue
+                key = self._run_key(run)
+                entry = self._small_diff_cache.get(key)
+                if entry is None:
+                    continue
+                if (
+                    int(entry.get('threshold', -1)) == threshold
+                    and entry.get('verdict') == run.outcome.name
+                ):
+                    flags[key] = bool(entry.get('flag', False))
+            except Exception:
+                pass
         self._small_diff_flags = flags
         try:
             self._reload_table()
@@ -939,8 +1012,8 @@ class BocaRunsApp(App):
             pass
 
 
-def run_app() -> None:
-    app = BocaRunsApp()
+def run_app(contest_id: Optional[str] = None) -> None:
+    app = BocaRunsApp(contest_id=contest_id)
     app.run()
 
 
@@ -963,46 +1036,6 @@ class _BocaDifferScreen(Screen):
     def on_mount(self) -> None:
         diff = self.query_one(DiffBox)
         diff.paths = (self._path1, self._path2)
-
-
-class _ContestIdScreen(Screen):
-    BINDINGS = [
-        ('q', 'app.pop_screen', 'Quit'),
-    ]
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield Footer()
-        with Vertical():
-            yield Static('Enter Contest ID (existing data will be reused):')
-            existing = self._list_existing()
-            if existing:
-                yield Static('Existing: ' + ', '.join(existing))
-            yield Input(placeholder='contest-123', id='contest_input')
-
-    def on_mount(self) -> None:
-        try:
-            inp = self.query_one('#contest_input', Input)
-            self.set_focus(inp)
-        except Exception:
-            pass
-
-    def _list_existing(self) -> List[str]:
-        base = get_app_path() / 'boca' / 'contests'
-        if not base.exists():
-            return []
-        try:
-            return [p.name for p in base.iterdir() if p.is_dir()]
-        except Exception:
-            return []
-
-    @on(Input.Submitted, '#contest_input')
-    def _on_submit(self, event: Input.Submitted) -> None:
-        value = (event.value or '').strip()
-        if not value:
-            # Keep screen open until non-empty
-            return
-        self.dismiss(value)
 
 
 class _OptionsScreen(Screen):
