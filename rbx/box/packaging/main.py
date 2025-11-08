@@ -34,6 +34,22 @@ async def polygon(
         '--upload-as-english',
         help='If set, will force the main statement to be uploaded in English.',
     ),
+    # upload_only: List[str] = typer.Option(
+    #     [],
+    #     '--upload-only',
+    #     help='Only upload the following types of assets to Polygon.',
+    #     case_sensitive=False,
+    #     multiple=True,
+    #     choices=['statements', 'tests', 'solutions', 'files'],
+    # ),
+    # dont_upload: List[str] = typer.Option(
+    #     [],
+    #     '--upload-skip',
+    #     help='Skip uploading the following types of assets to Polygon.',
+    #     case_sensitive=False,
+    #     multiple=True,
+    #     choices=['statements', 'tests', 'solutions', 'files'],
+    # ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 

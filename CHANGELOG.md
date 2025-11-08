@@ -1,3 +1,14 @@
+## 0.20.1rc5 (2025-11-08)
+
+### Fix
+
+- fix polygon schema
+- add keybind based filters
+- add small fetch optimization
+- add sentinel for failures
+- show loading box while loading code
+- add fixes to boca view
+
 ## 0.20.1rc4 (2025-11-07)
 
 ### Fix
