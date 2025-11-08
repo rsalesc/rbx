@@ -1,3 +1,9 @@
+## 0.20.1rc6 (2025-11-08)
+
+### Fix
+
+- add upload filtering for polygon
+
 ## 0.20.1rc5 (2025-11-08)
 
 ### Fix
