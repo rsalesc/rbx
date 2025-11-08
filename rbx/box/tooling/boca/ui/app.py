@@ -854,6 +854,49 @@ class BocaRunsApp(App):
             return None
         return None
 
+    # --- Failed fetch sentinel helpers ---
+    def _failure_sentinel_path(self, run: BocaRun) -> Optional[Path]:
+        if self._runs_dir is None:
+            return None
+        return self._runs_dir / f'{run.run_number}-{run.site_number}.fail'
+
+    def _read_failure_attempts(self, run: BocaRun) -> int:
+        """Return number of failed fetch attempts recorded for this run."""
+        try:
+            path = self._failure_sentinel_path(run)
+            if path is None or not path.is_file():
+                return 0
+            raw = path.read_text().strip()
+            try:
+                return max(0, int(raw))
+            except Exception:
+                # If contents are unexpected, treat as 1 failed attempt
+                return 1
+        except Exception:
+            return 0
+
+    def _record_fetch_failure(self, run: BocaRun) -> None:
+        """Increment failure counter for this run (prefetch skip uses this)."""
+        try:
+            path = self._failure_sentinel_path(run)
+            if path is None:
+                return
+            attempts = self._read_failure_attempts(run) + 1
+            path.write_text(str(attempts))
+        except Exception:
+            # Best-effort only
+            pass
+
+    def _clear_fetch_failure(self, run: BocaRun) -> None:
+        """Clear failure sentinel for this run after a successful fetch."""
+        try:
+            path = self._failure_sentinel_path(run)
+            if path is not None and path.exists():
+                path.unlink(missing_ok=True)  # type: ignore[call-arg]
+        except Exception:
+            # Ignore cleanup errors
+            pass
+
     async def _ensure_cached_run(
         self, run: BocaRun, *, is_prefetch: bool, priority: int
     ) -> Optional[Path]:
@@ -893,8 +936,12 @@ class BocaRunsApp(App):
             self.log(
                 f'_ensure_cached_run: cached code to {path} (len={len(detailed.code)})'
             )
+            # Successful fetch -> clear any prior failure sentinel
+            self._clear_fetch_failure(run)
             return path
         except Exception:
+            # Only count failures that raise here
+            self._record_fetch_failure(run)
             return None
         finally:
             if is_prefetch:
@@ -906,6 +953,9 @@ class BocaRunsApp(App):
         for run in list(self._runs):
             try:
                 if self._find_cached_run_path(run) is None:
+                    # Skip prefetch if we've already failed 3 times for this run
+                    if self._read_failure_attempts(run) >= 3:
+                        continue
                     await self._ensure_cached_run(
                         run, is_prefetch=True, priority=self.PRIORITY_PREFETCH
                     )
@@ -931,13 +981,16 @@ class BocaRunsApp(App):
     def _bg_status_for_run(self, run: BocaRun) -> str:
         has_p = self._find_cached_run_path(run) is not None
         has_d = self._is_small_diff_done_for_run(run)
-        if has_p and has_d:
-            return 'PD'
+        # Show 'X' when this run has reached the failure cap (>= 3 attempts)
+        has_x = self._read_failure_attempts(run) >= 3
+        parts: list[str] = []
         if has_p:
-            return 'P'
+            parts.append('P')
         if has_d:
-            return 'D'
-        return ''
+            parts.append('D')
+        if has_x:
+            parts.append('X')
+        return ''.join(parts)
 
     async def _compute_small_diffs(self) -> None:
         """Compute and cache 'small diff' markers for AC runs.
