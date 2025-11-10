@@ -291,7 +291,10 @@ def _get_notes_with_explanations(blocks: StatementBlocks) -> Optional[str]:
     return notes + '\n\n' + _get_explanations(blocks.explanations)
 
 
-def _upload_statement_resources(problem: api.Problem, statement: Statement):
+def _upload_statement_resources(
+    problem: api.Problem, statement: Statement
+) -> Dict[str, str]:
+    res: Dict[str, str] = {}
     assets = get_relative_assets(statement.path, statement.assets)
     for asset, relative_asset in assets:
         console.console.print(
@@ -303,10 +306,22 @@ def _upload_statement_resources(problem: api.Problem, statement: Statement):
                 f'[error]Statement resource [item]{relative_asset}[/item] is too large to upload (more than 1MB).[/error]'
             )
             raise typer.Exit(1)
+        no_suffix_relative_asset = relative_asset.with_suffix('')
+        key_asset = (
+            None
+            if len(no_suffix_relative_asset.parents) <= 1
+            else str(no_suffix_relative_asset).replace('/', '__')
+        )
+        if key_asset is not None:
+            res[str(relative_asset.with_suffix(''))] = key_asset
+        console.console.print(
+            f'Uploading statement resource [item]{relative_asset}[/item] (normalized name: [item]{key_asset}[/item])...'
+        )
         problem.save_statement_resource(
-            name=str(relative_asset),
+            name=key_asset,
             file=resource_bytes,
         )
+    return res
 
 
 def _upload_statement(
@@ -358,23 +373,32 @@ def _upload_statement(
             continue
         uploaded_languages.add(uploaded_language)
         blocks = _get_statement_blocks(statement)
+        resources = _upload_statement_resources(problem, statement)
+
+        def _replace_resources(block: str, resources=resources) -> str:
+            for key, value in resources.items():
+                block = block.replace(key, value)
+            return block
+
+        def _get_block(block_name: str, blocks=blocks, resources=resources) -> str:
+            block = blocks.blocks.get(block_name) or ''
+            return _replace_resources(block, resources)
+
         polygon_statement = api.Statement(
             encoding='utf-8',
             name=naming.get_title(statement.language, statement, pkg),
-            legend=blocks.blocks.get('legend') or '',
-            input=blocks.blocks.get('input') or '',
-            output=blocks.blocks.get('output') or '',
-            interaction=(blocks.blocks.get('interaction') or '')
+            legend=_get_block('legend'),
+            input=_get_block('input'),
+            output=_get_block('output'),
+            interaction=_get_block('interaction')
             if pkg.type == TaskType.COMMUNICATION
             else None,
-            notes=_get_notes_with_explanations(blocks) or '',
+            notes=_replace_resources(_get_notes_with_explanations(blocks) or ''),
         )
         problem.save_statement(
             lang=uploaded_language,
             problem_statement=polygon_statement,
         )
-
-        _upload_statement_resources(problem, statement)
 
 
 def _normalize_problem_name(name: str) -> str:
