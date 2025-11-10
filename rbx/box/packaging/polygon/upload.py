@@ -12,7 +12,8 @@ from rbx.box import header, limits_info, naming, package
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.polygon import polygon_api as api
-from rbx.box.schema import CodeItem, ExpectedOutcome, Solution, TaskType, Testcase
+from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
+from rbx.box.schema import ExpectedOutcome, Solution, TaskType, Testcase
 from rbx.box.statements.build_statements import get_relative_assets
 from rbx.box.statements.builders import (
     StatementBlocks,
@@ -41,10 +42,6 @@ def _get_polygon_api() -> api.Polygon:
         env.get('POLYGON_API_KEY', '').strip(),
         env.get('POLYGON_API_SECRET', '').strip(),
     )
-
-
-def _get_source_type(code: CodeItem):
-    return None
 
 
 def _get_solution_tag(solution: Solution, is_first: bool = False) -> api.SolutionTag:
@@ -115,26 +112,28 @@ def _update_rbx_header(problem: api.Problem):
 
 
 def _update_checker(problem: api.Problem):
-    console.console.print('Uploading checker...')
     checker = package.get_checker_or_builtin()
+    source_type = get_polygon_language_from_code_item(checker)
+    console.console.print(f'Uploading checker (lang: {source_type})...')
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_checker_name(),
         file=checker.path.read_bytes(),
-        source_type=_get_source_type(checker),
+        source_type=source_type,
     )
 
     problem.set_checker(_get_checker_name())
 
 
 def _update_interactor(problem: api.Problem):
-    console.console.print('Uploading interactor...')
     interactor = package.get_interactor()
+    source_type = get_polygon_language_from_code_item(interactor)
+    console.console.print(f'Uploading interactor (lang: {source_type})...')
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_interactor_name(),
         file=interactor.path.read_bytes(),
-        source_type=_get_source_type(interactor),
+        source_type=source_type,
     )
 
     problem.set_interactor(_get_interactor_name())
@@ -147,7 +146,7 @@ def _upload_validator(problem: api.Problem):
         type=api.FileType.SOURCE,
         name=_get_validator_name(),
         file=validator.path.read_bytes(),
-        source_type=_get_source_type(validator),
+        source_type=get_polygon_language_from_code_item(validator),
     )
 
     problem.set_validator(_get_validator_name())
@@ -222,25 +221,27 @@ def _upload_testcases(problem: api.Problem):
 
 
 def _upload_solutions(problem: api.Problem):
-    console.console.print('Uploading main solution...')
     main_solution = package.get_main_solution()
     if main_solution is None or main_solution.outcome != ExpectedOutcome.ACCEPTED:
         return
+    source_type = get_polygon_language_from_code_item(main_solution)
+    console.console.print(f'Uploading main solution (lang: {source_type})...')
     problem.save_solution(
         main_solution.path.name,
         main_solution.path.read_bytes(),
-        source_type=_get_source_type(main_solution),
+        source_type=source_type,
         tag=api.SolutionTag.MA,
     )
 
     def process_solution(solution: Solution, i: int):
+        source_type = get_polygon_language_from_code_item(solution)
         console.console.print(
-            f'Uploading solution {solution.href()} (tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
+            f'Uploading solution {solution.href()} (lang: {source_type}, tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
         )
         problem.save_solution(
             solution.path.name,
             solution.path.read_bytes(),
-            source_type=_get_source_type(solution),
+            source_type=source_type,
             tag=_get_solution_tag(solution, is_first=i == 0),
         )
 

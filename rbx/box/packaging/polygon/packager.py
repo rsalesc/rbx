@@ -15,6 +15,7 @@ from rbx.box.packaging.packager import (
     BuiltStatement,
 )
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
+from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
 from rbx.box.schema import TaskType
 from rbx.config import get_testlib
 
@@ -91,7 +92,12 @@ class PolygonPackager(BasePackager):
         return polygon_schema.Checker(
             name='rbx::checker',
             type='testlib',
-            source=polygon_schema.File(path='files/check.cpp', type='cpp.g++17'),
+            source=polygon_schema.File(
+                path='files/check.cpp',
+                type=get_polygon_language_from_code_item(
+                    package.get_checker_or_builtin()
+                ),
+            ),
             cpy=polygon_schema.File(path='check.cpp'),
         )
 
@@ -100,7 +106,10 @@ class PolygonPackager(BasePackager):
         if pkg.interactor is None:
             return None
         return polygon_schema.Interactor(
-            source=polygon_schema.File(path='files/interactor.cpp', type='cpp.g++17'),
+            source=polygon_schema.File(
+                path='files/interactor.cpp',
+                type=get_polygon_language_from_code_item(pkg.interactor),
+            ),
         )
 
     def _get_manual_test(self) -> polygon_schema.Test:
