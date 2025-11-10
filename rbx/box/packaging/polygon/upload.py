@@ -1,5 +1,6 @@
 import pathlib
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Literal, Optional, Set
 
 import rich
@@ -30,6 +31,7 @@ _API_URL = 'https://polygon.codeforces.com/api'
 ParamChoices = Literal['statements', 'solutions', 'tests', 'files']
 
 ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
+MAX_WORKERS = 4
 
 
 def _get_polygon_api() -> api.Polygon:
@@ -231,7 +233,7 @@ def _upload_solutions(problem: api.Problem):
         tag=api.SolutionTag.MA,
     )
 
-    for i, solution in enumerate(package.get_solutions()):
+    def process_solution(solution: Solution, i: int):
         console.console.print(
             f'Uploading solution {solution.href()} (tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
         )
@@ -241,6 +243,12 @@ def _upload_solutions(problem: api.Problem):
             source_type=_get_source_type(solution),
             tag=_get_solution_tag(solution, is_first=i == 0),
         )
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for i, solution in enumerate(package.get_solutions()):
+            executor.submit(process_solution, solution, i)
+
+    executor.shutdown(wait=True)
 
 
 def _get_statement_for_language(language: str) -> Optional[Statement]:
