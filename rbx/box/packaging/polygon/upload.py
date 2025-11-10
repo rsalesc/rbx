@@ -304,31 +304,34 @@ def _upload_statement_resources(
 ) -> Dict[str, str]:
     res: Dict[str, str] = {}
     assets = get_relative_assets(statement.path, statement.assets)
-    for asset, relative_asset in assets:
-        console.console.print(
-            f'Uploading statement resource [item]{relative_asset}[/item]...'
-        )
-        resource_bytes = asset.read_bytes()
-        if len(resource_bytes) >= 1024 * 1024:  # >= 1mb
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for asset, relative_asset in assets:
             console.console.print(
-                f'[error]Statement resource [item]{relative_asset}[/item] is too large to upload (more than 1MB).[/error]'
+                f'Uploading statement resource [item]{relative_asset}[/item]...'
             )
-            raise typer.Exit(1)
-        no_suffix_relative_asset = relative_asset.with_suffix('')
-        key_asset = (
-            None
-            if len(no_suffix_relative_asset.parents) <= 1
-            else str(no_suffix_relative_asset).replace('/', '__')
-        )
-        if key_asset is not None:
-            res[str(relative_asset.with_suffix(''))] = key_asset
-        console.console.print(
-            f'Uploading statement resource [item]{relative_asset}[/item] (normalized name: [item]{key_asset}[/item])...'
-        )
-        problem.save_statement_resource(
-            name=key_asset,
-            file=resource_bytes,
-        )
+            resource_bytes = asset.read_bytes()
+            if len(resource_bytes) >= 1024 * 1024:  # >= 1mb
+                console.console.print(
+                    f'[error]Statement resource [item]{relative_asset}[/item] is too large to upload (more than 1MB).[/error]'
+                )
+                raise typer.Exit(1)
+            no_suffix_relative_asset = relative_asset.with_suffix('')
+            key_asset = (
+                None
+                if len(no_suffix_relative_asset.parents) <= 1
+                else str(no_suffix_relative_asset).replace('/', '__')
+            )
+            if key_asset is not None:
+                res[str(relative_asset.with_suffix(''))] = key_asset
+            console.console.print(
+                f'Uploading statement resource [item]{relative_asset}[/item] (normalized name: [item]{key_asset}[/item])...'
+            )
+            executor.submit(
+                problem.save_statement_resource,
+                name=key_asset,
+                file=resource_bytes,
+            )
+    executor.shutdown(wait=True)
     return res
 
 
