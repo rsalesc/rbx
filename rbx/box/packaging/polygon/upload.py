@@ -257,7 +257,7 @@ def _upload_testcases(problem: api.Problem):
     if generators:
         _update_jngen(problem)  # TODO: only upload if necessary
         console.console.print('Clearing existing script...')
-        problem.save_script(testset='tests', source='')
+        problem.save_script(testset='tests', source='<#-- empty placeholder script -->')
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for generator in generators.values():
@@ -315,17 +315,7 @@ def _upload_testcases(problem: api.Problem):
 
 
 def _upload_solutions(problem: api.Problem):
-    main_solution = package.get_main_solution()
-    if main_solution is None or main_solution.outcome != ExpectedOutcome.ACCEPTED:
-        return
-    source_type = get_polygon_language_from_code_item(main_solution)
-    console.console.print(f'Uploading main solution (lang: {source_type})...')
-    problem.save_solution(
-        main_solution.path.name,
-        main_solution.path.read_bytes(),
-        source_type=source_type,
-        tag=api.SolutionTag.MA,
-    )
+    saved_solutions = set()
 
     def process_solution(solution: Solution, i: int):
         source_type = get_polygon_language_from_code_item(solution)
@@ -338,11 +328,27 @@ def _upload_solutions(problem: api.Problem):
             source_type=source_type,
             tag=_get_solution_tag(solution, is_first=i == 0),
         )
+        saved_solutions.add(solution.path.name)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for i, solution in enumerate(package.get_solutions()):
             executor.submit(process_solution, solution, i)
 
+    executor.shutdown(wait=True)
+
+    def delete_solution(solution: api.Solution):
+        console.console.print(f'Deleting solution [item]{solution.name}[/item]...')
+        problem.save_solution(
+            solution.name,
+            '# This solution is no longer used in the problem but was kept by rbx.cp.',
+            source_type='python.3',
+            tag=api.SolutionTag.NR,
+        )
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for solution in problem.solutions():
+            if solution.name not in saved_solutions:
+                executor.submit(delete_solution, solution)
     executor.shutdown(wait=True)
 
 
