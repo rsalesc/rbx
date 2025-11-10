@@ -1,19 +1,26 @@
+import asyncio
 import pathlib
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 
 import rich
 import rich.progress
 import typer
 
 from rbx import console, utils
-from rbx.box import header, limits_info, naming, package
-from rbx.box.generators import get_all_built_testcases
+from rbx.box import download, header, limits_info, naming, package
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
-from rbx.box.schema import ExpectedOutcome, Solution, TaskType, Testcase
+from rbx.box.schema import (
+    ExpectedOutcome,
+    Generator,
+    GeneratorCall,
+    Solution,
+    TaskType,
+    Testcase,
+)
 from rbx.box.statements.build_statements import get_relative_assets
 from rbx.box.statements.builders import (
     StatementBlocks,
@@ -21,6 +28,7 @@ from rbx.box.statements.builders import (
     render_jinja_blocks,
 )
 from rbx.box.statements.schema import Statement, StatementType
+from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_utils import (
     TestcaseInteractionParsingError,
     get_alternate_interaction_texts,
@@ -107,6 +115,17 @@ def _update_rbx_header(problem: api.Problem):
         type=api.FileType.RESOURCE,
         name='rbx.h',
         file=rbx_header.read_bytes(),
+        source_type=None,
+    )
+
+
+def _update_jngen(problem: api.Problem):
+    jngen = download.get_jngen()
+    console.console.print('Uploading jngen.h...')
+    problem.save_file(
+        type=api.FileType.RESOURCE,
+        name='jngen.h',
+        file=jngen.read_bytes(),
         source_type=None,
     )
 
@@ -199,29 +218,100 @@ def _get_test_params_for_statement(
     return res
 
 
+def _get_freemarker_for_calls(calls: List[GeneratorCall], next_index: int = 1) -> str:
+    return (
+        '\n'.join(
+            [
+                f'{call.name} {call.args} > {i + next_index}'
+                for i, call in enumerate(calls)
+            ]
+        )
+        + '\n'
+    )
+
+
+def _upload_generator(problem: api.Problem, generator: Generator):
+    generator_source_type = get_polygon_language_from_code_item(generator)
+    console.console.print(
+        f'Uploading generator {generator.href()} (lang: {generator_source_type})...'
+    )
+    problem.save_file(
+        type=api.FileType.SOURCE,
+        name=generator.path.name,
+        file=generator.path.read_bytes(),
+        source_type=generator_source_type,
+    )
+
+
 def _upload_testcases(problem: api.Problem):
-    pkg = package.find_problem_package_or_die()
-    testcases = get_all_built_testcases()
-    i = 0
+    entries = asyncio.run(extract_generation_testcases_from_groups())
+    generators: Dict[str, Generator] = {}
+    for entry in entries:
+        if not entry.metadata.generator_call:
+            continue
+        generator = package.get_generator_or_nil(entry.metadata.generator_call.name)
+        if generator is None:
+            continue
+        generators[str(generator.path)] = generator
+
+    if generators:
+        _update_jngen(problem)  # TODO: only upload if necessary
+        console.console.print('Clearing existing script...')
+        problem.save_script(testset='tests', source='')
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for generator in generators.values():
+            executor.submit(_upload_generator, problem, generator)
+    executor.shutdown(wait=True)
 
     with rich.progress.Progress(speed_estimate_period=5) as progress:
-        total_len = 0
-        for group in pkg.testcases:
-            total_len += len(testcases[group.name])
-        task_id = progress.add_task('Uploading testcases...', total=total_len)
-        for group in pkg.testcases:
-            for testcase in testcases[group.name]:
-                is_sample = group.name == 'samples'
-                saved = _save_skip_coinciding_testcases(
-                    problem,
-                    testset='tests',
-                    test_index=i + 1,
-                    test_input=testcase.inputPath.read_text(),
-                    **_get_test_params_for_statement(testcase, is_sample),
+        next_index = 1
+        task_id = progress.add_task('Uploading testcases...', total=len(entries))
+        for entry in entries:
+            is_sample = entry.group_entry.group == 'samples'
+            if entry.metadata.copied_from is None:
+                continue
+            if not entry.metadata.copied_from.inputPath.is_file():
+                continue
+            saved = _save_skip_coinciding_testcases(
+                problem,
+                testset='tests',
+                test_index=next_index,
+                test_input=entry.metadata.copied_from.inputPath.read_text(),
+                **_get_test_params_for_statement(entry.metadata.copied_from, is_sample),
+            )
+            progress.update(task_id, advance=1)
+            if saved:
+                next_index += 1
+
+        calls = []
+        for entry in entries:
+            if entry.metadata.generator_call is None:
+                continue
+            generator = package.get_generator_or_nil(entry.metadata.generator_call.name)
+            if generator is None:
+                continue
+            calls.append(
+                GeneratorCall(
+                    name=generator.path.stem,
+                    args=entry.metadata.generator_call.args,
                 )
-                progress.update(task_id, advance=1)
-                if saved:
-                    i += 1
+            )
+
+        if calls:
+            try:
+                problem.save_script(
+                    testset='tests', source=_get_freemarker_for_calls(calls, next_index)
+                )
+            except api.PolygonRequestFailedException as e:
+                if 'already used in non-script' in e.comment.lower():
+                    console.console.print(f'[error]{e.comment}[/error]')
+                    console.console.print(
+                        '[error]Please remove the conflicting manual tests on the Polygon UI and try again.[/error]'
+                    )
+                    raise typer.Exit(1) from None
+                raise
+        progress.update(task_id, completed=len(entries))
 
 
 def _upload_solutions(problem: api.Problem):

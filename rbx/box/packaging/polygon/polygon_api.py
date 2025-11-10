@@ -271,6 +271,17 @@ class Polygon:
         )
         return response.result
 
+    def problem_save_script(self, problem_id, testset, source):
+        response = self._request_ok_or_raise(
+            self._PROBLEM_SAVE_SCRIPT,
+            args={
+                'problemId': problem_id,
+                'testset': testset,
+                'source': source,
+            },
+        )
+        return response.result
+
     def problem_save_test(
         self,
         problem_id,
@@ -637,6 +648,9 @@ class Problem:
 
     def enable_points(self, enable):
         return self._polygon.problem_enable_points(self.id, enable)
+
+    def save_script(self, testset, source):
+        return self._polygon.problem_save_script(self.id, testset, source)
 
     def save_test(
         self,
