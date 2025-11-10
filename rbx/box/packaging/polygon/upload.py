@@ -140,13 +140,17 @@ def _update_interactor(problem: api.Problem):
 
 
 def _upload_validator(problem: api.Problem):
-    console.console.print('Uploading validator...')
+    validator = package.get_validator()
+    if validator is None:
+        return
+    source_type = get_polygon_language_from_code_item(validator)
+    console.console.print(f'Uploading validator (lang: {source_type})...')
     validator = package.get_validator()
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_validator_name(),
         file=validator.path.read_bytes(),
-        source_type=get_polygon_language_from_code_item(validator),
+        source_type=source_type,
     )
 
     problem.set_validator(_get_validator_name())
