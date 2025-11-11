@@ -10,6 +10,7 @@ from rbx import console, utils
 from rbx.box import checkers, package, testcase_utils, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.exception import RbxException
+from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
@@ -18,8 +19,6 @@ from rbx.box.schema import (
 )
 from rbx.box.tasks import run_solution_on_testcase
 from rbx.box.testcase_extractors import (
-    GenerationMetadata,
-    GenerationTestcaseEntry,
     TestcaseGroupVisitor,
     extract_generation_testcases,
     run_testcase_visitor,

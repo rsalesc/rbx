@@ -1,13 +1,17 @@
 import abc
 import pathlib
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import Iterable, List, Optional, Set
 
 import typer
-from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box import package
 from rbx.box.code import compile_item, run_item
+from rbx.box.generation_schema import (
+    GenerationInput,
+    GenerationMetadata,
+    GenerationTestcaseEntry,
+)
 from rbx.box.generator_script_handlers import get_generator_script_handler
 from rbx.box.schema import (
     CodeItem,
@@ -88,12 +92,6 @@ async def run_generator_script(testcase: TestcaseSubgroup) -> str:
     return script
 
 
-def _extract_script_lines(
-    script: str, script_entry: GeneratorScript
-) -> Iterable[Tuple[str, str, int]]:
-    return get_generator_script_handler(script_entry, script).parse()
-
-
 def _resolve_generator_name(generator_name: str, script_entry: GeneratorScript) -> str:
     if generator_name.startswith('@'):
         console.console.print(
@@ -106,33 +104,10 @@ def _resolve_generator_name(generator_name: str, script_entry: GeneratorScript) 
     return str(script_entry.root / generator_name)
 
 
-class GeneratorScriptEntry(BaseModel):
-    path: pathlib.Path
-    line: int
-
-    def __str__(self) -> str:
-        return f'{self.path}:{self.line}'
-
-
-class GenerationMetadata(BaseModel):
-    copied_to: Testcase
-
-    copied_from: Optional[Testcase] = None
-    generator_call: Optional[GeneratorCall] = None
-    generator_script: Optional[GeneratorScriptEntry] = None
-
-
-class GenerationTestcaseEntry(BaseModel):
-    group_entry: TestcaseEntry
-    subgroup_entry: TestcaseEntry
-
-    metadata: GenerationMetadata
-    validator: Optional[CodeItem] = None
-    extra_validators: List[CodeItem] = []
-    model_solution: Optional[Solution] = None
-
-    def is_sample(self) -> bool:
-        return self.group_entry.group == 'samples'
+def _extract_script_lines(
+    script: str, script_entry: GeneratorScript
+) -> Iterable[GenerationInput]:
+    return get_generator_script_handler(script_entry, script).parse()
 
 
 def get_testcase_metadata_markup(entry: GenerationTestcaseEntry) -> str:
@@ -294,32 +269,32 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             script = await run_generator_script(subgroup)
 
             # Run each line from generator script.
-            for generator_name, args, line_number in _extract_script_lines(
+            for generation_input in _extract_script_lines(
                 script, subgroup.generatorScript
             ):
-                generator_script_entry = GeneratorScriptEntry(
-                    path=subgroup.generatorScript.path,
-                    line=line_number,
-                )
-                if generator_name == '@copy':
-                    tc = Testcase(inputPath=pathlib.Path(args.strip()))
+                if generation_input.copied_from is not None:
                     metadata = GenerationMetadata(
-                        copied_from=fill_output_for_defined_testcase(tc),
+                        copied_from=fill_output_for_defined_testcase(
+                            generation_input.copied_from
+                        ),
                         copied_to=_copied_to(i),
-                        generator_script=generator_script_entry,
+                        generator_script=generation_input.generator_script,
                     )
-                else:
+                elif generation_input.generator_call is not None:
                     call = GeneratorCall(
                         name=_resolve_generator_name(
-                            generator_name, subgroup.generatorScript
+                            generation_input.generator_call.name,
+                            subgroup.generatorScript,
                         ),
-                        args=args,
+                        args=generation_input.generator_call.args,
                     )
                     metadata = GenerationMetadata(
                         generator_call=call,
-                        generator_script=generator_script_entry,
+                        generator_script=generation_input.generator_script,
                         copied_to=_copied_to(i),
                     )
+                else:
+                    raise ValueError(f'Invalid generation input: {generation_input}')
                 await visitor.visit(
                     GenerationTestcaseEntry(
                         group_entry=_entry(i),

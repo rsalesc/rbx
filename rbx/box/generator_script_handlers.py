@@ -6,7 +6,8 @@ from typing import Iterable, List, Optional, Tuple
 import typer
 
 from rbx import console
-from rbx.box.schema import GeneratorCall, GeneratorScript
+from rbx.box.generation_schema import GenerationInput, GeneratorScriptEntry
+from rbx.box.schema import GeneratorCall, GeneratorScript, Testcase
 
 
 class GeneratorScriptHandler:
@@ -18,7 +19,7 @@ class GeneratorScriptHandler:
         self.script_entry = script_entry
 
     @abstractmethod
-    def parse(self) -> Iterable[Tuple[str, str, int]]:
+    def parse(self) -> Iterable[GenerationInput]:
         pass
 
     @abstractmethod
@@ -38,7 +39,7 @@ class GeneratorScriptHandler:
 
 
 class RbxGeneratorScriptHandler(GeneratorScriptHandler):
-    def parse(self) -> Iterable[Tuple[str, str, int]]:
+    def parse(self) -> Iterable[GenerationInput]:
         lines = self.script.splitlines()
         for i, line in enumerate(lines):
             line = line.strip()
@@ -46,7 +47,26 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
                 continue
             if line.startswith('#'):
                 continue
-            yield shlex.split(line)[0], shlex.join(shlex.split(line)[1:]), i + 1
+            entry = GeneratorScriptEntry(
+                path=self.script_entry.path,
+                line=i + 1,
+            )
+            call = shlex.split(line)[0]
+            if call.strip() == '@copy':
+                yield GenerationInput(
+                    copied_from=Testcase(
+                        inputPath=pathlib.Path(shlex.split(line)[1].strip())
+                    ),
+                    generator_script=entry,
+                )
+            else:
+                yield GenerationInput(
+                    generator_call=GeneratorCall(
+                        name=call,
+                        args=shlex.join(shlex.split(line)[1:]),
+                    ),
+                    generator_script=entry,
+                )
 
     def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
         if comment:
@@ -102,9 +122,25 @@ def _get_last_group(script: str) -> int:
 
 
 class BoxGeneratorScriptHandler(GeneratorScriptHandler):
-    def parse(self) -> Iterable[Tuple[str, str, int]]:
+    def parse(self) -> Iterable[GenerationInput]:
         for call, args, _, line in _parse_box_testplan_lines(self.script):
-            yield call, args, line
+            entry = GeneratorScriptEntry(
+                path=self.script_entry.path,
+                line=line,
+            )
+            if call == '@copy':
+                yield GenerationInput(
+                    copied_from=Testcase(inputPath=pathlib.Path(args.strip())),
+                    generator_script=entry,
+                )
+            else:
+                yield GenerationInput(
+                    generator_call=GeneratorCall(
+                        name=call,
+                        args=args,
+                    ),
+                    generator_script=entry,
+                )
 
     def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
         if comment:
