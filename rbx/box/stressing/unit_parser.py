@@ -1,15 +1,29 @@
 import ast
 import pathlib
-from typing import List, Optional
+from enum import Enum
+from typing import List, Optional, Union
 
 import lark
 from pydantic import BaseModel
+
+from rbx.box.schema import ExpectedOutcome, ValidatorOutcome
+
+
+class UnitTestMode(str, Enum):
+    """Mode for parsing unit tests - determines expectation type."""
+
+    CHECKER = 'checker'
+    """Parse expectations as ExpectedOutcome (for checker/solution tests)."""
+
+    VALIDATOR = 'validator'
+    """Parse expectations as ValidatorOutcome (for validator tests)."""
 
 
 class ParsedUnitTest(BaseModel):
     """Represents a parsed unit test with input and optional output/answer."""
 
     name: Optional[str] = None
+    expectation: Union[ExpectedOutcome, ValidatorOutcome]
     input: str
     output: Optional[str] = None
     answer: Optional[str] = None
@@ -28,11 +42,13 @@ _statement: _INDENT? comment
 // Comments (whole line only)
 comment: COMMENT _NEWLINE?
 
-// Test block with @input, @output, @answer
-test_block: TEST_KEYWORD _WS test_name _WS? _LBRACE test_statements _INDENT? _RBRACE _NEWLINE?
-          | TEST_KEYWORD _WS? _LBRACE test_statements _INDENT? _RBRACE _NEWLINE?
+// Test block with @input, @output, @answer (expectation is required)
+test_block: TEST_KEYWORD _WS test_name _WS expectation _WS? _LBRACE test_statements _INDENT? _RBRACE _NEWLINE?
+          | TEST_KEYWORD _WS expectation _WS? _LBRACE test_statements _INDENT? _RBRACE _NEWLINE?
 
 test_name: NAME
+
+expectation: NAME
 
 test_statements: test_statement*
 
@@ -54,11 +70,11 @@ output_block: OUTPUT_KEYWORD _WS string _NEWLINE?
 answer_block: ANSWER_KEYWORD _WS string _NEWLINE?
             | ANSWER_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
 
-// Simplified input-only syntax
-input_only_block: INPUT_KEYWORD _WS test_name _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
-                | INPUT_KEYWORD _WS test_name _WS string _NEWLINE?
-                | INPUT_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
-                | INPUT_KEYWORD _WS string _NEWLINE?
+// Simplified input-only syntax (expectation is required)
+input_only_block: INPUT_KEYWORD _WS test_name _WS expectation _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
+                | INPUT_KEYWORD _WS test_name _WS expectation _WS string _NEWLINE?
+                | INPUT_KEYWORD _WS expectation _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
+                | INPUT_KEYWORD _WS expectation _WS string _NEWLINE?
 
 string: ESCAPED_STRING | TRIPLE_QUOTED_STRING
 
@@ -100,9 +116,33 @@ class UnitTestTransformer(lark.Transformer):
     Transforms the parse tree into a list of ParsedUnitTest objects.
     """
 
-    def __init__(self, script_path: pathlib.Path):
+    def __init__(self, script_path: pathlib.Path, mode: UnitTestMode):
         super().__init__()
         self.script_path = script_path
+        self.mode = mode
+
+    def _parse_expectation(
+        self, expectation_str: str
+    ) -> Union[ExpectedOutcome, ValidatorOutcome]:
+        """Parse expectation string into the appropriate outcome type based on mode."""
+        if self.mode == UnitTestMode.CHECKER:
+            try:
+                return ExpectedOutcome(expectation_str)
+            except ValueError:
+                raise ValueError(
+                    f'Invalid expectation "{expectation_str}" for checker mode. '
+                    f'Valid values are: {", ".join(e.value for e in ExpectedOutcome)}'
+                ) from None
+        elif self.mode == UnitTestMode.VALIDATOR:
+            try:
+                return ValidatorOutcome(expectation_str)
+            except ValueError:
+                raise ValueError(
+                    f'Invalid expectation "{expectation_str}" for validator mode. '
+                    f'Valid values are: {", ".join(e.value for e in ValidatorOutcome)}'
+                ) from None
+        else:
+            raise ValueError(f'Unknown mode: {self.mode}')
 
     @lark.v_args(inline=False, meta=True)
     def start(self, meta: lark.tree.Meta, statements) -> List[ParsedUnitTest]:
@@ -121,24 +161,43 @@ class UnitTestTransformer(lark.Transformer):
     def test_block(self, meta: lark.tree.Meta, children: List) -> ParsedUnitTest:
         """Process test block and create ParsedUnitTest."""
         # Children can be:
-        # - TEST_KEYWORD, test_name, test_statements
-        # - TEST_KEYWORD, test_statements
+        # - TEST_KEYWORD, test_name, expectation, test_statements
+        # - TEST_KEYWORD, expectation, test_statements
 
         name = None
+        expectation_str = None
         test_statements = []
 
+        # Extract strings (name and/or expectation) and test_statements
+        strings = []
         for child in children:
             if child is None:
                 continue
             # Skip the TEST_KEYWORD token
             if isinstance(child, lark.Token):
                 continue
-            # First string is the name
-            if isinstance(child, str) and name is None:
-                name = child
+            # Collect strings
+            if isinstance(child, str):
+                strings.append(child)
             # Lists are test_statements results
             elif isinstance(child, list):
                 test_statements = child
+
+        # Parse strings: if we have 2, first is name, second is expectation
+        # If we have 1, it's just the expectation
+        if len(strings) == 1:
+            expectation_str = strings[0]
+        elif len(strings) >= 2:
+            name = strings[0]
+            expectation_str = strings[1]
+
+        if expectation_str is None:
+            raise ValueError(
+                f'@test block at line {meta.line} is missing required expectation'
+            )
+
+        # Parse the expectation
+        expectation = self._parse_expectation(expectation_str)
 
         # Parse test statements to extract input, output, answer
         input_content = None
@@ -163,6 +222,7 @@ class UnitTestTransformer(lark.Transformer):
 
         return ParsedUnitTest(
             name=name,
+            expectation=expectation,
             input=input_content,
             output=output_content,
             answer=answer_content,
@@ -172,6 +232,10 @@ class UnitTestTransformer(lark.Transformer):
 
     def test_name(self, meta: lark.tree.Meta, token: lark.Token) -> str:
         """Return the test name as string."""
+        return str(token)
+
+    def expectation(self, meta: lark.tree.Meta, token: lark.Token) -> str:
+        """Return the expectation as string (will be parsed later)."""
         return str(token)
 
     @lark.v_args(inline=False, meta=True)
@@ -212,47 +276,46 @@ class UnitTestTransformer(lark.Transformer):
     def input_only_block(self, meta: lark.tree.Meta, children: List) -> ParsedUnitTest:
         """Process simplified input-only syntax."""
         # Can be:
-        # - INPUT_KEYWORD, test_name, content
-        # - INPUT_KEYWORD, content
+        # - INPUT_KEYWORD, test_name, expectation, content
+        # - INPUT_KEYWORD, expectation, content
 
         name = None
+        expectation_str = None
         content = None
 
-        for child in children:
-            if child is None:
-                continue
-            # Skip the INPUT_KEYWORD token
-            if isinstance(child, lark.Token):
-                continue
-            # First non-token string could be name or content
-            if isinstance(child, str):
-                if content is None and name is None:
-                    # Could be either name or content
-                    # We need to check if there's another child
-                    # If this is the only child, it's content
-                    # If there's another child, this is name
-                    continue
-                else:
-                    content = child
-
-        # Determine which is which
+        # Collect all non-token, non-None children
         non_token_children = [
             c for c in children if not isinstance(c, lark.Token) and c is not None
         ]
 
-        if len(non_token_children) == 1:
-            # Only content, no name
-            content = non_token_children[0]
-        elif len(non_token_children) >= 2:
-            # First is name, second is content
-            name = non_token_children[0]
+        if len(non_token_children) == 2:
+            # expectation, content
+            expectation_str = non_token_children[0]
             content = non_token_children[1]
+        elif len(non_token_children) >= 3:
+            # name, expectation, content
+            name = non_token_children[0]
+            expectation_str = non_token_children[1]
+            content = non_token_children[2]
+        elif len(non_token_children) == 1:
+            raise ValueError(
+                f'@input block at line {meta.line} is missing required expectation and content'
+            )
+
+        if expectation_str is None:
+            raise ValueError(
+                f'@input block at line {meta.line} is missing required expectation'
+            )
 
         if content is None:
             content = ''
 
+        # Parse the expectation
+        expectation = self._parse_expectation(expectation_str)
+
         return ParsedUnitTest(
             name=name,
+            expectation=expectation,
             input=content,
             output=None,
             answer=None,
@@ -291,19 +354,31 @@ def parse(script: str) -> lark.ParseTree:
     return LARK_PARSER.parse(script)
 
 
-def parse_and_transform(script: str, script_path: pathlib.Path) -> List[ParsedUnitTest]:
-    """Parse a unit test script and transform it into a list of ParsedUnitTest objects."""
+def parse_and_transform(
+    script: str, script_path: pathlib.Path, mode: UnitTestMode
+) -> List[ParsedUnitTest]:
+    """Parse a unit test script and transform it into a list of ParsedUnitTest objects.
+
+    Args:
+        script: The unit test script content to parse.
+        script_path: Path to the script file (for error reporting).
+        mode: The parsing mode - determines whether expectations are parsed as
+              ExpectedOutcome (checker mode) or ValidatorOutcome (validator mode).
+
+    Returns:
+        A list of ParsedUnitTest objects.
+    """
     tree = parse(script)
-    transformer = UnitTestTransformer(script_path)
+    transformer = UnitTestTransformer(script_path, mode)
     res = transformer.transform(tree)
     return res
 
 
 if __name__ == '__main__':
-    # Example usage
-    test_script = """
+    # Example usage for checker mode
+    checker_script = """
 // This is a comment
-@test test_name_1 {
+@test test_name_1 accepted {
     @input {
 1 2 3
     }
@@ -315,37 +390,66 @@ if __name__ == '__main__':
     }
 }
 
-@test {
+@test wa {
     @input "simple string input"
     @output "expected output"
 }
 
-@input test_simple {
+@input test_simple ac {
 1 2 3
 }
 
-@input {
+@input tle {
 just input
 no name
 }
 
-@input "inline string"
+@input rte "inline string"
 """
 
-    # Parse and show tree
-    tree = parse(test_script)
+    # Example usage for validator mode
+    validator_script = """
+@test valid_case valid {
+    @input {
+1 2 3
+    }
+}
+
+@input invalid_case invalid {
+-1 0
+}
+
+@input valid "5 10"
+"""
+
+    print('=== CHECKER MODE EXAMPLE ===\n')
+    # Parse and show tree for checker mode
+    tree = parse(checker_script)
     print('Parse tree:')
     print(tree.pretty())
     print()
 
-    # Transform to ParsedUnitTest objects
-    script_path = pathlib.Path('test_script.txt')
-    results = parse_and_transform(test_script, script_path)
+    # Transform to ParsedUnitTest objects in checker mode
+    script_path = pathlib.Path('checker_script.txt')
+    results = parse_and_transform(checker_script, script_path, UnitTestMode.CHECKER)
 
     print(f'Generated {len(results)} unit tests:')
     for i, result in enumerate(results, 1):
         print(f'\n{i}. {result.script_path}:{result.line}')
         print(f'   Name: {result.name}')
+        print(f'   Expectation: {result.expectation}')
         print(f'   Input: {repr(result.input)}')
         print(f'   Output: {repr(result.output)}')
         print(f'   Answer: {repr(result.answer)}')
+
+    print('\n\n=== VALIDATOR MODE EXAMPLE ===\n')
+    # Transform to ParsedUnitTest objects in validator mode
+    script_path = pathlib.Path('validator_script.txt')
+    results = parse_and_transform(validator_script, script_path, UnitTestMode.VALIDATOR)
+
+    print(f'Generated {len(results)} unit tests:')
+    for i, result in enumerate(results, 1):
+        print(f'\n{i}. {result.script_path}:{result.line}')
+        print(f'   Name: {result.name}')
+        print(f'   Expectation: {result.expectation}')
+        print(f'   Input: {repr(result.input)}')
