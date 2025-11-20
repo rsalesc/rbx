@@ -237,6 +237,7 @@ gens/gen2 --B=2
         result = parse_and_transform(script, script_path)
 
         assert len(result) == 1
+        # Triple-quoted strings preserve their content including leading newline
         assert result[0].content == '\n123\n456\n789\n'
 
     def test_parse_and_transform_multiple_inline_inputs(self):
@@ -284,6 +285,114 @@ gens/gen2 --B=2
         assert len(result) == 1
         assert result[0].group == 'group1'
         assert result[0].content == 'test data in group'
+
+    def test_parse_and_transform_inline_input_brace_block(self):
+        """Test transforming @input directive with brace block syntax."""
+        script = """@input {
+1 2 3
+4 5 6
+}"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].content == '1 2 3\n4 5 6\n'
+
+    def test_parse_and_transform_inline_input_brace_block_empty(self):
+        """Test transforming @input directive with empty brace block."""
+        script = """@input {
+}"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        # Empty brace block produces empty string
+        assert result[0].content == ''
+
+    def test_parse_and_transform_inline_input_brace_vs_triple_quote(self):
+        """Test that brace block and triple-quote produce similar results."""
+        script = """@input {
+1 2 3
+4 5 6
+}
+
+@input \"\"\"
+1 2 3
+4 5 6
+\"\"\"
+"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 2
+        # Brace block doesn't include leading newline
+        assert result[0].content == '1 2 3\n4 5 6\n'
+        # Triple-quoted preserves leading newline after """
+        assert result[1].content == '\n1 2 3\n4 5 6\n'
+        # They're equivalent except for the leading newline
+        assert result[0].content == result[1].content.lstrip('\n')
+
+    def test_parse_and_transform_inline_input_brace_with_whitespace(self):
+        """Test transforming @input brace block with various whitespace."""
+        script = """@input {
+  indented line
+\ttab line
+mixed\twhitespace
+}"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        # INPUT_LINE_CONTENT captures the line including leading whitespace
+        assert result[0].content == '  indented line\n\ttab line\nmixed\twhitespace\n'
+
+    def test_parse_and_transform_inline_input_brace_in_testgroup(self):
+        """Test transforming @input brace block inside a testgroup."""
+        script = """
+@testgroup group1 {
+    @input {
+abc
+def
+    }
+}
+"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].group == 'group1'
+        assert result[0].content == 'abc\ndef\n'
+
+    def test_parse_and_transform_mixed_input_syntaxes(self):
+        """Test mixing all three input syntaxes."""
+        script = """
+@input 'single quoted'
+@input "double quoted"
+@input \"\"\"
+triple
+quoted
+\"\"\"
+@input {
+brace
+block
+}
+"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 4
+        assert result[0].content == 'single quoted'
+        assert result[1].content == 'double quoted'
+        # Triple-quoted preserves the leading newline after """
+        assert result[2].content == '\ntriple\nquoted\n'
+        # Brace block preserves content line by line
+        assert result[3].content == 'brace\nblock\n'
 
     def test_parse_and_transform_simple_testgroup(self):
         """Test transforming a simple testgroup."""

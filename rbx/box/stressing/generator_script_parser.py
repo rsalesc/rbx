@@ -43,8 +43,14 @@ copy_test: COPY_KEYWORD _WS FILEPATH _NEWLINE?
 // Inline input
 // _NEWLINE? allows statement to end with newline OR EOF
 inline_input: INPUT_KEYWORD _WS string _NEWLINE?
+            | INPUT_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
 
 string: ESCAPED_STRING | TRIPLE_QUOTED_STRING
+
+// Input block - capture lines of content between braces for @input { ... }
+input_lines: (_NEWLINE | input_line)*
+
+input_line: INPUT_LINE_CONTENT _NEWLINE?
 
 // Testgroup
 // _NEWLINE? allows statement to end with newline OR EOF
@@ -63,6 +69,8 @@ GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_]*/
 ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
 // Triple-quoted strings (multiline)
 TRIPLE_QUOTED_STRING: /"""[\s\S]*?"""/
+// Input line content - matches any line content (excluding newline)
+INPUT_LINE_CONTENT: /[^\r\n]+/
 
 _INDENT: /[ \t]+/
 _WS: /[ \t]+/
@@ -136,12 +144,23 @@ class TestPlanTransformer(lark.Transformer):
             ),
         )
 
+    @lark.v_args(inline=False, meta=True)
     def inline_input(
-        self, meta: lark.tree.Meta, keyword: lark.Token, content: str
+        self, meta: lark.tree.Meta, children: List
     ) -> ScriptGeneratedInput:
         """Create ScriptGeneratedInput from an @input directive."""
+        # children[0] is the INPUT_KEYWORD token
+        # children[1] is either a string or input_lines content
+        content = children[1] if len(children) > 1 else ''
+
+        # For brace block syntax (input_lines), strip and ensure trailing newline
+        # For string syntax, keep as-is
+        # We can distinguish by checking if it's multiline or already processed
+        # String syntax (both regular and triple-quoted) don't need modification
+        # Brace blocks come from input_lines which already has newlines added per line
+
         return ScriptGeneratedInput(
-            content=content.strip() + '\n',
+            content=content,
             generator_script=GeneratorScriptEntry(
                 path=self.script_path,
                 line=meta.line,
@@ -159,6 +178,19 @@ class TestPlanTransformer(lark.Transformer):
         else:
             # Regular string (single or double quoted) - use ast.literal_eval to handle escapes
             return ast.literal_eval(raw_string)
+
+    @lark.v_args(inline=False, meta=True)
+    def input_lines(self, meta: lark.tree.Meta, items: List) -> str:
+        """Collect all input lines and join them."""
+        result = []
+        for item in items:
+            if item is not None and item != '\n':
+                result.append(item)
+        return ''.join(result)
+
+    def input_line(self, meta: lark.tree.Meta, content: lark.Token) -> str:
+        """Return the line content with newline."""
+        return str(content) + '\n'
 
     @lark.v_args(inline=False, meta=True)
     def testgroup(
@@ -231,6 +263,12 @@ gens/generator --MAX_N=100 --MIN_N=30 abcdef
 456
 789
 \"\"\"
+
+@input {
+multiline
+brace block
+syntax
+}
 
 @testgroup my-group {
     // Comment inside group
