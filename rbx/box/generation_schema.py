@@ -19,6 +19,7 @@ class GenerationInput(BaseModel):
     copied_from: Optional[Testcase] = None
     generator_call: Optional[GeneratorCall] = None
     generator_script: Optional[GeneratorScriptEntry] = None
+    content: Optional[str] = None
 
 
 class GenerationMetadata(GenerationInput):

@@ -182,6 +182,109 @@ gens/gen2 --B=2
         assert gen_script_1 is not None
         assert gen_script_1.line == 3
 
+    def test_parse_and_transform_inline_input_single_quotes(self):
+        """Test transforming @input directive with single-quoted string."""
+        script = "@input 'test data'"
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].content == 'test data'
+        assert result[0].generator_call is None
+        assert result[0].copied_from is None
+        assert result[0].group is None
+
+    def test_parse_and_transform_inline_input_double_quotes(self):
+        """Test transforming @input directive with double-quoted string."""
+        script = '@input "test data"'
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].content == 'test data'
+
+    def test_parse_and_transform_inline_input_with_escape_sequences(self):
+        """Test transforming @input directive with escape sequences."""
+        script = r"@input '123\n456\n789\n'"
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].content == '123\n456\n789\n'
+
+    def test_parse_and_transform_inline_input_with_escaped_quotes(self):
+        """Test transforming @input directive with escaped quotes."""
+        script = r"@input 'it\'s a test'"
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].content == "it's a test"
+
+    def test_parse_and_transform_inline_input_triple_quoted(self):
+        """Test transforming @input directive with triple-quoted string."""
+        script = '''@input """
+123
+456
+789
+"""'''
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].content == '\n123\n456\n789\n'
+
+    def test_parse_and_transform_multiple_inline_inputs(self):
+        """Test transforming multiple @input directives."""
+        script = """
+@input 'first input'
+@input "second input"
+"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 2
+        assert result[0].content == 'first input'
+        assert result[1].content == 'second input'
+
+    def test_parse_and_transform_tracks_inline_input_line_numbers(self):
+        """Test that line numbers are tracked for @input directives."""
+        script = """
+@input 'first'
+@input "second"
+"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        gen_script_0 = result[0].generator_script
+        assert gen_script_0 is not None
+        assert gen_script_0.line == 2
+        gen_script_1 = result[1].generator_script
+        assert gen_script_1 is not None
+        assert gen_script_1.line == 3
+
+    def test_parse_and_transform_inline_input_in_testgroup(self):
+        """Test transforming @input directive inside a testgroup."""
+        script = """
+@testgroup group1 {
+    @input 'test data in group'
+}
+"""
+        script_path = pathlib.Path('test_script.txt')
+
+        result = parse_and_transform(script, script_path)
+
+        assert len(result) == 1
+        assert result[0].group == 'group1'
+        assert result[0].content == 'test data in group'
+
     def test_parse_and_transform_simple_testgroup(self):
         """Test transforming a simple testgroup."""
         script = """

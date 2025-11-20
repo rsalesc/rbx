@@ -298,6 +298,12 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         generator_script=generation_input.generator_script,
                         copied_to=_copied_to(i),
                     )
+                elif generation_input.content is not None:
+                    metadata = GenerationMetadata(
+                        content=generation_input.content,
+                        generator_script=generation_input.generator_script,
+                        copied_to=_copied_to(i),
+                    )
                 else:
                     raise ValueError(f'Invalid generation input: {generation_input}')
                 await visitor.visit(

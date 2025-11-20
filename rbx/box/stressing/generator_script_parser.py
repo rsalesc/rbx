@@ -1,3 +1,4 @@
+import ast
 import pathlib
 from typing import List, Optional
 
@@ -13,11 +14,12 @@ class ScriptGeneratedInput(GenerationInput):
     group: Optional[str] = None
 
 
-LARK_GRAMMAR = r"""
+LARK_GRAMMAR = r'''
 start: _statement*
 
 _statement: _INDENT? comment
           | _INDENT? copy_test
+          | _INDENT? inline_input
           | _INDENT? testgroup
           | _INDENT? generator_call
           | _NEWLINE
@@ -38,6 +40,12 @@ args: REST_OF_LINE
 // _NEWLINE? allows statement to end with newline OR EOF
 copy_test: COPY_KEYWORD _WS FILEPATH _NEWLINE?
 
+// Inline input
+// _NEWLINE? allows statement to end with newline OR EOF
+inline_input: INPUT_KEYWORD _WS string _NEWLINE?
+
+string: ESCAPED_STRING | TRIPLE_QUOTED_STRING
+
 // Testgroup
 // _NEWLINE? allows statement to end with newline OR EOF
 testgroup: TESTGROUP_KEYWORD _WS GROUP_NAME _WS? _LBRACE _statement* _INDENT? _RBRACE _NEWLINE?
@@ -45,17 +53,23 @@ testgroup: TESTGROUP_KEYWORD _WS GROUP_NAME _WS? _LBRACE _statement* _INDENT? _R
 // Tokens
 COMMENT.3: /(\/\/|#)[^\n\r]*/
 COPY_KEYWORD.3: "@copy"
+INPUT_KEYWORD.3: "@input"
 TESTGROUP_KEYWORD.3: "@testgroup"
 REST_OF_LINE.2: /[^\n\r]+/
 FILEPATH: /[A-Za-z0-9@\.][\/A-Za-z0-9\-_\.@]*/
 GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_]*/
+
+// String literals - support both single and double quotes with escape sequences
+ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
+// Triple-quoted strings (multiline)
+TRIPLE_QUOTED_STRING: /"""[\s\S]*?"""/
 
 _INDENT: /[ \t]+/
 _WS: /[ \t]+/
 _LBRACE: "{"
 _RBRACE: "}"
 _NEWLINE: /\r?\n/
-"""
+'''
 
 LARK_PARSER = lark.Lark(LARK_GRAMMAR, propagate_positions=True)
 
@@ -122,6 +136,30 @@ class TestPlanTransformer(lark.Transformer):
             ),
         )
 
+    def inline_input(
+        self, meta: lark.tree.Meta, keyword: lark.Token, content: str
+    ) -> ScriptGeneratedInput:
+        """Create ScriptGeneratedInput from an @input directive."""
+        return ScriptGeneratedInput(
+            content=content.strip() + '\n',
+            generator_script=GeneratorScriptEntry(
+                path=self.script_path,
+                line=meta.line,
+            ),
+        )
+
+    def string(self, meta: lark.tree.Meta, token: lark.Token) -> str:
+        """Parse string literal and return its content."""
+        raw_string = str(token)
+
+        # Check if it's a triple-quoted string
+        if raw_string.startswith('"""') and raw_string.endswith('"""'):
+            # Remove triple quotes and return content as-is
+            return raw_string[3:-3]
+        else:
+            # Regular string (single or double quoted) - use ast.literal_eval to handle escapes
+            return ast.literal_eval(raw_string)
+
     @lark.v_args(inline=False, meta=True)
     def testgroup(
         self, meta: lark.tree.Meta, children: List
@@ -172,7 +210,8 @@ def parse_and_transform(
     """Parse a test plan script and transform it into a list of ScriptGeneratedInput objects."""
     tree = parse(script)
     transformer = TestPlanTransformer(script_path)
-    return transformer.transform(tree)
+    res = transformer.transform(tree)
+    return res
 
 
 if __name__ == '__main__':
@@ -183,10 +222,21 @@ gens/generator --MAX_N=100 --MIN_N=30 abcdef
 
 @copy test/in/disk.in
 
+@input '123\\n456\\n789\\n'
+
+@input "test\\ndata"
+
+@input \"\"\"
+123
+456
+789
+\"\"\"
+
 @testgroup my-group {
     // Comment inside group
     gens/generator2 --X=5
     gens/generator3 --Y=10 --Z=20 some more args
+    @input 'inline in group'
 }
 
 @testgroup group_2 {
@@ -218,3 +268,5 @@ gens/generator --MAX_N=100 --MIN_N=30 abcdef
             print(f'   Args: {result.generator_call.args}')
         if result.copied_from:
             print(f'   Copied from: {result.copied_from.inputPath}')
+        if result.content:
+            print(f'   Content: {repr(result.content)}')

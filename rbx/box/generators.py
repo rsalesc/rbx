@@ -319,6 +319,9 @@ async def generate_standalone(
                     err.print(
                         package.get_digest_as_string(generation_stderr.value) or '',
                     )
+    elif spec.content is not None:
+        spec.copied_to.inputPath.parent.mkdir(parents=True, exist_ok=True)
+        spec.copied_to.inputPath.write_text(spec.content)
     elif spec.copied_from is not None:
         _copy_testcase_over(spec.copied_from, spec.copied_to)
 
@@ -380,8 +383,12 @@ async def generate_testcases(
                     entry.metadata.copied_from,
                     entry.metadata.copied_to,
                 )
-
-            if entry.metadata.generator_call is not None:
+            elif entry.metadata.content is not None:
+                entry.metadata.copied_to.inputPath.parent.mkdir(
+                    parents=True, exist_ok=True
+                )
+                entry.metadata.copied_to.inputPath.write_text(entry.metadata.content)
+            elif entry.metadata.generator_call is not None:
                 await generate_standalone(
                     entry.metadata,
                     group_entry=entry.group_entry,
@@ -390,6 +397,8 @@ async def generate_testcases(
                         entry.metadata.generator_call.name
                     ],
                 )
+            else:
+                raise ValueError(f'Invalid generation metadata: {entry.metadata}')
             step()
 
     await run_testcase_visitor(BuildTestcaseVisitor(groups))
