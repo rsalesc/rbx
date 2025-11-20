@@ -7,10 +7,12 @@ import typer
 from rbx.box.generation_schema import GenerationInput, GeneratorScriptEntry
 from rbx.box.generator_script_handlers import (
     BoxGeneratorScriptHandler,
+    GeneratorScriptHandlerParams,
     RbxGeneratorScriptHandler,
     get_generator_script_handler,
 )
 from rbx.box.schema import GeneratorCall, GeneratorScript, Testcase
+from rbx.box.stressing.generator_script_parser import ScriptGeneratedInput
 
 
 class TestGetGeneratorScriptHandler:
@@ -21,7 +23,9 @@ class TestGetGeneratorScriptHandler:
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
         script = 'gen1 arg1\ngen2 arg2'
 
-        handler = get_generator_script_handler(script_entry, script)
+        handler = get_generator_script_handler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         assert isinstance(handler, RbxGeneratorScriptHandler)
         assert handler.script == script
@@ -32,7 +36,9 @@ class TestGetGeneratorScriptHandler:
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='box')
         script = '1 ; gen1.exe arg1\n2 ; gen2.exe arg2'
 
-        handler = get_generator_script_handler(script_entry, script)
+        handler = get_generator_script_handler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         assert isinstance(handler, BoxGeneratorScriptHandler)
         assert handler.script == script
@@ -46,7 +52,9 @@ class TestGetGeneratorScriptHandler:
         script = 'some content'
 
         with pytest.raises(typer.Exit) as exc_info:
-            get_generator_script_handler(mock_script_entry, script)
+            get_generator_script_handler(
+                script, GeneratorScriptHandlerParams(mock_script_entry)
+            )
 
         assert exc_info.value.exit_code == 1
 
@@ -61,54 +69,63 @@ class TestRbxGeneratorScriptHandler:
 gen2 --flag value
 gen3"""
 
-        handler = RbxGeneratorScriptHandler(script, script_entry)
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
         parsed = list(handler.parse())
 
         assert len(parsed) == 3
-        assert parsed[0] == GenerationInput(
+        assert parsed[0] == ScriptGeneratedInput(
             generator_call=GeneratorCall(name='gen1', args='arg1 arg2'),
             generator_script=GeneratorScriptEntry(
                 path=pathlib.Path('script.txt'), line=1
             ),
+            group=None,
         )
-        assert parsed[1] == GenerationInput(
+        assert parsed[1] == ScriptGeneratedInput(
             generator_call=GeneratorCall(name='gen2', args='--flag value'),
             generator_script=GeneratorScriptEntry(
                 path=pathlib.Path('script.txt'), line=2
             ),
+            group=None,
         )
-        assert parsed[2] == GenerationInput(
-            generator_call=GeneratorCall(name='gen3', args=''),
+        assert parsed[2] == ScriptGeneratedInput(
+            generator_call=GeneratorCall(name='gen3', args=None),
             generator_script=GeneratorScriptEntry(
                 path=pathlib.Path('script.txt'), line=3
             ),
+            group=None,
         )
 
     def test_parse_with_comments_and_empty_lines(self):
         """Test parsing script with comments and empty lines."""
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
-        script = """# This is a comment
+        script = """// This is a comment
 gen1 arg1
 
-# Another comment
+// Another comment
 gen2 arg2
 """
 
-        handler = RbxGeneratorScriptHandler(script, script_entry)
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
         parsed = list(handler.parse())
 
         assert len(parsed) == 2
-        assert parsed[0] == GenerationInput(
+        assert parsed[0] == ScriptGeneratedInput(
             generator_call=GeneratorCall(name='gen1', args='arg1'),
             generator_script=GeneratorScriptEntry(
                 path=pathlib.Path('script.txt'), line=2
             ),
+            group=None,
         )
-        assert parsed[1] == GenerationInput(
+        assert parsed[1] == ScriptGeneratedInput(
             generator_call=GeneratorCall(name='gen2', args='arg2'),
             generator_script=GeneratorScriptEntry(
                 path=pathlib.Path('script.txt'), line=5
             ),
+            group=None,
         )
 
     def test_parse_with_quoted_arguments(self):
@@ -116,25 +133,30 @@ gen2 arg2
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
         script = 'gen1 "quoted arg" \'single quoted\''
 
-        handler = RbxGeneratorScriptHandler(script, script_entry)
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
         parsed = list(handler.parse())
 
         assert len(parsed) == 1
-        # shlex.join normalizes quotes to single quotes
-        assert parsed[0] == GenerationInput(
+        # Arguments are parsed as-is without quote normalization
+        assert parsed[0] == ScriptGeneratedInput(
             generator_call=GeneratorCall(
-                name='gen1', args="'quoted arg' 'single quoted'"
+                name='gen1', args='"quoted arg" \'single quoted\''
             ),
             generator_script=GeneratorScriptEntry(
                 path=pathlib.Path('script.txt'), line=1
             ),
+            group=None,
         )
 
     def test_append_single_call(self):
         """Test appending a single generator call."""
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
         script = 'existing_gen arg'
-        handler = RbxGeneratorScriptHandler(script, script_entry)
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         call = GeneratorCall(name='new_gen', args='new_arg')
         handler.append([call])
@@ -145,7 +167,9 @@ gen2 arg2
         """Test appending multiple calls with a comment."""
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
         script = 'existing_gen'
-        handler = RbxGeneratorScriptHandler(script, script_entry)
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         calls = [
             GeneratorCall(name='gen1', args='arg1'),
@@ -164,12 +188,119 @@ gen2 arg2
             root=pathlib.Path('generators'),
         )
         script = ''
-        handler = RbxGeneratorScriptHandler(script, script_entry)
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         call = GeneratorCall(name='generators/subdir/gen', args='arg')
         handler.append([call])
 
         assert handler.script == '\nsubdir/gen arg'
+
+    def test_parse_with_group_filter(self):
+        """Test parsing script with group filter applied."""
+        script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
+        script = """// Ungrouped generator
+gen1 arg1
+
+@testgroup group-a {
+    gen2 arg2
+    gen3 arg3
+}
+
+@testgroup group-b {
+    gen4 arg4
+}
+
+// Another ungrouped generator
+gen5 arg5
+"""
+
+        # Parse with group filter for 'group-a'
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry, group='group-a')
+        )
+        parsed = list(handler.parse())
+
+        # Should include ungrouped generators (gen1, gen5) and group-a generators (gen2, gen3)
+        # Should exclude group-b generators (gen4)
+        assert len(parsed) == 4
+
+        # Verify the generator names
+        generator_names = [
+            p.generator_call.name for p in parsed if p.generator_call is not None
+        ]
+        assert generator_names == ['gen1', 'gen2', 'gen3', 'gen5']
+
+        # Verify groups (cast to ScriptGeneratedInput for type safety)
+        assert isinstance(parsed[0], ScriptGeneratedInput)
+        assert isinstance(parsed[1], ScriptGeneratedInput)
+        assert isinstance(parsed[2], ScriptGeneratedInput)
+        assert isinstance(parsed[3], ScriptGeneratedInput)
+        assert parsed[0].group is None  # gen1 - ungrouped
+        assert parsed[1].group == 'group-a'  # gen2
+        assert parsed[2].group == 'group-a'  # gen3
+        assert parsed[3].group is None  # gen5 - ungrouped
+
+    def test_parse_with_different_group_filter(self):
+        """Test parsing with a different group filter."""
+        script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
+        script = """gen1 arg1
+
+@testgroup group-a {
+    gen2 arg2
+}
+
+@testgroup group-b {
+    gen3 arg3
+}
+"""
+
+        # Parse with group filter for 'group-b'
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry, group='group-b')
+        )
+        parsed = list(handler.parse())
+
+        # Should include ungrouped (gen1) and group-b (gen3)
+        # Should exclude group-a (gen2)
+        assert len(parsed) == 2
+
+        generator_names = [
+            p.generator_call.name for p in parsed if p.generator_call is not None
+        ]
+        assert generator_names == ['gen1', 'gen3']
+
+        # Verify groups (cast to ScriptGeneratedInput for type safety)
+        assert isinstance(parsed[0], ScriptGeneratedInput)
+        assert isinstance(parsed[1], ScriptGeneratedInput)
+        assert parsed[0].group is None  # gen1 - ungrouped
+        assert parsed[1].group == 'group-b'  # gen3
+
+    def test_parse_with_group_filter_no_matches(self):
+        """Test parsing with group filter that has no matches (only ungrouped remain)."""
+        script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='rbx')
+        script = """gen1 arg1
+
+@testgroup group-a {
+    gen2 arg2
+}
+"""
+
+        # Parse with group filter for 'non-existent-group'
+        handler = RbxGeneratorScriptHandler(
+            script,
+            GeneratorScriptHandlerParams(script_entry, group='non-existent-group'),
+        )
+        parsed = list(handler.parse())
+
+        # Should only include ungrouped generators
+        assert len(parsed) == 1
+        assert parsed[0].generator_call is not None
+        assert parsed[0].generator_call.name == 'gen1'
+        # Verify group (cast to ScriptGeneratedInput for type safety)
+        assert isinstance(parsed[0], ScriptGeneratedInput)
+        assert parsed[0].group is None
 
 
 class TestBoxGeneratorScriptHandler:
@@ -182,7 +313,9 @@ class TestBoxGeneratorScriptHandler:
 1 ; gen2.exe --flag value
 2 ; gen3.exe"""
 
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
         parsed = list(handler.parse())
 
         assert len(parsed) == 3
@@ -215,7 +348,9 @@ class TestBoxGeneratorScriptHandler:
 2 ; gen2.exe arg2
 """
 
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
         parsed = list(handler.parse())
 
         assert len(parsed) == 2
@@ -237,7 +372,9 @@ class TestBoxGeneratorScriptHandler:
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='box')
         script = '1 ; copy file1 file2'
 
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
         parsed = list(handler.parse())
 
         assert len(parsed) == 1
@@ -254,7 +391,9 @@ class TestBoxGeneratorScriptHandler:
         # Missing semicolon
         script = '1 gen1.exe arg1'
 
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         with pytest.raises(typer.Exit) as exc_info:
             list(handler.parse())
@@ -267,7 +406,9 @@ class TestBoxGeneratorScriptHandler:
         # Non-integer group number
         script = 'abc ; gen1.exe arg1'
 
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         with pytest.raises(typer.Exit) as exc_info:
             list(handler.parse())
@@ -278,7 +419,9 @@ class TestBoxGeneratorScriptHandler:
         """Test appending a single generator call to BOX script."""
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='box')
         script = '1 ; existing.exe arg'
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         call = GeneratorCall(name='new_gen', args='new_arg')
         handler.append([call])
@@ -290,7 +433,9 @@ class TestBoxGeneratorScriptHandler:
         """Test appending multiple calls with same group number."""
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='box')
         script = '3 ; existing.exe'
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         calls = [
             GeneratorCall(name='gen1', args='arg1'),
@@ -311,7 +456,9 @@ class TestBoxGeneratorScriptHandler:
             root=pathlib.Path('generators'),
         )
         script = ''
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         call = GeneratorCall(name='generators/subdir/gen', args='arg')
         handler.append([call])
@@ -325,7 +472,9 @@ class TestBoxGeneratorScriptHandler:
             format='box',
             root=pathlib.Path('generators'),
         )
-        handler = BoxGeneratorScriptHandler('', script_entry)
+        handler = BoxGeneratorScriptHandler(
+            '', GeneratorScriptHandlerParams(script_entry)
+        )
 
         with pytest.raises(typer.Exit) as exc_info:
             handler.normalize_call_name('other_dir/gen')
@@ -336,7 +485,9 @@ class TestBoxGeneratorScriptHandler:
         """Test appending to empty script starts at group 1."""
         script_entry = GeneratorScript(path=pathlib.Path('script.txt'), format='box')
         script = ''
-        handler = BoxGeneratorScriptHandler(script, script_entry)
+        handler = BoxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry)
+        )
 
         call = GeneratorCall(name='gen', args='arg')
         handler.append([call])

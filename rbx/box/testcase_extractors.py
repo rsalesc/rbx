@@ -12,7 +12,10 @@ from rbx.box.generation_schema import (
     GenerationMetadata,
     GenerationTestcaseEntry,
 )
-from rbx.box.generator_script_handlers import get_generator_script_handler
+from rbx.box.generator_script_handlers import (
+    GeneratorScriptHandlerParams,
+    get_generator_script_handler,
+)
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
@@ -105,9 +108,11 @@ def _resolve_generator_name(generator_name: str, script_entry: GeneratorScript) 
 
 
 def _extract_script_lines(
-    script: str, script_entry: GeneratorScript
+    script: str, script_entry: GeneratorScript, group: Optional[str] = None
 ) -> Iterable[GenerationInput]:
-    return get_generator_script_handler(script_entry, script).parse()
+    return get_generator_script_handler(
+        script, GeneratorScriptHandlerParams(script_entry, group)
+    ).parse()
 
 
 def get_testcase_metadata_markup(entry: GenerationTestcaseEntry) -> str:
@@ -270,7 +275,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
 
             # Run each line from generator script.
             for generation_input in _extract_script_lines(
-                script, subgroup.generatorScript
+                script, subgroup.generatorScript, group_path
             ):
                 if generation_input.copied_from is not None:
                     metadata = GenerationMetadata(

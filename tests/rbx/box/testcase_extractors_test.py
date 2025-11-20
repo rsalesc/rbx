@@ -750,7 +750,7 @@ gen1 final_arg"""
         # Check that arguments are correctly parsed
         assert visited_entries[0].metadata.generator_call.args == 'simple_arg'
         assert (
-            visited_entries[1].metadata.generator_call.args == "'quoted arg' normal_arg"
+            visited_entries[1].metadata.generator_call.args == '"quoted arg" normal_arg'
         )
         assert visited_entries[2].metadata.generator_call.args == 'final_arg'
 

@@ -808,7 +808,10 @@ async def stress(
             assert subgroup.generatorScript is not None
             generator_script = pathlib.Path(subgroup.generatorScript.path)
             handler = generator_script_handlers.get_generator_script_handler(
-                subgroup.generatorScript, generator_script.read_text()
+                generator_script.read_text(),
+                generator_script_handlers.GeneratorScriptHandlerParams(
+                    subgroup.generatorScript,
+                ),
             )
 
             stress_text = f'# Obtained by running `rbx {shlex.join(sys.argv[1:])}`'

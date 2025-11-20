@@ -1,3 +1,4 @@
+import dataclasses
 import pathlib
 import shlex
 from abc import abstractmethod
@@ -8,15 +9,24 @@ import typer
 from rbx import console
 from rbx.box.generation_schema import GenerationInput, GeneratorScriptEntry
 from rbx.box.schema import GeneratorCall, GeneratorScript, Testcase
+from rbx.box.stressing import generator_script_parser
+
+
+@dataclasses.dataclass
+class GeneratorScriptHandlerParams:
+    script_entry: GeneratorScript
+    group: Optional[str] = None
 
 
 class GeneratorScriptHandler:
     script: str
     script_entry: GeneratorScript
+    group: Optional[str] = None
 
-    def __init__(self, script: str, script_entry: GeneratorScript):
+    def __init__(self, script: str, params: GeneratorScriptHandlerParams):
         self.script = script
-        self.script_entry = script_entry
+        self.script_entry = params.script_entry
+        self.group = params.group
 
     @abstractmethod
     def parse(self) -> Iterable[GenerationInput]:
@@ -40,33 +50,14 @@ class GeneratorScriptHandler:
 
 class RbxGeneratorScriptHandler(GeneratorScriptHandler):
     def parse(self) -> Iterable[GenerationInput]:
-        lines = self.script.splitlines()
-        for i, line in enumerate(lines):
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                continue
-            entry = GeneratorScriptEntry(
-                path=self.script_entry.path,
-                line=i + 1,
-            )
-            call = shlex.split(line)[0]
-            if call.strip() == '@copy':
-                yield GenerationInput(
-                    copied_from=Testcase(
-                        inputPath=pathlib.Path(shlex.split(line)[1].strip())
-                    ),
-                    generator_script=entry,
-                )
-            else:
-                yield GenerationInput(
-                    generator_call=GeneratorCall(
-                        name=call,
-                        args=shlex.join(shlex.split(line)[1:]),
-                    ),
-                    generator_script=entry,
-                )
+        inputs = generator_script_parser.parse_and_transform(
+            self.script, self.script_entry.path
+        )
+        if self.group is not None:
+            inputs = [
+                inp for inp in inputs if inp.group is None or inp.group == self.group
+            ]
+        yield from inputs
 
     def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
         if comment:
@@ -158,11 +149,12 @@ REGISTERED_HANDLERS = {
 
 
 def get_generator_script_handler(
-    script_entry: GeneratorScript, script: str
+    script: str,
+    params: GeneratorScriptHandlerParams,
 ) -> GeneratorScriptHandler:
-    if script_entry.format not in REGISTERED_HANDLERS:
+    if params.script_entry.format not in REGISTERED_HANDLERS:
         console.console.print(
-            f'[error]Invalid generator script format: {script_entry.format}[/error]'
+            f'[error]Invalid generator script format: {params.script_entry.format}[/error]'
         )
         raise typer.Exit(1)
-    return REGISTERED_HANDLERS[script_entry.format](script, script_entry)
+    return REGISTERED_HANDLERS[params.script_entry.format](script, params)
