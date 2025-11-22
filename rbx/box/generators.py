@@ -475,6 +475,9 @@ async def generate_outputs_for_testcases(
         interactor_digest = None
 
     if main_solution is not None and needs_output:
+        console.console.print(
+            f'Using {main_solution.href()} as solution for generating outputs.'
+        )
         if progress:
             progress.update('Compiling main solution...')
         try:
