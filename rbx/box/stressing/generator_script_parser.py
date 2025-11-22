@@ -6,6 +6,7 @@ import lark
 
 from rbx.box.generation_schema import GenerationInput, GeneratorScriptEntry
 from rbx.box.schema import GeneratorCall, Testcase
+from rbx.box.stressing import whitespace
 
 
 class ScriptGeneratedInput(GenerationInput):
@@ -174,7 +175,7 @@ class TestPlanTransformer(lark.Transformer):
         # Check if it's a triple-quoted string
         if raw_string.startswith('"""') and raw_string.endswith('"""'):
             # Remove triple quotes and return content as-is
-            return raw_string[3:-3]
+            return whitespace.normalize_trailing_lines_from_text(raw_string[3:-3])
         else:
             # Regular string (single or double quoted) - use ast.literal_eval to handle escapes
             return ast.literal_eval(raw_string)
@@ -182,11 +183,8 @@ class TestPlanTransformer(lark.Transformer):
     @lark.v_args(inline=False, meta=True)
     def input_lines(self, meta: lark.tree.Meta, items: List) -> str:
         """Collect all input lines and join them."""
-        result = []
-        for item in items:
-            if item is not None and item != '\n':
-                result.append(item)
-        return ''.join(result)
+        result = [item for item in items if item is not None]
+        return whitespace.normalize_lines(result)
 
     def input_line(self, meta: lark.tree.Meta, content: lark.Token) -> str:
         """Return the line content with newline."""

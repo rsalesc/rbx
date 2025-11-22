@@ -237,8 +237,8 @@ gens/gen2 --B=2
         result = parse_and_transform(script, script_path)
 
         assert len(result) == 1
-        # Triple-quoted strings preserve their content including leading newline
-        assert result[0].content == '\n123\n456\n789\n'
+        # Triple-quoted strings have leading/trailing empty lines stripped
+        assert result[0].content == '123\n456\n789\n'
 
     def test_parse_and_transform_multiple_inline_inputs(self):
         """Test transforming multiple @input directives."""
@@ -328,12 +328,11 @@ gens/gen2 --B=2
         result = parse_and_transform(script, script_path)
 
         assert len(result) == 2
-        # Brace block doesn't include leading newline
+        # Both normalize whitespace the same way now (strip leading/trailing empty lines)
         assert result[0].content == '1 2 3\n4 5 6\n'
-        # Triple-quoted preserves leading newline after """
-        assert result[1].content == '\n1 2 3\n4 5 6\n'
-        # They're equivalent except for the leading newline
-        assert result[0].content == result[1].content.lstrip('\n')
+        assert result[1].content == '1 2 3\n4 5 6\n'
+        # They're now equivalent
+        assert result[0].content == result[1].content
 
     def test_parse_and_transform_inline_input_brace_with_whitespace(self):
         """Test transforming @input brace block with various whitespace."""
@@ -347,8 +346,8 @@ mixed\twhitespace
         result = parse_and_transform(script, script_path)
 
         assert len(result) == 1
-        # INPUT_LINE_CONTENT captures the line including leading whitespace
-        assert result[0].content == '  indented line\n\ttab line\nmixed\twhitespace\n'
+        # Whitespace normalization strips leading whitespace from each line
+        assert result[0].content == 'indented line\ntab line\nmixed\twhitespace\n'
 
     def test_parse_and_transform_inline_input_brace_in_testgroup(self):
         """Test transforming @input brace block inside a testgroup."""
@@ -389,9 +388,9 @@ block
         assert len(result) == 4
         assert result[0].content == 'single quoted'
         assert result[1].content == 'double quoted'
-        # Triple-quoted preserves the leading newline after """
-        assert result[2].content == '\ntriple\nquoted\n'
-        # Brace block preserves content line by line
+        # Triple-quoted has leading/trailing empty lines stripped
+        assert result[2].content == 'triple\nquoted\n'
+        # Brace block has whitespace normalized
         assert result[3].content == 'brace\nblock\n'
 
     def test_parse_and_transform_simple_testgroup(self):

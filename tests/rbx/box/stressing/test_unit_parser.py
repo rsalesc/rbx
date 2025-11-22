@@ -151,7 +151,7 @@ line 2
 
         assert len(result) == 1
         assert result[0].expectation == ExpectedOutcome.ACCEPTED
-        assert result[0].input == '\nline 1\nline 2\n'
+        assert result[0].input == 'line 1\nline 2\n'
 
     def test_multiple_input_only_blocks(self):
         """Test multiple @input blocks."""
@@ -539,7 +539,7 @@ class TestWhitespaceHandling:
         assert result[1].input == 'test2'
 
     def test_brace_block_preserves_content_whitespace(self):
-        """Test that whitespace in brace blocks is preserved."""
+        """Test that whitespace in brace blocks is normalized (leading whitespace stripped)."""
         script = """@input ac {
   spaces
     more spaces
@@ -550,7 +550,7 @@ class TestWhitespaceHandling:
         result = parse_and_transform(script, script_path, UnitTestMode.CHECKER)
 
         assert len(result) == 1
-        assert result[0].input == '  spaces\n    more spaces\n\ttab\n'
+        assert result[0].input == 'spaces\nmore spaces\ntab\n'
 
     def test_empty_lines_in_brace_block(self):
         """Test that empty lines in brace blocks are preserved."""
@@ -644,7 +644,7 @@ class TestEdgeCases:
         result = parse_and_transform(script, script_path, UnitTestMode.CHECKER)
 
         assert len(result) == 1
-        assert result[0].input == """He said "hello" and 'goodbye'"""
+        assert result[0].input == """He said "hello" and 'goodbye'\n"""
 
     def test_multiline_with_trailing_newline(self):
         """Test that multiline content ends with newline."""
