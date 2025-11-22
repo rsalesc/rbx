@@ -18,66 +18,59 @@ class ScriptGeneratedInput(GenerationInput):
 LARK_GRAMMAR = r'''
 start: _statement*
 
-_statement: _INDENT? comment
-          | _INDENT? copy_test
-          | _INDENT? inline_input
-          | _INDENT? testgroup
-          | _INDENT? generator_call
-          | _NEWLINE
+_statement: comment
+          | copy_test
+          | inline_input
+          | testgroup
+          | generator_call
 
 // Comments (whole line only)
-// _NEWLINE? allows statement to end with newline OR EOF
-comment: COMMENT _NEWLINE?
+comment: COMMENT
 
 // Generator call - name must be first token on line, consumes rest of line as args
-// _NEWLINE? allows statement to end with newline OR EOF
-generator_call: generator_name _WS args _NEWLINE?
-              | generator_name _NEWLINE?
-
-generator_name: FILEPATH
-args: REST_OF_LINE
+generator_call: REST_OF_LINE
 
 // Copy test
-// _NEWLINE? allows statement to end with newline OR EOF
-copy_test: COPY_KEYWORD _WS FILEPATH _NEWLINE?
+copy_test: COPY_KEYWORD REST_OF_LINE
 
 // Inline input
-// _NEWLINE? allows statement to end with newline OR EOF
-inline_input: INPUT_KEYWORD _WS string _NEWLINE?
-            | INPUT_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
+inline_input: INPUT_KEYWORD string
+            | INPUT_KEYWORD _LBRACE input_lines _RBRACE
 
-string: ESCAPED_STRING | TRIPLE_QUOTED_STRING
+string: TRIPLE_QUOTED_STRING | ESCAPED_STRING
 
-// Input block - capture lines of content between braces for @input { ... }
-input_lines: (_NEWLINE | input_line)*
-
-input_line: INPUT_LINE_CONTENT _NEWLINE?
+// Content between braces
+input_lines: BLOCK_CONTENT?
 
 // Testgroup
-// _NEWLINE? allows statement to end with newline OR EOF
-testgroup: TESTGROUP_KEYWORD _WS GROUP_NAME _WS? _LBRACE _statement* _INDENT? _RBRACE _NEWLINE?
+testgroup: TESTGROUP_KEYWORD GROUP_NAME _LBRACE _statement* _RBRACE
 
 // Tokens
 COMMENT.3: /(\/\/|#)[^\n\r]*/
 COPY_KEYWORD.3: "@copy"
 INPUT_KEYWORD.3: "@input"
 TESTGROUP_KEYWORD.3: "@testgroup"
-REST_OF_LINE.2: /[^\n\r]+/
-FILEPATH: /[A-Za-z0-9@\.][\/A-Za-z0-9\-_\.@]*/
+# no ambiguity
+REST_OF_LINE.2: /[^\s@\/#][^\n\r]*/
+FILEPATH: /[A-Za-z0-9\.][\/A-Za-z0-9\-_\.]*/
 GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_]*/
 
 // String literals - support both single and double quotes with escape sequences
-ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
+// Negative lookahead (?!") prevents matching "" when it's part of """
+ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"(?!")/
 // Triple-quoted strings (multiline)
 TRIPLE_QUOTED_STRING: /"""[\s\S]*?"""/
-// Input line content - matches any line content (excluding newline)
-INPUT_LINE_CONTENT: /[^\r\n]+/
+// Content between braces
+BLOCK_CONTENT: /[^\}]+/
 
 _INDENT: /[ \t]+/
-_WS: /[ \t]+/
+_S: /[ \t]+/
+_WS: /\s+/
 _LBRACE: "{"
 _RBRACE: "}"
 _NEWLINE: /\r?\n/
+
+%ignore _WS
 '''
 
 LARK_PARSER = lark.Lark(LARK_GRAMMAR, propagate_positions=True)
@@ -114,9 +107,14 @@ class TestPlanTransformer(lark.Transformer):
         return None
 
     def generator_call(
-        self, meta: lark.tree.Meta, name: str, args: Optional[str] = None
+        self, meta: lark.tree.Meta, rest_of_line: str
     ) -> ScriptGeneratedInput:
         """Create ScriptGeneratedInput from a generator call."""
+        rest_of_line = rest_of_line.strip()
+        name, *arglist = rest_of_line.split(None, 1)
+        args = ' '.join(arglist)
+        if not args:
+            args = None
         return ScriptGeneratedInput(
             generator_call=GeneratorCall(name=name, args=args),
             generator_script=GeneratorScriptEntry(
@@ -134,11 +132,13 @@ class TestPlanTransformer(lark.Transformer):
         return str(rest_of_line).strip()
 
     def copy_test(
-        self, meta: lark.tree.Meta, keyword: lark.Token, filepath: str
+        self, meta: lark.tree.Meta, keyword: lark.Token, rest_of_line: str
     ) -> ScriptGeneratedInput:
         """Create ScriptGeneratedInput from a @copy directive."""
+        if not rest_of_line.strip():
+            raise ValueError('@copy directive requires a filepath')
         return ScriptGeneratedInput(
-            copied_from=Testcase(inputPath=pathlib.Path(filepath)),
+            copied_from=Testcase(inputPath=pathlib.Path(rest_of_line.strip())),
             generator_script=GeneratorScriptEntry(
                 path=self.script_path,
                 line=meta.line,
@@ -181,14 +181,13 @@ class TestPlanTransformer(lark.Transformer):
             return ast.literal_eval(raw_string)
 
     @lark.v_args(inline=False, meta=True)
-    def input_lines(self, meta: lark.tree.Meta, items: List) -> str:
+    def input_lines(self, meta: lark.tree.Meta, children: List) -> str:
         """Collect all input lines and join them."""
-        result = [item for item in items if item is not None]
-        return whitespace.normalize_lines(result)
-
-    def input_line(self, meta: lark.tree.Meta, content: lark.Token) -> str:
-        """Return the line content with newline."""
-        return str(content) + '\n'
+        if not children or children[0] is None:
+            return ''
+        # children[0] is the BLOCK_CONTENT token
+        content = children[0]
+        return whitespace.normalize_lines_from_text(str(content))
 
     @lark.v_args(inline=False, meta=True)
     def testgroup(

@@ -75,7 +75,7 @@ input_only_block: INPUT_KEYWORD test_name expectation _LBRACE input_lines _RBRAC
                 | INPUT_KEYWORD expectation _LBRACE input_lines _RBRACE
                 | INPUT_KEYWORD expectation string
 
-string: ESCAPED_STRING | TRIPLE_QUOTED_STRING
+string: TRIPLE_QUOTED_STRING | ESCAPED_STRING
 
 // Input line content - matches any content between braces
 input_lines: BLOCK_CONTENT?
@@ -89,7 +89,8 @@ NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_]*/
 COMMENT.3: /(\/\/|#)[^\n\r]*/
 
 // String literals - support both single and double quotes with escape sequences
-ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
+// Negative lookahead (?!") prevents matching "" when it's part of """
+ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"(?!")/
 // Triple-quoted strings (multiline)
 TRIPLE_QUOTED_STRING: /"""[\s\S]*?"""/
 // Content between braces
