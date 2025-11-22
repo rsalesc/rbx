@@ -29,6 +29,7 @@ from rbx.box.environment import (
     VerificationLevel,
 )
 from rbx.box.formatting import get_formatted_memory, get_formatted_time, href
+from rbx.box.generation_schema import TestcaseOrScriptEntry
 from rbx.box.generators import (
     GenerationMetadata,
     expand_generator_call,
@@ -49,7 +50,9 @@ from rbx.box.tasks import (
     get_limits_for_language,
     run_solution_on_testcase,
 )
-from rbx.box.testcase_extractors import extract_generation_testcases
+from rbx.box.testcase_extractors import (
+    extract_generation_testcases_from_generic_entries,
+)
 from rbx.box.testcase_utils import (
     TestcaseEntry,
     TestcaseInteractionParsingError,
@@ -509,7 +512,7 @@ def run_solutions(
 async def _generate_testcase_interactively(
     progress: Optional[StatusProgress] = None,
     generator: Optional[GeneratorCall] = None,
-    testcase_entry: Optional[TestcaseEntry] = None,
+    testcase_entry: Optional[TestcaseOrScriptEntry] = None,
     check: bool = True,
     custom_output: bool = False,
     sanitized: bool = False,
@@ -533,7 +536,9 @@ async def _generate_testcase_interactively(
             copied_to=testcase,
         )
     elif testcase_entry is not None:
-        extracted = await extract_generation_testcases([testcase_entry])
+        extracted = await extract_generation_testcases_from_generic_entries(
+            [testcase_entry]
+        )
         if not extracted:
             console.console.print(
                 f'[error]Failed searching for testcase [item]{testcase_entry}[/item].[/error]'
@@ -739,7 +744,7 @@ async def run_and_print_interactive_solutions(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     generator: Optional[GeneratorCall] = None,
-    testcase_entry: Optional[TestcaseEntry] = None,
+    testcase_entry: Optional[TestcaseOrScriptEntry] = None,
     check: bool = True,
     custom_output: bool = False,
     print: bool = False,

@@ -11,6 +11,8 @@ from rbx.box.generation_schema import (
     GenerationInput,
     GenerationMetadata,
     GenerationTestcaseEntry,
+    GeneratorScriptEntry,
+    TestcaseOrScriptEntry,
 )
 from rbx.box.generator_script_handlers import (
     GeneratorScriptHandlerParams,
@@ -365,6 +367,31 @@ async def extract_generation_testcases(
             if entry.group_entry.key() not in entry_keys:
                 return
             res.append(entry)
+
+    await run_testcase_visitor(ExtractGenerationTestcasesVisitor())
+    return res
+
+
+async def extract_generation_testcases_from_generic_entries(
+    entries: List[TestcaseOrScriptEntry],
+) -> List[GenerationTestcaseEntry]:
+    res: List[GenerationTestcaseEntry] = []
+    entry_keys = set(
+        entry.key() for entry in entries if isinstance(entry, TestcaseEntry)
+    )
+    script_entry_keys = set(
+        entry for entry in entries if isinstance(entry, GeneratorScriptEntry)
+    )
+
+    class ExtractGenerationTestcasesVisitor(TestcaseVisitor):
+        async def visit(self, entry: GenerationTestcaseEntry):
+            if entry.group_entry.key() in entry_keys:
+                res.append(entry)
+                return
+            script_entry = entry.metadata.generator_script
+            if script_entry is not None and script_entry in script_entry_keys:
+                res.append(entry)
+                return
 
     await run_testcase_visitor(ExtractGenerationTestcasesVisitor())
     return res

@@ -32,6 +32,7 @@ from rbx.box import (
 from rbx.box.contest import main as contest
 from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.environment import VerificationLevel, get_app_environment_path
+from rbx.box.generation_schema import get_parsed_entry
 from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.schema import ExpectedOutcome, GeneratorScript, TestcaseGroup
@@ -44,7 +45,6 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.statements import build_statements
-from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testcases import main as testcases
 from rbx.box.tooling import main as tooling
 from rbx.grading import grading_context
@@ -606,7 +606,7 @@ async def irun(
             generator=generators.get_call_from_string(generator)
             if generator is not None
             else None,
-            testcase_entry=TestcaseEntry.parse(testcase) if testcase else None,
+            testcase_entry=get_parsed_entry(testcase) if testcase else None,
             custom_output=output,
             print=print,
             sanitized=sanitized,
