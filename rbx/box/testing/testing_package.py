@@ -434,6 +434,34 @@ class TestingPackage(TestingShared):
         self.yml.unitTests = unit_tests
         self.save()
 
+    def add_validator_unit_test_from_testplan(
+        self,
+        testplan: PathOrStr,
+        content: Optional[str] = None,
+        validator: Optional[PathOrStr] = None,
+    ):
+        """Add a unit test for the validator using a testplan.
+
+        Args:
+            testplan: Path to testplan file
+            content: Optional content to write to testplan
+            validator: Optional validator to use (if not main validator)
+        """
+        testplan_path = pathlib.Path(testplan)
+        if content is not None:
+            self.add_file(testplan_path).write_text(content)
+
+        validator_test = ValidatorTest(
+            testplan=testplan_path,
+            validator=CodeItem(path=pathlib.Path(validator)) if validator else None,
+        )
+
+        # Explicitly set the unitTests field to mark it as dirty
+        unit_tests = self.yml.unitTests
+        unit_tests.validator = unit_tests.validator + [validator_test]
+        self.yml.unitTests = unit_tests
+        self.save()
+
     def add_checker_unit_test(
         self,
         glob: str,
@@ -452,6 +480,29 @@ class TestingPackage(TestingShared):
                 self.add_file(filename).write_text(content)
 
         checker_test = CheckerTest(glob=glob, outcome=outcome)
+
+        # Explicitly set the unitTests field to mark it as dirty
+        unit_tests = self.yml.unitTests
+        unit_tests.checker = unit_tests.checker + [checker_test]
+        self.yml.unitTests = unit_tests
+        self.save()
+
+    def add_checker_unit_test_from_testplan(
+        self,
+        testplan: PathOrStr,
+        content: Optional[str] = None,
+    ):
+        """Add a unit test for the checker using a testplan.
+
+        Args:
+            testplan: Path to testplan file
+            content: Optional content to write to testplan
+        """
+        testplan_path = pathlib.Path(testplan)
+        if content is not None:
+            self.add_file(testplan_path).write_text(content)
+
+        checker_test = CheckerTest(testplan=testplan_path)
 
         # Explicitly set the unitTests field to mark it as dirty
         unit_tests = self.yml.unitTests

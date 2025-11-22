@@ -1,4 +1,5 @@
 import pathlib
+import tempfile
 from unittest import mock
 
 import pytest
@@ -15,21 +16,36 @@ def mock_progress():
     return mock.Mock(spec=StatusProgress)
 
 
+@pytest.fixture
+def tmpdir_path():
+    """Fixture that provides a temporary directory as pathlib.Path."""
+    with tempfile.TemporaryDirectory() as tmpd:
+        yield pathlib.Path(tmpd)
+
+
 class TestValidatorUnitTests:
     """Test validator unit test functionality."""
 
     async def test_no_validator_unit_tests(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test behavior when no validator unit tests are defined."""
         # No unit tests defined, should print message and return
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         assert 'No validator unit tests found.' in captured.out
 
     async def test_validator_unit_tests_with_valid_inputs(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test validator unit tests with valid inputs."""
         # Set up validator
@@ -45,7 +61,7 @@ class TestValidatorUnitTests:
             },
         )
 
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -55,7 +71,11 @@ class TestValidatorUnitTests:
         assert 'Expected VALID' in captured.out
 
     async def test_validator_unit_tests_with_invalid_inputs(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test validator unit tests with invalid inputs."""
         # Set up validator
@@ -71,7 +91,7 @@ class TestValidatorUnitTests:
             },
         )
 
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -81,7 +101,11 @@ class TestValidatorUnitTests:
         assert 'Expected INVALID' in captured.out
 
     async def test_validator_unit_tests_with_mixed_outcomes(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test validator unit tests with both valid and invalid inputs."""
         # Set up validator
@@ -105,7 +129,7 @@ class TestValidatorUnitTests:
             },
         )
 
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -115,7 +139,11 @@ class TestValidatorUnitTests:
         assert 'Expected VALID' in captured.out
 
     async def test_validator_unit_tests_with_extra_validators_all_ok(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         # Set main validator and a global extra validator
         testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
@@ -134,7 +162,7 @@ class TestValidatorUnitTests:
             files={'unit/validator/test.in': '3\n'},
         )
 
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         out = capsys.readouterr().out
         assert 'Validator tests' in out
@@ -145,7 +173,11 @@ class TestValidatorUnitTests:
         assert 'Expected VALID' in out
 
     async def test_validator_unit_tests_with_extra_validators_expected_invalid(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         # Set main validator and a global extra validator
         testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
@@ -164,7 +196,7 @@ class TestValidatorUnitTests:
             files={'unit/validator/test.in': '4\n'},
         )
 
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         out = capsys.readouterr().out
         # Overall should be OK because at least one validator fails and expected is INVALID
@@ -176,7 +208,11 @@ class TestValidatorUnitTests:
         assert 'Actual VALID' in out
 
     async def test_validator_unit_tests_with_custom_validator(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test validator unit tests with a custom validator specified."""
         # Set up main validator
@@ -195,7 +231,7 @@ class TestValidatorUnitTests:
             },
         )
 
-        await unit.run_validator_unit_tests(mock_progress)
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -204,28 +240,183 @@ class TestValidatorUnitTests:
         assert 'Expected VALID' in captured.out
 
 
+class TestValidatorTestplanTests:
+    """Test validator unit tests using testplan format."""
+
+    async def test_validator_testplan_with_valid_inputs(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test validator testplan with valid inputs."""
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+        # Create a testplan with multiple valid tests
+        testplan_content = """
+@input simple_test valid "5\\n"
+@input complex_test valid "42\\n"
+"""
+        testing_pkg.add_validator_unit_test_from_testplan(
+            'unit/validator/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Validator tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'OK Unit test #2' in captured.out
+        assert 'Expected VALID' in captured.out
+
+    async def test_validator_testplan_with_invalid_inputs(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test validator testplan with invalid inputs."""
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+        # Create a testplan with multiple invalid tests
+        testplan_content = """
+@input string_test invalid "hello"
+@input multiple_test invalid "1 2 3"
+"""
+        testing_pkg.add_validator_unit_test_from_testplan(
+            'unit/validator/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Validator tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'OK Unit test #2' in captured.out
+        assert 'Expected INVALID' in captured.out
+
+    async def test_validator_testplan_with_mixed_outcomes(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test validator testplan with both valid and invalid inputs."""
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+        # Create a testplan with mixed outcomes
+        testplan_content = """
+@input valid_test valid "123\\n"
+@input invalid_test invalid "not_a_number\\n"
+"""
+        testing_pkg.add_validator_unit_test_from_testplan(
+            'unit/validator/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Validator tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'OK Unit test #2' in captured.out
+        assert 'Expected VALID' in captured.out
+        assert 'Expected INVALID' in captured.out
+
+    async def test_validator_testplan_with_multiline_input(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test validator testplan with multiline input blocks."""
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+        # Create a testplan with multiline input
+        testplan_content = """
+@input multiline_test valid {
+5
+}
+"""
+        testing_pkg.add_validator_unit_test_from_testplan(
+            'unit/validator/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Validator tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'Expected VALID' in captured.out
+
+    async def test_validator_testplan_with_extra_validators(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test validator testplan with extra validators."""
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+        testing_pkg.add_from_testdata(
+            'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.yml.extraValidators = [
+            CodeItem(path=pathlib.Path('extra-validator-odd.cpp'))
+        ]
+        testing_pkg.save()
+
+        # Create a testplan with input that should pass both validators
+        testplan_content = """
+@input odd_number valid "3\\n"
+"""
+        testing_pkg.add_validator_unit_test_from_testplan(
+            'unit/validator/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_validator_unit_tests(mock_progress, tmpdir_path)
+
+        out = capsys.readouterr().out
+        assert 'Validator tests' in out
+        assert 'OK Unit test #1' in out
+        assert 'Validator validator.cpp' in out
+        assert 'Validator extra-validator-odd.cpp' in out
+        assert 'Expected VALID' in out
+
+
 class TestCheckerUnitTests:
     """Test checker unit test functionality."""
 
     async def test_no_checker_unit_tests(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test behavior when no checker unit tests are defined."""
         # Set up checker
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
 
         # No unit tests defined, should print message and return
-        await unit.run_checker_unit_tests(mock_progress)
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         assert 'No checker unit tests found.' in captured.out
 
     async def test_no_checker_defined(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test behavior when no checker is defined."""
         # No checker defined, should print warning and return
-        await unit.run_checker_unit_tests(mock_progress)
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should either download default checker or print no checker message
@@ -235,7 +426,11 @@ class TestCheckerUnitTests:
         )
 
     async def test_checker_unit_tests_with_accepted_outcome(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test checker unit tests with accepted outcome."""
         # Set up checker
@@ -252,7 +447,7 @@ class TestCheckerUnitTests:
             },
         )
 
-        await unit.run_checker_unit_tests(mock_progress)
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -261,7 +456,11 @@ class TestCheckerUnitTests:
         assert 'Expected ACCEPTED' in captured.out
 
     async def test_checker_unit_tests_with_wrong_answer_outcome(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test checker unit tests with wrong answer outcome."""
         # Set up checker
@@ -278,7 +477,7 @@ class TestCheckerUnitTests:
             },
         )
 
-        await unit.run_checker_unit_tests(mock_progress)
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -287,7 +486,11 @@ class TestCheckerUnitTests:
         assert 'Expected WRONG_ANSWER' in captured.out
 
     async def test_checker_unit_tests_with_mixed_outcomes(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test checker unit tests with both accepted and wrong answer outcomes."""
         # Set up checker
@@ -315,7 +518,7 @@ class TestCheckerUnitTests:
             },
         )
 
-        await unit.run_checker_unit_tests(mock_progress)
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
@@ -326,7 +529,11 @@ class TestCheckerUnitTests:
         assert 'Expected WRONG_ANSWER' in captured.out
 
     async def test_checker_unit_tests_with_missing_files(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
     ):
         """Test checker unit tests with missing input/output/answer files."""
         # Set up checker
@@ -344,10 +551,186 @@ class TestCheckerUnitTests:
             },
         )
 
-        await unit.run_checker_unit_tests(mock_progress)
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
 
         captured = capsys.readouterr()
         # Should print rule and success messages
+        assert 'Checker tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'Expected WRONG_ANSWER' in captured.out
+
+
+class TestCheckerTestplanTests:
+    """Test checker unit tests using testplan format."""
+
+    async def test_checker_testplan_with_accepted_outcome(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test checker testplan with accepted outcomes."""
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+
+        # Create a testplan with accepted tests
+        testplan_content = """
+@test simple_ac accepted {
+    @input "3 5"
+    @output "8"
+    @answer "8"
+}
+
+@test another_ac accepted {
+    @input "1 1"
+    @output "2"
+    @answer "2"
+}
+"""
+        testing_pkg.add_checker_unit_test_from_testplan(
+            'unit/checker/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Checker tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'OK Unit test #2' in captured.out
+        assert 'Expected ACCEPTED' in captured.out
+
+    async def test_checker_testplan_with_wrong_answer_outcome(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test checker testplan with wrong answer outcomes."""
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+
+        # Create a testplan with wrong answer tests
+        testplan_content = """
+@test simple_wa wrong_answer {
+    @input "3 5"
+    @output "9"
+    @answer "8"
+}
+
+@test another_wa wa {
+    @input "1 1"
+    @output "3"
+    @answer "2"
+}
+"""
+        testing_pkg.add_checker_unit_test_from_testplan(
+            'unit/checker/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Checker tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'OK Unit test #2' in captured.out
+        assert 'Expected WRONG_ANSWER' in captured.out
+
+    async def test_checker_testplan_with_mixed_outcomes(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test checker testplan with both accepted and wrong answer outcomes."""
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+
+        # Create a testplan with mixed outcomes
+        testplan_content = """
+@test accepted_test accepted {
+    @input "3 5"
+    @output "8"
+    @answer "8"
+}
+
+@test wrong_test wrong_answer {
+    @input "3 5"
+    @output "9"
+    @answer "8"
+}
+"""
+        testing_pkg.add_checker_unit_test_from_testplan(
+            'unit/checker/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Checker tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'OK Unit test #2' in captured.out
+        assert 'Expected ACCEPTED' in captured.out
+        assert 'Expected WRONG_ANSWER' in captured.out
+
+    async def test_checker_testplan_with_multiline_blocks(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test checker testplan with multiline input/output/answer blocks."""
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+
+        # Create a testplan with multiline blocks
+        testplan_content = """
+@test multiline_test accepted {
+    @input {
+3 5
+    }
+    @output {
+8
+    }
+    @answer {
+8
+    }
+}
+"""
+        testing_pkg.add_checker_unit_test_from_testplan(
+            'unit/checker/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
+        assert 'Checker tests' in captured.out
+        assert 'OK Unit test #1' in captured.out
+        assert 'Expected ACCEPTED' in captured.out
+
+    async def test_checker_testplan_with_input_only(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        tmpdir_path,
+        capsys,
+    ):
+        """Test checker testplan with only input and answer specified."""
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+
+        # Create a testplan with input and answer but no output (empty output)
+        testplan_content = """
+@test input_only wrong_answer {
+    @input "3 5"
+    @answer "8"
+}
+"""
+        testing_pkg.add_checker_unit_test_from_testplan(
+            'unit/checker/testplan.txt', content=testplan_content
+        )
+
+        await unit.run_checker_unit_tests(mock_progress, tmpdir_path)
+
+        captured = capsys.readouterr()
         assert 'Checker tests' in captured.out
         assert 'OK Unit test #1' in captured.out
         assert 'Expected WRONG_ANSWER' in captured.out
@@ -357,7 +740,10 @@ class TestRunUnitTests:
     """Test the main run_unit_tests function."""
 
     async def test_run_unit_tests_calls_both_functions(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        capsys,
     ):
         """Test that run_unit_tests calls both validator and checker unit tests."""
         # Set up both validator and checker
@@ -389,7 +775,10 @@ class TestRunUnitTests:
         assert 'Checker tests' in captured.out
 
     async def test_run_unit_tests_with_progress(
-        self, testing_pkg: testing_package.TestingPackage, mock_progress, capsys
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_progress,
+        capsys,
     ):
         """Test that run_unit_tests works with progress reporting."""
         # Set up validator
@@ -414,7 +803,7 @@ class TestHelperFunctions:
     def test_extract_validator_test_entries(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test _extract_validator_test_entries function."""
+        """Test extract_validator_test_entries function."""
         # Add validator unit tests
         testing_pkg.add_validator_unit_test(
             glob='unit/validator/valid_*.in',
@@ -434,8 +823,8 @@ class TestHelperFunctions:
         assert len(entries) == 2
 
         # Check entries are sorted by filename
-        assert entries[0].input.name == 'valid_test1.in'
-        assert entries[1].input.name == 'valid_test2.in'
+        assert entries[0].basename == 'valid_test1.in'
+        assert entries[1].basename == 'valid_test2.in'
 
         # Check outcomes
         assert all(entry.outcome == ValidatorOutcome.VALID for entry in entries)
@@ -443,7 +832,7 @@ class TestHelperFunctions:
     def test_extract_checker_test_entries(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test _extract_checker_test_entries function."""
+        """Test extract_checker_test_entries function."""
         # Add checker unit tests
         testing_pkg.add_checker_unit_test(
             glob='unit/checker/test_*',
@@ -463,15 +852,16 @@ class TestHelperFunctions:
 
         # Check entry properties
         entry = entries[0]
-        assert entry.input is not None and entry.input.name == 'test_case.in'
-        assert entry.output is not None and entry.output.name == 'test_case.out'
-        assert entry.answer is not None and entry.answer.name == 'test_case.ans'
+        assert entry.basename == 'test_case'
+        assert entry.input is not None
+        assert entry.output is not None
+        assert entry.answer is not None
         assert entry.outcome == ExpectedOutcome.ACCEPTED
 
     def test_extract_checker_test_entries_with_missing_files(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test _extract_checker_test_entries with missing files."""
+        """Test extract_checker_test_entries with missing files."""
         # Add checker unit tests with only input file
         testing_pkg.add_checker_unit_test(
             glob='unit/checker/partial_*',
@@ -490,7 +880,82 @@ class TestHelperFunctions:
 
         # Check entry properties
         entry = entries[0]
-        assert entry.input is not None and entry.input.name == 'partial_test.in'
+        assert entry.basename == 'partial_test'
+        assert entry.input is not None
         assert entry.output is None  # File doesn't exist
         assert entry.answer is None  # File doesn't exist
         assert entry.outcome == ExpectedOutcome.ACCEPTED
+
+    def test_extract_validator_testplan_entries(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test extract_validator_test_entries with testplan."""
+        testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+        # Add a testplan
+        testplan_content = """
+@input test1 valid "5"
+@input test2 invalid "hello"
+"""
+        testing_pkg.add_validator_unit_test_from_testplan(
+            'unit/validator/testplan.txt', content=testplan_content
+        )
+
+        # Extract entries
+        entries = unit.extract_validator_test_entries(
+            testing_pkg.yml.unitTests.validator
+        )
+
+        # Should have 2 entries
+        assert len(entries) == 2
+
+        # Check entries
+        assert entries[0].basename == 'test1'
+        assert entries[0].outcome == ValidatorOutcome.VALID
+        assert entries[0].ref is not None
+
+        assert entries[1].basename == 'test2'
+        assert entries[1].outcome == ValidatorOutcome.INVALID
+        assert entries[1].ref is not None
+
+    def test_extract_checker_testplan_entries(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test extract_checker_test_entries with testplan."""
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+
+        # Add a testplan
+        testplan_content = """
+@test test1 accepted {
+    @input "1 1"
+    @output "2"
+    @answer "2"
+}
+
+@test test2 wrong_answer {
+    @input "1 1"
+    @output "3"
+    @answer "2"
+}
+"""
+        testing_pkg.add_checker_unit_test_from_testplan(
+            'unit/checker/testplan.txt', content=testplan_content
+        )
+
+        # Extract entries
+        entries = unit.extract_checker_test_entries(testing_pkg.yml.unitTests.checker)
+
+        # Should have 2 entries
+        assert len(entries) == 2
+
+        # Check entries
+        assert entries[0].basename == 'test1'
+        assert entries[0].outcome == ExpectedOutcome.ACCEPTED
+        assert entries[0].ref is not None
+        assert entries[0].input is not None
+        assert entries[0].output is not None
+        assert entries[0].answer is not None
+
+        assert entries[1].basename == 'test2'
+        assert entries[1].outcome == ExpectedOutcome.WRONG_ANSWER
+        assert entries[1].ref is not None

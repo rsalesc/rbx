@@ -479,11 +479,18 @@ class LimitModifiers(BaseModel):
 class ValidatorTest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    glob: str = Field(
-        description='A glob pattern for the input files to be used as unit test input for the validator.'
+    glob: Optional[str] = Field(
+        default=None,
+        description='A glob pattern for the input files to be used as unit test input for the validator.',
     )
-    outcome: ValidatorOutcome = Field(
-        default=ValidatorOutcome.VALID,
+
+    testplan: Optional[pathlib.Path] = Field(
+        default=None,
+        description='A testplan to be used as unit test input for the validator.',
+    )
+
+    outcome: Optional[ValidatorOutcome] = Field(
+        default=None,
         description='The expected outcome of the validator.',
     )
 
@@ -492,22 +499,88 @@ class ValidatorTest(BaseModel):
         description='The validator to use for this test. If not specified, will use the package-level validator.',
     )
 
+    @model_validator(mode='after')
+    def check_oneof(self):
+        if self.glob is None and self.testplan is None:
+            raise PydanticCustomError(
+                'GLOB_OR_TESTPLAN_REQUIRED',
+                'Either a glob or a testplan must be specified.',
+            )
+        if self.glob is not None and self.testplan is not None:
+            raise PydanticCustomError(
+                'GLOB_AND_TESTPLAN_NOT_ALLOWED',
+                'Either a glob or a testplan must be specified, but not both.',
+            )
+        return self
+
+    @model_validator(mode='after')
+    def check_testplan(self):
+        if self.testplan is not None and self.outcome is not None:
+            raise PydanticCustomError(
+                'OUTCOME_NOT_ALLOWED',
+                'Outcome is not allowed for testplan validator tests.',
+            )
+        return self
+
+    @model_validator(mode='after')
+    def check_glob(self):
+        if self.glob is not None and self.outcome is None:
+            raise PydanticCustomError(
+                'OUTCOME_REQUIRED',
+                'Outcome is required for glob validator tests.',
+            )
+        return self
+
 
 class CheckerTest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    glob: str = Field(
-        description="""
-A glob pattern for the files to be used as unit test input for the checker.
-This glob should simultaneously match the input, output, and answer files (.in, .out, .ans).
-If one of them is not present, an empty file will be used instead.
-""",
+    glob: Optional[str] = Field(
+        default=None,
+        description='A glob pattern for the files to be used as unit test input for the checker.',
     )
 
-    outcome: ExpectedOutcome = Field(
-        default=ExpectedOutcome.ACCEPTED,
+    testplan: Optional[pathlib.Path] = Field(
+        default=None,
+        description='A testplan to be used as unit test input for the checker.',
+    )
+
+    outcome: Optional[ExpectedOutcome] = Field(
+        default=None,
         description='The expected outcome of the checker.',
     )
+
+    @model_validator(mode='after')
+    def check_oneof(self):
+        if self.glob is None and self.testplan is None:
+            raise PydanticCustomError(
+                'GLOB_OR_TESTPLAN_REQUIRED',
+                'Either a glob or a testplan must be specified.',
+            )
+        if self.glob is not None and self.testplan is not None:
+            raise PydanticCustomError(
+                'GLOB_AND_TESTPLAN_NOT_ALLOWED',
+                'Either a glob or a testplan must be specified, but not both.',
+            )
+        return self
+
+    @model_validator(mode='after')
+    def check_testplan(self):
+        if self.testplan is not None and self.outcome is not None:
+            raise PydanticCustomError(
+                'OUTCOME_NOT_ALLOWED',
+                'Outcome is not allowed for testplan checker tests.',
+            )
+        return self
+
+    @model_validator(mode='after')
+    def check_glob(self):
+        if self.glob is not None and self.outcome is None:
+            raise PydanticCustomError(
+                'OUTCOME_REQUIRED',
+                'Outcome is required for glob checker tests.',
+            )
+        return self
 
 
 class UnitTests(BaseModel):
