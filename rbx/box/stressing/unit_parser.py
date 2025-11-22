@@ -35,17 +35,16 @@ class ParsedUnitTest(BaseModel):
 LARK_GRAMMAR = r'''
 start: _statement*
 
-_statement: _INDENT? comment
-          | _INDENT? test_block
-          | _INDENT? input_only_block
-          | _NEWLINE
+_statement: comment
+          | test_block
+          | input_only_block
 
 // Comments (whole line only)
-comment: COMMENT _NEWLINE?
+comment: COMMENT
 
 // Test block with @input, @output, @answer (expectation is required)
-test_block: TEST_KEYWORD _WS test_name _WS expectation _WS? _LBRACE test_statements _INDENT? _RBRACE _NEWLINE?
-          | TEST_KEYWORD _WS expectation _WS? _LBRACE test_statements _INDENT? _RBRACE _NEWLINE?
+test_block: TEST_KEYWORD test_name expectation _LBRACE test_statements _RBRACE
+          | TEST_KEYWORD expectation _LBRACE test_statements _RBRACE
 
 test_name: NAME
 
@@ -53,36 +52,33 @@ expectation: NAME
 
 test_statements: test_statement*
 
-test_statement: _INDENT? comment
-              | _INDENT? input_block
-              | _INDENT? output_block
-              | _INDENT? answer_block
-              | _NEWLINE
+test_statement: comment
+              | input_block
+              | output_block
+              | answer_block
 
 // Input block (required in test)
-input_block: INPUT_KEYWORD _WS string _NEWLINE?
-           | INPUT_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
+input_block: INPUT_KEYWORD string
+           | INPUT_KEYWORD _LBRACE input_lines _RBRACE
 
 // Output block (optional)
-output_block: OUTPUT_KEYWORD _WS string _NEWLINE?
-            | OUTPUT_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
+output_block: OUTPUT_KEYWORD string
+            | OUTPUT_KEYWORD _LBRACE input_lines _RBRACE
 
 // Answer block (optional)
-answer_block: ANSWER_KEYWORD _WS string _NEWLINE?
-            | ANSWER_KEYWORD _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
+answer_block: ANSWER_KEYWORD string
+            | ANSWER_KEYWORD _LBRACE input_lines _RBRACE
 
 // Simplified input-only syntax (expectation is required)
-input_only_block: INPUT_KEYWORD _WS test_name _WS expectation _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
-                | INPUT_KEYWORD _WS test_name _WS expectation _WS string _NEWLINE?
-                | INPUT_KEYWORD _WS expectation _WS? _LBRACE input_lines _INDENT? _RBRACE _NEWLINE?
-                | INPUT_KEYWORD _WS expectation _WS string _NEWLINE?
+input_only_block: INPUT_KEYWORD test_name expectation _LBRACE input_lines _RBRACE
+                | INPUT_KEYWORD test_name expectation string
+                | INPUT_KEYWORD expectation _LBRACE input_lines _RBRACE
+                | INPUT_KEYWORD expectation string
 
 string: ESCAPED_STRING | TRIPLE_QUOTED_STRING
 
-// Input line content - matches any line content (excluding newline)
-input_lines: (_NEWLINE | input_line)*
-
-input_line: INPUT_LINE_CONTENT _NEWLINE?
+// Input line content - matches any content between braces
+input_lines: BLOCK_CONTENT?
 
 // Tokens
 TEST_KEYWORD.3: "@test"
@@ -96,14 +92,17 @@ COMMENT.3: /(\/\/|#)[^\n\r]*/
 ESCAPED_STRING: /'(?:[^'\\]|\\.)*'/ | /"(?:[^"\\]|\\.)*"/
 // Triple-quoted strings (multiline)
 TRIPLE_QUOTED_STRING: /"""[\s\S]*?"""/
-// Input line content
-INPUT_LINE_CONTENT: /[^\r\n]+/
+// Content between braces
+BLOCK_CONTENT: /[^\}]+/
 
 _INDENT: /[ \t]+/
-_WS: /[ \t]+/
+_S: /[ \t]+/
+_WS: /\s+/
 _LBRACE: "{"
 _RBRACE: "}"
 _NEWLINE: /\r?\n/
+
+%ignore _WS
 '''
 
 LARK_PARSER = lark.Lark(LARK_GRAMMAR, propagate_positions=True)
@@ -337,14 +336,13 @@ class UnitTestTransformer(lark.Transformer):
             return ast.literal_eval(raw_string)
 
     @lark.v_args(inline=False, meta=True)
-    def input_lines(self, meta: lark.tree.Meta, items: List) -> str:
+    def input_lines(self, meta: lark.tree.Meta, children: List) -> str:
         """Collect all input lines and join them."""
-        result = [item for item in items if item is not None]
-        return whitespace.normalize_lines(result)
-
-    def input_line(self, meta: lark.tree.Meta, content: lark.Token) -> str:
-        """Return the line content with newline."""
-        return str(content) + '\n'
+        if not children or children[0] is None:
+            return ''
+        # children[0] is the BLOCK_CONTENT token
+        content = children[0]
+        return whitespace.normalize_lines_from_text(str(content))
 
 
 def parse(script: str) -> lark.ParseTree:
