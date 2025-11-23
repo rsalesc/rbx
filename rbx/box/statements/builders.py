@@ -69,13 +69,24 @@ class StatementBuilderItem(ABC):
 class StatementSample(BaseModel):
     inputPath: pathlib.Path
     outputPath: pathlib.Path
+    explanationPath: Optional[pathlib.Path] = None
     hasOutput: bool = True
     interaction: Optional[TestcaseInteraction] = None
 
     @staticmethod
-    def from_testcase(testcase: Testcase) -> 'StatementSample':
+    def from_testcase(
+        testcase: Testcase, explanation_suffix: Optional[str] = None
+    ) -> 'StatementSample':
         input_path = testcase.inputPath
         output_path = testcase.outputPath
+
+        explanation_path = None
+        if explanation_suffix is not None:
+            explanation_path = testcase.inputPath.with_suffix(explanation_suffix)
+            if explanation_path.is_file():
+                explanation_path = explanation_path
+            else:
+                explanation_path = None
 
         pin_path = input_path.with_suffix('.pin')
         pout_path = input_path.with_suffix('.pout')
@@ -101,15 +112,63 @@ class StatementSample(BaseModel):
             outputPath=output_path or utils.get_empty_sentinel_path(),
             hasOutput=output_path is not None,
             interaction=interaction,
+            explanationPath=explanation_path,
         )
 
     @staticmethod
-    def from_testcases(testcases: List[Testcase]) -> List['StatementSample']:
-        return [StatementSample.from_testcase(testcase) for testcase in testcases]
+    def from_testcases(
+        testcases: List[Testcase], explanation_suffix: Optional[str] = None
+    ) -> List['StatementSample']:
+        return [
+            StatementSample.from_testcase(testcase, explanation_suffix)
+            for testcase in testcases
+        ]
+
+    def to_testcase(self) -> Testcase:
+        return Testcase(inputPath=self.inputPath, outputPath=self.outputPath)
 
 
 class ExplainedStatementSample(StatementSample):
     explanation: Optional[str] = None
+
+    @staticmethod
+    def from_statement_sample(
+        statement_sample: StatementSample, explanation_block: Optional[str] = None
+    ) -> 'ExplainedStatementSample':
+        return ExplainedStatementSample(
+            **statement_sample.model_dump(),
+            explanation=statement_sample.explanationPath.read_text()
+            if statement_sample.explanationPath is not None
+            and statement_sample.explanationPath.is_file()
+            else explanation_block,
+        )
+
+    @staticmethod
+    def from_statement_samples(
+        statement_samples: List[StatementSample],
+        explanation_blocks: Optional[Dict[int, str]] = None,
+    ) -> List['ExplainedStatementSample']:
+        return [
+            ExplainedStatementSample.from_statement_sample(
+                sample,
+                explanation_blocks.get(i) if explanation_blocks is not None else None,
+            )
+            for i, sample in enumerate(statement_samples)
+        ]
+
+    @staticmethod
+    def samples_to_explanations(
+        samples: List[StatementSample],
+        explanation_blocks: Optional[Dict[int, str]] = None,
+    ) -> Dict[int, str]:
+        explained_samples = ExplainedStatementSample.from_statement_samples(
+            samples, explanation_blocks
+        )
+        return {
+            i: sample.explanation
+            for i, sample in enumerate(explained_samples)
+            if sample.explanation is not None
+        }
 
 
 @dataclasses.dataclass
@@ -358,14 +417,14 @@ class rbxTeXBuilder(StatementBuilder):
 
         problem_kwargs = problem.build_jinja_kwargs()
         problem_kwargs['problem']['blocks'] = blocks
-        if statement_blocks.explanations is not None:
-            problem_kwargs['problem']['samples'] = [
-                ExplainedStatementSample(
-                    **typing.cast(StatementSample, sample).model_dump(),
-                    explanation=statement_blocks.explanations.get(i),
-                )
-                for i, sample in enumerate(problem_kwargs['problem']['samples'])
-            ]
+        problem_kwargs['problem']['samples'] = (
+            ExplainedStatementSample.from_statement_samples(
+                typing.cast(
+                    List[StatementSample], problem_kwargs['problem']['samples']
+                ),
+                statement_blocks.explanations,
+            )
+        )
 
         return render_jinja(
             context.root,

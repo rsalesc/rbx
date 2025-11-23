@@ -274,7 +274,8 @@ def build_statement_bytes(
                     package=pkg,
                     statement=statement,
                     samples=StatementSample.from_testcases(
-                        get_samples() if use_samples else []
+                        get_samples() if use_samples else [],
+                        explanation_suffix='.tex',
                     ),
                     short_name=short_name,
                     vars={

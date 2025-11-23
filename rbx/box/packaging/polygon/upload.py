@@ -23,8 +23,10 @@ from rbx.box.schema import (
 )
 from rbx.box.statements.build_statements import get_relative_assets
 from rbx.box.statements.builders import (
+    ExplainedStatementSample,
     StatementBlocks,
     StatementBuilderProblem,
+    StatementSample,
     render_jinja_blocks,
 )
 from rbx.box.statements.schema import Statement, StatementType
@@ -32,6 +34,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_utils import (
     TestcaseInteractionParsingError,
     get_alternate_interaction_texts,
+    get_samples,
     parse_interaction,
 )
 
@@ -175,6 +178,10 @@ def _upload_validator(problem: api.Problem):
     problem.set_validator(_get_validator_name())
 
 
+def _get_samples() -> List[StatementSample]:
+    return StatementSample.from_testcases(get_samples(), explanation_suffix='.tex')
+
+
 def _save_skip_coinciding_testcases(problem: api.Problem, *args, **kwargs) -> bool:
     try:
         problem.save_test(*args, **kwargs)
@@ -245,6 +252,7 @@ def _upload_generator(problem: api.Problem, generator: Generator):
 
 def _upload_testcases(problem: api.Problem):
     entries = asyncio.run(extract_generation_testcases_from_groups())
+    samples = _get_samples()
     generators: Dict[str, Generator] = {}
     for entry in entries:
         if not entry.metadata.generator_call:
@@ -267,18 +275,15 @@ def _upload_testcases(problem: api.Problem):
     with rich.progress.Progress(speed_estimate_period=5) as progress:
         next_index = 1
         task_id = progress.add_task('Uploading testcases...', total=len(entries))
-        for entry in entries:
-            is_sample = entry.group_entry.group == 'samples'
-            if entry.metadata.copied_from is None:
-                continue
-            if not entry.metadata.copied_from.inputPath.is_file():
+        for sample in samples:
+            if not sample.inputPath.is_file():
                 continue
             saved = _save_skip_coinciding_testcases(
                 problem,
                 testset='tests',
                 test_index=next_index,
-                test_input=entry.metadata.copied_from.inputPath.read_text(),
-                **_get_test_params_for_statement(entry.metadata.copied_from, is_sample),
+                test_input=sample.inputPath.read_text(),
+                **_get_test_params_for_statement(sample.to_testcase(), is_sample=True),
             )
             progress.update(task_id, advance=1)
             if saved:
@@ -286,6 +291,8 @@ def _upload_testcases(problem: api.Problem):
 
         calls = []
         for entry in entries:
+            if entry.group_entry.group == 'samples':
+                continue
             if entry.metadata.generator_call is None:
                 continue
             generator = package.get_generator_or_nil(entry.metadata.generator_call.name)
@@ -390,14 +397,18 @@ def _get_explanations(explanations: Dict[int, str]) -> str:
     return '\n\n'.join(entries)
 
 
-def _get_notes_with_explanations(blocks: StatementBlocks) -> Optional[str]:
+def _get_notes_with_explanations(
+    blocks: StatementBlocks, samples: List[StatementSample]
+) -> Optional[str]:
     notes = blocks.blocks.get('notes')
-    explanations = blocks.explanations
+    explanations = ExplainedStatementSample.samples_to_explanations(
+        samples, blocks.explanations
+    )
     if notes is None and not explanations:
         return None
     if notes is None:
-        return _get_explanations(blocks.explanations)
-    return notes + '\n\n' + _get_explanations(blocks.explanations)
+        return _get_explanations(explanations)
+    return notes + '\n\n' + _get_explanations(explanations)
 
 
 def _upload_statement_resources(
@@ -505,7 +516,9 @@ def _upload_statement(
             interaction=_get_block('interaction')
             if pkg.type == TaskType.COMMUNICATION
             else None,
-            notes=_replace_resources(_get_notes_with_explanations(blocks) or ''),
+            notes=_replace_resources(
+                _get_notes_with_explanations(blocks, _get_samples()) or ''
+            ),
         )
         problem.save_statement(
             lang=uploaded_language,

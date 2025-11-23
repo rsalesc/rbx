@@ -59,7 +59,9 @@ class ExtractedProblem:
             limits=self.limits,
             package=self.package,
             statement=self.statement,
-            samples=StatementSample.from_testcases(self.samples),
+            samples=StatementSample.from_testcases(
+                self.samples, explanation_suffix='.tex'
+            ),
             io_path=self.built_statement,
             short_name=self.problem.short_name,
         )
@@ -166,7 +168,9 @@ def get_builder_problems(
             limits=ex.limits,
             package=ex.package,
             statement=ex.statement,
-            samples=StatementSample.from_testcases(ex.samples),
+            samples=StatementSample.from_testcases(
+                ex.samples, explanation_suffix='.tex'
+            ),
         )
         for ex in extracted_problems
     ]

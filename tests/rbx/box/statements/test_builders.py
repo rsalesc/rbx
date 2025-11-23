@@ -178,6 +178,66 @@ invalid line that does not start with > or <
             assert sample.inputPath.name == f'test{i}.in'
             assert sample.outputPath.name == f'test{i}.out'
 
+    def test_from_testcase_with_explanation_suffix(self, tmp_path):
+        """Test creating sample with explanation suffix."""
+        input_file = tmp_path / 'test.in'
+        output_file = tmp_path / 'test.out'
+        explanation_file = tmp_path / 'test.tex'
+        input_file.write_text('test input')
+        output_file.write_text('test output')
+        explanation_file.write_text('This is an explanation.')
+
+        testcase = Testcase(inputPath=input_file, outputPath=output_file)
+        sample = StatementSample.from_testcase(testcase, explanation_suffix='.tex')
+
+        assert sample.explanationPath == explanation_file
+        assert sample.explanationPath.read_text() == 'This is an explanation.'
+
+    def test_from_testcase_with_explanation_suffix_no_file(self, tmp_path):
+        """Test creating sample with explanation suffix when file doesn't exist."""
+        input_file = tmp_path / 'test.in'
+        output_file = tmp_path / 'test.out'
+        input_file.write_text('test input')
+        output_file.write_text('test output')
+
+        testcase = Testcase(inputPath=input_file, outputPath=output_file)
+        sample = StatementSample.from_testcase(testcase, explanation_suffix='.tex')
+
+        assert sample.explanationPath is None
+
+    def test_from_testcases_with_explanation_suffix(self, tmp_path):
+        """Test creating multiple samples with explanation suffix."""
+        testcases = []
+        for i in range(3):
+            input_file = tmp_path / f'test{i}.in'
+            output_file = tmp_path / f'test{i}.out'
+            explanation_file = tmp_path / f'test{i}.tex'
+            input_file.write_text(f'input {i}')
+            output_file.write_text(f'output {i}')
+            if i % 2 == 0:  # Only create explanation for even indices
+                explanation_file.write_text(f'Explanation {i}')
+            testcases.append(Testcase(inputPath=input_file, outputPath=output_file))
+
+        samples = StatementSample.from_testcases(testcases, explanation_suffix='.tex')
+
+        assert len(samples) == 3
+        assert samples[0].explanationPath is not None
+        assert samples[1].explanationPath is None
+        assert samples[2].explanationPath is not None
+
+    def test_to_testcase(self, tmp_path):
+        """Test converting StatementSample back to Testcase."""
+        input_file = tmp_path / 'test.in'
+        output_file = tmp_path / 'test.out'
+        input_file.write_text('test input')
+        output_file.write_text('test output')
+
+        sample = StatementSample(inputPath=input_file, outputPath=output_file)
+        testcase = sample.to_testcase()
+
+        assert testcase.inputPath == input_file
+        assert testcase.outputPath == output_file
+
 
 class TestStatementBuilderProblem:
     """Test StatementBuilderProblem functionality."""
@@ -835,6 +895,145 @@ class TestExplainedStatementSample:
         )
 
         assert explained_sample.explanation is None
+
+    def test_from_statement_sample_with_explanation_path(self, tmp_path):
+        """Test creating ExplainedStatementSample with explanation path."""
+        input_file = tmp_path / 'test.in'
+        output_file = tmp_path / 'test.out'
+        explanation_file = tmp_path / 'test.tex'
+        input_file.write_text('test input')
+        output_file.write_text('test output')
+        explanation_file.write_text('Explanation from file')
+
+        sample = StatementSample(
+            inputPath=input_file,
+            outputPath=output_file,
+            explanationPath=explanation_file,
+        )
+
+        explained = ExplainedStatementSample.from_statement_sample(sample)
+
+        assert explained.explanation == 'Explanation from file'
+
+    def test_from_statement_sample_with_explanation_block(self, tmp_path):
+        """Test creating ExplainedStatementSample with explanation block."""
+        input_file = tmp_path / 'test.in'
+        output_file = tmp_path / 'test.out'
+        input_file.write_text('test input')
+        output_file.write_text('test output')
+
+        sample = StatementSample(inputPath=input_file, outputPath=output_file)
+
+        explained = ExplainedStatementSample.from_statement_sample(
+            sample, explanation_block='Explanation from block'
+        )
+
+        assert explained.explanation == 'Explanation from block'
+
+    def test_from_statement_sample_path_takes_precedence(self, tmp_path):
+        """Test that explanation path takes precedence over explanation block."""
+        input_file = tmp_path / 'test.in'
+        output_file = tmp_path / 'test.out'
+        explanation_file = tmp_path / 'test.tex'
+        input_file.write_text('test input')
+        output_file.write_text('test output')
+        explanation_file.write_text('Explanation from file')
+
+        sample = StatementSample(
+            inputPath=input_file,
+            outputPath=output_file,
+            explanationPath=explanation_file,
+        )
+
+        explained = ExplainedStatementSample.from_statement_sample(
+            sample, explanation_block='Explanation from block'
+        )
+
+        assert explained.explanation == 'Explanation from file'
+
+    def test_from_statement_samples(self, tmp_path):
+        """Test creating multiple ExplainedStatementSamples."""
+        samples = []
+        for i in range(3):
+            input_file = tmp_path / f'test{i}.in'
+            output_file = tmp_path / f'test{i}.out'
+            input_file.write_text(f'input {i}')
+            output_file.write_text(f'output {i}')
+            samples.append(
+                StatementSample(inputPath=input_file, outputPath=output_file)
+            )
+
+        explanation_blocks = {0: 'Explanation 0', 2: 'Explanation 2'}
+        explained_samples = ExplainedStatementSample.from_statement_samples(
+            samples, explanation_blocks
+        )
+
+        assert len(explained_samples) == 3
+        assert explained_samples[0].explanation == 'Explanation 0'
+        assert explained_samples[1].explanation is None
+        assert explained_samples[2].explanation == 'Explanation 2'
+
+    def test_samples_to_explanations(self, tmp_path):
+        """Test converting samples to explanations dictionary."""
+        samples = []
+        for i in range(4):
+            input_file = tmp_path / f'test{i}.in'
+            output_file = tmp_path / f'test{i}.out'
+            input_file.write_text(f'input {i}')
+            output_file.write_text(f'output {i}')
+
+            # Create explanation file for even indices
+            if i % 2 == 0:
+                explanation_file = tmp_path / f'test{i}.tex'
+                explanation_file.write_text(f'File explanation {i}')
+                samples.append(
+                    StatementSample(
+                        inputPath=input_file,
+                        outputPath=output_file,
+                        explanationPath=explanation_file,
+                    )
+                )
+            else:
+                samples.append(
+                    StatementSample(inputPath=input_file, outputPath=output_file)
+                )
+
+        # Add explanation blocks for odd indices
+        explanation_blocks = {1: 'Block explanation 1', 3: 'Block explanation 3'}
+        explanations = ExplainedStatementSample.samples_to_explanations(
+            samples, explanation_blocks
+        )
+
+        assert len(explanations) == 4
+        assert explanations[0] == 'File explanation 0'
+        assert explanations[1] == 'Block explanation 1'
+        assert explanations[2] == 'File explanation 2'
+        assert explanations[3] == 'Block explanation 3'
+
+    def test_samples_to_explanations_with_missing_explanations(self, tmp_path):
+        """Test samples_to_explanations with some missing explanations."""
+        samples = []
+        for i in range(3):
+            input_file = tmp_path / f'test{i}.in'
+            output_file = tmp_path / f'test{i}.out'
+            input_file.write_text(f'input {i}')
+            output_file.write_text(f'output {i}')
+            samples.append(
+                StatementSample(inputPath=input_file, outputPath=output_file)
+            )
+
+        # Only provide explanation for index 1
+        explanation_blocks = {1: 'Explanation 1'}
+        explanations = ExplainedStatementSample.samples_to_explanations(
+            samples, explanation_blocks
+        )
+
+        # Only index 1 should be in the result
+        assert len(explanations) == 1
+        assert 1 in explanations
+        assert explanations[1] == 'Explanation 1'
+        assert 0 not in explanations
+        assert 2 not in explanations
 
 
 class TestIntegration:
