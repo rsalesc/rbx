@@ -370,6 +370,13 @@ A list of extra validators to use to validate the testcases of this subgroup.
 """,
     )
 
+    outputValidators: List[CodeItem] = Field(
+        default=[],
+        description="""
+A list of output validators to use to validate the output of the testcases of this subgroup.
+""",
+    )
+
     @model_validator(mode='after')
     def check_oneof(self) -> 'TestcaseSubgroup':
         _check_oneof(
@@ -704,6 +711,13 @@ class Package(BaseModel):
 
     extraValidators: List[CodeItem] = Field(
         default=[], description='Extra validators for this problem.'
+    )
+
+    outputValidators: List[CodeItem] = Field(
+        default=[],
+        description="""
+A list of output validators to use to validate the output of the testcases of this problem.
+""",
     )
 
     generators: List[Generator] = Field(

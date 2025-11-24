@@ -288,6 +288,12 @@ class TestingPackage(TestingShared):
                     for v in subgroup_data['extraValidators']
                 ]
 
+            if 'outputValidators' in subgroup_data:
+                subgroup_dict['outputValidators'] = [
+                    CodeItem(path=pathlib.Path(v))
+                    for v in subgroup_data['outputValidators']
+                ]
+
             subgroup_objects.append(TestcaseSubgroup(**subgroup_dict))
 
         self.yml.testcases = self.yml.testcases + [

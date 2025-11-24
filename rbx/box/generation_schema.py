@@ -54,6 +54,7 @@ class GenerationTestcaseEntry(BaseModel):
     metadata: GenerationMetadata
     validator: Optional[CodeItem] = None
     extra_validators: List[CodeItem] = []
+    output_validators: List[CodeItem] = []
     model_solution: Optional[Solution] = None
 
     def is_sample(self) -> bool:

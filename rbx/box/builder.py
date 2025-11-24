@@ -16,6 +16,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.validators import (
     has_validation_errors,
     print_validation_report,
+    validate_outputs_from_entries,
     validate_testcases,
 )
 
@@ -55,17 +56,25 @@ async def build(
             )
             return False
 
+    entries = await extract_generation_testcases_from_groups(groups)
     with utils.StatusProgress(
         'Building outputs for testcases...',
         'Built [item]{processed}[/item] outputs...',
         keep=True,
     ) as s:
         if output:
-            entries = [
-                entry.group_entry
-                for entry in await extract_generation_testcases_from_groups(groups)
-            ]
-            await generate_outputs_for_testcases(entries, s)
+            await generate_outputs_for_testcases(
+                [entry.group_entry for entry in entries], s
+            )
+
+    with utils.StatusProgress(
+        'Validating outputs for testcases...',
+        'Validated [item]{processed}[/item] outputs...',
+        keep=True,
+    ) as s:
+        if output:
+            validation_info = await validate_outputs_from_entries(entries, s)
+            print_validation_report(validation_info, output_validation=True)
 
     console.console.print(
         '[success]Problem built.[/success] '

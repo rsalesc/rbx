@@ -1,10 +1,16 @@
 import pytest
 
-from rbx.box.generators import generate_testcases
+from rbx.box.generators import (
+    generate_outputs_for_testcases,
+    generate_testcases,
+)
+from rbx.box.testcase_extractors import extract_generation_testcases
+from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.validators import (
     has_validation_errors,
     print_validation_report,
+    validate_outputs_from_entries,
     validate_testcases,
 )
 
@@ -249,3 +255,303 @@ async def test_group_specific_extra_validators_catch_invalid_cases(
 
     out = capsys.readouterr().out
     assert 'failed verification on validator extra-validator-odd.cpp' in out
+
+
+async def test_output_validator_catches_invalid_output(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test that output validators can detect invalid outputs."""
+    testing_pkg.add_generator('gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gen.cpp 123')
+
+    # Solution that outputs double (incorrect)
+    testing_pkg.add_solution(
+        'sol.cpp',
+        outcome='accepted',
+    ).write_text("""
+#include <iostream>
+using namespace std;
+int main() {
+    int x; cin >> x;
+    cout << x * 2 << endl;
+}
+""")
+
+    # Output validator expects the output to be odd (double is always even)
+    testing_pkg.add_from_testdata(
+        'output_validator.cpp', src='validators/extra-validator-odd.cpp'
+    )
+
+    # Configure group with output validator
+    import pathlib
+
+    from rbx.box.schema import CodeItem
+
+    main_group = testing_pkg.yml.testcases[0]
+    main_group.outputValidators = [CodeItem(path=pathlib.Path('output_validator.cpp'))]
+    testing_pkg.save()
+
+    await generate_testcases()
+    await generate_outputs_for_testcases([TestcaseEntry(group='main', index=0)])
+
+    # Validate outputs
+    entries = await extract_generation_testcases([TestcaseEntry(group='main', index=0)])
+    validation_infos = await validate_outputs_from_entries(entries)
+    print_validation_report(validation_infos, output_validation=True)
+
+    assert has_validation_errors(validation_infos)
+
+    out = capsys.readouterr().out
+    assert 'failed verification on output validator output_validator.cpp' in out
+
+
+async def test_output_validator_accepts_valid_output(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test that output validators accept valid outputs."""
+    testing_pkg.add_generator('gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gen.cpp 121')
+
+    # Solution that outputs the same number (odd input = odd output)
+    testing_pkg.add_solution(
+        'sol.cpp',
+        outcome='accepted',
+    ).write_text("""
+#include <iostream>
+using namespace std;
+int main() {
+    int x; cin >> x;
+    cout << x << endl;
+}
+""")
+
+    # Output validator expects the output to be odd
+    testing_pkg.add_from_testdata(
+        'output_validator.cpp', src='validators/extra-validator-odd.cpp'
+    )
+
+    # Configure group with output validator
+    import pathlib
+
+    from rbx.box.schema import CodeItem
+
+    main_group = testing_pkg.yml.testcases[0]
+    main_group.outputValidators = [CodeItem(path=pathlib.Path('output_validator.cpp'))]
+    testing_pkg.save()
+
+    await generate_testcases()
+    await generate_outputs_for_testcases([TestcaseEntry(group='main', index=0)])
+
+    # Validate outputs
+    entries = await extract_generation_testcases([TestcaseEntry(group='main', index=0)])
+    validation_infos = await validate_outputs_from_entries(entries)
+
+    assert not has_validation_errors(validation_infos)
+
+
+async def test_output_validators_work_across_multiple_testcases(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test that output validators work correctly across multiple testcases."""
+    testing_pkg.add_generator('gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gen.cpp 121\ngen.cpp 122\ngen.cpp 123')
+
+    # Solution that outputs the same number
+    testing_pkg.add_solution(
+        'sol.cpp',
+        outcome='accepted',
+    ).write_text("""
+#include <iostream>
+using namespace std;
+int main() {
+    int x; cin >> x;
+    cout << x << endl;
+}
+""")
+
+    # Output validator expects the output to be odd
+    testing_pkg.add_from_testdata(
+        'output_validator.cpp', src='validators/extra-validator-odd.cpp'
+    )
+
+    # Configure group with output validator
+    import pathlib
+
+    from rbx.box.schema import CodeItem
+
+    main_group = testing_pkg.yml.testcases[0]
+    main_group.outputValidators = [CodeItem(path=pathlib.Path('output_validator.cpp'))]
+    testing_pkg.save()
+
+    await generate_testcases()
+    await generate_outputs_for_testcases(
+        [
+            TestcaseEntry(group='main', index=0),
+            TestcaseEntry(group='main', index=1),
+            TestcaseEntry(group='main', index=2),
+        ]
+    )
+
+    # Validate outputs
+    entries = await extract_generation_testcases(
+        [
+            TestcaseEntry(group='main', index=0),
+            TestcaseEntry(group='main', index=1),
+            TestcaseEntry(group='main', index=2),
+        ]
+    )
+    validation_infos = await validate_outputs_from_entries(entries)
+    print_validation_report(validation_infos, output_validation=True)
+
+    # First testcase (121) is odd - should pass
+    assert validation_infos[0].ok
+    # Second testcase (122) is even - should fail
+    assert not validation_infos[1].ok
+    # Third testcase (123) is odd - should pass
+    assert validation_infos[2].ok
+
+    out = capsys.readouterr().out
+    assert 'failed verification on output validator output_validator.cpp' in out
+
+
+async def test_output_validators_at_package_level(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """Test that package-level output validators are applied to all testcases."""
+    testing_pkg.add_generator('gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gen.cpp 121')
+
+    # Solution that outputs the same number (odd input = odd output)
+    testing_pkg.add_solution(
+        'sol.cpp',
+        outcome='accepted',
+    ).write_text("""
+#include <iostream>
+using namespace std;
+int main() {
+    int x; cin >> x;
+    cout << x << endl;
+}
+""")
+
+    # Output validator expects the output to be odd
+    testing_pkg.add_from_testdata(
+        'output_validator.cpp', src='validators/extra-validator-odd.cpp'
+    )
+
+    # Configure package-level output validator
+    import pathlib
+
+    from rbx.box.schema import CodeItem
+
+    testing_pkg.yml.outputValidators = [
+        CodeItem(path=pathlib.Path('output_validator.cpp'))
+    ]
+    testing_pkg.save()
+
+    await generate_testcases()
+    await generate_outputs_for_testcases([TestcaseEntry(group='main', index=0)])
+
+    # Validate outputs
+    entries = await extract_generation_testcases([TestcaseEntry(group='main', index=0)])
+    validation_infos = await validate_outputs_from_entries(entries)
+
+    assert not has_validation_errors(validation_infos)
+
+
+async def test_output_validators_at_subgroup_level(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test that subgroup-level output validators are applied correctly."""
+    testing_pkg.add_generator('gen.cpp', src='generators/gen-id.cpp')
+
+    # Add output validator
+    testing_pkg.add_from_testdata(
+        'output_validator.cpp', src='validators/extra-validator-odd.cpp'
+    )
+
+    # Solution that outputs the same number
+    testing_pkg.add_solution(
+        'sol.cpp',
+        outcome='accepted',
+    ).write_text("""
+#include <iostream>
+using namespace std;
+int main() {
+    int x; cin >> x;
+    cout << x << endl;
+}
+""")
+
+    # Configure group with subgroups - only sub2 has output validator
+
+    testing_pkg.add_testgroup_with_subgroups(
+        'main',
+        [
+            {'name': 'sub1', 'generators': [{'name': 'gen.cpp', 'args': '121'}]},
+            {
+                'name': 'sub2',
+                'generators': [{'name': 'gen.cpp', 'args': '122'}],
+                'outputValidators': ['output_validator.cpp'],
+            },
+        ],
+    )
+
+    await generate_testcases()
+    await generate_outputs_for_testcases(
+        [
+            TestcaseEntry(group='main', index=0),
+            TestcaseEntry(group='main', index=1),
+        ]
+    )
+
+    # Validate outputs
+    entries = await extract_generation_testcases(
+        [
+            TestcaseEntry(group='main', index=0),
+            TestcaseEntry(group='main', index=1),
+        ]
+    )
+    validation_infos = await validate_outputs_from_entries(entries)
+    print_validation_report(validation_infos, output_validation=True)
+
+    # First testcase has no output validator - should have no validation info
+    # Second testcase (122) is even and has output validator - should fail
+    assert len(validation_infos) == 1
+    assert not validation_infos[0].ok
+
+    out = capsys.readouterr().out
+    assert 'failed verification on output validator output_validator.cpp' in out
+
+
+async def test_output_validation_skips_when_no_output_validators(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """Test that output validation is skipped when no output validators are configured."""
+    testing_pkg.add_generator('gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gen.cpp 123')
+
+    testing_pkg.add_solution(
+        'sol.cpp',
+        outcome='accepted',
+    ).write_text("""
+#include <iostream>
+using namespace std;
+int main() {
+    int x; cin >> x;
+    cout << x * 2 << endl;
+}
+""")
+
+    await generate_testcases()
+    await generate_outputs_for_testcases([TestcaseEntry(group='main', index=0)])
+
+    # Validate outputs (should be empty)
+    entries = await extract_generation_testcases([TestcaseEntry(group='main', index=0)])
+    validation_infos = await validate_outputs_from_entries(entries)
+
+    assert len(validation_infos) == 0

@@ -8,7 +8,7 @@ from rbx.box.generation_schema import (
     GeneratorScriptEntry,
     TestcaseOrScriptEntry,
 )
-from rbx.box.schema import GeneratorScript, TestcaseGroup
+from rbx.box.schema import CodeItem, GeneratorScript, TestcaseGroup
 from rbx.box.testcase_extractors import (
     TestcaseGroupVisitor,
     TestcaseVisitor,
@@ -1478,3 +1478,238 @@ class TestComplexScenarios:
         }
         assert sub2_paths == expected_sub2
         assert len(sub2_entry.extra_validators) == 2
+
+    async def test_run_testcase_visitor_with_output_validators(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test running visitor with output validators."""
+        # Add validators
+        testing_pkg.add_file(
+            'output_validator.cpp', src='validators/int-validator-bounded.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Manually configure testgroup with output validators
+        testing_pkg.add_testgroup_with_generators(
+            'validated',
+            [{'name': 'gen1', 'args': 'arg1'}],
+        )
+
+        main_group = testing_pkg.yml.testcases[0]
+        main_group.outputValidators = [
+            CodeItem(path=pathlib.Path('output_validator.cpp'))
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        assert len(visited_entries[0].output_validators) == 1
+        assert visited_entries[0].output_validators[0].path == pathlib.Path(
+            'output_validator.cpp'
+        )
+
+    async def test_run_testcase_visitor_with_package_level_output_validators(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that package-level output validators are propagated to testcases."""
+        # Add validators
+        testing_pkg.add_file(
+            'package_output_validator.cpp', src='validators/int-validator-bounded.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Configure package-level output validator
+        testing_pkg.add_testgroup_with_generators(
+            'main',
+            [{'name': 'gen1', 'args': 'arg1'}],
+        )
+
+        testing_pkg.yml.outputValidators = [
+            CodeItem(path=pathlib.Path('package_output_validator.cpp'))
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        assert len(visited_entries[0].output_validators) == 1
+        assert visited_entries[0].output_validators[0].path == pathlib.Path(
+            'package_output_validator.cpp'
+        )
+
+    async def test_run_testcase_visitor_with_subgroup_output_validators(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that subgroup-level output validators are applied correctly."""
+        # Add validators
+        testing_pkg.add_file(
+            'sub_output_validator.cpp', src='validators/extra-validator-odd.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Configure group with subgroups - only sub2 has output validator
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {'name': 'sub1', 'generators': [{'name': 'gen1', 'args': 'arg1'}]},
+                {
+                    'name': 'sub2',
+                    'generators': [{'name': 'gen1', 'args': 'arg2'}],
+                    'outputValidators': ['sub_output_validator.cpp'],
+                },
+            ],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 2
+        # First testcase has no output validator
+        assert len(visited_entries[0].output_validators) == 0
+        # Second testcase has output validator
+        assert len(visited_entries[1].output_validators) == 1
+        assert visited_entries[1].output_validators[0].path == pathlib.Path(
+            'sub_output_validator.cpp'
+        )
+
+    async def test_run_testcase_visitor_with_merged_output_validators(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that output validators are merged from package, group, and subgroup levels."""
+        # Add validators
+        testing_pkg.add_file(
+            'package_output_validator.cpp', src='validators/int-validator.cpp'
+        )
+        testing_pkg.add_file(
+            'group_output_validator.cpp', src='validators/int-validator-bounded.cpp'
+        )
+        testing_pkg.add_file(
+            'sub_output_validator.cpp', src='validators/extra-validator-odd.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Configure package-level output validator
+        testing_pkg.yml.outputValidators = [
+            CodeItem(path=pathlib.Path('package_output_validator.cpp'))
+        ]
+
+        # Configure group with subgroups
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {
+                    'name': 'sub1',
+                    'generators': [{'name': 'gen1', 'args': 'arg1'}],
+                    'outputValidators': ['sub_output_validator.cpp'],
+                },
+            ],
+        )
+
+        # Add group-level output validator
+        main_group = testing_pkg.yml.testcases[0]
+        main_group.outputValidators = [
+            CodeItem(path=pathlib.Path('group_output_validator.cpp'))
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        # Should have all 3 output validators: package + group + subgroup
+        assert len(visited_entries[0].output_validators) == 3
+        validator_paths = {v.path for v in visited_entries[0].output_validators}
+        expected_paths = {
+            pathlib.Path('package_output_validator.cpp'),
+            pathlib.Path('group_output_validator.cpp'),
+            pathlib.Path('sub_output_validator.cpp'),
+        }
+        assert validator_paths == expected_paths
+
+    async def test_run_testcase_visitor_with_glob_output_validators(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that glob patterns in output validators are expanded correctly."""
+        # Create multiple output validator files
+        testing_pkg.add_file(
+            'output_validators/val1.cpp', src='validators/int-validator.cpp'
+        )
+        testing_pkg.add_file(
+            'output_validators/val2.cpp', src='validators/int-validator-bounded.cpp'
+        )
+        testing_pkg.add_file(
+            'output_validators/val3.cpp', src='validators/extra-validator-odd.cpp'
+        )
+        testing_pkg.add_file(
+            'other/not_validator.cpp', src='validators/int-validator.cpp'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Configure group with glob pattern for output validators
+        testing_pkg.add_testgroup_with_generators(
+            'validated',
+            [{'name': 'gen1', 'args': 'test'}],
+        )
+
+        main_group = testing_pkg.yml.testcases[0]
+        main_group.outputValidators = [
+            CodeItem(path=pathlib.Path('output_validators/*.cpp'))
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        # Should have expanded the glob to include all 3 validators
+        assert len(visited_entries[0].output_validators) == 3
+        validator_paths = {v.path for v in visited_entries[0].output_validators}
+        expected_paths = {
+            pathlib.Path('output_validators/val1.cpp'),
+            pathlib.Path('output_validators/val2.cpp'),
+            pathlib.Path('output_validators/val3.cpp'),
+        }
+        assert validator_paths == expected_paths

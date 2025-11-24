@@ -229,6 +229,18 @@ def compile_validators_for_entries(
     return compile_validators(validators, progress=progress)
 
 
+def compile_output_validators_for_entries(
+    validation_entries: List[GenerationTestcaseEntry],
+    progress: Optional[StatusProgress] = None,
+) -> Dict[str, str]:
+    validators = []
+
+    for entry in validation_entries:
+        validators.extend(entry.output_validators)
+
+    return compile_validators(validators, progress=progress)
+
+
 async def validate_testcases(
     progress: Optional[StatusProgress] = None,
     groups: Optional[Set[str]] = None,
@@ -295,18 +307,69 @@ async def validate_testcases(
     return validation_info
 
 
+async def validate_outputs_from_entries(
+    entries: List[GenerationTestcaseEntry],
+    progress: Optional[StatusProgress] = None,
+) -> List[TestcaseValidationInfo]:
+    def step():
+        if progress is not None:
+            progress.step()
+
+    validator_to_compiled_digest = compile_output_validators_for_entries(
+        entries, progress=progress
+    )
+
+    if not validator_to_compiled_digest:
+        return []
+
+    validation_info = []
+    for entry in entries:
+        output_path = entry.metadata.copied_to.outputPath
+        if output_path is None or not output_path.is_file():
+            continue
+        for output_validator in entry.output_validators:
+            compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
+            ok, message, _ = await _validate_test(
+                output_path, output_validator, compiled_digest
+            )
+            validation_info.append(
+                TestcaseValidationInfo(
+                    validator=output_validator,
+                    testcase=entry.group_entry,
+                    generation_metadata=entry.metadata,
+                    path=output_path,
+                    ok=ok,
+                    hit_bounds={},
+                    message=message,
+                )
+            )
+            step()
+
+    return validation_info
+
+
 def has_validation_errors(infos: List[TestcaseValidationInfo]) -> bool:
     return any(not info.ok for info in infos)
 
 
-def print_validation_report(infos: List[TestcaseValidationInfo]):
-    console.console.rule('Validation report', style='status')
+def print_validation_report(
+    infos: List[TestcaseValidationInfo], output_validation: bool = False
+):
+    any_failure = any(not info.ok for info in infos)
+    validator_mode_str = 'output validator' if output_validation else 'validator'
+
+    if output_validation and not any_failure:
+        return
+
+    if output_validation:
+        console.console.rule('Output validation report', style='status')
+    else:
+        console.console.rule('Validation report', style='status')
     hit_bounds_per_group: Dict[Optional[str], HitBounds] = {}
-    any_failure = False
     for info in infos:
         if not info.ok:
             console.console.print(
-                f'[error]Testcase {info.href()} failed verification on validator {info.validator.href()}:[/error]'
+                f'[error]Testcase {info.href()} failed verification on {validator_mode_str} {info.validator.href()}:[/error]'
             )
             if info.generation_metadata is not None:
                 metadata_markup = get_generation_metadata_markup(
@@ -314,7 +377,6 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
                 )
                 console.console.print(metadata_markup)
             console.console.print(info.message)
-            any_failure = True
             continue
 
         if info.testcase is None:
@@ -325,7 +387,7 @@ def print_validation_report(infos: List[TestcaseValidationInfo]):
             [hit_bounds_per_group[info.testcase.group], info.hit_bounds]
         )
 
-    if not hit_bounds_per_group:
+    if not hit_bounds_per_group or output_validation:
         console.console.print()
         return
 

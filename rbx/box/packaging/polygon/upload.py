@@ -291,7 +291,7 @@ def _upload_testcases(problem: api.Problem):
 
         calls = []
         for entry in entries:
-            if entry.group_entry.group == 'samples':
+            if entry.is_sample():
                 continue
             if entry.metadata.generator_call is None:
                 continue

@@ -177,12 +177,14 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         prefix: List[str],
         validator: Optional[CodeItem] = None,
         extra_validators: Optional[List[CodeItem]] = None,
+        output_validators: Optional[List[CodeItem]] = None,
         model_solution: Optional[Solution] = None,
     ):
         extra_validators = package.get_globbed_code_items(
             extra_validators or [],
             preexisting_items=[validator] if validator is not None else None,
         )
+        output_validators = package.get_globbed_code_items(output_validators or [])
 
         assert prefix and len(prefix) >= 1 and len(prefix) <= 2
         group_path = prefix[0]
@@ -246,6 +248,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         ),
                         validator=validator,
                         extra_validators=extra_validators,
+                        output_validators=output_validators,
                         model_solution=model_solution,
                     )
                 )
@@ -263,6 +266,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     ),
                     validator=validator,
                     extra_validators=extra_validators,
+                    output_validators=output_validators,
                     model_solution=model_solution,
                 )
             )
@@ -315,6 +319,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         metadata=metadata,
                         validator=validator,
                         extra_validators=extra_validators,
+                        output_validators=output_validators,
                         model_solution=model_solution,
                     )
                 )
@@ -329,12 +334,14 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             group_validator = group.validator
 
         extra_validators = pkg.extraValidators + group.extraValidators
+        output_validators = pkg.outputValidators + group.outputValidators
         await _explore_subgroup(
             group,
             0 if group.subgroups else None,
             [group.name],
             validator=group_validator,
             extra_validators=extra_validators,
+            output_validators=output_validators,
             model_solution=group.model_solution,
         )
 
@@ -345,6 +352,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                 [group.name, subgroup.name],
                 validator=group_validator,
                 extra_validators=extra_validators + subgroup.extraValidators,
+                output_validators=output_validators + subgroup.outputValidators,
                 model_solution=group.model_solution,
             )
 
