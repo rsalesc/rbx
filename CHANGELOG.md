@@ -1,3 +1,33 @@
+## 0.21.0 (2025-11-27)
+
+### Feat
+
+- add output validators when building and validating
+- **\**: create unit test parser
+- add parser for testplan and testgroups
+
+### Fix
+
+- fix BOCA interactive run when code is not chrooted
+- read explanation files from tex accompanying samples
+- add parsing for testplan:line tests
+- print what solution is being used to generate outputs
+- add unit tests new parsing
+- fix parsing issues with input blocks
+- be more lenient with whitespaces in unit parser
+- fix whitespace normalization within input blocks in parsers
+- add expectation support in unit test parser
+- add support for bracket delimited input/output
+- support @input in statement
+- structure generation input coming from testplans
+- smart delete solution in polygon
+- save generator scripts in polygon uplaod
+- use correct language in validator
+- upload polygon solutions with correct lang
+- upload statement resources in parallel
+- parallelize solution uplaod to polygon
+- fix image names in statement resources when uploading to polygon
+
 ## 0.20.1rc6 (2025-11-08)
 
 ### Fix
