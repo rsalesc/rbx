@@ -155,8 +155,18 @@ EOF
     exit 49
   fi
 else
-  echo "ERROR: CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
-  exit 48
+  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  echo "CODE NOT BEING CHROOTED. DO NOT RUN THIS ON THE MAIN SERVER" >&2
+  python2=$(which python2)
+  [ -x "$python2" ] || python2=/usr/bin/python2
+  if [ ! -x "$python2" ]; then
+    echo "$python2 not found or it's not executable"
+    exit 47
+  fi
+  ./runit.sh "$cdir" "$sf" "$ttime" -F256 -u256 -f$maxf -r$nruns -n0 -C. -U$bocau -G$bocag -d$maxm -m$maxm -t$time -T$ttime -- "\$python2" "$name"
+  ret=$?
+  rm -rf fifo.in fifo.out
 fi
 ### END OF BOCA RUN COMMAND
 
