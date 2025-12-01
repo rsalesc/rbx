@@ -344,11 +344,14 @@ int main(int argc, char *argv[]) {
     if (pid == solution_pid) {
       solution_status = bash_like_status(status);
       if (args.verbose) fprintf(stderr, "solution status: %d\n", solution_status);
+      if (solution_status) if (kill(interactor_pid, SIGTERM)) {
+        fprintf(stderr, "term interactor failed: %s\n", strerror(errno));
+      }
     } else {
       interactor_status = bash_like_status(status);
       if (args.verbose) fprintf(stderr, "interactor status: %d\n", interactor_status);
-      if (interactor_status >= 1 && interactor_status <= 4) if (kill(solution_pid, SIGTERM)) {
-        fprintf(stderr, "kill solution failed: %s\n", strerror(errno));
+      if (interactor_status) if (kill(solution_pid, SIGTERM)) {
+        fprintf(stderr, "term solution failed: %s\n", strerror(errno));
       }
     }
   }
