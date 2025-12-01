@@ -1,3 +1,9 @@
+## 0.21.1 (2025-12-01)
+
+### Fix
+
+- ensure interactive process are ordered and we track order of visit
+
 ## 0.21.0 (2025-11-27)
 
 ### Feat
