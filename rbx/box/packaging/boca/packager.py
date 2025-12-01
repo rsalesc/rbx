@@ -231,6 +231,25 @@ class BocaPackager(BasePackager):
             '{{safeexec_content}}', safeexec_path.read_text()
         )
 
+    def _get_pipe(self) -> str:
+        pipe_script_path = (
+            get_default_app_path() / 'packagers' / 'boca' / 'pipe_compile.sh'
+        )
+        pipe_path = get_default_app_path() / 'packagers' / 'boca' / 'pipe.c'
+        if not pipe_script_path.exists():
+            console.console.print(
+                '[error]BOCA template pipe compile script not found.[/error]'
+            )
+            raise typer.Exit(1)
+        if not pipe_path.exists():
+            console.console.print(
+                '[error]BOCA template pipe source code not found.[/error]'
+            )
+            raise typer.Exit(1)
+        return pipe_script_path.read_text().replace(
+            '{{pipe_content}}', pipe_path.read_text()
+        )
+
     def _get_compile(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
 
@@ -252,6 +271,9 @@ class BocaPackager(BasePackager):
             )
             compile_text = compile_text.replace(
                 'umask 0022', 'umask 0022\n\n' + self._get_safeexec()
+            )
+            compile_text = compile_text.replace(
+                'umask 0022', 'umask 0022\n\n' + self._get_pipe()
             )
         compile_text = compile_text.replace(
             'umask 0022', 'umask 0022\n\n' + self._get_checker()

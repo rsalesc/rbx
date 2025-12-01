@@ -59,6 +59,14 @@ class Outcome(Enum):
             Outcome.IDLENESS_LIMIT_EXCEEDED,
         ]
 
+    def is_limit_exceeded(self) -> bool:
+        return self in [
+            Outcome.TIME_LIMIT_EXCEEDED,
+            Outcome.MEMORY_LIMIT_EXCEEDED,
+            Outcome.OUTPUT_LIMIT_EXCEEDED,
+            Outcome.IDLENESS_LIMIT_EXCEEDED,
+        ]
+
     def short_name(self) -> str:
         if self == Outcome.ACCEPTED:
             return 'AC'

@@ -403,30 +403,40 @@ async def check_communication(
     if _any_failed([run_log, interactor_run_log]):
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
-    # 1. If the solution received SIGPIPE or was terminated, it means the
-    # interactor exited before it. Thus, check the interactor, as it might have
-    # returned a checker verdict.
-    #
-    # Also, treat the case where the solution has a non-zero exit code similarly.
-    # This is aligned with what Polygon/Codeforces does: for some languages, we don't
-    # get a SIGPIPE. Instead, we get a non-zero exit code which we can't distinguish
-    # from a normal RTE. Thus, we decide that we should prioritize the interactor verdict
-    # over the solution's exit code in these cases.
-    if (
+    interactor_first = (
         interactor_run_log is not None
         and run_log is not None
-        and (interactor_run_log.exitindex < run_log.exitindex)
-    ):
+        and interactor_run_log.exitindex < run_log.exitindex
+    )
+
+    # 1. Check if the interactor crashed.
+    if interactor_first:
+        result = _check_interactor()
+        if result is not None and result.outcome in [
+            Outcome.JUDGE_FAILED,
+            Outcome.INTERNAL_ERROR,
+        ]:
+            return _extra_check_and_sanitize(result)
+
+    # 2. Check if solution exceeded any limits and prioritize these types
+    # of verdicts.
+    result = check_with_no_output(run_log)
+    if result is not None and result.outcome.is_limit_exceeded():
+        return _extra_check_and_sanitize(result)
+
+    # 3. If interactor finished first with an usual verdict, and solution
+    # did not LE, we should check the interactor again for WAs.
+    if interactor_first:
         result = _check_interactor()
         if result is not None and result.outcome != Outcome.ACCEPTED:
             return _extra_check_and_sanitize(result)
 
-    # 2. Check if the solution failed without looking at its output (TLE, MLE, RTE, etc).
+    # 4. Check if the solution failed without looking at its output (TLE, MLE, RTE, etc).
     result = check_with_no_output(run_log)
     if result.outcome != Outcome.ACCEPTED:
         return _extra_check_and_sanitize(result)
 
-    # 3. Now check interactor return code regardless of what happened to the
+    # 5. Now check interactor return code regardless of what happened to the
     # solution.
     result = _check_interactor()
     if result is not None and result.outcome != Outcome.ACCEPTED:
@@ -440,7 +450,7 @@ async def check_communication(
             result.outcome = Outcome.JUDGE_FAILED
         return _extra_check_and_sanitize(result)
 
-    # 4. Now actually check the output with a checker.
+    # 6. Now actually check the output with a checker.
     if checker_digest is not None:
         result = await check(
             checker_digest, run_log, testcase, program_output, skip_run_log

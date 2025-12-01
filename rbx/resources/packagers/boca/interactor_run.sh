@@ -30,48 +30,55 @@ echo "Running solution with safeexec params $@" >&2
 cat >runit_wrapper.sh <<"WRAPPERFOF"
 #!/bin/bash
 # SIGTERM after ttime, SIGKILL after extra 5 seconds.
-(sleep $1; kill -TERM -$$; sleep 5; kill -9 -$$) 2>/dev/null &
+# Also ensure the killing subshell does not inherit the file descriptor.
+fd=$2
+(exec {fd}>&-; sleep $1; kill -TERM -$$; sleep 5; kill -9 -$$) 2>/dev/null &
 ulimit -v 1024000 && exec ./interactor.exe "stdin0" "stdout0"
 exit $?
 WRAPPERFOF
 chmod 755 runit_wrapper.sh
-./runit_wrapper.sh $ittime <fifo.out >fifo.in 2>interactor.stderr &
-INTPID=$!
 
-"$sf" -ofifo.out -ififo.in "$@" 2>safeexec.sf.stderr &
-SFPID=$!
+# Execute the pipe program. This program will execute both solution and interactor
+# and pass some pipes to them to catch through epoll events which process finished
+# first.
+./pipe.exe -i fifo.in -o fifo.out -e safeexec.sf.stderr -E interactor.stderr --\
+  "$sf" -ofifo.out -ififo.in -D__FD__ "$@" 2>safeexec.sf.stderr\
+  =\
+  ./runit_wrapper.sh $ittime __FD__ >pipe.log 2>pipe.stderr
 
-ECINT=0
-ECSF=0
-
-echo "interactor pid $INTPID" >>stderr0
-echo "solution pid $SFPID" >>stderr0
-
-wait -p EXITID -n $SFPID $INTPID
-ECEXIT=$?
-if [[ $ECEXIT -ne 0 ]]; then
-  kill -SIGTERM $SFPID $INTPID 2>/dev/null
+if [[ $? -ne 0 ]]; then
+  echo "pipe failed" >>stderr0
+  cat pipe.stderr >>stderr0
+  exit 4
 fi
+
+# Parse pipe.log output:
+# Line 1: first_tag (1=solution, 2=interactor)
+# Line 2: solution_status
+# Line 3: interactor_status
+FIRST_TAG=$(sed -n '1p' pipe.log | tr -d '[:space:]')
+ECSF=$(sed -n '2p' pipe.log | tr -d '[:space:]')
+ECINT=$(sed -n '3p' pipe.log | tr -d '[:space:]')
 
 EXITFIRST=none
-if [[ $EXITID -eq $INTPID ]]; then
-  # In case the interactor exits first, we can just wait for the solution to finish.
-  # It will certainly finish at some point since it's running inside a constrained
-  # safeexec environment.
-  wait $SFPID
-  ECSF=$?
-  ECINT=$ECEXIT
-  EXITFIRST=interactor
-else
-  # When solution exits first, we're sure that it ACTUALLY finished first.
-  # So, in case of non-zero exit code, we probably already halted the interactor.
-  # Otherwise, let's wait for it for a maximum of wall time and then halt it to ensure
-  # a misbehaved interactor doesn't hang the entire judge.
-  wait $INTPID
-  ECINT=$?
-  ECSF=$ECEXIT
+if [[ $FIRST_TAG -eq 1 ]]; then
   EXITFIRST=solution
+elif [[ $FIRST_TAG -eq 2 ]]; then
+  EXITFIRST=interactor
 fi
+
+if [[ $EXITFIRST == none ]]; then
+  # Should never happen.
+  echo "pipe failed, returned exit first none" >>stderr0
+  cat pipe.stderr >>stderr0
+  echo "== <pipe log> ==" >>stderr0
+  cat pipe.log >>stderr0
+  exit 4
+fi
+
+echo "== <pipe stderr> ==" >>stderr0
+cat pipe.stderr >>stderr0
+echo "== </pipe stderr> ==" >>stderr0
 
 echo "interactor exitcode $ECINT" >>stderr0
 echo "solution exitcode $ECSF" >>stderr0
@@ -98,35 +105,13 @@ finish() {
   exit $1
 }
 
-# Solution RTE, for checking purposes, is defined as any safeexec non-zero exit code, except for TLE or MLE.
-is_solution_rte() {
-  if [[ $1 -eq 0 ]]; then
-    false
+is_testlib_exitcode() {
+  local EC=$ECINT
+  if [[ $EC -ge 0 ]] && [[ $EC -le 4 ]]; then
+    true
     return
   fi
-
-  # In case of TLE or MLE, we don't consider as RTE.
-  if [[ $1 -eq 3 ]] || [[ $1 -eq 7 ]]; then
-    false
-    return
-  fi
-  true
-}
-
-# Interactor RTE, for checking purposes, is defined as any non-zero exit code, except for SIGTERM or SIGPIPE, or exit codes
-# reserved for testlib.
-is_interactor_rte() {
-  if [[ $1 -eq 0 ]] || [[ $1 -eq 143 ]] || [[ $1 -eq 141 ]]; then
-    false
-    return
-  fi
-
-  if [[ $1 -ge 1 ]] && [[ $1 -le 4 ]]; then
-    false
-    return
-  fi
-
-  true
+  false
 }
 
 # Check for interactor errors.
@@ -145,30 +130,28 @@ check_interactor() {
   finish $JUDGE_ERROR
 }
 
-# 0. Interactor has crashed?
-if is_interactor_rte $ECINT; then
-  echo "interactor EXITED WITH NON-ZERO CODE $ECINT" >>stderr0
-  finish $JUDGE_ERROR
+# 1. Check if interactor crashed.
+if [[ $EXITFIRST == "interactor" ]] && ! is_testlib_exitcode; then
+  check_interactor
 fi
 
-# 1. Solution has exceed limits?
+# 2. Check for solution MLE or TLE.
 if [[ $ECSF -eq 3 ]] || [[ $ECSF -eq 7 ]]; then
   finish $ECSF
 fi
 
-# 2. Check for interactor errors.
-# TODO: Maybe one day get rid of "wrong output format" check with extra fifos.
-if ([[ $EXITFIRST == "interactor" ]] || is_solution_rte $ECSF) && ! cat stderr0 | grep -q "wrong output format Unexpected end of file"; then
+# 3. When interactor finished first, check for interactor errors.
+if [[ $EXITFIRST == "interactor" ]]; then
   check_interactor
 fi
 
-# 3. Check for solution errors.
+# 4. Check for solution errors.
 if [[ $ECSF -ne 0 ]]; then
   finish $ECSF
 fi
 
-# 4. Check for interactor without looking at solution output.
+# 5. Check for interactor errors again, regardless of the order of finish.
 check_interactor
 
-# 5. Finish with zero and later check output.
+# 6. Finish with zero and later check output.
 finish 0

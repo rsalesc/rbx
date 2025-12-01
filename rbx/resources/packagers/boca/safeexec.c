@@ -55,6 +55,7 @@ int checknchild;
 int user, group;
 int process_group = 0;
 const char vers[] = "1.5.1";
+int notification_fd = -1;
 
 #define BUFFSIZE 256
 char curdir[BUFFSIZE], rootdir[BUFFSIZE], saida[BUFFSIZE], entrada[BUFFSIZE], erro[BUFFSIZE];
@@ -284,6 +285,7 @@ void usage(int argc, char **argv) {
   fprintf(stderr, "\t-i <standard input file> (default: not defined)\n");
   fprintf(stderr, "\t-o <standard output file> (default: not defined)\n");
   fprintf(stderr, "\t-e <standard error file> (default: not defined)\n");
+	fprintf(stderr, "\t-D <notification fd> (default: not defined)\n");
   fprintf(stderr, "\t-U <user id> (default: %d)\n", user);
   fprintf(stderr, "\t-G <group id> (default: %d)\n", group);
   fprintf(stderr, "\t-p <show spent time?> (default: %d)\n", st);
@@ -318,7 +320,7 @@ int main(int argc, char **argv) {
 
   /* parse command-line options */
   getcwd(curdir, BUFFSIZE);  /* default: use cwd as rootdir */
-  while( (opt=getopt(argc,argv,"qKar:c:d:m:f:F:t:T:u:n:i:o:e:C:R:G:U:p:s:g")) != -1 ) {
+  while( (opt=getopt(argc,argv,"qKar:c:d:m:f:F:t:T:u:n:i:o:e:D:C:R:G:U:p:s:g")) != -1 ) {
     switch(opt) {
 		case 'q': bequiet=1;
 			break;
@@ -367,6 +369,8 @@ int main(int argc, char **argv) {
     case 'e': strncpy(erro, optarg, 255);
               erro[255]=0;
       break;
+		case 'D': notification_fd = atoi(optarg);
+			break;
     case 'n': dochroot = atoi(optarg);
       break;
     case 'p': st = atoi(optarg);
@@ -410,6 +414,21 @@ Use -U and -G for that, but you might need to have root privilegies.\n");
 	  exit(4);
   }
 
+	if (notification_fd != -1 && nruns > 1) {
+		fprintf(stderr, "ERROR: cannot use notification fd with multiple runs\n");
+		exit(4);
+	}
+
+#ifdef DEBUG
+	if (notification_fd != -1) {
+		int flags = fcntl(notification_fd, F_GETFL);
+		fprintf(stderr, "notification_fd=%d flags=%#x\n", notification_fd, flags);
+		if (flags & O_CLOEXEC) {
+			fprintf(stderr, "WARNING: notification_fd is close-on-exec\n");
+		}
+	}
+#endif
+
   time(&ini);
   dt = 0.;
 //  int iter=0;
@@ -417,6 +436,9 @@ Use -U and -G for that, but you might need to have root privilegies.\n");
   if((child_pid=fork())) { 
     struct rusage uso;
     /* ------------------- parent process ----------------------------- */
+	if(notification_fd != -1) {
+		close(notification_fd);
+	}
 	if(currun == 0) {
 		setrlimit(RLIMIT_CORE, &max_core);
 	}
@@ -478,6 +500,13 @@ Use -U and -G for that, but you might need to have root privilegies.\n");
     /* ------------------- child process ------------------------------ */
 #ifdef DEBUG
 	  fprintf(stderr,"child started\n");
+		if (notification_fd != -1) {
+			int flags = fcntl(notification_fd, F_GETFL);
+			fprintf(stderr, "child: notification_fd=%d flags=%#x\n", notification_fd, flags);
+			if (flags & O_CLOEXEC) {
+				fprintf(stderr, "child: WARNING: notification_fd is close-on-exec\n");
+			}
+		}
 #endif
 	  /* change the group id to 'nobody' */
 	  if(setgid(group)<0) {

@@ -133,6 +133,7 @@ fi
 cp "$2" stdin0 2>/dev/null
 cp "$1" run.exe 2>/dev/null
 cp ../interactor.exe interactor.exe 2>/dev/null
+cp ../pipe.exe pipe.exe 2>/dev/null
 
 cdir=$(pwd)
 echo "Current directory is $cdir -- chrooting on it" >&2
