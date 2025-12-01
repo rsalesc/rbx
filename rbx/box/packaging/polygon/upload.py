@@ -268,9 +268,11 @@ def _upload_testcases(problem: api.Problem):
         problem.save_script(testset='tests', source='<#-- empty placeholder script -->')
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
         for generator in generators.values():
-            executor.submit(_upload_generator, problem, generator)
-    executor.shutdown(wait=True)
+            futures.append(executor.submit(_upload_generator, problem, generator))
+        for future in futures:
+            future.result()
 
     with rich.progress.Progress(speed_estimate_period=5) as progress:
         next_index = 1
@@ -338,10 +340,11 @@ def _upload_solutions(problem: api.Problem):
         saved_solutions.add(solution.path.name)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
         for i, solution in enumerate(package.get_solutions()):
-            executor.submit(process_solution, solution, i)
-
-    executor.shutdown(wait=True)
+            futures.append(executor.submit(process_solution, solution, i))
+        for future in futures:
+            future.result()
 
     def delete_solution(solution: api.Solution):
         console.console.print(f'Deleting solution [item]{solution.name}[/item]...')
@@ -353,10 +356,12 @@ def _upload_solutions(problem: api.Problem):
         )
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
         for solution in problem.solutions():
             if solution.name not in saved_solutions:
-                executor.submit(delete_solution, solution)
-    executor.shutdown(wait=True)
+                futures.append(executor.submit(delete_solution, solution))
+        for future in futures:
+            future.result()
 
 
 def _get_statement_for_language(language: str) -> Optional[Statement]:
@@ -417,6 +422,7 @@ def _upload_statement_resources(
     res: Dict[str, str] = {}
     assets = get_relative_assets(statement.path, statement.assets)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
         for asset, relative_asset in assets:
             console.console.print(
                 f'Uploading statement resource [item]{relative_asset}[/item]...'
@@ -443,7 +449,8 @@ def _upload_statement_resources(
                 name=key_asset,
                 file=resource_bytes,
             )
-    executor.shutdown(wait=True)
+    for future in futures:
+        future.result()
     return res
 
 
