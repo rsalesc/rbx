@@ -1,3 +1,11 @@
+## 0.21.2 (2025-12-17)
+
+### Fix
+
+- correctly upload polygon statement assets
+- handle exceptions properly in thread pools during polygon upload
+- always kill processes in pipe.c
+
 ## 0.21.1 (2025-12-01)
 
 ### Fix
