@@ -8,15 +8,13 @@ The `rbx` CLI is the main entry point for all operations. It provides a set of c
 rbx [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `-c`, `--cache` | Which degree of caching to use. | `<function <lambda> at 0x10c3a0040>` |
-| `--sanitized`, `-s` | Whether to compile and run testlib components with sanitizers enabled. If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command. | `False` |
-| `--nocapture` | Whether to save extra logs and outputs from interactive solutions. | `True` |
-| `--profile`, `-p` | Whether to profile the execution. | `False` |
-| `--version`, `-v` | - | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `-c`, `--cache` | CHOICE | Which degree of caching to use. | `CACHE_ALL` |
+| `--sanitized`, `-s` | BOOLEAN | Whether to compile and run testlib components with sanitizers enabled. If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command. | `False` |
+| `--nocapture` | BOOLEAN | Whether to save extra logs and outputs from interactive solutions. | `True` |
+| `--profile`, `-p` | BOOLEAN | Whether to profile the execution. | `False` |
+| `--version`, `-v` | BOOLEAN | - | `False` |
 
 
 ---
@@ -77,11 +75,9 @@ It is recommended to run this command before packaging the problem to ensure eve
 rbx build [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
 
 
 ---
@@ -106,16 +102,14 @@ rbx run <SOLUTIONS> [OPTIONS]
 | :--- | :--- | :--- |
 | `SOLUTIONS` | Path to solutions to run. If not specified, will run all solutions. | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--outcome`, `-o` | Include only solutions whose expected outcomes intersect with this. | - |
-| `--nocheck` | Whether to not build outputs for tests and run checker. | `True` |
-| `--detailed`, `-d` | Whether to print a detailed view of the tests using tables. | `False` |
-| `--sanitized`, `-s` | Whether to compile the solutions with sanitizers enabled. | `False` |
-| `--choice`, `--choose`, `-c` | Whether to pick solutions interactively. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
+| `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
+| `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
+| `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
 
 
 ---
@@ -129,17 +123,15 @@ Estimate a time limit for the problem based on a time limit formula and timings 
 rbx time [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--nocheck` | Whether to not build outputs for tests and run checker. | `True` |
-| `--detailed`, `-d` | Whether to print a detailed view of the tests using tables. | `False` |
-| `--strategy`, `-s` | Strategy to use for time limit estimation (estimate, inherit). | - |
-| `--auto`, `-a` | Whether to automatically estimate the time limit. | `False` |
-| `--runs`, `-r` | Number of runs to perform for each solution. Zero means the config default. | `0` |
-| `--profile`, `-p` | Profile to use for time limit estimation. | `local` |
-| `--integrate`, `-i` | Integrate the given limits profile into the package. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
+| `--strategy`, `-s` | TEXT | Strategy to use for time limit estimation (estimate, inherit). | - |
+| `--auto`, `-a` | BOOLEAN | Whether to automatically estimate the time limit. | `False` |
+| `--runs`, `-r` | INTEGER | Number of runs to perform for each solution. Zero means the config default. | `0` |
+| `--profile`, `-p` | TEXT | Profile to use for time limit estimation. | `local` |
+| `--integrate`, `-i` | BOOLEAN | Integrate the given limits profile into the package. | `False` |
 
 
 ---
@@ -159,19 +151,17 @@ rbx irun <SOLUTIONS> [OPTIONS]
 | :--- | :--- | :--- |
 | `SOLUTIONS` | Path to solutions to run. If not specified, will run all solutions. | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--outcome`, `-o` | Include only solutions whose expected outcomes intersect with this. | - |
-| `--nocheck` | Whether to not build outputs for tests and run checker. | `True` |
-| `--generator`, `-g` | Generator call to use to generate a single test for execution. | - |
-| `--testcase`, `--test`, `-tc`, `-t` | Testcase to run, in the format "[group]/[index]". If not specified, will run interactively. | - |
-| `--output`, `-O` | Whether to ask user for custom output. | `False` |
-| `--print`, `-p` | Whether to print outputs to terminal. | `False` |
-| `--sanitized`, `-s` | Whether to compile the solutions with sanitizers enabled. | `False` |
-| `--choice`, `--choose`, `-c` | Whether to pick solutions interactively. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
+| `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--generator`, `-g` | TEXT | Generator call to use to generate a single test for execution. | - |
+| `--testcase`, `--test`, `-tc`, `-t` | TEXT | Testcase to run, in the format "[group]/[index]". If not specified, will run interactively. | - |
+| `--output`, `-O` | BOOLEAN | Whether to ask user for custom output. | `False` |
+| `--print`, `-p` | BOOLEAN | Whether to print outputs to terminal. | `False` |
+| `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
+| `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
 
 
 ---
@@ -185,12 +175,10 @@ Create a new problem package.
 rbx create [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--name` | Name of the problem to create, which will be used as the name of the new folder. | - |
-| `--preset` | Preset to use when creating the problem. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--name` | TEXT | Name of the problem to create, which will be used as the name of the new folder. | - |
+| `--preset` | TEXT | Preset to use when creating the problem. | - |
 
 
 ---
@@ -215,19 +203,17 @@ rbx stress <NAME> [OPTIONS]
 | :--- | :--- | :--- |
 | `NAME` | Name of the stress test to run (specified in problem.rbx.yml). | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--generator`, `-g` | Generator call to use to generate a single test for execution. | - |
-| `--finder`, `-f` | Run a stress with this finder expression. | - |
-| `--timeout`, `--time`, `-t` | For how many seconds to run the stress test. | `10` |
-| `--findings`, `-n` | How many breaking tests to look for. | `1` |
-| `-v`, `--verbose` | Whether to print verbose output for checkers and finders. | `False` |
-| `--sanitized`, `-s` | Whether to compile the solutions with sanitizers enabled. | `False` |
-| `--description`, `-d` | Optional description of the stress test. | - |
-| `--descriptors`, `-D` | Whether to print descriptors of the stress test. | `False` |
-| `--skip-invalid`, `--skip` | Whether to skip invalid testcases. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--generator`, `-g` | TEXT | Generator call to use to generate a single test for execution. | - |
+| `--finder`, `-f` | TEXT | Run a stress with this finder expression. | - |
+| `--timeout`, `--time`, `-t` | INTEGER | For how many seconds to run the stress test. | `10` |
+| `--findings`, `-n` | INTEGER | How many breaking tests to look for. | `1` |
+| `-v`, `--verbose` | BOOLEAN | Whether to print verbose output for checkers and finders. | `False` |
+| `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
+| `--description`, `-d` | TEXT | Optional description of the stress test. | - |
+| `--descriptors`, `-D` | BOOLEAN | Whether to print descriptors of the stress test. | `False` |
+| `--skip-invalid`, `--skip` | BOOLEAN | Whether to skip invalid testcases. | `False` |
 
 
 ---
@@ -247,12 +233,10 @@ rbx compile <PATH> [OPTIONS]
 | :--- | :--- | :--- |
 | `PATH` | Path to the asset to compile. | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--sanitized`, `-s` | Whether to compile the asset with sanitizers enabled. | `False` |
-| `--warnings`, `-w` | Whether to compile the asset with warnings enabled. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--sanitized`, `-s` | BOOLEAN | Whether to compile the asset with sanitizers enabled. | `False` |
+| `--warnings`, `-w` | BOOLEAN | Whether to compile the asset with warnings enabled. | `False` |
 
 
 ---
@@ -266,11 +250,9 @@ Run the validator in a one-off fashion, interactively.
 rbx validate [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--path`, `-p` | Path to the testcase to validate. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--path`, `-p` | TEXT | Path to the testcase to validate. | - |
 
 
 ---
@@ -314,11 +296,9 @@ rbx environment <ENV> [OPTIONS]
 | :--- | :--- | :--- |
 | `ENV` | - | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--install`, `-i` | Whether to install this environment from the given file. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--install`, `-i` | TEXT | Whether to install this environment from the given file. | - |
 
 
 ---
@@ -344,11 +324,9 @@ Show stats about current and related packages.
 rbx stats [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--transitive`, `-t` | Show stats about all reachable packages. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--transitive`, `-t` | BOOLEAN | Show stats about all reachable packages. | `False` |
 
 
 ---
@@ -362,11 +340,9 @@ Format files of the current package.
 rbx fix [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--print-diff`, `-p` | - | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--print-diff`, `-p` | BOOLEAN | - | `False` |
 
 
 ---
@@ -392,11 +368,9 @@ Clears cache and build directories.
 rbx clear [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--global`, `-g` | - | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--global`, `-g` | BOOLEAN | - | `False` |
 
 
 ---
@@ -488,15 +462,13 @@ rbx statements build <NAMES> [OPTIONS]
 | :--- | :--- | :--- |
 | `NAMES` | Names of statements to build. | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--languages` | Languages to build statements for. If not specified, build statements for all available languages. | - |
-| `--output` | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
-| `--samples` | Whether to build the statement with samples or not. | `True` |
-| `--vars` | Variables to be used in the statements. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
+| `--output` | CHOICE | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
+| `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
+| `--vars` | TEXT | Variables to be used in the statements. | - |
 
 
 ---
@@ -570,11 +542,9 @@ rbx download remote <NAME> [OPTIONS]
 | :--- | :--- | :--- |
 | `NAME` | - | Yes |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `-o`, `--output` | Whether to not build outputs for tests and run checker. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `-o`, `--output` | TEXT | Whether to not build outputs for tests and run checker. | - |
 
 
 ---
@@ -600,13 +570,11 @@ Create a new preset.
 rbx presets create [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--name` | The name of the preset to create. This will also be the name of the folder. | - |
-| `--uri` | The URI of the new preset. | - |
-| `--preset`, `-p` | The URI of the preset to init the new preset from. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--name` | TEXT | The name of the preset to create. This will also be the name of the folder. | - |
+| `--uri` | TEXT | The URI of the new preset. | - |
+| `--preset`, `-p` | TEXT | The URI of the preset to init the new preset from. | - |
 
 
 ---
@@ -632,13 +600,11 @@ Sync current package assets with those provided by the installed preset.
 rbx presets sync [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--update`, `-u` | Whether to fetch an up-to-date version of the installed preset from remote, if available. | `False` |
-| `--force`, `-f` | Whether to forcefully overwrite the local assets with the preset assets, even if they have been modified. | `False` |
-| `--symlinks`, `-s` | Whether to update all symlinks in the preset to point to their right targets. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--update`, `-u` | BOOLEAN | Whether to fetch an up-to-date version of the installed preset from remote, if available. | `False` |
+| `--force`, `-f` | BOOLEAN | Whether to forcefully overwrite the local assets with the preset assets, even if they have been modified. | `False` |
+| `--symlinks`, `-s` | BOOLEAN | Whether to update all symlinks in the preset to point to their right targets. | `False` |
 
 
 ---
@@ -676,16 +642,14 @@ Build a package for Polygon.
 rbx package polygon [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--upload`, `-u` | If set, will upload the package to Polygon. | `False` |
-| `--language`, `-l` | If set, will use the given language as the main language. Leave unset if your problem has no statements. | - |
-| `--upload-as-english` | If set, will force the main statement to be uploaded in English. | `False` |
-| `--upload-only` | Only upload the following types of assets to Polygon. | - |
-| `--upload-skip` | Skip uploading the following types of assets to Polygon. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--upload`, `-u` | BOOLEAN | If set, will upload the package to Polygon. | `False` |
+| `--language`, `-l` | TEXT | If set, will use the given language as the main language. Leave unset if your problem has no statements. | - |
+| `--upload-as-english` | BOOLEAN | If set, will force the main statement to be uploaded in English. | `False` |
+| `--upload-only` | TEXT | Only upload the following types of assets to Polygon. | - |
+| `--upload-skip` | TEXT | Skip uploading the following types of assets to Polygon. | - |
 
 
 ---
@@ -699,13 +663,11 @@ Build a package for BOCA.
 rbx package boca [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--upload`, `-u` | If set, will upload the package to BOCA. | `False` |
-| `--language`, `-l` | If set, will use the given language as the main language. Leave unset if you want to use the language of the topmost statement. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--upload`, `-u` | BOOLEAN | If set, will upload the package to BOCA. | `False` |
+| `--language`, `-l` | TEXT | If set, will use the given language as the main language. Leave unset if you want to use the language of the topmost statement. | - |
 
 
 ---
@@ -719,12 +681,10 @@ Build a package for MOJ.
 rbx package moj [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--for-boca` | Build a package for BOCA instead of MOJ. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--for-boca` | BOOLEAN | Build a package for BOCA instead of MOJ. | `False` |
 
 
 ---
@@ -738,11 +698,9 @@ Build a package for PKG.
 rbx package pkg [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
 
 
 ---
@@ -768,12 +726,10 @@ Create a new contest package.
 rbx contest create [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--path` | Path where to create the contest. | - |
-| `--preset`, `-p` | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--path` | TEXT | Path where to create the contest. | - |
+| `--preset`, `-p` | TEXT | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
 If not provided, the default preset will be used, or the active preset if any. | - |
 
 
@@ -788,11 +744,9 @@ Initialize a new contest in the current directory.
 rbx contest init [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--preset`, `-p` | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--preset`, `-p` | TEXT | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
 If not provided, the default preset will be used, or the active preset if any. | - |
 
 
@@ -819,13 +773,11 @@ Add new problem to contest.
 rbx contest add [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--path` | Path where to create the problem. Name part of the path will be used as the problem name. | - |
-| `--short-name` | Short name of the problem. Will be used as the identifier in the contest. | - |
-| `--preset` | Preset to use when creating the problem. If not specified, the active preset will be used. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--path` | TEXT | Path where to create the problem. Name part of the path will be used as the problem name. | - |
+| `--short-name` | TEXT | Short name of the problem. Will be used as the identifier in the contest. | - |
+| `--preset` | TEXT | Preset to use when creating the problem. If not specified, the active preset will be used. | - |
 
 
 ---
@@ -905,16 +857,14 @@ rbx contest statements build <NAMES> [OPTIONS]
 | :--- | :--- | :--- |
 | `NAMES` | Names of statements to build. | No |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--languages` | Languages to build statements for. If not specified, build statements for all available languages. | - |
-| `--output` | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
-| `--samples` | Whether to build the statement with samples or not. | `True` |
-| `--vars` | Variables to be used in the statements. | - |
-| `--install-tex` | Whether to install missing LaTeX packages. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
+| `--output` | CHOICE | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
+| `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
+| `--vars` | TEXT | Variables to be used in the statements. | - |
+| `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
 
 
 ---
@@ -940,12 +890,10 @@ Build a contest package for Polygon.
 rbx contest package polygon [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
-| `--language`, `-l` | If set, will use the given language as the main language. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--language`, `-l` | TEXT | If set, will use the given language as the main language. | - |
 
 
 ---
@@ -959,11 +907,9 @@ Build a contest package for BOCA.
 rbx contest package boca [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
 
 
 ---
@@ -977,11 +923,9 @@ Build a contest package for PKG.
 rbx contest package pkg [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | Verification level to use when building package. | `<function <lambda> at 0x108e97ce0>` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
 
 
 ---
@@ -1013,12 +957,10 @@ rbx testcases view <TC> [OPTIONS]
 | :--- | :--- | :--- |
 | `TC` | Testcase to view. Format: [group]/[index]. | Yes |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--input`, `-i` | Whether to open only the input file in the editor. | `False` |
-| `--output`, `-o` | Whether to open only the output file in the editor. | `False` |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--input`, `-i` | BOOLEAN | Whether to open only the input file in the editor. | `False` |
+| `--output`, `-o` | BOOLEAN | Whether to open only the output file in the editor. | `False` |
 
 
 ---
@@ -1066,14 +1008,12 @@ rbx tool convert <PKG> [OPTIONS]
 | :--- | :--- | :--- |
 | `PKG` | The package to convert. | Yes |
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `-s`, `--source` | The format to convert from. | - |
-| `-d`, `--dest` | The format to convert to. | - |
-| `-o`, `--output` | The output path. | - |
-| `--language`, `-l` | The main language of the problem. | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `-s`, `--source` | TEXT | The format to convert from. | - |
+| `-d`, `--dest` | TEXT | The format to convert to. | - |
+| `-o`, `--output` | TEXT | The output path. | - |
+| `--language`, `-l` | TEXT | The main language of the problem. | - |
 
 
 ---
@@ -1109,11 +1049,9 @@ Open Textual UI to visualize BOCA submissions.
 rbx tool boca view [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description | Default |
-| :--- | :--- | :--- |
-| `--contest-id`, `-c` | Contest identifier to load (stored under app data). | - |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--contest-id`, `-c` | TEXT | Contest identifier to load (stored under app data). | - |
 
 
 ---

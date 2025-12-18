@@ -85,19 +85,21 @@ def render_command(command: Command, lineage: List[str]) -> str:
     # Options
     options = [p for p in params if isinstance(p, Option)]
     if options:
-        output.append('**Options:**')
-        output.append('')
-        output.append('| Name | Description | Default |')
-        output.append('| :--- | :--- | :--- |')
+        output.append('| Name | Type | Description | Default |')
+        output.append('| :--- | :--- | :--- | :--- |')
         for opt in options:
             opts = ', '.join(f'`{o}`' for o in opt.opts)
+            opt_type = opt.type.name.upper() if hasattr(opt.type, 'name') else 'TEXT'
             desc = opt.help or '-'
             default = opt.default
+            if callable(default):
+                default = default()
+
             if default is not None and str(default) != '':
                 default = f'`{default}`'
             else:
                 default = '-'
-            output.append(f'| {opts} | {desc} | {default} |')
+            output.append(f'| {opts} | {opt_type} | {desc} | {default} |')
         output.append('')
 
     return '\n'.join(output)
