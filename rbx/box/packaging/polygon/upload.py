@@ -438,16 +438,21 @@ def _upload_statement_resources(
                 None
                 if len(no_suffix_relative_asset.parents) <= 1
                 else str(no_suffix_relative_asset).replace('/', '__')
+                + relative_asset.suffix
             )
             if key_asset is not None:
                 res[str(relative_asset.with_suffix(''))] = key_asset
+            if key_asset is None:
+                key_asset = str(no_suffix_relative_asset) + relative_asset.suffix
             console.console.print(
                 f'Uploading statement resource [item]{relative_asset}[/item] (normalized name: [item]{key_asset}[/item])...'
             )
-            executor.submit(
-                problem.save_statement_resource,
-                name=key_asset,
-                file=resource_bytes,
+            futures.append(
+                executor.submit(
+                    problem.save_statement_resource,
+                    name=key_asset,
+                    file=resource_bytes,
+                )
             )
     for future in futures:
         future.result()
