@@ -177,3 +177,111 @@ unitTests:
       outcome: INVALID
       validator: extra-validator.cpp
 ```
+
+## Using test plans
+
+While defining tests using glob patterns is simple and works well for file-based tests, it can be cumbersome if you have many small unit tests and don't want to create a separate file for each one. For this use case, {{rbx}} supports **test plans**.
+
+A test plan is a single file that contains multiple unit tests defined using a special syntax. You can define test plans in your `problem.rbx.yml` file:
+
+```yaml title="problem.rbx.yml"
+unitTests:
+  validator:
+    - testplan: unit/validator/tests.txt
+  checker:
+    - testplan: unit/checker/tests.txt
+```
+
+### Syntax reference
+
+Test plans use a simple DSL to define tests. You can define tests using the `@test` block or the simplified `@input` syntax.
+
+#### The `@test` block
+
+The `@test` block is the most general way to define a test. It allows you to specify the input, output, and answer for a test case.
+
+```
+@test name EXPECTATION {
+    @input {
+        ... input content ...
+    }
+    @output {
+        ... output content ...
+    }
+    @answer {
+        ... answer content ...
+    }
+}
+```
+
+- `name` (optional): The name of the test case.
+- `EXPECTATION`: The expected outcome (e.g., `VALID`, `INVALID` for validators; `ACCEPTED`, `WRONG_ANSWER`, etc. for checkers).
+
+#### Simplified `@input` syntax
+
+For simple tests where you only need to specify the input (common in validator tests), you can use the simplified `@input` syntax:
+
+```
+@input name EXPECTATION {
+    ... input content ...
+}
+```
+
+or for one-liners:
+
+```
+@input name EXPECTATION "input content"
+```
+
+#### When to use what?
+
+- **Use the simplified `@input` syntax** when you only need to provide the input file. This is most common for **validator tests**, where you only care about whether the input is valid or not.
+- **Use the `@test` block** when you need to specify more than just the input, such as the `output` (participant's output) or `answer` (model answer), or when you prefer a more structured format for complex multi-line inputs. This is often needed for **checker tests**.
+
+### Examples
+
+=== "Validator test plan"
+    ```title="unit/validator/tests.txt"
+    // You can use comments starting with // or #
+
+    @input valid_1 VALID {
+        3 3
+        1 2
+        2 3
+        3 1
+    }
+
+    @input invalid_n_negative INVALID "-1 3"
+
+    @input INVALID {
+        3 1
+        1 2
+    }
+    ```
+
+=== "Checker test plan"
+    ```title="unit/checker/tests.txt"
+    @test valid_path ACCEPTED {
+        @input {
+            3 2
+            1 2
+            2 3
+        }
+        @output {
+            3
+            1 2 3
+        }
+    }
+
+    @test wrong_path WRONG_ANSWER {
+        @input {
+            3 2
+            1 2
+            2 3
+        }
+        @output {
+            2
+            1 2
+        }
+    }
+    ```
