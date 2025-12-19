@@ -1,3 +1,9 @@
+## 0.21.4 (2025-12-19)
+
+### Fix
+
+- add validator to polygon upload
+
 ## 0.21.3 (2025-12-19)
 
 ### Fix
