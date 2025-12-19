@@ -1,3 +1,9 @@
+## 0.21.3 (2025-12-19)
+
+### Fix
+
+- ensure other manual tests are uploaded to polygon
+
 ## 0.21.2 (2025-12-17)
 
 ### Fix
