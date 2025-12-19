@@ -252,7 +252,6 @@ def _upload_generator(problem: api.Problem, generator: Generator):
 
 def _upload_testcases(problem: api.Problem):
     entries = asyncio.run(extract_generation_testcases_from_groups())
-    samples = _get_samples()
     generators: Dict[str, Generator] = {}
     for entry in entries:
         if not entry.metadata.generator_call:
@@ -277,35 +276,41 @@ def _upload_testcases(problem: api.Problem):
     with rich.progress.Progress(speed_estimate_period=5) as progress:
         next_index = 1
         task_id = progress.add_task('Uploading testcases...', total=len(entries))
-        for sample in samples:
-            if not sample.inputPath.is_file():
+        calls = []
+        for entry in entries:
+            if entry.metadata.generator_call is not None:
+                # Generated testcases are handled later.
+                generator = package.get_generator_or_nil(
+                    entry.metadata.generator_call.name
+                )
+                if generator is None:
+                    continue
+                calls.append(
+                    GeneratorCall(
+                        name=generator.path.stem,
+                        args=entry.metadata.generator_call.args,
+                    )
+                )
+                continue
+
+            if (
+                entry.metadata.copied_from is None
+                or not entry.metadata.copied_from.inputPath.is_file()
+            ):
                 continue
             saved = _save_skip_coinciding_testcases(
                 problem,
                 testset='tests',
                 test_index=next_index,
-                test_input=sample.inputPath.read_text(),
-                **_get_test_params_for_statement(sample.to_testcase(), is_sample=True),
+                test_input=entry.metadata.copied_from.inputPath.read_text(),
+                **_get_test_params_for_statement(
+                    entry.metadata.copied_from,
+                    is_sample=entry.is_sample(),
+                ),
             )
             progress.update(task_id, advance=1)
             if saved:
                 next_index += 1
-
-        calls = []
-        for entry in entries:
-            if entry.is_sample():
-                continue
-            if entry.metadata.generator_call is None:
-                continue
-            generator = package.get_generator_or_nil(entry.metadata.generator_call.name)
-            if generator is None:
-                continue
-            calls.append(
-                GeneratorCall(
-                    name=generator.path.stem,
-                    args=entry.metadata.generator_call.args,
-                )
-            )
 
         if calls:
             try:
