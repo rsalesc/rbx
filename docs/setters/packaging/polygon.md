@@ -31,29 +31,6 @@ This command will build a single `.zip` file with all problems in the contest.
 
 There are two totally different ways of uploading Polygon packages to Codeforces Gym.
 
-### Using the Taskbook FTP
-
-You can upload a contest package to Codeforces Gym by first building it with the command above, and then
-using the Codeforces Taskbook FTP (taskbook.codeforces.com) to upload your zip file to your contest.
-
-You can read more about the Taskbook by enabling coach mode, creating a new contest in the Gym, and looking
-at the "Coach mode on" section on the right side of the contest page. It will look like the image below:
-
-![Coach mode on](taskbook.png)
-
-Follow the instructions to upload your contest ZIP.
-
-!!! note
-    By uploading through the Taskbook, you'll only get PDF statements. That is not a limitation of {{rbx}},
-    but rather the way Codeforces Gym and Taskbook work (probably for safety reasons as otherwise people could
-    inject arbitrary HTML code into Codeforces).
-
-    If you prefer HTML statements, you can use the option below.
-
-!!! danger
-    Quite often the Taskbook FTP will be down. It seems this endpoint is not very reliable anymore.
-    Refer to the option below, which is a bit more complicated but more reliable.
-
 ### Using the Polygon API
 
 You can also upload your problem packages to Polygon, gather them into a Polygon contest, and import them in the Gym.
@@ -123,6 +100,29 @@ Enable coach mode, create a new contest and hit the *Add problems from contest* 
 In the following page, paste the contest UID in Polygon, and click the button. You can obtain the contest UID like in the picture below:
 
 ![Contest UID](uid.png)
+
+### Using the Taskbook FTP (flaky)
+
+You can upload a contest package to Codeforces Gym by first building it with the command above, and then
+using the Codeforces Taskbook FTP (taskbook.codeforces.com) to upload your zip file to your contest.
+
+You can read more about the Taskbook by enabling coach mode, creating a new contest in the Gym, and looking
+at the "Coach mode on" section on the right side of the contest page. It will look like the image below:
+
+![Coach mode on](taskbook.png)
+
+Follow the instructions to upload your contest ZIP.
+
+!!! note
+    By uploading through the Taskbook, you'll only get PDF statements. That is not a limitation of {{rbx}},
+    but rather the way Codeforces Gym and Taskbook work (probably for safety reasons as otherwise people could
+    inject arbitrary HTML code into Codeforces).
+
+    If you prefer HTML statements, you can use the option below.
+
+!!! danger
+    Quite often the Taskbook FTP will be down. It seems this endpoint is not very reliable anymore.
+    Refer to the option below, which is a bit more complicated but more reliable.
 
 #### Caveats
 
