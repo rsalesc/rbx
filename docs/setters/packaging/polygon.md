@@ -11,6 +11,12 @@ Problem packages are built by running the following command:
 rbx package polygon
 ```
 
+You can also specify the main language of the problem (in case you have multiple statements) using the `-l` or `--language` flag:
+
+```bash
+rbx package polygon -l en
+```
+
 Or, if you want to build a problem package for each problem in your contest:
 
 ```bash
@@ -61,13 +67,12 @@ export POLYGON_API_SECRET=<your-api-secret>
 rbx contest each package polygon -u
 ```
 
-Feel free to keep those variables in your `.bashrc` (or equivalent in other shells) file if you want.
+You can also use the `--upload-as-english` flag to force the main statement to be uploaded as the English statement in Polygon, regardless of its actual language. This is useful because Codeforces uses a different -- not so good -- LaTeX renderer for statements in languages other than English.
+Thus, it's often useful to use the English renderer regardless of the actual statement language.
 
-This will create a Polygon problem for each problem in your contest following the pattern `<contest-name>-<problem-shortname>-<problem-name>` (example: `my-contest-a-my-problem` for a contest named `my-contest` with a problem named `my-problem` which has the letter `A`).
-
-This problem will contain the validator, checker, interactor, and any other files you added to the problem.
-
-The statement blocks will also be uploaded to Polygon, along with all model solutions.
+```bash
+rbx contest each package polygon -u --upload-as-english
+```
 
 #### Step 3: (Optional) Tune your time limits and statements to Polygon
 
@@ -101,6 +106,36 @@ In the following page, paste the contest UID in Polygon, and click the button. Y
 
 ![Contest UID](uid.png)
 
+#### Iterating on the Polygon problem
+
+You can always follow step (2) again in to update the problem in Polygon after doing modifications to it. Sometimes, though, this process is too slow, and you might want to use
+faster methods.
+
+##### Partial Uploads
+
+If you want to upload only specific parts of the problem (e.g. only statements, or only source files), you can use the `--upload-only` flag. Conversely, if you want to skip certain parts, you can use `--upload-skip` (or `--dont-upload` internally, but exposed as skip).
+
+Supported values are: `statements`, `solutions`, `tests`, `files`.
+
+```bash
+# Upload only statements and files (checker/interactor/validator/headers)
+rbx contest each package polygon -u --upload-only statements --upload-only files
+
+# Upload everything EXCEPT tests
+rbx contest each package polygon -u --upload-skip tests
+```
+
+Feel free to keep those variables in your `.bashrc` (or equivalent in other shells) file if you want.
+
+This will create a Polygon problem for each problem in your contest following the pattern `<contest-name>-<problem-shortname>-<problem-name>` (example: `my-contest-a-my-problem` for a contest named `my-contest` with a problem named `my-problem` which has the letter `A`).
+
+This problem will contain the validator, checker, interactor, and any other files you added to the problem. The time and memory limits will also be synced with Polygon, but often it's a good idea to tune them manually in the Polygon interface.
+
+The statement blocks will also be uploaded to Polygon, along with all model solutions. Solutions that are no longer present in the package will be removed from Polygon (marked as deleted).
+
+Testcases are also uploaded. If your package uses generators, the generators are uploaded and the script is updated in Polygon to generate the tests. Manual tests (without generators) are uploaded as files.
+
+
 ### Using the Taskbook FTP (flaky)
 
 You can upload a contest package to Codeforces Gym by first building it with the command above, and then
@@ -118,7 +153,7 @@ Follow the instructions to upload your contest ZIP.
     but rather the way Codeforces Gym and Taskbook work (probably for safety reasons as otherwise people could
     inject arbitrary HTML code into Codeforces).
 
-    If you prefer HTML statements, you can use the option below.
+    If you prefer HTML statements, you can use the option [above](#using-the-polygon-api).
 
 !!! danger
     Quite often the Taskbook FTP will be down. It seems this endpoint is not very reliable anymore.
@@ -133,11 +168,14 @@ Follow the instructions to upload your contest ZIP.
 The Polygon API has a few limitations. The main two, which have huge implications on how {{rbx}} uploads your problems, are:
 
 - The API doesn't allow you to remove solutions from a problem;
-- The API doesn't allow you to remove tests from a problem.
+- The API doesn't allow you to remove manual tests from a problem.
 
-This means that, whenever you remove a few tests from a problem, or a solution, and re-upload, you have to manually
+This means that, whenever you remove a few manual tests from a problem, or a solution, and re-upload, you have to manually
 get rid of them. {{rbx}} will successfully replace every test index that still exists, and also the solutions that exist,
 but it won't do anything to remove old ones.
+
+Instead, {{rbx}} will just mark the removed solutions as deleted and ensure they're not run, but
+they'll still show in Polygon.
 
 Also notice that whenever you tune your time limits or statements in Polygon and re-issue an upload, those modifications
 you did will be overridden. You have to be extra careful with that. Preferrably, you should replicate all your statement
