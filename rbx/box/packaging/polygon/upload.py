@@ -579,8 +579,9 @@ async def upload_problem(
         if 'files' in which_upload:
             _update_interactor(problem)
 
-    # if pkg.validator is not None:
-    #     _upload_validator(problem)
+    if pkg.validator is not None:
+        if 'files' in which_upload:
+            _upload_validator(problem)
 
     if 'solutions' in which_upload:
         _upload_solutions(problem)
