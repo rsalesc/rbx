@@ -27,6 +27,15 @@ nav:
           - "Validators": "setters/verification/validators.md"
           - "Unit tests": "setters/verification/unit-tests.md"
           - "Stress testing": "setters/stress-testing.md"
+      - "Statements":
+          - "Overview": "setters/statements/index.md"
+          - "Formats":
+              - "rbxTeX": "setters/statements/formats/rbxtex.md"
+              - "JinjaTeX & LaTeX": "setters/statements/formats/latex.md"
+              - "PDF": "setters/statements/formats/pdf.md"
+          - "Customizing":
+              - "Write a template": "setters/statements/templates.md"
+              - "Write contest statements": "setters/statements/contest.md"
       - "Packaging":
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
@@ -86,8 +95,8 @@ plugins:
               - griffe_fieldz
 extra:
   rbx: "[rbx](){:.rbx}"
-  rbxTeX: "[rbxTeX](){:.rbx}"
-  rbxtex: "[rbxTeX](){:.rbx}"
+  rbxTeX: "[rbxTeX](/setters/statements/formats/rbxtex)"
+  rbxtex: "[rbxTeX](/setters/statements/formats/rbxtex)"
   icpcformat: "[ICPC package format](https://icpc.io/problem-package-format/spec/legacy-icpc.html)"
   codeforces: "[Codeforces](https://codeforces.com)"
   polygon: "[Polygon](https://polygon.codeforces.com)"
@@ -96,6 +105,8 @@ extra:
   jngen: "[jngen](https://github.com/ifsmirnov/jngen)"
   YAML: "[YAML](https://yaml.org)"
   repo: "[GitHub repository](https://github.com/rsalesc/rbx)"
+  Jinja2: "[Jinja2](https://jinja.palletsprojects.com)"
+  latex: "[LaTeX](https://www.latex-project.org)"
   regex:
     name: "^[a-zA-Z0-9][a-zA-Z0-9\\-]{2,32}$"
   tags:
@@ -115,7 +126,11 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - md_in_html
   - pymdownx.tabbed:
       alternate_style: true
