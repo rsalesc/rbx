@@ -146,6 +146,69 @@ Below, there's an example of a dynamic generator script for a problem that has a
 The script spits a testplan with exactly 10 random tests, each one generated from a different argument between
 0 and 9.
 
+#### Advanced testplan features
+
+The static generator script (testplan) supports a few advanced features that can be useful in some scenarios.
+
+##### Manual tests (`@input`)
+
+You can define manual tests directly in the testplan using the `@input` directive. This is useful when you want to add
+some edge cases that are hard to generate with a generator.
+
+You can specify the input content using a quoted string (single or double quotes) or a block of braced content.
+
+```testplan
+# Single line input (not raw)
+@input "10 20\n"
+
+# Multi-line input (triple quotes, raw)
+@input """10
+20
+30"""
+
+# Multi-line input (braces, raw, lines around the input are stripped)
+# Recommended approach.
+@input {
+10
+20
+30
+}
+```
+
+##### Copying tests (`@copy`)
+
+You can include existing test files in the testplan using the `@copy` directive. This is useful when you have
+some manual tests in a directory and you want to include them in the testplan.
+
+```testplan
+@copy tests/manual/01.in
+@copy tests/manual/02.in
+```
+
+##### Grouping tests (`@testgroup`)
+
+You can group tests using the `@testgroup` directive. This is useful when you want to add
+the specified tests only to testgroups that have this name. This is useful when different testgroups import the same testplan, but you want to create separate tests for each group.
+
+```testplan
+# This test will be part of any testgroup that imports this testplan.
+random 5
+
+@testgroup subtask1 {
+    # These tests will be part only of testgroups that have the name 'subtask1' and
+    # import this testplan.
+    random 10
+    random 20
+    @input "5"
+}
+
+@testgroup subtask2 {
+    # These tests will be part only of testgroups that have the name 'subtask2' and
+    # import this testplan.
+    random 100
+}
+```
+
 ### What about the outputs?
 
 Until now, we've just generated the inputs of our testcases. What about the outputs? Where they come from?
