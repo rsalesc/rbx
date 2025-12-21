@@ -51,7 +51,7 @@ COPY_KEYWORD.3: "@copy"
 INPUT_KEYWORD.3: "@input"
 TESTGROUP_KEYWORD.3: "@testgroup"
 # no ambiguity
-REST_OF_LINE.2: /[^\s@\/#][^\n\r]*/
+REST_OF_LINE.2: /(?!(?:@copy|@input|@testgroup)\b)[^\s\/#][^\n\r]*/
 FILEPATH: /[A-Za-z0-9\.][\/A-Za-z0-9\-_\.]*/
 GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_]*/
 
