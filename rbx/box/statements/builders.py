@@ -62,7 +62,9 @@ class StatementBuilderContext:
 
 class StatementBuilderItem(ABC):
     @abstractmethod
-    def build_jinja_kwargs(self) -> Dict[str, Any]:
+    def build_jinja_kwargs(
+        self, sample_explanations: Optional[Dict[int, str]] = None
+    ) -> Dict[str, Any]:
         pass
 
 
@@ -184,11 +186,16 @@ class StatementBuilderProblem(StatementBuilderItem):
 
     vars: Optional[Dict[str, Primitive]] = None
 
-    def build_inner_jinja_kwargs(self) -> Dict[str, Any]:
+    def build_inner_jinja_kwargs(
+        self, sample_explanations: Optional[Dict[int, str]] = None
+    ) -> Dict[str, Any]:
+        sample_explanations = sample_explanations or {}
         kwargs = {
             'package': self.package,
             'statement': self.statement,
-            'samples': self.samples,
+            'samples': ExplainedStatementSample.from_statement_samples(
+                self.samples, sample_explanations
+            ),
             'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
             'title': naming.get_title(
                 self.statement.language, self.statement, self.package
@@ -201,8 +208,10 @@ class StatementBuilderProblem(StatementBuilderItem):
             kwargs['path'] = self.io_path
         return kwargs
 
-    def build_jinja_kwargs(self) -> Dict[str, Any]:
-        inner = self.build_inner_jinja_kwargs()
+    def build_jinja_kwargs(
+        self, sample_explanations: Optional[Dict[int, str]] = None
+    ) -> Dict[str, Any]:
+        inner = self.build_inner_jinja_kwargs(sample_explanations)
         return {
             'problem': inner,
         }
@@ -224,7 +233,9 @@ class StatementBuilderContest(StatementBuilderItem):
             res['date'] = self.date
         return res
 
-    def build_jinja_kwargs(self) -> Dict[str, Any]:
+    def build_jinja_kwargs(
+        self, sample_explanations: Optional[Dict[int, str]] = None
+    ) -> Dict[str, Any]:
         res = {
             'contest': self.build_inner_jinja_kwargs(),
             'problems': [
@@ -305,6 +316,36 @@ def render_jinja_blocks(
 
     explanations = {value: result[key] for key, value in explanation_keys}
     return StatementBlocks(blocks=result, explanations=explanations)
+
+
+def get_rbxtex_blocks(
+    input: bytes,
+    context: StatementBuilderContext,
+    item: StatementBuilderItem,
+    mode: Literal['latex', 'markdown'] = 'latex',
+) -> Tuple[StatementBlocks, Dict[str, Any]]:
+    if isinstance(item, StatementBuilderProblem):
+        statement_blocks = render_jinja_blocks(
+            context.root,
+            input,
+            mode=mode,
+            **item.build_inner_jinja_kwargs(),
+        )
+    else:
+        statement_blocks = render_jinja_blocks(
+            context.root,
+            input,
+            **item.build_jinja_kwargs(),
+            mode=mode,
+        )
+    item_kwargs = item.build_jinja_kwargs(
+        sample_explanations=statement_blocks.explanations
+    )
+    if isinstance(item, StatementBuilderProblem):
+        item_kwargs['problem']['blocks'] = statement_blocks.blocks
+    elif isinstance(item, StatementBuilderContest):
+        item_kwargs['contest']['blocks'] = statement_blocks.blocks
+    return statement_blocks, item_kwargs
 
 
 class StatementBuilder(ABC):
@@ -388,8 +429,7 @@ class rbxTeXBuilder(StatementBuilder):
         return StatementType.TeX
 
     def handles_contest(self) -> bool:
-        # This builder cannot build contest statements.
-        return False
+        return True
 
     def inject_assets(
         self, root: pathlib.Path, params: ConversionStep
@@ -408,29 +448,14 @@ class rbxTeXBuilder(StatementBuilder):
     ) -> bytes:
         params = typing.cast(rbxToTeX, context.params)
         assert params.template is not None
-        problem = typing.cast(StatementBuilderProblem, item)
-
-        statement_blocks = render_jinja_blocks(
-            context.root, input, **problem.build_inner_jinja_kwargs()
-        )
-        blocks = statement_blocks.blocks
-
-        problem_kwargs = problem.build_jinja_kwargs()
-        problem_kwargs['problem']['blocks'] = blocks
-        problem_kwargs['problem']['samples'] = (
-            ExplainedStatementSample.from_statement_samples(
-                typing.cast(
-                    List[StatementSample], problem_kwargs['problem']['samples']
-                ),
-                statement_blocks.explanations,
-            )
-        )
+        statement_blocks, item_kwargs = get_rbxtex_blocks(input, context, item)
 
         return render_jinja(
             context.root,
             f'%- extends "{params.template}"'.encode(),
             **context.build_jinja_kwargs(),
-            **problem_kwargs,
+            **item_kwargs,
+            blocks=statement_blocks.blocks,
         )
 
 
@@ -448,8 +473,7 @@ class rbxMarkdownToTeXBuilder(StatementBuilder):
         return StatementType.rbxTeX
 
     def handles_contest(self) -> bool:
-        # This builder cannot build contest statements.
-        return False
+        return True
 
     def build(
         self,
@@ -458,15 +482,10 @@ class rbxMarkdownToTeXBuilder(StatementBuilder):
         item: StatementBuilderItem,
         verbose: bool = False,
     ) -> bytes:
-        problem = typing.cast(StatementBuilderProblem, item)
-
-        statement_blocks = render_jinja_blocks(
-            context.root, input, mode='markdown', **problem.build_inner_jinja_kwargs()
-        )
-        blocks = statement_blocks.blocks
+        statement_blocks, _ = get_rbxtex_blocks(input, context, item, mode='markdown')
 
         result_str = ''
-        for name, content in blocks.items():
+        for name, content in statement_blocks.blocks.items():
             converted_content = pypandoc.convert_text(content, 'latex', 'markdown')
             result_str += f'%- block {name}\n{converted_content}\n%- endblock\n\n'
 

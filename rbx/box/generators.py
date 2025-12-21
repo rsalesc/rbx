@@ -113,6 +113,7 @@ def _copy_testcase_output_over(
     dest_output_path: pathlib.Path,
     suffix: str,
     dry_run: bool = False,
+    crlf_check: bool = True,
 ) -> bool:
     dest_output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -123,7 +124,8 @@ def _copy_testcase_output_over(
     if dry_run:
         return True
 
-    _check_crlf(src_path)
+    if crlf_check:
+        _check_crlf(src_path)
     shutil.copy(str(src_path), str(dest_output_path.with_suffix(suffix)))
     return True
 
@@ -173,6 +175,19 @@ def _copy_testcase_outputs_over(
         has_copied = True
 
     return has_copied
+
+
+def _copy_testcase_companions_over(
+    src: Testcase,
+    dest: Testcase,
+):
+    assert dest.outputPath is not None
+    dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
+
+    reference_path = src.outputPath or src.inputPath
+    _copy_testcase_output_over(
+        reference_path, dest.outputPath, '.tex', crlf_check=False
+    )
 
 
 def _needs_output(generation_entries: List[GenerationTestcaseEntry]) -> bool:
@@ -514,6 +529,9 @@ async def generate_outputs_for_testcases(
         if not tc.inputPath.is_file():
             return
         assert tc.outputPath is not None
+
+        if entry.metadata.copied_from is not None:
+            _copy_testcase_companions_over(entry.metadata.copied_from, tc)
 
         if entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
             entry.metadata.copied_from, tc

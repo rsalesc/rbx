@@ -130,6 +130,16 @@ def _get_configured_params_for(
     return None
 
 
+def _get_overridden_configuration_list(
+    configure: List[ConversionStep],
+    overridden_params: Dict[ConversionType, ConversionStep],
+) -> List[ConversionStep]:
+    def _get_params(step: ConversionStep) -> ConversionStep:
+        return overridden_params.get(step.type, step)
+
+    return list(map(_get_params, configure))
+
+
 def get_builders(
     statement_id: str,
     steps: List[ConversionStep],
@@ -234,7 +244,7 @@ def build_statement_bytes(
     builders = get_builders(
         str(statement.path),
         statement.steps,
-        statement.configure,
+        _get_overridden_configuration_list(statement.configure, overridden_params),
         statement.type,
         output_type,
         builder_list=PROBLEM_BUILDER_LIST,

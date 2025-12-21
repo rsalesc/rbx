@@ -15,6 +15,7 @@ from rbx.box.statements.builders import (
     StatementCodeLanguage,
     StatementSample,
     TeX2PDFBuilder,
+    get_rbxtex_blocks,
     prepare_assets,
     rbxMarkdownToTeXBuilder,
     rbxTeXBuilder,
@@ -297,7 +298,9 @@ class TestStatementBuilderProblem:
 
         assert kwargs['package'] == sample_package
         assert kwargs['statement'] == sample_statement
-        assert kwargs['samples'] == sample_samples
+        # samples should be converted to ExplainedStatementSample
+        assert len(kwargs['samples']) == len(sample_samples)
+        assert kwargs['samples'][0].inputPath == sample_samples[0].inputPath
         assert kwargs['limits'] == sample_limits
         assert kwargs['title'] == 'Test Problem'
         assert kwargs['vars']['TEST_VAR'] == 42
@@ -348,6 +351,24 @@ class TestStatementBuilderProblem:
         assert kwargs['problem']['package'] == sample_package
         assert kwargs['problem']['statement'] == sample_statement
         assert kwargs['problem']['limits'] == sample_limits
+
+    def test_build_jinja_kwargs_with_explanations(
+        self, sample_package, sample_statement, sample_limits, sample_samples
+    ):
+        """Test building jinja kwargs with sample explanations."""
+        problem = StatementBuilderProblem(
+            package=sample_package,
+            statement=sample_statement,
+            limits=sample_limits,
+            samples=sample_samples,
+        )
+
+        explanations = {0: 'Exp 0', 1: 'Exp 1'}
+        kwargs = problem.build_jinja_kwargs(sample_explanations=explanations)
+
+        samples = kwargs['problem']['samples']
+        assert samples[0].explanation == 'Exp 0'
+        assert samples[1].explanation == 'Exp 1'
 
 
 class TestStatementBuilderContest:
@@ -519,12 +540,78 @@ Explanation for sample 1.
     def test_render_jinja_blocks_invalid_mode(self, tmp_path):
         """Test error handling for invalid mode."""
         content = b'test content'
-        # We can't actually test invalid mode due to typing, so we test that the function works with valid modes
-        result_latex = render_jinja_blocks(tmp_path, content, mode='latex')
-        result_markdown = render_jinja_blocks(tmp_path, content, mode='markdown')
+        with pytest.raises(ValueError, match='Invalid mode'):
+            render_jinja_blocks(tmp_path, content, mode='invalid')  # type: ignore:
 
-        assert isinstance(result_latex, StatementBlocks)
-        assert isinstance(result_markdown, StatementBlocks)
+
+class TestGetRbxTexBlocks:
+    """Test get_rbxtex_blocks functionality."""
+
+    @pytest.fixture
+    def context(self, tmp_path):
+        """Create a context for testing."""
+        return StatementBuilderContext(
+            lang='en',
+            languages=[],
+            params=JinjaTeX(type=ConversionType.JinjaTeX),
+            root=tmp_path,
+        )
+
+    def test_get_rbxtex_blocks_problem(self, context, tmp_path):
+        """Test get_rbxtex_blocks with a problem item."""
+        package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
+        statement = Statement(
+            name='statement', path=pathlib.Path('stmt.tex'), type=StatementType.JinjaTeX
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+
+        # Setup samples with explanations in blocks
+        samples = [
+            StatementSample(inputPath=tmp_path / '1.in', outputPath=tmp_path / '1.out')
+        ]
+
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits, samples=samples
+        )
+
+        content = b"""
+%- block legend
+Legend content.
+%- endblock
+
+%- block explanation_0
+Explanation for sample 0.
+%- endblock
+"""
+
+        blocks, kwargs = get_rbxtex_blocks(content, context, problem)
+
+        assert 'legend' in blocks.blocks
+        assert blocks.explanations[0].strip() == 'Explanation for sample 0.'
+
+        # Verify kwargs update
+        assert 'blocks' in kwargs['problem']
+        assert kwargs['problem']['blocks'] == blocks.blocks
+        assert (
+            kwargs['problem']['samples'][0].explanation.strip()
+            == 'Explanation for sample 0.'
+        )
+
+    def test_get_rbxtex_blocks_contest(self, context):
+        """Test get_rbxtex_blocks with a contest item."""
+        contest = StatementBuilderContest(title='Test Contest')
+
+        content = b"""
+%- block intro
+Welcome to the contest.
+%- endblock
+"""
+
+        blocks, kwargs = get_rbxtex_blocks(content, context, contest)
+
+        assert 'intro' in blocks.blocks
+        assert 'intro' in blocks.blocks
+        assert kwargs['contest']['title'] == 'Test Contest'
 
 
 class TestJinjaTeXBuilder:
@@ -621,8 +708,32 @@ class TestrbxTeXBuilder:
         assert isinstance(builder.default_params(), rbxToTeX)
         assert builder.input_type() == StatementType.rbxTeX
         assert builder.output_type() == StatementType.TeX
-        assert builder.handles_contest() is False
         assert builder.handles_problem() is True
+
+    def test_build_contest(self, builder, tmp_path):
+        """Test building contest statement."""
+        # Create a template that uses contest variables (or is generic)
+        template_file = tmp_path / 'contest_template.tex'
+        template_file.write_text('\\VAR{contest.blocks.intro}')
+
+        params = rbxToTeX(
+            type=ConversionType.rbxToTex, template=pathlib.Path('contest_template.tex')
+        )
+        context = StatementBuilderContext(
+            lang='en',
+            languages=[],
+            params=params,
+            root=tmp_path,
+        )
+
+        contest = StatementBuilderContest(title='Test Contest')
+        input_content = b"""
+%- block intro
+Welcome to \\VAR{contest.title}.
+%- endblock
+"""
+        result = builder.build(input_content, context, contest)
+        assert b'Welcome to Test Contest' in result
 
     def test_inject_assets_with_template(self, builder, tmp_path):
         """Test asset injection with template."""
@@ -749,8 +860,20 @@ class TestrbxMarkdownToTeXBuilder:
         assert isinstance(builder.default_params(), rbxMarkdownToTeX)
         assert builder.input_type() == StatementType.rbxMarkdown
         assert builder.output_type() == StatementType.rbxTeX
-        assert builder.handles_contest() is False
         assert builder.handles_problem() is True
+
+    def test_build_contest(self, builder, context, tmp_path):
+        """Test building contest statement with markdown."""
+        contest = StatementBuilderContest(title='Test Contest')
+        input_content = b"""
+{% block intro %}
+Welcome to {{ contest.title }}.
+{% endblock %}
+"""
+        with patch('pypandoc.convert_text') as mock_convert:
+            mock_convert.return_value = 'Converted Text'
+            result = builder.build(input_content, context, contest)
+            assert b'Converted Text' in result
 
     def test_build(self, builder, context, problem_item):
         """Test building markdown to tex."""
@@ -858,6 +981,35 @@ class TestTeX2PDFBuilder:
 
             with pytest.raises(typer.Exit):
                 builder.build(input_content, context, problem_item)
+
+    def test_build_rerun(self, builder, context, problem_item):
+        """Test PDF build rerun logic."""
+        input_content = b'\\documentclass{article}\\begin{document}Hello\\end{document}'
+
+        with (
+            patch('rbx.box.statements.latex.Latex') as mock_latex_class,
+            patch('rbx.box.statements.latex.should_rerun') as mock_should_rerun,
+        ):
+            import subprocess
+
+            from rbx.box.statements.latex import LatexResult
+
+            # Mock successful compilation
+            mock_latex = mock_latex_class.return_value
+            mock_latex.build_pdf.return_value = LatexResult(
+                result=subprocess.CompletedProcess(
+                    args='', returncode=0, stdout=b'output', stderr=b''
+                ),
+                pdf=b'pdf content',
+            )
+
+            # Mock should_rerun to return True once, then False
+            mock_should_rerun.side_effect = [True, False]
+
+            result = builder.build(input_content, context, problem_item)
+
+            assert isinstance(result, bytes)
+            assert mock_latex.build_pdf.call_count == 2
 
 
 class TestExplainedStatementSample:
