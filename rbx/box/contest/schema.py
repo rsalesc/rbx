@@ -123,7 +123,13 @@ Can be glob pattern as well, such as `imgs/*.png`.
     )
 
     override: Optional[ProblemStatementOverride] = Field(
-        default=None, description='Override configuration for problem statements.'
+        default=None,
+        description='Override configuration for problem statements that are joined into this contest statement.',
+    )
+
+    inheritOverride: Optional[ProblemStatementOverride] = Field(
+        default=None,
+        description='Override configuration for problem statements that inherit from this contest statement.',
     )
 
     match: Optional[str] = FNameField(
@@ -232,7 +238,7 @@ class Contest(BaseModel):
         List[ContestStatement],
         AfterValidator(is_unique_by_name),
     ] = Field(
-        default=None,
+        default=[],
         description='Configure statements in this contest, per language.',
     )
 

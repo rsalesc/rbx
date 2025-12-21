@@ -7,8 +7,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 
-from rbx import console, testing_utils, utils
+from rbx import console, testing_utils
 from rbx.box import cd, limits_info, package
+from rbx.box.contest import statement_overriding
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.fields import Primitive
@@ -16,11 +17,10 @@ from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.sanitizers.issue_stack import Issue
 from rbx.box.schema import LimitsProfile, Package, Testcase
-from rbx.box.statements import build_statements, latex
+from rbx.box.statements import build_statements, latex, statement_utils
 from rbx.box.statements.build_statements import (
     get_builders,
     get_environment_languages_for_statement,
-    get_relative_assets,
 )
 from rbx.box.statements.builders import (
     CONTEST_BUILDER_LIST,
@@ -197,11 +197,7 @@ def _build_problem_statements(
         contest, statement, requires_matching_statement=True
     )
     res = []
-    contest_cwd_absolute = utils.abspath(pathlib.Path())
-    contest_assets = get_relative_assets(statement.path, statement.assets)
-
-    extra_vars = dict(statement.override.vars if statement.override is not None else {})
-    extra_vars.update(custom_vars or {})
+    overrides = statement_overriding.get_overrides(statement)
 
     for extracted_problem in extracted_problems:
         console.console.print(
@@ -216,16 +212,8 @@ def _build_problem_statements(
                     extracted_problem.package,
                     output_type=output_type,
                     short_name=extracted_problem.problem.short_name,
-                    overridden_params={
-                        cfg.type: cfg for cfg in statement.override.configure
-                    }
-                    if statement.override is not None
-                    else {},  # overridden configure params
-                    overridden_assets=contest_assets,  # overridden assets
-                    overridden_params_root=contest_cwd_absolute,
+                    **overrides.to_kwargs(custom_vars or {}),
                     use_samples=use_samples,
-                    # Use custom var overriding and problem-level overriding.
-                    custom_vars=extra_vars,
                 )
             except Exception as e:
                 console.console.print(
@@ -239,11 +227,12 @@ def _build_problem_statements(
         (root / dest_path).write_bytes(content)
 
         problem_assets = (
-            get_relative_assets(
+            statement_utils.get_relative_assets(
                 extracted_problem.get_statement_path(),
                 extracted_problem.get_statement_assets(),
+                root=extracted_problem.problem.get_path(),
             )
-            + contest_assets
+            + overrides.assets
         )
         prepare_assets(problem_assets, root / dest_dir)
 
@@ -278,7 +267,7 @@ def build_contest_only(
     last_output = input_type
     for bdr, params in bdrs:
         with tempfile.TemporaryDirectory() as td:
-            assets = get_relative_assets(
+            assets = statement_utils.get_relative_assets(
                 statement.path, statement.assets
             ) + bdr.inject_assets(pathlib.Path(), params)
             prepare_assets(assets, pathlib.Path(td))
@@ -365,7 +354,9 @@ def build_statement_rooted(
 
     # Join statements.
     console.console.print('Joining statements...')
-    joiner_assets = get_relative_assets(statement.path, statement.assets)
+    joiner_assets = statement_utils.get_relative_assets(
+        statement.path, statement.assets
+    )
     prepare_assets(joiner_assets, root)
 
     testing_utils.print_directory_tree(root, show_hidden=True)

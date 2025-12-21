@@ -14,7 +14,6 @@ from rbx.box.statements.build_statements import (
     get_builders,
     get_environment_languages_for_statement,
     get_implicit_builders,
-    get_relative_assets,
 )
 from rbx.box.statements.builders import BUILDER_LIST
 from rbx.box.statements.schema import (
@@ -72,13 +71,17 @@ def mock_environment():
         ),
     ]
 
-    with patch(
-        'rbx.box.statements.build_statements.environment.get_environment'
-    ) as mock_get_env, patch(
-        'rbx.box.statements.build_statements.environment.get_compilation_config'
-    ) as mock_comp_cfg, patch(
-        'rbx.box.statements.build_statements.environment.get_execution_config'
-    ) as mock_exec_cfg:
+    with (
+        patch(
+            'rbx.box.statements.build_statements.environment.get_environment'
+        ) as mock_get_env,
+        patch(
+            'rbx.box.statements.build_statements.environment.get_compilation_config'
+        ) as mock_comp_cfg,
+        patch(
+            'rbx.box.statements.build_statements.environment.get_execution_config'
+        ) as mock_exec_cfg,
+    ):
         # Create environment object with real EnvironmentLanguage objects
         mock_env = type('Environment', (), {'languages': languages})()
         mock_get_env.return_value = mock_env
@@ -261,63 +264,6 @@ class TestGetBuilders:
         # Check if params is rbxToTeX before accessing template
         if isinstance(params, rbxToTeX):
             assert params.template == pathlib.Path('custom.tex')
-
-
-class TestGetRelativeAssets:
-    """Test get_relative_assets function."""
-
-    def test_basic_asset_resolution(self, chdir_tmp_path):
-        """Test basic asset file resolution."""
-        # Create test files in the working directory
-        asset_file = chdir_tmp_path / 'test.png'
-        asset_file.write_text('fake image content')
-
-        assets = get_relative_assets(chdir_tmp_path, ['test.png'])
-
-        assert len(assets) == 1
-        abs_path, rel_path = assets[0]
-        assert abs_path.name == 'test.png'
-        assert rel_path == pathlib.Path('test.png')
-
-    def test_glob_pattern_asset_resolution(self, chdir_tmp_path):
-        """Test asset resolution with glob patterns."""
-        # Create multiple test files
-        for i in range(3):
-            (chdir_tmp_path / f'image{i}.png').write_text(f'content {i}')
-
-        # Use real glob implementation with actual files
-        assets = get_relative_assets(chdir_tmp_path, ['*.png'])
-
-        assert len(assets) == 3
-        png_files = [rel_path.name for _, rel_path in assets]
-        assert 'image0.png' in png_files
-        assert 'image1.png' in png_files
-        assert 'image2.png' in png_files
-
-    def test_nonexistent_asset_raises_exit(self, chdir_tmp_path):
-        """Test that non-existent asset without glob raises typer.Exit."""
-        with pytest.raises(typer.Exit):
-            get_relative_assets(chdir_tmp_path, ['nonexistent.png'])
-
-    def test_asset_outside_relative_path_raises_exit(self, tmp_path):
-        """Test that asset outside relative path raises typer.Exit."""
-        # Create asset outside the base directory
-        outside_dir = tmp_path.parent / 'outside'
-        outside_dir.mkdir()
-        outside_asset = outside_dir / 'outside.txt'
-        outside_asset.write_text('outside content')
-
-        base_dir = tmp_path / 'base'
-        base_dir.mkdir()
-
-        # Change to base directory for this test
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(base_dir)
-            with pytest.raises(typer.Exit):
-                get_relative_assets(base_dir, [str(outside_asset)])
-        finally:
-            os.chdir(original_cwd)
 
 
 class TestBuildStatementBytesExtended:
@@ -625,12 +571,15 @@ class TestBuildStatement:
         build_dir = tmp_path / 'build'
         build_dir.mkdir()
 
-        with patch(
-            'rbx.box.statements.build_statements.package.get_build_path',
-            return_value=build_dir,
-        ), patch(
-            'rbx.box.statements.build_statements.naming.get_problem_shortname',
-            return_value='A',
+        with (
+            patch(
+                'rbx.box.statements.build_statements.package.get_build_path',
+                return_value=build_dir,
+            ),
+            patch(
+                'rbx.box.statements.build_statements.naming.get_problem_shortname',
+                return_value='A',
+            ),
         ):
             result_path = build_statement(
                 statement=statement,
@@ -774,3 +723,135 @@ Sample \\VAR{loop.index}: Input has \\VAR{sample.inputPath.read_text().strip().s
             assert 'Problem with 2 samples' in content
             assert 'Sample 1: Input has 5 elements' in content
             assert 'Sample 2: Input has 3 elements' in content
+
+
+class TestBuildStatementInheritance:
+    """Test statement inheritance functionality."""
+
+    @pytest.fixture
+    def mock_override_data(self):
+        """Mock StatementOverrideData."""
+        mock_data = MagicMock()
+        mock_data.to_kwargs.return_value = {
+            'custom_vars': {'OVERRIDDEN_VAR': 'inherited_value'}
+        }
+        return mock_data
+
+    @pytest.fixture
+    def statement_with_inheritance(self, tmp_path):
+        """Create a statement with inheritFromContest=True."""
+        statement_file = tmp_path / 'statement.jinja.tex'
+        statement_file.write_text(
+            'Variable: \\VAR{problem.vars.OVERRIDDEN_VAR | default("default_value")}'
+        )
+        return Statement(
+            name='test-statement',
+            language='en',
+            path=statement_file,
+            type=StatementType.JinjaTeX,
+            inheritFromContest=True,
+        )
+
+    def test_inherit_from_contest_applies_overrides(
+        self,
+        statement_with_inheritance,
+        mock_override_data,
+        tmp_path,
+        mock_samples,
+    ):
+        """Test that inheritFromContest=True calls get_inheritance_overrides and applies results."""
+        # Use a simple package
+        pkg = Package(name='test-pkg', timeLimit=1000, memoryLimit=256)
+
+        # Mock build directory structure
+        build_dir = tmp_path / 'build'
+        build_dir.mkdir()
+
+        with (
+            patch(
+                'rbx.box.statements.build_statements.statement_overriding.get_inheritance_overrides'
+            ) as mock_get_overrides,
+            patch(
+                'rbx.box.statements.build_statements.naming.get_problem_shortname',
+                return_value='A',
+            ),
+            patch(
+                'rbx.box.statements.build_statements.limits_info.get_active_profile',
+                return_value=None,
+            ),
+            patch(
+                'rbx.box.statements.build_statements.package.get_build_path',
+                return_value=build_dir,
+            ),
+            patch(
+                'rbx.box.statements.build_statements.get_environment_languages_for_statement',
+                return_value=[],
+            ),
+        ):
+            mock_get_overrides.return_value = mock_override_data
+
+            result_path = build_statement(
+                statement=statement_with_inheritance,
+                pkg=pkg,
+                output_type=StatementType.TeX,
+            )
+
+            # Verify get_inheritance_overrides called
+            mock_get_overrides.assert_called_once_with(statement_with_inheritance)
+
+            # Verify the output content has the overridden variable
+            content = result_path.read_text()
+            assert 'Variable: inherited_value' in content
+
+    def test_inherit_from_contest_false_no_overrides(self, tmp_path, mock_samples):
+        """Test that inheritFromContest=False does not call get_inheritance_overrides."""
+        statement_file = tmp_path / 'statement.jinja.tex'
+        statement_file.write_text(
+            'Variable: \\VAR{problem.vars.OVERRIDDEN_VAR | default("default_value")}'
+        )
+        statement = Statement(
+            name='test-statement',
+            language='en',
+            path=statement_file,
+            type=StatementType.JinjaTeX,
+            inheritFromContest=False,
+        )
+        pkg = Package(name='test-pkg', timeLimit=1000, memoryLimit=256)
+
+        # Mock build directory structure
+        build_dir = tmp_path / 'build'
+        build_dir.mkdir()
+
+        with (
+            patch(
+                'rbx.box.statements.build_statements.statement_overriding.get_inheritance_overrides'
+            ) as mock_get_overrides,
+            patch(
+                'rbx.box.statements.build_statements.naming.get_problem_shortname',
+                return_value='A',
+            ),
+            patch(
+                'rbx.box.statements.build_statements.limits_info.get_active_profile',
+                return_value=None,
+            ),
+            patch(
+                'rbx.box.statements.build_statements.package.get_build_path',
+                return_value=build_dir,
+            ),
+            patch(
+                'rbx.box.statements.build_statements.get_environment_languages_for_statement',
+                return_value=[],
+            ),
+        ):
+            result_path = build_statement(
+                statement=statement,
+                pkg=pkg,
+                output_type=StatementType.TeX,
+            )
+
+            # Verify get_inheritance_overrides NOT called
+            mock_get_overrides.assert_not_called()
+
+            # Verify output has default value
+            content = result_path.read_text()
+            assert 'Variable: default_value' in content

@@ -95,13 +95,13 @@ class StatementType(AutoEnum):
     rbxMarkdown = alias('rbxMd', 'rbx-markdown', 'rbx-md')  # type: ignore
     """Statement written in rbxMarkdown format."""
 
-    TeX = alias('tex')
+    TeX = alias('tex')  # type: ignore
     """Statement written in pure LaTeX format."""
 
-    JinjaTeX = alias('jinja-tex')
+    JinjaTeX = alias('jinja-tex')  # type: ignore
     """Statement written in LaTeX format with Jinja2 expressions."""
 
-    PDF = alias('pdf')
+    PDF = alias('pdf')  # type: ignore
     """Statement is a PDF."""
 
     def get_file_suffix(self) -> str:
@@ -122,6 +122,13 @@ class Statement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     name: str = FNameField(description='Name of this statement.')
+
+    inheritFromContest: bool = Field(
+        default=False,
+        description='Whether the configuration for this statement should be inherited from the contest. '
+        "When this field is set to true, the statement for this problem can only be built if it's within "
+        'a contest and there is a contest statement matching it.',
+    )
 
     extends: Optional[str] = FNameField(
         default=None,

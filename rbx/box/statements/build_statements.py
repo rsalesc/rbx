@@ -6,10 +6,12 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple
 import syncer
 import typer
 
-from rbx import annotations, console, utils
+from rbx import annotations, console
 from rbx.box import environment, limits_info, naming, package
+from rbx.box.contest import statement_overriding
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
+from rbx.box.statements import statement_utils
 from rbx.box.statements.builders import (
     BUILDER_LIST,
     PROBLEM_BUILDER_LIST,
@@ -183,45 +185,6 @@ def get_builders(
     return reconfigured_builders
 
 
-def get_relative_assets(
-    relative_to: pathlib.Path,
-    assets: List[str],
-) -> List[Tuple[pathlib.Path, pathlib.Path]]:
-    relative_to = utils.abspath(relative_to)
-    if not relative_to.is_dir():
-        relative_to = relative_to.parent
-    res = []
-    for asset in assets:
-        relative_path = pathlib.Path(asset)
-        if not relative_path.is_file():
-            globbed = list(
-                path
-                for path in pathlib.Path().glob(str(relative_path))
-                if path.is_file()
-            )
-            if not globbed and '*' not in str(relative_path):
-                console.console.print(
-                    f'[error]Asset [item]{asset}[/item] does not exist.[/error]'
-                )
-                raise typer.Exit(1)
-            res.extend(get_relative_assets(relative_to, list(map(str, globbed))))
-            continue
-        if not utils.abspath(relative_path).is_relative_to(relative_to):
-            console.console.print(
-                f'[error]Asset [item]{asset}[/item] is not relative to your statement.[/error]'
-            )
-            raise typer.Exit(1)
-
-        res.append(
-            (
-                utils.abspath(relative_path),
-                utils.abspath(relative_path).relative_to(relative_to),
-            )
-        )
-
-    return res
-
-
 def build_statement_bytes(
     statement: Statement,
     pkg: Package,
@@ -254,7 +217,9 @@ def build_statement_bytes(
     for bdr, params in builders:
         with tempfile.TemporaryDirectory() as td:
             # Here, create a new temp context for each builder call.
-            assets = get_relative_assets(statement.path, statement.assets)
+            assets = statement_utils.get_relative_assets(
+                statement.path, statement.assets
+            )
 
             # Use either overridden assets (by contest) or usual assets.
             # Remember to modify the root to contest root if that's the case.
@@ -264,8 +229,10 @@ def build_statement_bytes(
                         overridden_params_root, overridden_params[bdr.name()]
                     )
                 )
+                context_params = overridden_params[bdr.name()]
             else:
                 assets.extend(bdr.inject_assets(pathlib.Path(), params))
+                context_params = params
             assets.extend(overridden_assets)
 
             prepare_assets(assets, pathlib.Path(td))
@@ -274,7 +241,7 @@ def build_statement_bytes(
                 context=StatementBuilderContext(
                     lang=statement.language,
                     languages=get_environment_languages_for_statement(),
-                    params=params,
+                    params=context_params,
                     root=pathlib.Path(td),
                 ),
                 item=StatementBuilderProblem(
@@ -323,13 +290,17 @@ def build_statement(
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
 ) -> pathlib.Path:
+    override_kwargs: Dict[str, Any] = {'custom_vars': custom_vars or {}}
+    if statement.inheritFromContest:
+        overrides = statement_overriding.get_inheritance_overrides(statement)
+        override_kwargs.update(overrides.to_kwargs(custom_vars or {}))
     last_content, last_output = build_statement_bytes(
         statement,
         pkg,
         output_type=output_type,
         use_samples=use_samples,
-        custom_vars=custom_vars,
         short_name=naming.get_problem_shortname(),
+        **override_kwargs,
     )
     active_profile = limits_info.get_active_profile()
     statement_path = get_statement_build_path(statement, output_type, active_profile)
