@@ -77,7 +77,7 @@ def get_checker_mode(mode: str) -> CheckerMode:
 
 
 def is_valid_checker(checker_path: pathlib.Path) -> bool:
-    return checker_path.is_file() or get_builtin_checker(checker_path.name) is not None
+    return checker_path.is_file() or get_builtin_checker(checker_path.name).is_file()
 
 
 def compile_checker(

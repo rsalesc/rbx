@@ -241,8 +241,13 @@ class TestParseFunction:
         ).write_text('#include <iostream>\nint main() { return 0; }')
         testing_pkg.save()
 
-        with pytest.raises(typer.Exit):
-            parse('[sol.cpp on nonexistent.cpp]')
+        # Patch _download_checker to avoid network calls and prevent file creation
+        # for non-existent checkers.
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr('rbx.config._download_checker', lambda name, path: None)
+
+            with pytest.raises(typer.Exit):
+                parse('[sol.cpp on nonexistent.cpp]')
 
     def test_parse_validation_fails_for_three_way_without_main_solution(
         self, testing_pkg: testing_package.TestingPackage
@@ -668,8 +673,13 @@ class TestParseTreeMethods:
 
         tree = LARK_PARSER.parse('[sol.cpp on nonexistent.cpp]')
 
-        with pytest.raises(typer.Exit):
-            validate(tree)
+        # Patch _download_checker to avoid network calls and prevent file creation
+        # for non-existent checkers.
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr('rbx.config._download_checker', lambda name, path: None)
+
+            with pytest.raises(typer.Exit):
+                validate(tree)
 
     def test_validate_fails_for_nonexistent_solution(
         self, testing_pkg: testing_package.TestingPackage
