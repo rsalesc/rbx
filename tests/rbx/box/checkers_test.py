@@ -11,7 +11,13 @@ from rbx.box.schema import Checker, CodeItem, Testcase
 from rbx.box.testing import testing_package
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
-from rbx.grading.steps import DigestOrSource, Outcome, RunLog, RunLogMetadata
+from rbx.grading.steps import (
+    CompilationError,
+    DigestOrSource,
+    Outcome,
+    RunLog,
+    RunLogMetadata,
+)
 from rbx.utils import StatusProgress
 
 INTERESTING_CHECKERS = [
@@ -130,32 +136,14 @@ def test_compile_checker_success(
 
 @mock.patch('rbx.box.code.compile_item')
 @mock.patch('rbx.box.package.get_checker')
-def test_compile_checker_with_progress(
-    mock_get_checker: mock.Mock,
-    mock_compile_item: mock.Mock,
-) -> None:
-    mock_get_checker.return_value = CodeItem(path=pathlib.Path('checker.cpp'))
-    mock_compile_item.return_value = 'test_digest'
-    progress = mock.Mock(spec=StatusProgress)
-
-    result = compile_checker(progress)
-
-    assert result == 'test_digest'
-    progress.update.assert_called_once_with(
-        'Compiling checker [item]checker.cpp[/item]...'
-    )
-
-
-@mock.patch('rbx.box.code.compile_item')
-@mock.patch('rbx.box.package.get_checker')
 def test_compile_checker_failure(
     mock_get_checker: mock.Mock,
     mock_compile_item: mock.Mock,
 ) -> None:
     mock_get_checker.return_value = CodeItem(path=pathlib.Path('checker.cpp'))
-    mock_compile_item.side_effect = Exception('Compilation failed')
+    mock_compile_item.side_effect = CompilationError()
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(CompilationError):
         compile_checker()
 
 

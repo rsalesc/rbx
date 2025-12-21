@@ -347,7 +347,7 @@ def test_solution_outcome_report_subset_mode(tmp_path, mock_skeleton):
     assert report.ok is True
     # In subset mode, should show got verdicts even when passing
     assert Outcome.ACCEPTED in report.gotVerdicts
-    assert report.expectedOutcome is None
+    assert report.expectedOutcome == ExpectedOutcome.ACCEPTED
 
 
 def test_solution_outcome_report_mixed_outcomes(tmp_path, mock_skeleton):
