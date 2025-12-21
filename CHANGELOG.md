@@ -1,3 +1,17 @@
+## 0.22.0 (2025-12-21)
+
+### Feat
+
+- add inheritance to problem statements
+
+### Fix
+
+- add titles to contests
+- inheriting contest vars when using inheritFromContest
+- fix expander tests
+- fix rbxtex statements
+- reorder polygon upload docs
+
 ## 0.21.4 (2025-12-19)
 
 ### Fix
