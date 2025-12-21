@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import typer
 
+from rbx.box.contest.schema import ContestStatement
 from rbx.box.schema import Package, Statement
 from rbx.box.statements.build_statements import (
     build_statement,
@@ -529,6 +530,49 @@ class TestBuildStatementBytesExtended:
         assert output_type == StatementType.TeX
         # The basic template should still be used since overridden_params doesn't specify a custom template
         assert b'Problem: test-problem' in content
+
+    def test_build_with_inherited_from_param(
+        self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
+    ):
+        """Test building statement with inherited_from parameter."""
+        # Create a statement template that uses contest variables
+        statement_file = tmp_path / 'statement.jinja.tex'
+        statement_file.write_text(
+            'Contest: \\VAR{contest.title}, Var: \\VAR{contest.vars.CONTEST_VAR}'
+        )
+
+        statement = Statement(
+            name='test-statement',
+            language='en',
+            path=statement_file,
+            type=StatementType.JinjaTeX,
+        )
+
+        inherited_from = ContestStatement(
+            name='test-contest',
+            title='My Contest',
+            vars={'CONTEST_VAR': 'contest_value'},
+        )
+
+        # Mock find_contest_package to return a contest, otherwise get_statement_builder_contest_for_problem returns None
+        with patch(
+            'rbx.box.contest.statement_overriding.contest_package.find_contest_package'
+        ) as mock_find_contest:
+            mock_contest = MagicMock()
+            mock_contest.expanded_vars = {}
+            mock_find_contest.return_value = mock_contest
+
+            content, output_type = build_statement_bytes(
+                statement=statement,
+                pkg=sample_package,
+                output_type=StatementType.TeX,
+                inherited_from=inherited_from,
+            )
+
+        assert isinstance(content, bytes)
+        assert output_type == StatementType.TeX
+        assert b'Contest: My Contest' in content
+        assert b'Var: contest_value' in content
 
 
 class TestBuildStatement:

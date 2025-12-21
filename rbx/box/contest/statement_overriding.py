@@ -1,12 +1,14 @@
 import pathlib
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rbx import utils
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestStatement
 from rbx.box.exception import RbxException
+from rbx.box.fields import Primitive
 from rbx.box.statements import statement_utils
+from rbx.box.statements.builders import StatementBuilderContest
 from rbx.box.statements.schema import ConversionStep, ConversionType, Statement
 
 
@@ -20,6 +22,7 @@ class StatementOverrideData:
     assets: List[Tuple[pathlib.Path, pathlib.Path]]
     params: Dict[ConversionType, ConversionStep]
     vars: Dict[str, Any]
+    inheritedFrom: Optional[ContestStatement] = None
 
     def to_kwargs(self, custom_vars: Dict[str, Any]) -> Dict[str, Any]:
         extra_vars = dict(self.vars)
@@ -29,6 +32,7 @@ class StatementOverrideData:
             'overridden_assets': self.assets,
             'overridden_params': self.params,
             'custom_vars': extra_vars,
+            'inherited_from': self.inheritedFrom,
         }
 
 
@@ -50,6 +54,7 @@ def get_overrides(
         assets=contest_assets,
         params=overridden_params,
         vars=override.vars if override is not None else {},
+        inheritedFrom=statement if inherit else None,
     )
 
 
@@ -78,3 +83,22 @@ def get_inheritance_overrides(statement: Statement) -> StatementOverrideData:
             f'[error][item]{statement.name}[/item] inherits its configuration from the contest, but no matching statement was found in the contest.[/error]'
         )
     raise e
+
+
+def get_statement_builder_contest_for_problem(
+    inherited_from: Optional[ContestStatement] = None,
+    custom_vars: Optional[Dict[str, Primitive]] = None,
+) -> Optional[StatementBuilderContest]:
+    contest = contest_package.find_contest_package()
+    if contest is None:
+        return None
+    return StatementBuilderContest(
+        # TODO: fix when title is available as a top-level property
+        title=inherited_from.title if inherited_from is not None else '',
+        problems=[],
+        vars={
+            **contest.expanded_vars,
+            **(inherited_from.expanded_vars if inherited_from is not None else {}),
+            **(custom_vars or {}),
+        },
+    )

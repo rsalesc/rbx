@@ -9,6 +9,7 @@ import typer
 from rbx import annotations, console
 from rbx.box import environment, limits_info, naming, package
 from rbx.box.contest import statement_overriding
+from rbx.box.contest.schema import ContestStatement
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements import statement_utils
@@ -195,6 +196,7 @@ def build_statement_bytes(
     overridden_assets: Optional[List[Tuple[pathlib.Path, pathlib.Path]]] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
+    inherited_from: Optional['ContestStatement'] = None,
 ) -> Tuple[bytes, StatementType]:
     overridden_params = overridden_params or {}
     overridden_assets = overridden_assets or []
@@ -243,6 +245,10 @@ def build_statement_bytes(
                     languages=get_environment_languages_for_statement(),
                     params=context_params,
                     root=pathlib.Path(td),
+                    contest=statement_overriding.get_statement_builder_contest_for_problem(
+                        inherited_from=inherited_from,
+                        # Do not override contest-level vars.
+                    ),
                 ),
                 item=StatementBuilderProblem(
                     limits=limits_info.get_limits_profile(

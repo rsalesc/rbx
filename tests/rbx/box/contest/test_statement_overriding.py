@@ -175,3 +175,55 @@ class TestGetInheritanceOverrides:
         with pytest.raises(StatementInheritanceError) as exc:
             get_inheritance_overrides(statement)
         assert 'no matching statement' in str(exc.value)
+
+
+class TestGetStatementBuilderContestForProblem:
+    @patch('rbx.box.contest.statement_overriding.contest_package.find_contest_package')
+    def test_no_contest(self, mock_find_pkg):
+        mock_find_pkg.return_value = None
+        from rbx.box.contest.statement_overriding import (
+            get_statement_builder_contest_for_problem,
+        )
+
+        assert get_statement_builder_contest_for_problem() is None
+
+    @patch('rbx.box.contest.statement_overriding.contest_package.find_contest_package')
+    def test_with_contest_no_inherit_no_custom(self, mock_find_pkg):
+        contest = MagicMock()
+        contest.expanded_vars = {'a': 1, 'b': 2}
+        mock_find_pkg.return_value = contest
+        from rbx.box.contest.statement_overriding import (
+            get_statement_builder_contest_for_problem,
+        )
+
+        builder_contest = get_statement_builder_contest_for_problem()
+        assert builder_contest is not None
+        assert builder_contest.title == ''
+        assert builder_contest.vars == {'a': 1, 'b': 2}
+
+    @patch('rbx.box.contest.statement_overriding.contest_package.find_contest_package')
+    def test_with_inherit_and_custom_vars(self, mock_find_pkg):
+        contest = MagicMock()
+        contest.expanded_vars = {'a': 1, 'b': 2}
+        mock_find_pkg.return_value = contest
+
+        inherited = ContestStatement(
+            name='problem',
+            vars={'b': 3, 'c': 4},
+            title='My Title',
+        )
+        custom_vars = {'c': 5, 'd': 6}
+
+        from rbx.box.contest.statement_overriding import (
+            get_statement_builder_contest_for_problem,
+        )
+
+        builder_contest = get_statement_builder_contest_for_problem(
+            inherited_from=inherited,
+            custom_vars=custom_vars,
+        )
+
+        assert builder_contest is not None
+        assert builder_contest.title == 'My Title'
+        # Check priority: custom > inherited > contest
+        assert builder_contest.vars == {'a': 1, 'b': 3, 'c': 5, 'd': 6}

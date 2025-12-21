@@ -50,6 +50,7 @@ class StatementBuilderContext:
     languages: List[StatementCodeLanguage]
     params: ConversionStep
     root: pathlib.Path
+    contest: Optional['StatementBuilderContest'] = None
 
     def build_jinja_kwargs(self) -> Dict[str, Any]:
         res = {
@@ -57,6 +58,10 @@ class StatementBuilderContext:
             'languages': self.languages,
             'keyed_languages': {lang.id: lang for lang in self.languages},
         }
+        if self.contest is not None:
+            contest_kwargs = self.contest.build_jinja_kwargs()
+            if 'contest' in contest_kwargs:
+                res['contest'] = contest_kwargs['contest']
         return res
 
 
@@ -225,8 +230,11 @@ class StatementBuilderContest(StatementBuilderItem):
     problems: List[StatementBuilderProblem] = dataclasses.field(default_factory=list)
     vars: Optional[Dict[str, Primitive]] = None
 
+    def _get_vars(self) -> Dict[str, Primitive]:
+        return JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars')
+
     def build_inner_jinja_kwargs(self) -> Dict[str, Any]:
-        res = {'title': self.title}
+        res = {'title': self.title, 'vars': self._get_vars()}
         if self.location:
             res['location'] = self.location
         if self.date:
@@ -241,7 +249,7 @@ class StatementBuilderContest(StatementBuilderItem):
             'problems': [
                 problem.build_inner_jinja_kwargs() for problem in self.problems
             ],
-            'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
+            'vars': self._get_vars(),  # Kept for backward compatibility.
         }
         return res
 
