@@ -1,3 +1,12 @@
+## 0.22.1 (2025-12-21)
+
+### Fix
+
+- fix remaining tests
+- fix a couple weird tests
+- fix a failing test in generator scripts
+- fix a few generator script tests
+
 ## 0.22.0 (2025-12-21)
 
 ### Feat
