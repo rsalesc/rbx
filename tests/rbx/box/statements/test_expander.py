@@ -4,7 +4,7 @@ from typing import Optional
 import pytest
 from pydantic import BaseModel
 
-from rbx.box.statements.expander import expand_statements
+from rbx.box.statements.expander import StatementExpanderError, expand_statements
 from rbx.box.statements.schema import Statement, StatementType
 
 
@@ -173,7 +173,9 @@ class TestExpandStatements:
             MockStatement(name='stmt2', extends='stmt1'),
         ]
 
-        with pytest.raises(ValueError, match='Failed to expand statements.*cycle'):
+        with pytest.raises(
+            StatementExpanderError, match=r'(?s)Failed to expand statements.*cycle'
+        ):
             expand_statements(statements)
 
     def test_expand_statements_self_reference_cycle(self):
@@ -182,7 +184,9 @@ class TestExpandStatements:
             MockStatement(name='stmt1', extends='stmt1'),
         ]
 
-        with pytest.raises(ValueError, match='Failed to expand statements.*cycle'):
+        with pytest.raises(
+            StatementExpanderError, match=r'(?s)Failed to expand statements.*cycle'
+        ):
             expand_statements(statements)
 
     def test_expand_statements_three_way_cycle(self):
@@ -193,7 +197,9 @@ class TestExpandStatements:
             MockStatement(name='stmt3', extends='stmt1'),
         ]
 
-        with pytest.raises(ValueError, match='Failed to expand statements.*cycle'):
+        with pytest.raises(
+            StatementExpanderError, match=r'(?s)Failed to expand statements.*cycle'
+        ):
             expand_statements(statements)
 
     def test_expand_statements_missing_parent(self):
@@ -202,7 +208,10 @@ class TestExpandStatements:
             MockStatement(name='child', extends='nonexistent'),
         ]
 
-        with pytest.raises(ValueError, match='Failed to expand statements.*cycle'):
+        with pytest.raises(
+            StatementExpanderError,
+            match=r'(?s)Failed to expand statements: statement .* extends .*, but .* is not defined.',
+        ):
             expand_statements(statements)
 
     def test_expand_statements_empty_list(self):
@@ -405,7 +414,9 @@ class TestExpandStatementsIntegration:
             Statement(name='stmt2', extends='stmt1'),
         ]
 
-        with pytest.raises(ValueError, match='Failed to expand statements.*cycle'):
+        with pytest.raises(
+            StatementExpanderError, match=r'(?s)Failed to expand statements:.*cycle'
+        ):
             expand_statements(statements)
 
     def test_expand_real_statements_preserves_defaults(self):
