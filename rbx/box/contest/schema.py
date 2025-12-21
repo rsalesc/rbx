@@ -63,7 +63,11 @@ class ContestStatement(BaseModel):
         default='en', description='Language code for this statement (ISO 639-1).'
     )
 
-    title: str = Field(default='', description='Title of the contest in this language.')
+    title: str = Field(
+        default='',
+        description='Title of the contest in this language.'
+        'Will override the `titles` field of the contest.',
+    )
 
     location: Optional[str] = Field(
         default=None, description='Location of the contest in this language.'
@@ -229,6 +233,12 @@ class Contest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     name: str = NameField(description='Name of this contest.')
+
+    titles: Dict[str, str] = Field(
+        default={},
+        description='Titles for the contest in each language. '
+        'Languages should be specified as lowercase ISO 639-1 codes.',
+    )
 
     problems: List[ContestProblem] = Field(
         default=[], description='List of problems in this contest.'

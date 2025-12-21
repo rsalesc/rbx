@@ -191,6 +191,7 @@ class TestGetStatementBuilderContestForProblem:
     def test_with_contest_no_inherit_no_custom(self, mock_find_pkg):
         contest = MagicMock()
         contest.expanded_vars = {'a': 1, 'b': 2}
+        contest.name = ''
         mock_find_pkg.return_value = contest
         from rbx.box.contest.statement_overriding import (
             get_statement_builder_contest_for_problem,
@@ -227,3 +228,25 @@ class TestGetStatementBuilderContestForProblem:
         assert builder_contest.title == 'My Title'
         # Check priority: custom > inherited > contest
         assert builder_contest.vars == {'a': 1, 'b': 3, 'c': 5, 'd': 6}
+
+    @patch('rbx.box.contest.statement_overriding.contest_package.find_contest_package')
+    def test_with_contest_titles_and_language(self, mock_find_pkg):
+        contest = MagicMock()
+        # Mocking the titles dictionary on the contest object
+        contest.titles = {'pt': 'Título Português', 'en': 'English Title'}
+        contest.expanded_vars = {}
+        mock_find_pkg.return_value = contest
+
+        from rbx.box.contest.statement_overriding import (
+            get_statement_builder_contest_for_problem,
+        )
+
+        # Test asking for Portuguese title
+        builder_contest_pt = get_statement_builder_contest_for_problem(language='pt')
+        assert builder_contest_pt is not None
+        assert builder_contest_pt.title == 'Título Português'
+
+        # Test asking for English title
+        builder_contest_en = get_statement_builder_contest_for_problem(language='en')
+        assert builder_contest_en is not None
+        assert builder_contest_en.title == 'English Title'

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import typer
 
 from rbx import console, testing_utils
-from rbx.box import cd, limits_info, package
+from rbx.box import cd, limits_info, naming, package
 from rbx.box.contest import statement_overriding
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
@@ -104,7 +104,11 @@ def get_statement_builder_contest(
     custom_vars: Optional[Dict[str, Primitive]] = None,
 ) -> StatementBuilderContest:
     return StatementBuilderContest(
-        title=statement.title,
+        title=naming.get_contest_title(
+            lang=statement.language,
+            statement=statement,
+            contest=contest,
+        ),
         location=statement.location,
         date=statement.date,
         problems=get_statement_builder_problems(extracted_problems),

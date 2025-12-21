@@ -77,7 +77,7 @@ class PolygonPackager(BasePackager):
         statement = self.get_statement_for_language_or_null(lang)
         return polygon_schema.Name(
             language=code_to_langs([lang])[0],
-            value=naming.get_title(lang, statement),
+            value=naming.get_problem_title(lang, statement),
         )
 
     def _get_names(self) -> List[polygon_schema.Name]:

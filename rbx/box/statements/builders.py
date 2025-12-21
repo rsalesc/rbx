@@ -202,7 +202,7 @@ class StatementBuilderProblem(StatementBuilderItem):
                 self.samples, sample_explanations
             ),
             'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
-            'title': naming.get_title(
+            'title': naming.get_problem_title(
                 self.statement.language, self.statement, self.package
             ),
             'limits': self.limits,

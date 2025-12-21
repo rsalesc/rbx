@@ -2,9 +2,10 @@
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Contest.json
 # Add problems by running `rbx contest add`
 name: "new-contest"
+titles:
+  en: "New contest"
 statements:
   - name: "statement-en"
-    title: "New contest"
     language: "en"
     path: "statement/contest.rbx.tex"
     type: JinjaTeX

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from rbx import utils
+from rbx.box import naming
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestStatement
 from rbx.box.exception import RbxException
@@ -86,6 +87,7 @@ def get_inheritance_overrides(statement: Statement) -> StatementOverrideData:
 
 
 def get_statement_builder_contest_for_problem(
+    language: Optional[str] = None,
     inherited_from: Optional[ContestStatement] = None,
     custom_vars: Optional[Dict[str, Primitive]] = None,
 ) -> Optional[StatementBuilderContest]:
@@ -93,8 +95,11 @@ def get_statement_builder_contest_for_problem(
     if contest is None:
         return None
     return StatementBuilderContest(
-        # TODO: fix when title is available as a top-level property
-        title=inherited_from.title if inherited_from is not None else '',
+        title=naming.get_contest_title(
+            lang=inherited_from.language if inherited_from is not None else language,
+            statement=inherited_from,
+            contest=contest,
+        ),
         problems=[],
         vars={
             **contest.expanded_vars,

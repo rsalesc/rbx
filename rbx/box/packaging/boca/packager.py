@@ -84,7 +84,7 @@ class BocaPackager(BasePackager):
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()
         lang = statement.language if statement is not None else None
-        title = naming.get_title(lang, statement, fallback_to_title=True)
+        title = naming.get_problem_title(lang, statement, fallback_to_title=True)
         return (
             f'basename={self._get_problem_basename()}\n'
             f'fullname={title}\n'

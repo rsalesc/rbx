@@ -526,7 +526,7 @@ def _upload_statement(
 
         polygon_statement = api.Statement(
             encoding='utf-8',
-            name=naming.get_title(statement.language, statement, pkg),
+            name=naming.get_problem_title(statement.language, statement, pkg),
             legend=_get_block('legend'),
             input=_get_block('input'),
             output=_get_block('output'),

@@ -246,6 +246,7 @@ def build_statement_bytes(
                     params=context_params,
                     root=pathlib.Path(td),
                     contest=statement_overriding.get_statement_builder_contest_for_problem(
+                        language=statement.language,
                         inherited_from=inherited_from,
                         # Do not override contest-level vars.
                     ),

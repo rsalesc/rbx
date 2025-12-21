@@ -4,7 +4,7 @@ import typer
 
 from rbx.box import package
 from rbx.box.contest import contest_package
-from rbx.box.contest.schema import ContestProblem
+from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.schema import Package
 from rbx.box.statements.schema import Statement
 from rbx.console import console
@@ -51,7 +51,7 @@ def get_problem_name_with_contest_info() -> str:
     return f'{contest.name}-{short_name}-{problem.name}'
 
 
-def get_title(
+def get_problem_title(
     lang: Optional[str] = None,
     statement: Optional[Statement] = None,
     pkg: Optional[Package] = None,
@@ -68,11 +68,39 @@ def get_title(
         if fallback_to_title and pkg.titles:
             if len(pkg.titles) != 1:
                 console.print(
-                    '[error]Package has multiple titles and no statement. Could not infer which title to use.[/error]'
+                    f'[error]Package [item]{pkg.name}[/item] has multiple titles and no statement. Could not infer which title to use.[/error]'
                 )
                 console.print(f'Available titles: {pkg.titles}')
                 raise typer.Exit(1)
             title = list(pkg.titles.values())[0]
         else:
             title = pkg.name
+    return title
+
+
+def get_contest_title(
+    lang: Optional[str] = None,
+    statement: Optional[ContestStatement] = None,
+    contest: Optional[Contest] = None,
+    fallback_to_title: bool = False,
+) -> str:
+    if contest is None:
+        contest = contest_package.find_contest_package_or_die()
+
+    title: Optional[str] = None
+    if lang is not None:
+        title = contest.titles.get(lang)
+    if statement is not None:
+        title = statement.title or title
+    if title is None:
+        if fallback_to_title:
+            if len(contest.titles) != 1:
+                console.print(
+                    '[error]Contest has multiple titles and no statement. Could not infer which title to use.[/error]'
+                )
+                console.print(f'Available titles: {contest.titles}')
+                raise typer.Exit(1)
+            title = list(contest.titles.values())[0]
+        else:
+            title = contest.name
     return title
