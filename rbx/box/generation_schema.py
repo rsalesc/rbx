@@ -22,11 +22,15 @@ class GeneratorScriptEntry(BaseModel):
         return hash((self.path, self.line))
 
     def __eq__(self, other: Any) -> bool:
-        return (
-            isinstance(other, GeneratorScriptEntry)
-            and self.path.samefile(other.path)
-            and self.line == other.line
-        )
+        if not isinstance(other, GeneratorScriptEntry):
+            return False
+        try:
+            return self.path.samefile(other.path) and self.line == other.line
+        except FileNotFoundError:
+            return (
+                self.path.absolute() == other.path.absolute()
+                and self.line == other.line
+            )
 
     @classmethod
     def parse(cls, spec: str) -> 'GeneratorScriptEntry':
