@@ -32,8 +32,6 @@ documentation.
 \title{\VAR{problem.title}}
 \maketitle
 
-Time limit: \VAR{vars.time_limit} s
-
 \section{Input}
 ...
 

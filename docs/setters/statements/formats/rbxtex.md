@@ -69,14 +69,16 @@ See the [default blocks](#default-blocks) section for more information.
 
 ### Variables
 
-You can inject variables from `problem.rbx.yml` using the `\VAR{vars.<variable-name>}` syntax.
+You can inject variables from `problem.rbx.yml` using the `\VAR{<variable-name>}` syntax, or
+`\VAR{vars.<variable-name>}` syntax when there's a conflict between built-in variables and your custom
+variables.
 
 === "statement.rbx.tex"
 
     ```latex title="statement.rbx.tex"
     %- block input
     The input consists of a single integer $N$
-    ($\VAR{vars.N.min} \le N \le \VAR{vars.N.max}$).
+    ($\VAR{N.min} \le N \le \VAR{N.max}$).
     %- endblock
     ```
 
@@ -135,9 +137,9 @@ Here is a barebones example of a problem statement written in rbxTeX.
     %- endblock
     
     %- block input
-    The first line contains two integers $N$ and $K$ ($\VAR{vars.N.min} \le N, K \le \VAR{vars.N.max}$) — the length of the sequence and the number of turns.
+    The first line contains two integers $N$ and $K$ ($\VAR{N.min} \le N, K \le \VAR{N.max}$) — the length of the sequence and the number of turns.
     
-    The second line contains $N$ integers $A_1, A_2, \dots, A_N$ ($|A_i| \le \VAR{vars.A.max}$).
+    The second line contains $N$ integers $A_1, A_2, \dots, A_N$ ($|A_i| \le \VAR{A.max}$).
     %- endblock
     
     %- block output

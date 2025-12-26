@@ -331,7 +331,7 @@ If you open it, you will find something like the following:
 
     %- block input
     The input is a single line containing two integers $A$ and $B$
-    ($1 \leq A, B \leq \VAR{vars.N.max | sci}$). % (1)!
+    ($1 \leq A, B \leq \VAR{N.max | sci}$). % (1)!
     %- endblock
 
     %- block output
@@ -365,8 +365,8 @@ Let's change each corresponding block to match our new problem description.
 
     %- block input
     The input has a single line containing $N$ 
-    ($1 \leq N \leq \VAR{vars.N.max | sci}$) numbers. 
-    These numbers range from 1 to $\VAR{vars.A.max | sci}$.
+    ($1 \leq N \leq \VAR{N.max | sci}$) numbers. 
+    These numbers range from 1 to $\VAR{A.max | sci}$.
     %- endblock
 
     %- block output

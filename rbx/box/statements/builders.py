@@ -195,18 +195,21 @@ class StatementBuilderProblem(StatementBuilderItem):
         self, sample_explanations: Optional[Dict[int, str]] = None
     ) -> Dict[str, Any]:
         sample_explanations = sample_explanations or {}
-        kwargs = {
-            'package': self.package,
-            'statement': self.statement,
-            'samples': ExplainedStatementSample.from_statement_samples(
-                self.samples, sample_explanations
-            ),
-            'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
-            'title': naming.get_problem_title(
-                self.statement.language, self.statement, self.package
-            ),
-            'limits': self.limits,
-        }
+        kwargs = dict(JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'))
+        kwargs.update(
+            {
+                'package': self.package,
+                'statement': self.statement,
+                'samples': ExplainedStatementSample.from_statement_samples(
+                    self.samples, sample_explanations
+                ),
+                'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
+                'title': naming.get_problem_title(
+                    self.statement.language, self.statement, self.package
+                ),
+                'limits': self.limits,
+            }
+        )
         if self.short_name is not None:
             kwargs['short_name'] = self.short_name
         if self.io_path is not None:

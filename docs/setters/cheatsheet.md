@@ -263,7 +263,7 @@ vars:
 
 === "In statements"
     ```tex
-    The maximum value of N is \VAR{vars.N.max | sci} % (1)!
+    The maximum value of N is \VAR{N.max | sci} % (1)!
     ```
 
     1.   If `N.max` has lots of trailing zeroes, `sci` converts it to scientific notation.

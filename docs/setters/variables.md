@@ -120,7 +120,7 @@ the `vars.` prefix.
 
 ```latex title="statement.rbx.tex"
 % ...
-You're given a graph with \VAR{vars.N.max} vertices and \VAR{vars.M.max} edges.
+You're given a graph with \VAR{N.max} vertices and \VAR{M.max} edges.
 % ...
 ```
 
@@ -143,8 +143,8 @@ a number with many trailing zeroes in scientific notation.
 
 ```latex title="statement.rbx.tex"
 % ...
-You're given a graph with \VAR{vars.N.max | sci} vertices
-and \VAR{vars.M.max | sci} edges.
+You're given a graph with \VAR{N.max | sci} vertices
+and \VAR{M.max | sci} edges.
 % ...
 ```
 
