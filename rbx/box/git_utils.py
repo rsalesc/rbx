@@ -36,6 +36,8 @@ def _parse_tag_from_ref(ref: str) -> str:
 
 
 def ls_remote_tags(uri: str) -> List[str]:
+    if not utils.command_exists('git'):
+        raise ValueError('git is not installed')
     completed_process = subprocess.run(
         ['git', 'ls-remote', '--tags', uri],
         check=True,
