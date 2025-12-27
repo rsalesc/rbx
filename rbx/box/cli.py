@@ -151,6 +151,7 @@ def main(
         bool, typer.Option('--version', '-v', callback=version_callback, is_eager=True)
     ] = False,
 ):
+    presets.check_active_preset_compatibility()
     if cd.is_problem_package() and not package.is_cache_valid():
         console.console.print(
             '[warning]Cache is incompatible with the current version of [item]rbx[/item], so it will be cleared.[/warning]'

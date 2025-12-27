@@ -8,6 +8,7 @@ from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Un
 import questionary
 import ruyaml
 import typer
+import yaml
 
 from rbx import console, utils
 from rbx.box import cd, git_utils
@@ -71,6 +72,28 @@ def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
     preset = utils.model_from_yaml(Preset, found.read_text())
     _check_preset_compatibility(preset.name, preset.min_version)
     return preset
+
+
+# Return name and version.
+def get_preset_yaml_metadata(root: pathlib.Path = pathlib.Path()) -> Tuple[str, str]:
+    found = find_preset_yaml(root)
+    if not found:
+        console.console.print(
+            f'[error][item]preset.rbx.yml[/item] not found in [item]{root.absolute()}[/item][/error]'
+        )
+        raise typer.Exit(1)
+    loaded_yaml = yaml.safe_load(found.read_text())
+    if 'name' not in loaded_yaml:
+        console.console.print(
+            f'[error][item]preset.rbx.yml[/item] does not have a [item]name[/item] field in [item]{root.absolute()}[/item][/error]'
+        )
+        raise typer.Exit(1)
+    if 'min_version' not in loaded_yaml:
+        console.console.print(
+            f'[error][item]preset.rbx.yml[/item] does not have a [item]min_version[/item] field in [item]{root.absolute()}[/item][/error]'
+        )
+        raise typer.Exit(1)
+    return loaded_yaml['name'], loaded_yaml['min_version']
 
 
 def _find_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
@@ -465,12 +488,26 @@ def get_active_preset(root: pathlib.Path = pathlib.Path()) -> Preset:
     return preset
 
 
+def get_active_preset_path_or_null(
+    root: pathlib.Path = pathlib.Path(),
+) -> Optional[pathlib.Path]:
+    return find_local_preset(root)
+
+
 def get_active_preset_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    preset_path = find_local_preset(root)
+    preset_path = get_active_preset_path_or_null(root)
     if preset_path is None:
         console.console.print('[error]No preset is active.[/error]')
         raise typer.Exit(1)
     return preset_path
+
+
+def check_active_preset_compatibility():
+    preset_path = get_active_preset_path_or_null()
+    if preset_path is None:
+        return
+    name, min_version = get_preset_yaml_metadata(preset_path)
+    _check_preset_compatibility(name, min_version)
 
 
 def get_preset_environment_path(
