@@ -712,7 +712,8 @@ def _install_preset_from_resources(
                 'If you want to proceed anyway, press [y]', default=False
             ).ask():
                 raise typer.Exit(1)
-    except ValueError:
+    except ValueError as e:
+        console.console.print(f'[error]{e}[/error]')
         pass
 
     console.console.print(

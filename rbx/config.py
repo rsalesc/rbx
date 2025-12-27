@@ -28,6 +28,10 @@ def format_vars(template: str, **kwargs) -> str:
     return res
 
 
+class DownloadError(ValueError):
+    pass
+
+
 class Artifact(BaseModel):
     filename: Optional[str] = None
     executable: bool = False
@@ -97,7 +101,7 @@ def get_resources_file(path: pathlib.Path) -> pathlib.Path:
     raise FileNotFoundError(f'File {path} not found in {_RESOURCES_PKG}.')
 
 
-def get_app_file(path: pathlib.Path) -> pathlib.Path:
+def get_app_file(path: pathlib.Path, predownloaded: bool = False) -> pathlib.Path:
     file_path = get_app_path() / path
     if file_path.is_file():
         return file_path
@@ -110,6 +114,15 @@ def get_app_file(path: pathlib.Path) -> pathlib.Path:
             with file.open('rb') as fr:
                 with file_path.open('wb') as fw:
                     copyfileobj(fr, fw)
+    if predownloaded:
+        with importlib.resources.as_file(
+            importlib.resources.files('rbx') / 'resources' / 'predownloaded' / path  # type: ignore
+        ) as file:
+            if file.is_file():
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                with file.open('rb') as fr:
+                    with file_path.open('wb') as fw:
+                        copyfileobj(fr, fw)
     return file_path
 
 
@@ -125,6 +138,9 @@ def _download_checker(name: str, save_at: pathlib.Path):
         save_at.parent.mkdir(parents=True, exist_ok=True)
         with save_at.open('wb') as f:
             f.write(r.content)
+    else:
+        console.print(f'[error]Failed to download checker [item]{name}[/item].[/error]')
+        raise DownloadError()
 
 
 def _download_testlib(save_at: pathlib.Path):
@@ -141,7 +157,7 @@ def _download_testlib(save_at: pathlib.Path):
             f.write(r.content)
     else:
         console.print('[error]Failed to download testlib.h.[/error]')
-        raise typer.Exit(1)
+        raise DownloadError()
 
 
 def _download_jngen(save_at: pathlib.Path):
@@ -156,7 +172,7 @@ def _download_jngen(save_at: pathlib.Path):
             f.write(r.content)
     else:
         console.print('[error]Failed to download jngen.h.[/error]')
-        raise typer.Exit(1)
+        raise DownloadError()
 
 
 def _download_bits_stdcpp(save_at: pathlib.Path):
@@ -173,34 +189,46 @@ def _download_bits_stdcpp(save_at: pathlib.Path):
             f.write(r.content)
     else:
         console.print('[error]Failed to download bits/stdc++.h.[/error]')
-        raise typer.Exit(1)
+        raise DownloadError()
 
 
 def get_builtin_checker(name: str) -> pathlib.Path:
     app_file = get_app_file(pathlib.Path('checkers') / name)
     if not app_file.exists():
-        _download_checker(name, app_file)
+        try:
+            _download_checker(name, app_file)
+        except DownloadError:
+            app_file = get_app_file(pathlib.Path('checkers') / name, predownloaded=True)
     return app_file
 
 
 def get_testlib() -> pathlib.Path:
     app_file = get_app_file(pathlib.Path('testlib.h'))
     if not app_file.exists():
-        _download_testlib(app_file)
+        try:
+            _download_testlib(app_file)
+        except DownloadError:
+            app_file = get_app_file(pathlib.Path('testlib.h'), predownloaded=True)
     return app_file
 
 
 def get_jngen() -> pathlib.Path:
     app_file = get_app_file(pathlib.Path('jngen.h'))
     if not app_file.exists():
-        _download_jngen(app_file)
+        try:
+            _download_jngen(app_file)
+        except DownloadError:
+            app_file = get_app_file(pathlib.Path('jngen.h'), predownloaded=True)
     return app_file
 
 
 def get_bits_stdcpp() -> pathlib.Path:
     app_file = get_app_file(pathlib.Path('stdc++.h'))
     if not app_file.exists():
-        _download_bits_stdcpp(app_file)
+        try:
+            _download_bits_stdcpp(app_file)
+        except DownloadError:
+            app_file = get_app_file(pathlib.Path('stdc++.h'), predownloaded=True)
     return app_file
 
 
