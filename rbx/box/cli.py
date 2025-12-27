@@ -772,7 +772,7 @@ async def stress(
                     name=name,
                     generator_call=generator_args,
                     finder=finder,
-                    findingsLimit=findings,
+                    findings_limit=findings,
                     progress=s,
                     verbose=verbose,
                     sanitized=sanitized,

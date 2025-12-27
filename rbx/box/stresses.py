@@ -52,11 +52,11 @@ def _compile_finder(finder: Checker) -> str:
 
 
 async def run_stress(
-    timeoutInSeconds: int,
+    timeout_in_seconds: int,
     name: Optional[str] = None,
     finder: Optional[str] = None,
     generator_call: Optional[str] = None,
-    findingsLimit: int = 1,
+    findings_limit: int = 1,
     verbose: bool = False,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
@@ -144,8 +144,8 @@ async def run_stress(
     duplicate_call_error = False
 
     try:
-        while len(findings) < findingsLimit:
-            if time.monotonic() - startTime > timeoutInSeconds:
+        while len(findings) < findings_limit:
+            if time.monotonic() - startTime > timeout_in_seconds:
                 break
 
             if print_descriptors:
@@ -154,7 +154,7 @@ async def run_stress(
             executed += 1
 
             if progress:
-                seconds = timeoutInSeconds - int(time.monotonic() - startTime)
+                seconds = timeout_in_seconds - int(time.monotonic() - startTime)
                 skipped_str = f'skipped [item]{skipped}[/item], ' if skipped else ''
                 progress.update(
                     f'Stress testing: found [item]{len(findings)}[/item] tests, '
