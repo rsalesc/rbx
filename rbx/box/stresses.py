@@ -62,6 +62,7 @@ async def run_stress(
     sanitized: bool = False,
     print_descriptors: bool = False,
     skip_invalid_testcases: bool = False,
+    limits: Optional[tasks.Limits] = None,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
 
@@ -125,6 +126,12 @@ async def run_stress(
     validators_digests = validators.compile_validators(
         all_validators, progress=progress
     )
+
+    if limits is not None:
+        console.console.print(
+            '[bright_white]Running stress tests with the following limits:[/bright_white]'
+        )
+        console.console.print(limits)
 
     # Erase old stress directory
     runs_dir = package.get_problem_runs_dir()
@@ -221,6 +228,7 @@ async def run_stress(
                     output_dir=input_path.parent,
                     filestem=f'{index}',
                     is_stress=True,
+                    limits_override=limits,
                 )
 
             # Get main solution output.

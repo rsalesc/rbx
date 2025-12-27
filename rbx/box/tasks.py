@@ -73,6 +73,7 @@ async def run_solution_on_testcase(
     testcase_index: int = 0,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
+    limits_override: Optional[Limits] = None,
     use_retries: bool = True,
     use_timelimit: bool = True,
     capture_pipes: Optional[bool] = None,
@@ -92,6 +93,7 @@ async def run_solution_on_testcase(
             testcase_index=testcase_index,
             verification=verification,
             timelimit_override=timelimit_override,
+            limits_override=limits_override,
             use_retries=use_retries,
             use_timelimit=use_timelimit,
             capture_pipes=capture_pipes,
@@ -105,7 +107,7 @@ async def run_solution_on_testcase(
         actual_sandbox = package.get_singleton_sandbox()
 
         language = find_language_name(solution)
-        limits = get_limits_for_language(
+        limits = limits_override or get_limits_for_language(
             language,
             verification,
             timelimit_override,
@@ -202,6 +204,7 @@ async def _run_communication_solution_on_testcase(
     testcase_index: int = 0,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
+    limits_override: Optional[Limits] = None,
     use_retries: bool = True,
     use_timelimit: bool = True,
     capture_pipes: Optional[bool] = None,
@@ -218,7 +221,7 @@ async def _run_communication_solution_on_testcase(
         interactor_sandbox = package.get_singleton_interactor_sandbox()
 
         language = find_language_name(solution)
-        limits = get_limits_for_language(
+        limits = limits_override or get_limits_for_language(
             language,
             verification,
             timelimit_override,

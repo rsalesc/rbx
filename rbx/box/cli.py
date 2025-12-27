@@ -754,6 +754,25 @@ async def stress(
         '--skip',
         help='Whether to skip invalid testcases.',
     ),
+    custom_timelimit: Annotated[
+        Optional[int],
+        typer.Option('--timelimit', '-T', help='Custom timelimit for the stress test.'),
+    ] = None,
+    double_timelimit: Annotated[
+        bool,
+        typer.Option(
+            '--double-tl',
+            help='Whether to use 2*TL as the timelimit for the stress test.',
+        ),
+    ] = False,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            '--profile',
+            '-p',
+            help='Limits profile to use when running the stress test.',
+        ),
+    ] = None,
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
@@ -761,25 +780,35 @@ async def stress(
         )
         raise typer.Exit(1)
 
-    from rbx.box import stresses
+    from rbx.box import stresses, tasks
 
-    with utils.StatusProgress('Running stress...') as s:
-        with grading_context.stress(True):
-            with grading_context.cache_level(
-                grading_context.CacheLevel.CACHE_COMPILATION
-            ):
-                report = await stresses.run_stress(
-                    timeout,
-                    name=name,
-                    generator_call=generator_args,
-                    finder=finder,
-                    findings_limit=findings,
-                    progress=s,
-                    verbose=verbose,
-                    sanitized=sanitized,
-                    print_descriptors=print_descriptors,
-                    skip_invalid_testcases=skip_invalid_testcases,
-                )
+    with limits_info.use_profile(profile, when=lambda: profile is not None):
+        limits = tasks.get_limits_for_language(
+            lang=None,
+            timelimit_override=custom_timelimit,
+            verification=VerificationLevel.FULL
+            if double_timelimit
+            else VerificationLevel.NONE,
+        )
+
+    with (
+        utils.StatusProgress('Running stress...') as s,
+        grading_context.stress(True),
+        grading_context.cache_level(grading_context.CacheLevel.CACHE_COMPILATION),
+    ):
+        report = await stresses.run_stress(
+            timeout,
+            name=name,
+            generator_call=generator_args,
+            finder=finder,
+            findings_limit=findings,
+            progress=s,
+            verbose=verbose,
+            sanitized=sanitized,
+            print_descriptors=print_descriptors,
+            skip_invalid_testcases=skip_invalid_testcases,
+            limits=limits,
+        )
 
     stresses.print_stress_report(report)
 

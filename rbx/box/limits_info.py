@@ -1,6 +1,6 @@
 import contextvars
 import pathlib
-from typing import Optional
+from typing import Callable, Optional
 
 import typer
 
@@ -18,12 +18,16 @@ def get_active_profile() -> Optional[str]:
 
 
 class use_profile:
-    def __init__(self, profile: Optional[str]):
+    def __init__(
+        self, profile: Optional[str], when: Optional[Callable[[], bool]] = None
+    ):
         self.profile = profile
         self.token = None
+        self.when = when
 
     def __enter__(self):
-        self.token = profile_var.set(self.profile)
+        if self.when is None or self.when():
+            self.token = profile_var.set(self.profile)
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.token is not None:
