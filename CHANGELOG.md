@@ -1,3 +1,28 @@
+## 0.22.2 (2025-12-27)
+
+### Fix
+
+- add -p variant for --profile
+- have a global profile flag to control which profile is used
+- add custom time controls for stress tests
+- consolidate limits profile function
+- fix a few type findings
+- check preset version first thing in rbx
+- add a few predownloaded assets to rbx to improve usability in a no-connection scenario
+- add solution tags
+- tell current profile TL in rbx time
+- show a issue when solution is producing too much stderr
+- fix method import
+- teach user how to bypass version constraint in preset error
+- warn on duplicate generator calls in testplan
+- add duplicate call error to stress tests
+- show errors when certain commands do not exist
+- add vars to high-level problem context
+
+### Refactor
+
+- fix casing of variables
+
 ## 0.22.1 (2025-12-21)
 
 ### Fix
