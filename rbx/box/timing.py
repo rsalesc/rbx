@@ -48,6 +48,19 @@ def get_timing_profile(
     return utils.model_from_yaml(TimingProfile, path.read_text())
 
 
+def pretty_print_profile(profile: TimingProfile):
+    console.console.print(
+        f'[bright_white]Time limit:[/bright_white] {profile.timeLimit} ms'
+    )
+    console.console.print(
+        f'[bright_white]Time limit per language:[/bright_white] {profile.timeLimitPerLanguage}'
+    )
+    if profile.formula:
+        console.console.print(
+            f'[bright_white]Used formula:[/bright_white] {profile.formula}'
+        )
+
+
 def step_down(x: Any, step: int) -> int:
     x = int(x)
     return x // step * step
