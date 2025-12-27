@@ -21,7 +21,6 @@ from rbx.box.schema import (
     TaskType,
     Testcase,
 )
-from rbx.box.statements.build_statements import get_relative_assets
 from rbx.box.statements.builders import (
     ExplainedStatementSample,
     StatementBlocks,
@@ -30,6 +29,7 @@ from rbx.box.statements.builders import (
     render_jinja_blocks,
 )
 from rbx.box.statements.schema import Statement, StatementType
+from rbx.box.statements.statement_utils import get_relative_assets
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_utils import (
     TestcaseInteractionParsingError,
