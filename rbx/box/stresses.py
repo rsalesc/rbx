@@ -20,7 +20,7 @@ from rbx.box.generators import (
     expand_generator_call,
     generate_standalone,
 )
-from rbx.box.schema import CodeItem, GeneratorCall, Stress, TaskType, Testcase
+from rbx.box.schema import Checker, GeneratorCall, Stress, TaskType, Testcase
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
 from rbx.box.stressing import finder_parser
 from rbx.grading.steps import (
@@ -40,7 +40,7 @@ class StressReport(BaseModel):
     skipped: int = 0
 
 
-def _compile_finder(finder: CodeItem) -> str:
+def _compile_finder(finder: Checker) -> str:
     try:
         digest = checkers.compile_checker(custom_checker=finder)
     except:
@@ -281,7 +281,7 @@ async def run_stress(
             @syncer.sync
             async def run_fn(*args, **kwargs):
                 # Wrap the runner in a syncer.sync to make it work with the finder parser.
-                return await run_solution_and_checker_fn(*args, **kwargs)
+                return await run_solution_and_checker_fn(*args, **kwargs)  # pyright: ignore[reportGeneralTypeIssues]
 
             runner = finder_parser.FinderTreeRunner(runner=run_fn)
             finder_outcome: finder_parser.FinderOutcome = runner.transform(

@@ -9,7 +9,7 @@ import typer
 
 from rbx import console
 from rbx.box import checkers, package
-from rbx.box.schema import CodeItem, ExpectedOutcome
+from rbx.box.schema import Checker, CodeItem, ExpectedOutcome
 from rbx.box.solutions import expand_solutions
 from rbx.grading.steps import CheckerResult, Outcome, RunLog, TestcaseLog
 
@@ -248,7 +248,7 @@ def get_all_checkers(tree: lark.ParseTree) -> List[str]:
     return [finder_checker.path for finder_checker in _get_all_finder_checkers(tree)]
 
 
-def get_all_checker_items(tree: lark.ParseTree) -> List[CodeItem]:
+def get_all_checker_items(tree: lark.ParseTree) -> List[Checker]:
     checker_names = get_all_checkers(tree)
     res = []
 
@@ -258,7 +258,7 @@ def get_all_checker_items(tree: lark.ParseTree) -> List[CodeItem]:
             res.append(main_checker)
             continue
         res.append(
-            CodeItem(
+            Checker(
                 path=pathlib.Path(checker_name),
                 language=None,
                 compilationFiles=None,
