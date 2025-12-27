@@ -1,5 +1,6 @@
 import pathlib
 from typing import List, Optional
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +14,7 @@ from rbx.box.solutions import (
     SolutionReportSkeleton,
     SolutionSkeleton,
     convert_list_of_solution_evaluations_to_dict,
+    get_matching_solutions,
     get_solution_outcome_report,
     run_solutions,
 )
@@ -370,3 +372,74 @@ def test_solution_outcome_report_mixed_outcomes(tmp_path, mock_skeleton):
     assert Outcome.WRONG_ANSWER in report.gotVerdicts
     assert Outcome.RUNTIME_ERROR in report.gotVerdicts
     assert Outcome.TIME_LIMIT_EXCEEDED in report.gotVerdicts
+
+
+def test_get_matching_solutions(tmp_path):
+    """Test get_matching_solutions with various filters."""
+    # Create mock solutions
+    s1 = Solution(
+        path=tmp_path / 's1.cpp',
+        outcome=ExpectedOutcome.ACCEPTED,
+        tags=['implementation', 'easy'],
+    )
+    s2 = Solution(
+        path=tmp_path / 's2.cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        tags=['brute-force', 'slow'],
+    )
+    s3 = Solution(
+        path=tmp_path / 's3.cpp',
+        outcome=ExpectedOutcome.WRONG_ANSWER,
+        tags=['implementation', 'buggy'],
+    )
+    s4 = Solution(
+        path=tmp_path / 's4.cpp',
+        outcome=ExpectedOutcome.ACCEPTED,
+        tags=[],
+    )
+
+    with patch(
+        'rbx.box.solutions.package.get_solutions', return_value=[s1, s2, s3, s4]
+    ):
+        # Test no filters
+        assert len(get_matching_solutions()) == 4
+
+        # Test filter by expected_outcome
+        assert get_matching_solutions(expected_outcome=ExpectedOutcome.ACCEPTED) == [
+            s1,
+            s4,
+        ]
+        assert get_matching_solutions(
+            expected_outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+        ) == [s2]
+
+        # Test filter by tags
+        assert get_matching_solutions(tags=['implementation']) == [s1, s3]
+        assert get_matching_solutions(tags=['easy']) == [s1]
+        assert get_matching_solutions(tags=['brute-force']) == [s2]
+
+        # Test filter by multiple tags (subset check)
+        # s1 has implementation and easy.
+        assert get_matching_solutions(tags=['implementation', 'easy']) == [s1]
+        # order shouldn't matter
+        assert get_matching_solutions(tags=['easy', 'implementation']) == [s1]
+
+        # Test non-matching tags
+        assert get_matching_solutions(tags=['nonexistent']) == []
+        # s1 has implementation but not slow
+        assert get_matching_solutions(tags=['implementation', 'slow']) == []
+
+        # Test filter by both outcome and tags
+        assert get_matching_solutions(
+            expected_outcome=ExpectedOutcome.ACCEPTED, tags=['implementation']
+        ) == [s1]
+
+        # s3 is WA and matches implementation
+        assert get_matching_solutions(
+            expected_outcome=ExpectedOutcome.WRONG_ANSWER, tags=['implementation']
+        ) == [s3]
+
+        # s4 is AC but empty tags, shouldn't match if we ask for implementation
+        assert get_matching_solutions(
+            expected_outcome=ExpectedOutcome.ACCEPTED, tags=['implementation']
+        ) == [s1]

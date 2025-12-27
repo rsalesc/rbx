@@ -453,6 +453,11 @@ class Solution(CodeItem):
         description="""The expected outcome of this solution.""",
     )
 
+    tags: List[str] = Field(
+        default=[],
+        description="""Tags to be associated with this solution.""",
+    )
+
     def href(self, hyperlink: bool = True) -> str:
         return href(self.path, style=self.outcome.full_style(), hyperlink=hyperlink)
 

@@ -269,6 +269,14 @@ async def run(
         '-o',
         help='Include only solutions whose expected outcomes intersect with this.',
     ),
+    tags: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '--tag',
+            '-t',
+            help='Include only solutions whose tags intersect with this.',
+        ),
+    ] = None,
     check: bool = typer.Option(
         True,
         '--nocheck',
@@ -302,10 +310,15 @@ async def run(
         check = False
 
     tracked_solutions: Optional[OrderedSet[str]] = None
-    if outcome is not None:
+    if outcome is not None or tags is not None:
         tracked_solutions = OrderedSet(
             str(solution.path)
-            for solution in get_matching_solutions(ExpectedOutcome(outcome))
+            for solution in get_matching_solutions(
+                expected_outcome=ExpectedOutcome(outcome)
+                if outcome is not None
+                else None,
+                tags=tags or None,
+            )
         )
     if solutions:
         tracked_solutions = OrderedSet(solutions)
@@ -523,6 +536,14 @@ async def irun(
         '-o',
         help='Include only solutions whose expected outcomes intersect with this.',
     ),
+    tags: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '--tag',
+            '-t',
+            help='Include only solutions whose tags intersect with this.',
+        ),
+    ] = None,
     check: bool = typer.Option(
         True,
         '--nocheck',
@@ -576,10 +597,15 @@ async def irun(
         return
 
     tracked_solutions: Optional[OrderedSet[str]] = None
-    if outcome is not None:
+    if outcome is not None or tags is not None:
         tracked_solutions = OrderedSet(
             str(solution.path)
-            for solution in get_matching_solutions(ExpectedOutcome(outcome))
+            for solution in get_matching_solutions(
+                expected_outcome=ExpectedOutcome(outcome)
+                if outcome is not None
+                else None,
+                tags=tags or None,
+            )
         )
     if solutions:
         tracked_solutions = OrderedSet(solutions)

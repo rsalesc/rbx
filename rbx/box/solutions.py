@@ -175,10 +175,17 @@ def is_fast(solution: Solution) -> bool:
     return not solution.outcome.is_slow()
 
 
-def get_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solution]:
+def get_matching_solutions(
+    expected_outcome: Optional[ExpectedOutcome] = None,
+    tags: Optional[List[str]] = None,
+) -> List[Solution]:
     res = []
     for solution in package.get_solutions():
-        if not solution.outcome.intersect(expected_outcome):
+        if expected_outcome is not None and not solution.outcome.intersect(
+            expected_outcome
+        ):
+            continue
+        if tags is not None and not set(tags).issubset(solution.tags):
             continue
         res.append(solution)
     return res
