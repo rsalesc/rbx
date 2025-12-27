@@ -1,4 +1,3 @@
-import pathlib
 from typing import Any, Dict, Optional
 
 import questionary
@@ -37,15 +36,6 @@ class TimingProfile(BaseModel):
                 for lang, tl in self.timeLimitPerLanguage.items()
             },
         )
-
-
-def get_timing_profile(
-    profile: str, root: pathlib.Path = pathlib.Path()
-) -> Optional[TimingProfile]:
-    path = package.get_limits_file(profile, root)
-    if not path.exists():
-        return None
-    return utils.model_from_yaml(TimingProfile, path.read_text())
 
 
 def pretty_print_profile(profile: TimingProfile):

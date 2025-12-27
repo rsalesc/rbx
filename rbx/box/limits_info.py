@@ -163,3 +163,14 @@ def get_limits(
         language, limits_profile, source_profile, verification, root=root
     )
     return res
+
+
+def pretty_print_profile(profile: LimitsProfile):
+    console.console.print(
+        f'[bright_white]Time limit:[/bright_white] {profile.timeLimit} ms'
+    )
+    console.console.print(
+        f'[bright_white]Modifiers:[/bright_white] {profile.modifiers}'
+    )
+    if profile.inheritFromPackage:
+        console.console.print('[bright_white]Inherits from package.[/bright_white]')

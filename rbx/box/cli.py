@@ -22,6 +22,7 @@ from rbx.box import (
     generator_script_handlers,
     generators,
     global_package,
+    limits_info,
     package,
     presets,
     setter_config,
@@ -431,12 +432,12 @@ async def time(
         help='Integrate the given limits profile into the package.',
     ),
 ):
-    current_profile = timing.get_timing_profile(profile)
+    current_profile = limits_info.get_limits_profile(profile)
     if current_profile is not None:
         console.console.print(
             f'[bright_white]Current limits for profile [item]{profile}[/item]:[/bright_white]'
         )
-        timing.pretty_print_profile(current_profile)
+        limits_info.pretty_print_profile(current_profile)
         console.console.print()
     if integrate:
         timing.integrate(profile)

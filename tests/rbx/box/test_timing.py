@@ -67,40 +67,6 @@ class TestTimingProfile:
         assert limits.modifiers == {}
 
 
-class TestGetTimingProfile:
-    """Test suite for get_timing_profile function."""
-
-    def test_get_existing_timing_profile(
-        self, testing_pkg: testing_package.TestingPackage
-    ):
-        """Test retrieving an existing timing profile."""
-        # Create a timing profile file with the correct TimingProfile structure
-        timing_data = {
-            'timeLimit': 2000,
-            'formula': 'fastest * 3',
-            'timeLimitPerLanguage': {'cpp': 1000, 'py': 4000},
-        }
-
-        limits_path = testing_pkg.path('.limits/local.yml')
-        limits_path.parent.mkdir(parents=True, exist_ok=True)
-        limits_path.write_text(yaml.dump(timing_data))
-
-        profile = timing.get_timing_profile('local')
-
-        assert profile is not None
-        assert profile.timeLimit == 2000
-        assert profile.formula == 'fastest * 3'
-        assert profile.timeLimitPerLanguage == {'cpp': 1000, 'py': 4000}
-
-    def test_get_nonexistent_timing_profile(
-        self, testing_pkg: testing_package.TestingPackage
-    ):
-        """Test retrieving a non-existent timing profile returns None."""
-        profile = timing.get_timing_profile('nonexistent')
-
-        assert profile is None
-
-
 class TestStepFunctions:
     """Test suite for step_up and step_down helper functions."""
 
