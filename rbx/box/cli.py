@@ -145,6 +145,7 @@ def main(
     profile: Annotated[
         Optional[str],
         typer.Option(
+            '-p',
             '--profile',
             help='Which timing profile to use when running solutions.',
         ),
