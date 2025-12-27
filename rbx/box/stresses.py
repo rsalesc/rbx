@@ -139,6 +139,9 @@ async def run_stress(
     executed = 0
     skipped = 0
     findings = []
+    only_call: Optional[str] = None
+    has_diff_call = False
+    duplicate_call_error = False
 
     try:
         while len(findings) < findingsLimit:
@@ -164,6 +167,23 @@ async def run_stress(
             input_path.parent.mkdir(parents=True, exist_ok=True)
 
             expanded_generator_call = expand_generator_call(stress.generator)
+            if only_call is not None and str(expanded_generator_call) != only_call:
+                has_diff_call = True
+            only_call = str(expanded_generator_call)
+
+            if not has_diff_call and executed % 10 == 0:
+                console.console.print(
+                    f'[warning]Generator call [item]{only_call}[/item] was repeated [item]{executed}[/item] times.[/warning]'
+                )
+                if not duplicate_call_error:
+                    duplicate_call_error = True
+                    console.console.print(
+                        '[warning]This might mean your generator expression is not generating different testcases.[/warning]'
+                    )
+                    console.console.print(
+                        '[warning]You should add [item]@[/item] to your generator expression.[/warning]'
+                    )
+
             try:
                 await generate_standalone(
                     GenerationMetadata(
