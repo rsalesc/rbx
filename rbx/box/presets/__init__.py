@@ -44,8 +44,10 @@ def _check_preset_compatibility(preset_name: str, preset_version: str) -> None:
         console.console.print(
             f'[error]Please update rbx.cp to the latest compatible version using [item]{utils.get_upgrade_command(preset_version)}[/item].[/error]'
         )
-        raise typer.Exit(1)
-    if compatibility == utils.SemVerCompatibility.BREAKING_CHANGE:
+        console.console.print(
+            '[error]If you want to bypass the preset constraint, you can change the [item]min_version[/item] field in the preset file ([item].local.rbx/preset.rbx.yml)[/item] to the current version.[/error]'
+        )
+    elif compatibility == utils.SemVerCompatibility.BREAKING_CHANGE:
         console.console.print(
             f'[error]Preset [item]{preset_name}[/item] requires rbx at version [item]{preset_version}[/item], but the current version is [item]{utils.get_version()}[/item].[/error]'
         )
@@ -55,6 +57,7 @@ def _check_preset_compatibility(preset_name: str, preset_version: str) -> None:
         console.console.print(
             '[error]If you are sure that the preset is compatible with the current rbx version, you can change the [item]min_version[/item] field in the preset file ([item].local.rbx/preset.rbx.yml)[/item] to the current version.[/error]'
         )
+    if compatibility != utils.SemVerCompatibility.COMPATIBLE:
         raise typer.Exit(1)
 
 
