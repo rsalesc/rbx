@@ -1,3 +1,4 @@
+import collections
 import functools
 import pathlib
 import shutil
@@ -392,6 +393,12 @@ async def generate_testcases(
     testcase_utils.clear_built_testcases()
 
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
+        test_calls: Dict[str, List[GenerationTestcaseEntry]]
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.test_calls = collections.defaultdict(list)
+
         async def visit(self, entry: GenerationTestcaseEntry):
             if entry.metadata.copied_from is not None:
                 _copy_testcase_over(
@@ -404,6 +411,16 @@ async def generate_testcases(
                 )
                 entry.metadata.copied_to.inputPath.write_text(entry.metadata.content)
             elif entry.metadata.generator_call is not None:
+                tests_with_same_call = self.test_calls[
+                    str(entry.metadata.generator_call)
+                ]
+                if tests_with_same_call:
+                    ref_entry = tests_with_same_call[0]
+                    console.console.print(
+                        f'[warning]Test [item]{entry.group_entry}[/item] '
+                        f'is a duplicate of [item]{ref_entry.group_entry}[/item].'
+                    )
+                tests_with_same_call.append(entry)
                 await generate_standalone(
                     entry.metadata,
                     group_entry=entry.group_entry,
@@ -416,7 +433,8 @@ async def generate_testcases(
                 raise ValueError(f'Invalid generation metadata: {entry.metadata}')
             step()
 
-    await run_testcase_visitor(BuildTestcaseVisitor(groups))
+    visitor = BuildTestcaseVisitor(groups)
+    await run_testcase_visitor(visitor)
 
 
 async def generate_output_for_testcase(
