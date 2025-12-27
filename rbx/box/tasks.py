@@ -1,5 +1,5 @@
 import pathlib
-from typing import Optional
+from typing import Optional, Tuple
 
 from rbx.box import checkers, limits_info, package, state
 from rbx.box.code import (
@@ -10,6 +10,7 @@ from rbx.box.code import (
 )
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
+from rbx.box.sanitizers.issue_stack import Issue, add_issue
 from rbx.box.schema import CodeItem, Testcase
 from rbx.grading import profiling
 from rbx.grading.judge.sandbox import SandboxBase
@@ -24,6 +25,24 @@ from rbx.grading.steps import (
     TestcaseLog,
 )
 from rbx.utils import model_to_yaml
+
+STDERR_THRESHOLD_IN_BYTES = 1024 * 1024  # 1MB
+
+
+class TooMuchStderrIssue(Issue):
+    def __init__(self, solution: CodeItem):
+        self.solution = solution
+
+    def get_detailed_section(self) -> Tuple[str, ...]:
+        return ('solutions',)
+
+    def get_detailed_message(self) -> str:
+        return f'{self.solution.href()} produces too much stderr.'
+
+
+def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):
+    if stderr_path.stat().st_size > STDERR_THRESHOLD_IN_BYTES:
+        add_issue(TooMuchStderrIssue(solution))
 
 
 def get_limits_for_language(
@@ -126,6 +145,8 @@ async def run_solution_on_testcase(
                 )
         else:
             checker_result = checkers.check_with_no_output(run_log)
+
+        _check_stderr(solution, error_path)
 
         eval = Evaluation(
             result=checker_result,
@@ -289,6 +310,8 @@ async def _run_communication_solution_on_testcase(
             testcase,
             output_path,
         )
+
+        _check_stderr(solution, solution_error_path)
 
         eval = Evaluation(
             result=checker_result,
