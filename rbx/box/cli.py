@@ -142,11 +142,17 @@ def main(
         '--nocapture',
         help='Whether to save extra logs and outputs from interactive solutions.',
     ),
-    profile: bool = typer.Option(
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            '--profile',
+            help='Which timing profile to use when running solutions.',
+        ),
+    ] = None,
+    profiling: bool = typer.Option(
         False,
-        '--profile',
-        '-p',
-        help='Whether to profile the execution.',
+        '--profiling',
+        help='Whether to profile (capture performance statistics) of the execution.',
     ),
     version: Annotated[
         bool, typer.Option('--version', '-v', callback=version_callback, is_eager=True)
@@ -178,10 +184,15 @@ def main(
         setter_config.get_setter_config().caching.check_integrity
     )
 
-    if profile:
-        from rbx.grading import profiling
+    if profile is not None:
+        from rbx.box import limits_info
 
-        atexit.register(profiling.print_summary)
+        limits_info.profile_var.set(profile)
+
+    if profiling:
+        from rbx.grading import profiling as profiling_module
+
+        atexit.register(profiling_module.print_summary)
 
 
 @app.command('ui', hidden=True)
@@ -765,14 +776,6 @@ async def stress(
             help='Whether to use 2*TL as the timelimit for the stress test.',
         ),
     ] = False,
-    profile: Annotated[
-        Optional[str],
-        typer.Option(
-            '--profile',
-            '-p',
-            help='Limits profile to use when running the stress test.',
-        ),
-    ] = None,
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
@@ -782,14 +785,13 @@ async def stress(
 
     from rbx.box import stresses, tasks
 
-    with limits_info.use_profile(profile, when=lambda: profile is not None):
-        limits = tasks.get_limits_for_language(
-            lang=None,
-            timelimit_override=custom_timelimit,
-            verification=VerificationLevel.FULL
-            if double_timelimit
-            else VerificationLevel.NONE,
-        )
+    limits = tasks.get_limits_for_language(
+        lang=None,
+        timelimit_override=custom_timelimit,
+        verification=VerificationLevel.FULL
+        if double_timelimit
+        else VerificationLevel.NONE,
+    )
 
     with (
         utils.StatusProgress('Running stress...') as s,
