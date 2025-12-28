@@ -9,7 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Dict, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
 import dotenv
 import rich
@@ -320,10 +320,13 @@ def get_open_fds() -> int:
     # return fds
 
 
-def command_exists(command):
+def command_exists(command, flags: Optional[List[str]] = None):
     try:
         subprocess.run(
-            [command], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            [command] + (flags or []),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         return True
     except FileNotFoundError:

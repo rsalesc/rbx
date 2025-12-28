@@ -39,7 +39,7 @@ class Latex:
         self.latex = latex
 
     def build_pdf(self, temp_dir: pathlib.Path) -> LatexResult:
-        if not command_exists('pdflatex'):
+        if not command_exists('pdflatex', flags=['-v']):
             console.console.print(
                 '[error][item]pdflatex[/item] not found. Please install it and try again.[/error]'
             )
