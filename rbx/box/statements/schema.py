@@ -56,11 +56,21 @@ class rbxToTeX(BaseModel):
         description='Path to the template that should be used to render the rbx-tex blocks.',
     )
 
+    externalize: bool = Field(
+        default=False,
+        description='Whether to externalize TikZ graphics.',
+    )
+
 
 class TexToPDF(BaseModel):
     """Configures the conversion between LaTeX and PDF using pdfLaTeX."""
 
     type: Literal[ConversionType.TexToPDF]
+
+    externalize: bool = Field(
+        default=False,
+        description='Whether to externalize TikZ graphics.',
+    )
 
 
 class JinjaTeX(BaseModel):

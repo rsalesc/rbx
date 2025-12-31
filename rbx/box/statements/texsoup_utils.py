@@ -3,6 +3,12 @@ from typing import List, Optional, Tuple
 from TexSoup import TexSoup
 from TexSoup.data import TexNode
 
+EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
+
+
+def parse_latex(latex_code: str) -> TexNode:
+    return TexSoup(latex_code)
+
 
 def inject_in_preamble(soup: TexNode, latex_code: str):
     """
@@ -56,7 +62,7 @@ def inject_externalization_for_tikz(soup: TexNode):
     preamble_injection = r"""
 \usepackage{tikz}
 \usetikzlibrary{external}
-\tikzexternalize[prefix=figures/]
+\tikzexternalize[prefix=artifacts/tikz_figures/]
 """
     inject_in_preamble(soup, preamble_injection)
 

@@ -14,6 +14,7 @@ from rbx import console, utils
 from rbx.box import naming
 from rbx.box.fields import Primitive
 from rbx.box.schema import LimitsProfile, Package, Testcase
+from rbx.box.statements import texsoup_utils
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
     render_latex_template,
@@ -68,7 +69,9 @@ class StatementBuilderContext:
 class StatementBuilderItem(ABC):
     @abstractmethod
     def build_jinja_kwargs(
-        self, sample_explanations: Optional[Dict[int, str]] = None
+        self,
+        sample_explanations: Optional[Dict[int, str]] = None,
+        externalize: bool = False,
     ) -> Dict[str, Any]:
         pass
 
@@ -154,22 +157,27 @@ class ExplainedStatementSample(StatementSample):
     def from_statement_samples(
         statement_samples: List[StatementSample],
         explanation_blocks: Optional[Dict[int, str]] = None,
+        externalize: bool = False,
     ) -> List['ExplainedStatementSample']:
-        return [
+        samples = [
             ExplainedStatementSample.from_statement_sample(
                 sample,
                 explanation_blocks.get(i) if explanation_blocks is not None else None,
             )
             for i, sample in enumerate(statement_samples)
         ]
+        if externalize:
+            samples = externalize_explained_samples(samples)
+        return samples
 
     @staticmethod
     def samples_to_explanations(
         samples: List[StatementSample],
         explanation_blocks: Optional[Dict[int, str]] = None,
+        externalize: bool = False,
     ) -> Dict[int, str]:
         explained_samples = ExplainedStatementSample.from_statement_samples(
-            samples, explanation_blocks
+            samples, explanation_blocks, externalize=externalize
         )
         return {
             i: sample.explanation
@@ -192,7 +200,9 @@ class StatementBuilderProblem(StatementBuilderItem):
     vars: Optional[Dict[str, Primitive]] = None
 
     def build_inner_jinja_kwargs(
-        self, sample_explanations: Optional[Dict[int, str]] = None
+        self,
+        sample_explanations: Optional[Dict[int, str]] = None,
+        externalize: bool = False,
     ) -> Dict[str, Any]:
         sample_explanations = sample_explanations or {}
         kwargs = dict(JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'))
@@ -201,7 +211,7 @@ class StatementBuilderProblem(StatementBuilderItem):
                 'package': self.package,
                 'statement': self.statement,
                 'samples': ExplainedStatementSample.from_statement_samples(
-                    self.samples, sample_explanations
+                    self.samples, sample_explanations, externalize=externalize
                 ),
                 'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
                 'title': naming.get_problem_title(
@@ -217,9 +227,13 @@ class StatementBuilderProblem(StatementBuilderItem):
         return kwargs
 
     def build_jinja_kwargs(
-        self, sample_explanations: Optional[Dict[int, str]] = None
+        self,
+        sample_explanations: Optional[Dict[int, str]] = None,
+        externalize: bool = False,
     ) -> Dict[str, Any]:
-        inner = self.build_inner_jinja_kwargs(sample_explanations)
+        inner = self.build_inner_jinja_kwargs(
+            sample_explanations, externalize=externalize
+        )
         return {
             'problem': inner,
         }
@@ -245,7 +259,9 @@ class StatementBuilderContest(StatementBuilderItem):
         return res
 
     def build_jinja_kwargs(
-        self, sample_explanations: Optional[Dict[int, str]] = None
+        self,
+        sample_explanations: Optional[Dict[int, str]] = None,
+        externalize: bool = False,
     ) -> Dict[str, Any]:
         res = {
             'contest': self.build_inner_jinja_kwargs(),
@@ -334,6 +350,7 @@ def get_rbxtex_blocks(
     context: StatementBuilderContext,
     item: StatementBuilderItem,
     mode: Literal['latex', 'markdown'] = 'latex',
+    externalize: bool = False,
 ) -> Tuple[StatementBlocks, Dict[str, Any]]:
     if isinstance(item, StatementBuilderProblem):
         statement_blocks = render_jinja_blocks(
@@ -346,17 +363,41 @@ def get_rbxtex_blocks(
         statement_blocks = render_jinja_blocks(
             context.root,
             input,
-            **item.build_jinja_kwargs(),
             mode=mode,
+            **item.build_jinja_kwargs(),
         )
+    if externalize:
+        statement_blocks.blocks = externalize_blocks(statement_blocks.blocks)
     item_kwargs = item.build_jinja_kwargs(
-        sample_explanations=statement_blocks.explanations
+        sample_explanations=statement_blocks.explanations,
+        externalize=externalize,
     )
     if isinstance(item, StatementBuilderProblem):
         item_kwargs['problem']['blocks'] = statement_blocks.blocks
     elif isinstance(item, StatementBuilderContest):
         item_kwargs['contest']['blocks'] = statement_blocks.blocks
     return statement_blocks, item_kwargs
+
+
+def externalize_blocks(blocks: Dict[str, str]) -> Dict[str, str]:
+    res = {}
+    for key in blocks:
+        tex_node = texsoup_utils.parse_latex(blocks[key])
+        texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=key)
+        res[key] = str(tex_node)
+    return res
+
+
+def externalize_explained_samples(
+    samples: List[ExplainedStatementSample],
+) -> List[ExplainedStatementSample]:
+    for idx, sample in enumerate(samples):
+        if sample.explanation is None:
+            continue
+        tex_node = texsoup_utils.parse_latex(sample.explanation)
+        texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=f'explanation_{idx}')
+        sample.explanation = str(tex_node)
+    return samples
 
 
 class StatementBuilder(ABC):
@@ -459,7 +500,13 @@ class rbxTeXBuilder(StatementBuilder):
     ) -> bytes:
         params = typing.cast(rbxToTeX, context.params)
         assert params.template is not None
-        statement_blocks, item_kwargs = get_rbxtex_blocks(input, context, item)
+        statement_blocks, item_kwargs = get_rbxtex_blocks(
+            input,
+            context,
+            item,
+            mode='latex',
+            externalize=params.externalize,
+        )
 
         return render_jinja(
             context.root,
@@ -530,7 +577,19 @@ class TeX2PDFBuilder(StatementBuilder):
             should_rerun,
         )
 
-        latex = Latex(input.decode())
+        input_str = input.decode()
+
+        params = typing.cast(TexToPDF, context.params)
+
+        if params.externalize:
+            tex_node = texsoup_utils.parse_latex(input_str)
+            texsoup_utils.inject_externalization_for_tikz(tex_node)
+            (context.root / texsoup_utils.EXTERNALIZATION_DIR).mkdir(
+                exist_ok=True, parents=True
+            )
+            input_str = str(tex_node)
+
+        latex = Latex(input_str)
         latex_result = latex.build_pdf(context.root)
         pdf = latex_result.pdf
         logs = decode_latex_output(latex_result.result.stdout)

@@ -613,6 +613,61 @@ Welcome to the contest.
         assert 'intro' in blocks.blocks
         assert kwargs['contest']['title'] == 'Test Contest'
 
+    def test_get_rbxtex_blocks_externalize(self, context, tmp_path):
+        """Test get_rbxtex_blocks with externalize=True."""
+        package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
+        statement = Statement(
+            name='statement', path=pathlib.Path('stmt.tex'), type=StatementType.JinjaTeX
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+
+        samples = [
+            StatementSample(inputPath=tmp_path / '1.in', outputPath=tmp_path / '1.out')
+        ]
+
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits, samples=samples
+        )
+
+        content = b"""
+%- block diagram
+\\begin{tikzpicture}
+\\node {A};
+\\end{tikzpicture}
+%- endblock
+
+%- block explanation_0
+\\begin{tikzpicture}
+\\node {B};
+\\end{tikzpicture}
+%- endblock
+"""
+
+        blocks, kwargs = get_rbxtex_blocks(content, context, problem, externalize=True)
+
+        # Check explicit block externalization
+        assert 'diagram' in blocks.blocks
+        assert '\\tikzsetnextfilename{diagram_0}' in blocks.blocks['diagram']
+        assert '\\begin{tikzpicture}' in blocks.blocks['diagram']
+
+        # Check explantion block in blocks
+        assert 'explanation_0' in blocks.blocks
+        assert (
+            '\\tikzsetnextfilename{explanation_0_0}' in blocks.blocks['explanation_0']
+        )
+
+        # Check kwargs update
+        samples_in_kwargs = kwargs['problem']['samples']
+        assert len(samples_in_kwargs) == 1
+        assert (
+            '\\tikzsetnextfilename{explanation_0_0}' in samples_in_kwargs[0].explanation
+        )
+
+        # Ensure blocks in kwargs are also updated
+        assert (
+            '\\tikzsetnextfilename{diagram_0}' in kwargs['problem']['blocks']['diagram']
+        )
+
 
 class TestJinjaTeXBuilder:
     """Test JinjaTeXBuilder functionality."""
