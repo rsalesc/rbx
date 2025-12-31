@@ -1,7 +1,7 @@
 import pathlib
 import tempfile
 import typing
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple
 
 import syncer
 import typer
@@ -133,14 +133,38 @@ def _get_configured_params_for(
     return None
 
 
+def merge_conversion_steps(lhs: ConversionStep, rhs: ConversionStep) -> ConversionStep:
+    assert lhs.type == rhs.type
+    return lhs.model_copy(update=rhs.model_dump(exclude_unset=True), deep=True)
+
+
+def merge_conversion_configurations(
+    configure: Iterable[ConversionStep],
+) -> List[ConversionStep]:
+    mapping = {}
+    for step in configure:
+        if step.type not in mapping:
+            mapping[step.type] = step
+            continue
+        mapping[step.type] = merge_conversion_steps(mapping[step.type], step)
+    return list(mapping.values())
+
+
+def merge_conversion_configuration_maps(
+    lhs: Dict[ConversionType, ConversionStep],
+    rhs: Dict[ConversionType, ConversionStep],
+) -> Dict[ConversionType, ConversionStep]:
+    consolidated = merge_conversion_configurations(
+        list(lhs.values()) + list(rhs.values())
+    )
+    return {step.type: step for step in consolidated}
+
+
 def _get_overridden_configuration_list(
     configure: List[ConversionStep],
     overridden_params: Dict[ConversionType, ConversionStep],
 ) -> List[ConversionStep]:
-    def _get_params(step: ConversionStep) -> ConversionStep:
-        return overridden_params.get(step.type, step)
-
-    return list(map(_get_params, configure))
+    return merge_conversion_configurations(configure + list(overridden_params.values()))
 
 
 def get_builders(
@@ -223,18 +247,17 @@ def build_statement_bytes(
                 statement.path, statement.assets
             )
 
+            context_params = params
+            injection_root = pathlib.Path()
+            if bdr.name() in overridden_params:
+                context_params = merge_conversion_steps(
+                    params, overridden_params[bdr.name()]
+                )
+                injection_root = overridden_params_root
+
             # Use either overridden assets (by contest) or usual assets.
             # Remember to modify the root to contest root if that's the case.
-            if bdr.name() in overridden_params:
-                assets.extend(
-                    bdr.inject_assets(
-                        overridden_params_root, overridden_params[bdr.name()]
-                    )
-                )
-                context_params = overridden_params[bdr.name()]
-            else:
-                assets.extend(bdr.inject_assets(pathlib.Path(), params))
-                context_params = params
+            assets.extend(bdr.inject_assets(injection_root, context_params))
             assets.extend(overridden_assets)
 
             prepare_assets(assets, pathlib.Path(td))
@@ -296,11 +319,17 @@ def build_statement(
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
+    extra_mergeable_params: Optional[List[ConversionStep]] = None,
 ) -> pathlib.Path:
     override_kwargs: Dict[str, Any] = {'custom_vars': custom_vars or {}}
     if statement.inheritFromContest:
         overrides = statement_overriding.get_inheritance_overrides(statement)
         override_kwargs.update(overrides.to_kwargs(custom_vars or {}))
+    if extra_mergeable_params:
+        override_kwargs['overridden_params'] = merge_conversion_configuration_maps(
+            override_kwargs.get('overridden_params', {}),
+            {step.type: step for step in extra_mergeable_params},
+        )
     last_content, last_output = build_statement_bytes(
         statement,
         pkg,

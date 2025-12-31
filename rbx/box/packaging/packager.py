@@ -15,7 +15,14 @@ from rbx.box.formatting import href
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.schema import Package, TaskType, Testcase, TestcaseGroup
 from rbx.box.statements.build_statements import build_statement
-from rbx.box.statements.schema import Statement, StatementType
+from rbx.box.statements.schema import (
+    ConversionStep,
+    ConversionType,
+    Statement,
+    StatementType,
+    TexToPDF,
+    rbxToTeX,
+)
 
 
 @dataclasses.dataclass
@@ -178,6 +185,17 @@ class ContestZipper(BaseContestPackager):
         return build_path / pathlib.Path(self.filename).with_suffix('.zip')
 
 
+def get_packager_extra_mergeable_params(
+    packager_cls: Type[BasePackager],
+) -> List[ConversionStep]:
+    res = []
+    if packager_cls.name() == 'polygon':
+        # TODO: migrate this into the packager class
+        res.append(rbxToTeX(type=ConversionType.rbxToTex, externalize=True))
+        res.append(TexToPDF(type=ConversionType.TexToPDF, externalize=True))
+    return res
+
+
 async def run_packager(
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
@@ -217,15 +235,22 @@ async def run_packager(
             languages = packager.languages()
             for language in languages:
                 statement = packager.get_statement_for_language_or_die(language)
-                statement_path = build_statement(statement, pkg, statement_type)
+                statement_path = build_statement(
+                    statement,
+                    pkg,
+                    statement_type,
+                    extra_mergeable_params=get_packager_extra_mergeable_params(
+                        packager_cls
+                    ),
+                )
                 built_statements.append(
                     BuiltStatement(statement, statement_path, statement_type)
                 )
 
     console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
-
-    with tempfile.TemporaryDirectory() as td, limits_info.use_profile(
-        packager_cls.name()
+    with (
+        tempfile.TemporaryDirectory() as td,
+        limits_info.use_profile(packager_cls.name()),
     ):
         result_path = packager.package(
             package.get_build_path(), pathlib.Path(td), built_statements

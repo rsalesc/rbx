@@ -113,7 +113,7 @@ def test_inject_externalization_for_tikz():
     s = str(soup)
     assert r'\usepackage{tikz}' in s
     assert r'\usetikzlibrary{external}' in s
-    assert r'\tikzexternalize[prefix=]' in s
+    assert r'\tikzexternalize[prefix=artifacts/tikz_figures/]' in s
 
 
 def test_get_top_level_tikz_nodes_flat():
