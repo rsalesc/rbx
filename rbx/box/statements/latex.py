@@ -47,7 +47,13 @@ class Latex:
 
         temp_path = pathlib.Path('statement.tex')
         output_path = temp_path.with_suffix('.pdf')
-        args = ['pdflatex', '-interaction', 'nonstopmode', str(temp_path)]
+        args = [
+            'pdflatex',
+            '-shell-escape',
+            '-interaction',
+            'nonstopmode',
+            str(temp_path),
+        ]
 
         (temp_dir / temp_path).write_text(self.latex)
 

@@ -3659,6 +3659,18 @@ markdown = ">=3"
 mkdocs = ["mkdocs (>=1.4)"]
 
 [[package]]
+name = "texsoup"
+version = "0.3.1"
+description = "parses valid LaTeX and provides variety of Beautiful-Soup-esque methods and Pythonic idioms for iterating over and searching the parse tree"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "TexSoup-0.3.1-py3-none-any.whl", hash = "sha256:ae8f08d17f86a905b7c2ce01c9f2da613fbca0bcea78c71d727719e896045bed"},
+    {file = "TexSoup-0.3.1.tar.gz", hash = "sha256:3f6b2ad0abe3688a6656f544c1ba04d0eb25f423f8c377b7369f9ce061ddb70b"},
+]
+
+[[package]]
 name = "textual"
 version = "3.1.1"
 description = "Modern Text User Interface framework"
@@ -4182,4 +4194,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.1"
-content-hash = "6a7b74030fe26e06c944d17148e55ace901bfcb6e49756a4b8ecb08e431fa60c"
+content-hash = "45e9e84e93fd4bceceec4dcbc4631330301b6b0c5357dae41d0569f351227f2f"

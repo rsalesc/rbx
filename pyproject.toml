@@ -58,6 +58,7 @@ simpleeval = "^1.0.3"
 uvicorn = "^0.35.0"
 openai-agents = "^0.3.0"
 packaging = "^25.0"
+texsoup = "^0.3.1"
 
 [tool.poetry.scripts]
 rbx = "rbx.box.main:app"
