@@ -262,6 +262,11 @@ def get_build_testgroup_path(
 
 
 @functools.cache
+def get_statements_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    return get_build_path(root) / 'statements'
+
+
+@functools.cache
 def get_generator_or_nil(
     name: str, root: pathlib.Path = pathlib.Path()
 ) -> Optional[Generator]:

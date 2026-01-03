@@ -1,5 +1,5 @@
 import pathlib
-import tempfile
+import shutil
 import typing
 from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple
 
@@ -21,6 +21,7 @@ from rbx.box.statements.builders import (
     StatementBuilderProblem,
     StatementCodeLanguage,
     StatementSample,
+    TeX2PDFBuilder,
     prepare_assets,
 )
 from rbx.box.statements.schema import (
@@ -29,6 +30,7 @@ from rbx.box.statements.schema import (
     Statement,
     StatementType,
 )
+from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
 from rbx.box.testcase_utils import get_samples
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -167,6 +169,33 @@ def _get_overridden_configuration_list(
     return merge_conversion_configurations(configure + list(overridden_params.values()))
 
 
+def _get_statement_dir(
+    statement: Statement, builder_name: Optional[str] = None
+) -> pathlib.Path:
+    dir = package.get_statements_build_path() / statement.name
+    if builder_name is not None:
+        dir = dir / builder_name
+    dir.mkdir(exist_ok=True, parents=True)
+    return dir
+
+
+def _clean_statement_dir(statement: Statement):
+    dir = _get_statement_dir(statement)
+    shutil.rmtree(dir, ignore_errors=True)
+
+
+def get_produced_tikz_pdfs(
+    statement: Statement,
+) -> Iterable[Tuple[pathlib.Path, pathlib.Path]]:
+    dir = _get_statement_dir(statement, builder_name=TeX2PDFBuilder.name())
+    pdfs = (dir / EXTERNALIZATION_DIR).glob('**/*.pdf')
+
+    for pdf_path in pdfs:
+        concat_path = dir / pdf_path
+        relative_path = pdf_path.relative_to(dir)
+        yield concat_path, relative_path
+
+
 def get_builders(
     statement_id: str,
     steps: List[ConversionStep],
@@ -240,59 +269,57 @@ def build_statement_bytes(
     )
     last_output = statement.type
     last_content = statement.path.read_bytes()
+    _clean_statement_dir(statement)
     for bdr, params in builders:
-        with tempfile.TemporaryDirectory() as td:
-            # Here, create a new temp context for each builder call.
-            assets = statement_utils.get_relative_assets(
-                statement.path, statement.assets
+        builder_dir = _get_statement_dir(statement, bdr.name())
+        assets = statement_utils.get_relative_assets(statement.path, statement.assets)
+
+        context_params = params
+        injection_root = pathlib.Path()
+        if bdr.name() in overridden_params:
+            context_params = merge_conversion_steps(
+                params, overridden_params[bdr.name()]
             )
+            injection_root = overridden_params_root
 
-            context_params = params
-            injection_root = pathlib.Path()
-            if bdr.name() in overridden_params:
-                context_params = merge_conversion_steps(
-                    params, overridden_params[bdr.name()]
-                )
-                injection_root = overridden_params_root
+        # Use either overridden assets (by contest) or usual assets.
+        # Remember to modify the root to contest root if that's the case.
+        assets.extend(bdr.inject_assets(injection_root, context_params))
+        assets.extend(overridden_assets)
 
-            # Use either overridden assets (by contest) or usual assets.
-            # Remember to modify the root to contest root if that's the case.
-            assets.extend(bdr.inject_assets(injection_root, context_params))
-            assets.extend(overridden_assets)
-
-            prepare_assets(assets, pathlib.Path(td))
-            output = bdr.build(
-                input=last_content,
-                context=StatementBuilderContext(
-                    lang=statement.language,
-                    languages=get_environment_languages_for_statement(),
-                    params=context_params,
-                    root=pathlib.Path(td),
-                    contest=statement_overriding.get_statement_builder_contest_for_problem(
-                        language=statement.language,
-                        inherited_from=inherited_from,
-                        # Do not override contest-level vars.
-                    ),
+        prepare_assets(assets, pathlib.Path(builder_dir))
+        output = bdr.build(
+            input=last_content,
+            context=StatementBuilderContext(
+                lang=statement.language,
+                languages=get_environment_languages_for_statement(),
+                params=context_params,
+                root=pathlib.Path(builder_dir),
+                contest=statement_overriding.get_statement_builder_contest_for_problem(
+                    language=statement.language,
+                    inherited_from=inherited_from,
+                    # Do not override contest-level vars.
                 ),
-                item=StatementBuilderProblem(
-                    limits=limits_info.get_limits_profile(
-                        profile=limits_info.get_active_profile()
-                    ),
-                    package=pkg,
-                    statement=statement,
-                    samples=StatementSample.from_testcases(
-                        get_samples() if use_samples else [],
-                        explanation_suffix='.tex',
-                    ),
-                    short_name=short_name,
-                    vars={
-                        **pkg.expanded_vars,
-                        **statement.expanded_vars,
-                        **(custom_vars or {}),
-                    },
+            ),
+            item=StatementBuilderProblem(
+                limits=limits_info.get_limits_profile(
+                    profile=limits_info.get_active_profile()
                 ),
-                verbose=False,
-            )
+                package=pkg,
+                statement=statement,
+                samples=StatementSample.from_testcases(
+                    get_samples() if use_samples else [],
+                    explanation_suffix='.tex',
+                ),
+                short_name=short_name,
+                vars={
+                    **pkg.expanded_vars,
+                    **statement.expanded_vars,
+                    **(custom_vars or {}),
+                },
+            ),
+            verbose=False,
+        )
         last_output = bdr.output_type()
         last_content = output
 

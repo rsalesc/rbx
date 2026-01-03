@@ -59,10 +59,10 @@ def inject_in_preamble(soup: TexNode, latex_code: str):
 
 
 def inject_externalization_for_tikz(soup: TexNode):
-    preamble_injection = r"""
-\usepackage{tikz}
-\usetikzlibrary{external}
-\tikzexternalize[prefix=artifacts/tikz_figures/]
+    preamble_injection = f"""
+\\usepackage{{tikz}}
+\\usetikzlibrary{{external}}
+\\tikzexternalize[prefix={EXTERNALIZATION_DIR}]
 """
     inject_in_preamble(soup, preamble_injection)
 
@@ -93,7 +93,7 @@ def get_top_level_tikz_nodes(soup: TexNode) -> List[TexNode]:
     return top_level
 
 
-def get_tikz_node_label(tikz_node: TexNode) -> Optional[str]:
+def get_tikz_node_label(tikz_node: TexNode) -> Optional[Tuple[TexNode, str]]:
     parent = tikz_node.parent
     if not parent:
         return None
@@ -131,6 +131,8 @@ def get_tikz_node_label(tikz_node: TexNode) -> Optional[str]:
             text = str(sibling)
             if not text.strip():
                 continue  # Skip whitespace
+            elif text.strip().startswith('%'):
+                continue  # Skip comments
             else:
                 # Found non-whitespace text, stop searching
                 return None
@@ -141,7 +143,7 @@ def get_tikz_node_label(tikz_node: TexNode) -> Optional[str]:
             # Found the label!
             if sibling.args and len(sibling.args) > 0:
                 arg = sibling.args[0]
-                return arg.string
+                return sibling, arg.string
             return None
 
         # If it's something else (another command or environment), we stop
@@ -150,7 +152,9 @@ def get_tikz_node_label(tikz_node: TexNode) -> Optional[str]:
     return None
 
 
-def get_top_level_labeled_tikz_nodes(soup: TexNode) -> List[Tuple[TexNode, str]]:
+def get_top_level_labeled_tikz_nodes(
+    soup: TexNode,
+) -> List[Tuple[TexNode, TexNode, str]]:
     """
     Returns a list of tikzpicture nodes that are NOT nested inside other tikzpictures.
     We only want to externalize the outermost container.
@@ -161,7 +165,7 @@ def get_top_level_labeled_tikz_nodes(soup: TexNode) -> List[Tuple[TexNode, str]]
     for node in top_level_tikz:
         label = get_tikz_node_label(node)
         if label:
-            labeled_tikz.append((node, label))
+            labeled_tikz.append((node, label[0], label[1]))
     return labeled_tikz
 
 
@@ -169,6 +173,11 @@ def add_labels_to_tikz_nodes(soup: TexNode, prefix: str = 'figure'):
     top_level_tikz = get_top_level_tikz_nodes(soup)
 
     for i, node in enumerate(top_level_tikz):
+        # Skip if already labeled
+        label = get_tikz_node_label(node)
+        if label:
+            continue
+
         fig_name = f'{prefix}_{i}'
         cmd_str = f'\\tikzsetnextfilename{{{fig_name}}}'
         replacement_block = f'{cmd_str}\n{str(node)}'
@@ -176,3 +185,18 @@ def add_labels_to_tikz_nodes(soup: TexNode, prefix: str = 'figure'):
         # Parse and replace
         # *TexSoup(...).contents unpacks the list of nodes from the new soup
         node.replace_with(*TexSoup(replacement_block).contents)
+
+
+def replace_labeled_tikz_nodes(
+    soup: TexNode, prefix: str = EXTERNALIZATION_DIR, center: bool = True
+):
+    labeled_tikz = get_top_level_labeled_tikz_nodes(soup)
+
+    for tikz_node, label_node, label in labeled_tikz:
+        fig_name = f'{prefix}{label}'
+
+        cmd_str = f'\\includegraphics{{{fig_name}}}'
+        if center:
+            cmd_str = f'\\begin{{center}}{cmd_str}\\end{{center}}'
+        label_node.delete()
+        tikz_node.replace_with(*TexSoup(cmd_str).contents)

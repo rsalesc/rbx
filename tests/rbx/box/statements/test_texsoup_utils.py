@@ -16,7 +16,7 @@ def test_get_tikz_node_label_immediately_preceding():
 \end{tikzpicture}"""
     soup = TexSoup(latex)
     tikz = soup.find('tikzpicture')
-    assert get_tikz_node_label(tikz) == 'my-label'
+    assert get_tikz_node_label(tikz)[1] == 'my-label'
 
 
 def test_get_tikz_node_label_with_newlines():
@@ -27,7 +27,7 @@ def test_get_tikz_node_label_with_newlines():
 \end{tikzpicture}"""
     soup = TexSoup(latex)
     tikz = soup.find('tikzpicture')
-    assert get_tikz_node_label(tikz) == 'spaced-label'
+    assert get_tikz_node_label(tikz)[1] == 'spaced-label'
 
 
 def test_get_tikz_node_label_none():
@@ -59,6 +59,16 @@ def test_get_tikz_node_label_interrupted_by_command():
     assert get_tikz_node_label(tikz) is None
 
 
+def test_get_tikz_node_label_with_comment():
+    latex = r"""\tikzsetnextfilename{commented}
+% This is a comment
+\begin{tikzpicture}
+\end{tikzpicture}"""
+    soup = TexSoup(latex)
+    tikz = soup.find('tikzpicture')
+    assert get_tikz_node_label(tikz)[1] == 'commented'
+
+
 def test_get_tikz_node_label_multiple():
     latex = r"""\tikzsetnextfilename{first}
 \begin{tikzpicture}
@@ -70,8 +80,8 @@ def test_get_tikz_node_label_multiple():
     soup = TexSoup(latex)
     tikzs = list(soup.find_all('tikzpicture'))
     assert len(tikzs) == 2
-    assert get_tikz_node_label(tikzs[0]) == 'first'
-    assert get_tikz_node_label(tikzs[1]) == 'second'
+    assert get_tikz_node_label(tikzs[0])[1] == 'first'
+    assert get_tikz_node_label(tikzs[1])[1] == 'second'
 
 
 def test_inject_in_preamble_with_documentclass():
@@ -159,9 +169,9 @@ C
     soup = TexSoup(latex)
     labeled = get_top_level_labeled_tikz_nodes(soup)
     assert len(labeled) == 2
-    assert labeled[0][1] == 'fig1'
+    assert labeled[0][2] == 'fig1'
     assert 'A' in str(labeled[0][0])
-    assert labeled[1][1] == 'fig2'
+    assert labeled[1][2] == 'fig2'
     assert 'C' in str(labeled[1][0])
 
 
@@ -180,10 +190,14 @@ B
     assert r'\tikzsetnextfilename{testfig_1}' in s
 
     # Verify we can find them now
+    # Re-parsing is needed here as well if we were to rely on parent pointers heavily,
+    # but strictly searching might work if TexSoup updated contents internally.
+    # To be safe and consistent with integration tests:
+    soup = TexSoup(str(soup))
     labeled = get_top_level_labeled_tikz_nodes(soup)
     assert len(labeled) == 2
-    assert labeled[0][1] == 'testfig_0'
-    assert labeled[1][1] == 'testfig_1'
+    assert labeled[0][2] == 'testfig_0'
+    assert labeled[1][2] == 'testfig_1'
 
 
 def test_add_labels_to_tikz_nodes_mixed():
@@ -196,9 +210,92 @@ A
 
     s = str(soup)
     assert r'\tikzsetnextfilename{existing}' in s
-    assert r'\tikzsetnextfilename{new_0}' in s
+
+    # Existing ones are skipped, so no new labels should be added for node 0
+    # But wait, the test input has only ONE node, which is already labeled.
+    # So add_labels should do nothing.
+    assert r'\tikzsetnextfilename{new_0}' not in s
 
     tikzs = list(soup.find_all('tikzpicture'))
     assert len(tikzs) == 1
-    # The closest one should be new_0
-    assert get_tikz_node_label(tikzs[0]) == 'new_0'
+    assert get_tikz_node_label(tikzs[0])[1] == 'existing'
+
+
+def test_add_labels_and_replace():
+    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+
+    latex = r"""\begin{tikzpicture}
+A
+\end{tikzpicture}
+Text
+\begin{tikzpicture}
+B
+\end{tikzpicture}"""
+    soup = TexSoup(latex)
+
+    # 1. Add labels
+    add_labels_to_tikz_nodes(soup, prefix='fig')
+
+    # Workaround: Re-parse to fix tree integrity
+    soup = TexSoup(str(soup))
+
+    # 2. Replace labeled nodes
+    replace_labeled_tikz_nodes(soup, prefix='img/', center=True)
+
+    s = str(soup)
+    assert r'\tikzsetnextfilename' not in s
+    assert r'\begin{tikzpicture}' not in s
+    assert r'\end{tikzpicture}' not in s
+
+    # Check for replacements
+    assert r'\begin{center}\includegraphics{img/fig_0}\end{center}' in s
+    assert r'\begin{center}\includegraphics{img/fig_1}\end{center}' in s
+
+
+def test_add_labels_and_replace_mixed():
+    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+
+    latex = r"""\tikzsetnextfilename{manual}
+\begin{tikzpicture}
+Manual
+\end{tikzpicture}
+\begin{tikzpicture}
+Auto
+\end{tikzpicture}"""
+    soup = TexSoup(latex)
+
+    # 1. Add labels (should skip 'manual' and label 'Auto')
+    add_labels_to_tikz_nodes(soup, prefix='auto')
+
+    # Workaround: Re-parse
+    soup = TexSoup(str(soup))
+
+    # 2. Replace
+    replace_labeled_tikz_nodes(soup, prefix='out/', center=True)
+
+    s = str(soup)
+    assert r'\tikzsetnextfilename' not in s
+
+    # Manual should be preserved but replaced with its label
+    assert r'\begin{center}\includegraphics{out/manual}\end{center}' in s
+
+    # Auto should get new label
+    # Note: index is 1 because it's the second node in iteration
+    assert r'\begin{center}\includegraphics{out/auto_1}\end{center}' in s
+
+
+def test_add_labels_and_replace_no_center():
+    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+
+    latex = r"""\begin{tikzpicture}
+A
+\end{tikzpicture}"""
+    soup = TexSoup(latex)
+
+    add_labels_to_tikz_nodes(soup, prefix='nc')
+    soup = TexSoup(str(soup))
+    replace_labeled_tikz_nodes(soup, prefix='p/', center=False)
+
+    s = str(soup)
+    assert r'\begin{center}' not in s
+    assert r'\includegraphics{p/nc_0}' in s

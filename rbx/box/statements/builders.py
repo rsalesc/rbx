@@ -400,10 +400,31 @@ def externalize_explained_samples(
     return samples
 
 
+def substitute_externalized_blocks(blocks: Dict[Any, str]) -> Dict[Any, str]:
+    res = {}
+    for key in blocks:
+        tex_node = texsoup_utils.parse_latex(blocks[key])
+        texsoup_utils.replace_labeled_tikz_nodes(tex_node)
+        res[key] = str(tex_node)
+    return res
+
+
+def substitute_externalized_samples(
+    samples: List[ExplainedStatementSample],
+) -> List[ExplainedStatementSample]:
+    for sample in samples:
+        if sample.explanation is None:
+            continue
+        tex_node = texsoup_utils.parse_latex(sample.explanation)
+        texsoup_utils.replace_labeled_tikz_nodes(tex_node)
+        sample.explanation = str(tex_node)
+    return samples
+
+
 class StatementBuilder(ABC):
-    @abstractmethod
-    def name(self) -> ConversionType:
-        pass
+    @classmethod
+    def name(cls) -> ConversionType:
+        raise NotImplementedError
 
     @abstractmethod
     def default_params(self) -> ConversionStep:
@@ -440,7 +461,8 @@ class StatementBuilder(ABC):
 
 
 class JinjaTeXBuilder(StatementBuilder):
-    def name(self) -> ConversionType:
+    @classmethod
+    def name(cls) -> ConversionType:
         return ConversionType.JinjaTeX
 
     def default_params(self) -> ConversionStep:
@@ -468,7 +490,8 @@ class JinjaTeXBuilder(StatementBuilder):
 
 
 class rbxTeXBuilder(StatementBuilder):
-    def name(self) -> ConversionType:
+    @classmethod
+    def name(cls) -> ConversionType:
         return ConversionType.rbxToTex
 
     def default_params(self) -> ConversionStep:
@@ -518,7 +541,8 @@ class rbxTeXBuilder(StatementBuilder):
 
 
 class rbxMarkdownToTeXBuilder(StatementBuilder):
-    def name(self) -> ConversionType:
+    @classmethod
+    def name(cls) -> ConversionType:
         return ConversionType.rbxMarkdownToTeX
 
     def default_params(self) -> ConversionStep:
@@ -551,7 +575,8 @@ class rbxMarkdownToTeXBuilder(StatementBuilder):
 
 
 class TeX2PDFBuilder(StatementBuilder):
-    def name(self) -> ConversionType:
+    @classmethod
+    def name(cls) -> ConversionType:
         return ConversionType.TexToPDF
 
     def default_params(self) -> ConversionStep:

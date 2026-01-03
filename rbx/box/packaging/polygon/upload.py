@@ -21,12 +21,15 @@ from rbx.box.schema import (
     TaskType,
     Testcase,
 )
+from rbx.box.statements import texsoup_utils
+from rbx.box.statements.build_statements import get_produced_tikz_pdfs
 from rbx.box.statements.builders import (
     ExplainedStatementSample,
     StatementBlocks,
     StatementBuilderProblem,
     StatementSample,
     render_jinja_blocks,
+    substitute_externalized_blocks,
 )
 from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.statements.statement_utils import get_relative_assets
@@ -407,25 +410,12 @@ def _get_explanations(explanations: Dict[int, str]) -> str:
     return '\n\n'.join(entries)
 
 
-def _get_notes_with_explanations(
-    blocks: StatementBlocks, samples: List[StatementSample]
-) -> Optional[str]:
-    notes = blocks.blocks.get('notes')
-    explanations = ExplainedStatementSample.samples_to_explanations(
-        samples, blocks.explanations
-    )
-    if notes is None and not explanations:
-        return None
-    if notes is None:
-        return _get_explanations(explanations)
-    return notes + '\n\n' + _get_explanations(explanations)
-
-
 def _upload_statement_resources(
     problem: api.Problem, statement: Statement
 ) -> Dict[str, str]:
     res: Dict[str, str] = {}
     assets = get_relative_assets(statement.path, statement.assets)
+    assets.extend(get_produced_tikz_pdfs(statement))
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
         for asset, relative_asset in assets:
@@ -515,6 +505,14 @@ def _upload_statement(
         blocks = _get_statement_blocks(statement)
         resources = _upload_statement_resources(problem, statement)
 
+        def _replace_labeled_tikz(block: str, prefix: str) -> str:
+            tex_node = texsoup_utils.parse_latex(block)
+            texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=prefix)
+            # Re-parse to fix tree integrity.
+            tex_node = texsoup_utils.parse_latex(str(tex_node))
+            texsoup_utils.replace_labeled_tikz_nodes(tex_node)
+            return str(tex_node)
+
         def _replace_resources(block: str, resources=resources) -> str:
             for key, value in resources.items():
                 block = block.replace(key, value)
@@ -522,7 +520,24 @@ def _upload_statement(
 
         def _get_block(block_name: str, blocks=blocks, resources=resources) -> str:
             block = blocks.blocks.get(block_name) or ''
+            block = _replace_labeled_tikz(block, block_name)
             return _replace_resources(block, resources)
+
+        def _get_notes_with_explanations(
+            samples: List[StatementSample],
+            blocks=blocks,
+        ) -> Optional[str]:
+            notes = _get_block('notes')
+            explanations = ExplainedStatementSample.samples_to_explanations(
+                samples, blocks.explanations, externalize=True
+            )
+            explanations: Dict[int, str] = substitute_externalized_blocks(explanations)
+            if notes is None and not explanations:
+                return None
+            res = _replace_resources(_get_explanations(explanations))
+            if notes is not None:
+                res = notes + '\n\n' + res
+            return res
 
         polygon_statement = api.Statement(
             encoding='utf-8',
@@ -533,9 +548,7 @@ def _upload_statement(
             interaction=_get_block('interaction')
             if pkg.type == TaskType.COMMUNICATION
             else None,
-            notes=_replace_resources(
-                _get_notes_with_explanations(blocks, _get_samples()) or ''
-            ),
+            notes=_get_notes_with_explanations(_get_samples()) or '',
         )
         problem.save_statement(
             lang=uploaded_language,
