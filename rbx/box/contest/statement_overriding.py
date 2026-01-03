@@ -75,7 +75,7 @@ def get_inheritance_overrides(statement: Statement) -> StatementOverrideData:
             return statement.language == contest_statement.language
         return statement.name == contest_statement.match
 
-    for contest_statement in contest.statements:
+    for contest_statement in contest.expanded_statements:
         if matches(contest_statement):
             return get_overrides(contest_statement, inherit=True)
 
