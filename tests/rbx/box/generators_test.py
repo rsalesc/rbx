@@ -488,3 +488,45 @@ async def test_generate_standalone_reuses_validators_digests_cache(
         validators_digests=all_validators,
     )
     assert calls == []
+
+
+async def test_generator_hash_duplicate_warning(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    # This generator ignores arguments and always outputs "123"
+    testing_pkg.add_generator('gens/gen.cpp').write_text(
+        '#include <bits/stdc++.h>\nusing namespace std;\nint main() { cout << 123 << endl; }'
+    )
+    testing_pkg.add_testgroup_from_plan(
+        'main',
+        """
+gens/gen.cpp 1
+gens/gen.cpp 2
+""",
+    )
+    await generate_testcases()
+
+    from rbx.utils import strip_ansi_codes
+
+    out = strip_ansi_codes(capsys.readouterr().out)
+    assert 'Test main/1 is a hash duplicate of main/0.' in out
+
+
+async def test_generator_no_hash_duplicate_warning(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    # This generator outputs its argument
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan(
+        'main',
+        """
+gens/gen.cpp 1
+gens/gen.cpp 2
+""",
+    )
+    await generate_testcases()
+
+    out = capsys.readouterr().out
+    assert 'is a hash duplicate of' not in out
