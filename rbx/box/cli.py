@@ -777,6 +777,12 @@ async def stress(
             help='Whether to use 2*TL as the timelimit for the stress test.',
         ),
     ] = False,
+    find_slowest: bool = typer.Option(
+        False,
+        '--slowest',
+        help='Whether to find the slowest testcases. This removes the time limit of the solution '
+        'executions and focus on finding the testcases that make them the slowest.',
+    ),
 ):
     if finder and not generator_args or generator_args and not finder:
         console.console.print(
@@ -811,6 +817,7 @@ async def stress(
             print_descriptors=print_descriptors,
             skip_invalid_testcases=skip_invalid_testcases,
             limits=limits,
+            find_slowest=find_slowest,
         )
 
     stresses.print_stress_report(report)

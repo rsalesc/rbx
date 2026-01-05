@@ -308,8 +308,10 @@ class FinderTreeRunner(lark.Transformer):
     def __init__(
         self,
         runner: Callable[[FinderCall], FinderResult],
+        eval_only_outcome: ExpectedOutcome = ExpectedOutcome.INCORRECT,
     ):
         self.run_fn = runner
+        self.eval_only_outcome = eval_only_outcome
 
     def solution(self, token: lark.Token) -> str:
         return _get_solution_from_token(token)
@@ -383,7 +385,7 @@ class FinderTreeRunner(lark.Transformer):
 
     def eval_only(self, eval_result: FinderResult) -> FinderOutcome:
         return self.matching(
-            eval_result, is_positive=True, expected_outcome=ExpectedOutcome.INCORRECT
+            eval_result, is_positive=True, expected_outcome=self.eval_only_outcome
         )
 
     def negation(self, value: FinderOutcome) -> FinderOutcome:

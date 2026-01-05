@@ -1,3 +1,4 @@
+import heapq
 import pathlib
 import shutil
 import time
@@ -12,7 +13,7 @@ from pydantic import BaseModel
 from rbx import console, utils
 from rbx.box import checkers, generators, package, tasks, validators
 from rbx.box.code import SanitizationLevel, compile_item
-from rbx.box.formatting import href
+from rbx.box.formatting import get_formatted_time, href
 from rbx.box.generators import (
     GenerationError,
     GenerationMetadata,
@@ -20,7 +21,14 @@ from rbx.box.generators import (
     expand_generator_call,
     generate_standalone,
 )
-from rbx.box.schema import Checker, GeneratorCall, Stress, TaskType, Testcase
+from rbx.box.schema import (
+    Checker,
+    ExpectedOutcome,
+    GeneratorCall,
+    Stress,
+    TaskType,
+    Testcase,
+)
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
 from rbx.box.stressing import finder_parser
 from rbx.grading.steps import (
@@ -32,6 +40,7 @@ from rbx.utils import StatusProgress
 
 class StressFinding(BaseModel):
     generator: GeneratorCall
+    duration: Optional[int] = None
 
 
 class StressReport(BaseModel):
@@ -51,6 +60,34 @@ def _compile_finder(finder: Checker) -> str:
     return digest
 
 
+def _renumber_slowest_findings(
+    findings_dir: pathlib.Path, slowest_findings: List
+) -> None:
+    temp_dir = findings_dir.parent / '.temp_findings'
+    rmtree(str(temp_dir), ignore_errors=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move all candidates to temp directory
+    for _, _, old_file_index, _ in slowest_findings:
+        old_path = findings_dir / f'{old_file_index}.in'
+        temp_path = temp_dir / f'{old_file_index}.in'
+        if old_path.exists():
+            shutil.move(str(old_path), str(temp_path))
+
+    # Clean findings directory to avoid leftovers
+    rmtree(str(findings_dir), ignore_errors=True)
+    findings_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move back with new numbering
+    for i, (_, _, old_file_index, _) in enumerate(slowest_findings):
+        temp_path = temp_dir / f'{old_file_index}.in'
+        new_path = findings_dir / f'{i}.in'
+        if temp_path.exists():
+            shutil.move(str(temp_path), str(new_path))
+
+    rmtree(str(temp_dir), ignore_errors=True)
+
+
 async def run_stress(
     timeout_in_seconds: int,
     name: Optional[str] = None,
@@ -63,6 +100,7 @@ async def run_stress(
     print_descriptors: bool = False,
     skip_invalid_testcases: bool = False,
     limits: Optional[tasks.Limits] = None,
+    find_slowest: bool = False,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
 
@@ -105,6 +143,9 @@ async def run_stress(
     solutions = finder_parser.get_all_solution_items(parsed_finder)
     finders = finder_parser.get_all_checker_items(parsed_finder)
     needs_expected_output = finder_parser.needs_expected_output(parsed_finder)
+    eval_only_outcome = (
+        ExpectedOutcome.ANY if find_slowest else ExpectedOutcome.INCORRECT
+    )
 
     solution_indices = {str(solution.path): i for i, solution in enumerate(solutions)}
     solutions_digest = compile_solutions(
@@ -127,7 +168,13 @@ async def run_stress(
         all_validators, progress=progress
     )
 
+    # Use limits if we are not in find_slowest mode or if we have double TL explicitly
+    # specified.
+    use_timelimit = not find_slowest or (limits is not None and limits.isDoubleTL)
+
     if limits is not None:
+        if not use_timelimit:
+            limits.time = None
         console.console.print(
             '[bright_white]Running stress tests with the following limits:[/bright_white]'
         )
@@ -149,10 +196,21 @@ async def run_stress(
     only_call: Optional[str] = None
     has_diff_call = False
     duplicate_call_error = False
+    finding_counter = 0
+
+    # Min-heap to store the top `findings_limit` slowest findings.
+    # Elements are (duration, executed_index, file_index, generator_call)
+    # We use executed_index as tie breaker (prefer newer distinct findings mostly for determinism)
+    slowest_findings = []
 
     try:
-        while len(findings) < findings_limit:
+        while True:
+            # Check for timeout first
             if time.monotonic() - startTime > timeout_in_seconds:
+                break
+
+            # If not in find_slowest mode, check if we reached the limit
+            if not find_slowest and len(findings) >= findings_limit:
                 break
 
             if print_descriptors:
@@ -229,6 +287,7 @@ async def run_stress(
                     filestem=f'{index}',
                     is_stress=True,
                     limits_override=limits,
+                    use_timelimit=use_timelimit,
                 )
 
             # Get main solution output.
@@ -291,7 +350,9 @@ async def run_stress(
                 # Wrap the runner in a syncer.sync to make it work with the finder parser.
                 return await run_solution_and_checker_fn(*args, **kwargs)  # pyright: ignore[reportGeneralTypeIssues]
 
-            runner = finder_parser.FinderTreeRunner(runner=run_fn)
+            runner = finder_parser.FinderTreeRunner(
+                runner=run_fn, eval_only_outcome=eval_only_outcome
+            )
             finder_outcome: finder_parser.FinderOutcome = runner.transform(
                 parsed_finder
             )
@@ -319,16 +380,63 @@ async def run_stress(
             if not finder_outcome.truth_value:
                 continue
 
+            # Calculate max duration for this finding
+            max_duration = 0
+            for finder_result in finder_outcome.results:
+                if finder_result.solution_log and finder_result.solution_log.time:
+                    max_duration = max(
+                        max_duration, int(finder_result.solution_log.time * 1000)
+                    )
+
+            if find_slowest:
+                if len(slowest_findings) >= findings_limit:
+                    if max_duration <= slowest_findings[0][0]:
+                        # Faster than the fastest of our slow tests, skip it.
+                        continue
+
             findings_dir = stress_dir / 'findings'
             findings_dir.mkdir(parents=True, exist_ok=True)
-            finding_index = len(findings)
 
-            finding_path = findings_dir / f'{finding_index}.in'
+            # Use 'finding_counter' as file index to ensure uniqueness over time.
+            # We will relabel them at the end.
+            finding_file_index = finding_counter
+            finding_counter += 1
+
+            finding_path = findings_dir / f'{finding_file_index}.in'
             finding_path.write_bytes(input_path.read_bytes())
 
+            if find_slowest:
+                heap_item = (
+                    max_duration,
+                    executed,
+                    finding_file_index,
+                    expanded_generator_call,
+                )
+                if len(slowest_findings) < findings_limit:
+                    heapq.heappush(slowest_findings, heap_item)
+                else:
+                    removed_item = heapq.heappushpop(slowest_findings, heap_item)
+                    # Remove the file associated with the removed item
+                    removed_file_index = removed_item[2]
+                    (findings_dir / f'{removed_file_index}.in').unlink(missing_ok=True)
+
+            if not find_slowest:
+                findings.append(
+                    StressFinding(
+                        generator=expanded_generator_call,  # pyright: ignore
+                        duration=max_duration,
+                    )
+                )
+
             if progress:
+                status_header = '[error]FINDING[/error]'
+                if find_slowest:
+                    status_header = (
+                        f'[error]CANDIDATE ({get_formatted_time(max_duration)})[/error]'
+                    )
+
                 console.console.print(
-                    f'[error]FINDING[/error] Generator args are "[status]{expanded_generator_call.name} {expanded_generator_call.args}[/status]"'
+                    f'{status_header} Generator args are "[status]{expanded_generator_call.name} {expanded_generator_call.args}[/status]"'  # pyright: ignore
                 )
                 seen_finder_results = set()
                 for finder_result in finder_outcome.results:
@@ -344,16 +452,27 @@ async def run_stress(
                         )
                     console.console.print(finder_result_report_line)
 
-            findings.append(
-                StressFinding(
-                    generator=expanded_generator_call,
-                )
-            )
-
             # Be cooperative.
             time.sleep(0.001)
+
     except KeyboardInterrupt:
         pass
+
+    if find_slowest and slowest_findings:
+        # Sort by duration descending
+        slowest_findings.sort(key=lambda x: x[0], reverse=True)
+
+        findings_dir = stress_dir / 'findings'
+        findings_dir.mkdir(parents=True, exist_ok=True)
+        _renumber_slowest_findings(findings_dir, slowest_findings)
+
+        for duration, _, _, generator_call in slowest_findings:
+            findings.append(
+                StressFinding(
+                    generator=generator_call,  # pyright: ignore
+                    duration=duration,
+                )
+            )
 
     return StressReport(findings=findings, executed=executed, skipped=skipped)
 
@@ -374,6 +493,10 @@ def print_stress_report(report: StressReport):
 
     for i, finding in enumerate(report.findings):
         console.console.print(f'[error]Finding {i + 1}[/error]')
+        if finding.duration is not None:
+            console.console.print(
+                f'Execution time: [item]{get_formatted_time(finding.duration)}[/item]'
+            )
         console.console.print(
             f'Generator: [status]{finding.generator.name} {finding.generator.args}[/status]'
         )
