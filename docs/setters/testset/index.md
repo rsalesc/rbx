@@ -222,7 +222,7 @@ In some cases, though, it's useful to specify a different output than the one ge
 Think of cases where there are multiple possible correct outputs, but the one given by the model solution
 reveals too much about the intended solution.
 
-In these cases, you can create a `.out` file in the very same path (and with the very same name) as the `.in` files
+In these cases, you can create a `.ans` file in the very same path (and with the very same name) as the `.in` files
 you've manually defined. You can only create manually crafted outputs for testcases you've defined manually (with
 a testcase glob, for instance).
 
@@ -231,7 +231,7 @@ Let's look at the file tree above, and assume we have a testcase glob for sample
 ```
 - tests/
   - 01.in
-  - 01.out
+  - 01.ans
   - 02.in
 ```
 
