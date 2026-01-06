@@ -163,6 +163,9 @@ async def run_stress(
 
     generator_candidates = []
     if fuzz is not None:
+        # Fuzz tests should force skipping invalid testcases.
+        skip_invalid_testcases = True
+
         fuzz_groups_msg = 'all testgroups'
         fuzz_set = None
         if isinstance(fuzz, list):
