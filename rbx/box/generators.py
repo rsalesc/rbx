@@ -176,6 +176,11 @@ def _copy_testcase_outputs_over(
     ):
         has_copied = True
 
+    if _copy_testcase_output_over(
+        reference_path, dest.outputPath, '.interaction', dry_run=dry_run
+    ):
+        has_copied = True
+
     return has_copied
 
 

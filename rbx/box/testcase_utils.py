@@ -113,11 +113,13 @@ class TestcaseData(BaseModel):
 
 
 class TestcaseInteractionEntry(BaseModel):
+    __test__ = False
     data: str
     pipe: int
 
 
 class TestcaseInteraction(BaseModel):
+    __test__ = False
     entries: List[TestcaseInteractionEntry]
     prefixes: Tuple[str, str]
 
@@ -171,19 +173,25 @@ def fill_output_for_defined_testcase(testcase: Testcase) -> Testcase:
 
 
 class TestcaseInteractionParsingError(Exception):
+    __test__ = False
     pass
 
 
 def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     entries = []
     with file.open('r') as f:
-        try:
-            interactor_prefix = f.readline().strip()
-            solution_prefix = f.readline().strip()
-        except Exception:
-            raise TestcaseInteractionParsingError(
-                f'Failed to read interaction file {file}. Expected the first two lines to be the interactor and solution prefixes.'
-            ) from None
+        if file.suffix == '.interaction':
+            # Interaction files have a pretedetermined prefix.
+            interactor_prefix = '<'
+            solution_prefix = '>'
+        else:
+            try:
+                interactor_prefix = f.readline().strip()
+                solution_prefix = f.readline().strip()
+            except Exception:
+                raise TestcaseInteractionParsingError(
+                    f'Failed to read interaction file {file}. Expected the first two lines to be the interactor and solution prefixes.'
+                ) from None
 
         while line := f.readline().strip():
             if line.startswith(interactor_prefix):

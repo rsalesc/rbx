@@ -14,6 +14,7 @@ from rbx import console, utils
 from rbx.box import naming
 from rbx.box.fields import Primitive
 from rbx.box.schema import LimitsProfile, Package, Testcase
+from rbx.box.solutions import get_best_interaction_file
 from rbx.box.statements import texsoup_utils
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
@@ -100,7 +101,6 @@ class StatementSample(BaseModel):
 
         pin_path = input_path.with_suffix('.pin')
         pout_path = input_path.with_suffix('.pout')
-        pio_path = input_path.with_suffix('.pio')
 
         if pin_path.is_file():
             input_path = pin_path
@@ -108,9 +108,10 @@ class StatementSample(BaseModel):
             output_path = pout_path
 
         interaction = None
-        if pio_path.is_file():
+        interaction_path = get_best_interaction_file(input_path)
+        if interaction_path is not None:
             try:
-                interaction = parse_interaction(pio_path)
+                interaction = parse_interaction(interaction_path)
             except TestcaseInteractionParsingError as e:
                 console.console.print(
                     f'Error parsing interactive sample: [error]{e}[/error]'

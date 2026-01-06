@@ -235,6 +235,19 @@ Let's look at the file tree above, and assume we have a testcase glob for sample
   - 02.in
 ```
 
+#### What about interactive problems?
+
+For interactive problems, you can create a `.interaction` file in the very same path (and with the very same name) as the `.in` files you've manually defined.
+
+This file should contain the interaction between the solution and the interactor. Each line of interaction should start
+with either `<` or `>` to denote whether this was the output of the interactor or the output of the solution, respectively.
+
+```
+< this is an interactor line
+< followed by another line
+> this is the solution
+```
+
 ## Building the testset
 
 The command below can be used to build the testset.

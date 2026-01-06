@@ -290,11 +290,12 @@ class TestGetSamples:
     def test_get_samples(self, testing_pkg: testing_package.TestingPackage):
         """Test getting samples."""
         # Mock the package.get_testgroup call
-        with mock.patch(
-            'rbx.box.package.get_testgroup'
-        ) as mock_get_testgroup, mock.patch(
-            'rbx.box.testcase_utils.find_built_testcases'
-        ) as mock_find_testcases:
+        with (
+            mock.patch('rbx.box.package.get_testgroup') as mock_get_testgroup,
+            mock.patch(
+                'rbx.box.testcase_utils.find_built_testcases'
+            ) as mock_find_testcases,
+        ):
             mock_group = mock.Mock()
             mock_get_testgroup.return_value = mock_group
 
@@ -324,11 +325,12 @@ class TestGetSamples:
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test getting samples when output file doesn't exist."""
-        with mock.patch(
-            'rbx.box.package.get_testgroup'
-        ) as mock_get_testgroup, mock.patch(
-            'rbx.box.testcase_utils.find_built_testcases'
-        ) as mock_find_testcases:
+        with (
+            mock.patch('rbx.box.package.get_testgroup') as mock_get_testgroup,
+            mock.patch(
+                'rbx.box.testcase_utils.find_built_testcases'
+            ) as mock_find_testcases,
+        ):
             mock_group = mock.Mock()
             mock_get_testgroup.return_value = mock_group
 
@@ -427,6 +429,42 @@ class TestTestcaseInteractionParsing:
         assert interaction.entries[3].data == ' Good!'
         assert interaction.entries[3].pipe == 1
 
+    def test_parse_interaction_dot_interaction_extension(self, tmp_path_factory):
+        """Test parsing .interaction file with default associated prefixes."""
+        temp_dir = tmp_path_factory.mktemp('interaction')
+        interaction_file = temp_dir / 'test.interaction'
+
+        interaction_file.write_text('<Hello\n>Hi\n')
+
+        interaction = parse_interaction(interaction_file)
+
+        assert interaction.prefixes == ('<', '>')
+        assert len(interaction.entries) == 2
+        assert interaction.entries[1].data == 'Hi'
+
+    def test_parse_interaction_whitespace_handling(self, tmp_path_factory):
+        """Test whitespace handling in interaction parsing."""
+        temp_dir = tmp_path_factory.mktemp('interaction')
+        interaction_file = temp_dir / 'whitespace.txt'
+
+        interaction_file.write_text(
+            'I:\nS:\nI:    Leading spaces\nS: Trailing spaces    \nI: \tTab indented\n'
+        )
+
+        interaction = parse_interaction(interaction_file)
+
+        assert interaction.prefixes == ('I:', 'S:')
+        assert len(interaction.entries) == 3
+
+        # Leading spaces (indentation) should be preserved
+        assert interaction.entries[0].data == '    Leading spaces'
+
+        # Trailing spaces should be removed
+        assert interaction.entries[1].data == ' Trailing spaces'
+
+        # Tabs should be preserved
+        assert interaction.entries[2].data == ' \tTab indented'
+
     def test_parse_interaction_missing_prefixes(self, tmp_path_factory):
         """Test parsing interaction file with missing prefixes."""
         temp_dir = tmp_path_factory.mktemp('interaction')
@@ -447,7 +485,7 @@ class TestTestcaseInteractionParsing:
         interaction_file = temp_dir / 'invalid_line.txt'
 
         interaction_file.write_text(
-            'INTERACTOR:\n' 'SOLUTION:\n' 'INVALID: This line does not match prefixes\n'
+            'INTERACTOR:\nSOLUTION:\nINVALID: This line does not match prefixes\n'
         )
 
         with pytest.raises(TestcaseInteractionParsingError) as exc_info:
@@ -460,7 +498,7 @@ class TestTestcaseInteractionParsing:
         temp_dir = tmp_path_factory.mktemp('interaction')
         interaction_file = temp_dir / 'empty_content.txt'
 
-        interaction_file.write_text('INTERACTOR:\n' 'SOLUTION:\n')
+        interaction_file.write_text('INTERACTOR:\nSOLUTION:\n')
 
         interaction = parse_interaction(interaction_file)
 

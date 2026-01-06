@@ -21,6 +21,7 @@ from rbx.box.schema import (
     TaskType,
     Testcase,
 )
+from rbx.box.solutions import get_best_interaction_file
 from rbx.box.statements import texsoup_utils
 from rbx.box.statements.build_statements import get_produced_tikz_pdfs
 from rbx.box.statements.builders import (
@@ -206,10 +207,10 @@ def _get_test_params_for_statement(
     else:
         return res
 
-    pio_path = testcase.outputPath.with_suffix('.pio')
-    if pio_path.is_file():
+    interaction_path = get_best_interaction_file(testcase.outputPath)
+    if interaction_path is not None:
         try:
-            interaction = parse_interaction(pio_path)
+            interaction = parse_interaction(interaction_path)
         except TestcaseInteractionParsingError:
             pass
         else:
@@ -218,7 +219,7 @@ def _get_test_params_for_statement(
             )
             return res
 
-    # .pio does not exist or is not parseable, fallback to .pin and .pout.
+    # interaction file does not exist or is not parseable, fallback to .pin and .pout.
     pin_path = testcase.outputPath.with_suffix('.pin')
     if pin_path.is_file():
         res['test_input_for_statements'] = pin_path.read_text()

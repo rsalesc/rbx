@@ -469,11 +469,27 @@ def _produce_solution_items(
     return res
 
 
+def valid_interaction_suffixes() -> List[str]:
+    return ['.interaction', '.pio']
+
+
+def get_best_interaction_file(stdout_path: pathlib.Path) -> Optional[pathlib.Path]:
+    for suffix in valid_interaction_suffixes():
+        interaction_path = stdout_path.with_suffix(suffix)
+        if interaction_path.is_file():
+            return interaction_path
+    return None
+
+
+def get_all_interaction_files(stdout_path: pathlib.Path) -> List[pathlib.Path]:
+    return [stdout_path.with_suffix(suffix) for suffix in valid_interaction_suffixes()]
+
+
 def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = False):
     for output_file in output_files:
         if not output_file.is_file():
             continue
-        if output_file.suffix == '.pio':
+        if output_file.suffix in valid_interaction_suffixes():
             try:
                 print_interaction(parse_interaction(output_file))
             except TestcaseInteractionParsingError:
@@ -805,8 +821,7 @@ async def run_and_print_interactive_solutions(
         if print and stdout_path is not None:
             if pkg.type == TaskType.COMMUNICATION:
                 console.console.rule('Interaction', style='status')
-                output_files = [
-                    stdout_path.with_suffix('.pio'),
+                output_files = get_all_interaction_files(stdout_path) + [
                     stdout_path.with_suffix('.pout'),
                 ]
                 print_best_output(output_files, empty_warning=True)
@@ -822,9 +837,10 @@ async def run_and_print_interactive_solutions(
                 console.console.print(
                     f'[status]Output:[/status] {href(package.relpath(stdout_path))}'
                 )
-            if stdout_path.with_suffix('.pio').is_file():
+            interaction_path = get_best_interaction_file(stdout_path)
+            if interaction_path is not None:
                 console.console.print(
-                    f'[status]Interaction:[/status] {href(package.relpath(stdout_path.with_suffix(".pio")))}'
+                    f'[status]Interaction:[/status] {href(package.relpath(interaction_path))}'
                 )
             if eval.log.stderr_absolute_path is not None:
                 console.console.print(
