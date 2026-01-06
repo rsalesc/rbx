@@ -1,9 +1,11 @@
 import heapq
 import pathlib
+import random
+import secrets
 import shutil
 import time
 from shutil import rmtree
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import async_lru
 import syncer
@@ -31,7 +33,9 @@ from rbx.box.schema import (
 )
 from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
 from rbx.box.stressing import finder_parser
+from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.grading.steps import (
+    CompilationError,
     Evaluation,
     Outcome,
 )
@@ -101,41 +105,137 @@ async def run_stress(
     skip_invalid_testcases: bool = False,
     limits: Optional[tasks.Limits] = None,
     find_slowest: bool = False,
+    fuzz: Optional[Union[List[str], bool]] = None,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
 
+    if fuzz is not None and generator_call is not None:
+        console.console.print(
+            '[error]You cannot specify both a generator call (with [item]-g[/item]) and fuzzing (with [item]--fuzz[/item]).[/error]'
+        )
+        raise typer.Exit(1)
+
     if finder:
-        if generator_call is None:
+        if generator_call is None and fuzz is None:
             console.console.print(
-                '[error]Generator arguments are required for stress testing. Specify them through the [item]-g[/item] flag.[/error]'
+                '[error]Generator arguments are required for stress testing. Specify them through the [item]-g[/item] flag, or use [item]--fuzz[/item] to fuzz existing testgroups.[/error]'
             )
             raise typer.Exit(1)
-        generator = generators.get_call_from_string(generator_call)
-        stress = Stress(
-            name=f'{pathlib.Path(generator.name).stem}',
-            generator=generator,
-            finder=finder,
-        )
+
+        if generator_call:
+            generator = generators.get_call_from_string(generator_call)
+            stress = Stress(
+                name=f'{pathlib.Path(generator.name).stem}',
+                generator=generator,
+                finder=finder,
+            )
+        else:
+            # Placeholder stress object for fuzzing, will be populated in the loop
+            stress = Stress(
+                name='fuzz',
+                generator=GeneratorCall(name='fuzz'),
+                finder=finder,
+            )
     else:
-        if name is None:
+        if fuzz is not None:
+            # Implicit finder mode for fuzzing
+            # Default to checking against the main solution if available
+            if not pkg.solutions:
+                console.console.print(
+                    '[error]Fuzzing without a finder requires at least one solution to verify against.[/error]'
+                )
+                raise typer.Exit(1)
+
+            # If explicit main solution or just first solution
+            main_sol = pkg.solutions[0]
+            stress = Stress(
+                name='fuzz',
+                generator=GeneratorCall(name='fuzz'),
+                finder=str(main_sol.path),
+            )
+        elif name is None:
             console.console.print(
                 '[error]Invalid stress test paramaters. Either provide a stress test name, or provide a finder expression (-f) and generator arguments (-g).[/error]'
             )
             raise typer.Exit(1)
-        stress = package.get_stress(name)
+        else:
+            stress = package.get_stress(name)
+
+    generator_candidates = []
+    if fuzz is not None:
+        fuzz_groups_msg = 'all testgroups'
+        fuzz_set = None
+        if isinstance(fuzz, list):
+            fuzz_groups_msg = ', '.join(fuzz)
+            fuzz_set = set(fuzz)
+
+        console.console.print(f'[info]Fuzzing testgroups: {fuzz_groups_msg}[/info]')
+        # We need to extract potential generator calls from the specified groups
+        # We can't use async calls here easily before the loop if we want to keep structure simple,
+        # but extract_generation_testcases_from_groups is async.
+        # However, run_stress is async, so we can await it!
+
+        testcases = await extract_generation_testcases_from_groups(fuzz_set)
+        for tc in testcases:
+            if tc.metadata.generator_call:
+                generator_candidates.append(tc.metadata.generator_call)
+
+        if not generator_candidates:
+            console.console.print(
+                f'[error]No generator calls found in testgroups: {fuzz_groups_msg}[/error]'
+            )
+            raise typer.Exit(1)
+        console.console.print(
+            f'[info]Found {len(generator_candidates)} generator calls to fuzz.[/info]'
+        )
 
     call = stress.generator
-    generator = package.get_generator(call.name)
+    if fuzz is None:
+        generator = package.get_generator(call.name)
+        if progress:
+            progress.update('Compiling generator...')
+        try:
+            generator_digest = compile_item(
+                generator, sanitized=SanitizationLevel.PREFER
+            )
+        except:
+            console.console.print(
+                f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'
+            )
+            raise
+    else:
+        # For fuzzing, we might need multiple generators.
+        # But usually all generators in a package are compiled together or we can compile them on demand?
+        # compile_item creates a digest for a specific item.
+        # If we have multiple generators, we might switch between them.
+        # Ideally we should compile ALL generators used in candidates.
+        # For simplicity, let's compile the generator for the CHOSEN call in the loop if it changes,
+        # OR pre-compile all unique generators found.
 
-    if progress:
-        progress.update('Compiling generator...')
-    try:
-        generator_digest = compile_item(generator, sanitized=SanitizationLevel.PREFER)
-    except:
-        console.console.print(
-            f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'
-        )
-        raise
+        unique_generators = set(c.name for c in generator_candidates)
+        generator_digests = {}
+        if progress:
+            progress.update('Compiling generators for fuzzing...')
+
+        for gen_name in unique_generators:
+            gen_item = package.get_generator(gen_name)
+            try:
+                if progress:
+                    progress.update(f'Compiling generator [item]{gen_name}[/item]...')
+                generator_digests[gen_name] = compile_item(
+                    gen_item, sanitized=SanitizationLevel.PREFER
+                )
+            except CompilationError:
+                console.console.print(
+                    f'[warning]Failed compiling generator [item]{gen_name}[/item], skipping it.[/warning]'
+                )
+                continue
+
+        if not generator_digests:
+            console.console.print(
+                '[error]No generators could be compiled, halting fuzz tests.[/error]'
+            )
+            raise typer.Exit(1)
 
     # Finder expression parser
     parsed_finder = finder_parser.parse(stress.finder)
@@ -231,7 +331,18 @@ async def run_stress(
             input_path = runs_dir / '.stress' / 'input'
             input_path.parent.mkdir(parents=True, exist_ok=True)
 
-            expanded_generator_call = expand_generator_call(stress.generator)
+            if fuzz is not None:
+                base_call = random.choice(generator_candidates)
+                fuzz_suffix = secrets.token_hex(4)
+                # Append fuzz suffix to args
+                new_args = str(base_call.args or '') + ' ' + fuzz_suffix
+                expanded_generator_call = GeneratorCall(
+                    name=base_call.name, args=new_args.strip()
+                )
+                generator_digest = generator_digests[base_call.name]
+            else:
+                expanded_generator_call = expand_generator_call(stress.generator)
+
             if only_call is not None and str(expanded_generator_call) != only_call:
                 has_diff_call = True
             only_call = str(expanded_generator_call)

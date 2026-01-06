@@ -4,7 +4,7 @@ import shlex
 import shutil
 import sys
 import tempfile
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Union
 
 import rich
 import rich.prompt
@@ -777,18 +777,52 @@ async def stress(
             help='Whether to use 2*TL as the timelimit for the stress test.',
         ),
     ] = False,
-    find_slowest: bool = typer.Option(
-        False,
-        '--slowest',
-        help='Whether to find the slowest testcases. This removes the time limit of the solution '
-        'executions and focus on finding the testcases that make them the slowest.',
-    ),
+    find_slowest: Annotated[
+        bool,
+        typer.Option(
+            '--slowest',
+            help='Whether to find the slowest testcases. This removes the time limit of the solution '
+            'executions and focus on finding the testcases that make them the slowest.',
+        ),
+    ] = False,
+    fuzz: Annotated[
+        bool,
+        typer.Option(
+            '--fuzz',
+            help='Whether to fuzz generator calls from all testgroups.',
+        ),
+    ] = False,
+    fuzz_on: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '--fuzz-on',
+            help='Testgroups to fuzz generator calls from.',
+        ),
+    ] = None,
 ):
-    if finder and not generator_args or generator_args and not finder:
+    if generator_args and (fuzz or fuzz_on):
         console.console.print(
-            '[error]Options --generator/-g and --finder/-f should be specified together.'
+            '[error]Options --generator/-g and --fuzz/--fuzz-on cannot be used together.[/error]'
         )
         raise typer.Exit(1)
+
+    if generator_args and not finder:
+        console.console.print(
+            '[error]Option --generator/-g requires --finder/-f.[/error]'
+        )
+        raise typer.Exit(1)
+
+    if finder and not generator_args and not (fuzz or fuzz_on):
+        console.console.print(
+            '[error]Option --finder/-f requires either --generator/-g or --fuzz/--fuzz-on.[/error]'
+        )
+        raise typer.Exit(1)
+
+    fuzz_arg: Optional[Union[List[str], bool]] = None
+    if fuzz_on:
+        fuzz_arg = fuzz_on
+    elif fuzz:
+        fuzz_arg = True
 
     from rbx.box import stresses, tasks
 
@@ -818,6 +852,7 @@ async def stress(
             skip_invalid_testcases=skip_invalid_testcases,
             limits=limits,
             find_slowest=find_slowest,
+            fuzz=fuzz_arg,
         )
 
     stresses.print_stress_report(report)
