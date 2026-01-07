@@ -11,6 +11,7 @@ from rbx.box.generators import (
 )
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.solutions import (
+    SolutionOutcomeStatus,
     SolutionReportSkeleton,
     SolutionSkeleton,
     convert_list_of_solution_evaluations_to_dict,
@@ -81,7 +82,7 @@ async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
     ac_report = get_solution_outcome_report(
         ac_solution, result.skeleton, ac_evals, VerificationLevel.FULL
     )
-    assert ac_report.ok is True
+    assert ac_report.status == SolutionOutcomeStatus.OK
     assert ac_report.expectedOutcome == ExpectedOutcome.ACCEPTED
     assert ac_report.gotVerdicts == set()
 
@@ -91,7 +92,7 @@ async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
     wa_report = get_solution_outcome_report(
         wa_solution, result.skeleton, wa_evals, VerificationLevel.FULL
     )
-    assert wa_report.ok is True
+    assert wa_report.status == SolutionOutcomeStatus.OK
     assert wa_report.expectedOutcome == ExpectedOutcome.INCORRECT
 
     # Test RTE solution (expected RTE, got RTE)
@@ -100,7 +101,7 @@ async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
     rte_report = get_solution_outcome_report(
         rte_solution, result.skeleton, rte_evals, VerificationLevel.FULL
     )
-    assert rte_report.ok is True
+    assert rte_report.status == SolutionOutcomeStatus.OK
     assert rte_report.expectedOutcome == ExpectedOutcome.RUNTIME_ERROR
 
     # Test TLE solution with double TL warning
@@ -109,7 +110,7 @@ async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
     tle_report = get_solution_outcome_report(
         tle_solution, result.skeleton, tle_evals, VerificationLevel.FULL
     )
-    assert tle_report.ok is True
+    assert tle_report.status == SolutionOutcomeStatus.OK
     assert tle_report.expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
     # Should have double TL warning for soft TLE
     assert tle_report.runUnderDoubleTl is True or len(tle_report.doubleTlVerdicts) > 0
@@ -184,7 +185,7 @@ def test_solution_outcome_report_ac_expects_ac(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     assert report.expectedOutcome == ExpectedOutcome.ACCEPTED
     assert report.gotVerdicts == set()
     assert report.runUnderDoubleTl is False
@@ -206,7 +207,7 @@ def test_solution_outcome_report_wa_expects_ac(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is False
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     assert report.expectedOutcome == ExpectedOutcome.ACCEPTED
     assert Outcome.WRONG_ANSWER in report.gotVerdicts
     assert report.message is not None
@@ -227,7 +228,7 @@ def test_solution_outcome_report_wa_expects_incorrect(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     assert report.expectedOutcome == ExpectedOutcome.INCORRECT
 
 
@@ -241,7 +242,7 @@ def test_solution_outcome_report_ac_expects_incorrect(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is False
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     assert report.expectedOutcome == ExpectedOutcome.INCORRECT
     assert Outcome.ACCEPTED in report.gotVerdicts
 
@@ -258,7 +259,7 @@ def test_solution_outcome_report_rte_expects_rte(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     assert report.expectedOutcome == ExpectedOutcome.RUNTIME_ERROR
 
 
@@ -281,7 +282,7 @@ def test_solution_outcome_report_tle_with_double_tl(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     assert report.expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
     # Should detect it runs under double TL
     assert report.runUnderDoubleTl is True
@@ -308,7 +309,7 @@ def test_solution_outcome_report_tle_with_soft_tle_and_wa(tmp_path, mock_skeleto
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     assert report.expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
     # Should show double TL verdicts
     assert len(report.doubleTlVerdicts) > 0
@@ -329,7 +330,7 @@ def test_solution_outcome_report_sanitizer_warnings(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     assert report.sanitizerWarnings is True
 
 
@@ -346,7 +347,7 @@ def test_solution_outcome_report_subset_mode(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL, subset=True
     )
 
-    assert report.ok is True
+    assert report.status == SolutionOutcomeStatus.OK
     # In subset mode, should show got verdicts even when passing
     assert Outcome.ACCEPTED in report.gotVerdicts
     assert report.expectedOutcome == ExpectedOutcome.ACCEPTED
@@ -367,7 +368,7 @@ def test_solution_outcome_report_mixed_outcomes(tmp_path, mock_skeleton):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert report.ok is False
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     # Should report the unmatched verdicts
     assert Outcome.WRONG_ANSWER in report.gotVerdicts
     assert Outcome.RUNTIME_ERROR in report.gotVerdicts

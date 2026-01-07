@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import typing
 from collections.abc import Iterator
+from enum import Enum
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import rich
@@ -41,6 +42,7 @@ from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
+    ScoreType,
     Solution,
     TaskType,
     Testcase,
@@ -1074,24 +1076,55 @@ def get_truncated_message(message: str, max_length: int = 100) -> str:
     return message
 
 
+def get_expected_score_repr(range: Tuple[int, int]) -> str:
+    if range[0] == range[1]:
+        return str(range[0])
+    if range[1] == 10**9:
+        return f'{range[0]}..'
+    return f'{range[0]}..{range[1]}'
+
+
+def get_expected_score_in_phrase(range: Tuple[int, int]) -> str:
+    if range[0] == range[1]:
+        return f'{range[0]}'
+    if range[1] == 10**9:
+        return f'in {range[0]}..'
+    return f'in {range[0]}..{range[1]}'
+
+
+class SolutionOutcomeStatus(Enum):
+    OK = 'OK'
+    UNEXPECTED_SCORE = 'UNEXPECTED_SCORE'
+    UNEXPECTED_VERDICTS = 'UNEXPECTED_VERDICTS'
+
+    def __bool__(self) -> bool:
+        return self == SolutionOutcomeStatus.OK
+
+    def ok(self) -> bool:
+        return self == SolutionOutcomeStatus.OK
+
+
 class SolutionOutcomeReport(BaseModel):
     solution: Solution
     limits: Limits
     evals: List[Evaluation]
-    ok: bool
+    status: SolutionOutcomeStatus
     message: Optional[Tuple[TestcaseEntry, str]]
-    expectedOutcome: Optional[ExpectedOutcome]
+    expectedOutcome: ExpectedOutcome
     gotVerdicts: Set[Outcome]
+    expectedScore: Optional[Tuple[int, int]]
+    gotScore: int
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
     sanitizerWarnings: bool
     verification: VerificationLevel
+    scoring: ScoreType
 
     def get_verdict_markup(self, incomplete: bool = False, subset: bool = False) -> str:
         success_str = '[bold green]OK[/] '
         if subset:
             success_str = ''
-        if not self.ok:
+        if not self.status:
             success_str = '[bold white on red]FAILED[/] '
         if incomplete:
             success_str = '[bold white on yellow]INCOMPLETE[/] '
@@ -1100,12 +1133,19 @@ class SolutionOutcomeReport(BaseModel):
 
         got_verdict_names = ' '.join(v.name for v in self.gotVerdicts)
         verdict_str = ''
-        if self.expectedOutcome is not None:
-            verdict_str = f'Expected: {self.expectedOutcome}'
-            if gotVerdicts:
-                verdict_str += f', got: {got_verdict_names}'
-        elif gotVerdicts:
-            verdict_str = f'Got: {got_verdict_names}'
+        if self.status == SolutionOutcomeStatus.OK and self.scoring == ScoreType.POINTS:
+            success_str += f'{self.gotScore} pts'
+
+        if self.status == SolutionOutcomeStatus.UNEXPECTED_SCORE:
+            assert self.expectedScore is not None
+            return f'Expected score {get_expected_score_in_phrase(self.expectedScore)}, got {self.gotScore}'
+        if self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS:
+            if self.expectedOutcome != ExpectedOutcome.ANY:
+                verdict_str = f'Expected: {self.expectedOutcome}'
+                if gotVerdicts:
+                    verdict_str += f', got: {got_verdict_names}'
+            elif gotVerdicts:
+                verdict_str = f'Got: {got_verdict_names}'
         return f'{success_str}{verdict_str}'
 
     def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
@@ -1133,20 +1173,37 @@ class SolutionOutcomeReport(BaseModel):
         return res
 
 
-def get_solution_outcome_report(
-    solution: Solution,
+class VerdictReport(BaseModel):
+    all_verdicts: Set[Outcome]
+    bad_verdicts: Set[Outcome]
+    no_tle_bad_verdicts: Set[Outcome]
+    has_plain_tle: bool
+    has_sanitizer_warnings: bool
+
+    got_verdicts: Set[Outcome]
+    double_tl_verdicts: Set[Outcome]
+    run_under_double_tl: bool
+    expected_outcome: ExpectedOutcome
+    ok: bool
+
+    def passed(self) -> bool:
+        return not bool(self.bad_verdicts)
+
+
+def _get_verdict_report(
     skeleton: SolutionReportSkeleton,
     evals: List[Evaluation],
-    verification: VerificationLevel = VerificationLevel.NONE,
-    subset: bool = False,
-) -> SolutionOutcomeReport:
+    solution: Solution,
+    expected_outcome: ExpectedOutcome,
+    subset: bool,
+    verification: VerificationLevel,
+) -> VerdictReport:
     has_plain_tle = False
     all_verdicts = set()
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
     has_sanitizer_warnings = False
-    message: Optional[Tuple[TestcaseEntry, str]] = None
-    for eval, entry in zip(evals, skeleton.entries):
+    for eval in evals:
         all_verdicts.add(eval.result.outcome)
         if eval.result.outcome != Outcome.ACCEPTED:
             bad_verdicts.add(eval.result.outcome)
@@ -1161,31 +1218,21 @@ def get_solution_outcome_report(
         has_sanitizer_warnings = (
             has_sanitizer_warnings or eval.result.sanitizer_warnings
         )
-        if (
-            eval.result.outcome
-            in [
-                Outcome.WRONG_ANSWER,
-                Outcome.JUDGE_FAILED,
-            ]
-            and message is None
-        ):
-            message = (entry, eval.result.message)
 
     unmatched_bad_verdicts = set(
-        v for v in bad_verdicts if not solution.outcome.match(v)
+        v for v in bad_verdicts if not expected_outcome.match(v)
     )
     matched_bad_verdicts = bad_verdicts - unmatched_bad_verdicts
-    expected_outcome_is_bad = not solution.outcome.match(Outcome.ACCEPTED)
+    expected_outcome_is_bad = not expected_outcome.match(Outcome.ACCEPTED)
 
     has_failed = unmatched_bad_verdicts or (
         expected_outcome_is_bad and not matched_bad_verdicts and not subset
     )
 
-    report_expected_outcome = solution.outcome
+    report_expected_outcome = expected_outcome
     report_got_verdicts = set()
     report_run_under_double_tl = False
     report_double_tl_verdicts = set()
-    report_sanitizer_warnings = False
     if subset and not has_failed:
         report_got_verdicts = all_verdicts
 
@@ -1196,7 +1243,7 @@ def get_solution_outcome_report(
             report_got_verdicts = {Outcome.ACCEPTED}
 
     evals_time = _get_evals_time_in_ms(evals)
-    expected_outcome_is_tle = solution.outcome.matches_tle_and_is_incorrect()
+    expected_outcome_is_tle = expected_outcome.matches_tle_and_is_incorrect()
     limits = skeleton.get_solution_limits(solution)
     if (
         # Running verification with double TL.
@@ -1221,21 +1268,77 @@ def get_solution_outcome_report(
             # The solution has other bad soft TLE outcomes.
             report_double_tl_verdicts = other_verdicts
 
-    if has_sanitizer_warnings:
-        report_sanitizer_warnings = True
+    return VerdictReport(
+        all_verdicts=all_verdicts,
+        bad_verdicts=bad_verdicts,
+        no_tle_bad_verdicts=no_tle_bad_verdicts,
+        has_plain_tle=has_plain_tle,
+        has_sanitizer_warnings=has_sanitizer_warnings,
+        got_verdicts=report_got_verdicts,
+        double_tl_verdicts=report_double_tl_verdicts,
+        run_under_double_tl=report_run_under_double_tl,
+        expected_outcome=report_expected_outcome,
+        ok=not has_failed,
+    )
+
+
+def _get_evals_per_group(
+    evals: List[Evaluation], skeleton: SolutionReportSkeleton
+) -> Dict[str, List[Evaluation]]:
+    res = {}
+    for eval, entry in zip(evals, skeleton.entries):
+        if entry.group not in res:
+            res[entry.group] = []
+        res[entry.group].append(eval)
+    return res
+
+
+def get_solution_outcome_report(
+    solution: Solution,
+    skeleton: SolutionReportSkeleton,
+    evals: List[Evaluation],
+    verification: VerificationLevel = VerificationLevel.NONE,
+    subset: bool = False,
+) -> SolutionOutcomeReport:
+    # Even if the scoring is points, we use binary scoring for subsets/interactive tests.
+    scoring = package.get_scoring() if not subset else ScoreType.BINARY
+    expected_score = (
+        solution.expected_score_range() if scoring == ScoreType.POINTS else None
+    )
+
+    verdict_report = _get_verdict_report(
+        skeleton, evals, solution, solution.outcome, subset, verification
+    )
+    message: Optional[Tuple[TestcaseEntry, str]] = None
+    for eval, entry in zip(evals, skeleton.entries):
+        if eval.result.outcome in [
+            Outcome.WRONG_ANSWER,
+            Outcome.JUDGE_FAILED,
+        ]:
+            message = (entry, eval.result.message)
+            break
+
+    status = (
+        SolutionOutcomeStatus.OK
+        if verdict_report.ok
+        else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    )
 
     return SolutionOutcomeReport(
         solution=solution,
         limits=skeleton.get_solution_limits(solution),
         evals=evals,
-        ok=not has_failed,
+        status=status,
         message=message,
-        expectedOutcome=report_expected_outcome,
-        gotVerdicts=report_got_verdicts,
-        runUnderDoubleTl=report_run_under_double_tl,
-        doubleTlVerdicts=report_double_tl_verdicts,
-        sanitizerWarnings=report_sanitizer_warnings,
+        expectedOutcome=verdict_report.expected_outcome,
+        gotVerdicts=verdict_report.got_verdicts,
+        expectedScore=expected_score,
+        gotScore=0,
+        runUnderDoubleTl=verdict_report.run_under_double_tl,
+        doubleTlVerdicts=verdict_report.double_tl_verdicts,
+        sanitizerWarnings=verdict_report.has_sanitizer_warnings,
         verification=verification,
+        scoring=scoring,
     )
 
 
@@ -1251,10 +1354,10 @@ def _print_solution_outcome(
     report = get_solution_outcome_report(
         solution, skeleton, evals, verification, subset
     )
-    if not report.ok:
+    if not report.status:
         issue_stack.add_issue(FailedSolutionIssue(solution))
     console.print(report.get_outcome_markup(subset=subset, print_message=print_message))
-    return report.ok
+    return report.status.ok()
 
 
 def consume_and_key_evaluation_items(

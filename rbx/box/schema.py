@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import re
 import typing
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
@@ -233,6 +233,14 @@ class TaskType(AutoEnum):
     """Communication task."""
 
 
+class ScoreType(AutoEnum):
+    BINARY = alias('binary')  # type: ignore
+    """Scoring for ICPC-like problems, where the problem is considered a point if it pass all testcases."""
+
+    POINTS = alias('points')  # type: ignore
+    """Subtasks scoring, where each passing testgroup is worth a number of points that are summed up."""
+
+
 class CodeItem(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -410,10 +418,10 @@ Useful in cases where the constraints vary across test groups.
 """,
     )
 
-    weight: Optional[float] = Field(
-        default=1.0,
+    score: Optional[int] = Field(
+        default=0,
         description="""
-The weight of this group in the final score. Useful for
+The score of this group in the final score. Useful for
 problems that have points.
 """,
     )
@@ -449,7 +457,7 @@ class Solution(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
     outcome: ExpectedOutcome = Field(
-        default=ExpectedOutcome.ACCEPTED,
+        default=ExpectedOutcome.ANY,
         description="""The expected outcome of this solution.""",
     )
 
@@ -457,6 +465,28 @@ class Solution(CodeItem):
         default=[],
         description="""Tags to be associated with this solution.""",
     )
+
+    score: Optional[Union[int, Tuple[Optional[int], Optional[int]]]] = Field(
+        default=None,
+        description="""The score of this solution in the final score.
+Should either be an integer, which means the solution should have this exact score,
+or a tuple of two integers, which means the solution should have a score between the two integers (inclusive).
+
+If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
+    )
+
+    def expected_score_range(self) -> Tuple[int, int]:
+        if isinstance(self.score, int):
+            return (self.score, self.score)
+        assert isinstance(self.score, list)
+        assert len(self.score) == 2
+
+        lo, hi = self.score
+        if lo is None:
+            lo = 0
+        if hi is None:
+            hi = 10**9
+        return (lo, hi)
 
     def href(self, hyperlink: bool = True) -> str:
         return href(self.path, style=self.outcome.full_style(), hyperlink=hyperlink)
@@ -685,6 +715,10 @@ class Package(BaseModel):
 
     type: TaskType = Field(
         default=TaskType.BATCH, description='The type of the problem.'
+    )
+
+    scoring: ScoreType = Field(
+        default=ScoreType.BINARY, description='The scoring type of the problem.'
     )
 
     timeLimit: int = Field(description='Time limit of the problem, in milliseconds.')

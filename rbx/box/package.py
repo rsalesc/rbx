@@ -23,6 +23,7 @@ from rbx.box.schema import (
     ExpectedOutcome,
     Generator,
     Package,
+    ScoreType,
     Solution,
     Stress,
     TaskType,
@@ -264,6 +265,12 @@ def get_build_testgroup_path(
 @functools.cache
 def get_statements_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     return get_build_path(root) / 'statements'
+
+
+@functools.cache
+def get_scoring(root: pathlib.Path = pathlib.Path()) -> ScoreType:
+    package = find_problem_package_or_die(root)
+    return package.scoring
 
 
 @functools.cache
