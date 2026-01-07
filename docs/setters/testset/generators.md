@@ -55,8 +55,10 @@ guarantee idempotency.
     gen 100 abc
     ```
 
-    The two generator calls above will produce the same testcase for a generator expecting a single
-    positional argument. The trailing `abc` piece is just used to produce a different seed.
+    The two generator calls above might produce the different testcases for a generator expecting a single
+    positional argument, as long as `rnd` is used by the generator to define its output.
+
+    The trailing `abc` piece is just used to produce a different seed.
 
 ## Writing a generator
 
