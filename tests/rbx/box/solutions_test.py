@@ -181,7 +181,15 @@ def make_evaluation(
     )
 
 
-def test_solution_outcome_report_ac_expects_ac(tmp_path, mock_skeleton):
+@pytest.fixture
+def mock_binary_scoring():
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.BINARY):
+        yield
+
+
+def test_solution_outcome_report_ac_expects_ac(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test AC solution that expects AC - should pass."""
     solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
     skeleton = mock_skeleton([solution])
@@ -198,7 +206,9 @@ def test_solution_outcome_report_ac_expects_ac(tmp_path, mock_skeleton):
     assert report.sanitizerWarnings is False
 
 
-def test_solution_outcome_report_wa_expects_ac(tmp_path, mock_skeleton):
+def test_solution_outcome_report_wa_expects_ac(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test WA solution that expects AC - should fail."""
     solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
     skeleton = mock_skeleton([solution])
@@ -220,7 +230,9 @@ def test_solution_outcome_report_wa_expects_ac(tmp_path, mock_skeleton):
     assert report.message[1] == 'Expected 5, got 3'
 
 
-def test_solution_outcome_report_wa_expects_incorrect(tmp_path, mock_skeleton):
+def test_solution_outcome_report_wa_expects_incorrect(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test WA solution that expects incorrect - should pass."""
     solution = Solution(path=tmp_path / 'wa.cpp', outcome=ExpectedOutcome.INCORRECT)
     skeleton = mock_skeleton([solution])
@@ -238,7 +250,9 @@ def test_solution_outcome_report_wa_expects_incorrect(tmp_path, mock_skeleton):
     assert report.expectedOutcome == ExpectedOutcome.INCORRECT
 
 
-def test_solution_outcome_report_ac_expects_incorrect(tmp_path, mock_skeleton):
+def test_solution_outcome_report_ac_expects_incorrect(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test AC solution that expects incorrect - should fail."""
     solution = Solution(path=tmp_path / 'wa.cpp', outcome=ExpectedOutcome.INCORRECT)
     skeleton = mock_skeleton([solution])
@@ -253,7 +267,9 @@ def test_solution_outcome_report_ac_expects_incorrect(tmp_path, mock_skeleton):
     assert Outcome.ACCEPTED in report.gotVerdicts
 
 
-def test_solution_outcome_report_rte_expects_rte(tmp_path, mock_skeleton):
+def test_solution_outcome_report_rte_expects_rte(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test RTE solution that expects RTE - should pass."""
     solution = Solution(
         path=tmp_path / 'rte.cpp', outcome=ExpectedOutcome.RUNTIME_ERROR
@@ -269,7 +285,9 @@ def test_solution_outcome_report_rte_expects_rte(tmp_path, mock_skeleton):
     assert report.expectedOutcome == ExpectedOutcome.RUNTIME_ERROR
 
 
-def test_solution_outcome_report_tle_with_double_tl(tmp_path, mock_skeleton):
+def test_solution_outcome_report_tle_with_double_tl(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test TLE solution that runs under double TL - should show warning."""
     solution = Solution(
         path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
@@ -294,7 +312,9 @@ def test_solution_outcome_report_tle_with_double_tl(tmp_path, mock_skeleton):
     assert report.runUnderDoubleTl is True
 
 
-def test_solution_outcome_report_tle_with_soft_tle_and_wa(tmp_path, mock_skeleton):
+def test_solution_outcome_report_tle_with_soft_tle_and_wa(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test TLE solution with soft TLE that also has WA in double TL."""
     solution = Solution(
         path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
@@ -322,7 +342,9 @@ def test_solution_outcome_report_tle_with_soft_tle_and_wa(tmp_path, mock_skeleto
     assert Outcome.WRONG_ANSWER in report.doubleTlVerdicts
 
 
-def test_solution_outcome_report_sanitizer_warnings(tmp_path, mock_skeleton):
+def test_solution_outcome_report_sanitizer_warnings(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test solution with sanitizer warnings."""
     solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
     skeleton = mock_skeleton([solution])
@@ -340,7 +362,9 @@ def test_solution_outcome_report_sanitizer_warnings(tmp_path, mock_skeleton):
     assert report.sanitizerWarnings is True
 
 
-def test_solution_outcome_report_subset_mode(tmp_path, mock_skeleton):
+def test_solution_outcome_report_subset_mode(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test subset mode shows all verdicts."""
     solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
     skeleton = mock_skeleton([solution])
@@ -359,7 +383,9 @@ def test_solution_outcome_report_subset_mode(tmp_path, mock_skeleton):
     assert report.expectedOutcome == ExpectedOutcome.ACCEPTED
 
 
-def test_solution_outcome_report_mixed_outcomes(tmp_path, mock_skeleton):
+def test_solution_outcome_report_mixed_outcomes(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
     """Test solution with multiple different outcomes."""
     solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
     skeleton = mock_skeleton([solution])
@@ -465,11 +491,13 @@ def test_solution_outcome_report_points_scoring(tmp_path, mock_limits, mock_skel
     g1 = GroupSkeleton(
         name='g1',
         score=30,
+        deps=[],
         testcases=[Testcase(inputPath=tmp_path / 'g1_1.in')],
     )
     g2 = GroupSkeleton(
         name='g2',
         score=70,
+        deps=[],
         testcases=[Testcase(inputPath=tmp_path / 'g2_1.in')],
     )
 
@@ -541,3 +569,104 @@ def test_solution_outcome_report_points_scoring(tmp_path, mock_limits, mock_skel
 
     assert report.status == SolutionOutcomeStatus.OK
     assert report.gotScore == 30
+
+
+def test_solution_outcome_report_points_scoring_with_dependencies(
+    tmp_path, mock_limits, mock_skeleton
+):
+    """Test solution reporting with POINTS scoring and dependencies."""
+    solution = Solution(
+        path=tmp_path / 'sol.cpp',
+        outcome=ExpectedOutcome.ACCEPTED,
+        score=100,
+    )
+
+    # Create groups with dependencies
+    # g1 (30)
+    # g2 (30) -> deps: g1
+    # g3 (40) -> deps: g2
+    g1 = GroupSkeleton(
+        name='g1',
+        score=30,
+        deps=[],
+        testcases=[Testcase(inputPath=tmp_path / 'g1_1.in')],
+    )
+    g2 = GroupSkeleton(
+        name='g2',
+        score=30,
+        deps=['g1'],
+        testcases=[Testcase(inputPath=tmp_path / 'g2_1.in')],
+    )
+    g3 = GroupSkeleton(
+        name='g3',
+        score=40,
+        deps=['g2'],
+        testcases=[Testcase(inputPath=tmp_path / 'g3_1.in')],
+    )
+
+    skeleton = SolutionReportSkeleton(
+        solutions=[
+            SolutionSkeleton(**solution.model_dump(), runs_dir=tmp_path / 'run')
+        ],
+        entries=[
+            TestcaseEntry(group='g1', index=0),
+            TestcaseEntry(group='g2', index=0),
+            TestcaseEntry(group='g3', index=0),
+        ],
+        groups=[g1, g2, g3],
+        limits={'cpp': mock_limits},
+        compiled_solutions={str(solution.path): 'digest'},
+        verification=VerificationLevel.FULL,
+    )
+
+    # 1. All pass -> Score 100
+    evals_all_pass = [
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g1
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g2
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g3
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals_all_pass, VerificationLevel.FULL
+        )
+    assert report.gotScore == 100
+
+    # 2. g1 fails -> Score 0 (g2 and g3 check deps and fail efficiently or just don't count)
+    evals_g1_fail = [
+        make_evaluation(Outcome.WRONG_ANSWER, testcase_index=0),  # g1
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g2
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g3
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals_g1_fail, VerificationLevel.FULL
+        )
+    assert report.gotScore == 0
+
+    # 3. g1 passes, g2 fails -> Score 30 (g3 blocked)
+    evals_g2_fail = [
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g1
+        make_evaluation(Outcome.WRONG_ANSWER, testcase_index=0),  # g2
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g3
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals_g2_fail, VerificationLevel.FULL
+        )
+    assert report.gotScore == 30
+
+    # 4. g1 passes, g2 passes, g3 fails -> Score 60
+    evals_g3_fail = [
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g1
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g2
+        make_evaluation(Outcome.WRONG_ANSWER, testcase_index=0),  # g3
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals_g3_fail, VerificationLevel.FULL
+        )
+    assert report.gotScore == 60

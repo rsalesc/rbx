@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import pathlib
 import re
 import typing
@@ -426,6 +427,15 @@ problems that have points.
 """,
     )
 
+    deps: List[str] = Field(
+        default=[],
+        description="""
+A list of other groups this group depends on to run and be considered accepted.
+
+The `samples` group is implicitly a dependency of every other group.
+""",
+    )
+
     model_solution: Optional[Solution] = Field(
         default=None,
         description="""
@@ -830,6 +840,66 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     'The "samples" group must be the first group in the package, but is actually the {i}-th',
                     {'i': i + 1},
                 )
+        return self
+
+    @model_validator(mode='after')
+    def check_scoring_fields(self):
+        if not self.scoring == ScoreType.POINTS:
+            for group in self.testcases:
+                if group.deps:
+                    raise PydanticCustomError(
+                        'DEPS_NOT_ALLOWED',
+                        'Dependencies are not allowed for groups of problems with scoring != POINTS.',
+                    )
+                if group.score != 0:
+                    raise PydanticCustomError(
+                        'SCORE_NOT_ALLOWED',
+                        'Non-zero score is not allowed for groups of problems with scoring != POINTS.',
+                    )
+            for solution in self.solutions:
+                if solution.score != 0:
+                    raise PydanticCustomError(
+                        'SCORE_NOT_ALLOWED',
+                        'Expected score is not allowed for solutions of problems with scoring != POINTS.',
+                    )
+        return self
+
+    @model_validator(mode='after')
+    def check_deps(self):
+        depends = collections.defaultdict(list)
+        for group in self.testcases:
+            if group.name == 'samples':
+                if group.deps:
+                    raise PydanticCustomError(
+                        'DEPS_NOT_ALLOWED',
+                        'Dependencies are not allowed for the "samples" group.',
+                    )
+                continue
+            depends[group.name].extend(group.deps)
+
+        visiting = set()
+        visited = set()
+
+        def dfs(u):
+            visiting.add(u)
+            for v in depends[u]:
+                if v in visiting:
+                    return True
+                if v not in visited:
+                    if dfs(v):
+                        return True
+            visiting.remove(u)
+            visited.add(u)
+            return False
+
+        for group in self.testcases:
+            if group.name != 'samples' and group.name not in visited:
+                if dfs(group.name):
+                    raise PydanticCustomError(
+                        'CYCLIC_DEPENDENCY',
+                        'Cyclic dependency detected involving test group "{group_name}".',
+                        {'group_name': group.name},
+                    )
         return self
 
     @model_validator(mode='after')

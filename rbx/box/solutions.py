@@ -83,6 +83,7 @@ class EvaluationItem:
 class GroupSkeleton(BaseModel):
     name: str
     score: int
+    deps: List[str]
     testcases: List[Testcase]
 
 
@@ -380,7 +381,9 @@ def _get_report_skeleton(
     for group in pkg.testcases:
         testcases = find_built_testcases(group)
         groups.append(
-            GroupSkeleton(name=group.name, score=group.score, testcases=testcases)
+            GroupSkeleton(
+                name=group.name, score=group.score, deps=group.deps, testcases=testcases
+            )
         )
     entries = [
         TestcaseEntry(group=group.name, index=i)
@@ -1339,14 +1342,27 @@ def get_solution_outcome_report(
     got_score = 0
     if scoring == ScoreType.POINTS:
         evals_per_group = _get_evals_per_group(evals, skeleton)
+        verdict_report_per_group = {}
+        # TODO: add outcome per group
         for group in skeleton.groups:
             max_score += group.score
             evals = evals_per_group.get(group.name, [])
-            # TODO: add outcome per group
-            verdict_report_for_group = _get_verdict_report(
+
+            verdict_report_per_group[group.name] = _get_verdict_report(
                 skeleton, evals, solution, solution.outcome, subset, verification
             )
-            if verdict_report_for_group.passed():
+
+        def _check_deps(group: GroupSkeleton):
+            for dep in group.deps:
+                dep_group = skeleton.find_group_skeleton(dep)
+                if dep_group is None:
+                    return False
+                if not _check_deps(dep_group):
+                    return False
+            return verdict_report_per_group[group.name].passed()
+
+        for group in skeleton.groups:
+            if _check_deps(group):
                 got_score += group.score
 
         if expected_score is not None and not fulfills_expected_score(
