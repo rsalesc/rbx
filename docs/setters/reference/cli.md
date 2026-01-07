@@ -10,10 +10,11 @@ rbx [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `-c`, `--cache` | CHOICE | Which degree of caching to use. | `CACHE_ALL` |
+| `-c`, `--cache` | [CacheLevel][rbx.grading.grading_context.CacheLevel] | Which degree of caching to use. | `CACHE_ALL` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile and run testlib components with sanitizers enabled. If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command. | `False` |
 | `--nocapture` | BOOLEAN | Whether to save extra logs and outputs from interactive solutions. | `True` |
-| `--profile`, `-p` | BOOLEAN | Whether to profile the execution. | `False` |
+| `-p`, `--profile` | TEXT | Which timing profile to use when running solutions. | - |
+| `--profiling` | BOOLEAN | Whether to profile (capture performance statistics) of the execution. | `False` |
 | `--version`, `-v` | BOOLEAN | - | `False` |
 
 
@@ -77,7 +78,7 @@ rbx build [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 
 
 ---
@@ -104,8 +105,9 @@ rbx run <SOLUTIONS> [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
+| `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
@@ -153,8 +155,9 @@ rbx irun <SOLUTIONS> [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
+| `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--generator`, `-g` | TEXT | Generator call to use to generate a single test for execution. | - |
 | `--testcase`, `--test`, `-tc`, `-t` | TEXT | Testcase to run, in the format "[group]/[index]". If not specified, will run interactively. | - |
@@ -214,6 +217,11 @@ rbx stress <NAME> [OPTIONS]
 | `--description`, `-d` | TEXT | Optional description of the stress test. | - |
 | `--descriptors`, `-D` | BOOLEAN | Whether to print descriptors of the stress test. | `False` |
 | `--skip-invalid`, `--skip` | BOOLEAN | Whether to skip invalid testcases. | `False` |
+| `--timelimit`, `-T` | INTEGER | Custom timelimit for the stress test. | - |
+| `--double-tl` | BOOLEAN | Whether to use 2*TL as the timelimit for the stress test. | `False` |
+| `--slowest` | BOOLEAN | Whether to find the slowest testcases. This removes the time limit of the solution executions and focus on finding the testcases that make them the slowest. | `False` |
+| `--fuzz` | BOOLEAN | Whether to fuzz generator calls from all testgroups. | `False` |
+| `--fuzz-on` | TEXT | Testgroups to fuzz generator calls from. | - |
 
 
 ---
@@ -464,9 +472,9 @@ rbx statements build <NAMES> [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
-| `--output` | CHOICE | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
+| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 
@@ -644,7 +652,7 @@ rbx package polygon [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--upload`, `-u` | BOOLEAN | If set, will upload the package to Polygon. | `False` |
 | `--language`, `-l` | TEXT | If set, will use the given language as the main language. Leave unset if your problem has no statements. | - |
 | `--upload-as-english` | BOOLEAN | If set, will force the main statement to be uploaded in English. | `False` |
@@ -665,7 +673,7 @@ rbx package boca [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--upload`, `-u` | BOOLEAN | If set, will upload the package to BOCA. | `False` |
 | `--language`, `-l` | TEXT | If set, will use the given language as the main language. Leave unset if you want to use the language of the topmost statement. | - |
 
@@ -683,7 +691,7 @@ rbx package moj [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--for-boca` | BOOLEAN | Build a package for BOCA instead of MOJ. | `False` |
 
 
@@ -700,7 +708,7 @@ rbx package pkg [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 
 
 ---
@@ -859,9 +867,9 @@ rbx contest statements build <NAMES> [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
-| `--output` | CHOICE | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
+| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
@@ -892,7 +900,7 @@ rbx contest package polygon [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--language`, `-l` | TEXT | If set, will use the given language as the main language. | - |
 
 
@@ -909,7 +917,7 @@ rbx contest package boca [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 
 
 ---
@@ -925,7 +933,7 @@ rbx contest package pkg [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER | Verification level to use when building package. | `4` |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 
 
 ---
@@ -1055,3 +1063,29 @@ rbx tool boca view [OPTIONS]
 
 
 ---
+
+# Generic Types
+
+::: rbx.grading.grading_context.CacheLevel
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+      show_labels: false
+      members_order: source
+
+::: rbx.box.statements.schema.StatementType
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+      show_labels: false
+      members_order: source
+
+::: rbx.box.environment.VerificationLevel
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      heading_level: 3
+      show_labels: false
+      members_order: source

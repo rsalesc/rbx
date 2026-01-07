@@ -43,6 +43,7 @@ nav:
       - "Presets":
           - "setters/presets/index.md"
   - "Reference":
+      - "CLI": "setters/reference/cli.md"
       - "Package":
           - "setters/reference/package/index.md"
           - "Schema": "setters/reference/package/schema.md"
@@ -52,7 +53,6 @@ nav:
       - "Environment":
           - "setters/reference/environment/index.md"
           - "Schema": "setters/reference/environment/schema.md"
-      - "CLI": "setters/reference/cli.md"
   - "Troubleshooting":
       - "cpp-on-macos.md"
       - "stack-limit.md"
