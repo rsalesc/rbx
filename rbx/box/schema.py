@@ -418,7 +418,7 @@ Useful in cases where the constraints vary across test groups.
 """,
     )
 
-    score: Optional[int] = Field(
+    score: int = Field(
         default=0,
         description="""
 The score of this group in the final score. Useful for
@@ -475,10 +475,12 @@ or a tuple of two integers, which means the solution should have a score between
 If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
     )
 
-    def expected_score_range(self) -> Tuple[int, int]:
+    def expected_score_range(self) -> Optional[Tuple[int, int]]:
+        if self.score is None:
+            return None
         if isinstance(self.score, int):
             return (self.score, self.score)
-        assert isinstance(self.score, list)
+        assert isinstance(self.score, tuple)
         assert len(self.score) == 2
 
         lo, hi = self.score

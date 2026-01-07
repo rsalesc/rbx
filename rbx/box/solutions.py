@@ -82,6 +82,7 @@ class EvaluationItem:
 
 class GroupSkeleton(BaseModel):
     name: str
+    score: int
     testcases: List[Testcase]
 
 
@@ -378,7 +379,9 @@ def _get_report_skeleton(
     groups = []
     for group in pkg.testcases:
         testcases = find_built_testcases(group)
-        groups.append(GroupSkeleton(name=group.name, testcases=testcases))
+        groups.append(
+            GroupSkeleton(name=group.name, score=group.score, testcases=testcases)
+        )
     entries = [
         TestcaseEntry(group=group.name, index=i)
         for group in groups
@@ -1092,6 +1095,10 @@ def get_expected_score_in_phrase(range: Tuple[int, int]) -> str:
     return f'in {range[0]}..{range[1]}'
 
 
+def fulfills_expected_score(range: Tuple[int, int], score: int) -> bool:
+    return score >= range[0] and score <= range[1]
+
+
 class SolutionOutcomeStatus(Enum):
     OK = 'OK'
     UNEXPECTED_SCORE = 'UNEXPECTED_SCORE'
@@ -1114,6 +1121,7 @@ class SolutionOutcomeReport(BaseModel):
     gotVerdicts: Set[Outcome]
     expectedScore: Optional[Tuple[int, int]]
     gotScore: int
+    maxScore: int
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
     sanitizerWarnings: bool
@@ -1133,12 +1141,15 @@ class SolutionOutcomeReport(BaseModel):
 
         got_verdict_names = ' '.join(v.name for v in self.gotVerdicts)
         verdict_str = ''
-        if self.status == SolutionOutcomeStatus.OK and self.scoring == ScoreType.POINTS:
-            success_str += f'{self.gotScore} pts'
+        if self.scoring == ScoreType.POINTS:
+            if self.expectedScore is not None:
+                verdict_str = (
+                    f'Expected score [bright_white]{get_expected_score_in_phrase(self.expectedScore)}[/bright_white], '
+                    f'got [bright_white]{self.gotScore}/{self.maxScore} pts[/bright_white]'
+                )
+            else:
+                verdict_str = f'Got [bright_white]{self.gotScore}/{self.maxScore} pts[/bright_white]'
 
-        if self.status == SolutionOutcomeStatus.UNEXPECTED_SCORE:
-            assert self.expectedScore is not None
-            return f'Expected score {get_expected_score_in_phrase(self.expectedScore)}, got {self.gotScore}'
         if self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS:
             if self.expectedOutcome != ExpectedOutcome.ANY:
                 verdict_str = f'Expected: {self.expectedOutcome}'
@@ -1324,6 +1335,25 @@ def get_solution_outcome_report(
         else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     )
 
+    max_score = 0
+    got_score = 0
+    if scoring == ScoreType.POINTS:
+        evals_per_group = _get_evals_per_group(evals, skeleton)
+        for group in skeleton.groups:
+            max_score += group.score
+            evals = evals_per_group.get(group.name, [])
+            # TODO: add outcome per group
+            verdict_report_for_group = _get_verdict_report(
+                skeleton, evals, solution, solution.outcome, subset, verification
+            )
+            if verdict_report_for_group.passed():
+                got_score += group.score
+
+        if expected_score is not None and not fulfills_expected_score(
+            expected_score, got_score
+        ):
+            status = SolutionOutcomeStatus.UNEXPECTED_SCORE
+
     return SolutionOutcomeReport(
         solution=solution,
         limits=skeleton.get_solution_limits(solution),
@@ -1333,7 +1363,8 @@ def get_solution_outcome_report(
         expectedOutcome=verdict_report.expected_outcome,
         gotVerdicts=verdict_report.got_verdicts,
         expectedScore=expected_score,
-        gotScore=0,
+        gotScore=got_score,
+        maxScore=max_score,
         runUnderDoubleTl=verdict_report.run_under_double_tl,
         doubleTlVerdicts=verdict_report.double_tl_verdicts,
         sanitizerWarnings=verdict_report.has_sanitizer_warnings,
@@ -1918,8 +1949,12 @@ class FullRunReporter(TraditionalRunReporter):
         )
 
     def render_group_end(self, group: GroupSkeleton):
+        bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
+        if group.score > 0:
+            # TODO: fix scoring
+            bracketed = f'?/{group.score} pts, ' + bracketed
         self.console.print(
-            f'[info]({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})[/info]',
+            f'[info]({bracketed})[/info]',
         )
 
     def render_pre_evaluation(self, index: int):
@@ -1975,9 +2010,13 @@ class LiveRunReporter(FullRunReporter):
                 )
             renderable.append(rich.text.Text(' ', end=''))
 
+        bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
+        if self.current_group.score > 0:
+            # TODO: fix scoring
+            bracketed = f'?/{self.current_group.score} pts, ' + bracketed
         renderable.append(
             rich.text.Text.from_markup(
-                f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
+                f'({bracketed})',
                 style='bright_black',
                 end='',
             )
@@ -2026,9 +2065,11 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
 
     def render_group_end(self, group: GroupSkeleton):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')
-        self.console.print(
-            f'({get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)})',
-        )
+        bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
+        if group.score > 0:
+            # TODO: figure out scoring
+            bracketed = f'?/{group.score} pts, ' + bracketed
+        self.console.print(f'({bracketed})')
         self.console.print()
 
     def render_post_evaluation(self, index: int, evaluation: Optional[Evaluation]):

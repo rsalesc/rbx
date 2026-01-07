@@ -9,8 +9,14 @@ from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
-from rbx.box.schema import ExpectedOutcome, Solution
+from rbx.box.schema import (
+    ExpectedOutcome,
+    ScoreType,
+    Solution,
+    Testcase,
+)
 from rbx.box.solutions import (
+    GroupSkeleton,
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
     SolutionSkeleton,
@@ -444,3 +450,94 @@ def test_get_matching_solutions(tmp_path):
         assert get_matching_solutions(
             expected_outcome=ExpectedOutcome.ACCEPTED, tags=['implementation']
         ) == [s1]
+
+
+def test_solution_outcome_report_points_scoring(tmp_path, mock_limits, mock_skeleton):
+    """Test solution reporting with POINTS scoring."""
+    # Setup solution with expected score range
+    solution = Solution(
+        path=tmp_path / 'sol.cpp',
+        outcome=ExpectedOutcome.ACCEPTED,
+        score=100,  # Expects exactly 100 points
+    )
+
+    # Create groups with scores
+    g1 = GroupSkeleton(
+        name='g1',
+        score=30,
+        testcases=[Testcase(inputPath=tmp_path / 'g1_1.in')],
+    )
+    g2 = GroupSkeleton(
+        name='g2',
+        score=70,
+        testcases=[Testcase(inputPath=tmp_path / 'g2_1.in')],
+    )
+
+    skeleton = SolutionReportSkeleton(
+        solutions=[
+            SolutionSkeleton(**solution.model_dump(), runs_dir=tmp_path / 'run')
+        ],
+        entries=[
+            TestcaseEntry(group='g1', index=0),
+            TestcaseEntry(group='g2', index=0),
+        ],
+        groups=[g1, g2],
+        limits={'cpp': mock_limits},
+        compiled_solutions={str(solution.path): 'digest'},
+        verification=VerificationLevel.FULL,
+    )
+
+    # 1. Test perfect score (30 + 70 = 100)
+    evals_perfect = [
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g1
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g2
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals_perfect, VerificationLevel.FULL
+        )
+
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.gotScore == 100
+    assert report.maxScore == 100
+
+    # 2. Test partial score (30 + 0 = 30) - Expected 100, got 30 -> UNEXPECTED_SCORE
+    evals_partial = [
+        make_evaluation(Outcome.ACCEPTED, testcase_index=0),  # g1
+        make_evaluation(Outcome.WRONG_ANSWER, testcase_index=0),  # g2
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals_partial, VerificationLevel.FULL
+        )
+
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_SCORE
+    assert report.gotScore == 30
+
+    # 3. Test unexpected score range
+    # Solution expects 0..50
+    solution_range = Solution(
+        path=tmp_path / 'range.cpp',
+        outcome=ExpectedOutcome.ANY,
+        score=(0, 50),
+    )
+
+    # Got 100 (Unlikely for a solution expecting low score, but logic should hold)
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution_range, skeleton, evals_perfect, VerificationLevel.FULL
+        )
+
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_SCORE
+    assert report.gotScore == 100
+
+    # Got 30 (Into range)
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution_range, skeleton, evals_partial, VerificationLevel.FULL
+        )
+
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.gotScore == 30
