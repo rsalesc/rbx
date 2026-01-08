@@ -857,7 +857,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                         'Non-zero score is not allowed for groups of problems with scoring != POINTS.',
                     )
             for solution in self.solutions:
-                if solution.score != 0:
+                if solution.score is not None:
                     raise PydanticCustomError(
                         'SCORE_NOT_ALLOWED',
                         'Expected score is not allowed for solutions of problems with scoring != POINTS.',
