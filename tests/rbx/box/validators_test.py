@@ -555,3 +555,53 @@ int main() {
     validation_infos = await validate_outputs_from_entries(entries)
 
     assert len(validation_infos) == 0
+
+
+async def test_validator_receives_group_argument(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test that validators receive the --group argument."""
+    # Simple C++ validator that enforces limits based on group name
+    # small -> limit 10
+    # large -> limit 100
+    testing_pkg.add_from_testdata(
+        'validator_group.cpp', src='validators/group-validator.cpp'
+    )
+    testing_pkg.set_validator('validator_group.cpp')
+
+    # Create groups with different constraints
+    testing_pkg.add_testgroup_from_glob('small', 'manual_tests/small/*.in')
+    testing_pkg.add_file('manual_tests/small/pass.in').write_text('5\\n')
+    testing_pkg.add_file('manual_tests/small/fail.in').write_text('15\\n')
+
+    testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
+    testing_pkg.add_file('manual_tests/large/pass.in').write_text('50\\n')
+    testing_pkg.add_file('manual_tests/large/fail.in').write_text('150\\n')
+
+    testing_pkg.add_testgroup_from_glob('default', 'manual_tests/default/*.in')
+    testing_pkg.add_file('manual_tests/default/pass.in').write_text('500\\n')
+
+    await generate_testcases()
+    validation_infos = await validate_testcases()
+    print_validation_report(validation_infos)
+
+    results = {}
+    for info in validation_infos:
+        assert info.testcase is not None
+        assert info.generation_metadata is not None
+        assert info.generation_metadata.copied_from is not None
+
+        group = info.testcase.group
+        name = info.generation_metadata.copied_from.inputPath.name
+        results[(group, name)] = info.ok
+
+    assert results[('small', 'pass.in')] is True
+    assert results[('small', 'fail.in')] is False
+    assert results[('large', 'pass.in')] is True
+    assert results[('large', 'fail.in')] is False
+    assert results[('default', 'pass.in')] is True
+
+    out = capsys.readouterr().out
+    assert 'exceeds limit 10 for group small' in out
+    assert 'exceeds limit 100 for group large' in out

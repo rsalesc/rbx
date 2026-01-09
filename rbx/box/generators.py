@@ -365,6 +365,7 @@ async def generate_standalone(
             all_validators,
             validators_digests,
             generation_metadata=spec,
+            testcase_entry=group_entry,
         )
         if not all(info.ok for info in validation_infos):
             with ValidationError() as err:

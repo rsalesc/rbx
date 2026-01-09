@@ -99,11 +99,14 @@ async def _validate_testcase(
     validator: CodeItem,
     validator_digest: str,
     vars: Optional[Dict[str, Primitive]] = None,
+    group: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
     vars = vars or {}
     # TODO: check if needs to do some escaping
     var_args = [f'--{k}={v}' for k, v in vars.items()]
     var_args.extend(['--testOverviewLogFileName', 'validator.log'])
+    if group is not None:
+        var_args.extend(['--group', group])
 
     message_digest = DigestHolder()
     log_digest = DigestHolder()
@@ -150,10 +153,11 @@ async def _validate_test(
     testcase: pathlib.Path,
     validator: CodeItem,
     validator_digest: str,
+    group: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
     pkg = package.find_problem_package_or_die()
     return await _validate_testcase(
-        testcase, validator, validator_digest, vars=pkg.expanded_vars
+        testcase, validator, validator_digest, vars=pkg.expanded_vars, group=group
     )
 
 
@@ -170,6 +174,7 @@ async def validate_one_off(
     validators: List[CodeItem],
     validator_digests: Dict[str, str],
     generation_metadata: Optional[GenerationMetadata] = None,
+    testcase_entry: Optional[TestcaseEntry] = None,
 ) -> List[TestcaseValidationInfo]:
     res = []
     for validator in validators:
@@ -179,11 +184,16 @@ async def validate_one_off(
                 f'[warning]Validator {validator.href()} not compiled, skipping validation.[/warning]'
             )
             continue
-        ok, message, _ = await _validate_test(testcase, validator, validator_digest)
+        ok, message, _ = await _validate_test(
+            testcase,
+            validator,
+            validator_digest,
+            group=testcase_entry.group if testcase_entry is not None else None,
+        )
         res.append(
             TestcaseValidationInfo(
                 validator=validator,
-                testcase=None,
+                testcase=testcase_entry,
                 generation_metadata=generation_metadata,
                 path=testcase,
                 ok=ok,
@@ -271,7 +281,10 @@ async def validate_testcases(
         if entry.validator is not None:
             compiled_digest = validator_to_compiled_digest[str(entry.validator.path)]
             ok, message, hit_bounds = await _validate_test(
-                input_path, entry.validator, compiled_digest
+                input_path,
+                entry.validator,
+                compiled_digest,
+                group=entry.group_entry.group,
             )
             validation_info.append(
                 TestcaseValidationInfo(
@@ -288,7 +301,10 @@ async def validate_testcases(
         for extra_validator in entry.extra_validators:
             compiled_digest = validator_to_compiled_digest[str(extra_validator.path)]
             ok, message, hit_bounds = await _validate_test(
-                input_path, extra_validator, compiled_digest
+                input_path,
+                extra_validator,
+                compiled_digest,
+                group=entry.group_entry.group,
             )
             validation_info.append(
                 TestcaseValidationInfo(
@@ -330,7 +346,10 @@ async def validate_outputs_from_entries(
         for output_validator in entry.output_validators:
             compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
             ok, message, _ = await _validate_test(
-                output_path, output_validator, compiled_digest
+                output_path,
+                output_validator,
+                compiled_digest,
+                group=entry.group_entry.group,
             )
             validation_info.append(
                 TestcaseValidationInfo(
