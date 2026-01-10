@@ -1,3 +1,28 @@
+## 0.23.0 (2026-01-10)
+
+### Feat
+
+- add fuzz tests to stresses
+
+### Fix
+
+- add group name to validator calls
+- fix expected score validation
+- add group deps to points problems
+- add basic scoring implementation with a few todos
+- slight refactor to accomodate for new scoring features
+- skip invalid test cases in fuzz tests
+- add .interaction file to docs
+- add --slowest flag to stress tests
+- add duplicate test check
+- add polygon validation utils but dont use just yet
+- fix contest statement expansion during inheritance
+- add tikzpictures that are expanded into pdfs
+- add externalization params when building statements for polygon
+- add tikz externalization to build process
+- add a bunch of texsoup utils
+- fix a few issues
+
 ## 0.22.2 (2025-12-27)
 
 ### Fix
