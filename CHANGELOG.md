@@ -1,3 +1,10 @@
+## 0.23.1 (2026-01-16)
+
+### Fix
+
+- improve rbx sum and add a detailed mode
+- add rbx summary
+
 ## 0.23.0 (2026-01-10)
 
 ### Feat
