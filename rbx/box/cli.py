@@ -27,6 +27,7 @@ from rbx.box import (
     presets,
     setter_config,
     state,
+    summary,
     timing,
     validators,
 )
@@ -392,6 +393,17 @@ async def run(
         detailed=detailed,
         skip_printing_limits=sanitized,
     )
+
+
+@app.command(
+    'summary, sum',
+    rich_help_panel='Testing',
+    help='Print a summary of the problem.',
+)
+@package.within_problem
+@syncer.sync
+async def summary_cmd():
+    await summary.print_problem_summary(package.find_problem_package_or_die())
 
 
 @app.command(

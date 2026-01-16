@@ -4,15 +4,17 @@ import subprocess
 from typing import Annotated, Optional
 
 import rich.prompt
+import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import cd, creation, presets
+from rbx.box import cd, creation, presets, summary
 from rbx.box.contest import contest_package, contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
     find_contest_package_or_die,
     find_contest_yaml,
+    get_problems,
     within_contest,
 )
 from rbx.box.contest.schema import ContestProblem
@@ -262,3 +264,14 @@ def on(ctx: typer.Context, problems: str) -> None:
         )
         subprocess.call(command, cwd=p.get_path(), shell=True)
         console.console.print()
+
+
+@app.command(
+    'summary, sum',
+    help='Print a summary of the contest.',
+)
+@within_contest
+@syncer.sync
+async def summary_cmd():
+    contest = find_contest_package_or_die()
+    await summary.print_contest_summary(contest, get_problems(contest))
