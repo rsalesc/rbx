@@ -143,6 +143,19 @@ def get_limits_profile(
     return _expand_limits_profile(saved_profile, root=root)
 
 
+def get_available_profiles(root: pathlib.Path = pathlib.Path()) -> list[str]:
+    limits_dir = package.get_limits_dir(root)
+    if not limits_dir.is_dir():
+        return []
+
+    profiles = []
+    for path in limits_dir.glob('*.yml'):
+        if path.is_file():
+            profiles.append(path.stem)
+
+    return sorted(profiles)
+
+
 def get_limits(
     language: Optional[str] = None,
     profile: Optional[str] = None,

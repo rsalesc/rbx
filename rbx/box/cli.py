@@ -402,8 +402,17 @@ async def run(
 )
 @package.within_problem
 @syncer.sync
-async def summary_cmd():
-    await summary.print_problem_summary(package.find_problem_package_or_die())
+async def summary_cmd(
+    detailed: bool = typer.Option(
+        False,
+        '--detailed',
+        '-d',
+        help='Whether to print a detailed view of the tests using tables.',
+    ),
+):
+    await summary.print_problem_summary(
+        package.find_problem_package_or_die(), detailed=detailed
+    )
 
 
 @app.command(
