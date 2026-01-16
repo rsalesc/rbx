@@ -331,11 +331,17 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
         row_data.append(get_formatted_time(problem.timeLimit))
         row_data.append(get_formatted_memory(problem.memoryLimit * 1024 * 1024))
 
-        with cd.new_package_cd(problem_path):
-            row_data.append(await _count_testcases_str(problem))
-            row_data.append(_get_flags_short(problem))
-            expanded_solutions = package.get_solutions()
-            counts = _get_solution_counts(expanded_solutions, bucketize=True)
+        try:
+            with cd.new_package_cd(problem_path):
+                row_data.append(await _count_testcases_str(problem))
+                row_data.append(_get_flags_short(problem))
+                expanded_solutions = package.get_solutions()
+                counts = _get_solution_counts(expanded_solutions, bucketize=True)
+        except Exception:
+            console.console.print(
+                f'[error]Failed to summarize problem [item]{short_name} - {problem.name}[/item][/error]'
+            )
+            continue
 
         for outcome in buckets:
             c = counts.get(outcome, 0)
