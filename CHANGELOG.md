@@ -1,3 +1,11 @@
+## 0.23.2 (2026-01-17)
+
+### Fix
+
+- add --novalidate flag to commands
+- add note that users can skip validation when building
+- show error when summarization fails for problem within a contest
+
 ## 0.23.1 (2026-01-16)
 
 ### Fix
