@@ -257,10 +257,17 @@ def edit():
 )
 @package.within_problem
 @syncer.sync
-async def build(verification: environment.VerificationParam):
+async def build(
+    verification: environment.VerificationParam,
+    validate: bool = typer.Option(
+        True,
+        '--novalidate',
+        help='Whether to not validate outputs for tests.',
+    ),
+):
     from rbx.box import builder
 
-    await builder.build(verification=verification)
+    await builder.build(verification=verification, validate=validate)
 
 
 @app.command(
@@ -296,6 +303,11 @@ async def run(
         True,
         '--nocheck',
         help='Whether to not build outputs for tests and run checker.',
+    ),
+    validate: bool = typer.Option(
+        True,
+        '--novalidate',
+        help='Whether to not validate outputs for tests.',
     ),
     detailed: bool = typer.Option(
         False,
@@ -351,12 +363,17 @@ async def run(
 
     from rbx.box import builder
 
-    if not await builder.build(verification=verification, output=check):
+    if not await builder.build(
+        verification=verification, output=check, validate=validate, is_run=True
+    ):
         return
 
     if verification <= VerificationLevel.VALIDATE.value:
         console.console.print(
             '[warning]Verification level is set to [item]validate (-v1)[/item], so rbx only build tests and validated them.[/warning]'
+        )
+        console.console.print(
+            '[warning]If you want to run solutions, but skip validation, run with [item]--novalidate[/item].[/warning]'
         )
         return
 
@@ -427,6 +444,11 @@ async def time(
         True,
         '--nocheck',
         help='Whether to not build outputs for tests and run checker.',
+    ),
+    validate: bool = typer.Option(
+        True,
+        '--novalidate',
+        help='Whether to not validate outputs for tests.',
     ),
     detailed: bool = typer.Option(
         False,
@@ -542,7 +564,9 @@ async def time(
     from rbx.box import builder
 
     verification = VerificationLevel.ALL_SOLUTIONS.value
-    if not await builder.build(verification=verification, output=check):
+    if not await builder.build(
+        verification=verification, output=check, validate=validate, is_run=True
+    ):
         return None
 
     await timing.compute_time_limits(

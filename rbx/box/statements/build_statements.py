@@ -384,6 +384,7 @@ async def execute_build(
     output: Optional[StatementType] = StatementType.PDF,
     samples: bool = True,
     vars: Optional[List[str]] = None,
+    validate: bool = True,
 ) -> None:
     # At most run the validators, only in samples.
     if samples:
@@ -393,6 +394,7 @@ async def execute_build(
             verification=verification,
             groups=set(['samples']),
             output=None,
+            validate=validate,
         ):
             console.console.print(
                 '[error]Failed to build statements with samples, aborting.[/error]'
@@ -463,8 +465,12 @@ async def build(
             help='Variables to be used in the statements.',
         ),
     ] = None,
+    validate: Annotated[
+        bool,
+        typer.Option(help='Whether to validate outputs for testcases or not.'),
+    ] = True,
 ):
-    await execute_build(verification, names, languages, output, samples, vars)
+    await execute_build(verification, names, languages, output, samples, vars, validate)
 
 
 @app.callback()

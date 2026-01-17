@@ -39,6 +39,10 @@ async def build(
             help='Languages to build statements for. If not specified, build statements for all available languages.',
         ),
     ] = None,
+    validate: Annotated[
+        bool,
+        typer.Option(help='Whether to validate outputs for testcases or not.'),
+    ] = True,
     output: Annotated[
         Optional[StatementType],
         typer.Option(
@@ -76,7 +80,10 @@ async def build(
 
                 try:
                     if not await builder.build(
-                        verification=verification, groups=set(['samples']), output=None
+                        verification=verification,
+                        groups=set(['samples']),
+                        output=None,
+                        validate=validate,
                     ):
                         issue_stack.add_issue(StatementBuildIssue(problem))
                 except Exception:

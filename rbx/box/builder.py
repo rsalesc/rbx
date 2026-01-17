@@ -25,6 +25,8 @@ async def build(
     verification: environment.VerificationParam,
     groups: Optional[Set[str]] = None,
     output: Optional[bool] = True,
+    validate: bool = True,
+    is_run: bool = False,
 ) -> bool:
     no_main_solution_report = False
     if output is None:
@@ -38,7 +40,7 @@ async def build(
     ) as s:
         await generate_testcases(s, groups=groups)
 
-    if verification > 0:
+    if verification > 0 and validate:
         with utils.StatusProgress(
             'Validating testcases...',
             'Validated [item]{processed}[/item] testcases...',
@@ -54,9 +56,14 @@ async def build(
             console.console.print(
                 '[error]Validation failed, check the report above.[/error]'
             )
-            console.console.print(
-                '[error]You can use the [item]-v0[/item] to skip validation.[/error]'
-            )
+            if is_run:
+                console.console.print(
+                    '[error]You can use the [item]--novalidate[/item] flag to skip validation.[/error]'
+                )
+            else:
+                console.console.print(
+                    '[error]You can use the [item]-v0[/item] flag to skip validation.[/error]'
+                )
             return False
 
     entries = await extract_generation_testcases_from_groups(groups)
@@ -70,14 +77,15 @@ async def build(
                 [entry.group_entry for entry in entries], s
             )
 
-    with utils.StatusProgress(
-        'Validating outputs for testcases...',
-        'Validated [item]{processed}[/item] outputs...',
-        keep=True,
-    ) as s:
-        if output:
-            validation_info = await validate_outputs_from_entries(entries, s)
-            print_validation_report(validation_info, output_validation=True)
+    if verification > 0 and validate:
+        with utils.StatusProgress(
+            'Validating outputs for testcases...',
+            'Validated [item]{processed}[/item] outputs...',
+            keep=True,
+        ) as s:
+            if output:
+                validation_info = await validate_outputs_from_entries(entries, s)
+                print_validation_report(validation_info, output_validation=True)
 
     console.console.print(
         '[success]Problem built.[/success] '

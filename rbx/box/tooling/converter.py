@@ -56,7 +56,7 @@ async def convert(
 
         pkg = package.find_problem_package_or_die()
 
-        if not await builder.build(VerificationLevel.NONE.value):
+        if not await builder.build(VerificationLevel.NONE.value, validate=False):
             console.console.print('[error]Failed to build the problem.[/error]')
             raise typer.Exit(1)
 
