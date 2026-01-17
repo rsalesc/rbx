@@ -1,3 +1,9 @@
+## 0.23.3 (2026-01-17)
+
+### Fix
+
+- fix relative assets during contest statement building
+
 ## 0.23.2 (2026-01-17)
 
 ### Fix
