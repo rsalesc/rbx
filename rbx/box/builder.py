@@ -54,6 +54,9 @@ async def build(
             console.console.print(
                 '[error]Validation failed, check the report above.[/error]'
             )
+            console.console.print(
+                '[error]You can use the [item]-v0[/item] to skip validation.[/error]'
+            )
             return False
 
     entries = await extract_generation_testcases_from_groups(groups)
