@@ -51,8 +51,14 @@ class ExtractedProblem:
     def get_statement_path(self) -> pathlib.Path:
         return self.problem.get_path() / self.statement.path
 
+    def get_statement_relative_path(self) -> pathlib.Path:
+        return self.statement.path
+
     def get_statement_assets(self) -> List[str]:
         return [str(self.problem.get_path() / asset) for asset in self.statement.assets]
+
+    def get_statement_relative_assets(self) -> List[str]:
+        return self.statement.assets
 
     def get_statement_builder_problem(self) -> StatementBuilderProblem:
         return StatementBuilderProblem(
@@ -230,14 +236,14 @@ def _build_problem_statements(
         (root / dest_dir).mkdir(parents=True, exist_ok=True)
         (root / dest_path).write_bytes(content)
 
-        problem_assets = (
-            statement_utils.get_relative_assets(
-                extracted_problem.get_statement_path(),
-                extracted_problem.get_statement_assets(),
-                root=extracted_problem.problem.get_path(),
-            )
-            + overrides.assets
+        # Prepare both contest assets and problem-specific assets into
+        # the problem folder when building the whole contest.
+        problem_specific_assets = statement_utils.get_relative_assets(
+            extracted_problem.get_statement_relative_path(),
+            extracted_problem.get_statement_relative_assets(),
+            root=extracted_problem.problem.get_path(),
         )
+        problem_assets = problem_specific_assets + overrides.assets
         prepare_assets(problem_assets, root / dest_dir)
 
         res.append(dataclasses.replace(extracted_problem, built_statement=dest_path))

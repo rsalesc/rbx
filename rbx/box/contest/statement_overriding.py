@@ -42,8 +42,9 @@ def get_overrides(
 ) -> StatementOverrideData:
     override = statement.inheritOverride if inherit else statement.override
     contest_cwd_absolute = utils.abspath(contest_package.find_contest())
+    # TODO: rethink if we should be adding statement assets into the problem context.
     contest_assets = statement_utils.get_relative_assets(
-        contest_cwd_absolute / statement.path,
+        statement.path,
         statement.assets,
         root=contest_cwd_absolute,
     )

@@ -127,6 +127,67 @@ class TestGetRelativeAssets:
             # Always clean up cwd
             os.chdir(original_cwd)
 
+    def test_root_resolution_error_when_asset_not_relative_to_statement(self, tmp_path):
+        """Test error when asset exists in root but isn't relative to statement."""
+        # tmp_path/
+        #   root/
+        #     project/  <- relative_to
+        #     asset.png <- in root, but outside project
+        root_dir = tmp_path / 'root'
+        root_dir.mkdir()
+        project_dir = root_dir / 'project'
+        project_dir.mkdir()
+
+        (root_dir / 'asset.png').write_text('asset')
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            # We ask for 'asset.png' (in root). It exists.
+            # relative_to is 'root/project'.
+            # 'root/asset.png' is NOT relative to 'root/project'.
+            with pytest.raises(typer.Exit):
+                get_relative_assets(
+                    relative_to=project_dir,
+                    assets=['asset.png'],
+                    root=root_dir,
+                )
+        finally:
+            os.chdir(original_cwd)
+
+    def test_root_resolution_with_absolute_relative_to(self, tmp_path):
+        """Test root resolution when relative_to is passed as absolute path."""
+        # tmp_path/
+        #   root/
+        #     project/  <- relative_to
+        #       asset.png
+        root_dir = tmp_path / 'root'
+        root_dir.mkdir()
+        project_dir = root_dir / 'project'
+        project_dir.mkdir()
+
+        (project_dir / 'asset.png').write_text('asset')
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            # relative_to is absolute path to project_dir
+            # assets must be relative to ROOT. So 'project/asset.png'.
+            assets = get_relative_assets(
+                relative_to=project_dir.resolve(),
+                assets=['project/asset.png'],
+                root=root_dir,
+            )
+
+            assert len(assets) == 1
+            assert assets[0][0].name == 'asset.png'
+            # path relative to relative_to:
+            # /tmp/.../root/project/asset.png relative to /tmp/.../root/project is 'asset.png'
+            assert assets[0][1] == pathlib.Path('asset.png')
+
+        finally:
+            os.chdir(original_cwd)
+
 
 @pytest.fixture
 def chdir_tmp_path(tmp_path):

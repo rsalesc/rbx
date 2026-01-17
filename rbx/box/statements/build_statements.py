@@ -272,6 +272,8 @@ def build_statement_bytes(
     _clean_statement_dir(statement)
     for bdr, params in builders:
         builder_dir = _get_statement_dir(statement, bdr.name())
+
+        # Inject assets from the problem statement.
         assets = statement_utils.get_relative_assets(statement.path, statement.assets)
 
         context_params = params
@@ -282,9 +284,12 @@ def build_statement_bytes(
             )
             injection_root = overridden_params_root
 
-        # Use either overridden assets (by contest) or usual assets.
-        # Remember to modify the root to contest root if that's the case.
+        # Inject assets from the builder, using either the overridden root or the
+        # statement root. The overridden root is used when the builder configuration
+        # is overridden from the contest statement.
         assets.extend(bdr.inject_assets(injection_root, context_params))
+
+        # Inject assets from the contest statement.
         assets.extend(overridden_assets)
 
         prepare_assets(assets, pathlib.Path(builder_dir))
