@@ -188,13 +188,14 @@ def _copy_testcase_companions_over(
     src: Testcase,
     dest: Testcase,
 ):
-    assert dest.outputPath is not None
-    dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
+    # assert dest.outputPath is not None
+    # dest.outputPath.parent.mkdir(parents=True, exist_ok=True)
 
-    reference_path = src.outputPath or src.inputPath
-    _copy_testcase_output_over(
-        reference_path, dest.outputPath, '.tex', crlf_check=False
-    )
+    # reference_path = src.outputPath or src.inputPath
+    # _copy_testcase_output_over(
+    #     reference_path, dest.outputPath, '.tex', crlf_check=False
+    # )
+    pass
 
 
 def _needs_output(generation_entries: List[GenerationTestcaseEntry]) -> bool:
@@ -579,8 +580,6 @@ async def generate_outputs_for_testcases(
         if entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
             entry.metadata.copied_from, tc
         ):
-            # Copy remaining pipe files.
-            _copy_testcase_outputs_over(entry.metadata.copied_from, tc, pipes=True)
             step()
             continue
 
@@ -596,16 +595,7 @@ async def generate_outputs_for_testcases(
 
         assert model_solution is not None
         model_solution_digest = solution_digest_map[model_solution.path]
-        capture_pipes = None
-        if (
-            pkg.type == TaskType.COMMUNICATION
-            and entry.metadata.copied_from is not None
-        ):
-            # If some pipe file is already specified, we don't need to capture the pipes
-            # when running the program.
-            capture_pipes = not _copy_testcase_outputs_over(
-                entry.metadata.copied_from, tc, only_pipes=True, dry_run=True
-            )
+        capture_pipes = True  # Always capture pipes
 
         await generate_output_for_testcase(
             model_solution,
@@ -615,7 +605,4 @@ async def generate_outputs_for_testcases(
             capture_pipes=capture_pipes,
             line_capture=entry.is_sample(),
         )
-        if entry.metadata.copied_from is not None:
-            # Copy remaining pipe files.
-            _copy_testcase_outputs_over(entry.metadata.copied_from, tc, pipes=True)
         step()

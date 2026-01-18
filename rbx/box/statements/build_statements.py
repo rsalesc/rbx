@@ -20,7 +20,6 @@ from rbx.box.statements.builders import (
     StatementBuilderContext,
     StatementBuilderProblem,
     StatementCodeLanguage,
-    StatementSample,
     TeX2PDFBuilder,
     prepare_assets,
 )
@@ -31,7 +30,7 @@ from rbx.box.statements.schema import (
     StatementType,
 )
 from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
-from rbx.box.testcase_utils import get_samples
+from rbx.box.testcase_sample_utils import get_statement_samples
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -239,7 +238,7 @@ def get_builders(
     return reconfigured_builders
 
 
-def build_statement_bytes(
+async def build_statement_bytes(
     statement: Statement,
     pkg: Package,
     output_type: Optional[StatementType] = None,
@@ -293,6 +292,13 @@ def build_statement_bytes(
         assets.extend(overridden_assets)
 
         prepare_assets(assets, pathlib.Path(builder_dir))
+        samples = (
+            await get_statement_samples(
+                explanation_suffix=bdr.explanation_suffix(),
+            )
+            if use_samples
+            else []
+        )
         output = bdr.build(
             input=last_content,
             context=StatementBuilderContext(
@@ -312,10 +318,7 @@ def build_statement_bytes(
                 ),
                 package=pkg,
                 statement=statement,
-                samples=StatementSample.from_testcases(
-                    get_samples() if use_samples else [],
-                    explanation_suffix='.tex',
-                ),
+                samples=samples,
                 short_name=short_name,
                 vars={
                     **pkg.expanded_vars,
@@ -345,7 +348,7 @@ def get_statement_build_path(
     return path
 
 
-def build_statement(
+async def build_statement(
     statement: Statement,
     pkg: Package,
     output_type: Optional[StatementType] = None,
@@ -362,7 +365,7 @@ def build_statement(
             override_kwargs.get('overridden_params', {}),
             {step.type: step for step in extra_mergeable_params},
         )
-    last_content, last_output = build_statement_bytes(
+    last_content, last_output = await build_statement_bytes(
         statement,
         pkg,
         output_type=output_type,
@@ -426,7 +429,7 @@ async def execute_build(
         raise typer.Exit(1)
 
     for statement in valid_statements:
-        build_statement(
+        await build_statement(
             statement,
             pkg,
             output_type=output,

@@ -113,7 +113,7 @@ async def build(
 
     for statement in valid_statements:
         built_statements.append(
-            build_statement(
+            await build_statement(
                 statement,
                 contest,
                 output_type=output,

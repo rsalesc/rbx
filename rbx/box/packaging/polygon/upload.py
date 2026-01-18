@@ -35,10 +35,10 @@ from rbx.box.statements.builders import (
 from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.statements.statement_utils import get_relative_assets
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
+from rbx.box.testcase_sample_utils import get_statement_samples
 from rbx.box.testcase_utils import (
     TestcaseInteractionParsingError,
     get_alternate_interaction_texts,
-    get_samples,
     parse_interaction,
 )
 
@@ -182,8 +182,8 @@ def _upload_validator(problem: api.Problem):
     problem.set_validator(_get_validator_name())
 
 
-def _get_samples() -> List[StatementSample]:
-    return StatementSample.from_testcases(get_samples(), explanation_suffix='.tex')
+async def _get_samples() -> List[StatementSample]:
+    return await get_statement_samples(explanation_suffix='.tex')
 
 
 def _save_skip_coinciding_testcases(problem: api.Problem, *args, **kwargs) -> bool:
@@ -455,7 +455,7 @@ def _upload_statement_resources(
     return res
 
 
-def _upload_statement(
+async def _upload_statement(
     problem: api.Problem, main_language: Optional[str], upload_as_english: bool = False
 ):
     pkg = package.find_problem_package_or_die()
@@ -549,7 +549,7 @@ def _upload_statement(
             interaction=_get_block('interaction')
             if pkg.type == TaskType.COMMUNICATION
             else None,
-            notes=_get_notes_with_explanations(_get_samples()) or '',
+            notes=_get_notes_with_explanations(await _get_samples()) or '',
         )
         problem.save_statement(
             lang=uploaded_language,
@@ -602,7 +602,7 @@ async def upload_problem(
     if 'tests' in which_upload:
         _upload_testcases(problem)
     if 'statements' in which_upload:
-        _upload_statement(
+        await _upload_statement(
             problem, main_language=main_language, upload_as_english=upload_as_english
         )
 

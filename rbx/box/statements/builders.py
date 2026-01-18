@@ -8,13 +8,11 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import pypandoc
 import typer
-from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box import naming
 from rbx.box.fields import Primitive
-from rbx.box.schema import LimitsProfile, Package, Testcase
-from rbx.box.solutions import get_best_interaction_file
+from rbx.box.schema import LimitsProfile, Package
 from rbx.box.statements import texsoup_utils
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
@@ -32,11 +30,7 @@ from rbx.box.statements.schema import (
     rbxMarkdownToTeX,
     rbxToTeX,
 )
-from rbx.box.testcase_utils import (
-    TestcaseInteraction,
-    TestcaseInteractionParsingError,
-    parse_interaction,
-)
+from rbx.box.testcase_sample_utils import StatementSample
 
 
 @dataclasses.dataclass
@@ -75,68 +69,6 @@ class StatementBuilderItem(ABC):
         externalize: bool = False,
     ) -> Dict[str, Any]:
         pass
-
-
-class StatementSample(BaseModel):
-    inputPath: pathlib.Path
-    outputPath: pathlib.Path
-    explanationPath: Optional[pathlib.Path] = None
-    hasOutput: bool = True
-    interaction: Optional[TestcaseInteraction] = None
-
-    @staticmethod
-    def from_testcase(
-        testcase: Testcase, explanation_suffix: Optional[str] = None
-    ) -> 'StatementSample':
-        input_path = testcase.inputPath
-        output_path = testcase.outputPath
-
-        explanation_path = None
-        if explanation_suffix is not None:
-            explanation_path = testcase.inputPath.with_suffix(explanation_suffix)
-            if explanation_path.is_file():
-                explanation_path = explanation_path
-            else:
-                explanation_path = None
-
-        pin_path = input_path.with_suffix('.pin')
-        pout_path = input_path.with_suffix('.pout')
-
-        if pin_path.is_file():
-            input_path = pin_path
-        if pout_path.is_file():
-            output_path = pout_path
-
-        interaction = None
-        interaction_path = get_best_interaction_file(input_path)
-        if interaction_path is not None:
-            try:
-                interaction = parse_interaction(interaction_path)
-            except TestcaseInteractionParsingError as e:
-                console.console.print(
-                    f'Error parsing interactive sample: [error]{e}[/error]'
-                )
-                raise typer.Exit(1) from e
-
-        return StatementSample(
-            inputPath=input_path,
-            outputPath=output_path or utils.get_empty_sentinel_path(),
-            hasOutput=output_path is not None,
-            interaction=interaction,
-            explanationPath=explanation_path,
-        )
-
-    @staticmethod
-    def from_testcases(
-        testcases: List[Testcase], explanation_suffix: Optional[str] = None
-    ) -> List['StatementSample']:
-        return [
-            StatementSample.from_testcase(testcase, explanation_suffix)
-            for testcase in testcases
-        ]
-
-    def to_testcase(self) -> Testcase:
-        return Testcase(inputPath=self.inputPath, outputPath=self.outputPath)
 
 
 class ExplainedStatementSample(StatementSample):
@@ -450,6 +382,9 @@ class StatementBuilder(ABC):
     ) -> List[Tuple[pathlib.Path, pathlib.Path]]:
         return []
 
+    def explanation_suffix(self) -> Optional[str]:
+        return None
+
     @abstractmethod
     def build(
         self,
@@ -474,6 +409,9 @@ class JinjaTeXBuilder(StatementBuilder):
 
     def output_type(self) -> StatementType:
         return StatementType.TeX
+
+    def explanation_suffix(self) -> Optional[str]:
+        return '.tex'
 
     def build(
         self,
@@ -514,6 +452,9 @@ class rbxTeXBuilder(StatementBuilder):
         if not params.template:
             return []
         return [(utils.abspath(root / params.template), params.template)]
+
+    def explanation_suffix(self) -> Optional[str]:
+        return '.tex'
 
     def build(
         self,
@@ -558,6 +499,9 @@ class rbxMarkdownToTeXBuilder(StatementBuilder):
     def handles_contest(self) -> bool:
         return True
 
+    def explanation_suffix(self) -> Optional[str]:
+        return '.md'
+
     def build(
         self,
         input: bytes,
@@ -588,6 +532,9 @@ class TeX2PDFBuilder(StatementBuilder):
 
     def output_type(self) -> StatementType:
         return StatementType.PDF
+
+    def explanation_suffix(self) -> Optional[str]:
+        return '.tex'
 
     def build(
         self,

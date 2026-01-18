@@ -57,10 +57,10 @@ from rbx.box.testcase_extractors import (
 )
 from rbx.box.testcase_utils import (
     TestcaseEntry,
-    TestcaseInteractionParsingError,
     find_built_testcases,
-    parse_interaction,
-    print_interaction,
+    get_all_interaction_files,
+    get_best_interaction_file,
+    print_best_output,
 )
 from rbx.grading import grading_context, steps
 from rbx.grading.limits import Limits
@@ -475,39 +475,6 @@ def _produce_solution_items(
             res.extend(yield_items(solution, group.name))
 
     return res
-
-
-def valid_interaction_suffixes() -> List[str]:
-    return ['.interaction', '.pio']
-
-
-def get_best_interaction_file(stdout_path: pathlib.Path) -> Optional[pathlib.Path]:
-    for suffix in valid_interaction_suffixes():
-        interaction_path = stdout_path.with_suffix(suffix)
-        if interaction_path.is_file():
-            return interaction_path
-    return None
-
-
-def get_all_interaction_files(stdout_path: pathlib.Path) -> List[pathlib.Path]:
-    return [stdout_path.with_suffix(suffix) for suffix in valid_interaction_suffixes()]
-
-
-def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = False):
-    for output_file in output_files:
-        if not output_file.is_file():
-            continue
-        if output_file.suffix in valid_interaction_suffixes():
-            try:
-                print_interaction(parse_interaction(output_file))
-            except TestcaseInteractionParsingError:
-                # Ignore parsing errors and proceed to next file.
-                continue
-        else:
-            console.console.print(output_file.read_text())
-        return
-    if empty_warning:
-        console.console.print('[warning]Solution produced no output.[/warning]')
 
 
 def run_solutions(

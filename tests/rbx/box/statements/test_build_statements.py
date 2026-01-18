@@ -110,9 +110,25 @@ def mock_environment():
 @pytest.fixture
 def mock_samples():
     """Fixture to mock get_samples function to avoid package system dependencies."""
-    with patch('rbx.box.statements.build_statements.get_samples') as mock_get_samples:
+    with patch(
+        'rbx.box.statements.build_statements.get_statement_samples'
+    ) as mock_get_samples:
         mock_get_samples.return_value = []
         yield mock_get_samples
+
+
+@pytest.fixture(autouse=True)
+def mock_package_build_path(tmp_path):
+    """Mock package build paths to avoid package lookup failures in tests."""
+    # Create a mock build directory
+    build_dir = tmp_path / 'build' / 'statements'
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    with patch(
+        'rbx.box.statements.build_statements.package.get_statements_build_path'
+    ) as mock:
+        mock.return_value = build_dir
+        yield mock
 
 
 class TestGetEnvironmentLanguagesForStatement:
@@ -302,11 +318,11 @@ class TestBuildStatementBytesExtended:
             mock.return_value = MagicMock()
             yield mock
 
-    def test_build_simple_statement(
+    async def test_build_simple_statement(
         self, sample_package, sample_statement, mock_samples, mock_limits
     ):
         """Test building a simple statement."""
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=sample_statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -316,7 +332,7 @@ class TestBuildStatementBytesExtended:
         assert output_type == StatementType.TeX
         assert b'Problem: test-problem' in content
 
-    def test_build_with_assets(
+    async def test_build_with_assets(
         self, sample_package, chdir_tmp_path, mock_samples, mock_limits
     ):
         """Test building statement with assets."""
@@ -335,7 +351,7 @@ class TestBuildStatementBytesExtended:
             assets=['style.sty'],
         )
 
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -345,7 +361,7 @@ class TestBuildStatementBytesExtended:
         assert output_type == StatementType.TeX
         assert b'Problem content' in content
 
-    def test_build_with_custom_vars(
+    async def test_build_with_custom_vars(
         self, sample_package, tmp_path, mock_samples, mock_limits
     ):
         """Test building statement with custom variables."""
@@ -361,7 +377,7 @@ class TestBuildStatementBytesExtended:
             type=StatementType.JinjaTeX,
         )
 
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -372,7 +388,7 @@ class TestBuildStatementBytesExtended:
         assert b'Custom: custom_value' in content
         assert b'Nested: VALUE' in content
 
-    def test_build_nonexistent_statement_file_raises_exit(
+    async def test_build_nonexistent_statement_file_raises_exit(
         self, sample_package, tmp_path
     ):
         """Test that non-existent statement file raises typer.Exit."""
@@ -386,12 +402,12 @@ class TestBuildStatementBytesExtended:
         )
 
         with pytest.raises(typer.Exit):
-            build_statement_bytes(
+            await build_statement_bytes(
                 statement=statement,
                 pkg=sample_package,
             )
 
-    def test_build_with_overridden_params(
+    async def test_build_with_overridden_params(
         self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
     ):
         """Test building statement with overridden parameters."""
@@ -407,7 +423,7 @@ class TestBuildStatementBytesExtended:
             )
         }
 
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=sample_statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -420,7 +436,7 @@ class TestBuildStatementBytesExtended:
         # The overridden parameters are passed but the original statement template is still used
         assert b'Problem: test-problem' in content
 
-    def test_build_with_overridden_assets(
+    async def test_build_with_overridden_assets(
         self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
     ):
         """Test building statement with overridden assets."""
@@ -435,7 +451,7 @@ class TestBuildStatementBytesExtended:
             (custom_asset2, pathlib.Path('custom2.cls')),
         ]
 
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=sample_statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -445,7 +461,7 @@ class TestBuildStatementBytesExtended:
         assert isinstance(content, bytes)
         assert output_type == StatementType.TeX
 
-    def test_build_with_short_name(
+    async def test_build_with_short_name(
         self, sample_package, mock_samples, mock_limits, tmp_path
     ):
         """Test building statement with custom short_name."""
@@ -462,7 +478,7 @@ class TestBuildStatementBytesExtended:
             assets=[],
         )
 
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -473,17 +489,17 @@ class TestBuildStatementBytesExtended:
         assert output_type == StatementType.TeX
         assert b'PROB_A' in content
 
-    def test_build_with_use_samples_false(
+    async def test_build_with_use_samples_false(
         self, sample_package, sample_statement, mock_limits
     ):
         """Test building statement with use_samples=False."""
         # Don't use mock_samples fixture to test actual behavior
         with patch(
-            'rbx.box.statements.build_statements.get_samples'
+            'rbx.box.statements.build_statements.get_statement_samples'
         ) as mock_get_samples:
             mock_get_samples.return_value = []
 
-            content, output_type = build_statement_bytes(
+            content, output_type = await build_statement_bytes(
                 statement=sample_statement,
                 pkg=sample_package,
                 output_type=StatementType.TeX,
@@ -495,7 +511,7 @@ class TestBuildStatementBytesExtended:
             # get_samples should NOT be called when use_samples=False based on the conditional logic
             mock_get_samples.assert_not_called()
 
-    def test_build_with_combined_overrides(
+    async def test_build_with_combined_overrides(
         self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
     ):
         """Test building statement with multiple override parameters combined."""
@@ -514,7 +530,7 @@ class TestBuildStatementBytesExtended:
         }
         overridden_assets = [(custom_asset, pathlib.Path('combined.sty'))]
 
-        content, output_type = build_statement_bytes(
+        content, output_type = await build_statement_bytes(
             statement=sample_statement,
             pkg=sample_package,
             output_type=StatementType.TeX,
@@ -531,7 +547,7 @@ class TestBuildStatementBytesExtended:
         # The basic template should still be used since overridden_params doesn't specify a custom template
         assert b'Problem: test-problem' in content
 
-    def test_build_with_inherited_from_param(
+    async def test_build_with_inherited_from_param(
         self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
     ):
         """Test building statement with inherited_from parameter."""
@@ -562,7 +578,7 @@ class TestBuildStatementBytesExtended:
             mock_contest.expanded_vars = {}
             mock_find_contest.return_value = mock_contest
 
-            content, output_type = build_statement_bytes(
+            content, output_type = await build_statement_bytes(
                 statement=statement,
                 pkg=sample_package,
                 output_type=StatementType.TeX,
@@ -597,7 +613,7 @@ class TestBuildStatement:
             mock.return_value = MagicMock()
             yield mock
 
-    def test_build_statement_creates_file(
+    async def test_build_statement_creates_file(
         self, sample_package, tmp_path, mock_samples, mock_limits, mock_environment
     ):
         """Test that build_statement creates the output file."""
@@ -613,7 +629,7 @@ class TestBuildStatement:
 
         # Mock the package build path
         build_dir = tmp_path / 'build'
-        build_dir.mkdir()
+        build_dir.mkdir(exist_ok=True)
 
         with (
             patch(
@@ -625,7 +641,7 @@ class TestBuildStatement:
                 return_value='A',
             ),
         ):
-            result_path = build_statement(
+            result_path = await build_statement(
                 statement=statement,
                 pkg=sample_package,
                 output_type=StatementType.TeX,
@@ -641,7 +657,7 @@ class TestBuildStatement:
 class TestBuildStatementsIntegration:
     """Integration tests using testing package fixtures."""
 
-    def test_full_statement_build_pipeline(
+    async def test_full_statement_build_pipeline(
         self, testing_pkg: testing_package.TestingPackage, mock_samples
     ):
         """Test complete statement building pipeline with testing package."""
@@ -684,7 +700,7 @@ Problem \\VAR{problem.package.name} with constraint MAX_N = \\VAR{problem.vars.M
         pkg = testing_pkg.yml
         statement = pkg.expanded_statements[0]
 
-        result_path = build_statement(
+        result_path = await build_statement(
             statement=statement,
             pkg=pkg,
             output_type=StatementType.TeX,
@@ -697,7 +713,9 @@ Problem \\VAR{problem.package.name} with constraint MAX_N = \\VAR{problem.vars.M
         assert 'integration-test' in content
         assert 'MAX_N = 100000' in content
 
-    def test_build_with_samples(self, testing_pkg: testing_package.TestingPackage):
+    async def test_build_with_samples(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
         """Test building statement with sample testcases."""
         # Set up problem with samples
         problem_yml = testing_pkg.add_file('problem.rbx.yml')
@@ -736,27 +754,30 @@ Sample \\VAR{loop.index}: Input has \\VAR{sample.inputPath.read_text().strip().s
 
         # Mock get_samples to return our test samples
         with patch(
-            'rbx.box.statements.build_statements.get_samples'
+            'rbx.box.statements.build_statements.get_statement_samples'
         ) as mock_get_samples:
             # Create real Testcase objects instead of mocks
-            from rbx.box.schema import Testcase
+            from rbx.box.testcase_sample_utils import StatementSample
 
-            testcases = [
-                Testcase(
+            # Convert testcases to StatementSamples as expected by get_statement_samples
+            stmt_samples = [
+                StatementSample(
                     inputPath=testing_pkg.path('tests/sample1.in'),
                     outputPath=testing_pkg.path('tests/sample1.out'),
+                    hasOutput=True,
                 ),
-                Testcase(
+                StatementSample(
                     inputPath=testing_pkg.path('tests/sample2.in'),
                     outputPath=testing_pkg.path('tests/sample2.out'),
+                    hasOutput=True,
                 ),
             ]
-            mock_get_samples.return_value = testcases
+            mock_get_samples.return_value = stmt_samples
 
             pkg = testing_pkg.yml
             statement = pkg.expanded_statements[0]
 
-            result_path = build_statement(
+            result_path = await build_statement(
                 statement=statement,
                 pkg=pkg,
                 output_type=StatementType.TeX,
@@ -796,7 +817,7 @@ class TestBuildStatementInheritance:
             inheritFromContest=True,
         )
 
-    def test_inherit_from_contest_applies_overrides(
+    async def test_inherit_from_contest_applies_overrides(
         self,
         statement_with_inheritance,
         mock_override_data,
@@ -809,7 +830,7 @@ class TestBuildStatementInheritance:
 
         # Mock build directory structure
         build_dir = tmp_path / 'build'
-        build_dir.mkdir()
+        build_dir.mkdir(exist_ok=True)
 
         with (
             patch(
@@ -834,7 +855,7 @@ class TestBuildStatementInheritance:
         ):
             mock_get_overrides.return_value = mock_override_data
 
-            result_path = build_statement(
+            result_path = await build_statement(
                 statement=statement_with_inheritance,
                 pkg=pkg,
                 output_type=StatementType.TeX,
@@ -847,7 +868,9 @@ class TestBuildStatementInheritance:
             content = result_path.read_text()
             assert 'Variable: inherited_value' in content
 
-    def test_inherit_from_contest_false_no_overrides(self, tmp_path, mock_samples):
+    async def test_inherit_from_contest_false_no_overrides(
+        self, tmp_path, mock_samples
+    ):
         """Test that inheritFromContest=False does not call get_inheritance_overrides."""
         statement_file = tmp_path / 'statement.jinja.tex'
         statement_file.write_text(
@@ -864,7 +887,7 @@ class TestBuildStatementInheritance:
 
         # Mock build directory structure
         build_dir = tmp_path / 'build'
-        build_dir.mkdir()
+        build_dir.mkdir(exist_ok=True)
 
         with (
             patch(
@@ -887,7 +910,7 @@ class TestBuildStatementInheritance:
                 return_value=[],
             ),
         ):
-            result_path = build_statement(
+            result_path = await build_statement(
                 statement=statement,
                 pkg=pkg,
                 output_type=StatementType.TeX,

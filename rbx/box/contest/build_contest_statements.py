@@ -27,7 +27,6 @@ from rbx.box.statements.builders import (
     StatementBuilderContest,
     StatementBuilderContext,
     StatementBuilderProblem,
-    StatementSample,
     prepare_assets,
 )
 from rbx.box.statements.joiners import (
@@ -45,7 +44,6 @@ class ExtractedProblem:
     statement: Statement
     problem: ContestProblem
     limits: LimitsProfile
-    samples: List[Testcase]
     built_statement: Optional[pathlib.Path] = None
 
     def get_statement_path(self) -> pathlib.Path:
@@ -61,13 +59,11 @@ class ExtractedProblem:
         return self.statement.assets
 
     def get_statement_builder_problem(self) -> StatementBuilderProblem:
+        # TODO: maybe add samples back?
         return StatementBuilderProblem(
             limits=self.limits,
             package=self.package,
             statement=self.statement,
-            samples=StatementSample.from_testcases(
-                self.samples, explanation_suffix='.tex'
-            ),
             io_path=self.built_statement,
             short_name=self.problem.short_name,
         )
@@ -163,27 +159,10 @@ def get_problems_for_statement(
                 package=pkg,
                 statement=matching_statements[0],
                 problem=problem,
-                samples=_get_samples(problem),
             )
         )
 
     return res
-
-
-def get_builder_problems(
-    extracted_problems: List[ExtractedProblem],
-) -> List[StatementBuilderProblem]:
-    return [
-        StatementBuilderProblem(
-            limits=ex.limits,
-            package=ex.package,
-            statement=ex.statement,
-            samples=StatementSample.from_testcases(
-                ex.samples, explanation_suffix='.tex'
-            ),
-        )
-        for ex in extracted_problems
-    ]
 
 
 def get_joiner(name: str) -> StatementJoiner:
@@ -194,7 +173,7 @@ def get_joiner(name: str) -> StatementJoiner:
     raise typer.Exit(1)
 
 
-def _build_problem_statements(
+async def _build_problem_statements(
     statement: ContestStatement,
     contest: Contest,
     root: pathlib.Path,
@@ -217,7 +196,7 @@ def _build_problem_statements(
             package.clear_package_cache()
             # TODO: respect steps override
             try:
-                content, _ = build_statements.build_statement_bytes(
+                content, _ = await build_statements.build_statement_bytes(
                     extracted_problem.statement,
                     extracted_problem.package,
                     output_type=output_type,
@@ -312,7 +291,7 @@ def build_contest_only(
     return last_content, last_output
 
 
-def build_statement_rooted(
+async def build_statement_rooted(
     statement: ContestStatement,
     contest: Contest,
     root: pathlib.Path,
@@ -337,7 +316,7 @@ def build_statement_rooted(
     else:
         # Build problem-level statements.
         joiner = get_joiner(statement.joiner.type)
-        extracted_problems = _build_problem_statements(
+        extracted_problems = await _build_problem_statements(
             statement,
             contest,
             root,
@@ -403,7 +382,7 @@ def get_statement_build_dir(statement: ContestStatement) -> pathlib.Path:
     return pathlib.Path('build') / 'statement_build' / statement.name
 
 
-def build_statement(
+async def build_statement(
     statement: ContestStatement,
     contest: Contest,
     output_type: Optional[StatementType] = None,
@@ -414,7 +393,7 @@ def build_statement(
     root = get_statement_build_dir(statement)
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True, exist_ok=True)
-    last_content, last_output = build_statement_rooted(
+    last_content, last_output = await build_statement_rooted(
         statement,
         contest,
         root,

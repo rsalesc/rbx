@@ -28,6 +28,7 @@ async def build(
     output: Optional[bool] = True,
     validate: bool = True,
     is_run: bool = False,
+    is_statement: bool = False,
 ) -> bool:
     no_main_solution_report = False
     if output is None:
