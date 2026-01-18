@@ -106,7 +106,9 @@ def _process_zeroes(value: int) -> Tuple[int, int, int]:
 
 
 def scientific_notation(
-    value: Union[int, jinja2.Undefined], zeroes: int = 2
+    value: Union[int, jinja2.Undefined],
+    zeroes: int = 4,
+    rest: bool = False,
 ) -> Union[str, jinja2.Undefined]:
     if jinja2.is_undefined(value):
         return typing.cast(jinja2.Undefined, value)
@@ -117,18 +119,29 @@ def scientific_notation(
     if value < 0:
         return f'-{scientific_notation(-value, zeroes=zeroes)}'
 
-    mult, exp, rest = _process_zeroes(value)
+    mult, exp, rem = _process_zeroes(value)
     if exp < zeroes:
         return str(value)
     res = '10' if exp == 1 else f'10^{{{exp}}}'
-    if rest > 0 and len(str(rest)) + 1 >= len(str(value)):
+    if not rest and rem > 0:
+        # Should not convert numbers like 100007 to 10^5 + 7,
+        # unless rest is true.
+        return str(value)
+    if rem > 0 and len(str(rem)) + 1 >= len(str(value)):
         # Should not convert numbers like 532 to 5*10^2 + 32.
         return str(value)
     if mult > 1:
         res = f'{mult} \\times {res}'
-    if rest > 0:
-        res = f'{res} + {rest}'
+    if rem > 0:
+        res = f'{res} + {rem}'
     return res
+
+
+def rest_scientific_notation(
+    value: Union[int, jinja2.Undefined],
+    zeroes: int = 4,
+) -> Union[str, jinja2.Undefined]:
+    return scientific_notation(value, zeroes=zeroes, rest=True)
 
 
 def path_parent(path: pathlib.Path) -> pathlib.Path:
@@ -251,6 +264,7 @@ class JinjaDictWrapper(dict):
 def add_builtin_filters(j2_env: jinja2.Environment):
     j2_env.filters['escape'] = escape_latex_str_if_str
     j2_env.filters['sci'] = scientific_notation
+    j2_env.filters['rsci'] = rest_scientific_notation
     j2_env.filters['parent'] = path_parent
     j2_env.filters['stem'] = path_stem
 
