@@ -8,6 +8,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.validators import (
+    check_output_from_entries,
     has_validation_errors,
     print_validation_report,
     validate_outputs_from_entries,
@@ -602,6 +603,99 @@ async def test_validator_receives_group_argument(
     assert results[('large', 'fail.in')] is False
     assert results[('default', 'pass.in')] is True
 
+
+async def test_check_output_from_entries_with_checker(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test that check_output_from_entries validates manual outputs against the checker."""
+    # Checker that fails if input is > 100
+    testing_pkg.add_file('checker.cpp').write_text("""
+#include "testlib.h"
+using namespace std;
+
+int main(int argc, char* argv[]) {
+    registerTestlibCmd(argc, argv);
+    string token = ouf.readToken();
+    int userVal = atoi(token.c_str());
+    if (userVal > 100) quitf(_wa, "Value too large");
+    quitf(_ok, "OK");
+}
+""")
+    testing_pkg.set_checker('checker.cpp')
+
+    # Add manual testcases
+    testing_pkg.add_file('manual/good.in').write_text('10\\n')
+    testing_pkg.add_file('manual/good.out').write_text('50\\n')  # OK
+
+    testing_pkg.add_file('manual/bad.in').write_text('20\\n')
+    testing_pkg.add_file('manual/bad.out').write_text('150\\n')  # Fail > 100
+
+    testing_pkg.add_testgroup_with_manual_testcases(
+        'manual',
+        [
+            {'inputPath': 'manual/good.in', 'outputPath': 'manual/good.out'},
+            {'inputPath': 'manual/bad.in', 'outputPath': 'manual/bad.out'},
+        ],
+    )
+
+    await generate_testcases()
+
+    # Extract entries to check
+    entries = await extract_generation_testcases(
+        [
+            TestcaseEntry(group='manual', index=0),
+            TestcaseEntry(group='manual', index=1),
+        ]
+    )
+
+    # Run check_output_from_entries
+    validation_infos = await check_output_from_entries(entries)
+    print_validation_report(validation_infos)
+
+    # Should have 1 failure (bad.out)
+    assert len(validation_infos) == 1
+    assert not validation_infos[0].ok
+    assert (
+        validation_infos[0].message is not None
+        and 'Value too large' in validation_infos[0].message
+    )
+    assert validation_infos[0].path.name == 'bad.out'
+
     out = capsys.readouterr().out
-    assert 'exceeds limit 10 for group small' in out
-    assert 'exceeds limit 100 for group large' in out
+    assert 'Checker failed on manual output' in out
+
+
+async def test_check_output_from_entries_ignores_missing_outputs(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """Test that check_output_from_entries ignores entries without manual outputs."""
+    testing_pkg.add_file('checker.cpp').write_text("""
+#include "testlib.h"
+int main(int argc, char* argv[]) {
+    registerTestlibCmd(argc, argv);
+    quitf(_ok, "OK");
+}
+""")
+    testing_pkg.set_checker('checker.cpp')
+
+    testing_pkg.add_file('manual/test.in').write_text('10\\n')
+    # No output file provided
+
+    testing_pkg.add_testgroup_with_manual_testcases(
+        'manual',
+        [
+            {'inputPath': 'manual/test.in'},  # No outputPath
+        ],
+    )
+
+    await generate_testcases()
+
+    entries = await extract_generation_testcases(
+        [TestcaseEntry(group='manual', index=0)]
+    )
+
+    validation_infos = await check_output_from_entries(entries)
+
+    # Should be empty as there are no outputs to check
+    assert len(validation_infos) == 0

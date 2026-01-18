@@ -6,7 +6,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import package
+from rbx.box import checkers, package
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.fields import Primitive
 from rbx.box.schema import CodeItem
@@ -23,6 +23,7 @@ from rbx.grading.steps import (
     DigestOrDest,
     DigestOrSource,
     GradingFileOutput,
+    Outcome,
 )
 from rbx.utils import StatusProgress
 
@@ -363,6 +364,66 @@ async def validate_outputs_from_entries(
                 )
             )
             step()
+
+    return validation_info
+
+
+async def check_output_from_entries(
+    entries: List[GenerationTestcaseEntry],
+    progress: Optional[StatusProgress] = None,
+) -> List[TestcaseValidationInfo]:
+    def step():
+        if progress is not None:
+            progress.step()
+
+    entries_to_check: List[GenerationTestcaseEntry] = []
+
+    for entry in entries:
+        if entry.metadata.copied_from is None:
+            continue
+        if (
+            entry.metadata.copied_from.outputPath is None
+            or not entry.metadata.copied_from.outputPath.is_file()
+        ):
+            continue
+        # Output is generated from a manual file, check it.
+        entries_to_check.append(entry)
+
+    if not entries_to_check:
+        return []
+
+    checker = package.get_checker()
+    checker_digest = checkers.compile_checker(progress=progress)
+
+    validation_info = []
+    for entry in entries_to_check:
+        assert entry.metadata.copied_from is not None
+        assert entry.metadata.copied_from.outputPath is not None
+        assert entry.metadata.copied_from.outputPath.is_file()
+        output_path = entry.metadata.copied_from.outputPath
+
+        result = await checkers.check(
+            checker_digest,
+            run_log=None,
+            testcase=entry.metadata.copied_to,
+            program_output=output_path,
+            skip_run_log=True,
+        )
+
+        if result.outcome != Outcome.ACCEPTED:
+            validation_info.append(
+                TestcaseValidationInfo(
+                    validator=checker,
+                    testcase=entry.group_entry,
+                    generation_metadata=entry.metadata,
+                    path=output_path,
+                    ok=False,
+                    hit_bounds={},
+                    message=f'Checker failed on manual output: {result.message}',
+                )
+            )
+
+        step()
 
     return validation_info
 

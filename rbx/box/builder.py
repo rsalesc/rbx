@@ -14,6 +14,7 @@ from rbx.box.solutions import (
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.validators import (
+    check_output_from_entries,
     has_validation_errors,
     print_validation_report,
     validate_outputs_from_entries,
@@ -85,6 +86,16 @@ async def build(
         ) as s:
             if output:
                 validation_info = await validate_outputs_from_entries(entries, s)
+                print_validation_report(validation_info, output_validation=True)
+
+    if verification > 0 and validate:
+        with utils.StatusProgress(
+            'Checking manual outputs for testcases...',
+            'Checked [item]{processed}[/item] manual outputs...',
+            keep=True,
+        ) as s:
+            if output:
+                validation_info = await check_output_from_entries(entries, s)
                 print_validation_report(validation_info, output_validation=True)
 
     console.console.print(
