@@ -69,7 +69,7 @@ async def build(
     contest = find_contest_package_or_die()
     # At most run the validators, only in samples.
     if samples:
-        from rbx.box import builder
+        from rbx.box.testcase_sample_utils import build_samples
 
         for problem in contest.problems:
             console.console.print(
@@ -79,12 +79,7 @@ async def build(
                 package.clear_package_cache()
 
                 try:
-                    if not await builder.build(
-                        verification=verification,
-                        groups=set(['samples']),
-                        output=None,
-                        validate=validate,
-                    ):
+                    if not await build_samples(verification, validate):
                         issue_stack.add_issue(StatementBuildIssue(problem))
                 except Exception:
                     issue_stack.add_issue(StatementBuildIssue(problem))

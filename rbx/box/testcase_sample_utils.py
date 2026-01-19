@@ -5,7 +5,8 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import testcase_extractors
+from rbx.box import builder, checkers, testcase_extractors
+from rbx.box.environment import VerificationLevel, VerificationParam
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.testcase_utils import (
     Testcase,
@@ -14,14 +15,17 @@ from rbx.box.testcase_utils import (
     get_best_interaction_file,
     parse_interaction,
 )
+from rbx.grading.steps import Outcome
 
 
 class StatementSample(BaseModel):
+    entry: GenerationTestcaseEntry
     inputPath: pathlib.Path
     outputPath: pathlib.Path
     answerPath: Optional[pathlib.Path] = None
     explanationPath: Optional[pathlib.Path] = None
     hasOutput: bool = True
+    checkOutput: bool = False
     interaction: Optional[TestcaseInteraction] = None
 
 
@@ -100,13 +104,31 @@ def _get_statement_sample_from_entry(
         utils.abspath(explanation_path) if explanation_path is not None else None
     )
 
+    # Whether the custom specified output should be checked.
+    should_check_output = False
+    if (
+        answer_path is not None
+        and output_path.suffix == '.out'
+        and answer_path != output_path
+        and output_path.is_file()
+    ):
+        should_check_output = True
+
     return StatementSample(
+        entry=entry,
         inputPath=input_path,
         outputPath=output_path,
         answerPath=answer_path,
         hasOutput=output_path is not None,
+        checkOutput=should_check_output,
         interaction=interaction,
         explanationPath=explanation_path,
+    )
+
+
+async def get_sample_entries() -> List[GenerationTestcaseEntry]:
+    return await testcase_extractors.extract_generation_testcases_from_groups(
+        set(['samples'])
     )
 
 
@@ -116,10 +138,66 @@ async def get_statement_samples(
     """Get the statement samples from the testcase extractors.
 
     This function assumes that the samples group is already built."""
-    entries = await testcase_extractors.extract_generation_testcases_from_groups(
-        set(['samples'])
-    )
+    entries = await get_sample_entries()
 
     return [
         _get_statement_sample_from_entry(entry, explanation_suffix) for entry in entries
     ]
+
+
+async def _check_sample(checker_digest: str, sample: StatementSample) -> bool:
+    answer_path = sample.answerPath or utils.get_empty_sentinel_path()
+
+    result = await checkers.check(
+        checker_digest,
+        run_log=None,
+        testcase=Testcase(
+            inputPath=sample.inputPath,
+            outputPath=answer_path,
+        ),
+        program_output=sample.outputPath,
+        skip_run_log=True,
+    )
+
+    if result.outcome != Outcome.ACCEPTED:
+        output_relpath = utils.relcwd(sample.outputPath)
+        console.console.print(
+            f'[error]Custom output for test [item]{sample.entry.group_entry}[/item] failed checker.[/error]'
+        )
+        console.console.print(f'[error]Path: [item]{output_relpath}[/item][/error]')
+        console.console.print(f'[error]Message:[/error] {result.message}')
+        console.console.print()
+        return False
+
+    return True
+
+
+async def build_samples(verification: VerificationParam, validate: bool) -> bool:
+    ok = await builder.build(
+        verification=verification,
+        groups=set(['samples']),
+        output=None,
+        validate=validate,
+    )
+    if not ok:
+        return False
+    if not validate or verification < VerificationLevel.VALIDATE.value:
+        return True
+
+    # Validate manually specified statement-only outputs.
+    samples = await get_statement_samples()
+    samples_to_check = [sample for sample in samples if sample.checkOutput]
+
+    if not samples_to_check:
+        return True
+
+    console.console.print('Checking manually defined samples...')
+
+    checker_digest = checkers.compile_checker()
+
+    ok = True
+    for sample in samples_to_check:
+        if not await _check_sample(checker_digest, sample):
+            ok = False
+
+    return ok

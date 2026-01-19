@@ -154,6 +154,16 @@ def relpath(path: pathlib.Path, base: pathlib.Path) -> pathlib.Path:
         return pathlib.Path(os.path.relpath(path, base))
 
 
+def relcwd(path: pathlib.Path) -> pathlib.Path:
+    cwd = abspath(pathlib.Path())
+    path = abspath(path)
+
+    if not path.is_relative_to(cwd):
+        raise ValueError(f'relcwd: {path} is not relative to {cwd}')
+
+    return path.relative_to(cwd)
+
+
 def highlight_json_obj(obj: Any) -> text.Text:
     js = json.dumps(obj)
     return highlight_str(js)

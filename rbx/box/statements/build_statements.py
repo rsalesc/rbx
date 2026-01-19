@@ -30,7 +30,7 @@ from rbx.box.statements.schema import (
     StatementType,
 )
 from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
-from rbx.box.testcase_sample_utils import get_statement_samples
+from rbx.box.testcase_sample_utils import build_samples, get_statement_samples
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -396,14 +396,8 @@ async def execute_build(
 ) -> None:
     # At most run the validators, only in samples.
     if samples:
-        from rbx.box import builder
-
-        if not await builder.build(
-            verification=verification,
-            groups=set(['samples']),
-            output=None,
-            validate=validate,
-        ):
+        if not await build_samples(verification, validate):
+            # TODO: add contest-level statement error
             console.console.print(
                 '[error]Failed to build statements with samples, aborting.[/error]'
             )

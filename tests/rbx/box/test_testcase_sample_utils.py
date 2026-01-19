@@ -491,3 +491,125 @@ async def test_get_statement_samples_sentinel_resolution(
 
     assert sample.inputPath.is_absolute()
     assert sample.outputPath.is_absolute()
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_check_output_true(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """Test 21: checkOutput=True - Manual .out override different from answers."""
+    dest_input = tmp_path / 'dest.in'
+    dest_output = tmp_path / 'dest.out'
+    dest_output.touch()
+
+    src_input = tmp_path / 'manual.in'
+    src_out = tmp_path / 'manual.out'
+    src_out.write_text('manual output')
+
+    # copied_to has output (so answer_path = dest_output)
+    # manual .out exists (so output_path = src_out via process_additional_files on copied_from)
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_to_output=dest_output,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = list(samples)[0]
+
+    assert sample.hasOutput is True
+    assert sample.checkOutput is True
+    assert sample.outputPath.resolve() == src_out.resolve()
+    assert sample.answerPath.resolve() == dest_output.resolve()
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_check_output_false_same_file(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """Test 22: checkOutput=False - Output path equals answer path."""
+    dest_input = tmp_path / 'dest.in'
+
+    src_input = tmp_path / 'manual.in'
+    src_out = tmp_path / 'manual.out'
+    src_out.touch()
+
+    # No dest_output, so answer_path comes from manual if copied_from has it.
+    # copied_from logic:
+    # if copied_from.outputPath exists: output_path=it, answer_path=it.
+    # checking create_entry: it sets copied_from.outputPath if arg provided.
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+        copied_from_output=src_out,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = list(samples)[0]
+
+    assert sample.outputPath.resolve() == src_out.resolve()
+    assert sample.answerPath.resolve() == src_out.resolve()
+    assert sample.checkOutput is False
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_check_output_false_statement_file(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """Test 23: checkOutput=False - .out.statement file usage."""
+    dest_input = tmp_path / 'dest.in'
+    dest_output = tmp_path / 'dest.out'
+    dest_output.touch()
+
+    src_input = tmp_path / 'manual.in'
+    src_stmt = tmp_path / 'manual.out.statement'
+    src_stmt.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_to_output=dest_output,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = list(samples)[0]
+
+    assert sample.outputPath.resolve() == src_stmt.resolve()
+    assert sample.checkOutput is False
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_check_output_no_answer(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """Test 24: checkOutput=False - No answer path available."""
+    dest_input = tmp_path / 'dest.in'
+
+    src_input = tmp_path / 'manual.in'
+    src_out = tmp_path / 'manual.out'
+    src_out.touch()
+
+    # copied_to_output=None, copied_from_output=None
+    # But manual .out exists, detected by process_additional_files
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = list(samples)[0]
+
+    assert sample.outputPath.resolve() == src_out.resolve()
+    assert sample.answerPath is None
+    assert sample.checkOutput is False
