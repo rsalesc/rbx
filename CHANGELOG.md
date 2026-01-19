@@ -1,3 +1,12 @@
+## 0.23.4 (2026-01-19)
+
+### Fix
+
+- add check for .out output files
+- build statement samples from generation entries, and handle .out and .ans separately
+- add manual ans verification
+- modify original sci function
+
 ## 0.23.3 (2026-01-17)
 
 ### Fix
