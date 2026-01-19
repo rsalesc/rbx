@@ -261,8 +261,7 @@ async def build(
     verification: environment.VerificationParam,
     validate: bool = typer.Option(
         True,
-        '--novalidate',
-        help='Whether to not validate outputs for tests.',
+        help='Whether to validate outputs for tests.',
     ),
 ):
     from rbx.box import builder
@@ -301,12 +300,10 @@ async def run(
     ] = None,
     check: bool = typer.Option(
         True,
-        '--nocheck',
         help='Whether to not build outputs for tests and run checker.',
     ),
     validate: bool = typer.Option(
         True,
-        '--novalidate',
         help='Whether to not validate outputs for tests.',
     ),
     detailed: bool = typer.Option(
@@ -442,12 +439,10 @@ async def summary_cmd(
 async def time(
     check: bool = typer.Option(
         True,
-        '--nocheck',
         help='Whether to not build outputs for tests and run checker.',
     ),
     validate: bool = typer.Option(
         True,
-        '--novalidate',
         help='Whether to not validate outputs for tests.',
     ),
     detailed: bool = typer.Option(
@@ -605,7 +600,6 @@ async def irun(
     ] = None,
     check: bool = typer.Option(
         True,
-        '--nocheck',
         help='Whether to not build outputs for tests and run checker.',
     ),
     generator: Optional[str] = typer.Option(

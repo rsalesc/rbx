@@ -200,4 +200,14 @@ async def build_samples(verification: VerificationParam, validate: bool) -> bool
         if not await _check_sample(checker_digest, sample):
             ok = False
 
+    if not ok:
+        console.console.print(
+            '[error]Some manually provided sample outputs are not considered valid answers when checked.[/error]'
+        )
+        console.console.print(
+            '[error]If you think these files should not be checked, use the [item].ans.statement[/item] file extension.[/error]'
+        )
+        console.console.print(
+            '[error]You can also use either the [item]-v0[/item] or the [item]--no-validate[/item] flag to disable sample validation.[/error]'
+        )
     return ok

@@ -612,7 +612,7 @@ async def _generate_testcase_interactively(
             )
         except:
             console.console.print(
-                '[error]Failed compiling main solution. If you do not want to check against a main solution, run with --nocheck flag.[/error]'
+                '[error]Failed compiling main solution. If you do not want to check against a main solution, run with --no-check flag.[/error]'
             )
             raise
 

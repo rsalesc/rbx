@@ -18,7 +18,7 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Run all solutions with sanitizer                   | `rbx run -s`                                                   |
 | Run all solutions with dynamic timing              | `rbx run -t`                                                   |
 | Run all solutions except the slow ones             | `rbx run -v2`                                                  |
-| Run all solutions without checking                 | `rbx run --nocheck`                                            |
+| Run all solutions without checking                 | `rbx run --no-check`                                           |
 | Run a single solution                              | `rbx run sols/my-solution.cpp`                                 |
 | Choose solutions and run                           | `rbx run -c`                                                   |
 | Run all solutions interactively                    | `rbx irun`                                                     |
