@@ -52,12 +52,20 @@ def get_dir_size(path: pathlib.Path) -> int:
 
 
 def get_cache_size(root: pathlib.Path = pathlib.Path()) -> int:
+    if not is_problem_package(root):
+        return 0
     cache_dir = get_problem_cache_path(root)
     return get_dir_size(cache_dir)
 
 
+def _get_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    if not is_problem_package(root):
+        return root / 'build'
+    return get_build_path(root)
+
+
 def get_build_size(root: pathlib.Path = pathlib.Path()) -> int:
-    build_dir = get_build_path(root)
+    build_dir = _get_build_path(root)
     return get_dir_size(build_dir)
 
 
