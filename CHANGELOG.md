@@ -1,3 +1,14 @@
+## 0.23.5 (2026-01-22)
+
+### Fix
+
+- warn about symlink issue with git-on-windows
+- add bit to avoid building samples in statements
+- show nice error messages about rbx version when parsing fails
+- fix stats
+- ensure clean can clean contests
+- print better errors
+
 ## 0.23.4 (2026-01-19)
 
 ### Fix
