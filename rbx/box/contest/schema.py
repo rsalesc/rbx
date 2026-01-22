@@ -151,6 +151,11 @@ Can be glob pattern as well, such as `imgs/*.png`.
         default={}, description='Variables to be re-used across the package.'
     )
 
+    samples: bool = Field(
+        default=True,
+        description='Whether to build the statement with samples.',
+    )
+
     @property
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)

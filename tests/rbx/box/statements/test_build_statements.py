@@ -7,7 +7,8 @@ import pytest
 import typer
 
 from rbx.box.contest.schema import ContestStatement
-from rbx.box.schema import Package, Statement
+from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.schema import Package, Statement, Testcase
 from rbx.box.statements.build_statements import (
     build_statement,
     build_statement_bytes,
@@ -25,6 +26,7 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
+from rbx.box.testcase_utils import TestcaseEntry
 from rbx.box.testing import testing_package
 
 
@@ -760,13 +762,22 @@ Sample \\VAR{loop.index}: Input has \\VAR{sample.inputPath.read_text().strip().s
             from rbx.box.testcase_sample_utils import StatementSample
 
             # Convert testcases to StatementSamples as expected by get_statement_samples
+            dummy_entry = GenerationTestcaseEntry(
+                group_entry=TestcaseEntry(group='samples', index=1),
+                subgroup_entry=TestcaseEntry(group='samples', index=1),
+                metadata=GenerationMetadata(
+                    copied_to=Testcase(inputPath=pathlib.Path('dummy'))
+                ),
+            )
             stmt_samples = [
                 StatementSample(
+                    entry=dummy_entry,
                     inputPath=testing_pkg.path('tests/sample1.in'),
                     outputPath=testing_pkg.path('tests/sample1.out'),
                     hasOutput=True,
                 ),
                 StatementSample(
+                    entry=dummy_entry,
                     inputPath=testing_pkg.path('tests/sample2.in'),
                     outputPath=testing_pkg.path('tests/sample2.out'),
                     hasOutput=True,
@@ -852,6 +863,10 @@ class TestBuildStatementInheritance:
                 'rbx.box.statements.build_statements.get_environment_languages_for_statement',
                 return_value=[],
             ),
+            patch(
+                'rbx.box.statements.build_statements.limits_info.get_limits_profile',
+                return_value=MagicMock(),
+            ),
         ):
             mock_get_overrides.return_value = mock_override_data
 
@@ -908,6 +923,10 @@ class TestBuildStatementInheritance:
             patch(
                 'rbx.box.statements.build_statements.get_environment_languages_for_statement',
                 return_value=[],
+            ),
+            patch(
+                'rbx.box.statements.build_statements.limits_info.get_limits_profile',
+                return_value=MagicMock(),
             ),
         ):
             result_path = await build_statement(

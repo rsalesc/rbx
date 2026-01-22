@@ -67,24 +67,6 @@ async def build(
     ] = False,
 ):
     contest = find_contest_package_or_die()
-    # At most run the validators, only in samples.
-    if samples:
-        from rbx.box.testcase_sample_utils import build_samples
-
-        for problem in contest.problems:
-            console.console.print(
-                f'Processing problem [item]{problem.short_name}[/item]...'
-            )
-            with cd.new_package_cd(problem.get_path()):
-                package.clear_package_cache()
-
-                try:
-                    if not await build_samples(verification, validate):
-                        issue_stack.add_issue(StatementBuildIssue(problem))
-                except Exception:
-                    issue_stack.add_issue(StatementBuildIssue(problem))
-
-    contest = find_contest_package_or_die()
 
     candidate_languages = set(languages or [])
     candidate_names = set(names or [])
@@ -103,6 +85,26 @@ async def build(
             '[error]No statement found according to the specified criteria.[/error]',
         )
         raise typer.Exit(1)
+
+    # TODO: possibly check the problem configuration for samples too
+    samples = samples and any(st.samples for st in valid_statements)
+
+    # At most run the validators, only in samples.
+    if samples:
+        from rbx.box.testcase_sample_utils import build_samples
+
+        for problem in contest.problems:
+            console.console.print(
+                f'Processing problem [item]{problem.short_name}[/item]...'
+            )
+            with cd.new_package_cd(problem.get_path()):
+                package.clear_package_cache()
+
+                try:
+                    if not await build_samples(verification, validate):
+                        issue_stack.add_issue(StatementBuildIssue(problem))
+                except Exception:
+                    issue_stack.add_issue(StatementBuildIssue(problem))
 
     built_statements = []
 

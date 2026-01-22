@@ -27,6 +27,7 @@ class TestStatementOverrideData:
             assets=[],
             params={},
             vars={'a': 1, 'b': 2},
+            samples=True,
         )
         kwargs = data.to_kwargs({'b': 3, 'c': 4})
         assert kwargs['custom_vars'] == {'a': 1, 'b': 3, 'c': 4}
@@ -60,6 +61,7 @@ class TestGetOverrides:
         assert overrides.root == mock_abspath.return_value
         assert overrides.assets == ['asset1']
         assert overrides.vars == {'foo': 'bar'}
+        assert overrides.samples is True
         assert ConversionType.rbxToTex in overrides.params
         assert isinstance(overrides.params[ConversionType.rbxToTex], rbxToTeX)
 
@@ -85,6 +87,7 @@ class TestGetOverrides:
 
         assert overrides.assets == ['asset2']
         assert overrides.vars == {'inherit': 'true'}
+        assert overrides.samples is True
         assert overrides.params == {}
 
     @patch('rbx.box.contest.statement_overriding.utils.abspath')
@@ -103,6 +106,7 @@ class TestGetOverrides:
 
         assert overrides.assets == []
         assert overrides.vars == {}
+        assert overrides.samples is True
         assert overrides.params == {}
 
 

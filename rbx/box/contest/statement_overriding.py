@@ -23,6 +23,7 @@ class StatementOverrideData:
     assets: List[Tuple[pathlib.Path, pathlib.Path]]
     params: Dict[ConversionType, ConversionStep]
     vars: Dict[str, Any]
+    samples: bool
     inheritedFrom: Optional[ContestStatement] = None
 
     def to_kwargs(self, custom_vars: Dict[str, Any]) -> Dict[str, Any]:
@@ -56,6 +57,7 @@ def get_overrides(
         assets=contest_assets,
         params=overridden_params,
         vars=override.vars if override is not None else {},
+        samples=statement.samples,
         inheritedFrom=statement if inherit else None,
     )
 

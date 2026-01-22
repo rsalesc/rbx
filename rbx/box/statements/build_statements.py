@@ -348,6 +348,11 @@ def get_statement_build_path(
     return path
 
 
+def needs_samples(statement: Statement) -> bool:
+    overrides = statement_overriding.get_inheritance_overrides(statement)
+    return statement.samples and overrides.samples
+
+
 async def build_statement(
     statement: Statement,
     pkg: Package,
@@ -394,15 +399,6 @@ async def execute_build(
     vars: Optional[List[str]] = None,
     validate: bool = True,
 ) -> None:
-    # At most run the validators, only in samples.
-    if samples:
-        if not await build_samples(verification, validate):
-            # TODO: add contest-level statement error
-            console.console.print(
-                '[error]Failed to build statements with samples, aborting.[/error]'
-            )
-            raise typer.Exit(1)
-
     pkg = package.find_problem_package_or_die()
     candidate_languages = set(languages or [])
     candidate_names = set(names or [])
@@ -421,6 +417,17 @@ async def execute_build(
             '[error]No statement found according to the specified criteria.[/error]',
         )
         raise typer.Exit(1)
+
+    samples = samples and any(needs_samples(st) for st in valid_statements)
+
+    # At most run the validators, only in samples.
+    if samples:
+        if not await build_samples(verification, validate):
+            # TODO: add contest-level statement error
+            console.console.print(
+                '[error]Failed to build statements with samples, aborting.[/error]'
+            )
+            raise typer.Exit(1)
 
     for statement in valid_statements:
         await build_statement(

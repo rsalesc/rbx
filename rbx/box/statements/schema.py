@@ -199,6 +199,11 @@ their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
         description='Variables to be used in the statement.',
     )
 
+    samples: bool = Field(
+        default=True,
+        description='Whether to build the statement with samples.',
+    )
+
     @property
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)

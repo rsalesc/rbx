@@ -4,7 +4,8 @@ from unittest.mock import patch
 import pytest
 import typer
 
-from rbx.box.schema import LimitsProfile, Package, Statement
+from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.schema import LimitsProfile, Package, Statement, Testcase
 from rbx.box.statements.builders import (
     ExplainedStatementSample,
     JinjaTeXBuilder,
@@ -30,6 +31,17 @@ from rbx.box.statements.schema import (
     rbxMarkdownToTeX,
     rbxToTeX,
 )
+from rbx.box.testcase_utils import TestcaseEntry
+
+
+def create_dummy_entry():
+    return GenerationTestcaseEntry(
+        group_entry=TestcaseEntry(group='samples', index=1),
+        subgroup_entry=TestcaseEntry(group='samples', index=1),
+        metadata=GenerationMetadata(
+            copied_to=Testcase(inputPath=pathlib.Path('dummy'))
+        ),
+    )
 
 
 class TestStatementCodeLanguage:
@@ -107,7 +119,10 @@ class TestStatementBuilderProblem:
             output_file.write_text(f'output {i}')
             samples.append(
                 StatementSample(
-                    inputPath=input_file, outputPath=output_file, hasOutput=True
+                    entry=create_dummy_entry(),
+                    inputPath=input_file,
+                    outputPath=output_file,
+                    hasOutput=True,
                 )
             )
         return samples
@@ -397,7 +412,11 @@ class TestGetRbxTexBlocks:
 
         # Setup samples with explanations in blocks
         samples = [
-            StatementSample(inputPath=tmp_path / '1.in', outputPath=tmp_path / '1.out')
+            StatementSample(
+                entry=create_dummy_entry(),
+                inputPath=tmp_path / '1.in',
+                outputPath=tmp_path / '1.out',
+            )
         ]
 
         problem = StatementBuilderProblem(
@@ -452,7 +471,11 @@ Welcome to the contest.
         limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
 
         samples = [
-            StatementSample(inputPath=tmp_path / '1.in', outputPath=tmp_path / '1.out')
+            StatementSample(
+                entry=create_dummy_entry(),
+                inputPath=tmp_path / '1.in',
+                outputPath=tmp_path / '1.out',
+            )
         ]
 
         problem = StatementBuilderProblem(
@@ -693,6 +716,7 @@ Explanation for first sample.
 
         # Add samples to the problem
         sample = StatementSample(
+            entry=create_dummy_entry(),
             inputPath=tmp_path / 'sample.in',
             outputPath=tmp_path / 'sample.out',
             hasOutput=True,
@@ -908,7 +932,10 @@ class TestExplainedStatementSample:
         output_file.write_text('test output')
 
         sample = StatementSample(
-            inputPath=input_file, outputPath=output_file, hasOutput=True
+            entry=create_dummy_entry(),
+            inputPath=input_file,
+            outputPath=output_file,
+            hasOutput=True,
         )
 
         explained_sample = ExplainedStatementSample(
@@ -928,7 +955,10 @@ class TestExplainedStatementSample:
         output_file.write_text('test output')
 
         explained_sample = ExplainedStatementSample(
-            inputPath=input_file, outputPath=output_file, hasOutput=True
+            entry=create_dummy_entry(),
+            inputPath=input_file,
+            outputPath=output_file,
+            hasOutput=True,
         )
 
         assert explained_sample.explanation is None
@@ -943,6 +973,7 @@ class TestExplainedStatementSample:
         explanation_file.write_text('Explanation from file')
 
         sample = StatementSample(
+            entry=create_dummy_entry(),
             inputPath=input_file,
             outputPath=output_file,
             explanationPath=explanation_file,
@@ -959,7 +990,11 @@ class TestExplainedStatementSample:
         input_file.write_text('test input')
         output_file.write_text('test output')
 
-        sample = StatementSample(inputPath=input_file, outputPath=output_file)
+        sample = StatementSample(
+            entry=create_dummy_entry(),
+            inputPath=input_file,
+            outputPath=output_file,
+        )
 
         explained = ExplainedStatementSample.from_statement_sample(
             sample, explanation_block='Explanation from block'
@@ -977,6 +1012,7 @@ class TestExplainedStatementSample:
         explanation_file.write_text('Explanation from file')
 
         sample = StatementSample(
+            entry=create_dummy_entry(),
             inputPath=input_file,
             outputPath=output_file,
             explanationPath=explanation_file,
@@ -997,7 +1033,11 @@ class TestExplainedStatementSample:
             input_file.write_text(f'input {i}')
             output_file.write_text(f'output {i}')
             samples.append(
-                StatementSample(inputPath=input_file, outputPath=output_file)
+                StatementSample(
+                    entry=create_dummy_entry(),
+                    inputPath=input_file,
+                    outputPath=output_file,
+                )
             )
 
         explanation_blocks = {0: 'Explanation 0', 2: 'Explanation 2'}
@@ -1025,6 +1065,7 @@ class TestExplainedStatementSample:
                 explanation_file.write_text(f'File explanation {i}')
                 samples.append(
                     StatementSample(
+                        entry=create_dummy_entry(),
                         inputPath=input_file,
                         outputPath=output_file,
                         explanationPath=explanation_file,
@@ -1032,7 +1073,11 @@ class TestExplainedStatementSample:
                 )
             else:
                 samples.append(
-                    StatementSample(inputPath=input_file, outputPath=output_file)
+                    StatementSample(
+                        entry=create_dummy_entry(),
+                        inputPath=input_file,
+                        outputPath=output_file,
+                    )
                 )
 
         # Add explanation blocks for odd indices
@@ -1056,7 +1101,11 @@ class TestExplainedStatementSample:
             input_file.write_text(f'input {i}')
             output_file.write_text(f'output {i}')
             samples.append(
-                StatementSample(inputPath=input_file, outputPath=output_file)
+                StatementSample(
+                    entry=create_dummy_entry(),
+                    inputPath=input_file,
+                    outputPath=output_file,
+                )
             )
 
         # Only provide explanation for index 1
