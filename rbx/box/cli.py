@@ -1192,8 +1192,23 @@ def wizard():
 @cd.within_closest_package
 def _clear_package_cache():
     console.console.print('Cleaning cache and build directories...')
-    shutil.rmtree(package.get_build_path(), ignore_errors=True)
-    shutil.rmtree(package.get_problem_cache_path(), ignore_errors=True)
+
+    def _clean(path: pathlib.Path):
+        if not path.exists():
+            return
+        console.console.print(f'Cleaning [item]{path}[/item]...')
+        shutil.rmtree(path, ignore_errors=True)
+
+    _clean(pathlib.Path('build'))
+    if cd.is_problem_package():
+        _clean(package.get_build_path())
+        _clean(package.get_problem_cache_path())
+
+    if cd.is_contest_package():
+        console.console.print(
+            '[warning]If you want to clear the problem caches of all problems in the contest, '
+            'run [item]rbx contest each clean[/item].[/warning]'
+        )
 
 
 @app.command(
