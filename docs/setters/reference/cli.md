@@ -79,6 +79,7 @@ rbx build [OPTIONS]
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--validate` | BOOLEAN | Whether to validate outputs for tests. | `True` |
 
 
 ---
@@ -108,10 +109,27 @@ rbx run <SOLUTIONS> [OPTIONS]
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
 | `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
-| `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
 | `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
+
+
+---
+
+## summary (sum)
+
+Print a summary of the problem.
+
+**Usage:**
+```bash
+rbx summary [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
 
 
 ---
@@ -127,7 +145,8 @@ rbx time [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
 | `--strategy`, `-s` | TEXT | Strategy to use for time limit estimation (estimate, inherit). | - |
 | `--auto`, `-a` | BOOLEAN | Whether to automatically estimate the time limit. | `False` |
@@ -158,7 +177,7 @@ rbx irun <SOLUTIONS> [OPTIONS]
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
 | `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
-| `--nocheck` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--generator`, `-g` | TEXT | Generator call to use to generate a single test for execution. | - |
 | `--testcase`, `--test`, `-tc`, `-t` | TEXT | Testcase to run, in the format "[group]/[index]". If not specified, will run interactively. | - |
 | `--output`, `-O` | BOOLEAN | Whether to ask user for custom output. | `False` |
@@ -477,6 +496,7 @@ rbx statements build <NAMES> [OPTIONS]
 | `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
+| `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
 
 
 ---
@@ -838,6 +858,18 @@ rbx contest on <PROBLEMS> [OPTIONS]
 
 ---
 
+### summary (sum)
+
+Print a summary of the contest.
+
+**Usage:**
+```bash
+rbx contest summary [OPTIONS]
+```
+
+
+---
+
 ### statements (st)
 
 Manage contest-level statements.
@@ -869,6 +901,7 @@ rbx contest statements build <NAMES> [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
+| `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
 | `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |

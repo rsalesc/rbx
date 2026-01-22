@@ -83,3 +83,41 @@ def latest_remote_tag(
 def has_remote_tag(uri: str, tag: str) -> bool:
     tags = ls_remote_tags(uri)
     return tag in tags
+
+
+def check_symlinks(root: pathlib.Path) -> bool:
+    if not utils.command_exists('git'):
+        return True
+    repo = get_repo_or_nil(root, search_parent_directories=True)
+    if repo is None:
+        return True
+
+    completed_process = subprocess.run(
+        ['git', 'ls-files', '-s'],
+        cwd=repo.working_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    symlink_paths: list[str] = []
+    for line in completed_process.stdout.splitlines():
+        # Format: "<mode> <object> <stage>\t<path>"
+        # Example: "120000 <sha> 0\tpath/to/link"
+        if line.startswith('120000 '):
+            try:
+                path = line.split('\t', 1)[1]
+            except IndexError:
+                continue
+            symlink_paths.append(path)
+
+    bad = []
+    for rel in symlink_paths:
+        fp = pathlib.Path(repo.working_dir) / rel
+        try:
+            if fp.exists() and not fp.is_symlink():
+                bad.append(rel)
+        except OSError:
+            bad.append(rel)
+
+    return len(bad) == 0

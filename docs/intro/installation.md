@@ -40,7 +40,8 @@ recently, it's not yet perfectly supported.
 
 If you want to use {{rbx}} on Windows, you can do so by using the WSL (Windows Subsystem for Linux). Also,
 you'll have to make sure your packages are cloned within the WSL instance and filesystem. Cloning on a Windows
-folder and mounting it into the WSL instance **will not work** since symlinks will not be preserved.
+folder using Git-on-Windows and mounting it into the WSL instance **will not work** by default since symlinks
+will not be preserved. See [here](windows-git.md) for more information.
 
 ---
 

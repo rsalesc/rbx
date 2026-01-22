@@ -56,6 +56,7 @@ nav:
   - "Troubleshooting":
       - "cpp-on-macos.md"
       - "stack-limit.md"
+      - "intro/windows-git.md"
 theme:
   name: material
   custom_dir: docs/templates

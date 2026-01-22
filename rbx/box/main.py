@@ -2,12 +2,15 @@
 
 import asyncio
 import os
+import pathlib
 import signal
 import sys
 import threading
 import typer
 from rich.console import Console
 from types import FrameType
+
+from rbx.box import git_utils
 
 
 def _check_completions():
@@ -66,6 +69,22 @@ def run_app_cli():
 
 
 def app():
+    if not git_utils.check_symlinks(pathlib.Path.cwd()):
+        from rbx import console
+        from rbx.box.formatting import ref
+
+        WINDOWS_GIT_URL = 'https://rbx.rsalesc.dev/intro/windows-git'
+
+        console.console.print(
+            '[error]Symlinks are not being preserved in the current git repository. '
+            '[item]rbx[/item] heavily relies on the use of symlinking for caching and '
+            'presetting. Features might break because of this[/error]'
+        )
+        console.console.print(
+            f'[error]If you are on Windows, please see {ref(WINDOWS_GIT_URL)} for more information.[/error]'
+        )
+        console.console.print()
+
     # _check_completions()
     _install_no_exception_handlers()
     from rbx.box.exception import RbxException
