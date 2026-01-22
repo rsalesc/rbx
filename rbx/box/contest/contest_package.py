@@ -38,6 +38,10 @@ def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contes
     except ValidationError as e:
         console.console.print(e)
         console.console.print('[error]Error parsing contest.rbx.yml.[/error]')
+        console.console.print(
+            '[error]If you are sure the file is correct, ensure you are '
+            'in the latest version of [item]rbx[/item].[/error]'
+        )
         raise typer.Exit(1) from e
 
 

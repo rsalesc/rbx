@@ -64,7 +64,13 @@ def find_problem_package(root: pathlib.Path = pathlib.Path()) -> Optional[Packag
         return utils.model_from_yaml(Package, problem_yaml_path.read_text())
     except ValidationError as e:
         console.console.print(e)
-        console.console.print('[error]Error parsing problem.rbx.yml.[/error]')
+        console.console.print(
+            '[error]Error parsing [item]problem.rbx.yml[/item].[/error]'
+        )
+        console.console.print(
+            '[error]If you are sure the file is correct, ensure you are '
+            'in the latest version of [item]rbx[/item].[/error]'
+        )
         raise typer.Exit(1) from e
 
 

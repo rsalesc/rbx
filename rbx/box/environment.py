@@ -330,6 +330,10 @@ def get_environment(env: Optional[str] = None) -> Environment:
         console.console.print(
             f'[error]Error parsing environment file [item]{env_path}[/item][/error]'
         )
+        console.console.print(
+            '[error]If you are sure the file is correct, ensure you are '
+            'in the latest version of [item]rbx[/item].[/error]'
+        )
         raise typer.Exit(1) from e
 
 
