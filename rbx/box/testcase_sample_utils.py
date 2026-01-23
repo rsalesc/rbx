@@ -244,7 +244,7 @@ async def build_samples(verification: VerificationParam, validate: bool) -> bool
             '[error]Some manually provided sample outputs are not considered valid answers.[/error]'
         )
         console.console.print(
-            '[error]If you think these files should not be checked, use the [item].ans.statement[/item] file extension (not recommended).[/error]'
+            '[error]If you think these files should not be checked, use the [item].out.statement[/item] file extension (not recommended).[/error]'
         )
         console.console.print(
             '[error]You can also use either the [item]-v0[/item] or the [item]--no-validate[/item] flag to disable sample validation temporarily.[/error]'
