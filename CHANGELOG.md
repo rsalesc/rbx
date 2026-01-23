@@ -1,3 +1,11 @@
+## 0.23.6 (2026-01-23)
+
+### Fix
+
+- fix fuzz tests
+- small fix in error msg
+- ensure output validators are also run for .out files
+
 ## 0.23.5 (2026-01-22)
 
 ### Fix
