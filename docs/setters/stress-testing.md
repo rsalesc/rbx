@@ -153,6 +153,35 @@ You can then run the stress test with:
 rbx stress my-stress-test
 ```
 
+## Fuzzing inputs
+
+You can also use the `--fuzz` flag to stress test using variations of the generator calls defined in your testset. This is useful to find corner cases around your existing tests.
+
+```sh
+# Fuzz all testgroups against the main solution
+rbx stress --fuzz
+
+# Fuzz specific testgroups (e.g. only 'random' and 'max')
+rbx stress --fuzz-on random --fuzz-on max
+
+rbx stress --fuzz -f sols/some-solution.cpp
+```
+
+When fuzzing, {{rbx}} takes the generator calls from the selected groups and appends a random suffix to them. If no finder (`-f`) is specified, it defaults to checking if the main solution crashes or returns an incorrect verdict.
+
+## Finding slowest tests
+
+You can use the `--slowest` flag to find strict time limit violations or simply the testcases that make your solution run the slowest.
+When this flag is enabled, the time limit for the solution is removed, and {{rbx}} will keep track of the slowest testcases found so far.
+
+```sh
+# Find the slowest testcases for the main solution using the given generator
+rbx stress -g "gen 100 @" -f sols/main.cpp --slowest
+
+# Find the 5 slowest testcases
+rbx stress -g "gen 100 @" -f sols/main.cpp --slowest -n 5
+```
+
 ## Other applications of stress tests
 
 Besides using stress tests for checking solution outcomes, you can be creative and use it to test other components of your problem.
