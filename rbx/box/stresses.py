@@ -140,14 +140,13 @@ async def run_stress(
         if fuzz is not None:
             # Implicit finder mode for fuzzing
             # Default to checking against the main solution if available
-            if not pkg.solutions:
+            main_sol = package.get_main_solution()
+            if not main_sol:
                 console.console.print(
                     '[error]Fuzzing without a finder requires at least one solution to verify against.[/error]'
                 )
                 raise typer.Exit(1)
 
-            # If explicit main solution or just first solution
-            main_sol = pkg.solutions[0]
             stress = Stress(
                 name='fuzz',
                 generator=GeneratorCall(name='fuzz'),
