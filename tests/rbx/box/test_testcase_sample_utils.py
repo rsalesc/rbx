@@ -1,6 +1,6 @@
 import pathlib
 from typing import Optional
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -613,3 +613,182 @@ async def test_get_statement_samples_check_output_no_answer(
     assert sample.outputPath.resolve() == src_out.resolve()
     assert sample.answerPath is None
     assert sample.checkOutput is False
+
+
+@pytest.fixture
+def mock_dependencies_for_build_samples(monkeypatch):
+    """Mocks all external dependencies for build_samples."""
+    mocks = {
+        'build': AsyncMock(return_value=True),
+        'get_statement_samples': AsyncMock(),
+        'compile_output_validators': MagicMock(),
+        'validate_file': AsyncMock(),
+        'print_validation_report': AsyncMock(),
+        'compile_checker': AsyncMock(return_value='checker_digest'),
+        'check_sample': AsyncMock(return_value=True),
+        'console_print': MagicMock(),
+    }
+
+    monkeypatch.setattr('rbx.box.builder.build', mocks['build'])
+    monkeypatch.setattr(
+        'rbx.box.testcase_sample_utils.get_statement_samples',
+        mocks['get_statement_samples'],
+    )
+    monkeypatch.setattr(
+        'rbx.box.testcase_sample_utils.compile_output_validators_for_entries',
+        mocks['compile_output_validators'],
+    )
+    monkeypatch.setattr('rbx.box.validators.validate_file', mocks['validate_file'])
+    monkeypatch.setattr(
+        'rbx.box.validators.print_validation_report', mocks['print_validation_report']
+    )
+    monkeypatch.setattr('rbx.box.checkers.compile_checker', mocks['compile_checker'])
+    monkeypatch.setattr(
+        'rbx.box.testcase_sample_utils._check_sample', mocks['check_sample']
+    )
+    monkeypatch.setattr('rbx.console.console.print', mocks['console_print'])
+
+    # Patch TestcaseValidationInfo to satisfy Pydantic validation with mocks
+    class MockValidationInfo:
+        def __init__(self, **kwargs):
+            self.ok = kwargs.get('ok')
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    monkeypatch.setattr(
+        'rbx.box.testcase_sample_utils.TestcaseValidationInfo', MockValidationInfo
+    )
+
+    return mocks
+
+
+@pytest.mark.asyncio
+async def test_build_samples_success(
+    mock_dependencies_for_build_samples,
+):
+    """Test 25: build_samples success path (validation + checker pass)."""
+    mocks = mock_dependencies_for_build_samples
+
+    # Setup samples with checkOutput=True
+    sample = AsyncMock()
+    sample.checkOutput = True
+    sample.entry = AsyncMock()
+    val_mock = MagicMock()
+    val_mock.path = 'val1'
+    sample.entry.output_validators = [val_mock]
+    sample.entry.group_entry.group = 'samples'
+    sample.entry.metadata = 'metadata'
+    sample.outputPath = 'path'
+    mocks['get_statement_samples'].return_value = [sample]
+
+    # Setup validation success
+    mocks['compile_output_validators'].return_value = {'val1': 'digest'}
+    mocks['validate_file'].return_value = (True, 'ok', {})
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is True
+
+    # Verify validation flow
+    mocks['compile_output_validators'].assert_called_once()
+    mocks['validate_file'].assert_called_once()
+    mocks['print_validation_report'].assert_called_once()
+
+    # Verify checker flow
+    mocks['compile_checker'].assert_called_once()
+    mocks['check_sample'].assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_validation_fail(
+    mock_dependencies_for_build_samples,
+):
+    """Test 26: build_samples validation fails -> checker skipped."""
+    mocks = mock_dependencies_for_build_samples
+
+    sample = AsyncMock()
+    sample.checkOutput = True
+    sample.entry = AsyncMock()
+    val_mock = MagicMock()
+    val_mock.path = 'val1'
+    sample.entry.output_validators = [val_mock]
+    sample.entry.group_entry.group = 'samples'
+    sample.entry.metadata = 'metadata'
+    sample.outputPath = 'path'
+    mocks['get_statement_samples'].return_value = [sample]
+
+    # Validation fails
+    mocks['compile_output_validators'].return_value = {'val1': 'digest'}
+    mocks['validate_file'].return_value = (False, 'fail', {})
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is False
+
+    # Check that checker was NOT called
+    mocks['compile_checker'].assert_not_called()
+    mocks['check_sample'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_checker_fail(
+    mock_dependencies_for_build_samples,
+):
+    """Test 27: build_samples validation passes -> checker fails."""
+    mocks = mock_dependencies_for_build_samples
+
+    sample = AsyncMock()
+    sample.checkOutput = True
+    sample.entry = AsyncMock()
+    val_mock = MagicMock()
+    val_mock.path = 'val1'
+    sample.entry.output_validators = [val_mock]
+    sample.entry.group_entry.group = 'samples'
+    sample.entry.metadata = 'metadata'
+    sample.outputPath = 'path'
+    mocks['get_statement_samples'].return_value = [sample]
+
+    # Validation passes
+    mocks['validate_file'].return_value = (True, 'ok', {})
+
+    # Checker fails
+    mocks['check_sample'].return_value = False
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is False
+
+    mocks['validate_file'].assert_called()
+    mocks['compile_checker'].assert_called_once()
+    mocks['check_sample'].assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_no_validate_flag(
+    mock_dependencies_for_build_samples,
+):
+    """Test 28: build_samples with validate=False -> skip all."""
+    mocks = mock_dependencies_for_build_samples
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=False)
+
+    assert result is True
+
+    # Should skip everything after builder.build
+    mocks['get_statement_samples'].assert_not_called()
+    mocks['validate_file'].assert_not_called()
+    mocks['check_sample'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_builder_fails(
+    mock_dependencies_for_build_samples,
+):
+    """Test 29: build_samples builder fails -> fail immediately."""
+    mocks = mock_dependencies_for_build_samples
+    mocks['build'].return_value = False
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is False
+    mocks['get_statement_samples'].assert_not_called()

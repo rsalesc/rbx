@@ -150,7 +150,7 @@ async def _validate_testcase(
     )
 
 
-async def _validate_test(
+async def validate_file(
     testcase: pathlib.Path,
     validator: CodeItem,
     validator_digest: str,
@@ -185,7 +185,7 @@ async def validate_one_off(
                 f'[warning]Validator {validator.href()} not compiled, skipping validation.[/warning]'
             )
             continue
-        ok, message, _ = await _validate_test(
+        ok, message, _ = await validate_file(
             testcase,
             validator,
             validator_digest,
@@ -281,7 +281,7 @@ async def validate_testcases(
         # Main validation.
         if entry.validator is not None:
             compiled_digest = validator_to_compiled_digest[str(entry.validator.path)]
-            ok, message, hit_bounds = await _validate_test(
+            ok, message, hit_bounds = await validate_file(
                 input_path,
                 entry.validator,
                 compiled_digest,
@@ -301,7 +301,7 @@ async def validate_testcases(
 
         for extra_validator in entry.extra_validators:
             compiled_digest = validator_to_compiled_digest[str(extra_validator.path)]
-            ok, message, hit_bounds = await _validate_test(
+            ok, message, hit_bounds = await validate_file(
                 input_path,
                 extra_validator,
                 compiled_digest,
@@ -346,7 +346,7 @@ async def validate_outputs_from_entries(
             continue
         for output_validator in entry.output_validators:
             compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
-            ok, message, _ = await _validate_test(
+            ok, message, _ = await validate_file(
                 output_path,
                 output_validator,
                 compiled_digest,

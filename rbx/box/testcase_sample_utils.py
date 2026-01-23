@@ -5,7 +5,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import builder, checkers, testcase_extractors
+from rbx.box import builder, checkers, testcase_extractors, validators
 from rbx.box.environment import VerificationLevel, VerificationParam
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.testcase_utils import (
@@ -14,6 +14,10 @@ from rbx.box.testcase_utils import (
     TestcaseInteractionParsingError,
     get_best_interaction_file,
     parse_interaction,
+)
+from rbx.box.validators import (
+    TestcaseValidationInfo,
+    compile_output_validators_for_entries,
 )
 from rbx.grading.steps import Outcome
 
@@ -172,6 +176,40 @@ async def _check_sample(checker_digest: str, sample: StatementSample) -> bool:
     return True
 
 
+async def _validate_sample_outputs(samples: List[StatementSample]) -> bool:
+    validator_to_compiled_digest = compile_output_validators_for_entries(
+        [sample.entry for sample in samples]
+    )
+
+    validation_info: List[TestcaseValidationInfo] = []
+
+    for sample in samples:
+        entry = sample.entry
+        for output_validator in entry.output_validators:
+            compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
+            ok, message, _ = await validators.validate_file(
+                sample.outputPath,
+                output_validator,
+                compiled_digest,
+                group=entry.group_entry.group,
+            )
+            validation_info.append(
+                TestcaseValidationInfo(
+                    validator=output_validator,
+                    testcase=entry.group_entry,
+                    generation_metadata=entry.metadata,
+                    path=sample.outputPath,
+                    ok=ok,
+                    hit_bounds={},
+                    message=message,
+                )
+            )
+
+    validators.print_validation_report(validation_info, output_validation=True)
+
+    return all(info.ok for info in validation_info)
+
+
 async def build_samples(verification: VerificationParam, validate: bool) -> bool:
     ok = await builder.build(
         verification=verification,
@@ -191,23 +229,24 @@ async def build_samples(verification: VerificationParam, validate: bool) -> bool
     if not samples_to_check:
         return True
 
-    console.console.print('Checking manually defined samples...')
+    console.console.print('Validating manually defined samples...')
 
-    checker_digest = checkers.compile_checker()
+    ok = await _validate_sample_outputs(samples_to_check)
 
-    ok = True
-    for sample in samples_to_check:
-        if not await _check_sample(checker_digest, sample):
-            ok = False
+    if ok:
+        checker_digest = checkers.compile_checker()
+        for sample in samples_to_check:
+            if not await _check_sample(checker_digest, sample):
+                ok = False
 
     if not ok:
         console.console.print(
-            '[error]Some manually provided sample outputs are not considered valid answers when checked.[/error]'
+            '[error]Some manually provided sample outputs are not considered valid answers.[/error]'
         )
         console.console.print(
-            '[error]If you think these files should not be checked, use the [item].ans.statement[/item] file extension.[/error]'
+            '[error]If you think these files should not be checked, use the [item].ans.statement[/item] file extension (not recommended).[/error]'
         )
         console.console.print(
-            '[error]You can also use either the [item]-v0[/item] or the [item]--no-validate[/item] flag to disable sample validation.[/error]'
+            '[error]You can also use either the [item]-v0[/item] or the [item]--no-validate[/item] flag to disable sample validation temporarily.[/error]'
         )
     return ok
