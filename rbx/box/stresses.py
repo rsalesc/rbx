@@ -414,7 +414,7 @@ async def run_stress(
                 eval = await run_solution_fn(str(solutions[0].path))
                 if eval.result.outcome != Outcome.ACCEPTED:
                     console.console.print(
-                        '[error]Error while generating main solution output.[/error]'
+                        f'[error]Error while generating main solution output for stress with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
                     )
                     console.console.print(f'Input written at [item]{input_path}[/item]')
                     console.console.print(
@@ -483,7 +483,7 @@ async def run_stress(
 
             if internal_error_results:
                 console.console.print(
-                    f'[error]Checkers failed during stress test [item]{stress.name}[/item] with args [info]{expanded_generator_call.name} {expanded_generator_call.args}[/info][/error]'
+                    f'[error]Checkers failed during stress test [item]{stress.name}[/item] with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
                 )
                 for internal_error_result in internal_error_results:
                     assert internal_error_result.checker is not None
