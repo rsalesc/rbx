@@ -370,7 +370,7 @@ async def run(
             '[warning]Verification level is set to [item]validate (-v1)[/item], so rbx only build tests and validated them.[/warning]'
         )
         console.console.print(
-            '[warning]If you want to run solutions, but skip validation, run with [item]--novalidate[/item].[/warning]'
+            '[warning]If you want to run solutions, but skip validation, run with [item]--no-validate[/item].[/warning]'
         )
         return
 
@@ -602,6 +602,10 @@ async def irun(
         True,
         help='Whether to not build outputs for tests and run checker.',
     ),
+    validate: bool = typer.Option(
+        True,
+        help='Whether to validate inputs.',
+    ),
     generator: Optional[str] = typer.Option(
         None,
         '--generator',
@@ -696,6 +700,7 @@ async def irun(
             custom_output=output,
             print=print,
             sanitized=sanitized,
+            validate=validate,
         )
 
 

@@ -511,6 +511,7 @@ async def _generate_testcase_interactively(
     progress: Optional[StatusProgress] = None,
     generator: Optional[GeneratorCall] = None,
     testcase_entry: Optional[TestcaseOrScriptEntry] = None,
+    validate: bool = True,
     check: bool = True,
     custom_output: bool = False,
     sanitized: bool = False,
@@ -572,7 +573,7 @@ async def _generate_testcase_interactively(
         await generate_standalone(
             generation_metadata,
             progress=progress,
-            validate=True,
+            validate=validate,
         )
         if testcase_entry is not None:
             console.console.print(
@@ -747,6 +748,7 @@ async def run_and_print_interactive_solutions(
     custom_output: bool = False,
     print: bool = False,
     sanitized: bool = False,
+    validate: bool = True,
 ):
     pkg = package.find_problem_package_or_die()
     skeleton = _get_interactive_skeleton(
@@ -768,6 +770,7 @@ async def run_and_print_interactive_solutions(
             custom_output=custom_output,
             sanitized=sanitized,
             print=print,
+            validate=validate,
         )
         items = _run_interactive_solutions(
             testcase,
