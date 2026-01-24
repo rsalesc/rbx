@@ -106,6 +106,7 @@ async def run_stress(
     limits: Optional[tasks.Limits] = None,
     find_slowest: bool = False,
     fuzz: Optional[Union[List[str], bool]] = None,
+    validate: bool = True,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
 
@@ -264,11 +265,14 @@ async def run_stress(
         interactor_digest = checkers.compile_interactor(progress=progress)
 
     all_validators = package.get_all_validators()
-    if progress:
-        progress.update('Compiling validators...')
-    validators_digests = validators.compile_validators(
-        all_validators, progress=progress
-    )
+    if validators:
+        if progress:
+            progress.update('Compiling validators...')
+        validators_digests = validators.compile_validators(
+            all_validators, progress=progress
+        )
+    else:
+        validators_digests = {}
 
     # Use limits if we are not in find_slowest mode or if we have double TL explicitly
     # specified.
@@ -370,6 +374,7 @@ async def run_stress(
                     ),
                     generator_digest=generator_digest,
                     validators_digests=validators_digests,
+                    validate=validate,
                 )
             except (ValidationError, GenerationError) as err:
                 if skip_invalid_testcases:

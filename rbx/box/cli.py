@@ -843,6 +843,10 @@ async def stress(
             help='Testgroups to fuzz generator calls from.',
         ),
     ] = None,
+    validate: bool = typer.Option(
+        True,
+        help='Whether to validate inputs.',
+    ),
 ):
     if generator_args and (fuzz or fuzz_on):
         console.console.print(
@@ -897,6 +901,7 @@ async def stress(
             limits=limits,
             find_slowest=find_slowest,
             fuzz=fuzz_arg,
+            validate=validate,
         )
 
     stresses.print_stress_report(report)
