@@ -349,8 +349,10 @@ def get_statement_build_path(
 
 
 def needs_samples(statement: Statement) -> bool:
-    overrides = statement_overriding.get_inheritance_overrides(statement)
-    return statement.samples and overrides.samples
+    if statement.inheritFromContest:
+        overrides = statement_overriding.get_inheritance_overrides(statement)
+        return statement.samples and overrides.samples
+    return statement.samples
 
 
 async def build_statement(

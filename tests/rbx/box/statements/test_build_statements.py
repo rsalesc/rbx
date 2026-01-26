@@ -16,6 +16,7 @@ from rbx.box.statements.build_statements import (
     get_builders,
     get_environment_languages_for_statement,
     get_implicit_builders,
+    needs_samples,
 )
 from rbx.box.statements.builders import BUILDER_LIST
 from rbx.box.statements.schema import (
@@ -941,3 +942,66 @@ class TestBuildStatementInheritance:
             # Verify output has default value
             content = result_path.read_text()
             assert 'Variable: default_value' in content
+
+
+class TestNeedsSamples:
+    """Test needs_samples function."""
+
+    def test_no_inherit_needs_samples(self):
+        """Test needs_samples when inheritFromContest is False."""
+        statement = MagicMock(spec=Statement)
+        statement.inheritFromContest = False
+        statement.samples = True
+        assert needs_samples(statement) is True
+
+        statement.samples = False
+        assert needs_samples(statement) is False
+
+    def test_inherit_needs_samples_override_true(self):
+        """Test needs_samples when inheritFromContest is True and override has samples=True."""
+        statement = MagicMock(spec=Statement)
+        statement.inheritFromContest = True
+        statement.samples = True
+
+        mock_overrides = MagicMock()
+        mock_overrides.samples = True
+
+        with patch(
+            'rbx.box.statements.build_statements.statement_overriding.get_inheritance_overrides',
+            return_value=mock_overrides,
+        ) as mock_get_overrides:
+            assert needs_samples(statement) is True
+            mock_get_overrides.assert_called_once_with(statement)
+
+    def test_inherit_needs_samples_override_false(self):
+        """Test needs_samples when inheritFromContest is True and override has samples=False."""
+        statement = MagicMock(spec=Statement)
+        statement.inheritFromContest = True
+        statement.samples = True
+
+        mock_overrides = MagicMock()
+        mock_overrides.samples = False
+
+        with patch(
+            'rbx.box.statements.build_statements.statement_overriding.get_inheritance_overrides',
+            return_value=mock_overrides,
+        ) as mock_get_overrides:
+            assert needs_samples(statement) is False
+            mock_get_overrides.assert_called_once_with(statement)
+
+    def test_inherit_needs_samples_statement_false(self):
+        """Test needs_samples when inheritFromContest is True but statement samples is False."""
+        statement = MagicMock(spec=Statement)
+        statement.inheritFromContest = True
+        statement.samples = False
+
+        mock_overrides = MagicMock()
+        # Even if override attempts to enable samples, the current logic is (statement.samples AND overrides.samples)
+        # So we expect it to be False.
+        mock_overrides.samples = True
+
+        with patch(
+            'rbx.box.statements.build_statements.statement_overriding.get_inheritance_overrides',
+            return_value=mock_overrides,
+        ):
+            assert needs_samples(statement) is False
