@@ -1,3 +1,13 @@
+## 0.23.7 (2026-01-26)
+
+### Fix
+
+- fix inheritance bug
+- fix stress test command
+- show generator call along error
+- add validate flags
+- add --no-validate to irun
+
 ## 0.23.6 (2026-01-23)
 
 ### Fix
