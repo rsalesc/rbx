@@ -972,7 +972,7 @@ async def stress(
                 ),
             )
 
-            stress_text = f'# Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
+            stress_text = f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
             handler.append(
                 [finding.generator for finding in report.findings],
                 comment=stress_text,
