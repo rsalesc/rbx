@@ -1,3 +1,12 @@
+## 0.23.8 (2026-01-27)
+
+### Fix
+
+- fix packager statemment building
+- improve build samples with sense of progress
+- fixed output validation
+- fix missing async
+
 ## 0.23.7 (2026-01-26)
 
 ### Fix
