@@ -269,6 +269,8 @@ async def validate_testcases(
         console.console.print(
             '[warning]No validators found, skipping validation.[/warning]'
         )
+        if progress is not None:
+            progress.omit()
         return []
 
     validation_info = []
@@ -337,6 +339,11 @@ async def validate_outputs_from_entries(
     )
 
     if not validator_to_compiled_digest:
+        console.console.print(
+            '[warning]No output validators found, skipping validation.[/warning]'
+        )
+        if progress is not None:
+            progress.omit()
         return []
 
     validation_info = []

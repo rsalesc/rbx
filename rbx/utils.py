@@ -437,6 +437,9 @@ class StatusProgress(rich.status.Status):
         self.processed += delta
         self.update_with_progress(self.processed)
 
+    def omit(self):
+        self.keep = False
+
 
 @functools.cache
 def _read_envrc_at(path: pathlib.Path) -> Dict[str, str]:

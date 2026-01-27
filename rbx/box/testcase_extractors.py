@@ -224,6 +224,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     ),
                     validator=validator,
                     extra_validators=extra_validators,
+                    output_validators=output_validators,
                     model_solution=model_solution,
                 )
             )
