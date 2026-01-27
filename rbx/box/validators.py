@@ -397,6 +397,8 @@ async def check_output_from_entries(
         entries_to_check.append(entry)
 
     if not entries_to_check:
+        if progress is not None:
+            progress.omit()
         return []
 
     checker = package.get_checker()

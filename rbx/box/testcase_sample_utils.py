@@ -176,10 +176,22 @@ async def _check_sample(checker_digest: str, sample: StatementSample) -> bool:
     return True
 
 
-async def _validate_sample_outputs(samples: List[StatementSample]) -> bool:
+async def _validate_sample_outputs(
+    samples: List[StatementSample],
+    progress: Optional[utils.StatusProgress] = None,
+) -> bool:
+    def step():
+        if progress is not None:
+            progress.step()
+
     validator_to_compiled_digest = compile_output_validators_for_entries(
         [sample.entry for sample in samples]
     )
+
+    if not validator_to_compiled_digest:
+        if progress is not None:
+            progress.omit()
+        return True
 
     validation_info: List[TestcaseValidationInfo] = []
 
@@ -204,13 +216,17 @@ async def _validate_sample_outputs(samples: List[StatementSample]) -> bool:
                     message=message,
                 )
             )
+            step()
 
     validators.print_validation_report(validation_info, output_validation=True)
 
     return all(info.ok for info in validation_info)
 
 
-async def build_samples(verification: VerificationParam, validate: bool) -> bool:
+async def build_samples(
+    verification: VerificationParam,
+    validate: bool,
+) -> bool:
     ok = await builder.build(
         verification=verification,
         groups=set(['samples']),
@@ -229,15 +245,24 @@ async def build_samples(verification: VerificationParam, validate: bool) -> bool
     if not samples_to_check:
         return True
 
-    console.console.print('Validating manually defined samples...')
-
-    ok = await _validate_sample_outputs(samples_to_check)
+    with utils.StatusProgress(
+        'Validating manual statement outputs for testcases...',
+        'Validated [item]{processed}[/item] manual statement outputs...',
+        keep=True,
+    ) as s:
+        ok = await _validate_sample_outputs(samples_to_check, s)
 
     if ok:
-        checker_digest = checkers.compile_checker()
-        for sample in samples_to_check:
-            if not await _check_sample(checker_digest, sample):
-                ok = False
+        with utils.StatusProgress(
+            'Checking manual statement outputs for testcases...',
+            'Checked [item]{processed}[/item] manual statement outputs...',
+            keep=True,
+        ) as s:
+            checker_digest = checkers.compile_checker()
+            for sample in samples_to_check:
+                if not await _check_sample(checker_digest, sample):
+                    ok = False
+                s.step()
 
     if not ok:
         console.console.print(
@@ -248,5 +273,9 @@ async def build_samples(verification: VerificationParam, validate: bool) -> bool
         )
         console.console.print(
             '[error]You can also use either the [item]-v0[/item] or the [item]--no-validate[/item] flag to disable sample validation temporarily.[/error]'
+        )
+    else:
+        console.console.print(
+            '[success]All manual statement outputs are considered valid.[/success]'
         )
     return ok

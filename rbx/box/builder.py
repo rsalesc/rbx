@@ -91,8 +91,8 @@ async def build(
 
     if verification > 0 and validate:
         with utils.StatusProgress(
-            'Checking manual outputs for testcases...',
-            'Checked [item]{processed}[/item] manual outputs...',
+            'Checking manual answers for testcases...',
+            'Checked [item]{processed}[/item] manual answers...',
             keep=True,
         ) as s:
             if output:
