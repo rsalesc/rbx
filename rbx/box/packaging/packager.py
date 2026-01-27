@@ -14,7 +14,9 @@ from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.formatting import href
 from rbx.box.generators import get_all_built_testcases
 from rbx.box.schema import Package, TaskType, Testcase, TestcaseGroup
-from rbx.box.statements.build_statements import build_statement
+from rbx.box.statements.build_statements import (
+    execute_build_on_statements,
+)
 from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
@@ -232,20 +234,32 @@ async def run_packager(
 
     with limits_info.use_profile(packager_cls.name()):
         for statement_type in statement_types:
+            tracked_statements: List[Statement] = []
             languages = packager.languages()
             for language in languages:
-                statement = packager.get_statement_for_language_or_die(language)
-                statement_path = await build_statement(
-                    statement,
-                    pkg,
-                    statement_type,
-                    extra_mergeable_params=get_packager_extra_mergeable_params(
-                        packager_cls
-                    ),
+                tracked_statements.append(
+                    packager.get_statement_for_language_or_die(language)
                 )
-                built_statements.append(
+
+            built_paths = await execute_build_on_statements(
+                tracked_statements,
+                verification,
+                output=statement_type,
+                extra_mergeable_params=get_packager_extra_mergeable_params(
+                    packager_cls
+                ),
+                # Skip building samples since they were already
+                # built by the packager.
+                skip_building=True,
+            )
+            built_statements.extend(
+                [
                     BuiltStatement(statement, statement_path, statement_type)
-                )
+                    for statement, statement_path in zip(
+                        tracked_statements, built_paths, strict=True
+                    )
+                ]
+            )
 
     console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
     with (

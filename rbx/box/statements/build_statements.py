@@ -392,6 +392,45 @@ async def build_statement(
     return statement_path
 
 
+async def execute_build_on_statements(
+    statements: List[Statement],
+    verification: environment.VerificationParam,
+    output: Optional[StatementType] = StatementType.PDF,
+    samples: bool = True,
+    vars: Optional[List[str]] = None,
+    validate: bool = True,
+    extra_mergeable_params: Optional[List[ConversionStep]] = None,
+    skip_building: bool = False,
+) -> List[pathlib.Path]:
+    pkg = package.find_problem_package_or_die()
+    samples = samples and any(needs_samples(st) for st in statements)
+
+    # At most run the validators, only in samples.
+    if samples:
+        if not await build_samples(
+            verification, validate, check_outputs_only=skip_building
+        ):
+            # TODO: add contest-level statement error
+            console.console.print(
+                '[error]Failed to build statements with samples, aborting.[/error]'
+            )
+            raise typer.Exit(1)
+
+    res = []
+    for statement in statements:
+        res.append(
+            await build_statement(
+                statement,
+                pkg,
+                output_type=output,
+                use_samples=samples,
+                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
+                extra_mergeable_params=extra_mergeable_params,
+            )
+        )
+    return res
+
+
 async def execute_build(
     verification: environment.VerificationParam,
     names: Optional[List[str]] = None,
@@ -420,25 +459,14 @@ async def execute_build(
         )
         raise typer.Exit(1)
 
-    samples = samples and any(needs_samples(st) for st in valid_statements)
-
-    # At most run the validators, only in samples.
-    if samples:
-        if not await build_samples(verification, validate):
-            # TODO: add contest-level statement error
-            console.console.print(
-                '[error]Failed to build statements with samples, aborting.[/error]'
-            )
-            raise typer.Exit(1)
-
-    for statement in valid_statements:
-        await build_statement(
-            statement,
-            pkg,
-            output_type=output,
-            use_samples=samples,
-            custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
-        )
+    await execute_build_on_statements(
+        valid_statements,
+        verification,
+        output=output,
+        samples=samples,
+        vars=vars,
+        validate=validate,
+    )
 
 
 @app.command('build, b', help='Build statements.')

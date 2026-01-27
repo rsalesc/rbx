@@ -623,7 +623,7 @@ def mock_dependencies_for_build_samples(monkeypatch):
         'get_statement_samples': AsyncMock(),
         'compile_output_validators': MagicMock(),
         'validate_file': AsyncMock(),
-        'print_validation_report': AsyncMock(),
+        'print_validation_report': MagicMock(),
         'compile_checker': AsyncMock(return_value='checker_digest'),
         'check_sample': AsyncMock(return_value=True),
         'console_print': MagicMock(),
@@ -792,3 +792,33 @@ async def test_build_samples_builder_fails(
 
     assert result is False
     mocks['get_statement_samples'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_check_outputs_only_false(
+    mock_dependencies_for_build_samples,
+):
+    """Test 30: build_samples with check_outputs_only=False -> builder called."""
+    mocks = mock_dependencies_for_build_samples
+
+    result = await testcase_sample_utils.build_samples(
+        verification=10, validate=True, check_outputs_only=False
+    )
+
+    assert result is True
+    mocks['build'].assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_check_outputs_only_true(
+    mock_dependencies_for_build_samples,
+):
+    """Test 31: build_samples with check_outputs_only=True -> builder NOT called."""
+    mocks = mock_dependencies_for_build_samples
+
+    result = await testcase_sample_utils.build_samples(
+        verification=10, validate=True, check_outputs_only=True
+    )
+
+    assert result is True
+    mocks['build'].assert_not_called()

@@ -226,13 +226,16 @@ async def _validate_sample_outputs(
 async def build_samples(
     verification: VerificationParam,
     validate: bool,
+    check_outputs_only: bool = False,
 ) -> bool:
-    ok = await builder.build(
-        verification=verification,
-        groups=set(['samples']),
-        output=None,
-        validate=validate,
-    )
+    ok = True
+    if not check_outputs_only:
+        ok = await builder.build(
+            verification=verification,
+            groups=set(['samples']),
+            output=None,
+            validate=validate,
+        )
     if not ok:
         return False
     if not validate or verification < VerificationLevel.VALIDATE.value:
