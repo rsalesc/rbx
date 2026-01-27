@@ -174,3 +174,5 @@ cython_debug/
 glob_output.txt
 junit.xml
 build_log.txt
+
+agents/

@@ -235,7 +235,7 @@ async def run_packager(
             languages = packager.languages()
             for language in languages:
                 statement = packager.get_statement_for_language_or_die(language)
-                statement_path = build_statement(
+                statement_path = await build_statement(
                     statement,
                     pkg,
                     statement_type,
