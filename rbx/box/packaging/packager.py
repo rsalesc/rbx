@@ -273,5 +273,10 @@ async def run_packager(
     console.console.print(
         f'[success]Problem packaged for [item]{packager.name()}[/item]![/success]'
     )
-    console.console.print(f'Package was saved at {href(result_path)}')
+    from rbx.utils import format_size
+
+    package_size = result_path.stat().st_size
+    console.console.print(
+        f'Package was saved at {href(result_path)} ([item]{format_size(package_size)}[/item])'
+    )
     return result_path

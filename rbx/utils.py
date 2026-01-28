@@ -463,3 +463,13 @@ def environ() -> Dict[str, str]:
     res = os.environ.copy()
     res.update(_read_envrc_at(pathlib.Path.cwd()))
     return res
+
+
+def format_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f'{size_bytes} B'
+    elif size_bytes < 1024**2:
+        return f'{size_bytes / 1024:.2f} KiB'
+    elif size_bytes < 1024**3:
+        return f'{size_bytes / 1024**2:.2f} MiB'
+    return f'{size_bytes / 1024**3:.2f} GiB'
