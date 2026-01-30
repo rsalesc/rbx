@@ -60,7 +60,7 @@ async def build(
             )
             if is_run:
                 console.console.print(
-                    '[error]You can use the [item]--novalidate[/item] flag to skip validation.[/error]'
+                    '[error]You can use the [item]--no-validate[/item] flag to skip validation.[/error]'
                 )
             else:
                 console.console.print(
