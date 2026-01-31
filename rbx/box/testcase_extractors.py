@@ -25,6 +25,7 @@ from rbx.box.schema import (
     Solution,
     Testcase,
     TestcaseSubgroup,
+    Visualizer,
 )
 from rbx.box.testcase_utils import (
     TestcaseEntry,
@@ -179,12 +180,18 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         extra_validators: Optional[List[CodeItem]] = None,
         output_validators: Optional[List[CodeItem]] = None,
         model_solution: Optional[Solution] = None,
+        visualizer: Optional[Visualizer] = None,
+        output_visualizer: Optional[Visualizer] = None,
     ):
         extra_validators = package.get_globbed_code_items(
             extra_validators or [],
             preexisting_items=[validator] if validator is not None else None,
         )
         output_validators = package.get_globbed_code_items(output_validators or [])
+        if subgroup.visualizer is not None:
+            visualizer = subgroup.visualizer
+        if subgroup.outputVisualizer is not None:
+            output_visualizer = subgroup.outputVisualizer
 
         assert prefix and len(prefix) >= 1 and len(prefix) <= 2
         group_path = prefix[0]
@@ -226,6 +233,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     extra_validators=extra_validators,
                     output_validators=output_validators,
                     model_solution=model_solution,
+                    visualizer=visualizer,
+                    output_visualizer=output_visualizer,
                 )
             )
             i += 1
@@ -251,6 +260,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         extra_validators=extra_validators,
                         output_validators=output_validators,
                         model_solution=model_solution,
+                        visualizer=visualizer,
+                        output_visualizer=output_visualizer,
                     )
                 )
                 i += 1
@@ -269,6 +280,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     extra_validators=extra_validators,
                     output_validators=output_validators,
                     model_solution=model_solution,
+                    visualizer=visualizer,
+                    output_visualizer=output_visualizer,
                 )
             )
             i += 1
@@ -322,6 +335,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         extra_validators=extra_validators,
                         output_validators=output_validators,
                         model_solution=model_solution,
+                        visualizer=visualizer,
+                        output_visualizer=output_visualizer,
                     )
                 )
                 i += 1
@@ -334,6 +349,9 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         if group.validator is not None:
             group_validator = group.validator
 
+        group_visualizer = pkg.visualizer
+        group_output_visualizer = pkg.outputVisualizer
+
         extra_validators = pkg.extraValidators + group.extraValidators
         output_validators = pkg.outputValidators + group.outputValidators
         await _explore_subgroup(
@@ -344,6 +362,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             extra_validators=extra_validators,
             output_validators=output_validators,
             model_solution=group.model_solution,
+            visualizer=group_visualizer,
+            output_visualizer=group_output_visualizer,
         )
 
         for i, subgroup in enumerate(group.subgroups):
@@ -355,6 +375,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                 extra_validators=extra_validators + subgroup.extraValidators,
                 output_validators=output_validators + subgroup.outputValidators,
                 model_solution=group.model_solution,
+                visualizer=group_visualizer,
+                output_visualizer=group_output_visualizer,
             )
 
 

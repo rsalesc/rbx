@@ -5,7 +5,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box.schema import CodeItem, GeneratorCall, Solution, Testcase
+from rbx.box.schema import CodeItem, GeneratorCall, Solution, Testcase, Visualizer
 from rbx.box.testcase_utils import TestcaseEntry
 
 TestcaseOrScriptEntry = Union[TestcaseEntry, 'GeneratorScriptEntry']
@@ -60,6 +60,9 @@ class GenerationTestcaseEntry(BaseModel):
     extra_validators: List[CodeItem] = []
     output_validators: List[CodeItem] = []
     model_solution: Optional[Solution] = None
+
+    visualizer: Optional[Visualizer] = None
+    output_visualizer: Optional[Visualizer] = None
 
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'

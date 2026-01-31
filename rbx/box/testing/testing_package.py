@@ -150,6 +150,26 @@ class TestingPackage(TestingShared):
         self.save()
         return self.add_file(path, src=src)
 
+    def set_visualizer(
+        self,
+        path: PathOrStr,
+        language: Optional[str] = None,
+        src: Optional[PathOrStr] = None,
+    ):
+        self.yml.visualizer = CodeItem(path=pathlib.Path(path), language=language)
+        self.save()
+        return self.add_file(path, src=src)
+
+    def set_output_visualizer(
+        self,
+        path: PathOrStr,
+        language: Optional[str] = None,
+        src: Optional[PathOrStr] = None,
+    ):
+        self.yml.outputVisualizer = CodeItem(path=pathlib.Path(path), language=language)
+        self.save()
+        return self.add_file(path, src=src)
+
     def set_var(self, name: str, value: Primitive):
         self.yml.vars[name] = value
         self.save()
@@ -293,6 +313,16 @@ class TestingPackage(TestingShared):
                     CodeItem(path=pathlib.Path(v))
                     for v in subgroup_data['outputValidators']
                 ]
+
+            if 'visualizer' in subgroup_data:
+                subgroup_dict['visualizer'] = CodeItem(
+                    path=pathlib.Path(subgroup_data['visualizer'])
+                )
+
+            if 'outputVisualizer' in subgroup_data:
+                subgroup_dict['outputVisualizer'] = CodeItem(
+                    path=pathlib.Path(subgroup_data['outputVisualizer'])
+                )
 
             subgroup_objects.append(TestcaseSubgroup(**subgroup_dict))
 

@@ -263,10 +263,16 @@ async def build(
         True,
         help='Whether to validate outputs for tests.',
     ),
+    visualize: bool = typer.Option(
+        False,
+        help='Whether to build visualizations for inputs/outputs of tests.',
+    ),
 ):
     from rbx.box import builder
 
-    await builder.build(verification=verification, validate=validate)
+    await builder.build(
+        verification=verification, validate=validate, visualize=visualize
+    )
 
 
 @app.command(
@@ -626,6 +632,11 @@ async def irun(
         '-O',
         help='Whether to ask user for custom output.',
     ),
+    visualize: bool = typer.Option(
+        False,
+        '--visualize',
+        help='Whether to generate visualizations for inputs and outputs.',
+    ),
     print: bool = typer.Option(
         False, '--print', '-p', help='Whether to print outputs to terminal.'
     ),
@@ -701,6 +712,7 @@ async def irun(
             print=print,
             sanitized=sanitized,
             validate=validate,
+            visualize=visualize,
         )
 
 

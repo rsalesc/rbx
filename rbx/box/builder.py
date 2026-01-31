@@ -20,6 +20,7 @@ from rbx.box.validators import (
     validate_outputs_from_entries,
     validate_testcases,
 )
+from rbx.box.visualizers import run_visualizers_for_entries
 
 
 async def build(
@@ -27,6 +28,7 @@ async def build(
     groups: Optional[Set[str]] = None,
     output: Optional[bool] = True,
     validate: bool = True,
+    visualize: bool = False,
     is_run: bool = False,
     is_statement: bool = False,
 ) -> bool:
@@ -98,6 +100,14 @@ async def build(
             if output:
                 validation_info = await check_output_from_entries(entries, s)
                 print_validation_report(validation_info, output_validation=True)
+
+    if visualize:
+        with utils.StatusProgress(
+            'Building visualizations for testcases...',
+            'Built [item]{processed}[/item] visualizations...',
+            keep=True,
+        ) as s:
+            await run_visualizers_for_entries(entries, s)
 
     console.console.print(
         '[success]Problem built.[/success] '

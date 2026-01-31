@@ -19,7 +19,7 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, code, limits_info, package, remote, state
+from rbx.box import checkers, code, limits_info, package, remote, state, visualizers
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -514,6 +514,7 @@ async def _generate_testcase_interactively(
     validate: bool = True,
     check: bool = True,
     custom_output: bool = False,
+    visualize: bool = False,
     sanitized: bool = False,
     print: bool = False,
 ) -> Testcase:
@@ -569,6 +570,7 @@ async def _generate_testcase_interactively(
         is_manual = True
 
     # 1. Generate testcase.
+    should_print_testcase = False
     if generation_metadata is not None:
         await generate_standalone(
             generation_metadata,
@@ -584,12 +586,11 @@ async def _generate_testcase_interactively(
                 f'Using input from generator call [item]{generation_metadata.generator_call.name} {generation_metadata.generator_call.args}[/item].'
             )
         if print and not is_manual:
-            console.console.print(testcase.inputPath.read_text())
+            should_print_testcase = True
         else:
             console.console.print(
                 f'Input was written to {href(package.relpath(testcase.inputPath))}'
             )
-        console.console.print()
 
     # 2. Generate test output from reference
     main_solution_digest = None
@@ -635,6 +636,28 @@ async def _generate_testcase_interactively(
                 interactor_digest=interactor_digest,
             )
 
+    # 3. Generate visualizations
+    if visualize:
+        visualization_paths = await visualizers.run_visualizers_for_testcase(
+            testcase,
+            progress=progress,
+        )
+        if visualization_paths.has_input():
+            assert visualization_paths.input is not None
+            console.console.print(
+                f'Input visualization was written to {href(package.relpath(visualization_paths.input))}'
+            )
+        if visualization_paths.has_output():
+            assert visualization_paths.output is not None
+            console.console.print(
+                f'Output visualization was written to {href(package.relpath(visualization_paths.output))}'
+            )
+
+    # 4. Print testcase
+    if should_print_testcase:
+        console.console.print(testcase.inputPath.read_text())
+        console.console.print()
+
     if check and testcase.outputPath is not None and not testcase.outputPath.is_file():
         # Output was not created, throw an error.
         console.console.print(
@@ -654,6 +677,7 @@ def _run_interactive_solutions(
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
+    visualize: bool = False,
 ) -> Iterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
@@ -749,6 +773,7 @@ async def run_and_print_interactive_solutions(
     print: bool = False,
     sanitized: bool = False,
     validate: bool = True,
+    visualize: bool = False,
 ):
     pkg = package.find_problem_package_or_die()
     skeleton = _get_interactive_skeleton(
@@ -771,6 +796,7 @@ async def run_and_print_interactive_solutions(
             sanitized=sanitized,
             print=print,
             validate=validate,
+            visualize=visualize,
         )
         items = _run_interactive_solutions(
             testcase,
@@ -778,6 +804,7 @@ async def run_and_print_interactive_solutions(
             progress=progress,
             verification=verification,
             check=check,
+            visualize=visualize,
         )
 
     for item in items:

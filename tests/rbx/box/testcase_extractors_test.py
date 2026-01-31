@@ -1713,3 +1713,145 @@ class TestComplexScenarios:
             pathlib.Path('output_validators/val3.cpp'),
         }
         assert validator_paths == expected_paths
+
+
+class TestRunTestcaseVisitorWithVisualizers:
+    """Test visitor with visualizers."""
+
+    async def test_run_testcase_visitor_with_visualizers(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test running visitor with package-level visualizers."""
+        # Add visualizer
+        testing_pkg.set_visualizer('visualizer.py').write_text('visualizer code')
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup
+        testing_pkg.add_testgroup_with_generators(
+            'group1', [{'name': 'gen1', 'args': 'arg1'}]
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        assert visited_entries[0].visualizer is not None
+        assert visited_entries[0].visualizer.path == pathlib.Path('visualizer.py')
+
+    async def test_run_testcase_visitor_with_visualizer_overrides(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test running visitor with subgroup visualizer overriding package visualizer."""
+        # Add package visualizer
+        testing_pkg.set_visualizer('visualizer.py').write_text('visualizer code')
+
+        # Add subgroup visualizer
+        testing_pkg.add_file('sub_visualizer.py').write_text('sub visualizer code')
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup with subgroup overriding visualizer
+        testing_pkg.add_testgroup_with_subgroups(
+            'group1',
+            [
+                {
+                    'name': 'sub1',
+                    'generators': [{'name': 'gen1', 'args': 'arg1'}],
+                    'visualizer': 'sub_visualizer.py',
+                }
+            ],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        assert visited_entries[0].visualizer is not None
+        assert visited_entries[0].visualizer.path == pathlib.Path('sub_visualizer.py')
+
+    async def test_run_testcase_visitor_with_output_visualizers(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test running visitor with output visualizers."""
+        # Add output visualizer
+        testing_pkg.set_output_visualizer('out_vis.py').write_text(
+            'output visualizer code'
+        )
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup
+        testing_pkg.add_testgroup_with_generators(
+            'group1', [{'name': 'gen1', 'args': 'arg1'}]
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        assert visited_entries[0].output_visualizer is not None
+        assert visited_entries[0].output_visualizer.path == pathlib.Path('out_vis.py')
+
+    async def test_run_testcase_visitor_with_output_visualizer_overrides(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test running visitor with subgroup output visualizer overriding package output visualizer."""
+        # Add package output visualizer
+        testing_pkg.set_output_visualizer('out_vis.py').write_text(
+            'output visualizer code'
+        )
+
+        # Add subgroup output visualizer
+        testing_pkg.add_file('sub_out_vis.py').write_text('sub output visualizer code')
+
+        # Add generator
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        # Add testgroup with subgroup overriding output visualizer
+        testing_pkg.add_testgroup_with_subgroups(
+            'group1',
+            [
+                {
+                    'name': 'sub1',
+                    'generators': [{'name': 'gen1', 'args': 'arg1'}],
+                    'outputVisualizer': 'sub_out_vis.py',
+                }
+            ],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        visitor = CollectingVisitor()
+        await run_testcase_visitor(visitor)
+
+        assert len(visited_entries) == 1
+        assert visited_entries[0].output_visualizer is not None
+        assert visited_entries[0].output_visualizer.path == pathlib.Path(
+            'sub_out_vis.py'
+        )
