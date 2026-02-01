@@ -5,8 +5,9 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog
 
-from rbx.box import package
-from rbx.box.schema import TaskType
+from rbx.box import package, visualizers
+from rbx.box.exception import RbxException
+from rbx.box.schema import TaskType, Testcase
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases_from_groups,
@@ -24,6 +25,8 @@ class TestExplorerScreen(Screen):
         ('1', 'show_output', 'Show output'),
         ('2', 'show_stderr', 'Show stderr'),
         ('3', 'show_log', 'Show log'),
+        ('v', 'open_visualizer', 'Open visualization'),
+        ('V', 'open_output_visualizer', 'Open output visualization'),
     ]
 
     def __init__(self):
@@ -115,3 +118,32 @@ class TestExplorerScreen(Screen):
 
     def action_show_log(self):
         self.query_one('#test-output', TestBoxWidget).show_log()
+
+    async def action_open_visualizer(self):
+        input_path = self.query_one('#test-input', FileLog).path
+        if input_path is None:
+            self.app.notify('No test selected', severity='error')
+            return
+        try:
+            await visualizers.run_ui_input_visualizer_for_testcase(
+                Testcase(inputPath=input_path)
+            )
+        except RbxException as e:
+            self.app.notify(e.plain(), severity='error', markup=False)
+
+    async def action_open_output_visualizer(self):
+        input_path = self.query_one('#test-input', FileLog).path
+        if input_path is None:
+            self.app.notify('No test selected', severity='error')
+            return
+        output_path = self.query_one('#test-output', TestBoxWidget).data.output_path
+        if output_path is None:
+            self.app.notify('No output found to visualize', severity='error')
+            return
+
+        try:
+            await visualizers.run_ui_output_visualizer_for_testcase(
+                Testcase(inputPath=input_path, outputPath=output_path)
+            )
+        except RbxException as e:
+            self.app.notify(e.plain(), severity='error', markup=False)

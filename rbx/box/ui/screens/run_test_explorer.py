@@ -1,3 +1,4 @@
+import pathlib
 from typing import List, Optional
 
 from textual.app import ComposeResult
@@ -6,8 +7,9 @@ from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
-from rbx.box import package
-from rbx.box.schema import TaskType
+from rbx.box import package, visualizers
+from rbx.box.exception import RbxException
+from rbx.box.schema import TaskType, Testcase
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
@@ -33,6 +35,8 @@ class RunTestExplorerScreen(Screen):
         ('m', 'toggle_metadata', 'Toggle metadata'),
         ('s', 'toggle_side_by_side', 'Toggle sxs'),
         ('g', 'toggle_test_metadata', 'Toggle test metadata'),
+        ('v', 'open_visualizer', 'Open visualization'),
+        ('V', 'open_output_visualizer', 'Open output visualization'),
     ]
 
     side_by_side: reactive[bool] = reactive(False)
@@ -184,3 +188,38 @@ class RunTestExplorerScreen(Screen):
                 title='Testcase metadata',
             )
         )
+
+    async def action_open_visualizer(self):
+        input_path = self.query_one('#test-input', FileLog).path
+        if input_path is None:
+            self.app.notify('No test selected', severity='error')
+            return
+        try:
+            await visualizers.run_ui_input_visualizer_for_testcase(
+                Testcase(inputPath=input_path)
+            )
+        except RbxException as e:
+            self.app.notify(e.plain(), severity='error', markup=False)
+
+    async def action_open_output_visualizer(self):
+        input_path = self.query_one('#test-input', FileLog).path
+        if input_path is None:
+            self.app.notify('No test selected', severity='error')
+            return
+        two_sided = self.query_one('#test-output', TwoSidedTestBoxWidget)
+        output_path = two_sided.data.output_path
+        if output_path is None:
+            self.app.notify('No output found to visualize', severity='error')
+            return
+
+        answer_path: Optional[pathlib.Path] = None
+        if two_sided.diff_with_data is not None:
+            answer_path = two_sided.diff_with_data.output_path
+
+        try:
+            await visualizers.run_ui_output_visualizer_for_testcase(
+                Testcase(inputPath=input_path, outputPath=output_path),
+                answer_path=answer_path,
+            )
+        except RbxException as e:
+            self.app.notify(e.plain(), severity='error', markup=False)

@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+import rich.text
 from rich.console import Capture, Console
 
 from rbx import console
@@ -69,3 +70,9 @@ class RbxException(RuntimeError):
         if not self.msg:
             return ''
         return ''.join(self.msg)
+
+    def from_ansi(self) -> rich.text.Text:
+        return rich.text.Text.from_ansi(''.join(self.msg))
+
+    def plain(self) -> str:
+        return self.from_ansi().plain

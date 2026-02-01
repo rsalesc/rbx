@@ -1,3 +1,4 @@
+import atexit
 import contextlib
 import enum
 import functools
@@ -9,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
 import dotenv
@@ -473,3 +475,37 @@ def format_size(size_bytes: int) -> str:
     elif size_bytes < 1024**3:
         return f'{size_bytes / 1024**2:.2f} MiB'
     return f'{size_bytes / 1024**3:.2f} GiB'
+
+
+_temp_session_dir: Optional[pathlib.Path] = None
+
+
+def _get_temp_session_dir() -> pathlib.Path:
+    global _temp_session_dir
+    if _temp_session_dir is None:
+        _temp_session_dir = pathlib.Path(tempfile.mkdtemp(prefix='rbx-session-'))
+        atexit.register(shutil.rmtree, _temp_session_dir, ignore_errors=True)
+    return _temp_session_dir
+
+
+def start_file(path: pathlib.Path):
+    import os
+    import subprocess
+
+    if sys.platform == 'darwin':  # macOS
+        subprocess.call(('open', str(path)))
+    elif sys.platform == 'win32':  # Windows
+        os.startfile(str(path))
+    else:  # linux variants
+        subprocess.call(('xdg-open', str(path)))
+
+
+def start_symlinkable_file(path: pathlib.Path):
+    session_dir = _get_temp_session_dir()
+    # Create a unique subdirectory for this file to avoid conflicts
+    temp_dir = pathlib.Path(tempfile.mkdtemp(dir=session_dir))
+
+    # We want to preserve the name of the file
+    temp_path = temp_dir / path.name
+    temp_path.write_bytes(path.read_bytes())
+    start_file(temp_path)

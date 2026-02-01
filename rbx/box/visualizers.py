@@ -1,12 +1,14 @@
+import functools
 import pathlib
 import shlex
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import package
 from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import CodeItem, Testcase, Visualizer
 from rbx.grading.steps import (
@@ -17,6 +19,10 @@ from rbx.grading.steps import (
     GradingFileOutput,
 )
 from rbx.utils import StatusProgress
+
+
+class VisualizationError(RbxException):
+    pass
 
 
 class VisualizationPaths(BaseModel):
@@ -74,8 +80,11 @@ def compile_visualizers(
     return visualizers_to_compiled_digest
 
 
+@functools.lru_cache(maxsize=None)
 def compile_package_visualizers(
     progress: Optional[StatusProgress] = None,
+    input: bool = True,
+    output: bool = True,
 ) -> Dict[str, str]:
     pkg = package.find_problem_package_or_die()
     visualizers = []
@@ -303,3 +312,59 @@ async def run_visualizers_for_testcase(
             )
 
     return paths
+
+
+async def run_ui_input_visualizer_for_testcase(testcase: Testcase):
+    compiled_visualizers = compile_package_visualizers(input=True, output=False)
+
+    pkg = package.find_problem_package_or_die()
+    if pkg.visualizer is None:
+        with VisualizationError() as e:
+            e.print('[error]No input visualizer found.[/error]')
+        return
+
+    visualizer_digest = compiled_visualizers.get(str(pkg.visualizer.path))
+    if visualizer_digest is None:
+        with VisualizationError() as e:
+            e.print(f'[error]Visualizer {pkg.visualizer.href()} not compiled.[/error]')
+        return
+
+    visualization_path = await run_input_visualizer_for_testcase(
+        testcase, pkg.visualizer, visualizer_digest
+    )
+    if visualization_path is None:
+        with VisualizationError() as e:
+            e.print('[error]Visualizer failed.[/error]')
+        return
+
+    utils.start_symlinkable_file(visualization_path)
+
+
+async def run_ui_output_visualizer_for_testcase(
+    testcase: Testcase, answer_path: Optional[pathlib.Path] = None
+):
+    compiled_visualizers = compile_package_visualizers(input=False, output=True)
+
+    pkg = package.find_problem_package_or_die()
+    if pkg.outputVisualizer is None:
+        with VisualizationError() as e:
+            e.print('[error]No output visualizer found.[/error]')
+        return
+
+    visualizer_digest = compiled_visualizers.get(str(pkg.outputVisualizer.path))
+    if visualizer_digest is None:
+        with VisualizationError() as e:
+            e.print(
+                f'[error]Visualizer {pkg.outputVisualizer.href()} not compiled.[/error]'
+            )
+        return
+
+    visualization_path = await run_output_visualizer_for_testcase(
+        testcase, pkg.outputVisualizer, visualizer_digest, answer_path
+    )
+    if visualization_path is None:
+        with VisualizationError() as e:
+            e.print('[error]Visualizer failed.[/error]')
+        return
+
+    utils.start_symlinkable_file(visualization_path)
