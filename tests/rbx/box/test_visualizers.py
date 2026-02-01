@@ -42,7 +42,7 @@ def test_compile_visualizers_for_entries(mock_compile_item):
             metadata=GenerationMetadata(
                 copied_to=Testcase(inputPath=pathlib.Path('in'))
             ),
-            output_visualizer=output_visualizer,
+            solution_visualizer=output_visualizer,
         ),
     ]
 
@@ -102,13 +102,13 @@ async def test_run_output_visualizers_for_entries(mock_run_item):
             metadata=GenerationMetadata(
                 copied_to=Testcase(inputPath=input_path, outputPath=output_path)
             ),
-            output_visualizer=output_visualizer,
+            solution_visualizer=output_visualizer,
         ),
     ]
     compiled = {'output_vis.py': 'digest'}
 
     with patch.object(pathlib.Path, 'is_file', return_value=True):
-        await visualizers.run_output_visualizers_for_entries(entries, compiled)
+        await visualizers.run_solution_visualizers_for_entries(entries, compiled)
 
     mock_run_item.assert_called_once()
     args = mock_run_item.call_args
@@ -227,14 +227,14 @@ async def test_run_output_visualizer_missing_files(mock_run_item):
 
     # Test missing input
     with patch.object(pathlib.Path, 'is_file', side_effect=[False, True]):
-        res = await visualizers.run_output_visualizer_for_testcase(
+        res = await visualizers.run_solution_visualizer_for_testcase(
             tc, visualizer, 'digest'
         )
     assert res is None
 
     # Test missing output
     with patch.object(pathlib.Path, 'is_file', side_effect=[True, False]):
-        res = await visualizers.run_output_visualizer_for_testcase(
+        res = await visualizers.run_solution_visualizer_for_testcase(
             tc, visualizer, 'digest'
         )
     assert res is None

@@ -26,7 +26,6 @@ class TestExplorerScreen(Screen):
         ('2', 'show_stderr', 'Show stderr'),
         ('3', 'show_log', 'Show log'),
         ('v', 'open_visualizer', 'Open visualization'),
-        ('V', 'open_output_visualizer', 'Open output visualization'),
     ]
 
     def __init__(self):
@@ -126,24 +125,12 @@ class TestExplorerScreen(Screen):
             return
         try:
             await visualizers.run_ui_input_visualizer_for_testcase(
-                Testcase(inputPath=input_path)
-            )
-        except RbxException as e:
-            self.app.notify(e.plain(), severity='error', markup=False)
-
-    async def action_open_output_visualizer(self):
-        input_path = self.query_one('#test-input', FileLog).path
-        if input_path is None:
-            self.app.notify('No test selected', severity='error')
-            return
-        output_path = self.query_one('#test-output', TestBoxWidget).data.output_path
-        if output_path is None:
-            self.app.notify('No output found to visualize', severity='error')
-            return
-
-        try:
-            await visualizers.run_ui_output_visualizer_for_testcase(
-                Testcase(inputPath=input_path, outputPath=output_path)
+                Testcase(
+                    inputPath=input_path,
+                    outputPath=self.query_one(
+                        '#test-output', TestBoxWidget
+                    ).data.output_path,
+                )
             )
         except RbxException as e:
             self.app.notify(e.plain(), severity='error', markup=False)

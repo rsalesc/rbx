@@ -638,19 +638,13 @@ async def _generate_testcase_interactively(
 
     # 3. Generate visualizations
     if visualize:
-        visualization_paths = await visualizers.run_visualizers_for_testcase(
+        visualization_path = await visualizers.run_visualizers_for_testcase(
             testcase,
             progress=progress,
         )
-        if visualization_paths.has_input():
-            assert visualization_paths.input is not None
+        if visualization_path is not None and visualization_path.is_file():
             console.console.print(
-                f'Input visualization was written to {href(package.relpath(visualization_paths.input))}'
-            )
-        if visualization_paths.has_output():
-            assert visualization_paths.output is not None
-            console.console.print(
-                f'Output visualization was written to {href(package.relpath(visualization_paths.output))}'
+                f'Input visualization was written to {href(package.relpath(visualization_path))}'
             )
 
     # 4. Print testcase

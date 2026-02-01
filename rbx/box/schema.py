@@ -273,6 +273,21 @@ Testlib and jngen are already included by default.
         return self.href(hyperlink=False)
 
 
+class CodeItemWithDigest(CodeItem):
+    model_config = ConfigDict(extra='forbid')
+
+    digest: str = Field(description="""The digest of the code file.""")
+
+    @classmethod
+    def create(cls, code_item: CodeItem, digest: str) -> 'CodeItemWithDigest':
+        return cls(
+            path=code_item.path,
+            language=code_item.language,
+            compilationFiles=code_item.compilationFiles,
+            digest=digest,
+        )
+
+
 class GeneratorScript(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
@@ -311,6 +326,34 @@ Whether this interactor is a legacy interactor and needs a checker to be specifi
     )
 
 
+class OutputFromItem(CodeItem):
+    model_config = ConfigDict(extra='forbid')
+
+    stderr: bool = Field(
+        default=False,
+        description="""Whether the output should be taken from stderr instead of the stdout.""",
+    )
+
+
+class OutputFromItemWithDigest(OutputFromItem, CodeItemWithDigest):
+    model_config = ConfigDict(extra='forbid')
+
+    @classmethod
+    def create(
+        cls, output_from_item: OutputFromItem, digest: str
+    ) -> 'OutputFromItemWithDigest':
+        return cls(
+            path=output_from_item.path,
+            language=output_from_item.language,
+            compilationFiles=output_from_item.compilationFiles,
+            digest=digest,
+        )
+
+
+OutputFrom = Union[Literal['stderr'], OutputFromItem]
+OutputFromWithDigest = Union[Literal['stderr'], OutputFromItemWithDigest]
+
+
 class Visualizer(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
@@ -319,9 +362,10 @@ class Visualizer(CodeItem):
         """,
     )
 
-    output_from: Optional[CodeItem] = Field(
+    answer_from: Optional[OutputFrom] = Field(
         default=None,
-        description="""Program to generate additional output file to pass to the visualizer.""",
+        description="""Program to generate additional answer file to pass to the visualizer.
+        If not specified, the reference answer file will be used.""",
     )
 
     def get_suffix(self) -> str:
@@ -409,10 +453,10 @@ A list of output validators to use to validate the output of the testcases of th
         'Has priority over the visualizer specified in the package.',
     )
 
-    outputVisualizer: Optional[Visualizer] = Field(
+    solutionVisualizer: Optional[Visualizer] = Field(
         default=None,
-        description='The output visualizer for this problem. Used to produced visualizations for the outputs of the testcases. '
-        'Has priority over the output visualizer specified in the package.',
+        description='The solution visualizer for this problem. Used to produced visualizations for the outputs of the testcases. '
+        'Has priority over the solution visualizer specified in the package.',
     )
 
     @model_validator(mode='after')
@@ -805,9 +849,9 @@ A list of output validators to use to validate the output of the testcases of th
         description='The visualizer for this problem. Used to produced visualizations for the testcases.',
     )
 
-    outputVisualizer: Optional[Visualizer] = Field(
+    solutionVisualizer: Optional[Visualizer] = Field(
         default=None,
-        description='The output visualizer for this problem. Used to produced visualizations for the outputs of the testcases.',
+        description='The solution visualizer for this problem. Used to produced visualizations for the outputs of the testcases.',
     )
 
     generators: List[Generator] = Field(

@@ -181,7 +181,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         output_validators: Optional[List[CodeItem]] = None,
         model_solution: Optional[Solution] = None,
         visualizer: Optional[Visualizer] = None,
-        output_visualizer: Optional[Visualizer] = None,
+        solution_visualizer: Optional[Visualizer] = None,
     ):
         extra_validators = package.get_globbed_code_items(
             extra_validators or [],
@@ -190,8 +190,8 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         output_validators = package.get_globbed_code_items(output_validators or [])
         if subgroup.visualizer is not None:
             visualizer = subgroup.visualizer
-        if subgroup.outputVisualizer is not None:
-            output_visualizer = subgroup.outputVisualizer
+        if subgroup.solutionVisualizer is not None:
+            solution_visualizer = subgroup.solutionVisualizer
 
         assert prefix and len(prefix) >= 1 and len(prefix) <= 2
         group_path = prefix[0]
@@ -234,7 +234,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     output_validators=output_validators,
                     model_solution=model_solution,
                     visualizer=visualizer,
-                    output_visualizer=output_visualizer,
+                    solution_visualizer=solution_visualizer,
                 )
             )
             i += 1
@@ -261,7 +261,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         output_validators=output_validators,
                         model_solution=model_solution,
                         visualizer=visualizer,
-                        output_visualizer=output_visualizer,
+                        solution_visualizer=solution_visualizer,
                     )
                 )
                 i += 1
@@ -281,7 +281,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     output_validators=output_validators,
                     model_solution=model_solution,
                     visualizer=visualizer,
-                    output_visualizer=output_visualizer,
+                    solution_visualizer=solution_visualizer,
                 )
             )
             i += 1
@@ -336,7 +336,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         output_validators=output_validators,
                         model_solution=model_solution,
                         visualizer=visualizer,
-                        output_visualizer=output_visualizer,
+                        solution_visualizer=solution_visualizer,
                     )
                 )
                 i += 1
@@ -350,7 +350,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             group_validator = group.validator
 
         group_visualizer = pkg.visualizer
-        group_output_visualizer = pkg.outputVisualizer
+        group_solution_visualizer = pkg.solutionVisualizer
 
         extra_validators = pkg.extraValidators + group.extraValidators
         output_validators = pkg.outputValidators + group.outputValidators
@@ -363,7 +363,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             output_validators=output_validators,
             model_solution=group.model_solution,
             visualizer=group_visualizer,
-            output_visualizer=group_output_visualizer,
+            solution_visualizer=group_solution_visualizer,
         )
 
         for i, subgroup in enumerate(group.subgroups):
@@ -376,7 +376,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                 output_validators=output_validators + subgroup.outputValidators,
                 model_solution=group.model_solution,
                 visualizer=group_visualizer,
-                output_visualizer=group_output_visualizer,
+                solution_visualizer=group_solution_visualizer,
             )
 
 

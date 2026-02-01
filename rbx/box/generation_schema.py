@@ -62,7 +62,7 @@ class GenerationTestcaseEntry(BaseModel):
     model_solution: Optional[Solution] = None
 
     visualizer: Optional[Visualizer] = None
-    output_visualizer: Optional[Visualizer] = None
+    solution_visualizer: Optional[Visualizer] = None
 
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'

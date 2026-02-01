@@ -190,6 +190,7 @@ class RunTestExplorerScreen(Screen):
         )
 
     async def action_open_visualizer(self):
+        # TODO: should we figure out a way to pass output here too?
         input_path = self.query_one('#test-input', FileLog).path
         if input_path is None:
             self.app.notify('No test selected', severity='error')
@@ -217,7 +218,7 @@ class RunTestExplorerScreen(Screen):
             answer_path = two_sided.diff_with_data.output_path
 
         try:
-            await visualizers.run_ui_output_visualizer_for_testcase(
+            await visualizers.run_ui_solution_visualizer_for_testcase(
                 Testcase(inputPath=input_path, outputPath=output_path),
                 answer_path=answer_path,
             )

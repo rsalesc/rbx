@@ -166,7 +166,9 @@ class TestingPackage(TestingShared):
         language: Optional[str] = None,
         src: Optional[PathOrStr] = None,
     ):
-        self.yml.outputVisualizer = CodeItem(path=pathlib.Path(path), language=language)
+        self.yml.solutionVisualizer = CodeItem(
+            path=pathlib.Path(path), language=language
+        )
         self.save()
         return self.add_file(path, src=src)
 
