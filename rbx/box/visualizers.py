@@ -223,6 +223,7 @@ async def run_visualizer(
     output_from: Optional[OutputFromWithDigest] = None,
     answer_from: Optional[OutputFromWithDigest] = None,
     input_visualizer: bool = False,
+    interactive: bool = False,
 ) -> pathlib.Path:
     visualization_stem.parent.mkdir(parents=True, exist_ok=True)
     visualization_path = visualization_stem.with_suffix(visualizer.get_suffix())
@@ -320,6 +321,9 @@ async def run_visualizer(
         )
         args.append(str(answer_path_on_sandbox))
 
+    if interactive:
+        args.append('-i')
+
     # We don't capture stdout/stderr to files, but we could if we wanted to debug.
     # For now, let's just run it and check exit code.
     # TODO: put stderr in a file
@@ -356,6 +360,7 @@ async def run_input_visualizer_for_testcase(
     visualizer: Visualizer,
     visualizer_digest: str,
     answer_from: Optional[OutputFromWithDigest] = None,
+    interactive: bool = False,
 ) -> pathlib.Path:
     input_path = testcase.inputPath
     if not input_path.is_file():
@@ -375,6 +380,7 @@ async def run_input_visualizer_for_testcase(
         output_path=testcase.outputPath,
         output_from=answer_from,
         input_visualizer=True,
+        interactive=interactive,
     )
 
 
@@ -385,6 +391,7 @@ async def run_solution_visualizer_for_testcase(
     answer_path: Optional[pathlib.Path] = None,
     output_from: Optional[OutputFromWithDigest] = None,
     answer_from: Optional[OutputFromWithDigest] = None,
+    interactive: bool = False,
 ) -> pathlib.Path:
     input_path = testcase.inputPath
     output_path = testcase.outputPath
@@ -408,6 +415,7 @@ async def run_solution_visualizer_for_testcase(
         answer_path=answer_path,
         output_from=output_from,
         answer_from=answer_from,
+        interactive=interactive,
     )
 
 
@@ -539,10 +547,9 @@ async def _run_ui_input_visualizer_for_testcase(testcase: Testcase):
         pkg.visualizer,
         visualizer_digest,
         answer_from=_get_answer_from_with_digest(pkg.visualizer, compiled_visualizers),
+        interactive=True,
     )
-    if visualization_path is None:
-        with VisualizationError() as e:
-            e.print('[error]Visualizer failed.[/error]')
+    if visualization_path is None or not visualization_path.is_file():
         return
 
     utils.start_symlinkable_file(visualization_path)
@@ -591,10 +598,9 @@ async def _run_ui_solution_visualizer_for_testcase(
         visualizer_digest,
         answer_path,
         answer_from=_get_answer_from_with_digest(visualizer, compiled_visualizers),
+        interactive=True,
     )
-    if visualization_path is None:
-        with VisualizationError() as e:
-            e.print('[error]Visualizer failed.[/error]')
+    if visualization_path is None or not visualization_path.is_file():
         return
 
     utils.start_symlinkable_file(visualization_path)
