@@ -6,11 +6,14 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import package
+from rbx.box import checkers, package
 from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
+from rbx.box.formatting import href
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import CodeItem, Testcase, Visualizer
+from rbx.box.schema import CodeItem, TaskType, Testcase, Visualizer
+from rbx.box.tasks import run_solution_on_testcase
 from rbx.grading.steps import (
     CompilationError,
     DigestHolder,
@@ -62,7 +65,7 @@ def get_visualization_stems(testcase: Testcase) -> VisualizationPaths:
 
 
 def compile_visualizers(
-    visualizers: List[CodeItem],
+    visualizers: List[Visualizer],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
     visualizers_to_compiled_digest = {}
@@ -75,6 +78,17 @@ def compile_visualizers(
             progress.update(f'Compiling visualizer {visualizer.href()}...')
         visualizers_to_compiled_digest[str(visualizer.path)] = _compile_visualizer(
             visualizer
+        )
+
+        if visualizer.output_from is None:
+            continue
+
+        if progress:
+            progress.update(
+                f'Compiling additional output for visualizer {visualizer.href()}...'
+            )
+        visualizers_to_compiled_digest[str(visualizer.output_from.path)] = (
+            _compile_visualizer(visualizer.output_from)
         )
 
     return visualizers_to_compiled_digest
@@ -110,6 +124,64 @@ def compile_visualizers_for_entries(
     return compile_visualizers(visualizers, progress=progress)
 
 
+def _get_output_from_digest(
+    visualizer: Visualizer,
+    compiled_visualizers: Dict[str, str],
+) -> Optional[str]:
+    if visualizer.output_from is None:
+        return None
+    return compiled_visualizers.get(str(visualizer.output_from.path))
+
+
+@functools.lru_cache(maxsize=None)
+def _compile_interactor() -> Optional[str]:
+    pkg = package.find_problem_package_or_die()
+    if pkg.type == TaskType.COMMUNICATION:
+        return checkers.compile_interactor()
+    return None
+
+
+async def _run_output_from(
+    output_from: CodeItem,
+    output_from_digest: str,
+    input_path: pathlib.Path,
+    output_path: pathlib.Path,
+) -> pathlib.Path:
+    eval = await run_solution_on_testcase(
+        output_from,
+        output_from_digest,
+        checker_digest=None,
+        testcase=Testcase(
+            inputPath=input_path,
+            outputPath=output_path,
+        ),
+        interactor_digest=_compile_interactor(),
+        verification=VerificationLevel.NONE,
+        capture_pipes=True,
+        use_retries=False,
+    )
+
+    if eval.log is None or eval.log.exitcode != 0:
+        with VisualizationError() as e:
+            e.print(
+                f'[error]Custom generated output from {output_from.href()} failed.[/error]'
+            )
+            if eval.log is not None and eval.log.stderr_absolute_path is not None:
+                e.print(
+                    f'[error]Stderr: {href(package.relpath(eval.log.stderr_absolute_path))}[/error]'
+                )
+        raise
+
+    if not output_path.is_file():
+        with VisualizationError() as e:
+            e.print(
+                f'[error]Custom generated output from {output_from.href()} failed.[/error]'
+            )
+        raise
+
+    return output_path
+
+
 async def run_visualizer(
     visualizer: Visualizer,
     visualizer_digest: str,
@@ -117,19 +189,37 @@ async def run_visualizer(
     input_path: pathlib.Path,
     output_path: Optional[pathlib.Path] = None,
     answer_path: Optional[pathlib.Path] = None,
-) -> Optional[pathlib.Path]:
+    output_from_digest: Optional[str] = None,
+) -> pathlib.Path:
     visualization_stem.parent.mkdir(parents=True, exist_ok=True)
     visualization_path = visualization_stem.with_suffix(visualizer.get_suffix())
     sandbox_path = pathlib.Path('visualization').with_suffix(visualizer.get_suffix())
 
+    custom_output_path: Optional[pathlib.Path] = None
+    if output_from_digest is not None:
+        assert visualizer.output_from is not None
+        try:
+            custom_output_path = await _run_output_from(
+                visualizer.output_from,
+                output_from_digest,
+                input_path,
+                visualization_path.with_suffix('.out'),
+            )
+        except RbxException as e:
+            e.print(f'[error]Visualizer {visualizer.href()} failed.[/error]')
+            raise
+
     args = [str(sandbox_path), str(input_path)]
-    if output_path is not None:
+    if custom_output_path is not None:
+        args.append(str(custom_output_path))
+    elif output_path is not None:
         args.append(str(output_path))
     if answer_path is not None:
         args.append(str(answer_path))
 
     # We don't capture stdout/stderr to files, but we could if we wanted to debug.
     # For now, let's just run it and check exit code.
+    # TODO: put stderr in a file
     stderr_holder = DigestHolder()
     run_log = await run_item(
         visualizer,
@@ -146,13 +236,13 @@ async def run_visualizer(
     )
 
     if run_log is None or run_log.exitcode != 0:
-        console.console.print(f'[error]Visualizer {visualizer.href()} failed.[/error]')
-        if run_log is not None:
-            console.console.print(f'[error]Summary:[/error] {run_log.get_summary()}')
-            console.console.print(
-                f'[error]Stderr:[/error] {package.get_digest_as_string(stderr_holder.value or "")}'
-            )
-        return None
+        with VisualizationError() as e:
+            e.print(f'[error]Visualizer {visualizer.href()} failed.[/error]')
+            if run_log is not None:
+                e.print(f'[error]Summary:[/error] {run_log.get_summary()}')
+                e.print(
+                    f'[error]Stderr:[/error] {package.get_digest_as_string(stderr_holder.value or "")}'
+                )
 
     return visualization_path
 
@@ -161,13 +251,14 @@ async def run_input_visualizer_for_testcase(
     testcase: Testcase,
     visualizer: Visualizer,
     visualizer_digest: str,
-) -> Optional[pathlib.Path]:
+    output_from_digest: Optional[str] = None,
+) -> pathlib.Path:
     input_path = testcase.inputPath
     if not input_path.is_file():
-        console.console.print(
-            f'[error]Visualization failed: input file [item]{input_path}[/item] does not exist.[/error]'
-        )
-        return None
+        with VisualizationError() as e:
+            e.print(
+                f'[error]Visualization failed: input file [item]{input_path}[/item] does not exist.[/error]'
+            )
 
     visualization_dir = input_path.parent / 'visualization'
     visualization_stem = visualization_dir / input_path.stem
@@ -177,6 +268,7 @@ async def run_input_visualizer_for_testcase(
         visualizer_digest,
         visualization_stem,
         input_path=input_path,
+        output_from_digest=output_from_digest,
     )
 
 
@@ -185,15 +277,16 @@ async def run_output_visualizer_for_testcase(
     visualizer: Visualizer,
     visualizer_digest: str,
     answer_path: Optional[pathlib.Path] = None,
-) -> Optional[pathlib.Path]:
+) -> pathlib.Path:
     input_path = testcase.inputPath
     output_path = testcase.outputPath
 
     if not input_path.is_file() or output_path is None or not output_path.is_file():
-        console.console.print(
-            f'[error]Visualization failed: input file [item]{input_path}[/item] or output file [item]{output_path}[/item] does not exist.[/error]'
-        )
-        return None
+        with VisualizationError() as e:
+            e.print(
+                f'[error]Visualization failed: input file [item]{input_path}[/item] or output file [item]{output_path}[/item] does not exist.[/error]'
+            )
+        raise
 
     visualization_dir = output_path.parent / 'output_visualization'
     visualization_stem = visualization_dir / output_path.stem
@@ -224,11 +317,16 @@ async def run_input_visualizers_for_entries(
         if progress:
             progress.update(f'Running input visualizer for {entry.group_entry}...')
 
-        if not await run_input_visualizer_for_testcase(
-            entry.metadata.copied_to,
-            entry.visualizer,
-            digest,
-        ):
+        try:
+            await run_input_visualizer_for_testcase(
+                entry.metadata.copied_to,
+                entry.visualizer,
+                digest,
+                output_from_digest=_get_output_from_digest(
+                    entry.visualizer, compiled_visualizers
+                ),
+            )
+        except VisualizationError:
             console.console.print(
                 f'[error]Input visualizer failed for [item]{entry.group_entry}[/item].[/error]'
             )
@@ -250,11 +348,13 @@ async def run_output_visualizers_for_entries(
         if progress:
             progress.update(f'Running output visualizer for {entry.group_entry}...')
 
-        if not await run_output_visualizer_for_testcase(
-            entry.metadata.copied_to,
-            entry.output_visualizer,
-            digest,
-        ):
+        try:
+            await run_output_visualizer_for_testcase(
+                entry.metadata.copied_to,
+                entry.output_visualizer,
+                digest,
+            )
+        except VisualizationError:
             console.console.print(
                 f'[error]Output visualizer failed for [item]{entry.group_entry}[/item].[/error]'
             )
@@ -295,21 +395,30 @@ async def run_visualizers_for_testcase(
     if pkg.visualizer is not None:
         visualizer_digest = compiled_visualizers.get(str(pkg.visualizer.path))
         if visualizer_digest is not None:
-            paths.input = await run_input_visualizer_for_testcase(
-                testcase,
-                pkg.visualizer,
-                visualizer_digest,
-            )
+            try:
+                paths.input = await run_input_visualizer_for_testcase(
+                    testcase,
+                    pkg.visualizer,
+                    visualizer_digest,
+                    output_from_digest=_get_output_from_digest(
+                        pkg.visualizer, compiled_visualizers
+                    ),
+                )
+            except VisualizationError as e:
+                print(e)
 
     if pkg.outputVisualizer is not None:
         visualizer_digest = compiled_visualizers.get(str(pkg.outputVisualizer.path))
         if visualizer_digest is not None:
-            paths.output = await run_output_visualizer_for_testcase(
-                testcase,
-                pkg.outputVisualizer,
-                visualizer_digest,
-                answer_path,
-            )
+            try:
+                paths.output = await run_output_visualizer_for_testcase(
+                    testcase,
+                    pkg.outputVisualizer,
+                    visualizer_digest,
+                    answer_path,
+                )
+            except VisualizationError as e:
+                print(e)
 
     return paths
 
@@ -330,7 +439,12 @@ async def run_ui_input_visualizer_for_testcase(testcase: Testcase):
         return
 
     visualization_path = await run_input_visualizer_for_testcase(
-        testcase, pkg.visualizer, visualizer_digest
+        testcase,
+        pkg.visualizer,
+        visualizer_digest,
+        output_from_digest=_get_output_from_digest(
+            pkg.visualizer, compiled_visualizers
+        ),
     )
     if visualization_path is None:
         with VisualizationError() as e:

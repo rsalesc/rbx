@@ -319,6 +319,11 @@ class Visualizer(CodeItem):
         """,
     )
 
+    output_from: Optional[CodeItem] = Field(
+        default=None,
+        description="""Program to generate additional output file to pass to the visualizer.""",
+    )
+
     def get_suffix(self) -> str:
         return f'.{self.extension}'
 
