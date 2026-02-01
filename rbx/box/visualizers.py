@@ -115,8 +115,9 @@ def compile_package_visualizers(
     visualizers = []
     if pkg.visualizer is not None and input:
         visualizers.append(pkg.visualizer)
-    if pkg.solutionVisualizer is not None and output:
-        visualizers.append(pkg.solutionVisualizer)
+    solution_visualizer = pkg.solutionVisualizer or pkg.visualizer
+    if solution_visualizer is not None and output:
+        visualizers.append(solution_visualizer)
     return compile_visualizers(visualizers, progress=progress)
 
 
@@ -129,8 +130,9 @@ def compile_visualizers_for_entries(
     for entry in entries:
         if entry.visualizer is not None:
             visualizers.append(entry.visualizer)
-        if entry.solution_visualizer is not None:
-            visualizers.append(entry.solution_visualizer)
+        solution_visualizer = entry.solution_visualizer or entry.visualizer
+        if solution_visualizer is not None:
+            visualizers.append(solution_visualizer)
 
     return compile_visualizers(visualizers, progress=progress)
 
@@ -446,10 +448,11 @@ async def run_solution_visualizers_for_entries(
     progress: Optional[StatusProgress] = None,
 ):
     for entry in entries:
-        if entry.solution_visualizer is None:
+        visualizer = entry.solution_visualizer or entry.visualizer
+        if visualizer is None:
             continue
 
-        digest = compiled_visualizers.get(str(entry.solution_visualizer.path))
+        digest = compiled_visualizers.get(str(visualizer.path))
         if digest is None:
             continue
 
@@ -459,10 +462,10 @@ async def run_solution_visualizers_for_entries(
         try:
             await run_solution_visualizer_for_testcase(
                 entry.metadata.copied_to,
-                entry.solution_visualizer,
+                visualizer,
                 digest,
                 answer_from=_get_answer_from_with_digest(
-                    entry.solution_visualizer, compiled_visualizers
+                    visualizer, compiled_visualizers
                 ),
             )
         except VisualizationError:
@@ -555,20 +558,18 @@ async def _run_ui_solution_visualizer_for_testcase(
     answer_path: Optional[pathlib.Path] = None,
     use_stderr: bool = False,
 ):
-    compiled_visualizers = compile_package_visualizers(input=False, output=True)
-
     pkg = package.find_problem_package_or_die()
-    if pkg.solutionVisualizer is None:
+    compiled_visualizers = compile_package_visualizers(input=False, output=True)
+    visualizer = pkg.solutionVisualizer or pkg.visualizer
+    if visualizer is None:
         with VisualizationError() as e:
             e.print('[error]No solution visualizer found.[/error]')
         return
 
-    visualizer_digest = compiled_visualizers.get(str(pkg.solutionVisualizer.path))
+    visualizer_digest = compiled_visualizers.get(str(visualizer.path))
     if visualizer_digest is None:
         with VisualizationError() as e:
-            e.print(
-                f'[error]Visualizer {pkg.solutionVisualizer.href()} not compiled.[/error]'
-            )
+            e.print(f'[error]Visualizer {visualizer.href()} not compiled.[/error]')
         return
 
     if use_stderr:
@@ -586,12 +587,10 @@ async def _run_ui_solution_visualizer_for_testcase(
 
     visualization_path = await run_solution_visualizer_for_testcase(
         testcase,
-        pkg.solutionVisualizer,
+        visualizer,
         visualizer_digest,
         answer_path,
-        answer_from=_get_answer_from_with_digest(
-            pkg.solutionVisualizer, compiled_visualizers
-        ),
+        answer_from=_get_answer_from_with_digest(visualizer, compiled_visualizers),
     )
     if visualization_path is None:
         with VisualizationError() as e:
