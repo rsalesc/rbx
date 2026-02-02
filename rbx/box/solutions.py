@@ -1194,6 +1194,11 @@ class VerdictReport(BaseModel):
     def passed(self) -> bool:
         return not bool(self.bad_verdicts)
 
+    def has_unmatched_slow_verdict(self):
+        has_slow_expectation = self.expected_outcome.is_slow()
+        has_slow_verdict = any(v.is_slow() for v in self.bad_verdicts)
+        return has_slow_verdict != has_slow_expectation
+
 
 def _get_verdict_report(
     skeleton: SolutionReportSkeleton,
@@ -1298,6 +1303,26 @@ def _get_evals_per_group(
     return res
 
 
+class TimingIssue(issue_stack.Issue):
+    def __init__(self):
+        pass
+
+    def get_detailed_section(self) -> Optional[Tuple[str, ...]]:
+        return ('timing',)
+
+    def get_detailed_message(self) -> str:
+        return (
+            'A few solutions in your problem have failed expectations either '
+            'because they were too fast or too slow. The limits for this problem '
+            'are being consumed from the package and might not be tuned to your machine. '
+            'Consider running [item]rbx time[/item] if you need more accurate limits '
+            'for your hardware.'
+        )
+
+    def get_severity(self) -> issue_stack.IssueSeverity:
+        return issue_stack.IssueSeverity.WARNING
+
+
 def get_solution_outcome_report(
     solution: Solution,
     skeleton: SolutionReportSkeleton,
@@ -1314,6 +1339,7 @@ def get_solution_outcome_report(
     verdict_report = _get_verdict_report(
         skeleton, evals, solution, solution.outcome, subset, verification
     )
+    has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict()
     message: Optional[Tuple[TestcaseEntry, str]] = None
     for eval, entry in zip(evals, skeleton.entries):
         if eval.result.outcome in [
@@ -1342,6 +1368,10 @@ def get_solution_outcome_report(
             verdict_report_per_group[group.name] = _get_verdict_report(
                 skeleton, evals, solution, solution.outcome, subset, verification
             )
+            has_unmatched_slow_verdict = (
+                has_unmatched_slow_verdict
+                or verdict_report_per_group[group.name].has_unmatched_slow_verdict()
+            )
 
         def _check_deps(group: GroupSkeleton):
             for dep in group.deps:
@@ -1361,9 +1391,13 @@ def get_solution_outcome_report(
         ):
             status = SolutionOutcomeStatus.UNEXPECTED_SCORE
 
+    limits = skeleton.get_solution_limits(solution)
+    if limits.profile is None and has_unmatched_slow_verdict:
+        issue_stack.add_issue(TimingIssue())
+
     return SolutionOutcomeReport(
         solution=solution,
-        limits=skeleton.get_solution_limits(solution),
+        limits=limits,
         evals=evals,
         status=status,
         message=message,
