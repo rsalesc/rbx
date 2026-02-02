@@ -32,6 +32,8 @@ from rbx.grading.steps import (
 )
 from rbx.utils import StatusProgress
 
+SPECIAL_CODE = 42
+
 
 class VisualizationError(RbxException):
     pass
@@ -224,7 +226,7 @@ async def run_visualizer(
     answer_from: Optional[OutputFromWithDigest] = None,
     input_visualizer: bool = False,
     interactive: bool = False,
-) -> pathlib.Path:
+) -> Optional[pathlib.Path]:
     visualization_stem.parent.mkdir(parents=True, exist_ok=True)
     visualization_path = visualization_stem.with_suffix(visualizer.get_suffix())
 
@@ -344,6 +346,8 @@ async def run_visualizer(
     )
 
     if run_log is None or run_log.exitcode != 0:
+        if run_log is not None and run_log.exitcode == SPECIAL_CODE:
+            return None
         with VisualizationError() as e:
             e.print(f'[error]Visualizer {visualizer.href()} failed.[/error]')
             if run_log is not None:
@@ -361,7 +365,7 @@ async def run_input_visualizer_for_testcase(
     visualizer_digest: str,
     answer_from: Optional[OutputFromWithDigest] = None,
     interactive: bool = False,
-) -> pathlib.Path:
+) -> Optional[pathlib.Path]:
     input_path = testcase.inputPath
     if not input_path.is_file():
         with VisualizationError() as e:
@@ -392,7 +396,7 @@ async def run_solution_visualizer_for_testcase(
     output_from: Optional[OutputFromWithDigest] = None,
     answer_from: Optional[OutputFromWithDigest] = None,
     interactive: bool = False,
-) -> pathlib.Path:
+) -> Optional[pathlib.Path]:
     input_path = testcase.inputPath
     output_path = testcase.outputPath
 
