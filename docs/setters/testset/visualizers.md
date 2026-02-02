@@ -142,6 +142,16 @@ The visualization will be generated and automatically opened in the program asso
 visualizer's output extension. For instance, if the visualizer produces a `.png` file, it will be
 opened in your default image viewer.
 
+#### Interactive mode
+
+When run from `rbx ui`, a visualizer takes an additional option `-i`, that tells it's being run
+in a interactive flow. This is useful for visualizers that want to open an interactive window
+to show the visualization (for instance, where the user can zoom).
+
+A visualizer can notify {{rbx}} that it was run in interactive mode and produced no file by exitting
+with code 42. In this case, {{rbx}} will not try to open any file, and rather just execute the program
+and wait to act interactively with the user.
+
 ### In `rbx build`
 
 You can also batch-generate visualizations for all testcases during the build process:
