@@ -81,12 +81,17 @@ class IssueAccumulator:
                 if isinstance(value, OrderedDict):
                     print_section(value, child)
                     continue
+                seen_issues = set()
                 for issue in value:
                     severity = issue.get_severity()
+                    msg = message_fn(issue)
+                    if msg in seen_issues:
+                        continue
+                    seen_issues.add(msg)
                     if severity == IssueSeverity.ERROR:
-                        child.add(f'[error]{message_fn(issue)}[/error]')
+                        child.add(f'[error]{msg}[/error]')
                     elif severity == IssueSeverity.WARNING:
-                        child.add(f'[warning]{message_fn(issue)}[/warning]')
+                        child.add(f'[warning]{msg}[/warning]')
 
         print_section(sections, tree)
 
