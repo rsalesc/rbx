@@ -1,3 +1,21 @@
+## 0.24.0 (2026-02-01)
+
+### Feat
+
+- add visualizers
+
+### Fix
+
+- interactive mode docs
+- add special code to visualizers
+- add interactive to visualizers
+- fall back to visualizer hwen no solution visualizer
+- fully refactor visualizers
+- add output_from to visualizers
+- add ui visualizers
+- fix novalidate typo
+- add package size to packager
+
 ## 0.23.8 (2026-01-27)
 
 ### Fix
