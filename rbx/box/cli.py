@@ -197,7 +197,7 @@ def main(
         atexit.register(profiling_module.print_summary)
 
 
-@app.command('ui', hidden=True)
+@app.command('ui', help='Show an UI for exploring testcases of the current problem.')
 @package.within_problem
 def ui():
     from rbx.box.ui import main as ui_pkg
