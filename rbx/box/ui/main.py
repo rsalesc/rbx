@@ -1,11 +1,14 @@
 import pathlib
 from typing import Type
 
+import typer
+from rich.segment import Segments
 from textual.app import App, ComposeResult
 from textual.containers import Center
 from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
 
+from rbx import console
 from rbx.box import remote
 from rbx.box.ui.screens.differ import DifferScreen
 from rbx.box.ui.screens.run_explorer import RunExplorerScreen
@@ -17,7 +20,23 @@ SCREEN_OPTIONS = [
 ]
 
 
-class rbxApp(App):
+class rbxBaseApp(App):
+    def run(self, *args, **kwargs):
+        console.console.begin_capture()
+        super().run(*args, **kwargs)
+
+    def _handle_exception(self, error: Exception) -> None:
+        if isinstance(error, typer.Exit):
+            self._exit_renderables.clear()
+            self._exit_renderables.append(Segments(console.console._buffer))  # noqa: SLF001
+            self.exit(error.exit_code)
+            return
+
+        # Default behavior (Rich traceback + return code 1)
+        return super()._handle_exception(error)
+
+
+class rbxApp(rbxBaseApp):
     TITLE = 'rbx'
     CSS_PATH = 'css/app.tcss'
     BINDINGS = [('q', 'quit', 'Quit')]
@@ -38,7 +57,7 @@ class rbxApp(App):
         self.push_screen(screen_cls())
 
 
-class rbxDifferApp(App):
+class rbxDifferApp(rbxBaseApp):
     TITLE = 'rbx differ'
     CSS_PATH = 'css/app.tcss'
     BINDINGS = [('q', 'quit', 'Quit')]
