@@ -11,6 +11,11 @@ class IssueLevel(enum.Enum):
     DETAILED = enum.auto()
 
 
+class IssueSeverity(enum.Enum):
+    ERROR = enum.auto()
+    WARNING = enum.auto()
+
+
 class Issue:
     def get_detailed_section(self) -> Optional[Tuple[str, ...]]:
         return None
@@ -23,6 +28,9 @@ class Issue:
 
     def get_overview_message(self) -> str:
         return ''
+
+    def get_severity(self) -> IssueSeverity:
+        return IssueSeverity.ERROR
 
 
 IssueSection = OrderedDict[str, Union[List[Issue], 'IssueSection']]
@@ -74,7 +82,11 @@ class IssueAccumulator:
                     print_section(value, child)
                     continue
                 for issue in value:
-                    child.add(f'[error]{message_fn(issue)}[/error]')
+                    severity = issue.get_severity()
+                    if severity == IssueSeverity.ERROR:
+                        child.add(f'[error]{message_fn(issue)}[/error]')
+                    elif severity == IssueSeverity.WARNING:
+                        child.add(f'[warning]{message_fn(issue)}[/warning]')
 
         print_section(sections, tree)
 
