@@ -80,6 +80,7 @@ rbx build [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--validate` | BOOLEAN | Whether to validate outputs for tests. | `True` |
+| `--visualize` | BOOLEAN | Whether to build visualizations for inputs/outputs of tests. | `False` |
 
 
 ---
@@ -178,9 +179,11 @@ rbx irun <SOLUTIONS> [OPTIONS]
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
 | `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--validate` | BOOLEAN | Whether to validate inputs. | `True` |
 | `--generator`, `-g` | TEXT | Generator call to use to generate a single test for execution. | - |
 | `--testcase`, `--test`, `-tc`, `-t` | TEXT | Testcase to run, in the format "[group]/[index]". If not specified, will run interactively. | - |
 | `--output`, `-O` | BOOLEAN | Whether to ask user for custom output. | `False` |
+| `--visualize` | BOOLEAN | Whether to generate visualizations for inputs and outputs. | `False` |
 | `--print`, `-p` | BOOLEAN | Whether to print outputs to terminal. | `False` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
 | `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
@@ -241,6 +244,7 @@ rbx stress <NAME> [OPTIONS]
 | `--slowest` | BOOLEAN | Whether to find the slowest testcases. This removes the time limit of the solution executions and focus on finding the testcases that make them the slowest. | `False` |
 | `--fuzz` | BOOLEAN | Whether to fuzz generator calls from all testgroups. | `False` |
 | `--fuzz-on` | TEXT | Testgroups to fuzz generator calls from. | - |
+| `--validate` | BOOLEAN | Whether to validate inputs. | `True` |
 
 
 ---

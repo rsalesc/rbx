@@ -15,6 +15,7 @@ nav:
       - "Testset":
           - "setters/testset/index.md"
           - "Generators": "setters/testset/generators.md"
+          - "Visualizers": "setters/testset/visualizers.md"
           - "Stress testing": "setters/stress-testing.md"
       - "Running":
           - "setters/running/index.md"
