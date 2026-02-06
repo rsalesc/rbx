@@ -142,9 +142,12 @@ def add(
     utils.validate_field(ContestProblem, 'short_name', short_name)
     utils.validate_field(Package, 'name', name)
 
-    if short_name in [p.short_name for p in find_contest_package_or_die().problems]:
+    existing_identifiers = set()
+    for p in find_contest_package_or_die().problems:
+        existing_identifiers.update(p.all_identifiers())
+    if short_name.lower() in existing_identifiers:
         console.console.print(
-            f'[error]Problem [item]{short_name}[/item] already exists in contest.[/error]',
+            f'[error]Problem [item]{short_name}[/item] already exists in contest (as short_name or alias).[/error]',
         )
         raise typer.Exit(1)
 
@@ -185,10 +188,12 @@ def remove(path_or_short_name: str):
 
     removed_problem_idx = None
     removed_problem = None
+    path_or_short_name_lower = path_or_short_name.lower()
     for i, problem in enumerate(contest.problems):
         if (
             problem.path == pathlib.Path(path_or_short_name)
             or problem.short_name == path_or_short_name
+            or path_or_short_name_lower in problem.all_identifiers()
         ):
             removed_problem_idx = i
             removed_problem = problem

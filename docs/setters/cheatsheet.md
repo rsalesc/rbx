@@ -396,4 +396,5 @@ problems:
   - short_name: "A"  # Letter of the problem
     path: "problem_folder"
     color: "ff0000"  # Optional
+    aliases: ["apple", "prob-a"]  # Optional; use any of these or short_name in e.g. rbx on <name> run
 ```

@@ -23,6 +23,7 @@ problems:
   - short_name: "A"
     path: "A"
     color: "ff0000"
+    aliases: ["apple"]   # Optional; refer to this problem as "A" or "apple" in e.g. rbx on <name> run
   - short_name: "B"
     path: "B"
     color: "00ff00"
