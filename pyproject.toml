@@ -1,103 +1,105 @@
-[tool.poetry]
-name = "rbx.cp"
+[project]
+name = "rbx-cp"
 version = "0.24.0"
 description = ""
-packages = [
-  {include = "rbx"}
-]
-authors = ["Roberto Sales"]
 readme = "README.md"
-exclude = [
-  "rbx/testdata/",
+requires-python = ">=3.9.1"
+authors = [{ name = "Roberto Sales" }]
+dependencies = [
+  "typer>=0.15.1",
+  "fastapi>=0.115.8",
+  "filelock>=3.14.0",
+  "mechanize>=0.4.10",
+  "jinja2>=3.1.4",
+  "pydantic>=2.11.7",
+  "rich>=13.9.4",
+  "pyyaml>=6.0.1",
+  "requests>=2.32.3",
+  "latexbuild>=0.2.2",
+  "pydantic-xml[lxml]>=2.11.0",
+  "more-itertools>=10.5.0",
+  "gitpython>=3.1.43",
+  "textual>=3.1.1",
+  "pyte>=0.8.2",
+  "questionary>=2.1.0",
+  "lark>=1.2.2",
+  "chardet>=5.2.0",
+  "ruyaml>=0.91.0",
+  "syncer>=2.0.3",
+  "async-lru>=2.0.5",
+  "nest-asyncio>=1.6.0",
+  "psutil>=7.0.0",
+  "textual-serve>=1.1.2",
+  "aiofiles>=24.1.0",
+  "colour>=0.1.5",
+  "beautifulsoup4>=4.13.4",
+  "dateparser>=1.2.1",
+  "deepmerge>=2.0",
+  "yamlfix>=1.17.0",
+  "ruamel-yaml>=0.18.14",
+  "lz4>=4.4.4",
+  "ordered-set>=4.1.0",
+  "gitignore-parser>=0.1.12",
+  "pypandoc>=1.15",
+  "iso639-lang>=2.6.1",
+  "sqlitedict>=2.1.0",
+  "throttlex>=1.0.0",
+  "typing-extensions>=4.14.1",
+  "semver>=3.0.4",
+  "python-dotenv>=1.1.1",
+  "simpleeval>=1.0.3",
+  "uvicorn>=0.35.0",
+  "openai-agents>=0.3.0",
+  "packaging>=25.0",
+  "texsoup>=0.3.1",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.9.1"
-typer = "^0.15.1"
-fastapi = "^0.115.8"
-filelock = "^3.14.0"
-mechanize = "^0.4.10"
-jinja2 = "^3.1.4"
-pydantic = "^2.11.7"
-rich = "^13.9.4"
-pyyaml = "^6.0.1"
-requests = "^2.32.3"
-latexbuild = "^0.2.2"
-pydantic-xml = {extras = ["lxml"], version = "^2.11.0"}
-more-itertools = "^10.5.0"
-gitpython = "^3.1.43"
-textual = "^3.1.1"
-pyte = "^0.8.2"
-questionary = "^2.1.0"
-lark = "^1.2.2"
-chardet = "^5.2.0"
-ruyaml = "^0.91.0"
-syncer = "^2.0.3"
-async-lru = "^2.0.5"
-nest-asyncio = "^1.6.0"
-psutil = "^7.0.0"
-textual-serve = "^1.1.2"
-aiofiles = "^24.1.0"
-colour = "^0.1.5"
-beautifulsoup4 = "^4.13.4"
-dateparser = "^1.2.1"
-deepmerge = "^2.0"
-yamlfix = "^1.17.0"
-ruamel-yaml = "^0.18.14"
-lz4 = "^4.4.4"
-ordered-set = "^4.1.0"
-gitignore-parser = "^0.1.12"
-pypandoc = "^1.15"
-iso639-lang = "^2.6.1"
-sqlitedict = "^2.1.0"
-throttlex = "^1.0.0"
-typing-extensions = "^4.14.1"
-semver = "^3.0.4"
-python-dotenv = "^1.1.1"
-simpleeval = "^1.0.3"
-uvicorn = "^0.35.0"
-openai-agents = "^0.3.0"
-packaging = "^25.0"
-texsoup = "^0.3.1"
-
-[tool.poetry.scripts]
+[project.scripts]
 rbx = "rbx.box.main:app"
 
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.2.2"
-ruff = "^0.14.3"
-pre-commit = "^3.7.1"
-mkdocs = "^1.6.0"
-mkdocs-material = "^9.5.28"
-mkdocs-macros-plugin = "^1.0.5"
-termynal = "^0.12.1"
-mkdocstrings = {extras = ["python"], version = "^0.25.1"}
-griffe-fieldz = ">=0.1.2, <1.0.0"
-pytest-cov = "^5.0.0"
-textual-dev = "^1.6.1"
-pytest-asyncio = "^0.26.0"
-mkdocs-gen-files = "^0.5.0"
-markdown-grid-tables = "^0.5.0"
-pytest-xdist = "^3.8.0"
-
+[dependency-groups]
+dev = [
+  "pytest>=8.2.2",
+  "ruff>=0.14.3",
+  "pre-commit>=3.7.1",
+  "mkdocs>=1.6.0",
+  "mkdocs-material>=9.5.28",
+  "mkdocs-macros-plugin>=1.0.5",
+  "termynal>=0.12.1",
+  "mkdocstrings[python]>=0.25.1",
+  "griffe-fieldz>=0.1.2,<1.0.0",
+  "pytest-cov>=5.0.0",
+  "textual-dev>=1.6.1",
+  "pytest-asyncio>=0.26.0",
+  "mkdocs-gen-files>=0.5.0",
+  "markdown-grid-tables>=0.5.0",
+  "pytest-xdist>=3.8.0",
+]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "$version"
 version_scheme = "pep440"
-version_provider = "poetry"
+version_provider = "pyproject"
 update_changelog_on_bump = true
 major_version_zero = true
 annotated_tag = true
 version_files = [
+  "pyproject.toml",
   "rbx/__version__.py",
   "rbx/resources/presets/default/preset.rbx.yml:^min_version",
 ]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rbx"]
+exclude = ["rbx/testdata"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["rbx/testdata"]
 
 [tool.ruff.format]
 quote-style = "single"
