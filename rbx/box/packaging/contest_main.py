@@ -72,8 +72,9 @@ async def run_contest_packager(
     console.console.print(f'Packaging contest for [item]{packager.name()}[/item]...')
 
     # Build contest-level package.
-    with tempfile.TemporaryDirectory() as td, limits_info.use_profile(
-        contest_packager_cls.name()
+    with (
+        tempfile.TemporaryDirectory() as td,
+        limits_info.use_profile(contest_packager_cls.name()),
     ):
         result_path = packager.package(
             built_packages, pathlib.Path('build'), pathlib.Path(td), built_statements

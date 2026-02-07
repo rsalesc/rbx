@@ -6,6 +6,7 @@ import json
 import os
 import os.path
 import pathlib
+import platform
 import re
 import shutil
 import subprocess
@@ -330,6 +331,11 @@ def get_open_fds() -> int:
     #         continue
     #     fds.append(fd)
     # return fds
+
+
+def is_arm() -> bool:
+    arch = platform.machine().lower()
+    return arch.startswith('arm') or arch.startswith('aarch')
 
 
 def command_exists(command, flags: Optional[List[str]] = None):

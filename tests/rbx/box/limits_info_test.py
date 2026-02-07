@@ -351,9 +351,12 @@ class TestGetLimitsProfileWithExpansion:
         test_dir = tmp_path / 'test_problem'
         test_dir.mkdir()
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_for_expansion,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_for_expansion,
+            ),
         ):
             result = limits_info.get_limits_profile(profile=None)
 
@@ -388,9 +391,12 @@ class TestGetLimitsProfileWithExpansion:
         profile_path = limits_dir / 'custom.yml'
         profile_path.write_text(model_to_yaml(custom_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_for_expansion,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_for_expansion,
+            ),
         ):
             result = limits_info.get_limits_profile(profile='custom')
 
@@ -412,9 +418,12 @@ class TestGetLimitsProfileWithExpansion:
         test_dir = tmp_path / 'test_problem'
         test_dir.mkdir()
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_for_expansion,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_for_expansion,
+            ),
         ):
             result = limits_info.get_limits_profile(
                 profile='nonexistent', fallback_to_package_profile=True
@@ -458,9 +467,12 @@ class TestGetLimitsProfileWithExpansion:
         profile_path = limits_dir / 'inherit.yml'
         profile_path.write_text(model_to_yaml(inherit_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_for_expansion,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_for_expansion,
+            ),
         ):
             result = limits_info.get_limits_profile(profile='inherit')
 
@@ -476,9 +488,12 @@ class TestGetLimitsProfileWithExpansion:
         test_dir = tmp_path / 'test_problem'
         test_dir.mkdir()
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_for_expansion,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_for_expansion,
+            ),
         ):
             result = limits_info.get_package_limits_profile()
 
@@ -510,9 +525,12 @@ class TestGetLimits:
         profile_path = limits_dir / 'test.yml'
         profile_path.write_text(sample_limits_profile.model_dump_json())
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
         ):
             result = limits_info.get_limits(
                 language='cpp', profile='test', verification=VerificationLevel.NONE
@@ -538,9 +556,12 @@ class TestGetLimits:
         profile_path = limits_dir / 'test.yml'
         profile_path.write_text(sample_limits_profile.model_dump_json())
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
         ):
             result = limits_info.get_limits(
                 language='py', profile='test', verification=VerificationLevel.FULL
@@ -561,9 +582,12 @@ class TestGetLimits:
         profile_path = limits_dir / 'test.yml'
         profile_path.write_text(sample_limits_profile.model_dump_json())
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
         ):
             result = limits_info.get_limits(
                 language='py', profile='test', verification=VerificationLevel.NONE
@@ -585,10 +609,14 @@ class TestGetLimits:
         profile_path = limits_dir / 'test.yml'
         profile_path.write_text(sample_limits_profile.model_dump_json())
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
-        ), mock.patch.dict(os.environ, {'RBX_TIME_MULTIPLIER': '1.5'}):
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
+            mock.patch.dict(os.environ, {'RBX_TIME_MULTIPLIER': '1.5'}),
+        ):
             result = limits_info.get_limits(
                 language='cpp', profile='test', verification=VerificationLevel.NONE
             )
@@ -604,9 +632,12 @@ class TestGetLimits:
         test_dir = tmp_path / 'test_problem'
         test_dir.mkdir()
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
         ):
             result = limits_info.get_limits(
                 profile='nonexistent', fallback_to_package_profile=True
@@ -665,9 +696,12 @@ class TestGetLimits:
         test_dir = tmp_path / 'test_problem'
         test_dir.mkdir()
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
         ):
             result = limits_info.get_limits(language='cpp')
 
@@ -691,9 +725,12 @@ class TestGetLimits:
         profile_path = limits_dir / 'test.yml'
         profile_path.write_text(sample_limits_profile.model_dump_json())
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_with_limits,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
         ):
             # Test cpp with specific memory override
             cpp_result = limits_info.get_limits(language='cpp', profile='test')
@@ -741,9 +778,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'inherit.yml'
         profile_path.write_text(model_to_yaml(inherit_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             # Test base limits inheritance
             result = limits_info.get_limits(profile='inherit')
@@ -792,9 +832,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'override.yml'
         profile_path.write_text(model_to_yaml(override_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             # Test that base overrides work
             result = limits_info.get_limits(profile='override')
@@ -869,9 +912,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'modifiers.yml'
         profile_path.write_text(model_to_yaml(modifier_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             # Test cpp with all overrides
             cpp_result = limits_info.get_limits(language='cpp', profile='modifiers')
@@ -926,9 +972,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'partial.yml'
         profile_path.write_text(model_to_yaml(partial_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             result = limits_info.get_limits(profile='partial')
             assert result.time == 1800  # Overridden
@@ -977,9 +1026,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'priority.yml'
         profile_path.write_text(model_to_yaml(priority_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             # Test time field takes precedence over timeMultiplier
             cpp_result = limits_info.get_limits(language='cpp', profile='priority')
@@ -1032,9 +1084,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'no_modifiers.yml'
         profile_path.write_text(model_to_yaml(no_modifiers_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             # Languages with package modifiers should have their time/memory cleared
             # but timeMultiplier preserved
@@ -1103,9 +1158,12 @@ class TestExpandLimitsProfileBehavior:
         profile_path = limits_dir / 'new_lang.yml'
         profile_path.write_text(model_to_yaml(new_lang_profile))
 
-        with pkg_cder(test_dir), mock.patch(
-            'rbx.box.package.find_problem_package_or_die',
-            return_value=mock_package_complex,
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_complex,
+            ),
         ):
             rust_result = limits_info.get_limits(language='rust', profile='new_lang')
             assert rust_result.time == 1620

@@ -50,6 +50,7 @@ from rbx.grading.steps import (
     is_cxx_command,
     maybe_get_bits_stdcpp_for_commands,
 )
+from rbx.utils import is_arm
 
 MERGED_CAPTURE_FILENAME = 'merged_capture.pio'
 
@@ -129,9 +130,17 @@ def add_warning_flags_to_command(command: str) -> str:
     return command
 
 
-def add_warning_flags(commands: List[str], force_warnings: bool) -> List[str]:
+def add_arm_flags_to_command(command: str) -> str:
+    # Disable FMA in ARM.
+    if is_cxx_command(command) and is_arm():
+        return command + ' -ffp-contract=off'
+    return command
+
+
+def add_cpp_flags(commands: List[str], force_warnings: bool) -> List[str]:
     cfg = setter_config.get_setter_config()
     commands = [add_color_flags_to_command(command) for command in commands]
+    commands = [add_arm_flags_to_command(command) for command in commands]
     if cfg.warnings.enabled or force_warnings:
         return [add_warning_flags_to_command(command) for command in commands]
     return commands
@@ -450,7 +459,7 @@ def _precompile_header(
         ),
         passthrough=PASSTHROUGH_VARIABLES,
     )
-    commands = add_warning_flags(commands, force_warnings)
+    commands = add_cpp_flags(commands, force_warnings)
     commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
     if sanitized.should_sanitize():
@@ -577,7 +586,7 @@ def compile_item(
         code_variables,
         passthrough=PASSTHROUGH_VARIABLES,
     )
-    commands = add_warning_flags(commands, force_warnings)
+    commands = add_cpp_flags(commands, force_warnings)
     commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
     if sanitized.should_sanitize():
