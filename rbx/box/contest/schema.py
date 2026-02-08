@@ -1,7 +1,13 @@
 import pathlib
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, Dict, List, Optional, Set
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from rbx.box.fields import (
     FNameField,
@@ -18,6 +24,8 @@ from rbx.box.statements.schema import (
     StatementLanguage,
     StatementType,
 )
+
+Alias = Annotated[str, NameField()]
 
 
 def ShortNameField(**kwargs):
@@ -90,7 +98,7 @@ class ContestStatement(BaseModel):
         default=None,
         description="""
 Joiner to be used to build the statement.
-                           
+
 This determines how problem statements will be joined into a single contest statement.""",
     )
 
@@ -167,6 +175,15 @@ class ContestProblem(BaseModel):
 Short name of the problem. Usually, just an uppercase letter,
 but can be a sequence of uppercase letters followed by a number."""
     )
+
+    aliases: List[Alias] = Field(
+        default_factory=list,
+        description="""
+Optional list of aliases for this problem. You can refer to the problem by its
+short_name or by any of these aliases in commands such as [item]rbx on <name> run[/item].
+Aliases must be unique across all problems (case-insensitive).""",
+    )
+
     path: Optional[pathlib.Path] = Field(
         default=None,
         description="""
@@ -233,6 +250,10 @@ If not provided, will try to infer a color name from the color provided.
     def get_path(self) -> pathlib.Path:
         return self.path or pathlib.Path(self.short_name)
 
+    def all_identifiers(self) -> Set[str]:
+        """All names that can be used to refer to this problem (short_name + aliases), lowercased."""
+        return {self.short_name.lower()} | {a.lower() for a in self.aliases}
+
 
 class Contest(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -248,6 +269,22 @@ class Contest(BaseModel):
     problems: List[ContestProblem] = Field(
         default=[], description='List of problems in this contest.'
     )
+
+    @model_validator(mode='after')
+    def check_problem_identifiers_unique(self):
+        seen: Dict[str, str] = {}
+        for problem in self.problems:
+            identifiers = [problem.short_name.lower()] + [
+                a.lower() for a in problem.aliases
+            ]
+            for ident in identifiers:
+                if ident in seen:
+                    raise ValueError(
+                        f'Problem identifier {ident!r} is used by more than one problem '
+                        f'(short_name or alias in problem {seen[ident]!r} and in {problem.short_name!r}).'
+                    )
+                seen[ident] = problem.short_name
+        return self
 
     statements: Annotated[
         List[ContestStatement],

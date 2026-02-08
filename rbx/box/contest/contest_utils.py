@@ -7,14 +7,14 @@ from rbx.box.contest.schema import ContestProblem
 
 def match_problem(problems: str, contest_problem: ContestProblem) -> bool:
     short_name = contest_problem.short_name.lower()
-    problems = problems.lower()
-    if problems == '*':
+    problems_lower = problems.lower()
+    if problems_lower == '*':
         return True
-    if '-' in problems:
-        start, end = problems.split('-')
+    if '-' in problems_lower:
+        start, end = problems_lower.split('-')
         return start <= short_name <= end
-    problem_set = set(p.strip().lower() for p in problems.split(','))
-    return short_name in problem_set
+    problem_set = set(p.strip().lower() for p in problems_lower.split(','))
+    return bool(problem_set & contest_problem.all_identifiers())
 
 
 def get_problems_of_interest(problems: str) -> List[ContestProblem]:
