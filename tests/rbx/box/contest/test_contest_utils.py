@@ -1,5 +1,6 @@
 """Tests for contest_utils (match_problem, get_problems_of_interest) with short_name and aliases."""
 
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +9,7 @@ from rbx.box.contest.contest_utils import get_problems_of_interest, match_proble
 from rbx.box.contest.schema import Contest, ContestProblem
 
 
-def _p(short_name: str, aliases: list[str] | None = None) -> ContestProblem:
+def _p(short_name: str, aliases: Optional[list[str]] = None) -> ContestProblem:
     return ContestProblem(short_name=short_name, aliases=aliases or [])
 
 
