@@ -1,3 +1,22 @@
+## 0.25.0 (2026-02-07)
+
+### Feat
+
+- migrate from poetry to uv
+
+### Fix
+
+- fix version provider for commitizen
+- delete dangling svg
+- Rename CLAUDE.md -> AGENTS.md
+- remove poetry badge
+- disable FMA on ARM
+- show warning when not using rbx time
+- dedup issue stack messages
+- add issue severity markers
+- handle typer.Exit() in rbx ui apps
+- make rbx ui visible
+
 ## 0.24.0 (2026-02-01)
 
 ### Feat

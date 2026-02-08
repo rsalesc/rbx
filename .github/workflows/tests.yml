@@ -25,42 +25,20 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
+          version: "latest"
           python-version: ${{ matrix.python-version }}
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-          prefer-active-python: true
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
+          enable-cache: true
       - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v3
+        id: cached-uv-dependencies
+        uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-1-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      - name: Set Python version on Poetry
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry env use $(which python)
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
-      - name: Install project
-        run: poetry install --no-interaction
+        run: uv sync --locked --all-groups
       - name: Setup GCC
         uses: Dup4/actions-setup-gcc@v1
         with:
@@ -75,8 +53,6 @@ jobs:
       - uses: jdx/mise-action@v2
         with:
           version: 2024.12.14 # [default: latest] mise version to install
-          # install: true # [default: true] run `mise install`
-          # cache: true # [default: true] cache mise using GitHub's cache
       - name: Run tests
         run: |
           source .venv/bin/activate

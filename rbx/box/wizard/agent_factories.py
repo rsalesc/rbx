@@ -5,7 +5,6 @@ from __future__ import annotations
 import functools
 
 from agents import Agent
-
 from rbx.box.wizard.supported_models import get_model_settings
 
 

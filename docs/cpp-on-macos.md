@@ -1,5 +1,7 @@
 # C/C++ on MacOS
 
+## Compiler choice
+
 Usually in MacOS, the default compiler is Clang. Even the `g++` command in the terminal is just a wrapper around Clang.
 
 Although Clang will work just fine for most of the time, sometimes it just misbehaves completely compared to GCC. Since
@@ -39,3 +41,15 @@ sanitizers:
     g++: clang++
     gcc: clang
 ```
+
+## Floating-point precision
+
+If you're on a Mac with Apple Sillicon (ARM), be aware you might run into floating-point precision issues.
+These two different architectures apply math optimizations differently. Whilst {{rbx}} tries its best
+to disable some of them in ARM, it's not always possible to completely match the behaviour of x86.
+
+Another important thing to notice is that `long double` is a 64-bit float in ARM, as opposed to the
+standard extended 80-bit float in x86. Thus, for all effects, `long double` == `double` in ARM. If you
+have solutions that are heavily dependent on the precision of `long double`, you might need to
+adjust them when running on ARM, or simply accept they might fail.
+

@@ -1,53 +1,53 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to agents when working with code in this repository.
 
 ## Commands
 
 ### Testing
 ```bash
 # Run all tests
-poetry run pytest --ignore=tests/rbx/box/cli
+uv run pytest --ignore=tests/rbx/box/cli
 
 # Run all tests with coverage
-poetry run pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n auto
+uv run pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n auto
 
 # Run a single test file
-poetry run pytest tests/path/to/test_file.py
+uv run pytest tests/path/to/test_file.py
 
 # Run a specific test
-poetry run pytest tests/path/to/test_file.py::test_function_name
+uv run pytest tests/path/to/test_file.py::test_function_name
 
 # Run tests in parallel
-poetry run pytest -n auto
+uv run pytest -n auto
 ```
 
 ### Linting and Formatting
 ```bash
 # Run linter
-poetry run ruff check .
+uv run ruff check .
 
 # Run linter with auto-fix
-poetry run ruff check --fix .
+uv run ruff check --fix .
 
 # Format code
-poetry run ruff format .
+uv run ruff format .
 
 # Run pre-commit hooks
-poetry run pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 ### Building
 ```bash
 # Install dependencies
-poetry install
+uv sync
 
 # Build the package
-poetry build
+uv build
 
 # Run the CLI tools
-poetry run rbc  # Main CLI
-poetry run rbx  # Box CLI
+uv run rbc  # Main CLI
+uv run rbx  # Box CLI
 ```
 
 ## Architecture Overview
@@ -120,7 +120,7 @@ rbx/
 ### Development Notes
 
 - Python 3.9.1+ required
-- Uses Poetry for dependency management
+- Uses uv for dependency management
 - Async operations throughout the codebase
 - Rich terminal output using Rich library
 - Sandboxing uses `StupidSandbox` implementation
