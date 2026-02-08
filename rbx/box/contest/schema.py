@@ -1,5 +1,4 @@
 import pathlib
-import re
 from typing import Annotated, Dict, List, Optional, Set
 
 from pydantic import (
@@ -7,7 +6,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    field_validator,
     model_validator,
 )
 
@@ -26,6 +24,8 @@ from rbx.box.statements.schema import (
     StatementLanguage,
     StatementType,
 )
+
+Alias = Annotated[str, NameField()]
 
 
 def ShortNameField(**kwargs):
@@ -176,24 +176,13 @@ Short name of the problem. Usually, just an uppercase letter,
 but can be a sequence of uppercase letters followed by a number."""
     )
 
-    aliases: List[str] = Field(
+    aliases: List[Alias] = Field(
         default_factory=list,
         description="""
 Optional list of aliases for this problem. You can refer to the problem by its
 short_name or by any of these aliases in commands such as [item]rbx on <name> run[/item].
 Aliases must be unique across all problems (case-insensitive).""",
     )
-
-    @field_validator('aliases')
-    @classmethod
-    def validate_aliases(cls, v: List[str]) -> List[str]:
-        pattern = re.compile(r'^[a-zA-Z0-9_]+$')
-        for alias in v:
-            if not (1 <= len(alias) <= 32 and pattern.match(alias)):
-                raise ValueError(
-                    f'alias {alias!r} must be 1-32 chars and only contain letters, digits, underscore'
-                )
-        return v
 
     path: Optional[pathlib.Path] = Field(
         default=None,
