@@ -350,7 +350,12 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             group_validator = group.validator
 
         group_visualizer = pkg.visualizer
+        if group.visualizer is not None:
+            group_visualizer = group.visualizer
+
         group_solution_visualizer = pkg.solutionVisualizer
+        if group.solutionVisualizer is not None:
+            group_solution_visualizer = group.solutionVisualizer
 
         extra_validators = pkg.extraValidators + group.extraValidators
         output_validators = pkg.outputValidators + group.outputValidators

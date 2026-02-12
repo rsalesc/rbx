@@ -1811,8 +1811,8 @@ class TestRunTestcaseVisitorWithVisualizers:
         await run_testcase_visitor(visitor)
 
         assert len(visited_entries) == 1
-        assert visited_entries[0].output_visualizer is not None
-        assert visited_entries[0].output_visualizer.path == pathlib.Path('out_vis.py')
+        assert visited_entries[0].solution_visualizer is not None
+        assert visited_entries[0].solution_visualizer.path == pathlib.Path('out_vis.py')
 
     async def test_run_testcase_visitor_with_output_visualizer_overrides(
         self, testing_pkg: testing_package.TestingPackage
@@ -1836,7 +1836,7 @@ class TestRunTestcaseVisitorWithVisualizers:
                 {
                     'name': 'sub1',
                     'generators': [{'name': 'gen1', 'args': 'arg1'}],
-                    'outputVisualizer': 'sub_out_vis.py',
+                    'solutionVisualizer': 'sub_out_vis.py',
                 }
             ],
         )
@@ -1851,7 +1851,7 @@ class TestRunTestcaseVisitorWithVisualizers:
         await run_testcase_visitor(visitor)
 
         assert len(visited_entries) == 1
-        assert visited_entries[0].output_visualizer is not None
-        assert visited_entries[0].output_visualizer.path == pathlib.Path(
+        assert visited_entries[0].solution_visualizer is not None
+        assert visited_entries[0].solution_visualizer.path == pathlib.Path(
             'sub_out_vis.py'
         )

@@ -81,14 +81,16 @@ class TestCheckSymlinks:
 
     def test_not_a_repo(self, monkeypatch, tmp_path):
         monkeypatch.setattr(git_utils.utils, 'command_exists', lambda cmd: True)
-        monkeypatch.setattr(git_utils, 'get_repo_or_nil', lambda path: None)
+        monkeypatch.setattr(git_utils, 'get_repo_or_nil', lambda path, **kwargs: None)
         assert git_utils.check_symlinks(tmp_path) is True
 
     def test_valid_symlinks(self, monkeypatch, tmp_path):
         monkeypatch.setattr(git_utils.utils, 'command_exists', lambda cmd: True)
 
         mock_repo = type('Repo', (), {'working_dir': str(tmp_path)})()
-        monkeypatch.setattr(git_utils, 'get_repo_or_nil', lambda path: mock_repo)
+        monkeypatch.setattr(
+            git_utils, 'get_repo_or_nil', lambda path, **kwargs: mock_repo
+        )
 
         def fake_run(cmd, cwd, check, capture_output, text):
             return subprocess.CompletedProcess(
@@ -110,7 +112,9 @@ class TestCheckSymlinks:
         monkeypatch.setattr(git_utils.utils, 'command_exists', lambda cmd: True)
 
         mock_repo = type('Repo', (), {'working_dir': str(tmp_path)})()
-        monkeypatch.setattr(git_utils, 'get_repo_or_nil', lambda path: mock_repo)
+        monkeypatch.setattr(
+            git_utils, 'get_repo_or_nil', lambda path, **kwargs: mock_repo
+        )
 
         def fake_run(cmd, cwd, check, capture_output, text):
             return subprocess.CompletedProcess(
@@ -131,7 +135,9 @@ class TestCheckSymlinks:
         monkeypatch.setattr(git_utils.utils, 'command_exists', lambda cmd: True)
 
         mock_repo = type('Repo', (), {'working_dir': str(tmp_path)})()
-        monkeypatch.setattr(git_utils, 'get_repo_or_nil', lambda path: mock_repo)
+        monkeypatch.setattr(
+            git_utils, 'get_repo_or_nil', lambda path, **kwargs: mock_repo
+        )
 
         def fake_run(cmd, cwd, check, capture_output, text):
             return subprocess.CompletedProcess(

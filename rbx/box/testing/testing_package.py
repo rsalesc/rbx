@@ -21,6 +21,7 @@ from rbx.box.schema import (
     TestcaseSubgroup,
     ValidatorOutcome,
     ValidatorTest,
+    Visualizer,
 )
 from rbx.box.testing.testing_preset import TestingPreset
 from rbx.box.testing.testing_shared import PathOrStr, TestingShared
@@ -155,8 +156,11 @@ class TestingPackage(TestingShared):
         path: PathOrStr,
         language: Optional[str] = None,
         src: Optional[PathOrStr] = None,
+        extension: str = 'html',
     ):
-        self.yml.visualizer = CodeItem(path=pathlib.Path(path), language=language)
+        self.yml.visualizer = Visualizer(
+            path=pathlib.Path(path), language=language, extension=extension
+        )
         self.save()
         return self.add_file(path, src=src)
 
@@ -165,9 +169,10 @@ class TestingPackage(TestingShared):
         path: PathOrStr,
         language: Optional[str] = None,
         src: Optional[PathOrStr] = None,
+        extension: str = 'html',
     ):
-        self.yml.solutionVisualizer = CodeItem(
-            path=pathlib.Path(path), language=language
+        self.yml.solutionVisualizer = Visualizer(
+            path=pathlib.Path(path), language=language, extension=extension
         )
         self.save()
         return self.add_file(path, src=src)
@@ -317,14 +322,40 @@ class TestingPackage(TestingShared):
                 ]
 
             if 'visualizer' in subgroup_data:
-                subgroup_dict['visualizer'] = CodeItem(
-                    path=pathlib.Path(subgroup_data['visualizer'])
-                )
+                vis_data = subgroup_data['visualizer']
+                if isinstance(vis_data, str):
+                    subgroup_dict['visualizer'] = Visualizer(
+                        path=pathlib.Path(vis_data), extension='html'
+                    )
+                else:
+                    subgroup_dict['visualizer'] = Visualizer(
+                        path=pathlib.Path(vis_data['path']),
+                        extension=vis_data.get('extension', 'html'),
+                    )
 
-            if 'outputVisualizer' in subgroup_data:
-                subgroup_dict['outputVisualizer'] = CodeItem(
-                    path=pathlib.Path(subgroup_data['outputVisualizer'])
-                )
+            if 'solutionVisualizer' in subgroup_data:
+                vis_data = subgroup_data['solutionVisualizer']
+                if isinstance(vis_data, str):
+                    subgroup_dict['solutionVisualizer'] = Visualizer(
+                        path=pathlib.Path(vis_data), extension='html'
+                    )
+                else:
+                    subgroup_dict['solutionVisualizer'] = Visualizer(
+                        path=pathlib.Path(vis_data['path']),
+                        extension=vis_data.get('extension', 'html'),
+                    )
+            elif 'outputVisualizer' in subgroup_data:
+                # Support outputVisualizer as an alias for solutionVisualizer
+                vis_data = subgroup_data['outputVisualizer']
+                if isinstance(vis_data, str):
+                    subgroup_dict['solutionVisualizer'] = Visualizer(
+                        path=pathlib.Path(vis_data), extension='html'
+                    )
+                else:
+                    subgroup_dict['solutionVisualizer'] = Visualizer(
+                        path=pathlib.Path(vis_data['path']),
+                        extension=vis_data.get('extension', 'html'),
+                    )
 
             subgroup_objects.append(TestcaseSubgroup(**subgroup_dict))
 
