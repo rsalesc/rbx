@@ -34,7 +34,15 @@ from rbx.console import console
 T = TypeVar('T', bound=BaseModel)
 APP_NAME = 'rbx'
 PIP_NAME = 'rbx.cp'
+DOTENV_FILES = ['.env', '.env.local']
 PathOrStr = Union[pathlib.Path, str]
+
+
+def load_dotenv():
+    for dotenv_file in DOTENV_FILES:
+        file = dotenv.find_dotenv(dotenv_file, usecwd=True)
+        if file:
+            dotenv.load_dotenv(file)
 
 
 class SemVerCompatibility(enum.Enum):

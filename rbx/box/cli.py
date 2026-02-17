@@ -160,6 +160,9 @@ def main(
         bool, typer.Option('--version', '-v', callback=version_callback, is_eager=True)
     ] = False,
 ):
+    # Load .env variables.
+    utils.load_dotenv()
+
     presets.check_active_preset_compatibility()
     if cd.is_problem_package() and not package.is_cache_valid():
         console.console.print(
