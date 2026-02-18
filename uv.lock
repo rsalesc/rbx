@@ -3363,7 +3363,7 @@ wheels = [
 
 [[package]]
 name = "rbx-cp"
-version = "0.25.2"
+version = "0.25.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },

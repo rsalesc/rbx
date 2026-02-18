@@ -1,3 +1,9 @@
+## 0.25.3 (2026-02-18)
+
+### Fix
+
+- fix issue with ui visualizers
+
 ## 0.25.2 (2026-02-18)
 
 ### Fix
