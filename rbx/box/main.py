@@ -21,7 +21,11 @@ def _check_completions():
 # TODO: do not install this handler when in dev mode
 def _install_no_exception_handlers():
     # Setup asyncio exception handler to ignore all task exceptions.
-    loop = asyncio.get_event_loop()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
     def _ignore_task_exceptions(loop, context):
         exc = context.get('exception')
