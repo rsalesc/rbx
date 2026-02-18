@@ -1,3 +1,14 @@
+## 0.25.1 (2026-02-18)
+
+### Fix
+
+- fix issue with visualizers and rbx ui
+- prime template before rendering blocks
+- use version range instead of exact major pin in upgrade command
+- add dotenv loading
+- fix a few extra tests and code
+- migrate commitizen config
+
 ## 0.25.0 (2026-02-07)
 
 ### Feat
