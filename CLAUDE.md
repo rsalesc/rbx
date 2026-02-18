@@ -52,6 +52,10 @@ uv run rbx
 - Ruff rules enabled: `E4`, `E7`, `E9`, `F`, `B`, `I`, `TID`, `SLF`
 - Pre-commit hooks run ruff check/format and commitizen (conventional commits)
 
+## Git Commits
+
+**You MUST use the `/commit` skill when creating commits.** This project enforces [Conventional Commits](https://www.conventionalcommits.org/) via commitizen (`cz_conventional_commits`). The pre-commit hook will reject non-compliant messages. See [`.claude/skills/commit.md`](.claude/skills/commit.md) for the full workflow and allowed commit types.
+
 ## Detailed Module Guides
 
 For complex modules, see the inner CLAUDE.md files:
