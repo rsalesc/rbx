@@ -339,6 +339,9 @@ def render_latex_template_blocks(
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:
+        # Prime the template first.
+        for _ in template.root_render_func(ctx):
+            pass
         return {key: ''.join(value(ctx)) for key, value in template.blocks.items()}
     except jinja2.UndefinedError as err:
         _handle_rendering_undefined(err)
@@ -367,6 +370,9 @@ def render_markdown_template_blocks(
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:
+        # Prime the template first.
+        for _ in template.root_render_func(ctx):
+            pass
         return {key: ''.join(value(ctx)) for key, value in template.blocks.items()}
     except jinja2.UndefinedError as err:
         _handle_rendering_undefined(err)
