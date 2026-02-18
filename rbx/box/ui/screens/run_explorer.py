@@ -2,24 +2,22 @@ from typing import Optional
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
-from rbx.box.solutions import SolutionReportSkeleton
 from rbx.box.ui.screens.error import ErrorScreen
 from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
 from rbx.box.ui.screens.selector import SelectorScreen
-from rbx.box.ui.utils.run_ui import get_skeleton, get_solution_markup, has_run
+from rbx.box.ui.utils.run_ui import get_skeleton, get_solution_markup
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 
 
 class RunExplorerScreen(Screen):
     BINDINGS = [('s', 'compare_with', 'Compare with')]
 
-    skeleton: reactive[Optional[SolutionReportSkeleton]] = reactive(
-        None, recompose=True
-    )
+    def __init__(self):
+        super().__init__()
+        self.skeleton = get_skeleton()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -43,11 +41,9 @@ class RunExplorerScreen(Screen):
             yield tips
 
     def on_mount(self):
-        if not has_run():
+        if not self.skeleton:
             self.app.switch_screen(ErrorScreen('No runs found. Run `rbx run` first.'))
             return
-
-        self.skeleton = get_skeleton()
 
     def on_list_view_selected(self, event: ListView.Selected):
         selected_index = event.list_view.index

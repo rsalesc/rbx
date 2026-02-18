@@ -601,7 +601,9 @@ async def _run_ui_solution_visualizer_for_testcase(
         visualizer,
         visualizer_digest,
         answer_path,
-        answer_from=_get_answer_from_with_digest(visualizer, compiled_visualizers),
+        answer_from=_get_answer_from_with_digest(visualizer, compiled_visualizers)
+        if answer_path is not None
+        else None,
         interactive=True,
     )
     if visualization_path is None or not visualization_path.is_file():

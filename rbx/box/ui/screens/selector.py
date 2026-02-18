@@ -12,12 +12,12 @@ class SelectorScreen(ModalScreen[int]):
     def __init__(self, options: List[ListItem], title: Optional[str] = None):
         super().__init__()
         self.options = options
-        self.title = title
+        self.modal_title = title
 
     def compose(self) -> ComposeResult:
         with Container(id='selector-dialog'):
             list_view = ListView(*self.options)
-            if self.title:
+            if self.modal_title:
                 list_view.border_title = self.title
             yield list_view
 

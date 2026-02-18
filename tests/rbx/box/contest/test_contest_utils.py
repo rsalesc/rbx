@@ -3,8 +3,6 @@
 from typing import Optional
 from unittest.mock import patch
 
-import pytest
-
 from rbx.box.contest.contest_utils import get_problems_of_interest, match_problem
 from rbx.box.contest.schema import Contest, ContestProblem
 
