@@ -583,27 +583,17 @@ async def _run_ui_solution_visualizer_for_testcase(
             e.print(f'[error]Visualizer {visualizer.href()} not compiled.[/error]')
         return
 
+    answer_from = _get_answer_from_with_digest(visualizer, compiled_visualizers)
     if use_stderr:
-        # Get path to stderr file
-        testcase = Testcase(inputPath=testcase.inputPath)
-        if testcase.outputPath is not None:
-            error_path = testcase.outputPath.with_suffix('.err')
-            if error_path.is_file():
-                testcase = Testcase(inputPath=testcase.inputPath, outputPath=error_path)
-
-        if answer_path is not None:
-            error_path = answer_path.with_suffix('.err')
-            if error_path.is_file():
-                answer_path = error_path
+        answer_from = 'stderr'
 
     visualization_path = await run_solution_visualizer_for_testcase(
         testcase,
         visualizer,
         visualizer_digest,
         answer_path,
-        answer_from=_get_answer_from_with_digest(visualizer, compiled_visualizers)
-        if answer_path is not None
-        else None,
+        output_from=answer_from,
+        answer_from=answer_from if answer_path is not None else None,
         interactive=True,
     )
     if visualization_path is None or not visualization_path.is_file():
