@@ -1,3 +1,10 @@
+## 0.25.2 (2026-02-18)
+
+### Fix
+
+- limit to Python3.13 fort now
+- fix event loop issue on Python3.14
+
 ## 0.25.1 (2026-02-18)
 
 ### Fix
