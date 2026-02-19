@@ -525,14 +525,7 @@ def start_file(path: pathlib.Path):
     elif _is_windows():
         os.startfile(str(path))
     elif _is_wsl():
-        wsl_path = (
-            subprocess.check_output(['wslpath', '-w', str(path)])
-            .decode('utf-8')
-            .strip()
-        )
-        subprocess.call(
-            ['powershell.exe', '-NoProfile', '-Command', 'Start-Process', wsl_path]
-        )
+        subprocess.call(['wslview', str(path)])
     else:  # linux variants
         subprocess.call(('xdg-open', str(path)))
 
