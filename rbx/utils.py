@@ -502,14 +502,37 @@ def _get_temp_session_dir() -> pathlib.Path:
     return _temp_session_dir
 
 
-def start_file(path: pathlib.Path):
-    import os
-    import subprocess
+def _is_macos() -> bool:
+    return sys.platform == 'darwin'
 
-    if sys.platform == 'darwin':  # macOS
+
+def _is_windows() -> bool:
+    return sys.platform == 'win32'
+
+
+def _is_wsl() -> bool:
+    if sys.platform != 'linux':
+        return False
+    try:
+        return 'microsoft' in platform.uname().release.lower()
+    except Exception:
+        return False
+
+
+def start_file(path: pathlib.Path):
+    if _is_macos():
         subprocess.call(('open', str(path)))
-    elif sys.platform == 'win32':  # Windows
+    elif _is_windows():
         os.startfile(str(path))
+    elif _is_wsl():
+        wsl_path = (
+            subprocess.check_output(['wslpath', '-w', str(path)])
+            .decode('utf-8')
+            .strip()
+        )
+        subprocess.call(
+            ['powershell.exe', '-NoProfile', '-Command', 'Start-Process', wsl_path]
+        )
     else:  # linux variants
         subprocess.call(('xdg-open', str(path)))
 
