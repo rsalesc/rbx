@@ -363,14 +363,14 @@ class TestStepsRunCoordinated:
             ) = call_args[0]
 
             # Verify that the Java solution's address_space was removed
-            assert (
-                solution_params_actual.address_space is None
-            ), 'Java solution should have address_space removed'
+            assert solution_params_actual.address_space is None, (
+                'Java solution should have address_space removed'
+            )
 
             # Verify that the interactor still has its address_space constraint
-            assert (
-                interactor_params_actual.address_space == 512
-            ), 'Interactor should keep its address_space constraint'
+            assert interactor_params_actual.address_space == 512, (
+                'Interactor should keep its address_space constraint'
+            )
 
         # The key test is that the function doesn't fail due to memory constraints
         # and that both logs are returned (even if the execution has issues)

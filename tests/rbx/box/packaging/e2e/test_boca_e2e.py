@@ -207,9 +207,9 @@ def _run_e2e_test(
 
     # Generate BOCA package
     package_result = runner.invoke(app, ['package', 'boca', '-v1'])
-    assert (
-        package_result.exit_code == 0
-    ), f'Package generation failed: {package_result.output}'
+    assert package_result.exit_code == 0, (
+        f'Package generation failed: {package_result.output}'
+    )
 
     package_files = list(pkg.path().glob('build/*.zip'))
     assert len(package_files) == 1, 'Expected exactly one package file'
@@ -283,9 +283,9 @@ def _run_e2e_test(
         run = runs_snapshot.get_detailed_run_by_path(solution.path)
         expected_outcome = simplify_rbx_expected_outcome(solution.outcome)
         assert run.outcome is not None, f'Run {run.run_number} has no outcome'
-        assert expected_outcome.match(
-            run.outcome
-        ), f'Run {run.run_number} for solution {solution.path} has outcome {run.outcome} but expected {solution.outcome}'
+        assert expected_outcome.match(run.outcome), (
+            f'Run {run.run_number} for solution {solution.path} has outcome {run.outcome} but expected {solution.outcome}'
+        )
         print(
             f'Run {run.run_number} for solution {solution.path} verified (expected {solution.outcome}, found {run.outcome})'
         )
@@ -365,9 +365,9 @@ def test_boca_package_structure(temp_problem_dir: Path):
     assert build_result.exit_code == 0, f'Build failed: {build_result.output}'
 
     package_result = runner.invoke(app, ['package', 'boca'])
-    assert (
-        package_result.exit_code == 0
-    ), f'Package generation failed: {package_result.output}'
+    assert package_result.exit_code == 0, (
+        f'Package generation failed: {package_result.output}'
+    )
 
     # Find and inspect the package
     # Search in multiple possible locations
@@ -388,9 +388,9 @@ def test_boca_package_structure(temp_problem_dir: Path):
     if not package_files:
         package_files = list(temp_problem_dir.glob('**/*.zip'))
 
-    assert (
-        len(package_files) > 0
-    ), f'No zip files found. Searched in: {possible_locations}. Output was: {package_result.output}'
+    assert len(package_files) > 0, (
+        f'No zip files found. Searched in: {possible_locations}. Output was: {package_result.output}'
+    )
     package_path = package_files[0]
 
     with zipfile.ZipFile(package_path, 'r') as zf:

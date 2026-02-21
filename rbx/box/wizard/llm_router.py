@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+from agents import Runner
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from agents import Runner
 from rbx.box.lang import code_to_lang
 from rbx.box.wizard.agent_factories import (
     create_icpc_problem_reviewer,

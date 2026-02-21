@@ -234,15 +234,15 @@ def get_preset_tracked_assets(
     assert preset_path is not None
 
     if is_contest:
-        assert (
-            preset.contest is not None
-        ), 'Preset does not have a contest package definition.'
+        assert preset.contest is not None, (
+            'Preset does not have a contest package definition.'
+        )
         preset_pkg_path = preset_path / preset.contest
         res = process_globbing(preset.tracking.contest, preset_pkg_path)
     else:
-        assert (
-            preset.problem is not None
-        ), 'Preset does not have a problem package definition,'
+        assert preset.problem is not None, (
+            'Preset does not have a problem package definition,'
+        )
         preset_pkg_path = preset_path / preset.problem
         res = process_globbing(preset.tracking.problem, preset_pkg_path)
 
@@ -534,13 +534,13 @@ def _get_active_preset_package_path(
     preset_path = find_local_preset(root)
     assert preset_path is not None
     if is_contest:
-        assert (
-            preset.contest is not None
-        ), 'Preset does not have a contest package definition.'
+        assert preset.contest is not None, (
+            'Preset does not have a contest package definition.'
+        )
         return preset_path / preset.contest
-    assert (
-        preset.problem is not None
-    ), 'Preset does not have a problem package definition.'
+    assert preset.problem is not None, (
+        'Preset does not have a problem package definition.'
+    )
     return preset_path / preset.problem
 
 

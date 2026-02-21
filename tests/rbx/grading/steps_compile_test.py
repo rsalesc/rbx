@@ -562,9 +562,9 @@ class TestStepsCompile:
         ]
 
         for command in sanitizer_commands:
-            assert steps.is_cxx_sanitizer_command(
-                command
-            ), f'Failed to detect sanitizer in: {command}'
+            assert steps.is_cxx_sanitizer_command(command), (
+                f'Failed to detect sanitizer in: {command}'
+            )
 
         # Test non-sanitizer commands
         non_sanitizer_commands = [
@@ -575,9 +575,9 @@ class TestStepsCompile:
         ]
 
         for command in non_sanitizer_commands:
-            assert not steps.is_cxx_sanitizer_command(
-                command
-            ), f'False positive for: {command}'
+            assert not steps.is_cxx_sanitizer_command(command), (
+                f'False positive for: {command}'
+            )
 
     @patch('sys.platform', 'linux')
     @patch('rbx.grading.steps._get_cxx_version_output')
@@ -807,9 +807,9 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         ]
 
         for line in warning_lines:
-            assert steps.check_for_sanitizer_warnings_in_line(
-                line
-            ), f'Failed to detect warning in: {line}'
+            assert steps.check_for_sanitizer_warnings_in_line(line), (
+                f'Failed to detect warning in: {line}'
+            )
 
         # Test lines that should NOT be detected as sanitizer warnings
         normal_lines = [
@@ -823,9 +823,9 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         ]
 
         for line in normal_lines:
-            assert not steps.check_for_sanitizer_warnings_in_line(
-                line
-            ), f'False positive for: {line}'
+            assert not steps.check_for_sanitizer_warnings_in_line(line), (
+                f'False positive for: {line}'
+            )
 
     @patch('sys.platform', 'darwin')
     @patch('rbx.grading.steps._get_cxx_version_output')

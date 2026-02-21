@@ -5,7 +5,7 @@ repos:
     id: ruff
   - id: ruff-format
   repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.4.10
+  rev: v0.15.0
 - hooks:
   - id: commitizen
   - id: commitizen-branch
