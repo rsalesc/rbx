@@ -24,6 +24,10 @@
 	\vspace{0.55cm}
 %- endif
 
+	%- if problem.blocks.macros is defined
+		\VAR{problem.blocks.macros}
+	%- endif
+
 	\VAR{problem.blocks.legend}
 
 	%- if problem.blocks.input is defined

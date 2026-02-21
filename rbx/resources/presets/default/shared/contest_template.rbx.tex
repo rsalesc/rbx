@@ -14,6 +14,10 @@
 %- endif
 
 %- if problem.vars.show_problem is truthy or problem.vars.editorial is falsy
+\begingroup
+	%- if problem.blocks.macros is defined
+		\VAR{problem.blocks.macros}
+	%- endif
 
 	\VAR{problem.blocks.legend}
 
@@ -52,6 +56,7 @@
 		\subsection*{\strNotes}
 		\VAR{problem.blocks.notes}
 	%- endif
+\endgroup
 %- endif
 }
 %- if problem.blocks.editorial is nonnull and problem.vars.editorial is truthy
