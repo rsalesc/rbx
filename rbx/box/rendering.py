@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Awaitable, Callable, Union, cast
+from typing import Awaitable, Callable, Optional, Union, cast
 
 from rich.console import RenderableType
 from rich.measure import Measurement
@@ -79,7 +79,7 @@ class Throttling:
     ):
         self.func = func
         self.seconds = seconds
-        self.last_called: float | None = None
+        self.last_called: Optional[float] = None
         self.is_async = asyncio.iscoroutinefunction(func)
 
     def __call__(self):

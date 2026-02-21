@@ -111,12 +111,18 @@ class IssueAccumulator:
         )
 
 
-issue_stack_var = contextvars.ContextVar('issue_stack', default=[IssueAccumulator()])
+issue_stack_var: contextvars.ContextVar[Optional[List[IssueAccumulator]]] = (
+    contextvars.ContextVar('issue_stack', default=None)
+)
 issue_level_var = contextvars.ContextVar('issue_level', default=IssueLevel.DETAILED)
 
 
 def get_issue_stack() -> list[IssueAccumulator]:
-    return issue_stack_var.get()
+    stack = issue_stack_var.get()
+    if stack is None:
+        stack = [IssueAccumulator()]
+        issue_stack_var.set(stack)
+    return stack
 
 
 def push_issue_accumulator():

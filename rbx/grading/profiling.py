@@ -3,6 +3,7 @@ import functools
 import math
 import threading
 import time
+from typing import List, Optional
 
 ALL_CONTEXTS_BY_NAME = {}
 _ALL_CONTEXTS_BY_NAME_LOCK = threading.Lock()
@@ -62,14 +63,22 @@ class Context:
                 print(f'  + {name}: {count}')
 
 
-profiling_stack_var = contextvars.ContextVar(
-    'profiling_stack', default=[_get_threadsafe_context('root')]
+profiling_stack_var: contextvars.ContextVar[Optional[List[Context]]] = (
+    contextvars.ContextVar('profiling_stack', default=None)
 )
+
+
+def _get_profiling_stack() -> list[Context]:
+    stack = profiling_stack_var.get()
+    if stack is None:
+        stack = [_get_threadsafe_context('root')]
+        profiling_stack_var.set(stack)
+    return stack
 
 
 def _push_profiling_stack(name: str):
     return profiling_stack_var.set(
-        profiling_stack_var.get() + [_get_threadsafe_context(name)]
+        _get_profiling_stack() + [_get_threadsafe_context(name)]
     )
 
 
@@ -80,7 +89,7 @@ class PushContext:
 
     def __enter__(self):
         self.token = _push_profiling_stack(self.name)
-        return profiling_stack_var.get()[-1]
+        return _get_profiling_stack()[-1]
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.token is not None:
@@ -111,7 +120,7 @@ class Profiler:
     def stop(self):
         self.end_time = time.monotonic()
         self.duration = self.end_time - self.start_time
-        for context in profiling_stack_var.get():
+        for context in _get_profiling_stack():
             context.add_to_distribution(self.name, self.duration)
 
     def __enter__(self):
@@ -122,5 +131,5 @@ class Profiler:
 
 
 def add_to_counter(name: str):
-    for context in profiling_stack_var.get():
+    for context in _get_profiling_stack():
         context.add_to_counter(name)

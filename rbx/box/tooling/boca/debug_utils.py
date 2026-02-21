@@ -80,7 +80,7 @@ def pretty_print_request_data(req: Any) -> None:
 
             except UnicodeDecodeError:
                 console.console.print(
-                    f"  [yellow]Raw bytes ({len(req.data)} bytes):[/yellow] {req.data[:100]}{'...' if len(req.data) > 100 else ''}"
+                    f'  [yellow]Raw bytes ({len(req.data)} bytes):[/yellow] {req.data[:100]}{"..." if len(req.data) > 100 else ""}'
                 )
         else:
             console.console.print(f'  [yellow]Data:[/yellow] {req.data}')

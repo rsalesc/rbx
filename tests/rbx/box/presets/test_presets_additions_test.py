@@ -97,9 +97,9 @@ class TestCopyTreeNormalizingGitdir:
         monkeypatch.setattr(
             presets.git_utils,
             'get_repo_or_nil',
-            lambda path, search_parent_directories=False: _Repo(gitdir_real)
-            if path == src
-            else None,
+            lambda path, search_parent_directories=False: (
+                _Repo(gitdir_real) if path == src else None
+            ),
         )
 
         presets.copy_tree_normalizing_gitdir(src, dst)
@@ -145,9 +145,11 @@ class TestCopyLocalPreset:
         monkeypatch.setattr(
             presets,
             'get_preset_fetch_info',
-            lambda uri: SimpleNamespace(fetch_uri='https://example/repo.git')
-            if uri is None
-            else SimpleNamespace(fetch_uri='https://example/repo.git'),
+            lambda uri: (
+                SimpleNamespace(fetch_uri='https://example/repo.git')
+                if uri is None
+                else SimpleNamespace(fetch_uri='https://example/repo.git')
+            ),
         )
 
         # get_any_remote returns a remote-like with url

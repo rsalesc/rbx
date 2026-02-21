@@ -798,8 +798,8 @@ This is **bold** text and *italic* text.
 """
 
         with patch('pypandoc.convert_text') as mock_convert:
-            mock_convert.side_effect = (
-                lambda content, to, from_: f'\\textbf{{{content}}}'
+            mock_convert.side_effect = lambda content, to, from_: (
+                f'\\textbf{{{content}}}'
             )
 
             result = builder.build(input_content, context, problem_item)

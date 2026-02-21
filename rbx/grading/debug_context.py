@@ -1,6 +1,7 @@
 import contextvars
 import dataclasses
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -8,11 +9,13 @@ class DebugContext:
     enable: bool = False
 
 
-debug_var = contextvars.ContextVar('debug', default=DebugContext())
+debug_var: contextvars.ContextVar[Optional[DebugContext]] = contextvars.ContextVar(
+    'debug', default=None
+)
 
 
 def get_debug_context() -> DebugContext:
-    return debug_var.get()
+    return debug_var.get() or DebugContext()
 
 
 class Debug:
@@ -23,7 +26,7 @@ class Debug:
 
     def __enter__(self):
         self.token = debug_var.set(
-            dataclasses.replace(debug_var.get(), *self.args, **self.kwargs)
+            dataclasses.replace(get_debug_context(), *self.args, **self.kwargs)
         )
 
     def __exit__(self, exc_type, exc_value, traceback):

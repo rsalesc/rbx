@@ -8,5 +8,5 @@ for i, arg in enumerate(sys.argv[1:], 1):
 
 # Also write to output file for verification
 with open('glob_output.txt', 'w') as f:
-    f.write(f"Arguments: {' '.join(sys.argv[1:])}\n")
+    f.write(f'Arguments: {" ".join(sys.argv[1:])}\n')
     f.write(f'Count: {len(sys.argv) - 1}\n')

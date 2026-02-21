@@ -150,7 +150,7 @@ class FileCacher:
             except FileNotFoundError:
                 pass
 
-        logger.debug('File %s not in cache, downloading ' 'from database.', digest)
+        logger.debug('File %s not in cache, downloading from database.', digest)
 
         if (symlink := self.backend.path_for_symlink(digest)) is not None:
             cache_file_path.unlink(missing_ok=True)
