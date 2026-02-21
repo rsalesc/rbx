@@ -1,14 +1,59 @@
+[tasks.sync]
+description = "Install/sync all dependencies"
+run = "uv sync --all-groups"
+
+[tasks.lock]
+description = "Regenerate uv.lock"
+run = "uv lock"
+
+[tasks.lint]
+description = "Run linter"
+run = "ruff check ."
+
+[tasks.lint-fix]
+description = "Run linter with auto-fix"
+run = "ruff check --fix ."
+
+[tasks.format]
+description = "Format code"
+run = "ruff format ."
+
+[tasks.format-check]
+description = "Check formatting (no changes)"
+run = "ruff format --check ."
+
+[tasks.check]
+description = "Run all checks (lint + format)"
+run = "mise run lint && mise run format-check"
+
 [tasks.test]
+description = "Run tests"
 run = "pytest -n auto -m 'not (e2e or slow or docker)'"
 
 [tasks.test-cov]
+description = "Run tests with coverage"
 run = "pytest -m 'not (e2e or slow or docker)' --cov=rbx --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy"
 
 [tasks.test-e2e]
+description = "Run e2e tests"
 run = "pytest -m 'e2e and not docker'"
 
 [tasks.test-slow]
+description = "Run slow tests"
 run = "pytest -m 'slow and not docker'"
 
 [tasks.test-docker]
+description = "Run docker tests"
 run = "pytest -m 'docker' -v -s"
+
+[tasks.bump]
+description = "Commitizen bump + push tags"
+run = "cz bump && git push && git push --tags"
+
+[tasks.build]
+description = "Clean build the package"
+run = "rm -rf dist/ && uv build"
+
+[tasks.publish]
+description = "Build and publish to PyPI"
+run = "mise run build && uv publish"

@@ -21,6 +21,7 @@
 - [Overview](#overview)
 - [Features](#features)
 - [Documentation](#documentation)
+- [Contributing](#contributing)
 - [License](#license)
 </details>
 <hr>
@@ -53,6 +54,61 @@ A flexible setting tool, as powerful as [Polygon](https://polygon.codeforces.com
 ##  Documentation
 
 You can read the docs [here](https://rsalesc.github.io/rbx/).
+
+---
+
+## Contributing
+
+### Prerequisites
+
+- Python 3.9+
+- [uv](https://docs.astral.sh/uv/) — package manager
+- [mise](https://mise.jdx.dev/) — task runner
+
+### Getting Started
+
+```bash
+git clone https://github.com/rsalesc/rbx.git
+cd rbx
+mise run sync
+pre-commit install
+```
+
+### Common Tasks
+
+All development commands are run through `mise`:
+
+| Command | Description |
+|---|---|
+| `mise run sync` | Install/sync all dependencies |
+| `mise run lock` | Regenerate `uv.lock` |
+| `mise run lint` | Run linter |
+| `mise run lint-fix` | Run linter with auto-fix |
+| `mise run format` | Format code |
+| `mise run format-check` | Check formatting without changes |
+| `mise run check` | Run all checks (lint + format) |
+| `mise run test` | Run tests (excludes e2e/slow/docker) |
+| `mise run test-cov` | Run tests with coverage |
+| `mise run test-e2e` | Run e2e tests |
+| `mise run build` | Clean build the package |
+
+Run `mise tasks` to see all available tasks.
+
+### Code Style
+
+- **Single quotes** for strings
+- **Absolute imports only** — no relative imports
+- **Conventional Commits** — enforced by pre-commit hook
+
+All style rules are enforced automatically by pre-commit hooks (ruff check, ruff format, commitizen).
+
+### Submitting Changes
+
+1. Create a branch from `main`
+2. Make your changes
+3. Run `mise run check` and `mise run test`
+4. Commit using [Conventional Commits](https://www.conventionalcommits.org/) format
+5. Open a pull request
 
 ---
 
