@@ -1,4 +1,8 @@
-from rbx.box.statements.demacro_utils import MacroDef, MacroDefinitions
+from rbx.box.statements.demacro_utils import (
+    MacroDef,
+    MacroDefinitions,
+    extract_definitions,
+)
 
 
 def test_macro_def_creation():
@@ -42,3 +46,70 @@ def test_macro_definitions_iter():
     names = list(defs)
     assert 'x' in names
     assert 'y' in names
+
+
+def test_extract_newcommand_no_args():
+    tex = r'\newcommand{\hello}{world}'
+    defs = extract_definitions(tex)
+    assert 'hello' in defs
+    assert defs.get('hello').n_args == 0
+    assert defs.get('hello').body == 'world'
+
+
+def test_extract_newcommand_with_args():
+    tex = r'\newcommand{\add}[2]{#1 + #2}'
+    defs = extract_definitions(tex)
+    assert defs.get('add').n_args == 2
+    assert defs.get('add').body == '#1 + #2'
+
+
+def test_extract_newcommand_with_default():
+    tex = r'\newcommand{\greet}[1][World]{Hello, #1!}'
+    defs = extract_definitions(tex)
+    m = defs.get('greet')
+    assert m.n_args == 1
+    assert m.default == 'World'
+    assert m.body == 'Hello, #1!'
+
+
+def test_extract_renewcommand():
+    tex = r'\renewcommand{\foo}{bar}'
+    defs = extract_definitions(tex)
+    assert 'foo' in defs
+    assert defs.get('foo').body == 'bar'
+
+
+def test_extract_newcommand_star():
+    tex = r'\newcommand*{\starred}[1]{*#1*}'
+    defs = extract_definitions(tex)
+    assert defs.get('starred').n_args == 1
+    assert defs.get('starred').body == '*#1*'
+
+
+def test_extract_def_zero_args():
+    tex = r'\def\myconst{42}'
+    defs = extract_definitions(tex)
+    assert defs.get('myconst').n_args == 0
+    assert defs.get('myconst').body == '42'
+
+
+def test_extract_multiple_definitions():
+    tex = r"""
+\newcommand{\foo}{FOO}
+\newcommand{\bar}[1]{BAR #1}
+\def\baz{BAZ}
+"""
+    defs = extract_definitions(tex)
+    assert len(defs) == 3
+    assert 'foo' in defs
+    assert 'bar' in defs
+    assert 'baz' in defs
+
+
+def test_extract_renewcommand_overwrites():
+    tex = r"""
+\newcommand{\foo}{old}
+\renewcommand{\foo}{new}
+"""
+    defs = extract_definitions(tex)
+    assert defs.get('foo').body == 'new'
