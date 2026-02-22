@@ -1,6 +1,7 @@
 import dataclasses
+import json
 import pathlib
-from typing import Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from TexSoup.data import BraceGroup, BracketGroup, TexCmd, TexNode
 
@@ -14,6 +15,13 @@ class MacroDef:
     default: Optional[str]
     body: str
     source_file: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MacroDef':
+        return cls(**data)
 
 
 class MacroDefinitions:
@@ -40,6 +48,20 @@ class MacroDefinitions:
 
     def __len__(self) -> int:
         return len(self._defs)
+
+    def to_json_file(self, path: pathlib.Path) -> None:
+        data = [macro.to_dict() for macro in self._defs.values()]
+        path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8'
+        )
+
+    @classmethod
+    def from_json_file(cls, path: pathlib.Path) -> 'MacroDefinitions':
+        data = json.loads(path.read_text(encoding='utf-8'))
+        defs = cls()
+        for entry in data:
+            defs.add(MacroDef.from_dict(entry))
+        return defs
 
 
 _NEWCOMMAND_NAMES = {'newcommand', 'newcommand*', 'renewcommand', 'renewcommand*'}

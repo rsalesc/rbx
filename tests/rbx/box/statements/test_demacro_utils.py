@@ -459,3 +459,60 @@ def test_expand_macros_empty_string():
     defs.add(MacroDef(name='foo', n_args=0, default=None, body='bar', source_file=None))
     result = expand_macros('', defs)
     assert result == ''
+
+
+# ---------------------------------------------------------------------------
+# Serialization Tests
+# ---------------------------------------------------------------------------
+
+
+def test_macro_def_to_dict():
+    md = MacroDef(name='foo', n_args=2, default='x', body='#1+#2', source_file='a.tex')
+    d = md.to_dict()
+    assert d == {
+        'name': 'foo',
+        'n_args': 2,
+        'default': 'x',
+        'body': '#1+#2',
+        'source_file': 'a.tex',
+    }
+
+
+def test_macro_def_from_dict():
+    d = {'name': 'bar', 'n_args': 0, 'default': None, 'body': 'B', 'source_file': None}
+    md = MacroDef.from_dict(d)
+    assert md.name == 'bar'
+    assert md.n_args == 0
+    assert md.default is None
+    assert md.body == 'B'
+    assert md.source_file is None
+
+
+def test_macro_def_roundtrip():
+    md = MacroDef(name='foo', n_args=1, default='d', body='#1!', source_file='f.tex')
+    assert MacroDef.from_dict(md.to_dict()) == md
+
+
+def test_macro_definitions_json_roundtrip(tmp_path: pathlib.Path):
+    defs = MacroDefinitions()
+    defs.add(MacroDef(name='a', n_args=0, default=None, body='A', source_file=None))
+    defs.add(
+        MacroDef(name='b', n_args=2, default='x', body='#1-#2', source_file='b.tex')
+    )
+
+    path = tmp_path / 'macros.json'
+    defs.to_json_file(path)
+
+    loaded = MacroDefinitions.from_json_file(path)
+    assert len(loaded) == 2
+    assert loaded.get('a') == defs.get('a')
+    assert loaded.get('b') == defs.get('b')
+
+
+def test_macro_definitions_json_empty(tmp_path: pathlib.Path):
+    defs = MacroDefinitions()
+    path = tmp_path / 'empty.json'
+    defs.to_json_file(path)
+
+    loaded = MacroDefinitions.from_json_file(path)
+    assert len(loaded) == 0
