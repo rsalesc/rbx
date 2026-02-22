@@ -72,6 +72,11 @@ class TexToPDF(BaseModel):
         description='Whether to externalize TikZ graphics.',
     )
 
+    demacro: bool = Field(
+        default=False,
+        description='Whether to save macro definitions to a JSON file.',
+    )
+
 
 class JinjaTeX(BaseModel):
     type: Literal[ConversionType.JinjaTeX]

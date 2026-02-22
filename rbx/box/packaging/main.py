@@ -44,12 +44,22 @@ async def polygon(
         '--upload-skip',
         help='Skip uploading the following types of assets to Polygon.',
     ),
+    validate_statement: bool = typer.Option(
+        False,
+        '--validate-statement',
+        help='If set, will validate the statement for Polygon.',
+    ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
     await run_packager(
         PolygonPackager, verification=verification, main_language=language
     )
+
+    if validate_statement:
+        from rbx.box.packaging.polygon.statement_block_utils import validate_statements
+
+        validate_statements(main_language=language, upload_as_english=upload_as_english)
 
     if upload:
         from rbx.box.packaging.polygon.upload import upload_problem

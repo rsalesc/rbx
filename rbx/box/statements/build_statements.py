@@ -168,7 +168,7 @@ def _get_overridden_configuration_list(
     return merge_conversion_configurations(configure + list(overridden_params.values()))
 
 
-def _get_statement_dir(
+def get_statement_dir(
     statement: Statement, builder_name: Optional[str] = None
 ) -> pathlib.Path:
     dir = package.get_statements_build_path() / statement.name
@@ -179,14 +179,14 @@ def _get_statement_dir(
 
 
 def _clean_statement_dir(statement: Statement):
-    dir = _get_statement_dir(statement)
+    dir = get_statement_dir(statement)
     shutil.rmtree(dir, ignore_errors=True)
 
 
 def get_produced_tikz_pdfs(
     statement: Statement,
 ) -> Iterable[Tuple[pathlib.Path, pathlib.Path]]:
-    dir = _get_statement_dir(statement, builder_name=TeX2PDFBuilder.name())
+    dir = get_statement_dir(statement, builder_name=TeX2PDFBuilder.name())
     pdfs = (dir / EXTERNALIZATION_DIR).glob('**/*.pdf')
 
     for pdf_path in pdfs:
@@ -270,7 +270,7 @@ async def build_statement_bytes(
     last_content = statement.path.read_bytes()
     _clean_statement_dir(statement)
     for bdr, params in builders:
-        builder_dir = _get_statement_dir(statement, bdr.name())
+        builder_dir = get_statement_dir(statement, bdr.name())
 
         # Inject assets from the problem statement.
         assets = statement_utils.get_relative_assets(statement.path, statement.assets)

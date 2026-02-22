@@ -194,7 +194,9 @@ def get_packager_extra_mergeable_params(
     if packager_cls.name() == 'polygon':
         # TODO: migrate this into the packager class
         res.append(rbxToTeX(type=ConversionType.rbxToTex, externalize=True))
-        res.append(TexToPDF(type=ConversionType.TexToPDF, externalize=True))
+        res.append(
+            TexToPDF(type=ConversionType.TexToPDF, externalize=True, demacro=True)
+        )
     return res
 
 

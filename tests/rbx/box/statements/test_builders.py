@@ -462,6 +462,51 @@ Welcome to the contest.
         assert 'intro' in blocks.blocks
         assert kwargs['contest']['title'] == 'Test Contest'
 
+    def test_get_rbxtex_blocks_explanation_path_overrides_block(
+        self, context, tmp_path
+    ):
+        """Test that explanationPath on sample overrides the explanation block text."""
+        package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
+        statement = Statement(
+            name='statement', path=pathlib.Path('stmt.tex'), type=StatementType.JinjaTeX
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+
+        # Create a sample with an explanationPath file
+        explanation_file = tmp_path / 'sample0_explanation.tex'
+        explanation_file.write_text('Explanation from file.')
+
+        samples = [
+            StatementSample(
+                entry=create_dummy_entry(),
+                inputPath=tmp_path / '1.in',
+                outputPath=tmp_path / '1.out',
+                explanationPath=explanation_file,
+            )
+        ]
+
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits, samples=samples
+        )
+
+        content = b"""
+%- block legend
+Legend content.
+%- endblock
+
+%- block explanation_0
+Explanation from block.
+%- endblock
+"""
+
+        blocks, kwargs = get_rbxtex_blocks(content, context, problem)
+
+        # _inject_explanations_back should override the block text with the file text
+        assert blocks.explanations[0] == 'Explanation from file.'
+
+        # kwargs samples should also use the file-based explanation
+        assert kwargs['problem']['samples'][0].explanation == 'Explanation from file.'
+
     def test_get_rbxtex_blocks_externalize(self, context, tmp_path):
         """Test get_rbxtex_blocks with externalize=True."""
         package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
@@ -642,6 +687,8 @@ Welcome to \\VAR{contest.title}.
 """
         result = builder.build(input_content, context, contest)
         assert b'Welcome to Test Contest' in result
+        # Verify blocks.yml is written
+        assert (tmp_path / 'blocks.yml').exists()
 
     def test_inject_assets_with_template(self, builder, tmp_path):
         """Test asset injection with template."""
@@ -676,6 +723,11 @@ This is the legend.
         result = builder.build(input_content, context_with_template, problem_item)
 
         assert b'This is the legend' in result
+        # Verify blocks.yml is written for non-externalized builds
+        blocks_yml_path = context_with_template.root / 'blocks.yml'
+        assert blocks_yml_path.exists()
+        blocks_yml = blocks_yml_path.read_text()
+        assert 'legend' in blocks_yml
 
     def test_build_with_explanations(self, builder, problem_item, tmp_path):
         """Test building with sample explanations."""
@@ -729,6 +781,55 @@ Explanation for first sample.
         assert b'Legend content.' in result
         # Verify the explanation was processed and included in the output
         assert b'Sample 0: Explanation for first sample.' in result
+        # Verify blocks.yml is written
+        blocks_yml_path = tmp_path / 'blocks.yml'
+        assert blocks_yml_path.exists()
+        blocks_yml = blocks_yml_path.read_text()
+        assert 'legend' in blocks_yml
+
+    def test_build_with_externalize(self, builder, problem_item, tmp_path):
+        """Test building with externalize writes blocks.yml, blocks.ext.yml and blocks.sub.yml."""
+        template_file = tmp_path / 'template.tex'
+        template_file.write_text('\\VAR{problem.blocks.diagram}')
+
+        params = rbxToTeX(
+            type=ConversionType.rbxToTex,
+            template=pathlib.Path('template.tex'),
+            externalize=True,
+        )
+        context = StatementBuilderContext(
+            lang='en',
+            languages=[],
+            params=params,
+            root=tmp_path,
+        )
+
+        input_content = b"""
+%- block diagram
+\\begin{tikzpicture}
+\\node {Test};
+\\end{tikzpicture}
+%- endblock
+"""
+
+        result = builder.build(input_content, context, problem_item)
+
+        assert b'\\begin{tikzpicture}' in result
+
+        # Non-externalized blocks file
+        assert (tmp_path / 'blocks.yml').exists()
+        blocks_yml = (tmp_path / 'blocks.yml').read_text()
+        assert 'diagram' in blocks_yml
+        assert 'tikzsetnextfilename' not in blocks_yml
+
+        # Externalized blocks file
+        assert (tmp_path / 'blocks.ext.yml').exists()
+        blocks_ext_yml = (tmp_path / 'blocks.ext.yml').read_text()
+        assert 'diagram' in blocks_ext_yml
+        assert 'tikzsetnextfilename' in blocks_ext_yml
+
+        # Substituted blocks file
+        assert (tmp_path / 'blocks.sub.yml').exists()
 
 
 class TestrbxMarkdownToTeXBuilder:
@@ -919,6 +1020,27 @@ class TestTeX2PDFBuilder:
 
             assert isinstance(result, bytes)
             assert mock_latex.build_pdf.call_count == 2
+
+    def test_build_with_demacro(self, builder, problem_item, tmp_path):
+        """Test building with demacro enabled collects macro definitions."""
+        params = TexToPDF(type=ConversionType.TexToPDF, demacro=True)
+        context = StatementBuilderContext(
+            lang='en',
+            languages=[],
+            params=params,
+            root=tmp_path,
+        )
+        input_content = b'\\documentclass{article}\\begin{document}Hello\\end{document}'
+
+        with patch(
+            'rbx.box.statements.builders.collect_macro_definitions'
+        ) as mock_collect:
+            mock_defs = mock_collect.return_value
+            result = builder.build(input_content, context, problem_item)
+
+            assert isinstance(result, bytes)
+            mock_collect.assert_called_once_with(tmp_path / 'statement.tex')
+            mock_defs.to_json_file.assert_called_once_with(tmp_path / 'macros.json')
 
 
 class TestExplainedStatementSample:
@@ -1212,3 +1334,5 @@ This is the legend for \\VAR{package.name}.
 
         result = builder.build(content, context, problem)
         assert b'This is the legend for rbx-test' in result
+        # Verify blocks.yml is written
+        assert (tmp_path / 'blocks.yml').exists()

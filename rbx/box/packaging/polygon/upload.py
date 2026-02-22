@@ -10,8 +10,11 @@ import typer
 
 from rbx import console, utils
 from rbx.box import download, header, limits_info, naming, package
-from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.packaging.polygon import polygon_api as api
+from rbx.box.packaging.polygon.statement_block_utils import (
+    get_processed_statement_blocks,
+    process_statements,
+)
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -22,15 +25,12 @@ from rbx.box.schema import (
     Testcase,
 )
 from rbx.box.solutions import get_best_interaction_file
-from rbx.box.statements import texsoup_utils
 from rbx.box.statements.build_statements import get_produced_tikz_pdfs
 from rbx.box.statements.builders import (
-    ExplainedStatementSample,
     StatementBlocks,
     StatementBuilderProblem,
     StatementSample,
     render_jinja_blocks,
-    substitute_externalized_blocks,
 )
 from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.statements.statement_utils import get_relative_assets
@@ -460,59 +460,12 @@ async def _upload_statement(
 ):
     pkg = package.find_problem_package_or_die()
 
-    lang_list = []
-    languages = set()
-    for statement in pkg.expanded_statements:
-        if not is_valid_lang_code(statement.language):
-            continue
-        languages.add(statement.language)
-        lang_list.append(statement.language)
-    uploaded_languages = set()
-
-    if main_language is None:
-        main_language = lang_list[0]
-
-    # Put the main language first.
-    lang_list = list(languages)
-    for i in range(len(lang_list)):
-        if lang_list[i] == main_language:
-            lang_list[i], lang_list[0] = lang_list[0], lang_list[i]
-            break
-
-    # Prioritize English statements.
-    for language in lang_list:
-        statement = _get_statement_for_language(language)
-        if statement is None:
-            continue
-        if statement.type != StatementType.rbxTeX:
-            continue
-        statement_lang = code_to_langs([language])[0]
+    def process_statement(statement: Statement, language: str, uploaded_language: str):
         console.console.print(
-            f'Uploading statement for language [item]{language}[/item] (polygon language: [item]{statement_lang}[/item])...'
+            f'Uploading statement for language [item]{language}[/item] (uploaded language: [item]{uploaded_language}[/item])...'
         )
-        uploaded_language = statement_lang
-        if main_language == language:
-            if not upload_as_english:
-                console.console.print(
-                    '[warning]By default, Polygon statements are uploaded respecting their original language.\n'
-                    'Codeforces does not work well with statements in other languages. If you want a better experience, '
-                    'use the [item]--upload-as-english[/item] option to force the main statement to be uploaded in English.[/warning]'
-                )
-            else:
-                uploaded_language = 'english'
-        if uploaded_language in uploaded_languages:
-            continue
-        uploaded_languages.add(uploaded_language)
-        blocks = _get_statement_blocks(statement)
+        blocks = get_processed_statement_blocks(statement)
         resources = _upload_statement_resources(problem, statement)
-
-        def _replace_labeled_tikz(block: str, prefix: str) -> str:
-            tex_node = texsoup_utils.parse_latex(block)
-            texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=prefix)
-            # Re-parse to fix tree integrity.
-            tex_node = texsoup_utils.parse_latex(str(tex_node))
-            texsoup_utils.replace_labeled_tikz_nodes(tex_node)
-            return str(tex_node)
 
         def _replace_resources(block: str, resources=resources) -> str:
             for key, value in resources.items():
@@ -521,21 +474,15 @@ async def _upload_statement(
 
         def _get_block(block_name: str, blocks=blocks, resources=resources) -> str:
             block = blocks.blocks.get(block_name) or ''
-            block = _replace_labeled_tikz(block, block_name)
             return _replace_resources(block, resources)
 
         def _get_notes_with_explanations(
-            samples: List[StatementSample],
             blocks=blocks,
         ) -> Optional[str]:
             notes = _get_block('notes')
-            explanations = ExplainedStatementSample.samples_to_explanations(
-                samples, blocks.explanations, externalize=True
-            )
-            explanations: Dict[int, str] = substitute_externalized_blocks(explanations)
-            if notes is None and not explanations:
+            if notes is None and not blocks.explanations:
                 return None
-            res = _replace_resources(_get_explanations(explanations))
+            res = _replace_resources(_get_explanations(blocks.explanations))
             if notes is not None:
                 res = notes + '\n\n' + res
             return res
@@ -549,12 +496,14 @@ async def _upload_statement(
             interaction=_get_block('interaction')
             if pkg.type == TaskType.COMMUNICATION
             else None,
-            notes=_get_notes_with_explanations(await _get_samples()) or '',
+            notes=_get_notes_with_explanations() or '',
         )
         problem.save_statement(
             lang=uploaded_language,
             problem_statement=polygon_statement,
         )
+
+    process_statements(main_language, upload_as_english, process_statement)
 
 
 def _normalize_problem_name(name: str) -> str:

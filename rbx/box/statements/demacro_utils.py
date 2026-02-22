@@ -1,7 +1,7 @@
 import dataclasses
 import json
 import pathlib
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 from TexSoup.data import BraceGroup, BracketGroup, TexCmd, TexNode
 
@@ -48,6 +48,14 @@ class MacroDefinitions:
 
     def __len__(self) -> int:
         return len(self._defs)
+
+    def filter(self, to_filter_out: Iterable[str]) -> 'MacroDefinitions':
+        to_filter_out = set(to_filter_out)
+        new_defs = MacroDefinitions()
+        for name, macro in self._defs.items():
+            if name not in to_filter_out:
+                new_defs.add(macro)
+        return new_defs
 
     def to_json_file(self, path: pathlib.Path) -> None:
         data = [macro.to_dict() for macro in self._defs.values()]

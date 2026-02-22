@@ -8,12 +8,14 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import pypandoc
 import typer
+from pydantic import BaseModel, Field
 
 from rbx import console, utils
 from rbx.box import naming
 from rbx.box.fields import Primitive
 from rbx.box.schema import LimitsProfile, Package
 from rbx.box.statements import texsoup_utils
+from rbx.box.statements.demacro_utils import collect_macro_definitions
 from rbx.box.statements.latex_jinja import (
     JinjaDictWrapper,
     render_latex_template,
@@ -206,10 +208,9 @@ class StatementBuilderContest(StatementBuilderItem):
         return res
 
 
-@dataclasses.dataclass
-class StatementBlocks:
-    blocks: Dict[str, str] = dataclasses.field(default_factory=dict)
-    explanations: Dict[int, str] = dataclasses.field(default_factory=dict)
+class StatementBlocks(BaseModel):
+    blocks: Dict[str, str] = Field(default_factory=dict)
+    explanations: Dict[int, str] = Field(default_factory=dict)
 
 
 def prepare_assets(
@@ -278,6 +279,21 @@ def render_jinja_blocks(
     return StatementBlocks(blocks=result, explanations=explanations)
 
 
+def _inject_explanations_back(
+    statement_blocks: StatementBlocks,
+    samples: List[StatementSample],
+    externalize: bool = False,
+):
+    explained_samples = ExplainedStatementSample.from_statement_samples(
+        samples, statement_blocks.explanations, externalize=externalize
+    )
+    statement_blocks.explanations = {
+        i: sample.explanation
+        for i, sample in enumerate(explained_samples)
+        if sample.explanation is not None
+    }
+
+
 def get_rbxtex_blocks(
     input: bytes,
     context: StatementBuilderContext,
@@ -301,11 +317,15 @@ def get_rbxtex_blocks(
         )
     if externalize:
         statement_blocks.blocks = externalize_blocks(statement_blocks.blocks)
+    # Externalize samples separately.
     item_kwargs = item.build_jinja_kwargs(
         sample_explanations=statement_blocks.explanations,
         externalize=externalize,
     )
     if isinstance(item, StatementBuilderProblem):
+        _inject_explanations_back(
+            statement_blocks, item.samples, externalize=externalize
+        )
         item_kwargs['problem']['blocks'] = statement_blocks.blocks
     elif isinstance(item, StatementBuilderContest):
         item_kwargs['contest']['blocks'] = statement_blocks.blocks
@@ -465,6 +485,26 @@ class rbxTeXBuilder(StatementBuilder):
     ) -> bytes:
         params = typing.cast(rbxToTeX, context.params)
         assert params.template is not None
+
+        # Get non-externalized version first.
+        statement_blocks, item_kwargs = get_rbxtex_blocks(
+            input,
+            context,
+            item,
+            mode='latex',
+        )
+        non_externalized_tex = render_jinja(
+            context.root,
+            f'%- extends "{params.template}"'.encode(),
+            **context.build_jinja_kwargs(),
+            **item_kwargs,
+            blocks=statement_blocks.blocks,
+        )
+        (context.root / 'blocks.yml').write_text(utils.model_to_yaml(statement_blocks))
+        if not params.externalize:
+            return non_externalized_tex
+
+        # Produce externalized version.
         statement_blocks, item_kwargs = get_rbxtex_blocks(
             input,
             context,
@@ -473,13 +513,28 @@ class rbxTeXBuilder(StatementBuilder):
             externalize=params.externalize,
         )
 
-        return render_jinja(
+        externalized_tex = render_jinja(
             context.root,
             f'%- extends "{params.template}"'.encode(),
             **context.build_jinja_kwargs(),
             **item_kwargs,
             blocks=statement_blocks.blocks,
         )
+        (context.root / 'blocks.ext.yml').write_text(
+            utils.model_to_yaml(statement_blocks)
+        )
+
+        # Produce substituted version.
+        statement_blocks.blocks = substitute_externalized_blocks(
+            statement_blocks.blocks
+        )
+        statement_blocks.explanations = substitute_externalized_blocks(
+            statement_blocks.explanations
+        )
+        (context.root / 'blocks.sub.yml').write_text(
+            utils.model_to_yaml(statement_blocks)
+        )
+        return externalized_tex
 
 
 class rbxMarkdownToTeXBuilder(StatementBuilder):
@@ -584,6 +639,10 @@ class TeX2PDFBuilder(StatementBuilder):
 
         if verbose:
             console.console.print(f'{logs}')
+
+        if params.demacro:
+            macro_defs = collect_macro_definitions(context.root / 'statement.tex')
+            macro_defs.to_json_file(context.root / 'macros.json')
 
         return pdf
 

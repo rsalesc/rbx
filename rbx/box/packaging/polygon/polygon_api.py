@@ -13,6 +13,9 @@ import time
 from enum import Enum
 
 import requests
+import typer
+
+from rbx import console
 
 
 class Polygon:
@@ -1197,7 +1200,13 @@ class Request:
     def issue(self):
         """Issues request and returns parsed JSON response"""
 
-        return Response(json.loads(self.issue_raw()))
+        try:
+            return Response(json.loads(self.issue_raw()))
+        except json.JSONDecodeError:
+            console.console.print(
+                '[error]Failed to parse JSON response from Polygon API. Please check if Polygon is down.[/error]',
+            )
+            raise typer.Exit(1)
 
     def issue_raw(self):
         """Issues request and returns raw response (useful e.g. for files)"""
