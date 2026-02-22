@@ -1,6 +1,6 @@
 import dataclasses
 import pathlib
-from typing import Dict, Iterator, Optional, Set
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 from TexSoup.data import BraceGroup, BracketGroup, TexCmd, TexNode
 
@@ -235,3 +235,101 @@ def collect_macro_definitions(
     if base_dir is None:
         base_dir = tex_path.parent
     return _collect_recursive(tex_path, base_dir, set())
+
+
+def _substitute_body(body: str, args: List[str]) -> str:
+    """Replace #1, #2, ... in body with actual argument strings."""
+    result = body
+    for i, arg_val in enumerate(args, 1):
+        result = result.replace(f'#{i}', arg_val)
+    return result
+
+
+def _find_and_expand(tex_content: str, macro_defs: MacroDefinitions) -> Tuple[str, int]:
+    """Single pass: find macro usages via TexSoup and expand them via text replacement."""
+    try:
+        soup = parse_latex(tex_content)
+    except Exception:
+        return tex_content, 0
+
+    replacements: List[Tuple[int, int, str]] = []
+
+    def visit(node: TexNode) -> None:
+        if not isinstance(node, TexNode):
+            return
+
+        name = getattr(node, 'name', None)
+        if name and name in macro_defs:
+            macro = macro_defs.get(name)
+            if macro is None:
+                return
+            pos = getattr(node, 'position', None)
+            if pos is None:
+                return
+
+            node_args = list(node.args)
+            arg_strings: List[str] = []
+
+            if macro.n_args == 0:
+                # 0-arg macro: don't consume any TexSoup-parsed arguments.
+                # TexSoup may greedily parse following braces as args.
+                start = pos
+                end = start + len('\\' + name)
+            else:
+                start = pos
+                end = start + len(str(node))
+
+                if macro.default is not None:
+                    # First arg is optional (BracketGroup).
+                    if node_args and isinstance(node_args[0], BracketGroup):
+                        arg_strings.append(node_args[0].string)
+                        remaining = node_args[1:]
+                    else:
+                        arg_strings.append(macro.default)
+                        remaining = node_args
+                    for arg in remaining:
+                        arg_strings.append(arg.string)
+                else:
+                    for arg in node_args:
+                        arg_strings.append(arg.string)
+
+            expanded = _substitute_body(macro.body, arg_strings)
+            replacements.append((start, end, expanded))
+            return
+
+        for child in node.contents:
+            if isinstance(child, TexNode):
+                visit(child)
+
+    visit(soup)
+
+    if not replacements:
+        return tex_content, 0
+
+    # Apply replacements right-to-left to preserve earlier positions.
+    replacements.sort(key=lambda r: r[0], reverse=True)
+    result = tex_content
+    for start, end, replacement in replacements:
+        result = result[:start] + replacement + result[end:]
+
+    return result, len(replacements)
+
+
+def expand_macros(
+    tex_content: str,
+    macro_defs: MacroDefinitions,
+    max_iterations: int = 10,
+) -> str:
+    """Expand all macro usages in a TeX string.
+
+    Uses an iterative fixpoint approach: each iteration parses the current text
+    with TexSoup, finds macro usages, and expands them via text replacement.
+    Repeats until no more substitutions are made or *max_iterations* is reached
+    (handles nested macros).
+    """
+    content = tex_content
+    for _ in range(max_iterations):
+        content, count = _find_and_expand(content, macro_defs)
+        if count == 0:
+            break
+    return content

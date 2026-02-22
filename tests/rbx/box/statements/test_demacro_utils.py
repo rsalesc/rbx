@@ -4,6 +4,7 @@ from rbx.box.statements.demacro_utils import (
     MacroDef,
     MacroDefinitions,
     collect_macro_definitions,
+    expand_macros,
     extract_definitions,
 )
 
@@ -191,3 +192,94 @@ def test_collect_with_base_dir(tmp_path: pathlib.Path):
     (tmp_path / 'main.tex').write_text(r'\input{sub/defs.tex}')
     defs = collect_macro_definitions(tmp_path / 'main.tex', base_dir=tmp_path)
     assert 'subDef' in defs
+
+
+def test_expand_zero_arg_macro():
+    defs = MacroDefinitions()
+    defs.add(
+        MacroDef(name='foo', n_args=0, default=None, body='REPLACED', source_file=None)
+    )
+    result = expand_macros(r'Hello \foo world', defs)
+    assert 'REPLACED' in result
+    assert r'\foo' not in result
+
+
+def test_expand_one_arg_macro():
+    defs = MacroDefinitions()
+    defs.add(
+        MacroDef(
+            name='bold', n_args=1, default=None, body=r'\textbf{#1}', source_file=None
+        )
+    )
+    result = expand_macros(r'\bold{hello}', defs)
+    assert r'\textbf{hello}' in result
+    assert r'\bold' not in result
+
+
+def test_expand_two_arg_macro():
+    defs = MacroDefinitions()
+    defs.add(
+        MacroDef(name='pair', n_args=2, default=None, body='(#1, #2)', source_file=None)
+    )
+    result = expand_macros(r'\pair{a}{b}', defs)
+    assert '(a, b)' in result
+
+
+def test_expand_with_default_arg_used():
+    defs = MacroDefinitions()
+    defs.add(
+        MacroDef(
+            name='greet', n_args=1, default='World', body='Hello, #1!', source_file=None
+        )
+    )
+    result = expand_macros(r'\greet', defs)
+    assert 'Hello, World!' in result
+
+
+def test_expand_with_default_arg_overridden():
+    defs = MacroDefinitions()
+    defs.add(
+        MacroDef(
+            name='greet', n_args=1, default='World', body='Hello, #1!', source_file=None
+        )
+    )
+    result = expand_macros(r'\greet[Alice]', defs)
+    assert 'Hello, Alice!' in result
+
+
+def test_expand_preserves_non_macro_content():
+    defs = MacroDefinitions()
+    defs.add(MacroDef(name='foo', n_args=0, default=None, body='X', source_file=None))
+    result = expand_macros(r'before \foo after', defs)
+    assert 'before' in result
+    assert 'after' in result
+    assert 'X' in result
+
+
+def test_expand_nested_macros():
+    defs = MacroDefinitions()
+    defs.add(
+        MacroDef(name='inner', n_args=0, default=None, body='INNER', source_file=None)
+    )
+    defs.add(
+        MacroDef(name='outer', n_args=0, default=None, body=r'\inner', source_file=None)
+    )
+    result = expand_macros(r'\outer', defs)
+    assert 'INNER' in result
+    assert r'\outer' not in result
+    assert r'\inner' not in result
+
+
+def test_expand_no_matching_macros():
+    defs = MacroDefinitions()
+    tex = r'\unknown{arg} text'
+    result = expand_macros(tex, defs)
+    assert r'\unknown{arg}' in result
+
+
+def test_expand_multiple_usages():
+    defs = MacroDefinitions()
+    defs.add(MacroDef(name='x', n_args=0, default=None, body='X', source_file=None))
+    result = expand_macros(r'\x and \x', defs)
+    assert result.count('X') == 2
+    assert r'\x' not in result
