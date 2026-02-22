@@ -1,6 +1,9 @@
+import pathlib
+
 from rbx.box.statements.demacro_utils import (
     MacroDef,
     MacroDefinitions,
+    collect_macro_definitions,
     extract_definitions,
 )
 
@@ -113,3 +116,78 @@ def test_extract_renewcommand_overwrites():
 """
     defs = extract_definitions(tex)
     assert defs.get('foo').body == 'new'
+
+
+def test_collect_from_single_file(tmp_path: pathlib.Path):
+    tex = tmp_path / 'main.tex'
+    tex.write_text(r'\newcommand{\foo}{bar}')
+    defs = collect_macro_definitions(tex)
+    assert 'foo' in defs
+
+
+def test_collect_follows_input(tmp_path: pathlib.Path):
+    (tmp_path / 'defs.tex').write_text(r'\newcommand{\fromInput}{yes}')
+    (tmp_path / 'main.tex').write_text(r'\input{defs.tex}')
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    assert 'fromInput' in defs
+
+
+def test_collect_follows_input_no_extension(tmp_path: pathlib.Path):
+    (tmp_path / 'defs.tex').write_text(r'\newcommand{\fromInput}{yes}')
+    (tmp_path / 'main.tex').write_text(r'\input{defs}')
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    assert 'fromInput' in defs
+
+
+def test_collect_follows_include(tmp_path: pathlib.Path):
+    (tmp_path / 'chapter.tex').write_text(r'\newcommand{\fromInclude}{yes}')
+    (tmp_path / 'main.tex').write_text(r'\include{chapter}')
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    assert 'fromInclude' in defs
+
+
+def test_collect_follows_local_sty(tmp_path: pathlib.Path):
+    (tmp_path / 'mypkg.sty').write_text(r'\newcommand{\fromSty}{yes}')
+    (tmp_path / 'main.tex').write_text(r'\usepackage{mypkg}')
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    assert 'fromSty' in defs
+
+
+def test_collect_follows_requirepackage(tmp_path: pathlib.Path):
+    (tmp_path / 'req.sty').write_text(r'\newcommand{\fromReq}{yes}')
+    (tmp_path / 'main.tex').write_text(r'\RequirePackage{req}')
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    assert 'fromReq' in defs
+
+
+def test_collect_skips_system_package(tmp_path: pathlib.Path):
+    (tmp_path / 'main.tex').write_text(
+        r'\usepackage{amsmath}' + '\n' + r'\newcommand{\local}{yes}'
+    )
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    assert 'local' in defs
+
+
+def test_collect_no_cycles(tmp_path: pathlib.Path):
+    (tmp_path / 'a.tex').write_text(r'\input{b.tex}' + '\n' + r'\newcommand{\fromA}{A}')
+    (tmp_path / 'b.tex').write_text(r'\input{a.tex}' + '\n' + r'\newcommand{\fromB}{B}')
+    defs = collect_macro_definitions(tmp_path / 'a.tex')
+    assert 'fromA' in defs
+    assert 'fromB' in defs
+
+
+def test_collect_recursive_depth(tmp_path: pathlib.Path):
+    (tmp_path / 'c.tex').write_text(r'\newcommand{\deep}{yes}')
+    (tmp_path / 'b.tex').write_text(r'\input{c.tex}')
+    (tmp_path / 'a.tex').write_text(r'\input{b.tex}')
+    defs = collect_macro_definitions(tmp_path / 'a.tex')
+    assert 'deep' in defs
+
+
+def test_collect_with_base_dir(tmp_path: pathlib.Path):
+    sub = tmp_path / 'sub'
+    sub.mkdir()
+    (sub / 'defs.tex').write_text(r'\newcommand{\subDef}{yes}')
+    (tmp_path / 'main.tex').write_text(r'\input{sub/defs.tex}')
+    defs = collect_macro_definitions(tmp_path / 'main.tex', base_dir=tmp_path)
+    assert 'subDef' in defs

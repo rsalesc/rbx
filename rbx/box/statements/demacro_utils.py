@@ -1,5 +1,6 @@
 import dataclasses
-from typing import Dict, Iterator, Optional
+import pathlib
+from typing import Dict, Iterator, Optional, Set
 
 from TexSoup.data import BraceGroup, BracketGroup, TexCmd, TexNode
 
@@ -154,3 +155,83 @@ def extract_definitions(
                 defs.add(macro)
 
     return defs
+
+
+def _resolve_input_path(
+    name: str, base_dir: pathlib.Path, extensions: tuple = ('.tex',)
+) -> Optional[pathlib.Path]:
+    """Resolve an \\input/\\include filename to an actual file path."""
+    candidate = base_dir / name
+    if candidate.is_file():
+        return candidate.resolve()
+    for ext in extensions:
+        with_ext = base_dir / (name + ext)
+        if with_ext.is_file():
+            return with_ext.resolve()
+    return None
+
+
+def _resolve_package_path(name: str, base_dir: pathlib.Path) -> Optional[pathlib.Path]:
+    """Resolve a \\usepackage/\\RequirePackage name to a local .sty file."""
+    candidate = base_dir / (name + '.sty')
+    if candidate.is_file():
+        return candidate.resolve()
+    return None
+
+
+def _collect_recursive(
+    tex_path: pathlib.Path,
+    base_dir: pathlib.Path,
+    visited: Set[pathlib.Path],
+) -> MacroDefinitions:
+    resolved = tex_path.resolve()
+    if resolved in visited:
+        return MacroDefinitions()
+    visited.add(resolved)
+
+    try:
+        content = tex_path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError):
+        return MacroDefinitions()
+
+    defs = extract_definitions(content, source_file=str(resolved))
+
+    soup = parse_latex(content)
+
+    for cmd_name in ('input', 'include'):
+        for node in soup.find_all(cmd_name):
+            args = list(node.args)
+            if not args:
+                continue
+            ref_name = args[0].string.strip()
+            ref_path = _resolve_input_path(ref_name, base_dir)
+            if ref_path is not None:
+                child_defs = _collect_recursive(ref_path, base_dir, visited)
+                defs.merge(child_defs)
+
+    for cmd_name in ('usepackage', 'RequirePackage'):
+        for node in soup.find_all(cmd_name):
+            args = list(node.args)
+            if not args:
+                continue
+            pkg_arg = args[-1].string.strip()
+            for pkg_name in pkg_arg.split(','):
+                pkg_name = pkg_name.strip()
+                if not pkg_name:
+                    continue
+                pkg_path = _resolve_package_path(pkg_name, base_dir)
+                if pkg_path is not None:
+                    child_defs = _collect_recursive(pkg_path, base_dir, visited)
+                    defs.merge(child_defs)
+
+    return defs
+
+
+def collect_macro_definitions(
+    tex_path: pathlib.Path,
+    base_dir: Optional[pathlib.Path] = None,
+) -> MacroDefinitions:
+    """Collect all macro definitions from a TeX file, recursively visiting dependencies."""
+    if base_dir is None:
+        base_dir = tex_path.parent
+    return _collect_recursive(tex_path, base_dir, set())
