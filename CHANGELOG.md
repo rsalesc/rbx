@@ -1,3 +1,21 @@
+## 0.26.0 (2026-02-22)
+
+### Feat
+
+- ensure polygon blocks come directly from statement building and preprocess+validate them
+- add JSON serialization for MacroDefinitions
+- add expand_macros with iterative hybrid TexSoup + text replacement
+- add collect_macro_definitions with recursive file traversal
+- add extract_definitions for parsing macro definitions from TeX
+- add MacroDef and MacroDefinitions data model for demacro
+
+### Fix
+
+- ignore macros in tex->polygon transformation
+- add support for macros block in default preset
+- sync pre-commit ruff version with project and fix lint errors
+- remove xdg-open command from wsl system (#385)
+
 ## 0.25.4 (2026-02-18)
 
 ### Fix
