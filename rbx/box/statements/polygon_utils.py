@@ -126,6 +126,12 @@ BARRIERS = {
     'par',
 }
 
+MACRO_COMMANDS = {
+    'newcommand',
+    'renewcommand',
+    'def',
+}
+
 
 def _get_node_position(node: TexNode, original_text: str) -> Tuple[int, int]:
     """
@@ -165,7 +171,7 @@ def validate_polygon_tex(
     except Exception as e:
         # If parsing fails, raise a hard exception
         err = RbxException()
-        err.print(f'Failed to parse LaTeX: {e}')
+        err.print(f'[error]Failed to parse LaTeX: {e}[/error]')
         raise err from e
 
     def traverse(node_or_list):
@@ -301,14 +307,15 @@ def validate_polygon_tex(
     return errors
 
 
-def convert_to_polygon_tex(latex_code: str) -> str:
-    """
+def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
+    r"""
     Converts standard LaTeX to Polygon-compatible LaTeX.
 
     Main transformations:
     1. Replaces \( ... \) with $ ... $
     2. Replaces \[ ... \] with $$ ... $$
-    3. Wraps font switch commands (like \it, \huge) in braces { \it ... }
+    3. Preserves $...$ and $$...$$ math blocks as-is
+    4. Wraps font switch commands (like \it, \huge) in braces { \it ... }
        until a barrier (like \item or end of scope) is reached.
     """
     try:
@@ -323,18 +330,49 @@ def convert_to_polygon_tex(latex_code: str) -> str:
     # Identify verbatim-like environments to skip
     VERBATIM_LIKE = {'verb', 'lstlisting', 'verbatim', 'spverbatim', 'minted'}
 
+    def _node_original_end(node, node_pos):
+        """Compute end position in original text for a parsed node."""
+        if node_pos is None:
+            return None
+        return node_pos + len(str(node))
+
     def transform_nodes(nodes) -> str:
         result = []
         i = 0
         node_list = list(nodes)
+        # Track end position of the last processed node in the original text.
+        # TexSoup may drop whitespace between adjacent TexNodes; we use
+        # position info to detect and restore these gaps.
+        last_original_end = None
+
+        def _fill_gap(node):
+            """Insert any original text gap before this node."""
+            nonlocal last_original_end
+            node_pos = getattr(node, 'position', None)
+            if (
+                last_original_end is not None
+                and node_pos is not None
+                and node_pos > last_original_end
+            ):
+                result.append(latex_code[last_original_end:node_pos])
+
+        def _update_end(node):
+            """Update last_original_end after processing a node."""
+            nonlocal last_original_end
+            node_pos = getattr(node, 'position', None)
+            last_original_end = _node_original_end(node, node_pos)
 
         while i < len(node_list):
             node = node_list[i]
+
+            # Restore any whitespace gap from the original text.
+            _fill_gap(node)
 
             # Helper to handle non-TexNodes (Tokens, strings)
             if not isinstance(node, TexNode):
                 # Just append string representation
                 result.append(str(node))
+                _update_end(node)
                 i += 1
                 continue
 
@@ -343,6 +381,13 @@ def convert_to_polygon_tex(latex_code: str) -> str:
             # --- Skip Verbatim-like Constructs ---
             if node_name in VERBATIM_LIKE:
                 result.append(str(node))
+                _update_end(node)
+                i += 1
+                continue
+
+            # --- Skip Macro Definitions ---
+            if ignore_macros and node_name in MACRO_COMMANDS:
+                _update_end(node)
                 i += 1
                 continue
 
@@ -351,12 +396,22 @@ def convert_to_polygon_tex(latex_code: str) -> str:
                 # Extract contents and wrap in $
                 transformed_contents = transform_nodes(node.contents)
                 result.append(f'${transformed_contents}$')
+                _update_end(node)
                 i += 1
                 continue
 
             if node_name == 'displaymath':  # \[ ... \]
                 transformed_contents = transform_nodes(node.contents)
                 result.append(f'$${transformed_contents}$$')
+                _update_end(node)
+                i += 1
+                continue
+
+            # $...$ and $$...$$ are already Polygon-compatible math
+            # delimiters. Preserve them as-is without transforming contents.
+            if node_name in ('$', '$$'):
+                result.append(str(node))
+                _update_end(node)
                 i += 1
                 continue
 
@@ -388,8 +443,11 @@ def convert_to_polygon_tex(latex_code: str) -> str:
                 # Result is { \switch transformed... }
                 if captured_nodes:
                     result.append(f'{{{switch_cmd}{transformed_segment}}}')
+                    # Update end to the last captured node
+                    _update_end(node_list[j - 1])
                 else:
                     result.append(f'{{{switch_cmd}}}')
+                    _update_end(node)
 
                 # Advance main index
                 i = j
@@ -420,6 +478,7 @@ def convert_to_polygon_tex(latex_code: str) -> str:
             if node_name == 'BraceGroup':
                 body = transform_nodes(node.contents)
                 result.append(f'{{{body}}}')
+                _update_end(node)
                 i += 1
                 continue
 
@@ -452,6 +511,7 @@ def convert_to_polygon_tex(latex_code: str) -> str:
 
                 result.append(f'\\{node_name}{args_str}{extra_contents}')
 
+            _update_end(node)
             i += 1
 
         return ''.join(result)

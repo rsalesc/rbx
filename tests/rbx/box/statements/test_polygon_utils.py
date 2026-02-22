@@ -137,6 +137,73 @@ def test_convert_to_polygon_tex_basic():
     assert convert_to_polygon_tex(r'\section{Title}') == r'\section{Title}'
 
 
+def test_convert_preserves_dollar_sign_math():
+    """$...$ and $$...$$ math blocks must be preserved as-is."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    # Inline math with commands inside
+    assert convert_to_polygon_tex(r'$1 \le N \le 150$') == r'$1 \le N \le 150$'
+
+    # Multiple inline math blocks
+    assert (
+        convert_to_polygon_tex(r'integer $N$ ($1 \le N \le 150$)')
+        == r'integer $N$ ($1 \le N \le 150$)'
+    )
+
+    # Display math
+    assert convert_to_polygon_tex(r'$$\sum_{i=1}^n a_i$$') == r'$$\sum_{i=1}^n a_i$$'
+
+    # Math with \ldots
+    latex = r'$N$ integers ${K_1}, {K_2}, \ldots, {K_N}$'
+    assert convert_to_polygon_tex(latex) == latex
+
+
+def test_validate_after_convert_with_dollar_math():
+    """Commands inside $...$ math should not be flagged after conversion."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    latex = r'integer $N$ ($1 \le N \le 150$) indicating the number of balls.'
+    converted = convert_to_polygon_tex(latex)
+    errors = validate_polygon_tex(converted)
+    assert len(errors) == 0
+
+    latex2 = r'contains $N$ integers ${K_1}, {K_2}, \ldots, {K_N}$($1 \le K_i \le 150$ for ${i}={1}, {2}, \ldots, {N}$)'
+    converted2 = convert_to_polygon_tex(latex2)
+    errors2 = validate_polygon_tex(converted2)
+    assert len(errors2) == 0
+
+
+def test_convert_ignore_macros():
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    # \newcommand should be stripped
+    assert (
+        convert_to_polygon_tex(r'\newcommand{\foo}{bar} Hello', ignore_macros=True)
+        == ' Hello'
+    )
+
+    # \renewcommand should be stripped
+    assert (
+        convert_to_polygon_tex(r'\renewcommand{\foo}{bar} World', ignore_macros=True)
+        == ' World'
+    )
+
+    # \def should be stripped
+    assert convert_to_polygon_tex(r'\def\foo{bar} Text', ignore_macros=True) == ' Text'
+
+    # Multiple macros stripped
+    latex = r'\newcommand{\a}{1}\renewcommand{\b}{2} Content'
+    assert convert_to_polygon_tex(latex, ignore_macros=True) == ' Content'
+
+    # Without ignore_macros, macros are preserved
+    assert r'\newcommand' in convert_to_polygon_tex(
+        r'\newcommand{\foo}{bar} Hello', ignore_macros=False
+    )
+
+    # Default is False
+    assert r'\newcommand' in convert_to_polygon_tex(r'\newcommand{\foo}{bar} Hello')
+
+
 @pytest.mark.parametrize(
     'input_tex, expected',
     [

@@ -1,4 +1,5 @@
 import pathlib
+import shutil
 import tempfile
 from typing import Callable, List, Optional, Tuple
 
@@ -6,6 +7,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import package
+from rbx.box.exception import RbxException
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.statements import demacro_utils, polygon_utils
 from rbx.box.statements.build_statements import get_statement_dir
@@ -40,6 +42,10 @@ def get_processed_statement_blocks(statement: Statement) -> StatementBlocks:
     macros_file = (
         get_statement_dir(statement, builder_name=TeX2PDFBuilder.name()) / 'macros.json'
     )
+    statement_dir = get_statement_dir(statement, builder_name='polygon')
+    shutil.rmtree(statement_dir, ignore_errors=True)
+    statement_dir.mkdir(parents=True, exist_ok=True)
+
     if not macros_file.is_file():
         return statement_blocks
 
@@ -67,16 +73,19 @@ def get_processed_statement_blocks(statement: Statement) -> StatementBlocks:
 
     # For last, try to convert to Polygon TeX.
     statement_blocks.blocks = {
-        block_name: polygon_utils.convert_to_polygon_tex(block_content)
+        block_name: polygon_utils.convert_to_polygon_tex(
+            block_content, ignore_macros=True
+        )
         for block_name, block_content in statement_blocks.blocks.items()
     }
     statement_blocks.explanations = {
-        explanation_index: polygon_utils.convert_to_polygon_tex(explanation)
+        explanation_index: polygon_utils.convert_to_polygon_tex(
+            explanation, ignore_macros=True
+        )
         for explanation_index, explanation in statement_blocks.explanations.items()
     }
 
     # Save polygon blocks for debugging.
-    statement_dir = get_statement_dir(statement, builder_name='polygon')
     for block_name, block_content in statement_blocks.blocks.items():
         (statement_dir / f'{block_name}.tex').write_text(block_content)
     for explanation_index, explanation in statement_blocks.explanations.items():
@@ -145,11 +154,20 @@ def process_statements(
 
 def validate_statements(main_language: Optional[str], upload_as_english: bool):
     def validate_statement(statement: Statement, language: str, uploaded_language: str):
+        console.console.print(
+            f'Validating statement [item]{statement.name}[/item] for language [item]{language}[/item]...'
+        )
         blocks = get_processed_statement_blocks(statement)
 
         errors: List[Tuple[str, List[polygon_utils.PolygonInvalidConstruct]]] = []
         for block_name, block_content in blocks.blocks.items():
-            block_errors = polygon_utils.validate_polygon_tex(block_content)
+            try:
+                block_errors = polygon_utils.validate_polygon_tex(block_content)
+            except RbxException as err:
+                err.print(
+                    f'[error]Failed to validate block [item]{block_name}[/item].[/error]'
+                )
+                raise err
             if block_errors:
                 errors.append((block_name, block_errors))
         for explanation_index, explanation in blocks.explanations.items():
