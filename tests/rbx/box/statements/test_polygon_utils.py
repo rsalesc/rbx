@@ -105,6 +105,39 @@ def test_recursion_on_invalid_command():
     assert r'\foo' in constructs
 
 
+def test_valid_brace_group():
+    """Raw {braces} are parsed as BraceGroup by TexSoup and should be allowed."""
+    # Simple brace group
+    assert validate_polygon_tex(r'{text inside braces}') == []
+    # Brace group with commands inside
+    assert validate_polygon_tex(r'{some \textbf{bold} text}') == []
+    # Nested brace groups
+    assert validate_polygon_tex(r'{{nested}}') == []
+    # Brace group inside command
+    assert validate_polygon_tex(r'\textbf{{nested braces}}') == []
+    # Brace group in context (common pattern in math-adjacent text)
+    assert validate_polygon_tex(r'the values ${K_1}, {K_2}$') == []
+    # Invalid command inside brace group should still be caught
+    errors = validate_polygon_tex(r'{\invalidcmd text}')
+    assert len(errors) == 1
+    assert errors[0].construct == r'\invalidcmd'
+
+
+def test_valid_escaped_special_chars():
+    r"""Escaped special chars like \%, \&, \# are Tokens in TexSoup, not commands."""
+    # All escaped specials should be accepted
+    assert validate_polygon_tex(r'100\% done') == []
+    assert validate_polygon_tex(r'A \& B') == []
+    assert validate_polygon_tex(r'item \#1') == []
+    assert validate_polygon_tex(r'file\_name') == []
+    assert validate_polygon_tex(r'\{ and \}') == []
+    # \$ (escaped dollar) — TexSoup workaround
+    assert validate_polygon_tex(r'costs \$5') == []
+    assert validate_polygon_tex(r'\$10 \& \$20') == []
+    # All together
+    assert validate_polygon_tex(r'\% \& \# \_ \{ \}') == []
+
+
 def test_parsing_error():
     # Unclosed environment causes TexSoup to raise an error
     latex = r'\begin{itemize} \item Unclosed'
@@ -135,6 +168,16 @@ def test_convert_to_polygon_tex_basic():
     # 4. Command Deduplication Check
     # Ensure \section{Body} doesn't become \section{Body}Body
     assert convert_to_polygon_tex(r'\section{Title}') == r'\section{Title}'
+
+
+def test_convert_preserves_escaped_dollar():
+    r"""Escaped \$ must survive the convert round-trip."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    assert convert_to_polygon_tex(r'costs \$5') == r'costs \$5'
+    assert convert_to_polygon_tex(r'\$10 \& \$20') == r'\$10 \& \$20'
+    # Mixed with real math
+    assert convert_to_polygon_tex(r'\$5 and $x+y$') == r'\$5 and $x+y$'
 
 
 def test_convert_preserves_dollar_sign_math():

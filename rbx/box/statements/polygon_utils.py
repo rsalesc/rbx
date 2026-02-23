@@ -4,7 +4,11 @@ from typing import List, NamedTuple, Optional, Set, Tuple
 from TexSoup.data import TexNode, Token
 
 from rbx.box.exception import RbxException
-from rbx.box.statements.texsoup_utils import parse_latex
+from rbx.box.statements.texsoup_utils import (
+    escape_for_texsoup,
+    parse_latex,
+    unescape_from_texsoup,
+)
 
 
 class PolygonInvalidConstruct(NamedTuple):
@@ -67,16 +71,11 @@ class PolygonTeXConfig:
                 # Misc
                 'epigraph',
                 'def',
-                # We also need to allow basic accents or symbols if they are commands?
-                # The manual mentions specific special chars escape sequences like \%, \$, etc.
-                # These often parse as commands or escaped chars in TexSoup.
-                '%',
-                '$',
-                '&',
-                '#',
-                '_',
-                '{',
-                '}',
+                # Note: Escaped special chars like \%, \$, \&, \#, \_, \{, \}
+                # are parsed by TexSoup as flat Token objects (not TexNode commands),
+                # so they don't need to be in allowed_commands.
+                # Raw {braces} are parsed as BraceGroup TexNodes, handled separately
+                # in the validator below.
             },
             allowed_environments={
                 'itemize',
@@ -164,8 +163,9 @@ def validate_polygon_tex(
 
     errors = []
 
-    # Use the existing parse_latex from texsoup_utils
-    # Note: TexSoup might fail on very broken latex, but we assume it's parseable enough.
+    # Work around TexSoup's inability to parse \$ (escaped dollar sign).
+    latex_code = escape_for_texsoup(latex_code)
+
     try:
         soup = parse_latex(latex_code)
     except Exception as e:
@@ -246,7 +246,12 @@ def validate_polygon_tex(
                 )
                 continue
 
-            # 2. Check Environments
+            # 2. Handle BraceGroup ({...} grouping) — always allowed, recurse.
+            if node_name == 'BraceGroup':
+                traverse(node)
+                continue
+
+            # 3. Check Environments
             # In TexSoup, environments usually have begin/end logic.
             # We can detect environments if it appears in `allowed_environments` or if it starts with 'begin' logic?
             # TexSoup abstracts 'begin{foo}' ... 'end{foo}' into a node named 'foo'.
@@ -318,6 +323,9 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
     4. Wraps font switch commands (like \it, \huge) in braces { \it ... }
        until a barrier (like \item or end of scope) is reached.
     """
+    # Work around TexSoup's inability to parse \$ (escaped dollar sign).
+    latex_code = escape_for_texsoup(latex_code)
+
     try:
         soup = parse_latex(latex_code)
     except Exception as e:
@@ -516,4 +524,4 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
 
         return ''.join(result)
 
-    return transform_nodes(soup.contents)
+    return unescape_from_texsoup(transform_nodes(soup.contents))

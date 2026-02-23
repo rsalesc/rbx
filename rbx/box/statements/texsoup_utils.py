@@ -5,6 +5,23 @@ from TexSoup.data import TexNode
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
 
+# TexSoup bug workaround: \$ is valid LaTeX (literal dollar sign) but TexSoup
+# interprets the $ as opening math mode and fails with EOFError.
+# We replace \$ with a 2-char private-use Unicode sentinel (preserving string
+# length so TexSoup position indices stay correct) before parsing, and restore
+# it after.
+_ESCAPED_DOLLAR_SENTINEL = '\ue000\ue001'
+
+
+def escape_for_texsoup(latex_code: str) -> str:
+    r"""Replace \$ with a sentinel that TexSoup can parse safely."""
+    return latex_code.replace(r'\$', _ESCAPED_DOLLAR_SENTINEL)
+
+
+def unescape_from_texsoup(text: str) -> str:
+    r"""Restore \$ from sentinels after TexSoup processing."""
+    return text.replace(_ESCAPED_DOLLAR_SENTINEL, r'\$')
+
 
 def parse_latex(latex_code: str) -> TexNode:
     return TexSoup(latex_code)
