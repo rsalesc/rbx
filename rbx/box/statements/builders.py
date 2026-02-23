@@ -4,7 +4,7 @@ import re
 import shutil
 import typing
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar
 
 import pypandoc
 import typer
@@ -67,8 +67,6 @@ class StatementBuilderItem(ABC):
     @abstractmethod
     def build_jinja_kwargs(
         self,
-        sample_explanations: Optional[Dict[int, str]] = None,
-        externalize: bool = False,
     ) -> Dict[str, Any]:
         pass
 
@@ -91,34 +89,14 @@ class ExplainedStatementSample(StatementSample):
     @staticmethod
     def from_statement_samples(
         statement_samples: List[StatementSample],
-        explanation_blocks: Optional[Dict[int, str]] = None,
-        externalize: bool = False,
     ) -> List['ExplainedStatementSample']:
         samples = [
             ExplainedStatementSample.from_statement_sample(
                 sample,
-                explanation_blocks.get(i) if explanation_blocks is not None else None,
             )
             for i, sample in enumerate(statement_samples)
         ]
-        if externalize:
-            samples = externalize_explained_samples(samples)
         return samples
-
-    @staticmethod
-    def samples_to_explanations(
-        samples: List[StatementSample],
-        explanation_blocks: Optional[Dict[int, str]] = None,
-        externalize: bool = False,
-    ) -> Dict[int, str]:
-        explained_samples = ExplainedStatementSample.from_statement_samples(
-            samples, explanation_blocks, externalize=externalize
-        )
-        return {
-            i: sample.explanation
-            for i, sample in enumerate(explained_samples)
-            if sample.explanation is not None
-        }
 
 
 @dataclasses.dataclass
@@ -136,17 +114,14 @@ class StatementBuilderProblem(StatementBuilderItem):
 
     def build_inner_jinja_kwargs(
         self,
-        sample_explanations: Optional[Dict[int, str]] = None,
-        externalize: bool = False,
     ) -> Dict[str, Any]:
-        sample_explanations = sample_explanations or {}
         kwargs = dict(JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'))
         kwargs.update(
             {
                 'package': self.package,
                 'statement': self.statement,
                 'samples': ExplainedStatementSample.from_statement_samples(
-                    self.samples, sample_explanations, externalize=externalize
+                    self.samples,
                 ),
                 'vars': JinjaDictWrapper.from_dict(self.vars or {}, wrapper_key='vars'),
                 'title': naming.get_problem_title(
@@ -163,12 +138,8 @@ class StatementBuilderProblem(StatementBuilderItem):
 
     def build_jinja_kwargs(
         self,
-        sample_explanations: Optional[Dict[int, str]] = None,
-        externalize: bool = False,
     ) -> Dict[str, Any]:
-        inner = self.build_inner_jinja_kwargs(
-            sample_explanations, externalize=externalize
-        )
+        inner = self.build_inner_jinja_kwargs()
         return {
             'problem': inner,
         }
@@ -195,8 +166,6 @@ class StatementBuilderContest(StatementBuilderItem):
 
     def build_jinja_kwargs(
         self,
-        sample_explanations: Optional[Dict[int, str]] = None,
-        externalize: bool = False,
     ) -> Dict[str, Any]:
         res = {
             'contest': self.build_inner_jinja_kwargs(),
@@ -281,12 +250,8 @@ def render_jinja_blocks(
 
 def _inject_explanations_back(
     statement_blocks: StatementBlocks,
-    samples: List[StatementSample],
-    externalize: bool = False,
+    explained_samples: List[ExplainedStatementSample],
 ):
-    explained_samples = ExplainedStatementSample.from_statement_samples(
-        samples, statement_blocks.explanations, externalize=externalize
-    )
     statement_blocks.explanations = {
         i: sample.explanation
         for i, sample in enumerate(explained_samples)
@@ -317,26 +282,47 @@ def get_rbxtex_blocks(
         )
     if externalize:
         statement_blocks.blocks = externalize_blocks(statement_blocks.blocks)
-    # Externalize samples separately.
-    item_kwargs = item.build_jinja_kwargs(
-        sample_explanations=statement_blocks.explanations,
-        externalize=externalize,
-    )
+
+    item_kwargs = item.build_jinja_kwargs()
     if isinstance(item, StatementBuilderProblem):
-        _inject_explanations_back(
-            statement_blocks, item.samples, externalize=externalize
-        )
+        # Build samples.
+        for i, sample in enumerate(item_kwargs['problem']['samples']):
+            if i in statement_blocks.explanations:
+                # Sample will come from a block, not from the file.
+                sample.explanation = statement_blocks.explanations[i]
+                continue
+            if sample.explanation is None:
+                # No explanation provided.
+                continue
+            # Render samples.
+            sample.explanation = render_jinja(
+                context.root,
+                sample.explanation.encode(),
+                mode=mode,
+                **item.build_inner_jinja_kwargs(),
+            ).decode()
+
+        # Externalize samples.
+        if externalize:
+            item_kwargs['problem']['samples'] = externalize_explained_samples(
+                item_kwargs['problem']['samples']
+            )
+
+        _inject_explanations_back(statement_blocks, item_kwargs['problem']['samples'])
         item_kwargs['problem']['blocks'] = statement_blocks.blocks
     elif isinstance(item, StatementBuilderContest):
         item_kwargs['contest']['blocks'] = statement_blocks.blocks
     return statement_blocks, item_kwargs
 
 
-def externalize_blocks(blocks: Dict[str, str]) -> Dict[str, str]:
+VarBlock = TypeVar('VarBlock')
+
+
+def externalize_blocks(blocks: Dict[VarBlock, str]) -> Dict[VarBlock, str]:
     res = {}
     for key in blocks:
         tex_node = texsoup_utils.parse_latex(blocks[key])
-        texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=key)
+        texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=str(key))
         res[key] = str(tex_node)
     return res
 

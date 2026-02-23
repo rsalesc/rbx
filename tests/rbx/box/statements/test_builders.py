@@ -197,24 +197,6 @@ class TestStatementBuilderProblem:
         assert kwargs['problem']['statement'] == sample_statement
         assert kwargs['problem']['limits'] == sample_limits
 
-    def test_build_jinja_kwargs_with_explanations(
-        self, sample_package, sample_statement, sample_limits, sample_samples
-    ):
-        """Test building jinja kwargs with sample explanations."""
-        problem = StatementBuilderProblem(
-            package=sample_package,
-            statement=sample_statement,
-            limits=sample_limits,
-            samples=sample_samples,
-        )
-
-        explanations = {0: 'Exp 0', 1: 'Exp 1'}
-        kwargs = problem.build_jinja_kwargs(sample_explanations=explanations)
-
-        samples = kwargs['problem']['samples']
-        assert samples[0].explanation == 'Exp 0'
-        assert samples[1].explanation == 'Exp 1'
-
 
 class TestStatementBuilderContest:
     """Test StatementBuilderContest functionality."""
@@ -462,10 +444,10 @@ Welcome to the contest.
         assert 'intro' in blocks.blocks
         assert kwargs['contest']['title'] == 'Test Contest'
 
-    def test_get_rbxtex_blocks_explanation_path_overrides_block(
+    def test_get_rbxtex_blocks_block_overrides_explanation_path(
         self, context, tmp_path
     ):
-        """Test that explanationPath on sample overrides the explanation block text."""
+        """Test that explanation block takes precedence over explanationPath on sample."""
         package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
         statement = Statement(
             name='statement', path=pathlib.Path('stmt.tex'), type=StatementType.JinjaTeX
@@ -501,11 +483,11 @@ Explanation from block.
 
         blocks, kwargs = get_rbxtex_blocks(content, context, problem)
 
-        # _inject_explanations_back should override the block text with the file text
-        assert blocks.explanations[0] == 'Explanation from file.'
+        # Block explanation should take precedence over file-based explanation
+        assert 'Explanation from block.' in blocks.explanations[0]
 
-        # kwargs samples should also use the file-based explanation
-        assert kwargs['problem']['samples'][0].explanation == 'Explanation from file.'
+        # kwargs samples should also use the block-based explanation
+        assert 'Explanation from block.' in kwargs['problem']['samples'][0].explanation
 
     def test_get_rbxtex_blocks_externalize(self, context, tmp_path):
         """Test get_rbxtex_blocks with externalize=True."""
@@ -1162,86 +1144,12 @@ class TestExplainedStatementSample:
                 )
             )
 
-        explanation_blocks = {0: 'Explanation 0', 2: 'Explanation 2'}
-        explained_samples = ExplainedStatementSample.from_statement_samples(
-            samples, explanation_blocks
-        )
+        explained_samples = ExplainedStatementSample.from_statement_samples(samples)
 
         assert len(explained_samples) == 3
-        assert explained_samples[0].explanation == 'Explanation 0'
+        assert explained_samples[0].explanation is None
         assert explained_samples[1].explanation is None
-        assert explained_samples[2].explanation == 'Explanation 2'
-
-    def test_samples_to_explanations(self, tmp_path):
-        """Test converting samples to explanations dictionary."""
-        samples = []
-        for i in range(4):
-            input_file = tmp_path / f'test{i}.in'
-            output_file = tmp_path / f'test{i}.out'
-            input_file.write_text(f'input {i}')
-            output_file.write_text(f'output {i}')
-
-            # Create explanation file for even indices
-            if i % 2 == 0:
-                explanation_file = tmp_path / f'test{i}.tex'
-                explanation_file.write_text(f'File explanation {i}')
-                samples.append(
-                    StatementSample(
-                        entry=create_dummy_entry(),
-                        inputPath=input_file,
-                        outputPath=output_file,
-                        explanationPath=explanation_file,
-                    )
-                )
-            else:
-                samples.append(
-                    StatementSample(
-                        entry=create_dummy_entry(),
-                        inputPath=input_file,
-                        outputPath=output_file,
-                    )
-                )
-
-        # Add explanation blocks for odd indices
-        explanation_blocks = {1: 'Block explanation 1', 3: 'Block explanation 3'}
-        explanations = ExplainedStatementSample.samples_to_explanations(
-            samples, explanation_blocks
-        )
-
-        assert len(explanations) == 4
-        assert explanations[0] == 'File explanation 0'
-        assert explanations[1] == 'Block explanation 1'
-        assert explanations[2] == 'File explanation 2'
-        assert explanations[3] == 'Block explanation 3'
-
-    def test_samples_to_explanations_with_missing_explanations(self, tmp_path):
-        """Test samples_to_explanations with some missing explanations."""
-        samples = []
-        for i in range(3):
-            input_file = tmp_path / f'test{i}.in'
-            output_file = tmp_path / f'test{i}.out'
-            input_file.write_text(f'input {i}')
-            output_file.write_text(f'output {i}')
-            samples.append(
-                StatementSample(
-                    entry=create_dummy_entry(),
-                    inputPath=input_file,
-                    outputPath=output_file,
-                )
-            )
-
-        # Only provide explanation for index 1
-        explanation_blocks = {1: 'Explanation 1'}
-        explanations = ExplainedStatementSample.samples_to_explanations(
-            samples, explanation_blocks
-        )
-
-        # Only index 1 should be in the result
-        assert len(explanations) == 1
-        assert 1 in explanations
-        assert explanations[1] == 'Explanation 1'
-        assert 0 not in explanations
-        assert 2 not in explanations
+        assert explained_samples[2].explanation is None
 
 
 class TestIntegration:
