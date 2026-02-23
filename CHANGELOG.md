@@ -1,3 +1,9 @@
+## 0.28.1 (2026-02-23)
+
+### Fix
+
+- handle BraceGroup and escaped dollar in polygon TeX validation
+
 ## 0.28.0 (2026-02-23)
 
 ### Feat
