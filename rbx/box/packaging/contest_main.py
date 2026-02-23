@@ -44,6 +44,8 @@ async def run_contest_packager(
             package_path = await run_packager(
                 packager_cls, verification=verification, **kwargs
             )
+            if package_path is None:
+                continue
             built_packages.append(
                 BuiltProblemPackage(
                     path=problem.get_path() / package_path,

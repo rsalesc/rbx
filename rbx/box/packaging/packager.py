@@ -203,8 +203,10 @@ def get_packager_extra_mergeable_params(
 async def run_packager(
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
+    samples_only: bool = False,
+    skip_packaging: bool = False,
     **kwargs,
-) -> pathlib.Path:
+) -> Optional[pathlib.Path]:
     from rbx.box import builder
 
     header.generate_header()
@@ -215,7 +217,9 @@ async def run_packager(
         )
 
     with limits_info.use_profile(packager_cls.name()):
-        if not await builder.verify(verification=verification):
+        if not await builder.verify(
+            verification=verification, groups=set(['samples']) if samples_only else None
+        ):
             console.console.print(
                 '[error]Build or verification failed, check the report.[/error]'
             )
@@ -263,6 +267,8 @@ async def run_packager(
                 ]
             )
 
+    if skip_packaging:
+        return None
     console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
     with (
         tempfile.TemporaryDirectory() as td,

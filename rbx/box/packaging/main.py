@@ -52,8 +52,14 @@ async def polygon(
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
+    should_build = not upload and not validate_statement
+
     await run_packager(
-        PolygonPackager, verification=verification, main_language=language
+        PolygonPackager,
+        verification=verification,
+        samples_only=not should_build,
+        skip_packaging=not should_build,
+        main_language=language,
     )
 
     if validate_statement:
@@ -97,6 +103,8 @@ async def boca(
     result_path = await run_packager(
         BocaPackager, verification=verification, language=language
     )
+    if result_path is None:
+        return
 
     if upload:
         from rbx.box.tooling.boca.scraper import get_boca_scraper

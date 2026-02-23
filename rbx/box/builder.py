@@ -122,8 +122,10 @@ async def build(
     return True
 
 
-async def verify(verification: environment.VerificationParam) -> bool:
-    if not await build(verification=verification):
+async def verify(
+    verification: environment.VerificationParam, groups: Optional[Set[str]] = None
+) -> bool:
+    if not await build(verification=verification, groups=groups):
         return False
 
     if verification < VerificationLevel.FAST_SOLUTIONS.value:
