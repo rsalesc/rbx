@@ -144,7 +144,7 @@ def escape_markup(s: str) -> str:
     return rich.markup.escape(s, _escape=re.compile(r'(\\*)(\[)').sub)
 
 
-ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+ANSI_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
 
 
 def strip_ansi_codes(text: str) -> str:

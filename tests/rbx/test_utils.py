@@ -1031,6 +1031,41 @@ class TestStripAnsiCodes:
         result = strip_ansi_codes(text)
         assert result == 'Orange Background'
 
+    def test_strip_ansi_codes_non_sgr_sequences(self):
+        """Test that strip_ansi_codes removes non-SGR CSI sequences like erase line."""
+        from rbx.utils import strip_ansi_codes
+
+        # GCC emits \x1b[K (erase to end of line) in warning output
+        text = '\x1b[01m\x1b[KJA.cpp\x1b[m\x1b[K:\x1b[01;31m\x1b[Kwarning\x1b[m\x1b[K'
+        result = strip_ansi_codes(text)
+        assert result == 'JA.cpp:warning'
+
+    def test_strip_ansi_codes_gcc_warning_line(self):
+        """Test that strip_ansi_codes handles a full GCC warning line with ANSI codes."""
+        from rbx.utils import strip_ansi_codes
+
+        text = (
+            '\x1b[01m\x1b[KJA.cpp:38:14:\x1b[m\x1b[K'
+            ' \x1b[01;35m\x1b[Kwarning:\x1b[m\x1b[K'
+            " declaration of '\x1b[01m\x1b[Klong long int i\x1b[m\x1b[K'"
+            ' shadows a parameter [\x1b[01;35m\x1b[K-Wshadow\x1b[m\x1b[K]'
+        )
+        result = strip_ansi_codes(text)
+        assert result == (
+            'JA.cpp:38:14: warning:'
+            " declaration of 'long long int i'"
+            ' shadows a parameter [-Wshadow]'
+        )
+
+    def test_strip_ansi_codes_cursor_movement_sequences(self):
+        """Test that strip_ansi_codes removes cursor movement sequences."""
+        from rbx.utils import strip_ansi_codes
+
+        # Cursor up (\x1b[A), cursor forward (\x1b[C), erase display (\x1b[2J)
+        text = '\x1b[2Jhello\x1b[3Aworld\x1b[5C!'
+        result = strip_ansi_codes(text)
+        assert result == 'helloworld!'
+
 
 class TestNormalizeWithUnderscores:
     """Tests for normalize_with_underscores function."""
