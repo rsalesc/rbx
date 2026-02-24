@@ -1,6 +1,5 @@
 import pathlib
 import shutil
-import subprocess
 from typing import Annotated, Optional
 
 import rich.prompt
@@ -20,6 +19,7 @@ from rbx.box.contest.contest_package import (
 from rbx.box.contest.schema import ContestProblem
 from rbx.box.packaging import contest_main as packaging
 from rbx.box.schema import Package
+from rbx.box.ui.command_app import CommandEntry, start_command_app
 from rbx.config import open_editor
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -225,26 +225,17 @@ def remove(path_or_short_name: str):
 )
 @within_contest
 def each(ctx: typer.Context) -> None:
-    command = ' '.join(['rbx'] + ctx.args)
+    argv = ['rbx'] + ctx.args
     contest = find_contest_package_or_die()
-    ok = True
-    for problem in contest.problems:
-        console.console.print(
-            f'[status]Running [item]{command}[/item] for [item]{problem.short_name}[/item]...[/status]'
+    commands = [
+        CommandEntry(
+            argv=argv,
+            name=f'{problem.short_name}',
+            cwd=str(problem.get_path()),
         )
-
-        retcode = subprocess.call(
-            command,
-            cwd=problem.get_path(),
-            shell=True,
-        )
-        ok = ok and retcode == 0
-        console.console.print()
-
-    if not ok:
-        console.console.print(
-            '[error]One of the commands above failed. Check the output![/error]'
-        )
+        for problem in contest.problems
+    ]
+    start_command_app(commands)
 
 
 @app.command(
@@ -254,7 +245,7 @@ def each(ctx: typer.Context) -> None:
 )
 @within_contest
 def on(ctx: typer.Context, problems: str) -> None:
-    command = ' '.join(['rbx'] + ctx.args)
+    argv = ['rbx'] + ctx.args
     problems_of_interest = contest_utils.get_problems_of_interest(problems)
 
     if not problems_of_interest:
@@ -263,12 +254,15 @@ def on(ctx: typer.Context, problems: str) -> None:
         )
         raise typer.Exit(1)
 
-    for p in problems_of_interest:
-        console.console.print(
-            f'[status]Running [item]{command}[/item] for [item]{p.short_name}[/item]...[/status]'
+    commands = [
+        CommandEntry(
+            argv=argv,
+            name=f'{p.short_name}',
+            cwd=str(p.get_path()),
         )
-        subprocess.call(command, cwd=p.get_path(), shell=True)
-        console.console.print()
+        for p in problems_of_interest
+    ]
+    start_command_app(commands)
 
 
 @app.command(
