@@ -1,3 +1,11 @@
+## 0.28.2 (2026-02-24)
+
+### Fix
+
+- ensure hash duplication warnings point to metadata
+- add flag to compile all assets
+- ensure warnings are parsed correctly after ansi code stripping
+
 ## 0.28.1 (2026-02-23)
 
 ### Fix
