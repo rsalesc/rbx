@@ -166,7 +166,7 @@ async def _check_sample(checker_digest: str, sample: StatementSample) -> bool:
     if result.outcome != Outcome.ACCEPTED:
         output_relpath = utils.relcwd(sample.outputPath)
         console.console.print(
-            f'[error]Custom output for test [item]{sample.entry.group_entry}[/item] failed checker.[/error]'
+            f'[error]Custom output for test [item]{sample.entry}[/item] failed checker.[/error]'
         )
         console.console.print(f'[error]Path: [item]{output_relpath}[/item][/error]')
         console.console.print(f'[error]Message:[/error] {result.message}')

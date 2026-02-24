@@ -453,8 +453,8 @@ async def generate_testcases(
                 if tests_with_same_digest:
                     ref_entry = tests_with_same_digest[0]
                     console.console.print(
-                        f'[warning]Test [item]{entry.group_entry}[/item] '
-                        f'is a hash duplicate of [item]{ref_entry.group_entry}[/item].'
+                        f'[warning]Test [item]{entry}[/item] '
+                        f'is a hash duplicate of [item]{ref_entry}[/item].'
                     )
                 tests_with_same_digest.append(entry)
             step()

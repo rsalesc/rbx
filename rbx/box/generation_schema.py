@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Union
 import typer
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box.schema import CodeItem, GeneratorCall, Solution, Testcase, Visualizer
 from rbx.box.testcase_utils import TestcaseEntry
 
@@ -50,6 +50,13 @@ class GenerationInput(BaseModel):
 class GenerationMetadata(GenerationInput):
     copied_to: Testcase
 
+    def __str__(self) -> str:
+        if self.generator_call is not None:
+            return utils.escape_markup(str(self.generator_call))
+        elif self.copied_from is not None:
+            return f'{self.copied_from.inputPath}'
+        return ''
+
 
 class GenerationTestcaseEntry(BaseModel):
     group_entry: TestcaseEntry
@@ -66,6 +73,13 @@ class GenerationTestcaseEntry(BaseModel):
 
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'
+
+    def __str__(self) -> str:
+        result = f'{self.group_entry}'
+        metadata_str = str(self.metadata)
+        if metadata_str:
+            result += f' ({metadata_str})'
+        return result
 
 
 def get_parsed_entry(spec: str) -> TestcaseOrScriptEntry:

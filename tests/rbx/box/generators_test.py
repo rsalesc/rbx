@@ -510,7 +510,10 @@ gens/gen.cpp 2
     from rbx.utils import strip_ansi_codes
 
     out = strip_ansi_codes(capsys.readouterr().out)
-    assert 'Test main/1 is a hash duplicate of main/0.' in out
+    assert (
+        'Test main/1 (gens/gen.cpp 2) is a hash duplicate of main/0 (gens/gen.cpp 1).'
+        in out
+    )
 
 
 async def test_generator_no_hash_duplicate_warning(
