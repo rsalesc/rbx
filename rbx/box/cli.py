@@ -1026,8 +1026,14 @@ async def compile_command(
         '-w',
         help='Whether to compile the asset with warnings enabled.',
     ),
+    all: bool = typer.Option(
+        False,
+        '--all',
+        '-a',
+        help='Whether to compile all assets.',
+    ),
 ):
-    if path is None:
+    if path is None and not all:
         import questionary
 
         path = await questionary.path("What's the path to your asset?").ask_async()
@@ -1035,7 +1041,18 @@ async def compile_command(
             console.console.print('[error]No path specified.[/error]')
             raise typer.Exit(1)
 
-    compile.any(path, sanitized, warnings)
+    if all:
+        for solution in package.get_solutions():
+            compile.any(str(solution.path), sanitized, warnings)
+        if package.get_checker() is not None:
+            compile.any(str(package.get_checker().path), sanitized, warnings)
+        if package.get_validator() is not None:
+            compile.any(str(package.get_validator().path), sanitized, warnings)
+        if package.get_interactor() is not None:
+            compile.any(str(package.get_interactor().path), sanitized, warnings)
+
+    if path is not None:
+        compile.any(path, sanitized, warnings)
 
 
 @app.command(
