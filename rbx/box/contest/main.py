@@ -227,10 +227,11 @@ def remove(path_or_short_name: str):
 @within_contest
 def each(ctx: typer.Context) -> None:
     contest = find_contest_package_or_die()
+    argv, placeholder_prefix = contest_utils.build_command_argv(ctx.args)
     commands = [
         CommandEntry(
-            argv=ctx.args,
-            prefix='rbx',
+            argv=argv,
+            placeholder_prefix=placeholder_prefix,
             name=f'{problem.short_name}',
             cwd=str(problem.get_path()),
         )
@@ -255,16 +256,18 @@ def on(ctx: typer.Context, problems: str) -> None:
         raise typer.Exit(1)
 
     if len(problems_of_interest) == 1:
+        command = ' '.join(['rbx'] + ctx.args)
         console.console.print(
-            f'[status]Running command in problem [item]{problems_of_interest[0].short_name}[/item]...[/status]'
+            f'[status]Running [item]{command}[/item] for [item]{problems_of_interest[0].short_name}[/item]...[/status]'
         )
-        subprocess.run(ctx.args, cwd=problems_of_interest[0].get_path(), shell=True)
+        subprocess.call(command, cwd=problems_of_interest[0].get_path(), shell=True)
         return
 
+    argv, placeholder_prefix = contest_utils.build_command_argv(ctx.args)
     commands = [
         CommandEntry(
-            argv=ctx.args,
-            prefix='rbx',
+            argv=argv,
+            placeholder_prefix=placeholder_prefix,
             name=f'{p.short_name}',
             cwd=str(p.get_path()),
         )

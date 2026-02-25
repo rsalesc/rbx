@@ -41,6 +41,7 @@ class CommandEntry:
     name: Optional[str] = None
     cwd: Optional[str] = None
     prefix: Optional[str] = None
+    placeholder_prefix: Optional[str] = None
 
     @property
     def display_name(self) -> str:
@@ -267,7 +268,10 @@ class rbxCommandApp(rbxBaseApp):
             prefix_label.display = False
 
     def _get_input_placeholder(self, tab_index: int) -> str:
-        return 'Enter command...'
+        tab = self._tabs[tab_index]
+        if tab.entry.placeholder_prefix is not None:
+            return f'{tab.entry.placeholder_prefix} <command>'
+        return 'Type a command and press Enter...'
 
     def _refresh_select(self):
         select = self.query_one('#command-select', Select)
