@@ -585,4 +585,10 @@ def start_command_app(commands: List[CommandEntry], parallel: bool = False) -> N
 
 
 if __name__ == '__main__':
-    start_command_app([CommandEntry(argv=['ls', '-l'])])
+    start_command_app(
+        [
+            CommandEntry(argv=['echo', 'hello'], name='echo1'),
+            CommandEntry(argv=['echo', 'world'], name='echo2'),
+            CommandEntry(argv=['echo', 'foo'], name='echo3'),
+        ]
+    )

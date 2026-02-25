@@ -105,6 +105,8 @@ class Menu(ListView, can_focus=True):
         self.extend(MenuOption(item.description, item.key) for item in self._options)
 
     async def _activate_index(self, index: int) -> None:
+        if self._dismissed or index < 0 or index >= len(self._options):
+            return
         action = self._options[index].action
         self.post_message(self.Selected(self, action))
 
