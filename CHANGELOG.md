@@ -1,3 +1,9 @@
+## 0.29.1 (2026-02-25)
+
+### Fix
+
+- add placeholder as prefix in input box
+
 ## 0.29.0 (2026-02-25)
 
 ### Feat
