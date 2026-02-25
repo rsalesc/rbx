@@ -1,5 +1,6 @@
 import pathlib
 import shutil
+import subprocess
 from typing import Annotated, Optional
 
 import rich.prompt
@@ -252,6 +253,13 @@ def on(ctx: typer.Context, problems: str) -> None:
             f'[error]No problems found in contest matching [item]{problems}[/item].[/error]'
         )
         raise typer.Exit(1)
+
+    if len(problems_of_interest) == 1:
+        console.console.print(
+            f'[status]Running command in problem [item]{problems_of_interest[0].short_name}[/item]...[/status]'
+        )
+        subprocess.run(ctx.args, cwd=problems_of_interest[0].get_path(), shell=True)
+        return
 
     commands = [
         CommandEntry(

@@ -113,6 +113,7 @@ quote-style = "single"
 [tool.ruff.lint]
 # On top of the defaults (`E4`, E7`, `E9`, and `F`), enable flake8-bugbear (`B`) and flake8-quotes (`Q`).
 select = ["E4", "E7", "E9", "F", "B", "I", "TID", "SLF"]
+ignore = ["B905"]
 
 [tool.ruff.lint.isort]
 known-third-party = ["agents"]
