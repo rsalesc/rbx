@@ -4,6 +4,7 @@ import enum
 import shlex
 from typing import List, Optional, Tuple
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
@@ -11,6 +12,8 @@ from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Se
 
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
+from rbx.box.ui.screens.tab_selector import TabSelectorModal
+from rbx.box.ui.widgets.menu import Menu, MenuItem
 
 
 class CommandStatus(enum.Enum):
@@ -183,7 +186,6 @@ class rbxCommandApp(rbxBaseApp):
     """
     BINDINGS = [
         ('q', 'quit', 'Quit'),
-        ('ctrl+o', 'submit_all', 'Run in all tabs'),
     ]
 
     def __init__(self, commands: List[CommandEntry], parallel: bool = False):
@@ -193,6 +195,7 @@ class rbxCommandApp(rbxBaseApp):
         self._tabs: List[TabState] = []
         self._active_tab: int = 0
         self._sequential_event: Optional[asyncio.Event] = None
+        self._pending_command: Optional[str] = None
 
         # Initialize tab states and add initial sub-commands.
         for i, cmd in enumerate(commands):
@@ -490,6 +493,11 @@ class rbxCommandApp(rbxBaseApp):
             select.value = len(active_tab.sub_commands) - 1
             self._show_pane(active_tab.sub_commands[-1].pane_id)
 
+    def _dismiss_menu(self) -> None:
+        self._pending_command = None
+        for menu in self.query(Menu):
+            menu.remove()
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != 'command-input':
             return
@@ -497,15 +505,78 @@ class rbxCommandApp(rbxBaseApp):
         if not raw:
             return
         event.input.value = ''
-        self._submit_command(raw)
 
-    def action_submit_all(self) -> None:
-        input_widget = self.query_one('#command-input', Input)
-        raw = input_widget.value.strip()
-        if not raw:
+        # Dismiss any existing menu first.
+        self._dismiss_menu()
+
+        self._pending_command = raw
+        menu = Menu(
+            [
+                MenuItem('Run in this tab', 'run_this_tab', '1'),
+                MenuItem('Run in all tabs', 'run_all_tabs', '2'),
+                MenuItem('Run in selected tabs', 'run_selected_tabs', '3'),
+            ],
+        )
+        input_container = self.query_one('#command-input-container', Horizontal)
+        input_container.mount(menu)
+        menu.focus()
+
+    @on(Menu.Selected)
+    def _on_menu_selected(self, event: Menu.Selected) -> None:
+        event.stop()
+        raw = self._pending_command
+        self._pending_command = None
+        event.menu.remove()
+
+        if raw is None:
             return
-        input_widget.value = ''
-        self._submit_command_all(raw)
+
+        if event.action == 'run_this_tab':
+            self._submit_command(raw)
+        elif event.action == 'run_all_tabs':
+            self._submit_command_all(raw)
+        elif event.action == 'run_selected_tabs':
+            tab_names = [tab.entry.display_name for tab in self._tabs]
+            self.push_screen(
+                TabSelectorModal(tab_names),
+                callback=lambda indices: self._on_tabs_selected(raw, indices),
+            )
+
+    @on(Menu.Dismissed)
+    def _on_menu_dismissed(self, event: Menu.Dismissed) -> None:
+        event.stop()
+        raw = self._pending_command
+        self._pending_command = None
+        event.menu.remove()
+
+        # Restore command text to input.
+        input_widget = self.query_one('#command-input', Input)
+        if raw is not None:
+            input_widget.value = raw
+        input_widget.focus()
+
+    def _on_tabs_selected(self, raw: str, indices: Optional[List[int]]) -> None:
+        if indices is None or not indices:
+            return
+        self._submit_command_selected(raw, indices)
+
+    def _submit_command_selected(self, raw_input: str, tab_indices: List[int]) -> None:
+        for i in tab_indices:
+            if i < 0 or i >= len(self._tabs):
+                continue
+            tab = self._tabs[i]
+            sub = self._queue_command_in_tab(i, raw_input)
+            if sub.status == CommandStatus.PENDING:
+                self.notify(f'Command queued in {tab.entry.display_name}')
+
+        # Switch to the active tab's latest sub-command if it was selected.
+        if self._active_tab in tab_indices:
+            active_tab = self._tabs[self._active_tab]
+            self._refresh_select()
+            select = self.query_one('#command-select', Select)
+            if active_tab.sub_commands:
+                select.value = len(active_tab.sub_commands) - 1
+                self._show_pane(active_tab.sub_commands[-1].pane_id)
 
 
 def start_command_app(commands: List[CommandEntry], parallel: bool = False) -> None:
