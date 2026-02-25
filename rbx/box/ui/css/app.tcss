@@ -131,3 +131,18 @@ TestExplorerScreen, RunTestExplorerScreen {
         height: auto;
         text-align: center;
 }
+
+#tab-selector-dialog {
+        max-width: 60;
+        height: auto;
+        max-height: 20;
+}
+
+#tab-selector-buttons {
+        height: auto;
+        width: 100%;
+}
+
+#tab-selector-buttons Button {
+        width: 1fr;
+}
