@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 from time import monotonic
-from typing import Awaitable, Callable, Iterable
+from typing import TYPE_CHECKING, Awaitable, Callable, Iterable, Sequence
 
+from textual import events, on
 from textual.cache import LRUCache
-
-from textual import on
-from textual import events
+from textual.filter import ANSIToTruecolor
+from textual.geometry import Region, Size
 from textual.message import Message
 from textual.reactive import reactive
-from textual.selection import Selection
-from textual.style import Style
-from textual.geometry import Region, Size
 from textual.scroll_view import ScrollView
+from textual.selection import Selection
 from textual.strip import Strip
+from textual.style import Style
 from textual.timer import Timer
 
 from rbx.box.ui._vendor.toad import ansi
+
+if TYPE_CHECKING:
+    from textual.filter import LineFilter
 
 
 # Time required to double tab escape
@@ -139,6 +140,14 @@ Tap escape *twice* to exit.
     @property
     def alternate_screen(self) -> bool:
         return self._alternate_screen
+
+    def get_line_filters(self) -> Sequence[LineFilter]:
+        """Skip ANSI-to-truecolor conversion so terminal colors pass through."""
+        return [
+            f
+            for f in self.app.get_line_filters()
+            if not isinstance(f, ANSIToTruecolor)
+        ]
 
     def notify_style_update(self) -> None:
         """Clear cache when theme chages."""
