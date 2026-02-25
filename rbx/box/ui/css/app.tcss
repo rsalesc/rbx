@@ -138,11 +138,10 @@ TestExplorerScreen, RunTestExplorerScreen {
         max-height: 20;
 }
 
-#tab-selector-buttons {
+#tab-selector-hints {
         height: auto;
         width: 100%;
-}
-
-#tab-selector-buttons Button {
-        width: 1fr;
+        text-align: center;
+        color: $text 60%;
+        padding: 0 1;
 }

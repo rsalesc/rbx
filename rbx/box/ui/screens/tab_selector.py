@@ -1,15 +1,16 @@
 from typing import List, Optional
 
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container
 from textual.screen import ModalScreen
-from textual.widgets import Button, SelectionList
+from textual.widgets import Label, SelectionList
 from textual.widgets.selection_list import Selection
 
 
 class TabSelectorModal(ModalScreen[Optional[List[int]]]):
     BINDINGS = [
         ('escape', 'cancel', 'Cancel'),
+        ('enter', 'confirm', 'Confirm'),
         ('a', 'select_all', 'Select all'),
         ('n', 'deselect_all', 'Deselect all'),
     ]
@@ -29,24 +30,21 @@ class TabSelectorModal(ModalScreen[Optional[List[int]]]):
             )
             selection_list.border_title = 'Select tabs'
             yield selection_list
-            with Horizontal(id='tab-selector-buttons'):
-                yield Button('Run', variant='primary', id='tab-selector-run')
-                yield Button('Cancel', id='tab-selector-cancel')
+            yield Label(
+                '[b]enter[/b] confirm  [b]esc[/b] cancel  '
+                '[b]a[/b] select all  [b]n[/b] deselect all',
+                id='tab-selector-hints',
+            )
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+    def action_confirm(self) -> None:
+        selected = list(self.query_one('#tab-selector-list', SelectionList).selected)
+        self.dismiss(selected)
 
     def action_select_all(self) -> None:
         self.query_one('#tab-selector-list', SelectionList).select_all()
 
     def action_deselect_all(self) -> None:
         self.query_one('#tab-selector-list', SelectionList).deselect_all()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == 'tab-selector-run':
-            selected = list(
-                self.query_one('#tab-selector-list', SelectionList).selected
-            )
-            self.dismiss(selected)
-        elif event.button.id == 'tab-selector-cancel':
-            self.dismiss(None)
