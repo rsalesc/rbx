@@ -1,3 +1,20 @@
+## 0.29.0 (2026-02-25)
+
+### Feat
+
+- **ui**: add tabbed command queuing and input box to command app
+- create command app
+
+### Fix
+
+- make rbx on run in non-ui mode when only a single problem of interest
+- **ui**: enforce sequential execution for user-initiated commands in command app
+- **ui**: add border to CommandPane in command app
+
+### Refactor
+
+- **ui**: replace LogDisplay with vendored Toad CommandPane
+
 ## 0.28.2 (2026-02-24)
 
 ### Fix
