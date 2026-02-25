@@ -165,8 +165,19 @@ class rbxCommandApp(rbxBaseApp):
         border: solid $accent;
         padding: 0 1;
     }
-    #command-input {
+    #command-input-container {
         dock: bottom;
+        height: auto;
+    }
+    #command-input-prefix {
+        width: auto;
+        height: 3;
+        content-align: left middle;
+        padding: 0 1;
+        color: $accent;
+    }
+    #command-input {
+        width: 1fr;
     }
     """
     BINDINGS = [
@@ -210,10 +221,15 @@ class rbxCommandApp(rbxBaseApp):
                     allow_blank=False,
                 )
                 yield Vertical(id='command-pane-container')
-                yield Input(
-                    id='command-input',
-                    placeholder=self._get_input_placeholder(0),
-                )
+                with Horizontal(id='command-input-container'):
+                    yield Label(
+                        self._get_input_prefix_text(0),
+                        id='command-input-prefix',
+                    )
+                    yield Input(
+                        id='command-input',
+                        placeholder=self._get_input_placeholder(0),
+                    )
 
     def _make_tab_label(self, index: int) -> str:
         tab = self._tabs[index]
@@ -234,10 +250,23 @@ class rbxCommandApp(rbxBaseApp):
             options.append((f'{icon} {sub.name}', i))
         return options
 
-    def _get_input_placeholder(self, tab_index: int) -> str:
+    def _get_input_prefix_text(self, tab_index: int) -> str:
         tab = self._tabs[tab_index]
         if tab.entry.prefix is not None:
-            return f'{tab.entry.prefix} ...'
+            return tab.entry.prefix
+        return ''
+
+    def _update_input_prefix(self, tab_index: int):
+        prefix_label = self.query_one('#command-input-prefix', Label)
+        tab = self._tabs[tab_index]
+        if tab.entry.prefix is not None:
+            prefix_label.update(tab.entry.prefix)
+            prefix_label.display = True
+        else:
+            prefix_label.update('')
+            prefix_label.display = False
+
+    def _get_input_placeholder(self, tab_index: int) -> str:
         return 'Enter command...'
 
     def _refresh_select(self):
@@ -314,7 +343,8 @@ class rbxCommandApp(rbxBaseApp):
             for child in container.query(CommandPane):
                 child.display = False
 
-        # Update input placeholder.
+        # Update input prefix and placeholder.
+        self._update_input_prefix(index)
         input_widget = self.query_one('#command-input', Input)
         input_widget.placeholder = self._get_input_placeholder(index)
 
@@ -406,7 +436,12 @@ class rbxCommandApp(rbxBaseApp):
     def _queue_command_in_tab(self, tab_index: int, raw_command: str) -> SubCommand:
         tab = self._tabs[tab_index]
         was_idle = tab.is_idle
-        sub = tab.add_sub_command_raw(name=raw_command, raw_command=raw_command)
+        display_name = (
+            f'{tab.entry.prefix} {raw_command}'
+            if tab.entry.prefix is not None
+            else raw_command
+        )
+        sub = tab.add_sub_command_raw(name=display_name, raw_command=raw_command)
 
         # Mount the new pane.
         container = self.query_one('#command-pane-container', Vertical)
