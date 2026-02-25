@@ -521,8 +521,8 @@ class rbxCommandApp(rbxBaseApp):
         input_container.mount(menu)
         menu.focus()
 
-    @on(Menu.Selected)
-    def _on_menu_selected(self, event: Menu.Selected) -> None:
+    @on(Menu.OptionSelected)
+    def _on_menu_selected(self, event: Menu.OptionSelected) -> None:
         event.stop()
         raw = self._pending_command
         self._pending_command = None

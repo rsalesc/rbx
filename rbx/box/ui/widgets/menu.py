@@ -88,7 +88,7 @@ class Menu(ListView, can_focus=True):
     """
 
     @dataclass
-    class Selected(Message):
+    class OptionSelected(Message):
         menu: Menu
         action: str
 
@@ -108,7 +108,7 @@ class Menu(ListView, can_focus=True):
         if self._dismissed or index < 0 or index >= len(self._options):
             return
         action = self._options[index].action
-        self.post_message(self.Selected(self, action))
+        self.post_message(self.OptionSelected(self, action))
 
     def _dismiss(self) -> None:
         if self._dismissed:
