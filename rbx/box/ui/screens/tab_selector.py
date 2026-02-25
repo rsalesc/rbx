@@ -10,7 +10,7 @@ from textual.widgets.selection_list import Selection
 class TabSelectorModal(ModalScreen[Optional[List[int]]]):
     BINDINGS = [
         ('escape', 'cancel', 'Cancel'),
-        ('enter', 'confirm', 'Confirm'),
+        ('c', 'confirm', 'Confirm'),
         ('a', 'select_all', 'Select all'),
         ('n', 'deselect_all', 'Deselect all'),
     ]
@@ -31,7 +31,7 @@ class TabSelectorModal(ModalScreen[Optional[List[int]]]):
             selection_list.border_title = 'Select tabs'
             yield selection_list
             yield Label(
-                '[b]enter[/b] confirm  [b]esc[/b] cancel  '
+                '[b]c[/b] confirm  [b]esc[/b] cancel  '
                 '[b]a[/b] select all  [b]n[/b] deselect all',
                 id='tab-selector-hints',
             )
