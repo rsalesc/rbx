@@ -325,6 +325,12 @@ class rbxCommandApp(rbxBaseApp):
         if pane_id is not None:
             self._show_pane(pane_id)
 
+    def _any_tab_running(self) -> bool:
+        return any(
+            any(s.status == CommandStatus.RUNNING for s in tab.sub_commands)
+            for tab in self._tabs
+        )
+
     def _start_next_in_tab(self, tab_index: int):
         tab = self._tabs[tab_index]
         next_idx = tab.next_pending()
@@ -337,6 +343,19 @@ class rbxCommandApp(rbxBaseApp):
 
         pane = self.query_one(f'#{sub.pane_id}', CommandPane)
         pane.execute(sub.shell_command)
+
+    def _start_next_sequentially(self, priority_tab: int):
+        """Start next pending command globally, prioritizing the given tab."""
+        tab = self._tabs[priority_tab]
+        if tab.next_pending() is not None:
+            self._start_next_in_tab(priority_tab)
+            return
+        for i in range(len(self._tabs)):
+            if i == priority_tab:
+                continue
+            if self._tabs[i].next_pending() is not None:
+                self._start_next_in_tab(i)
+                return
 
     def _refresh_select_if_active(self, tab_index: int):
         if tab_index == self._active_tab:
@@ -367,12 +386,14 @@ class rbxCommandApp(rbxBaseApp):
                 self._update_sidebar(tab_index)
                 self._refresh_select_if_active(tab_index)
 
-                # Start next pending sub-command in this tab.
-                self._start_next_in_tab(tab_index)
-
-                # Signal sequential runner if applicable.
-                if not self.parallel and self._sequential_event is not None:
-                    self._sequential_event.set()
+                if self.parallel:
+                    # In parallel mode, start next in same tab.
+                    self._start_next_in_tab(tab_index)
+                else:
+                    # In sequential mode, start next pending globally.
+                    self._start_next_sequentially(tab_index)
+                    if self._sequential_event is not None:
+                        self._sequential_event.set()
                 return
 
     async def _run_initial_sequential(self):
@@ -397,8 +418,9 @@ class rbxCommandApp(rbxBaseApp):
         self._update_sidebar(tab_index)
         self._refresh_select_if_active(tab_index)
 
-        # If the tab was idle before we added, start immediately.
-        if was_idle:
+        # If the tab was idle before we added, start immediately
+        # (but in sequential mode, only if no other tab is running).
+        if was_idle and (self.parallel or not self._any_tab_running()):
             self._start_next_in_tab(tab_index)
         return sub
 
