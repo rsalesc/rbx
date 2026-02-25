@@ -6,10 +6,9 @@ from typing import List, Optional
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.geometry import Size
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
-from rbx.box.ui.captured_log import LogDisplay
+from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 
 
@@ -38,17 +37,12 @@ class CommandEntry:
     def display_name(self) -> str:
         return self.name if self.name else ' '.join(self.argv)
 
-
-class _SizeSafeLogDisplay(LogDisplay):
-    """LogDisplay that handles capture when the widget is hidden (zero size)."""
-
-    def _resize(self):
-        if self.size.width <= 2:
-            width = 80
-            self.virtual_size = Size(width=width, height=self.virtual_size.height)
-            self._screen.resize(self._max_lines, width)
-            return
-        super()._resize()
+    @property
+    def shell_command(self) -> str:
+        cmd = shlex.join(self.argv)
+        if self.cwd is not None:
+            cmd = f'cd {shlex.quote(self.cwd)} && exec {cmd}'
+        return cmd
 
 
 class rbxCommandApp(rbxBaseApp):
@@ -70,7 +64,7 @@ class rbxCommandApp(rbxBaseApp):
         height: 1fr;
         width: 1fr;
     }
-    #command-display-container LogDisplay {
+    #command-display-container CommandPane {
         height: 1fr;
     }
     """
@@ -99,7 +93,7 @@ class rbxCommandApp(rbxBaseApp):
                 )
             with Vertical(id='command-display-container'):
                 for i in range(len(self.commands)):
-                    yield _SizeSafeLogDisplay(id=f'cmd-display-{i}')
+                    yield CommandPane(id=f'cmd-display-{i}')
 
     def _make_label(self, index: int) -> str:
         icon = _STATUS_MARKUP[self._statuses[index]]
@@ -113,16 +107,14 @@ class rbxCommandApp(rbxBaseApp):
 
     def _show_display(self, index: int):
         for i in range(len(self.commands)):
-            self.query_one(f'#cmd-display-{i}', _SizeSafeLogDisplay).display = (
-                i == index
-            )
+            self.query_one(f'#cmd-display-{i}', CommandPane).display = i == index
 
     def on_mount(self):
         self.query_one('#command-list', ListView).border_title = 'Commands'
 
         for i, cmd in enumerate(self.commands):
-            display = self.query_one(f'#cmd-display-{i}', _SizeSafeLogDisplay)
-            display.border_title = cmd.display_name
+            pane = self.query_one(f'#cmd-display-{i}', CommandPane)
+            pane.border_title = cmd.display_name
 
         self._show_display(0)
 
@@ -134,7 +126,7 @@ class rbxCommandApp(rbxBaseApp):
 
         if self.parallel:
             for i in range(len(self.commands)):
-                asyncio.create_task(self._run_command(i))
+                self._start_command(i)
         else:
             asyncio.create_task(self._run_sequential())
 
@@ -143,33 +135,40 @@ class rbxCommandApp(rbxBaseApp):
             return
         self._show_display(index)
 
-    async def _run_command(self, index: int):
+    def _start_command(self, index: int):
         self._statuses[index] = CommandStatus.RUNNING
         self._update_sidebar(index)
 
-        display = self.query_one(f'#cmd-display-{index}', _SizeSafeLogDisplay)
-        cmd = self.commands[index]
-        argv = cmd.argv
-        if cmd.cwd is not None:
-            argv = [
-                'sh',
-                '-c',
-                f'cd {shlex.quote(cmd.cwd)} && exec {shlex.join(cmd.argv)}',
-            ]
-        exitcode = await display.capture(argv)
+        pane = self.query_one(f'#cmd-display-{index}', CommandPane)
+        pane.execute(self.commands[index].shell_command)
 
-        if exitcode == 0:
-            self._statuses[index] = CommandStatus.SUCCESS
-            display.border_subtitle = 'Done'
-        else:
-            self._statuses[index] = CommandStatus.FAILED
-            display.border_subtitle = f'Exit code: {exitcode}'
+    def on_command_pane_command_complete(
+        self, _event: CommandPane.CommandComplete
+    ) -> None:
+        for i in range(len(self.commands)):
+            if self._statuses[i] != CommandStatus.RUNNING:
+                continue
+            pane = self.query_one(f'#cmd-display-{i}', CommandPane)
+            if pane.return_code is None:
+                continue
+            return_code = pane.return_code
+            if return_code == 0:
+                self._statuses[i] = CommandStatus.SUCCESS
+                pane.border_subtitle = 'Done'
+            else:
+                self._statuses[i] = CommandStatus.FAILED
+                pane.border_subtitle = f'Exit code: {return_code}'
+            self._update_sidebar(i)
 
-        self._update_sidebar(index)
+            if not self.parallel:
+                self._sequential_event.set()
 
     async def _run_sequential(self):
+        self._sequential_event = asyncio.Event()
         for i in range(len(self.commands)):
-            await self._run_command(i)
+            self._sequential_event.clear()
+            self._start_command(i)
+            await self._sequential_event.wait()
 
 
 def start_command_app(commands: List[CommandEntry], parallel: bool = False) -> None:

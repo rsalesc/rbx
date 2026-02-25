@@ -1,11 +1,11 @@
-import asyncio
+import shlex
 from typing import List
 
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
-from rbx.box.ui.captured_log import LogDisplay
+from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 
 
 class CommandScreen(Screen):
@@ -18,18 +18,18 @@ class CommandScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
-        yield LogDisplay()
+        yield CommandPane()
 
-    async def _run_command(self):
-        exitcode = await self.query_one(LogDisplay).capture(self.command)
-        if exitcode != 0:
-            self.query_one(LogDisplay).border_subtitle = f'Exit code: {exitcode}'
-            return
+    def on_mount(self):
+        pane = self.query_one(CommandPane)
+        pane.border_title = 'Command output'
+        pane.execute(shlex.join(self.command))
 
-        self.query_one(LogDisplay).border_subtitle = 'Finished'
-
-    async def on_mount(self):
-        self.query_one(LogDisplay).border_title = 'Command output'
-
-        # Fire and forget.
-        asyncio.create_task(self._run_command())
+    def on_command_pane_command_complete(
+        self, event: CommandPane.CommandComplete
+    ) -> None:
+        pane = self.query_one(CommandPane)
+        if event.return_code != 0:
+            pane.border_subtitle = f'Exit code: {event.return_code}'
+        else:
+            pane.border_subtitle = 'Finished'
