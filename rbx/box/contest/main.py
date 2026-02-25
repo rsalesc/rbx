@@ -225,11 +225,11 @@ def remove(path_or_short_name: str):
 )
 @within_contest
 def each(ctx: typer.Context) -> None:
-    argv = ['rbx'] + ctx.args
     contest = find_contest_package_or_die()
     commands = [
         CommandEntry(
-            argv=argv,
+            argv=ctx.args,
+            prefix='rbx',
             name=f'{problem.short_name}',
             cwd=str(problem.get_path()),
         )
@@ -245,7 +245,6 @@ def each(ctx: typer.Context) -> None:
 )
 @within_contest
 def on(ctx: typer.Context, problems: str) -> None:
-    argv = ['rbx'] + ctx.args
     problems_of_interest = contest_utils.get_problems_of_interest(problems)
 
     if not problems_of_interest:
@@ -256,7 +255,8 @@ def on(ctx: typer.Context, problems: str) -> None:
 
     commands = [
         CommandEntry(
-            argv=argv,
+            argv=ctx.args,
+            prefix='rbx',
             name=f'{p.short_name}',
             cwd=str(p.get_path()),
         )
