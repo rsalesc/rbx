@@ -66,6 +66,8 @@ class rbxCommandApp(rbxBaseApp):
     }
     #command-display-container CommandPane {
         height: 1fr;
+        border: solid $accent;
+        padding: 0 1;
     }
     """
     BINDINGS = [('q', 'quit', 'Quit')]
