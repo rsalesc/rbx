@@ -223,7 +223,7 @@ Tap escape *twice* to exit.
         self._height = height or 24
         self._width = max(self._width, self.minimum_terminal_width)
 
-        self.state.update_size(self._width, height)
+        self.state.update_size(self._width, self._height)
         self._terminal_render_cache.clear()
         self.refresh()
 

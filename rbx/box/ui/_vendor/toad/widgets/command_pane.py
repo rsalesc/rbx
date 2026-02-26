@@ -62,6 +62,8 @@ class CommandPane(Terminal):
         if self._master is None:
             return
         width, height = self.scrollable_content_region.size
+        if width <= 0 or height <= 0:
+            return
         try:
             size = struct.pack("HHHH", height, width, 0, 0)
             fcntl.ioctl(self._master, termios.TIOCSWINSZ, size)
