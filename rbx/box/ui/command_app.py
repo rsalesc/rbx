@@ -2,18 +2,153 @@ import asyncio
 import dataclasses
 import enum
 import shlex
+from time import monotonic
 from typing import List, Optional, Tuple
 
-from textual import on
+from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical
 from textual.css.query import NoMatches
+from textual.message import Message
+from textual.screen import ModalScreen
+from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select
 
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
 from rbx.box.ui.widgets.menu import Menu, MenuItem
+
+_ESCAPE_TAP_DURATION = 0.4
+
+
+class _AppCommandPane(CommandPane):
+    """CommandPane that redirects focus to sidebar on blur (double-escape)."""
+
+    def blur(self):
+        try:
+            sidebar = self.screen.query_one('#command-list', ListView)
+            self.screen.set_focus(sidebar)
+        except Exception:
+            super().blur()
+        return self
+
+    def on_blur(self) -> None:
+        self.border_subtitle = '[b]tab[/b] to focus'
+
+
+class ShellInput(Input):
+    """Input that captures Tab/Shift+Tab and supports double-Escape to exit."""
+
+    class Escaped(Message):
+        """Posted when the user double-taps Escape to exit the input."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._escaping = False
+        self._escape_time: float = 0.0
+        self._escape_timer = None
+
+    def _reset_escaping(self) -> None:
+        self._escaping = False
+
+    def on_focus(self) -> None:
+        self.border_subtitle = _INPUT_FOCUSED_SUBTITLE
+
+    def on_blur(self) -> None:
+        self.border_subtitle = _INPUT_BLURRED_SUBTITLE
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key in ('tab', 'shift+tab'):
+            event.stop()
+            event.prevent_default()
+            return
+        if event.key == 'escape':
+            event.stop()
+            event.prevent_default()
+            if (
+                self._escaping
+                and monotonic() < self._escape_time + _ESCAPE_TAP_DURATION
+            ):
+                self._escaping = False
+                if self._escape_timer is not None:
+                    self._escape_timer.stop()
+                self.post_message(self.Escaped())
+            else:
+                self._escaping = True
+                self._escape_time = monotonic()
+                if self._escape_timer is not None:
+                    self._escape_timer.stop()
+                self._escape_timer = self.set_timer(
+                    _ESCAPE_TAP_DURATION, self._reset_escaping
+                )
+
+
+_SIDEBAR_SUBTITLE = '[b]?[/b] help'
+_INPUT_FOCUSED_SUBTITLE = '[b]enter[/b] run  [b]esc\u00d72[/b] cancel'
+_INPUT_BLURRED_SUBTITLE = '[b]![/b] to focus'
+_SELECT_SUBTITLE = '[b]\u25c2\u25b8[/b] sub-cmd'
+
+
+class HelpModal(ModalScreen[None]):
+    BINDINGS = [
+        ('escape', 'app.pop_screen', 'Close'),
+        ('question_mark', 'app.pop_screen', 'Close'),
+    ]
+
+    DEFAULT_CSS = """
+    HelpModal {
+        align: center middle;
+    }
+    #help-dialog {
+        max-width: 60;
+        height: auto;
+        padding: 1 2;
+        border: solid $accent;
+        background: $surface;
+    }
+    #help-dialog Label {
+        width: 1fr;
+        margin-bottom: 1;
+    }
+    #help-title {
+        text-style: bold;
+        text-align: center;
+    }
+    #help-hints {
+        text-align: center;
+        color: $text 60%;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id='help-dialog'):
+            yield Label('Keyboard Shortcuts', id='help-title')
+            yield Label(
+                '[b]Sidebar (command list)[/b]\n'
+                '  [b]tab[/b]         Focus terminal\n'
+                '  [b]![/b]           Open shell input\n'
+                '  [b]\u2190 / \u2192[/b]       Previous / next sub-command\n'
+                '  [b]?[/b]           Show this help\n'
+                '  [b]q[/b]           Quit',
+                markup=True,
+            )
+            yield Label(
+                '[b]Terminal[/b]\n'
+                '  [b]esc\u00d72[/b]        Return to sidebar\n'
+                '  (all other keys go to the running process)',
+                markup=True,
+            )
+            yield Label(
+                '[b]Shell input[/b]\n'
+                '  [b]enter[/b]        Submit command\n'
+                '  [b]esc\u00d72[/b]        Cancel and return to sidebar',
+                markup=True,
+            )
+            yield Label(
+                '[b]esc[/b] or [b]?[/b] to close',
+                id='help-hints',
+            )
 
 
 class CommandStatus(enum.Enum):
@@ -152,6 +287,9 @@ class rbxCommandApp(rbxBaseApp):
     #command-list {
         width: 1fr;
     }
+    #command-list:focus {
+        border: solid dodgerblue;
+    }
     #command-display-area {
         height: 1fr;
         width: 1fr;
@@ -169,6 +307,9 @@ class rbxCommandApp(rbxBaseApp):
         border: solid $accent;
         padding: 0 1;
     }
+    #command-pane-container CommandPane:focus {
+        border: solid dodgerblue;
+    }
     #command-input-container {
         dock: bottom;
         height: auto;
@@ -182,6 +323,9 @@ class rbxCommandApp(rbxBaseApp):
     }
     #command-input {
         width: 1fr;
+    }
+    #command-input:focus {
+        border: tall dodgerblue;
     }
     """
     BINDINGS = [
@@ -230,7 +374,7 @@ class rbxCommandApp(rbxBaseApp):
                         self._get_input_prefix_text(0),
                         id='command-input-prefix',
                     )
-                    yield Input(
+                    yield ShellInput(
                         id='command-input',
                         placeholder=self._get_input_placeholder(0),
                     )
@@ -303,13 +447,18 @@ class rbxCommandApp(rbxBaseApp):
         return None
 
     def on_mount(self):
-        self.query_one('#command-list', ListView).border_title = 'Commands'
+        sidebar = self.query_one('#command-list', ListView)
+        sidebar.border_title = 'Commands'
+        sidebar.border_subtitle = _SIDEBAR_SUBTITLE
+
+        select = self.query_one('#command-select', Select)
+        select.border_subtitle = _SELECT_SUBTITLE
 
         # Mount initial CommandPanes.
         container = self.query_one('#command-pane-container', Vertical)
         for tab in self._tabs:
             for sub in tab.sub_commands:
-                pane = CommandPane(id=sub.pane_id)
+                pane = _AppCommandPane(id=sub.pane_id)
                 pane.border_title = sub.name
                 container.mount(pane)
 
@@ -321,6 +470,12 @@ class rbxCommandApp(rbxBaseApp):
             'index',
             self._on_tab_selected,
         )
+
+        # Redirect to sidebar when focus becomes None (e.g. modal dismiss).
+        self.watch(self.screen, 'focused', self._on_focused_changed)
+
+        # Initial focus on the sidebar.
+        self._focus_sidebar()
 
         # Start initial commands.
         if self.parallel:
@@ -354,6 +509,81 @@ class rbxCommandApp(rbxBaseApp):
         self._update_input_prefix(index)
         input_widget = self.query_one('#command-input', Input)
         input_widget.placeholder = self._get_input_placeholder(index)
+
+    def _focus_sidebar(self) -> None:
+        self.query_one('#command-list', ListView).focus()
+
+    def _focus_terminal(self) -> None:
+        pane_id = self._get_selected_pane_id()
+        if pane_id is not None:
+            try:
+                self.query_one(f'#{pane_id}', CommandPane).focus()
+            except NoMatches:
+                pass
+
+    def _select_prev_sub_command(self) -> None:
+        select = self.query_one('#command-select', Select)
+        if select.value is Select.BLANK:
+            return
+        current: int = select.value  # type: ignore[assignment]
+        if current > 0:
+            select.value = current - 1
+
+    def _select_next_sub_command(self) -> None:
+        select = self.query_one('#command-select', Select)
+        if select.value is Select.BLANK:
+            return
+        current: int = select.value  # type: ignore[assignment]
+        tab = self._tabs[self._active_tab]
+        if current < len(tab.sub_commands) - 1:
+            select.value = current + 1
+
+    def _on_focused_changed(self, focused: Optional[Widget]) -> None:
+        if focused is None:
+            self._focus_sidebar()
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.screen.focused
+        sidebar = self.query_one('#command-list', ListView)
+
+        # Tab / Shift+Tab: cycle between sidebar and terminal only.
+        if event.key in ('tab', 'shift+tab'):
+            event.stop()
+            event.prevent_default()
+            if not isinstance(focused, Menu):
+                if event.key == 'tab':
+                    self._focus_terminal()
+                else:
+                    self._focus_sidebar()
+            return
+
+        # The following shortcuts only apply when the sidebar is focused.
+        if focused is not sidebar:
+            return
+
+        if event.character == '!':
+            event.stop()
+            event.prevent_default()
+            self.query_one('#command-input', ShellInput).focus()
+            return
+
+        if event.key == 'left':
+            event.stop()
+            event.prevent_default()
+            self._select_prev_sub_command()
+            return
+
+        if event.key == 'right':
+            event.stop()
+            event.prevent_default()
+            self._select_next_sub_command()
+            return
+
+        if event.character == '?':
+            event.stop()
+            event.prevent_default()
+            self.push_screen(HelpModal())
+            return
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id != 'command-select':
@@ -452,7 +682,7 @@ class rbxCommandApp(rbxBaseApp):
 
         # Mount the new pane.
         container = self.query_one('#command-pane-container', Vertical)
-        pane = CommandPane(id=sub.pane_id)
+        pane = _AppCommandPane(id=sub.pane_id)
         pane.border_title = sub.name
         pane.display = False
         container.mount(pane)
@@ -529,12 +759,15 @@ class rbxCommandApp(rbxBaseApp):
         event.menu.remove()
 
         if raw is None:
+            self._focus_sidebar()
             return
 
         if event.action == 'run_this_tab':
             self._submit_command(raw)
+            self._focus_sidebar()
         elif event.action == 'run_all_tabs':
             self._submit_command_all(raw)
+            self._focus_sidebar()
         elif event.action == 'run_selected_tabs':
             tab_names = [tab.entry.display_name for tab in self._tabs]
             self.push_screen(
@@ -545,20 +778,25 @@ class rbxCommandApp(rbxBaseApp):
     @on(Menu.Dismissed)
     def _on_menu_dismissed(self, event: Menu.Dismissed) -> None:
         event.stop()
-        raw = self._pending_command
         self._pending_command = None
         event.menu.remove()
 
-        # Restore command text to input.
-        input_widget = self.query_one('#command-input', Input)
-        if raw is not None:
-            input_widget.value = raw
-        input_widget.focus()
+        # Clear input and return to sidebar.
+        self.query_one('#command-input', ShellInput).value = ''
+        self._focus_sidebar()
+
+    @on(ShellInput.Escaped)
+    def _on_shell_input_escaped(self, event: ShellInput.Escaped) -> None:
+        event.stop()
+        self.query_one('#command-input', ShellInput).value = ''
+        self._focus_sidebar()
 
     def _on_tabs_selected(self, raw: str, indices: Optional[List[int]]) -> None:
         if indices is None or not indices:
+            self._focus_sidebar()
             return
         self._submit_command_selected(raw, indices)
+        self._focus_sidebar()
 
     def _submit_command_selected(self, raw_input: str, tab_indices: List[int]) -> None:
         for i in tab_indices:
