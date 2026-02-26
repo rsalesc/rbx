@@ -91,3 +91,5 @@ class TaskQueue:
             self._on_task_ready(task)
 
             seen_pending.add(terminal)
+
+        self._queue = [t for t in self._queue if t.status != TaskStatus.COMPLETED]

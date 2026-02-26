@@ -1,4 +1,3 @@
-import asyncio
 import dataclasses
 import enum
 import shlex
@@ -17,6 +16,7 @@ from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Se
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
+from rbx.box.ui.task_queue import Task, TaskQueue
 from rbx.box.ui.widgets.menu import Menu, MenuItem
 
 _ESCAPE_TAP_DURATION = 0.4
@@ -206,6 +206,7 @@ class SubCommand:
     shell_command: str
     pane_id: str
     status: CommandStatus = CommandStatus.PENDING
+    task_id: Optional[int] = None
 
 
 class TabState:
@@ -273,6 +274,11 @@ class TabState:
 
 
 class rbxCommandApp(rbxBaseApp):
+    class TaskReady(Message):
+        def __init__(self, task: Task):
+            self.task = task
+            super().__init__()
+
     TITLE = 'rbx'
     CSS_PATH = 'css/app.tcss'
     DEFAULT_CSS = """
@@ -338,7 +344,11 @@ class rbxCommandApp(rbxBaseApp):
         self.parallel = parallel
         self._tabs: List[TabState] = []
         self._active_tab: int = 0
-        self._sequential_event: Optional[asyncio.Event] = None
+        self._task_queue = TaskQueue(
+            num_terminals=len(commands),
+            parallel=parallel,
+            on_task_ready=lambda t: self.post_message(self.TaskReady(t)),
+        )
         self._pending_command: Optional[str] = None
 
         # Initialize tab states and add initial sub-commands.
@@ -477,12 +487,24 @@ class rbxCommandApp(rbxBaseApp):
         # Initial focus on the sidebar.
         self._focus_sidebar()
 
-        # Start initial commands.
-        if self.parallel:
-            for i in range(len(self._tabs)):
-                self._start_next_in_tab(i)
-        else:
-            asyncio.create_task(self._run_initial_sequential())
+        # Enqueue initial commands.
+        for i, tab in enumerate(self._tabs):
+            for sub in tab.sub_commands:
+                task = self._task_queue.enqueue(sub.shell_command, terminal_id=i)
+                sub.task_id = task.task_id
+
+    def on_rbx_command_app_task_ready(self, event: TaskReady) -> None:
+        task = event.task
+        tab = self._tabs[task.terminal_id]
+        # Find the sub-command linked to this task.
+        sub = next((s for s in tab.sub_commands if s.task_id == task.task_id), None)
+        if sub is None:
+            return
+        sub.status = CommandStatus.RUNNING
+        self._update_sidebar(task.terminal_id)
+        self._refresh_select_if_active(task.terminal_id)
+        pane = self.query_one(f'#{sub.pane_id}', CommandPane)
+        pane.execute(task.command)
 
     def _on_tab_selected(self, index: Optional[int]):
         if index is None:
@@ -592,38 +614,6 @@ class rbxCommandApp(rbxBaseApp):
         if pane_id is not None:
             self._show_pane(pane_id)
 
-    def _any_tab_running(self) -> bool:
-        return any(
-            any(s.status == CommandStatus.RUNNING for s in tab.sub_commands)
-            for tab in self._tabs
-        )
-
-    def _start_next_in_tab(self, tab_index: int):
-        tab = self._tabs[tab_index]
-        next_idx = tab.next_pending()
-        if next_idx is None:
-            return
-        sub = tab.sub_commands[next_idx]
-        sub.status = CommandStatus.RUNNING
-        self._update_sidebar(tab_index)
-        self._refresh_select_if_active(tab_index)
-
-        pane = self.query_one(f'#{sub.pane_id}', CommandPane)
-        pane.execute(sub.shell_command)
-
-    def _start_next_sequentially(self, priority_tab: int):
-        """Start next pending command globally, prioritizing the given tab."""
-        tab = self._tabs[priority_tab]
-        if tab.next_pending() is not None:
-            self._start_next_in_tab(priority_tab)
-            return
-        for i in range(len(self._tabs)):
-            if i == priority_tab:
-                continue
-            if self._tabs[i].next_pending() is not None:
-                self._start_next_in_tab(i)
-                return
-
     def _refresh_select_if_active(self, tab_index: int):
         if tab_index == self._active_tab:
             self._refresh_select()
@@ -653,26 +643,12 @@ class rbxCommandApp(rbxBaseApp):
                 self._update_sidebar(tab_index)
                 self._refresh_select_if_active(tab_index)
 
-                if self.parallel:
-                    # In parallel mode, start next in same tab.
-                    self._start_next_in_tab(tab_index)
-                else:
-                    # In sequential mode, start next pending globally.
-                    self._start_next_sequentially(tab_index)
-                    if self._sequential_event is not None:
-                        self._sequential_event.set()
+                if sub.task_id is not None:
+                    self._task_queue.notify_complete(sub.task_id)
                 return
-
-    async def _run_initial_sequential(self):
-        self._sequential_event = asyncio.Event()
-        for i in range(len(self._tabs)):
-            self._sequential_event.clear()
-            self._start_next_in_tab(i)
-            await self._sequential_event.wait()
 
     def _queue_command_in_tab(self, tab_index: int, raw_command: str) -> SubCommand:
         tab = self._tabs[tab_index]
-        was_idle = tab.is_idle
         display_name = (
             f'{tab.entry.prefix} {raw_command}'
             if tab.entry.prefix is not None
@@ -690,10 +666,8 @@ class rbxCommandApp(rbxBaseApp):
         self._update_sidebar(tab_index)
         self._refresh_select_if_active(tab_index)
 
-        # If the tab was idle before we added, start immediately
-        # (but in sequential mode, only if no other tab is running).
-        if was_idle and (self.parallel or not self._any_tab_running()):
-            self._start_next_in_tab(tab_index)
+        task = self._task_queue.enqueue(sub.shell_command, terminal_id=tab_index)
+        sub.task_id = task.task_id
         return sub
 
     def _submit_command(self, raw_input: str):
