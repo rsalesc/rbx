@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 
 class TaskStatus(enum.Enum):
@@ -23,7 +23,7 @@ class TaskQueue:
         self,
         num_terminals: int,
         parallel: bool,
-        on_task_ready: Callable[[Task], None],
+        on_task_ready: Callable[[Task], Any],
     ):
         self._num_terminals = num_terminals
         self._parallel = parallel
@@ -31,6 +31,9 @@ class TaskQueue:
         self._queue: List[Task] = []
         self._next_id: int = 0
         self._terminal_running: List[bool] = [False] * num_terminals
+
+    def __len__(self) -> int:
+        return len(self._queue)
 
     def enqueue(
         self,

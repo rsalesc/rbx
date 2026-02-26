@@ -244,12 +244,6 @@ class TabState:
             for s in self.sub_commands
         )
 
-    def next_pending(self) -> Optional[int]:
-        for i, s in enumerate(self.sub_commands):
-            if s.status == CommandStatus.PENDING:
-                return i
-        return None
-
     @property
     def aggregate_status(self) -> CommandStatus:
         if not self.sub_commands:
