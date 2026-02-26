@@ -327,6 +327,7 @@ class rbxCommandApp(rbxBaseApp):
         height: 1fr;
         border: solid $accent;
         padding: 0 1;
+        scrollbar-size-vertical: 1;
     }
     #command-pane-container CommandPane:focus {
         border: solid dodgerblue;
