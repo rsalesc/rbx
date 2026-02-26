@@ -10,6 +10,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import ModalScreen
+from textual.selection import Selection
 from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select
 
@@ -35,6 +36,25 @@ class _AppCommandPane(CommandPane):
 
     def on_blur(self) -> None:
         self.border_subtitle = '[b]tab[/b] to focus'
+
+    def selection_updated(self, selection: Selection | None) -> None:
+        super().selection_updated(selection)
+        if self.has_focus and selection is not None:
+            self.border_subtitle = '[b]ctrl+y[/b] copy selection'
+        elif self.has_focus:
+            self.border_subtitle = 'Tap [b]esc[/b] [i]twice[/i] to exit'
+
+    async def on_key(self, event: events.Key) -> None:
+        if event.key == 'ctrl+y':
+            selected = self.screen.get_selected_text()
+            if selected:
+                self.app.copy_to_clipboard(selected)
+                self.screen.clear_selection()
+                self.border_subtitle = 'Tap [b]esc[/b] [i]twice[/i] to exit'
+                event.stop()
+                event.prevent_default()
+                return
+        await super().on_key(event)
 
 
 class ShellInput(Input):
@@ -136,6 +156,7 @@ class HelpModal(ModalScreen[None]):
             yield Label(
                 '[b]Terminal[/b]\n'
                 '  [b]esc\u00d72[/b]        Return to sidebar\n'
+                '  [b]ctrl+y[/b]      Copy selected text\n'
                 '  (all other keys go to the running process)',
                 markup=True,
             )
