@@ -78,6 +78,11 @@ class ShellInput(Input):
     def on_blur(self) -> None:
         self.border_subtitle = _INPUT_BLURRED_SUBTITLE
 
+    def _cancel_escape_timer(self) -> None:
+        if self._escape_timer is not None:
+            self._escape_timer.stop()
+            self._escape_timer = None
+
     def on_key(self, event: events.Key) -> None:
         if event.key in ('tab', 'shift+tab'):
             event.stop()
@@ -86,19 +91,16 @@ class ShellInput(Input):
         if event.key == 'escape':
             event.stop()
             event.prevent_default()
+            self._cancel_escape_timer()
             if (
                 self._escaping
                 and monotonic() < self._escape_time + _ESCAPE_TAP_DURATION
             ):
                 self._escaping = False
-                if self._escape_timer is not None:
-                    self._escape_timer.stop()
                 self.post_message(self.Escaped())
             else:
                 self._escaping = True
                 self._escape_time = monotonic()
-                if self._escape_timer is not None:
-                    self._escape_timer.stop()
                 self._escape_timer = self.set_timer(
                     _ESCAPE_TAP_DURATION, self._reset_escaping
                 )
@@ -269,22 +271,14 @@ class TabState:
     def aggregate_status(self) -> CommandStatus:
         if not self.sub_commands:
             return CommandStatus.PENDING
-        has_failed = False
-        has_running = False
-        has_pending = False
-        for s in self.sub_commands:
-            if s.status == CommandStatus.FAILED:
-                has_failed = True
-            elif s.status == CommandStatus.RUNNING:
-                has_running = True
-            elif s.status == CommandStatus.PENDING:
-                has_pending = True
-        if has_failed:
-            return CommandStatus.FAILED
-        if has_running:
-            return CommandStatus.RUNNING
-        if has_pending:
-            return CommandStatus.PENDING
+        statuses = {s.status for s in self.sub_commands}
+        for status in (
+            CommandStatus.FAILED,
+            CommandStatus.RUNNING,
+            CommandStatus.PENDING,
+        ):
+            if status in statuses:
+                return status
         return CommandStatus.SUCCESS
 
 
@@ -417,18 +411,13 @@ class rbxCommandApp(rbxBaseApp):
         label.update(self._make_tab_label(index))
 
     def _get_select_options(self, tab_index: int) -> List[Tuple[str, int]]:
-        tab = self._tabs[tab_index]
-        options = []
-        for i, sub in enumerate(tab.sub_commands):
-            icon = _STATUS_ICON[sub.status]
-            options.append((f'{icon} {sub.name}', i))
-        return options
+        return [
+            (f'{_STATUS_ICON[sub.status]} {sub.name}', i)
+            for i, sub in enumerate(self._tabs[tab_index].sub_commands)
+        ]
 
     def _get_input_prefix_text(self, tab_index: int) -> str:
-        tab = self._tabs[tab_index]
-        if tab.entry.prefix is not None:
-            return tab.entry.prefix
-        return ''
+        return self._tabs[tab_index].entry.prefix or ''
 
     def _update_input_prefix(self, tab_index: int):
         prefix_label = self.query_one('#command-input-prefix', Label)
@@ -637,7 +626,6 @@ class rbxCommandApp(rbxBaseApp):
     def on_command_pane_command_complete(
         self, _event: CommandPane.CommandComplete
     ) -> None:
-        # Find which sub-command completed.
         for tab_index, tab in enumerate(self._tabs):
             for sub in tab.sub_commands:
                 if sub.status != CommandStatus.RUNNING:
@@ -648,17 +636,16 @@ class rbxCommandApp(rbxBaseApp):
                     continue
                 if pane.return_code is None:
                     continue
-                return_code = pane.return_code
-                if return_code == 0:
+
+                if pane.return_code == 0:
                     sub.status = CommandStatus.SUCCESS
                     pane.border_subtitle = 'Done'
                 else:
                     sub.status = CommandStatus.FAILED
-                    pane.border_subtitle = f'Exit code: {return_code}'
+                    pane.border_subtitle = f'Exit code: {pane.return_code}'
 
                 self._update_sidebar(tab_index)
                 self._refresh_select_if_active(tab_index)
-
                 if sub.task_id is not None:
                     self._task_queue.notify_complete(sub.task_id)
                 return
@@ -686,32 +673,29 @@ class rbxCommandApp(rbxBaseApp):
         sub.task_id = task.task_id
         return sub
 
-    def _submit_command(self, raw_input: str):
+    def _show_latest_sub_command(self) -> None:
+        """Refresh the select widget and show the latest sub-command pane."""
         tab = self._tabs[self._active_tab]
-        sub = self._queue_command_in_tab(self._active_tab, raw_input)
-
-        # Switch to the newly added sub-command.
         self._refresh_select()
-        select = self.query_one('#command-select', Select)
-        select.value = len(tab.sub_commands) - 1
-        self._show_pane(sub.pane_id)
+        if tab.sub_commands:
+            select = self.query_one('#command-select', Select)
+            select.value = len(tab.sub_commands) - 1
+            self._show_pane(tab.sub_commands[-1].pane_id)
 
+    def _submit_command(self, raw_input: str):
+        sub = self._queue_command_in_tab(self._active_tab, raw_input)
+        self._show_latest_sub_command()
         if sub.status == CommandStatus.PENDING:
-            self.notify(f'Command queued in {tab.entry.display_name}')
+            self.notify(
+                f'Command queued in {self._tabs[self._active_tab].entry.display_name}'
+            )
 
     def _submit_command_all(self, raw_input: str):
         for i, tab in enumerate(self._tabs):
             sub = self._queue_command_in_tab(i, raw_input)
             if sub.status == CommandStatus.PENDING:
                 self.notify(f'Command queued in {tab.entry.display_name}')
-
-        # Switch to the active tab's latest sub-command.
-        active_tab = self._tabs[self._active_tab]
-        self._refresh_select()
-        select = self.query_one('#command-select', Select)
-        if active_tab.sub_commands:
-            select.value = len(active_tab.sub_commands) - 1
-            self._show_pane(active_tab.sub_commands[-1].pane_id)
+        self._show_latest_sub_command()
 
     def _dismiss_menu(self) -> None:
         self._pending_command = None
@@ -748,22 +732,20 @@ class rbxCommandApp(rbxBaseApp):
         self._pending_command = None
         event.menu.remove()
 
-        if raw is None:
-            self._focus_sidebar()
-            return
-
-        if event.action == 'run_this_tab':
-            self._submit_command(raw)
-            self._focus_sidebar()
-        elif event.action == 'run_all_tabs':
-            self._submit_command_all(raw)
-            self._focus_sidebar()
-        elif event.action == 'run_selected_tabs':
+        if raw is not None and event.action == 'run_selected_tabs':
             tab_names = [tab.entry.display_name for tab in self._tabs]
             self.push_screen(
                 TabSelectorModal(tab_names),
                 callback=lambda indices: self._on_tabs_selected(raw, indices),
             )
+            return
+
+        if raw is not None:
+            if event.action == 'run_this_tab':
+                self._submit_command(raw)
+            elif event.action == 'run_all_tabs':
+                self._submit_command_all(raw)
+        self._focus_sidebar()
 
     @on(Menu.Dismissed)
     def _on_menu_dismissed(self, event: Menu.Dismissed) -> None:
@@ -782,29 +764,18 @@ class rbxCommandApp(rbxBaseApp):
         self._focus_sidebar()
 
     def _on_tabs_selected(self, raw: str, indices: Optional[List[int]]) -> None:
-        if indices is None or not indices:
-            self._focus_sidebar()
-            return
-        self._submit_command_selected(raw, indices)
+        if indices:
+            self._submit_command_selected(raw, indices)
         self._focus_sidebar()
 
     def _submit_command_selected(self, raw_input: str, tab_indices: List[int]) -> None:
         for i in tab_indices:
-            if i < 0 or i >= len(self._tabs):
-                continue
-            tab = self._tabs[i]
-            sub = self._queue_command_in_tab(i, raw_input)
-            if sub.status == CommandStatus.PENDING:
-                self.notify(f'Command queued in {tab.entry.display_name}')
-
-        # Switch to the active tab's latest sub-command if it was selected.
+            if 0 <= i < len(self._tabs):
+                sub = self._queue_command_in_tab(i, raw_input)
+                if sub.status == CommandStatus.PENDING:
+                    self.notify(f'Command queued in {self._tabs[i].entry.display_name}')
         if self._active_tab in tab_indices:
-            active_tab = self._tabs[self._active_tab]
-            self._refresh_select()
-            select = self.query_one('#command-select', Select)
-            if active_tab.sub_commands:
-                select.value = len(active_tab.sub_commands) - 1
-                self._show_pane(active_tab.sub_commands[-1].pane_id)
+            self._show_latest_sub_command()
 
 
 def start_command_app(commands: List[CommandEntry], parallel: bool = False) -> None:
