@@ -319,6 +319,14 @@ class BocaPackager(BasePackager):
         extension = get_extension_or_default('boca', BocaExtension)
         pkg = package.find_problem_package_or_die()
         # Prepare limits
+        if 'boca' not in limits_info.get_available_profile_names():
+            console.console.print(
+                '[error]Required limits profile [item]boca[/item] not found.[/error]'
+            )
+            console.console.print(
+                '[error]Make sure to run [item]rbx time -p boca[/item] to create the limits profile.[/error]'
+            )
+            raise typer.Exit(1)
         limits_path = into_path / 'limits'
         limits_path.mkdir(parents=True, exist_ok=True)
         for language in extension.languages:
