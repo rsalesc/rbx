@@ -210,6 +210,20 @@ class VarWrapperUndefinedError(jinja2.UndefinedError):
         return {}
 
 
+class JinjaDictGetter(dict):
+    def __init__(self, name: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = name
+
+    def __getitem__(self, key: str) -> Any:
+        try:
+            return super().__getitem__(key)
+        except KeyError:
+            return StrictChainableUndefined(
+                hint=f'"{key}" was not found in "{self.name}"',
+            )
+
+
 class JinjaDictWrapper(dict):
     def __init__(
         self,

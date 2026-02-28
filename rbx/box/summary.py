@@ -190,7 +190,7 @@ async def print_problem_summary(
             console.console.print(mod_table)
 
         # 3. Other Profiles
-        profiles = limits_info.get_available_profiles()
+        profiles = limits_info.get_available_profile_names()
         for profile_name in profiles:
             p = limits_info.get_limits_profile(
                 profile_name, fallback_to_package_profile=False

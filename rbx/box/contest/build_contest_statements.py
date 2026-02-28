@@ -44,6 +44,7 @@ class ExtractedProblem:
     statement: Statement
     problem: ContestProblem
     limits: LimitsProfile
+    profiles: Dict[str, LimitsProfile]
     built_statement: Optional[pathlib.Path] = None
 
     def get_statement_path(self) -> pathlib.Path:
@@ -62,6 +63,7 @@ class ExtractedProblem:
         # TODO: maybe add samples back?
         return StatementBuilderProblem(
             limits=self.limits,
+            profiles=self.profiles,
             package=self.package,
             statement=self.statement,
             io_path=self.built_statement,
@@ -153,6 +155,9 @@ def get_problems_for_statement(
             raise typer.Exit(1)
         res.append(
             ExtractedProblem(
+                profiles=limits_info.get_available_limits_profiles(
+                    root=problem.get_path()
+                ),
                 limits=limits_info.get_limits_profile(
                     profile=limits_info.get_active_profile(), root=problem.get_path()
                 ),

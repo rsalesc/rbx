@@ -316,6 +316,7 @@ async def build_statement_bytes(
                 limits=limits_info.get_limits_profile(
                     profile=limits_info.get_active_profile()
                 ),
+                profiles=limits_info.get_available_limits_profiles(),
                 package=pkg,
                 statement=statement,
                 samples=samples,

@@ -1,6 +1,4 @@
 import asyncio
-import pathlib
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Optional, Set
 
@@ -9,7 +7,7 @@ import rich.progress
 import typer
 
 from rbx import console, utils
-from rbx.box import download, header, limits_info, naming, package
+from rbx.box import download, header, naming, package
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.statement_block_utils import (
     get_processed_statement_blocks,
@@ -27,12 +25,9 @@ from rbx.box.schema import (
 from rbx.box.solutions import get_best_interaction_file
 from rbx.box.statements.build_statements import get_produced_tikz_pdfs
 from rbx.box.statements.builders import (
-    StatementBlocks,
-    StatementBuilderProblem,
     StatementSample,
-    render_jinja_blocks,
 )
-from rbx.box.statements.schema import Statement, StatementType
+from rbx.box.statements.schema import Statement
 from rbx.box.statements.statement_utils import get_relative_assets
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_sample_utils import get_statement_samples
@@ -371,36 +366,6 @@ def _upload_solutions(problem: api.Problem):
                 futures.append(executor.submit(delete_solution, solution))
         for future in futures:
             future.result()
-
-
-def _get_statement_for_language(language: str) -> Optional[Statement]:
-    pkg = package.find_problem_package_or_die()
-    for statement in pkg.expanded_statements:
-        if statement.language == language:
-            return statement
-    return None
-
-
-def _get_statement_blocks(statement: Statement) -> StatementBlocks:
-    # TODO: actually try to convert to rbxTeX
-    assert statement.type == StatementType.rbxTeX
-    pkg = package.find_problem_package_or_die()
-    # TODO: pull this from a library, too hacky at the moment
-    builder_problem = StatementBuilderProblem(
-        limits=limits_info.get_limits_profile(profile='polygon'),
-        package=pkg,
-        statement=statement,
-        vars={
-            **pkg.expanded_vars,
-            **statement.expanded_vars,
-        },
-    )
-    with tempfile.TemporaryDirectory() as temp_dir:
-        return render_jinja_blocks(
-            pathlib.Path(temp_dir),
-            statement.path.read_bytes(),
-            **builder_problem.build_inner_jinja_kwargs(),
-        )
 
 
 def _get_explanations(explanations: Dict[int, str]) -> str:

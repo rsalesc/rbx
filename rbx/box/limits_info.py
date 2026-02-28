@@ -1,6 +1,6 @@
 import contextvars
 import pathlib
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 import typer
 
@@ -143,7 +143,7 @@ def get_limits_profile(
     return _expand_limits_profile(saved_profile, root=root)
 
 
-def get_available_profiles(root: pathlib.Path = pathlib.Path()) -> list[str]:
+def get_available_profile_names(root: pathlib.Path = pathlib.Path()) -> list[str]:
     limits_dir = package.get_limits_dir(root)
     if not limits_dir.is_dir():
         return []
@@ -154,6 +154,13 @@ def get_available_profiles(root: pathlib.Path = pathlib.Path()) -> list[str]:
             profiles.append(path.stem)
 
     return sorted(profiles)
+
+
+def get_available_limits_profiles(
+    root: pathlib.Path = pathlib.Path(),
+) -> Dict[str, LimitsProfile]:
+    profiles = get_available_profile_names(root)
+    return {name: get_limits_profile(name, root=root) for name in profiles}
 
 
 def get_limits(

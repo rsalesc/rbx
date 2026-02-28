@@ -17,6 +17,7 @@ from rbx.box.schema import LimitsProfile, Package
 from rbx.box.statements import texsoup_utils
 from rbx.box.statements.demacro_utils import collect_macro_definitions
 from rbx.box.statements.latex_jinja import (
+    JinjaDictGetter,
     JinjaDictWrapper,
     render_latex_template,
     render_latex_template_blocks,
@@ -104,6 +105,7 @@ class StatementBuilderProblem(StatementBuilderItem):
     package: Package
     statement: Statement
     limits: LimitsProfile
+    profiles: Dict[str, LimitsProfile] = dataclasses.field(default_factory=dict)
     samples: List[StatementSample] = dataclasses.field(default_factory=list)
     short_name: Optional[str] = None
 
@@ -128,6 +130,7 @@ class StatementBuilderProblem(StatementBuilderItem):
                     self.statement.language, self.statement, self.package
                 ),
                 'limits': self.limits,
+                'profiles': JinjaDictGetter('profiles', **self.profiles),
             }
         )
         if self.short_name is not None:
