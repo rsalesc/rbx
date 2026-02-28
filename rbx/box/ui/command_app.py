@@ -364,7 +364,8 @@ class rbxCommandApp(rbxBaseApp):
         # Initialize tab states and add initial sub-commands.
         for i, cmd in enumerate(commands):
             tab = TabState(entry=cmd, tab_index=i)
-            tab.add_sub_command(name=' '.join(cmd.argv), argv=cmd.argv)
+            if cmd.argv:
+                tab.add_sub_command(name=' '.join(cmd.argv), argv=cmd.argv)
             self._tabs.append(tab)
 
     def compose(self) -> ComposeResult:
@@ -384,7 +385,7 @@ class rbxCommandApp(rbxBaseApp):
                 )
             with Vertical(id='command-display-area'):
                 yield Select[int](
-                    self._get_select_options(0),
+                    self._get_select_options(0) or [('—', -1)],
                     id='command-select',
                     allow_blank=False,
                 )
@@ -439,7 +440,7 @@ class rbxCommandApp(rbxBaseApp):
         select = self.query_one('#command-select', Select)
         options = self._get_select_options(self._active_tab)
         current_value = select.value
-        select.set_options(options)
+        select.set_options(options or [('—', -1)])
         # Try to preserve selection; if it no longer exists, select last.
         if any(v == current_value for _, v in options):
             select.value = current_value

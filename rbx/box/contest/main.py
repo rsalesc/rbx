@@ -227,7 +227,10 @@ def remove(path_or_short_name: str):
 @within_contest
 def each(ctx: typer.Context) -> None:
     contest = find_contest_package_or_die()
-    argv, placeholder_prefix = contest_utils.build_command_argv(ctx.args)
+    if ctx.args:
+        argv, placeholder_prefix = contest_utils.build_command_argv(ctx.args)
+    else:
+        argv, placeholder_prefix = [], 'rbx'
     commands = [
         CommandEntry(
             argv=argv,
