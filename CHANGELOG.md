@@ -1,3 +1,34 @@
+## 0.30.0 (2026-02-28)
+
+### Feat
+
+- **ui**: add limits profile editor screen
+- pass profiles to statements
+- **ui**: enable vertical scrollbar on command terminal pane
+- **ui**: add ctrl+y copy shortcut for terminal text selection
+- **ui**: add TaskQueue class for command scheduling
+- **ui**: improve command app keyboard navigation and focus management
+- **ui**: wire context menu into command input submission
+- **ui**: add TabSelectorModal screen for selecting tabs
+- **ui**: add Menu floating overlay widget
+
+### Fix
+
+- ensure boca profile is required in boca packager
+- **ui**: prevent terminal state corruption when command pane is hidden
+- ensure task queue in command app can handle different tasks with different exclusiveity modes efficiently
+- **ui**: use 'c' instead of enter for tab selector confirmation
+- **ui**: rename Menu.Selected to OptionSelected to avoid shadowing ListView.Selected
+- **ui**: add bounds/dismissed guards to menu and update test __main__
+- ensure terminal colors are nice
+
+### Refactor
+
+- **summary**: extract testable pure functions and fix bugs
+- **ui**: simplify command_app.py
+- **ui**: integrate TaskQueue into rbxCommandApp
+- **ui**: replace buttons with keyboard shortcuts in TabSelectorModal
+
 ## 0.29.2 (2026-02-25)
 
 ### Fix
