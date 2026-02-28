@@ -125,6 +125,14 @@ TestExplorerScreen, RunTestExplorerScreen {
         height: auto;
 }
 
+#confirm-discard-dialog {
+        max-width: 50;
+        height: auto;
+        border: solid $accent;
+        padding: 1 2;
+        background: $background;
+}
+
 #run-tips {
         border: solid $accent;
         padding: 0 1;
@@ -144,4 +152,44 @@ TestExplorerScreen, RunTestExplorerScreen {
         text-align: center;
         color: $text 60%;
         padding: 0 1;
+}
+
+LimitsEditorScreen {
+        #limits-sidebar {
+                min-width: 20;
+                max-width: 30;
+                height: 1fr;
+        }
+        #limits-profile-list {
+                width: 1fr;
+        }
+        #limits-detail {
+                height: 1fr;
+                padding: 1 2;
+        }
+        Switch {
+                height: auto;
+                margin-bottom: 1;
+        }
+        #limits-detail Input {
+                margin-bottom: 1;
+        }
+        #limits-detail Static {
+                height: auto;
+        }
+        #limits-detail Rule {
+                margin: 1 0;
+        }
+        #limits-title {
+                margin-bottom: 1;
+        }
+        #save-btn {
+                margin-top: 1;
+        }
+        #limits-detail Button {
+                margin-top: 1;
+        }
+        #add-lang-btn {
+                background: $background;
+        }
 }
