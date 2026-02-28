@@ -1,6 +1,7 @@
 import pathlib
-from typing import List, Optional
+from typing import Dict, List, Optional
 
+from pydantic import BaseModel
 from rich.panel import Panel
 from rich.table import Table
 
@@ -8,35 +9,64 @@ from rbx import console
 from rbx.box import cd, package, testcase_extractors
 from rbx.box.contest.schema import Contest
 from rbx.box.formatting import get_formatted_memory, get_formatted_time
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import ExpectedOutcome, Package, Solution, TaskType
 
+# --- Data models ---
 
-async def _count_testcases_details(package: Package) -> tuple[int, int]:
-    try:
-        entries = await testcase_extractors.extract_generation_testcases_from_groups()
-    except Exception:
-        # Fallback or strict error?
-        # If extraction fails (e.g. generator script error), we might want to return 0/0 or raise.
-        # Given this is a summary, maybe returning 0 with a warning log is better,
-        # but let's assume it works or propagation of error is acceptable.
-        raise
 
+class TestcaseCounts(BaseModel):
+    samples: int
+    hidden: int
+
+
+class ProblemFlags(BaseModel):
+    is_interactive: bool
+    has_validator: bool
+    has_custom_checker: bool
+
+
+class ProblemSummary(BaseModel):
+    name: str
+    short_name: Optional[str] = None
+    time_limit_ms: int
+    memory_limit_mb: int
+    output_limit_kb: int
+    testcase_counts: TestcaseCounts
+    flags: ProblemFlags
+    interactor_display: Optional[str] = None
+    checker_display: Optional[str] = None
+    validator_display: Optional[str] = None
+    solutions: List[Solution]
+    solution_counts: Dict[ExpectedOutcome, int]
+
+
+class ContestProblemSummary(BaseModel):
+    short_name: str
+    name: str
+    time_limit_ms: int
+    memory_limit_mb: int
+    testcase_counts: TestcaseCounts
+    flags: ProblemFlags
+    solution_counts_bucketed: Dict[ExpectedOutcome, int]
+    total_solutions: int
+
+
+# --- Pure functions ---
+
+
+def count_testcases(entries: List[GenerationTestcaseEntry]) -> TestcaseCounts:
     samples = 0
     hidden = 0
     for entry in entries:
-        if entry.group_entry.group == 'samples':
+        if entry.is_sample():
             samples += 1
         else:
             hidden += 1
-    return samples, hidden
+    return TestcaseCounts(samples=samples, hidden=hidden)
 
 
-async def _count_testcases_str(package: Package) -> str:
-    samples, hidden = await _count_testcases_details(package)
-    return f'{samples} samples, {hidden} hidden tests'
-
-
-def _get_outcome_bucket(outcome: ExpectedOutcome) -> ExpectedOutcome:
+def get_outcome_bucket(outcome: ExpectedOutcome) -> Optional[ExpectedOutcome]:
     if outcome in (ExpectedOutcome.ACCEPTED, ExpectedOutcome.ACCEPTED_OR_TLE):
         return ExpectedOutcome.ACCEPTED
     if outcome in (ExpectedOutcome.WRONG_ANSWER, ExpectedOutcome.INCORRECT):
@@ -51,14 +81,15 @@ def _get_outcome_bucket(outcome: ExpectedOutcome) -> ExpectedOutcome:
         ExpectedOutcome.COMPILATION_ERROR,
     ):
         return ExpectedOutcome.RUNTIME_ERROR
-    return ExpectedOutcome.WRONG_ANSWER  # Default fallback (e.g. ANY)
+    # ANY and any unknown outcomes are not bucketed.
+    return None
 
 
-def _get_solution_counts(
+def get_solution_counts(
     solutions: List[Solution], bucketize: bool = False
-) -> dict[ExpectedOutcome, int]:
+) -> Dict[ExpectedOutcome, int]:
     if bucketize:
-        counts = {
+        counts: Dict[ExpectedOutcome, int] = {
             ExpectedOutcome.ACCEPTED: 0,
             ExpectedOutcome.WRONG_ANSWER: 0,
             ExpectedOutcome.TIME_LIMIT_EXCEEDED: 0,
@@ -69,37 +100,78 @@ def _get_solution_counts(
 
     for sol in solutions:
         if bucketize:
-            bucket = _get_outcome_bucket(sol.outcome)
-            counts[bucket] += 1
+            bucket = get_outcome_bucket(sol.outcome)
+            if bucket is not None:
+                counts[bucket] += 1
         elif sol.outcome in counts:
             counts[sol.outcome] += 1
     return counts
 
 
-def _get_flags(pkg: Package) -> List[str]:
-    flags = []
-    if pkg.type == TaskType.COMMUNICATION:
-        flags.append('[bold magenta]Interactive[/bold magenta]')
-    if pkg.validator:
-        flags.append('[green]Validator[/green]')
-    if pkg.checker:
-        flags.append('[blue]Custom Checker[/blue]')
-    return flags
+def get_problem_flags(pkg: Package) -> ProblemFlags:
+    return ProblemFlags(
+        is_interactive=pkg.type == TaskType.COMMUNICATION,
+        has_validator=pkg.validator is not None,
+        has_custom_checker=pkg.checker is not None,
+    )
 
 
-def _get_flags_short(pkg: Package) -> str:
+def get_problem_summary(
+    pkg: Package,
+    solutions: List[Solution],
+    testcase_entries: List[GenerationTestcaseEntry],
+    short_name: Optional[str] = None,
+) -> ProblemSummary:
+    return ProblemSummary(
+        name=pkg.name,
+        short_name=short_name,
+        time_limit_ms=pkg.timeLimit,
+        memory_limit_mb=pkg.memoryLimit,
+        output_limit_kb=pkg.outputLimit,
+        testcase_counts=count_testcases(testcase_entries),
+        flags=get_problem_flags(pkg),
+        interactor_display=pkg.interactor.display() if pkg.interactor else None,
+        checker_display=pkg.checker.display() if pkg.checker else None,
+        validator_display=pkg.validator.display() if pkg.validator else None,
+        solutions=solutions,
+        solution_counts=get_solution_counts(solutions),
+    )
+
+
+def get_contest_problem_summary(
+    pkg: Package,
+    solutions: List[Solution],
+    testcase_entries: List[GenerationTestcaseEntry],
+    short_name: str,
+) -> ContestProblemSummary:
+    return ContestProblemSummary(
+        short_name=short_name,
+        name=pkg.name,
+        time_limit_ms=pkg.timeLimit,
+        memory_limit_mb=pkg.memoryLimit,
+        testcase_counts=count_testcases(testcase_entries),
+        flags=get_problem_flags(pkg),
+        solution_counts_bucketed=get_solution_counts(solutions, bucketize=True),
+        total_solutions=len(solutions),
+    )
+
+
+# --- Rendering helpers ---
+
+
+def _get_flags_short(flags: ProblemFlags) -> str:
     parts = []
-    if pkg.type == TaskType.COMMUNICATION:
+    if flags.is_interactive:
         parts.append('[bold magenta]I[/bold magenta]')
     else:
         parts.append('[dim]I[/dim]')
 
-    if pkg.validator:
+    if flags.has_validator:
         parts.append('[green]V[/green]')
     else:
         parts.append('[dim]V[/dim]')
 
-    if pkg.checker:
+    if flags.has_custom_checker:
         parts.append('[blue]C[/blue]')
     else:
         parts.append('[dim]C[/dim]')
@@ -107,12 +179,19 @@ def _get_flags_short(pkg: Package) -> str:
     return ' '.join(parts)
 
 
+# --- Printing functions ---
+
+
 async def print_problem_summary(
     pkg: Package, short_name: Optional[str] = None, detailed: bool = False
 ):
-    title = f'[bold]{pkg.name}[/bold]'
-    if short_name:
-        title = f'[bold]{short_name}. {pkg.name}[/bold]'
+    entries = await testcase_extractors.extract_generation_testcases_from_groups()
+    expanded_solutions = package.get_solutions()
+    summary = get_problem_summary(pkg, expanded_solutions, entries, short_name)
+
+    title = f'[bold]{summary.name}[/bold]'
+    if summary.short_name:
+        title = f'[bold]{summary.short_name}. {summary.name}[/bold]'
 
     console.console.print(Panel(title, style='bold blue', expand=False))
 
@@ -122,28 +201,25 @@ async def print_problem_summary(
     info_table.add_column('Property', style='cyan')
     info_table.add_column('Value')
 
-    # Basic Limits (Base Profile)
     if not detailed:
-        info_table.add_row('Time Limit', get_formatted_time(pkg.timeLimit))
+        info_table.add_row('Time Limit', get_formatted_time(summary.time_limit_ms))
         info_table.add_row(
-            'Memory Limit', get_formatted_memory(pkg.memoryLimit * 1024 * 1024)
+            'Memory Limit',
+            get_formatted_memory(summary.memory_limit_mb * 1024 * 1024),
         )
-        info_table.add_row('Output Limit', get_formatted_memory(pkg.outputLimit * 1024))
+        info_table.add_row(
+            'Output Limit', get_formatted_memory(summary.output_limit_kb * 1024)
+        )
 
-    # Testcase Counts
-    samples, hidden = await _count_testcases_details(pkg)
-    info_table.add_row('Tests', f'{samples} samples, {hidden} hidden tests')
+    tc = summary.testcase_counts
+    info_table.add_row('Tests', f'{tc.samples} samples, {tc.hidden} hidden tests')
 
-    # Flags
-    if detailed:
-        if pkg.checker:
-            info_table.add_row('Checker', pkg.checker.display())
-        if pkg.validator:
-            info_table.add_row('Validator', pkg.validator.display())
-
-    flags = _get_flags(pkg)
-    if flags:
-        info_table.add_row('Flags', ', '.join(flags))
+    if summary.interactor_display:
+        info_table.add_row('Interactor', summary.interactor_display)
+    if summary.checker_display:
+        info_table.add_row('Checker', summary.checker_display)
+    if summary.validator_display:
+        info_table.add_row('Validator', summary.validator_display)
 
     console.console.print(info_table)
     console.console.print()
@@ -244,17 +320,13 @@ async def print_problem_summary(
 
     # --- Section: Solutions ---
     console.console.print('[bold]Solutions[/bold]')
-    expanded_solutions = package.get_solutions()
     if detailed:
-        solutions_by_outcome = {}
-        for sol in expanded_solutions:
-            bucket = sol.outcome  # Group by exact outcome in detailed mode? Or bucket? Plan said Sort AC -> Wrong etc.
-            # Using exact outcome allows scanning for specific issues.
-            if bucket not in solutions_by_outcome:
-                solutions_by_outcome[bucket] = []
-            solutions_by_outcome[bucket].append(sol)
+        solutions_by_outcome: dict[ExpectedOutcome, list[Solution]] = {}
+        for sol in summary.solutions:
+            if sol.outcome not in solutions_by_outcome:
+                solutions_by_outcome[sol.outcome] = []
+            solutions_by_outcome[sol.outcome].append(sol)
 
-        # Sort keys: Accepted first, then others
         sorted_outcomes = sorted(
             solutions_by_outcome.keys(),
             key=lambda o: (o != ExpectedOutcome.ACCEPTED, o.name),
@@ -264,8 +336,6 @@ async def print_problem_summary(
             sols = solutions_by_outcome[outcome]
             console.console.print(f'{outcome.full_markup()} ({len(sols)})')
             for sol in sols:
-                # One per line, no list indicator.
-                # Format: Path [tags/score]
                 extras = []
                 if sol.tags:
                     tags_str = ', '.join(sol.tags)
@@ -278,13 +348,12 @@ async def print_problem_summary(
             console.console.print()
 
     else:
-        sol_counts = _get_solution_counts(expanded_solutions)
         sol_table = Table(box=None, show_header=True, padding=(0, 1))
         sol_table.add_column('Outcome', style='bold')
         sol_table.add_column('Count', justify='right')
 
         has_solutions = False
-        for outcome, count in sol_counts.items():
+        for outcome, count in summary.solution_counts.items():
             if count > 0:
                 sol_table.add_row(outcome.full_markup(), str(count))
                 has_solutions = True
@@ -318,11 +387,9 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
     table.add_column('Total', justify='right')
 
     for i, problem in enumerate(problems):
-        row_data = []
+        row_data: list[str] = []
         short_name = contest.problems[i].short_name
 
-        # Determine problem root path (relative to CWD, which is contest root)
-        # Handle optional path (though likely present if package loaded)
         raw_path = contest.problems[i].path
         problem_path = pathlib.Path(raw_path) if raw_path else pathlib.Path('.')
 
@@ -333,23 +400,30 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
 
         try:
             with cd.new_package_cd(problem_path):
-                row_data.append(await _count_testcases_str(problem))
-                row_data.append(_get_flags_short(problem))
+                package.clear_package_cache()
+                entries = (
+                    await testcase_extractors.extract_generation_testcases_from_groups()
+                )
                 expanded_solutions = package.get_solutions()
-                counts = _get_solution_counts(expanded_solutions, bucketize=True)
+                summary = get_contest_problem_summary(
+                    problem, expanded_solutions, entries, short_name
+                )
         except Exception:
             console.console.print(
                 f'[error]Failed to summarize problem [item]{short_name} - {problem.name}[/item][/error]'
             )
             continue
 
+        tc = summary.testcase_counts
+        row_data.append(f'{tc.samples} samples, {tc.hidden} hidden tests')
+        row_data.append(_get_flags_short(summary.flags))
+
         for outcome in buckets:
-            c = counts.get(outcome, 0)
+            c = summary.solution_counts_bucketed.get(outcome, 0)
             style = outcome.style() if c > 0 else 'dim'
             row_data.append(f'[{style}]{c}[/{style}]')
 
-        total_sols = len(expanded_solutions)
-        row_data.append(str(total_sols))
+        row_data.append(str(summary.total_solutions))
 
         table.add_row(*row_data)
 
