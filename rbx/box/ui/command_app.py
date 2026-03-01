@@ -692,11 +692,14 @@ class rbxCommandApp(rbxBaseApp):
             )
 
     def _submit_command_all(self, raw_input: str):
-        for i, tab in enumerate(self._tabs):
+        queued = 0
+        for i in range(len(self._tabs)):
             sub = self._queue_command_in_tab(i, raw_input)
             if sub.status == CommandStatus.PENDING:
-                self.notify(f'Command queued in {tab.entry.display_name}')
+                queued += 1
         self._show_latest_sub_command()
+        if queued > 0:
+            self.notify(f'Command queued in {queued} tab(s)')
 
     def _dismiss_menu(self) -> None:
         self._pending_command = None
@@ -770,13 +773,16 @@ class rbxCommandApp(rbxBaseApp):
         self._focus_sidebar()
 
     def _submit_command_selected(self, raw_input: str, tab_indices: List[int]) -> None:
+        queued = 0
         for i in tab_indices:
             if 0 <= i < len(self._tabs):
                 sub = self._queue_command_in_tab(i, raw_input)
                 if sub.status == CommandStatus.PENDING:
-                    self.notify(f'Command queued in {self._tabs[i].entry.display_name}')
+                    queued += 1
         if self._active_tab in tab_indices:
             self._show_latest_sub_command()
+        if queued > 0:
+            self.notify(f'Command queued in {queued} tab(s)')
 
 
 def start_command_app(commands: List[CommandEntry], parallel: bool = False) -> None:
