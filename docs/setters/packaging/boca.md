@@ -11,7 +11,7 @@ rbx package boca
 Or, if you want to build the package for all problems in your contest:
 
 ```bash
-rbx contest each package boca
+rbx each package boca
 ```
 
 Both **batch** problems and **interactive** problems are supported.
@@ -38,28 +38,33 @@ Or you can use the contest-level commands below.
 
 ```bash
 # Will upload all problems in the contest
-rbx contest each package boca -u
+rbx each package boca -u
 
 # Will upload only problem A
-rbx contest on A package boca -u
+rbx on A package boca -u
 
 # Will upload problems A to C
-rbx contest on A-C package boca -u
+rbx on A-C package boca -u
 
 # Will upload problems A and C
-rbx contest on A,C package boca -u
+rbx on A,C package boca -u
 ```
 
 {{ asciinema("onJXQDVPELqn2kITmCrbkJeCX", speed=3) }}
 
 For that to work, you have to instruct {{rbx}} on how to connect to the BOCA server.
 
-{{rbx}} expects you to have set three environment variables, which you can, for instance, keep in your `.bashrc` or `.zshrc` files:
+{{rbx}} expects you to have set three environment variables. You can either set these variables in your shell,
+or in a `.env`/`.env.local` file in the root of your contest.
 
-```bash
-export BOCA_USERNAME="admin_username"
-export BOCA_PASSWORD="admin_password"
-export BOCA_BASE_URL="https://your.boca.com/boca"
+```bash title=".env"
+BOCA_BASE_URL="https://your.boca.com/boca"
+BOCA_USERNAME="admin_username"
+BOCA_PASSWORD="admin_password"
+
+# Or, in case you provide a judge account instead of an admin account:
+BOCA_JUDGE_USERNAME="judge_username"
+BOCA_JUDGE_PASSWORD="judge_password"
 ```
 
 Notice the configured user must correspond to an admin of your contest, so {{rbx}} will have permissions to upload
