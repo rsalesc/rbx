@@ -58,12 +58,12 @@ This launches an interactive session that:
 
 When prompted, you'll see four strategies:
 
-| Strategy | When to use |
-| :--- | :--- |
-| **Estimate** (recommended) | Let {{rbx}} measure your solutions and apply a formula. Best default. |
-| **Inherit from package** | Mirror whatever `timeLimit` and `memoryLimit` are set in `problem.rbx.yml`. |
-| **Estimate with custom formula** | Like Estimate, but you provide your own formula. |
-| **Custom time limit** | You already know the exact time limit you want. |
+| Strategy                         | When to use                                                                 |
+| :------------------------------- | :-------------------------------------------------------------------------- |
+| **Estimate** (recommended)       | Let {{rbx}} measure your solutions and apply a formula. Best default.       |
+| **Inherit from package**         | Mirror whatever `timeLimit` and `memoryLimit` are set in `problem.rbx.yml`. |
+| **Estimate with custom formula** | Like Estimate, but you provide your own formula.                            |
+| **Custom time limit**            | You already know the exact time limit you want.                             |
 
 The default formula is:
 
@@ -281,7 +281,7 @@ from your machine, you can upload the package manually:
 
     ---
 
-    Package for Polygon, MOJ, or the ICPC format.
+    Package for Polygon, or other formats supported by {{rbx}}.
 
     [:octicons-arrow-right-24: Packaging](/setters/packaging)
 
