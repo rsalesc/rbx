@@ -31,8 +31,9 @@ solves this with **limits profiles**: named sets of time/memory limits stored in
 
 ### Create a profile for BOCA
 
-The BOCA packager **requires** a limits profile named `boca`. You create it with
-`rbx time`:
+The BOCA packager **requires** a limits profile named `boca` to exist.
+You create it with the `time` command. Preferrably, log in to your judge
+machine, clone your contest's repository and run the command there.
 
 ```bash
 rbx time -p boca
@@ -129,6 +130,12 @@ rbx time -p local    # the default profile
 
 Each profile is independent, so you can tune limits for each judge's hardware
 separately.
+
+### Persisting the profile
+
+Now, since the profile is saved into `.limits`, you can push it into your contest's repository,
+and access it from any machine. Feel free to follow the next steps in any machine of your choice,
+as long as you've pushed the profile into the repository.
 
 ## Step 2: Build the package {: #packaging }
 
