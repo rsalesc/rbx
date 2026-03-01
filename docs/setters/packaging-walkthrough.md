@@ -145,8 +145,6 @@ With the `boca` limits profile in place, you can now build the BOCA package:
 rbx package boca
 ```
 
-{{ asciinema("3aYdLnJVUS6dUaF9TWg6UkFMz") }}
-
 This command performs the following steps automatically:
 
 1. **Loads the `boca` limits profile** from `.limits/boca.yml`.
