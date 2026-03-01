@@ -10,6 +10,7 @@ nav:
   - "Cheatsheet": "setters/cheatsheet.md"
   - "Walkthrough":
       - "setters/first-steps.md"
+      - "Packaging a problem": "setters/packaging-walkthrough.md"
   - "Feature Guide":
       - "Variables": "setters/variables.md"
       - "Testset":
