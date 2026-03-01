@@ -20,6 +20,18 @@ rbx [OPTIONS]
 
 ---
 
+## ui
+
+Show an UI for exploring testcases of the current problem.
+
+**Usage:**
+```bash
+rbx ui [OPTIONS]
+```
+
+
+---
+
 ## on
 
 Run a command in the context of a problem (or a set of problems) of a contest.
@@ -268,6 +280,7 @@ rbx compile <PATH> [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the asset with sanitizers enabled. | `False` |
 | `--warnings`, `-w` | BOOLEAN | Whether to compile the asset with warnings enabled. | `False` |
+| `--all`, `-a` | BOOLEAN | Whether to compile all assets. | `False` |
 
 
 ---
@@ -682,6 +695,7 @@ rbx package polygon [OPTIONS]
 | `--upload-as-english` | BOOLEAN | If set, will force the main statement to be uploaded in English. | `False` |
 | `--upload-only` | TEXT | Only upload the following types of assets to Polygon. | - |
 | `--upload-skip` | TEXT | Skip uploading the following types of assets to Polygon. | - |
+| `--validate-statement` | BOOLEAN | If set, will validate the statement for Polygon. | `False` |
 
 
 ---

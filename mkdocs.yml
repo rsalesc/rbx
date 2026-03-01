@@ -28,6 +28,8 @@ nav:
           - "Validators": "setters/verification/validators.md"
           - "Unit tests": "setters/verification/unit-tests.md"
           - "Stress testing": "setters/stress-testing.md"
+      - "Profiling":
+          - "setters/profiling/index.md"
       - "Statements":
           - "Overview": "setters/statements/index.md"
           - "Formats":
