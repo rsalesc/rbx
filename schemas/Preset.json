@@ -1,0 +1,111 @@
+{
+    "$defs": {
+        "TrackedAsset": {
+            "properties": {
+                "path": {
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "symlink": {
+                    "default": false,
+                    "title": "Symlink",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "TrackedAsset",
+            "type": "object"
+        },
+        "Tracking": {
+            "properties": {
+                "problem": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/TrackedAsset"
+                    },
+                    "title": "Problem",
+                    "type": "array"
+                },
+                "contest": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/TrackedAsset"
+                    },
+                    "title": "Contest",
+                    "type": "array"
+                }
+            },
+            "title": "Tracking",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "name": {
+            "maxLength": 32,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-]*$",
+            "title": "Name",
+            "type": "string"
+        },
+        "uri": {
+            "title": "Uri",
+            "type": "string"
+        },
+        "min_version": {
+            "default": "0.14.0",
+            "title": "Min Version",
+            "type": "string"
+        },
+        "env": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Env"
+        },
+        "problem": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Problem"
+        },
+        "contest": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Contest"
+        },
+        "tracking": {
+            "$ref": "#/$defs/Tracking"
+        }
+    },
+    "required": [
+        "name",
+        "uri"
+    ],
+    "title": "Preset",
+    "type": "object"
+}

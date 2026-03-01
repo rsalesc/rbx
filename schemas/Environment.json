@@ -1,0 +1,725 @@
+{
+    "$defs": {
+        "BocaExtension": {
+            "properties": {
+                "languages": {
+                    "default": [
+                        "c",
+                        "cpp",
+                        "cc",
+                        "kt",
+                        "java",
+                        "py2",
+                        "py3"
+                    ],
+                    "items": {
+                        "enum": [
+                            "c",
+                            "cpp",
+                            "cc",
+                            "kt",
+                            "java",
+                            "py2",
+                            "py3"
+                        ],
+                        "type": "string"
+                    },
+                    "title": "Languages",
+                    "type": "array"
+                },
+                "flags": {
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "default": {},
+                    "propertyNames": {
+                        "enum": [
+                            "c",
+                            "cpp",
+                            "cc",
+                            "kt",
+                            "java",
+                            "py2",
+                            "py3"
+                        ]
+                    },
+                    "title": "Flags",
+                    "type": "object"
+                },
+                "maximumTimeError": {
+                    "default": 0.2,
+                    "title": "Maximumtimeerror",
+                    "type": "number"
+                },
+                "preferContestLetter": {
+                    "default": false,
+                    "title": "Prefercontestletter",
+                    "type": "boolean"
+                },
+                "usePypy": {
+                    "default": false,
+                    "title": "Usepypy",
+                    "type": "boolean"
+                }
+            },
+            "title": "BocaExtension",
+            "type": "object"
+        },
+        "BocaLanguageExtension": {
+            "properties": {
+                "bocaLanguage": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Bocalanguage"
+                }
+            },
+            "title": "BocaLanguageExtension",
+            "type": "object"
+        },
+        "CompilationConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "commands": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "Commands to compile the program.",
+                    "title": "Commands"
+                },
+                "sandbox": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/EnvironmentSandbox"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Sandbox configuration to use when compiling for this language."
+                },
+                "passthrough": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether to pass through the compilable as an executable file.",
+                    "title": "Passthrough"
+                },
+                "solutionOverrides": {
+                    "$ref": "#/$defs/SolutionCompilationOverrides",
+                    "description": "Overrides to apply when compiling solutions for this language."
+                }
+            },
+            "title": "CompilationConfig",
+            "type": "object"
+        },
+        "EnvironmentLanguage": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "Identifier of this language within this environment.",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "readableName": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Readable name for this language.",
+                    "title": "Readablename"
+                },
+                "extension": {
+                    "description": "File extension supported by this language. If there's only one language\nthat supports a certain file extension in the environment, the tool\nwill automatically identify the language based on such extension.",
+                    "title": "Extension",
+                    "type": "string"
+                },
+                "extraExtensions": {
+                    "description": "Extra file extensions supported by this language. If not specified, the tool\nwill automatically identify the language based on such extensions.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Extraextensions",
+                    "type": "array"
+                },
+                "compilation": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CompilationConfig"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Compilation config to use when compiling programs for this language."
+                },
+                "execution": {
+                    "$ref": "#/$defs/ExecutionConfig",
+                    "description": "Execution config to use when running programs for this language."
+                },
+                "fileMapping": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/FileMapping"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Mapping for files within the sandbox. If not specified, the default mapping\nfor the environment will be used."
+                },
+                "extensions": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/LanguageExtensions"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Extensions to apply for this language."
+                }
+            },
+            "required": [
+                "name",
+                "extension",
+                "execution"
+            ],
+            "title": "EnvironmentLanguage",
+            "type": "object"
+        },
+        "EnvironmentSandbox": {
+            "additionalProperties": false,
+            "properties": {
+                "maxProcesses": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": 1,
+                    "description": "Max. number of process to allow to run concurrently for the program.",
+                    "title": "Maxprocesses"
+                },
+                "timeLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Time limit in milliseconds to allow the program to run.",
+                    "title": "Timelimit"
+                },
+                "wallTimeLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Wall time limit in milliseconds to allow the program to run.",
+                    "title": "Walltimelimit"
+                },
+                "memoryLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Memory limit in MiB.",
+                    "title": "Memorylimit"
+                },
+                "fileSizeLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "File size limit in KiB",
+                    "title": "Filesizelimit"
+                },
+                "stackLimit": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Stack limit in MiB.",
+                    "title": "Stacklimit"
+                },
+                "preserveEnv": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": false,
+                    "description": "Whether to preserve env. variables coming from the host.",
+                    "title": "Preserveenv"
+                },
+                "mirrorDirs": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "Directories in the host that should be read-only exposed to the sandbox.",
+                    "title": "Mirrordirs"
+                }
+            },
+            "title": "EnvironmentSandbox",
+            "type": "object"
+        },
+        "ExecutionConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "command": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Command to run the program.",
+                    "title": "Command"
+                },
+                "sandbox": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/EnvironmentSandbox"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Sandbox configuration to use when executing for this language."
+                },
+                "problemLimits": {
+                    "$ref": "#/$defs/Limits",
+                    "description": "Original limits of the problem."
+                },
+                "solutionOverrides": {
+                    "$ref": "#/$defs/SolutionExecutionOverrides",
+                    "description": "Overrides to apply when executing solutions for this language."
+                }
+            },
+            "title": "ExecutionConfig",
+            "type": "object"
+        },
+        "Extensions": {
+            "properties": {
+                "boca": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/BocaExtension"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Environment-level extensions for BOCA packaging."
+                }
+            },
+            "title": "Extensions",
+            "type": "object"
+        },
+        "FileMapping": {
+            "additionalProperties": false,
+            "properties": {
+                "input": {
+                    "default": "stdin",
+                    "description": "Path where to copy the stdin file to before running the program,\nrelative to the sandbox root.",
+                    "title": "Input",
+                    "type": "string"
+                },
+                "output": {
+                    "default": "stdout",
+                    "description": "Path where to output the stdout file after running the program,\nrelative to the sandbox root.",
+                    "title": "Output",
+                    "type": "string"
+                },
+                "error": {
+                    "default": "stderr",
+                    "description": "Path where to output the stderr file after running the program,\nrelative to the sandbox root.",
+                    "title": "Error",
+                    "type": "string"
+                },
+                "capture": {
+                    "default": "capture",
+                    "description": "Path where to output the capture file after running the program,\nrelative to the sandbox root.",
+                    "title": "Capture",
+                    "type": "string"
+                },
+                "compilable": {
+                    "default": "{source}",
+                    "description": "Path where to copy the compilable file to before compiling the program,\nrelative to the sandbox root.",
+                    "title": "Compilable",
+                    "type": "string"
+                },
+                "executable": {
+                    "default": "executable",
+                    "description": "Path to where to output the executable file after compiling the program,\nrelative to the sandbox root.",
+                    "title": "Executable",
+                    "type": "string"
+                }
+            },
+            "title": "FileMapping",
+            "type": "object"
+        },
+        "LanguageExtensions": {
+            "properties": {
+                "boca": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/BocaLanguageExtension"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Language-level extensions for BOCA packaging."
+                },
+                "polygon": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/PolygonLanguageExtension"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Language-level extensions for Polygon packaging."
+                }
+            },
+            "title": "LanguageExtensions",
+            "type": "object"
+        },
+        "Limits": {
+            "properties": {
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override time limit with, in milliseconds.",
+                    "title": "Time"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override memory limit with, in MB.",
+                    "title": "Memory"
+                },
+                "output": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override output limit with, in KB.",
+                    "title": "Output"
+                },
+                "isDoubleTL": {
+                    "default": false,
+                    "description": "Whether to use double TL for this language.",
+                    "title": "Isdoubletl",
+                    "type": "boolean"
+                },
+                "profile": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The profile that was used to get these limits.",
+                    "title": "Profile"
+                }
+            },
+            "title": "Limits",
+            "type": "object"
+        },
+        "PolygonLanguageExtension": {
+            "properties": {
+                "polygonLanguage": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Polygonlanguage"
+                }
+            },
+            "title": "PolygonLanguageExtension",
+            "type": "object"
+        },
+        "SolutionCompilationOverrides": {
+            "additionalProperties": false,
+            "properties": {
+                "commands": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "Commands to compile the program.",
+                    "title": "Commands"
+                },
+                "sandbox": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/EnvironmentSandbox"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Sandbox configuration to use when compiling for this language."
+                },
+                "passthrough": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether to pass through the compilable as an executable file.",
+                    "title": "Passthrough"
+                }
+            },
+            "title": "SolutionCompilationOverrides",
+            "type": "object"
+        },
+        "SolutionExecutionOverrides": {
+            "additionalProperties": false,
+            "properties": {
+                "command": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Command to run the program.",
+                    "title": "Command"
+                },
+                "sandbox": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/EnvironmentSandbox"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Sandbox configuration to use when executing for this language."
+                },
+                "problemLimits": {
+                    "$ref": "#/$defs/Limits",
+                    "description": "Original limits of the problem."
+                }
+            },
+            "title": "SolutionExecutionOverrides",
+            "type": "object"
+        },
+        "TimingConfig": {
+            "additionalProperties": false,
+            "properties": {
+                "formula": {
+                    "default": "step_up(max(fastest * 3, slowest * 1.5), 100)",
+                    "description": "Formula to use to calculate the time limit for the environment.",
+                    "title": "Formula",
+                    "type": "string"
+                }
+            },
+            "title": "TimingConfig",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "defaultFileMapping": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/FileMapping"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Default mapping for files within the sandbox. Fields in the mapping can be\nindividually overridden in the language configuration."
+        },
+        "defaultCompilation": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/CompilationConfig"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Default compilation configuration to use when compiling programs. Fields in\nthe compilation config can be individually overridden in the language configuration."
+        },
+        "defaultExecution": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/ExecutionConfig"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Default execution configuration to use when running programs. Fields in the\nexecution config can be individually overridden in the language configuration."
+        },
+        "languages": {
+            "default": [],
+            "description": "Configuration for each language supported in this environment.",
+            "items": {
+                "$ref": "#/$defs/EnvironmentLanguage"
+            },
+            "title": "Languages",
+            "type": "array"
+        },
+        "sandbox": {
+            "default": "stupid",
+            "description": "Identifier of the sandbox used by this environment (e.g. \"stupid\")",
+            "title": "Sandbox",
+            "type": "string"
+        },
+        "timing": {
+            "$ref": "#/$defs/TimingConfig",
+            "description": "Timing configuration for the environment."
+        },
+        "extensions": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Extensions"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Extensions to be added to the environment."
+        },
+        "buildDir": {
+            "default": "build",
+            "description": "Directory to store the build files.",
+            "format": "path",
+            "title": "Builddir",
+            "type": "string"
+        }
+    },
+    "title": "Environment",
+    "type": "object"
+}

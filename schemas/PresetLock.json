@@ -1,0 +1,89 @@
+{
+    "$defs": {
+        "LockedAsset": {
+            "properties": {
+                "path": {
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "symlink": {
+                    "default": false,
+                    "title": "Symlink",
+                    "type": "boolean"
+                },
+                "hash": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Hash"
+                },
+                "symlink_info": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/SymlinkInfo"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "LockedAsset",
+            "type": "object"
+        },
+        "SymlinkInfo": {
+            "properties": {
+                "target": {
+                    "format": "path",
+                    "title": "Target",
+                    "type": "string"
+                },
+                "is_broken": {
+                    "title": "Is Broken",
+                    "type": "boolean"
+                },
+                "is_outside": {
+                    "title": "Is Outside",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "target",
+                "is_broken",
+                "is_outside"
+            ],
+            "title": "SymlinkInfo",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "name": {
+            "title": "Name",
+            "type": "string"
+        },
+        "assets": {
+            "default": [],
+            "items": {
+                "$ref": "#/$defs/LockedAsset"
+            },
+            "title": "Assets",
+            "type": "array"
+        }
+    },
+    "required": [
+        "name"
+    ],
+    "title": "PresetLock",
+    "type": "object"
+}

@@ -1,0 +1,1517 @@
+{
+    "$defs": {
+        "Checker": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "fallback_to": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Checker"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Checker to fall back to if the mainly specified checker does not exist."
+                },
+                "mode": {
+                    "default": "testlib",
+                    "description": "In which compatibility mode the checker should be run.",
+                    "enum": [
+                        "testlib",
+                        "boca"
+                    ],
+                    "title": "Mode",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "Checker",
+            "type": "object"
+        },
+        "CheckerTest": {
+            "additionalProperties": false,
+            "properties": {
+                "glob": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "A glob pattern for the files to be used as unit test input for the checker.",
+                    "title": "Glob"
+                },
+                "testplan": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "A testplan to be used as unit test input for the checker.",
+                    "title": "Testplan"
+                },
+                "outcome": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/ExpectedOutcome"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The expected outcome of the checker."
+                }
+            },
+            "title": "CheckerTest",
+            "type": "object"
+        },
+        "CodeItem": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "CodeItem",
+            "type": "object"
+        },
+        "ExpectedOutcome": {
+            "enum": [
+                "ANY",
+                "ACCEPTED",
+                "ACCEPTED_OR_TLE",
+                "WRONG_ANSWER",
+                "INCORRECT",
+                "RUNTIME_ERROR",
+                "TIME_LIMIT_EXCEEDED",
+                "MEMORY_LIMIT_EXCEEDED",
+                "OUTPUT_LIMIT_EXCEEDED",
+                "TLE_OR_RTE",
+                "JUDGE_FAILED",
+                "COMPILATION_ERROR"
+            ],
+            "title": "ExpectedOutcome",
+            "type": "string"
+        },
+        "Generator": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "name": {
+                    "description": "The name of the generator.",
+                    "title": "Name",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path",
+                "name"
+            ],
+            "title": "Generator",
+            "type": "object"
+        },
+        "GeneratorCall": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "The name of the generator to call.",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "args": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The arguments to pass to the generator.",
+                    "title": "Args"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "GeneratorCall",
+            "type": "object"
+        },
+        "GeneratorScript": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "root": {
+                    "description": "The root directory where the generators should be fetched from.",
+                    "format": "path",
+                    "title": "Root",
+                    "type": "string"
+                },
+                "format": {
+                    "default": "rbx",
+                    "description": "The format of the generator script.",
+                    "enum": [
+                        "rbx",
+                        "box"
+                    ],
+                    "title": "Format",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "GeneratorScript",
+            "type": "object"
+        },
+        "Interactor": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "legacy": {
+                    "default": false,
+                    "description": "\nWhether this interactor is a legacy interactor and needs a checker to be specified.\n",
+                    "title": "Legacy",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "Interactor",
+            "type": "object"
+        },
+        "JinjaTeX": {
+            "properties": {
+                "type": {
+                    "const": "jinja-tex",
+                    "title": "Type",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "JinjaTeX",
+            "type": "object"
+        },
+        "LimitModifiers": {
+            "properties": {
+                "timeMultiplier": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Multiplier for time limit.",
+                    "title": "Timemultiplier"
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override time limit with, in milliseconds.",
+                    "title": "Time"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override memory limit with, in MB.",
+                    "title": "Memory"
+                }
+            },
+            "title": "LimitModifiers",
+            "type": "object"
+        },
+        "OutputFromItem": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "stderr": {
+                    "default": false,
+                    "description": "Whether the output should be taken from stderr instead of the stdout.",
+                    "title": "Stderr",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "OutputFromItem",
+            "type": "object"
+        },
+        "RecVars": {
+            "additionalProperties": {
+                "anyOf": [
+                    {
+                        "type": "integer"
+                    },
+                    {
+                        "type": "number"
+                    },
+                    {
+                        "type": "boolean"
+                    },
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "$ref": "#/$defs/RecVars"
+                    }
+                ]
+            },
+            "type": "object"
+        },
+        "ScoreType": {
+            "enum": [
+                "BINARY",
+                "POINTS"
+            ],
+            "title": "ScoreType",
+            "type": "string"
+        },
+        "Solution": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "outcome": {
+                    "$ref": "#/$defs/ExpectedOutcome",
+                    "default": "ANY",
+                    "description": "The expected outcome of this solution."
+                },
+                "tags": {
+                    "default": [],
+                    "description": "Tags to be associated with this solution.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Tags",
+                    "type": "array"
+                },
+                "score": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "prefixItems": [
+                                {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "anyOf": [
+                                        {
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "type": "null"
+                                        }
+                                    ]
+                                }
+                            ],
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The score of this solution in the final score.\nShould either be an integer, which means the solution should have this exact score,\nor a tuple of two integers, which means the solution should have a score between the two integers (inclusive).\n\nIf one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.",
+                    "title": "Score"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "Solution",
+            "type": "object"
+        },
+        "Statement": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "Name of this statement.",
+                    "maxLength": 128,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "inheritFromContest": {
+                    "default": false,
+                    "description": "Whether the configuration for this statement should be inherited from the contest. When this field is set to true, the statement for this problem can only be built if it's within a contest and there is a contest statement matching it.",
+                    "title": "Inheritfromcontest",
+                    "type": "boolean"
+                },
+                "extends": {
+                    "anyOf": [
+                        {
+                            "maxLength": 128,
+                            "minLength": 3,
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Name of the statement that this statement extends.",
+                    "title": "Extends"
+                },
+                "language": {
+                    "default": "en",
+                    "description": "Language code of this statement (ISO 639-1).",
+                    "title": "Language",
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Title of the problem, as it appears in the statement. Can be left unset if the problem has no title or if title comes from the `titles` field of the package.",
+                    "title": "Title"
+                },
+                "path": {
+                    "description": "Path to the input statement file.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/$defs/StatementType",
+                    "default": "rbxTeX",
+                    "description": "Type of the input statement file."
+                },
+                "steps": {
+                    "default": [],
+                    "description": "\nDescribes a sequence of conversion steps that should be applied to the statement file.\n\nUsually, it is not necessary to specify these, as they can be inferred from the\ninput statement type and the output statement type, but you can use this to force\ncertain conversion steps to happen.\n",
+                    "items": {
+                        "discriminator": {
+                            "mapping": {
+                                "jinja-tex": "#/$defs/JinjaTeX",
+                                "rbx-md-tex": "#/$defs/rbxMarkdownToTeX",
+                                "rbx-tex": "#/$defs/rbxToTeX",
+                                "tex2pdf": "#/$defs/TexToPDF"
+                            },
+                            "propertyName": "type"
+                        },
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/TexToPDF"
+                            },
+                            {
+                                "$ref": "#/$defs/JinjaTeX"
+                            },
+                            {
+                                "$ref": "#/$defs/rbxToTeX"
+                            },
+                            {
+                                "$ref": "#/$defs/rbxMarkdownToTeX"
+                            }
+                        ]
+                    },
+                    "title": "Steps",
+                    "type": "array"
+                },
+                "configure": {
+                    "default": [],
+                    "description": "\nConfigure how certain conversion steps should happen when applied to the statement file.\n\nDifferent from the `steps` field, this does not force the steps to happen, but rather only\nconfigure them in case they are applied.\n",
+                    "items": {
+                        "discriminator": {
+                            "mapping": {
+                                "jinja-tex": "#/$defs/JinjaTeX",
+                                "rbx-md-tex": "#/$defs/rbxMarkdownToTeX",
+                                "rbx-tex": "#/$defs/rbxToTeX",
+                                "tex2pdf": "#/$defs/TexToPDF"
+                            },
+                            "propertyName": "type"
+                        },
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/TexToPDF"
+                            },
+                            {
+                                "$ref": "#/$defs/JinjaTeX"
+                            },
+                            {
+                                "$ref": "#/$defs/rbxToTeX"
+                            },
+                            {
+                                "$ref": "#/$defs/rbxMarkdownToTeX"
+                            }
+                        ]
+                    },
+                    "title": "Configure",
+                    "type": "array"
+                },
+                "assets": {
+                    "default": [],
+                    "description": "\nAssets relative to the package directory that should be included while building\nthe statement. Files will be included in the same folder as the statement file, preserving\ntheir relativeness. Can be glob pattern as well, such as `imgs/*.png`.\n",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Assets",
+                    "type": "array"
+                },
+                "vars": {
+                    "$ref": "#/$defs/RecVars",
+                    "default": {},
+                    "description": "Variables to be used in the statement."
+                },
+                "samples": {
+                    "default": true,
+                    "description": "Whether to build the statement with samples.",
+                    "title": "Samples",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "Statement",
+            "type": "object"
+        },
+        "StatementType": {
+            "enum": [
+                "rbxTeX",
+                "rbxMarkdown",
+                "TeX",
+                "JinjaTeX",
+                "PDF"
+            ],
+            "title": "StatementType",
+            "type": "string"
+        },
+        "Stress": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "The name of the stress test.",
+                    "maxLength": 32,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "generator": {
+                    "$ref": "#/$defs/GeneratorCall",
+                    "description": "Generator pattern to call during stress-test."
+                },
+                "finder": {
+                    "description": "Finder expression to be used to match against generated tests.",
+                    "title": "Finder",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name",
+                "generator",
+                "finder"
+            ],
+            "title": "Stress",
+            "type": "object"
+        },
+        "TaskType": {
+            "enum": [
+                "BATCH",
+                "COMMUNICATION"
+            ],
+            "title": "TaskType",
+            "type": "string"
+        },
+        "Testcase": {
+            "additionalProperties": false,
+            "properties": {
+                "inputPath": {
+                    "description": "The path of the input file.",
+                    "format": "path",
+                    "title": "Inputpath",
+                    "type": "string"
+                },
+                "outputPath": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The path of the output file.",
+                    "title": "Outputpath"
+                }
+            },
+            "required": [
+                "inputPath"
+            ],
+            "title": "Testcase",
+            "type": "object"
+        },
+        "TestcaseGroup": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "The name of the test group.",
+                    "maxLength": 32,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "testcases": {
+                    "default": [],
+                    "description": "\nThe path of testcases to add to this group,\nin the order they're defined.",
+                    "items": {
+                        "$ref": "#/$defs/Testcase"
+                    },
+                    "title": "Testcases",
+                    "type": "array"
+                },
+                "testcaseGlob": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA Python glob that matches input file paths relative to the\npackage directory. The globbed files should end with the extension\n\".in\", and their corresponding outputs, if defined, should have the same file name,\nbut ending with \".ans\".\n",
+                    "title": "Testcaseglob"
+                },
+                "generators": {
+                    "default": [],
+                    "description": "\nA list of generators to call to generate testcases for this group.\n",
+                    "items": {
+                        "$ref": "#/$defs/GeneratorCall"
+                    },
+                    "title": "Generators",
+                    "type": "array"
+                },
+                "generatorScript": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/GeneratorScript"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA generator script to call to generate testcases for this group.\n"
+                },
+                "extraValidators": {
+                    "default": [],
+                    "description": "\nA list of extra validators to use to validate the testcases of this subgroup.\n",
+                    "items": {
+                        "$ref": "#/$defs/CodeItem"
+                    },
+                    "title": "Extravalidators",
+                    "type": "array"
+                },
+                "outputValidators": {
+                    "default": [],
+                    "description": "\nA list of output validators to use to validate the output of the testcases of this subgroup.\n",
+                    "items": {
+                        "$ref": "#/$defs/CodeItem"
+                    },
+                    "title": "Outputvalidators",
+                    "type": "array"
+                },
+                "visualizer": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Visualizer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The visualizer for this problem. Used to produced visualizations for the testcases. Has priority over the visualizer specified in the package."
+                },
+                "solutionVisualizer": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Visualizer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The solution visualizer for this problem. Used to produced visualizations for the outputs of the testcases. Has priority over the solution visualizer specified in the package."
+                },
+                "subgroups": {
+                    "default": [],
+                    "description": "\nA list of test subgroups to define for this group.\n        ",
+                    "items": {
+                        "$ref": "#/$defs/TestcaseSubgroup"
+                    },
+                    "title": "Subgroups",
+                    "type": "array"
+                },
+                "validator": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CodeItem"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA validator to use to validate the testcases of this group.\nIf specified, will use this validator instead of the package-level validator.\nUseful in cases where the constraints vary across test groups.\n"
+                },
+                "score": {
+                    "default": 0,
+                    "description": "\nThe score of this group in the final score. Useful for\nproblems that have points.\n",
+                    "title": "Score",
+                    "type": "integer"
+                },
+                "deps": {
+                    "default": [],
+                    "description": "\nA list of other groups this group depends on to run and be considered accepted.\n\nThe `samples` group is implicitly a dependency of every other group.\n",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Deps",
+                    "type": "array"
+                },
+                "model_solution": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Solution"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nThe solution to be used to generate outputs for this testgroup.\n\nCan only be set for the \"samples\" testgroup.\n"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "TestcaseGroup",
+            "type": "object"
+        },
+        "TestcaseSubgroup": {
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "The name of the test group.",
+                    "maxLength": 32,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "testcases": {
+                    "default": [],
+                    "description": "\nThe path of testcases to add to this group,\nin the order they're defined.",
+                    "items": {
+                        "$ref": "#/$defs/Testcase"
+                    },
+                    "title": "Testcases",
+                    "type": "array"
+                },
+                "testcaseGlob": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA Python glob that matches input file paths relative to the\npackage directory. The globbed files should end with the extension\n\".in\", and their corresponding outputs, if defined, should have the same file name,\nbut ending with \".ans\".\n",
+                    "title": "Testcaseglob"
+                },
+                "generators": {
+                    "default": [],
+                    "description": "\nA list of generators to call to generate testcases for this group.\n",
+                    "items": {
+                        "$ref": "#/$defs/GeneratorCall"
+                    },
+                    "title": "Generators",
+                    "type": "array"
+                },
+                "generatorScript": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/GeneratorScript"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA generator script to call to generate testcases for this group.\n"
+                },
+                "extraValidators": {
+                    "default": [],
+                    "description": "\nA list of extra validators to use to validate the testcases of this subgroup.\n",
+                    "items": {
+                        "$ref": "#/$defs/CodeItem"
+                    },
+                    "title": "Extravalidators",
+                    "type": "array"
+                },
+                "outputValidators": {
+                    "default": [],
+                    "description": "\nA list of output validators to use to validate the output of the testcases of this subgroup.\n",
+                    "items": {
+                        "$ref": "#/$defs/CodeItem"
+                    },
+                    "title": "Outputvalidators",
+                    "type": "array"
+                },
+                "visualizer": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Visualizer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The visualizer for this problem. Used to produced visualizations for the testcases. Has priority over the visualizer specified in the package."
+                },
+                "solutionVisualizer": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/Visualizer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The solution visualizer for this problem. Used to produced visualizations for the outputs of the testcases. Has priority over the solution visualizer specified in the package."
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "TestcaseSubgroup",
+            "type": "object"
+        },
+        "TexToPDF": {
+            "description": "Configures the conversion between LaTeX and PDF using pdfLaTeX.",
+            "properties": {
+                "type": {
+                    "const": "tex2pdf",
+                    "title": "Type",
+                    "type": "string"
+                },
+                "externalize": {
+                    "default": false,
+                    "description": "Whether to externalize TikZ graphics.",
+                    "title": "Externalize",
+                    "type": "boolean"
+                },
+                "demacro": {
+                    "default": false,
+                    "description": "Whether to save macro definitions to a JSON file.",
+                    "title": "Demacro",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "TexToPDF",
+            "type": "object"
+        },
+        "UnitTests": {
+            "additionalProperties": false,
+            "properties": {
+                "validator": {
+                    "default": [],
+                    "description": "Unit tests for the validator.",
+                    "items": {
+                        "$ref": "#/$defs/ValidatorTest"
+                    },
+                    "title": "Validator",
+                    "type": "array"
+                },
+                "checker": {
+                    "default": [],
+                    "description": "Unit tests for the checker.",
+                    "items": {
+                        "$ref": "#/$defs/CheckerTest"
+                    },
+                    "title": "Checker",
+                    "type": "array"
+                }
+            },
+            "title": "UnitTests",
+            "type": "object"
+        },
+        "ValidatorOutcome": {
+            "enum": [
+                "VALID",
+                "INVALID"
+            ],
+            "title": "ValidatorOutcome",
+            "type": "string"
+        },
+        "ValidatorTest": {
+            "additionalProperties": false,
+            "properties": {
+                "glob": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "A glob pattern for the input files to be used as unit test input for the validator.",
+                    "title": "Glob"
+                },
+                "testplan": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "A testplan to be used as unit test input for the validator.",
+                    "title": "Testplan"
+                },
+                "outcome": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/ValidatorOutcome"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The expected outcome of the validator."
+                },
+                "validator": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CodeItem"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The validator to use for this test. If not specified, will use the package-level validator."
+                }
+            },
+            "title": "ValidatorTest",
+            "type": "object"
+        },
+        "Visualizer": {
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "description": "The path to the code file, relative to the package directory.",
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "language": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The language of the code file.",
+                    "title": "Language"
+                },
+                "compilationFiles": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": [],
+                    "description": "\nExtra files that should be placed alongside the code file during its compilation,\nsuch as testlib.h, jngen.h, etc.\n\nThe paths should be given relative to the package directory, but will be included\nrelative to the `path` directory.\n\nTestlib and jngen are already included by default.\n",
+                    "title": "Compilationfiles"
+                },
+                "extension": {
+                    "description": "The extension of the visualization file generated by the visualizer.\n        ",
+                    "title": "Extension",
+                    "type": "string"
+                },
+                "answer_from": {
+                    "anyOf": [
+                        {
+                            "const": "stderr",
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/$defs/OutputFromItem"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Program to generate additional answer file to pass to the visualizer.\n        If not specified, the reference answer file will be used.",
+                    "title": "Answer From"
+                }
+            },
+            "required": [
+                "path",
+                "extension"
+            ],
+            "title": "Visualizer",
+            "type": "object"
+        },
+        "rbxMarkdownToTeX": {
+            "description": "Configures the conversion between rbxMarkdown and LaTeX.",
+            "properties": {
+                "type": {
+                    "const": "rbx-md-tex",
+                    "title": "Type",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "rbxMarkdownToTeX",
+            "type": "object"
+        },
+        "rbxToTeX": {
+            "description": "Configures the conversion between rbxTeX and LaTeX.",
+            "properties": {
+                "type": {
+                    "const": "rbx-tex",
+                    "title": "Type",
+                    "type": "string"
+                },
+                "template": {
+                    "default": "template.rbx.tex",
+                    "description": "Path to the template that should be used to render the rbx-tex blocks.",
+                    "format": "path",
+                    "title": "Template",
+                    "type": "string"
+                },
+                "externalize": {
+                    "default": false,
+                    "description": "Whether to externalize TikZ graphics.",
+                    "title": "Externalize",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "rbxToTeX",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "name": {
+            "description": "The name of the problem.",
+            "maxLength": 32,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+            "title": "Name",
+            "type": "string"
+        },
+        "titles": {
+            "additionalProperties": {
+                "type": "string"
+            },
+            "default": {},
+            "description": "Titles for the problem in each language. Languages should be specified as lowercase ISO 639-1 codes.",
+            "title": "Titles",
+            "type": "object"
+        },
+        "type": {
+            "$ref": "#/$defs/TaskType",
+            "default": "BATCH",
+            "description": "The type of the problem."
+        },
+        "scoring": {
+            "$ref": "#/$defs/ScoreType",
+            "default": "BINARY",
+            "description": "The scoring type of the problem."
+        },
+        "timeLimit": {
+            "description": "Time limit of the problem, in milliseconds.",
+            "title": "Timelimit",
+            "type": "integer"
+        },
+        "memoryLimit": {
+            "description": "Memory limit of the problem, in MB.",
+            "title": "Memorylimit",
+            "type": "integer"
+        },
+        "outputLimit": {
+            "default": 4096,
+            "description": "Output limit of the problem, in KB.",
+            "title": "Outputlimit",
+            "type": "integer"
+        },
+        "modifiers": {
+            "additionalProperties": {
+                "$ref": "#/$defs/LimitModifiers"
+            },
+            "default": {},
+            "description": "\n    Limit modifiers that can be specified per language.\n    ",
+            "title": "Modifiers",
+            "type": "object"
+        },
+        "checker": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Checker"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The checker for this problem."
+        },
+        "interactor": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Interactor"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The interactor for this problem."
+        },
+        "validator": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/CodeItem"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The validator for this problem."
+        },
+        "extraValidators": {
+            "default": [],
+            "description": "Extra validators for this problem.",
+            "items": {
+                "$ref": "#/$defs/CodeItem"
+            },
+            "title": "Extravalidators",
+            "type": "array"
+        },
+        "outputValidators": {
+            "default": [],
+            "description": "\nA list of output validators to use to validate the output of the testcases of this problem.\n",
+            "items": {
+                "$ref": "#/$defs/CodeItem"
+            },
+            "title": "Outputvalidators",
+            "type": "array"
+        },
+        "visualizer": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Visualizer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The visualizer for this problem. Used to produced visualizations for the testcases."
+        },
+        "solutionVisualizer": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Visualizer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "The solution visualizer for this problem. Used to produced visualizations for the outputs of the testcases."
+        },
+        "generators": {
+            "default": [],
+            "description": "Generators for this problem.",
+            "items": {
+                "$ref": "#/$defs/Generator"
+            },
+            "title": "Generators",
+            "type": "array"
+        },
+        "solutions": {
+            "default": [],
+            "description": "\nAll tested solutions for this problem.\n\nThe first solution in this list should be the main solution -- the one\nthat is correct and used as reference -- and should have the `accepted` outcome.\n",
+            "items": {
+                "$ref": "#/$defs/Solution"
+            },
+            "title": "Solutions",
+            "type": "array"
+        },
+        "testcases": {
+            "default": [],
+            "description": "Testcases for the problem.",
+            "items": {
+                "$ref": "#/$defs/TestcaseGroup"
+            },
+            "title": "Testcases",
+            "type": "array"
+        },
+        "stresses": {
+            "default": [],
+            "description": "Stress tests for the problem.",
+            "items": {
+                "$ref": "#/$defs/Stress"
+            },
+            "title": "Stresses",
+            "type": "array"
+        },
+        "statements": {
+            "default": [],
+            "description": "Statements for the problem.",
+            "items": {
+                "$ref": "#/$defs/Statement"
+            },
+            "title": "Statements",
+            "type": "array"
+        },
+        "vars": {
+            "$ref": "#/$defs/RecVars",
+            "default": {},
+            "description": "Variables to be re-used across the package."
+        },
+        "unitTests": {
+            "$ref": "#/$defs/UnitTests",
+            "description": "Unit tests for components of this problem."
+        }
+    },
+    "required": [
+        "name",
+        "timeLimit",
+        "memoryLimit"
+    ],
+    "title": "Package",
+    "type": "object"
+}
