@@ -1,3 +1,13 @@
+## 0.31.0 (2026-03-01)
+
+### Feat
+
+- **contest**: allow `rbx each` with no arguments
+
+### Fix
+
+- **ui**: consolidate shell input notifications into single toast
+
 ## 0.30.0 (2026-02-28)
 
 ### Feat
