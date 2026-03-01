@@ -121,8 +121,9 @@ Also, notice you have a few variables that are available to you in the `compilat
 - `{stdin}`: The path to the file that should be used as standard input.
 - `{stdout}`: The path to the file that should be used as standard output.
 - `{stderr}`: The path to the file that should be used as standard error.
-- `{{memory}}`: The memory limit for the sandbox.
-- `{{initialMemory}}`: The initial memory for the sandbox.
+- `{memory}`: The memory limit for the sandbox.
+- `{initialMemory}`: The initial memory for the sandbox.
+- `{javaClass}`: The name of the Java class to be executed.
 
 And you also have available to you a `@glob:...` command that is expanded into a list of files that match the glob pattern. This is particularly useful for languages that need multiple files to be compiled or executed (such as Java in the example above).
 
