@@ -9,7 +9,7 @@ import typer
 from pydantic import ValidationError
 
 from rbx import console, utils
-from rbx.box import cd, environment, global_package
+from rbx.box import cd, environment, global_package, path_resolution
 from rbx.box.environment import (
     get_language_by_extension_or_nil,
     get_sandbox_type,
@@ -93,11 +93,16 @@ def find_problem(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
 def within_problem(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        with cd.new_package_cd(find_problem()):
+        original_cwd = pathlib.Path.cwd().resolve()
+        problem_dir = find_problem()
+        kwargs = path_resolution.resolve_package_paths(
+            func, args, kwargs, original_cwd, problem_dir.resolve()
+        )
+        with cd.new_package_cd(problem_dir):
             issue_level_token = issue_stack.issue_level_var.set(
                 issue_stack.IssueLevel.DETAILED
             )
-            ret = func(*args, **kwargs)
+            ret = func(**kwargs)
             issue_stack.print_current_report()
             issue_stack.issue_level_var.reset(issue_level_token)
             return ret

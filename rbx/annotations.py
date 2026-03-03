@@ -11,6 +11,13 @@ from rbx import config
 from rbx.config import get_config
 
 
+class _PackagePathMarker:
+    """Marker for path parameters that should be resolved relative to the package root."""
+
+
+PackagePath = _PackagePathMarker()
+
+
 def _get_language_options():
     return sorted(get_config().languages.keys())
 

@@ -13,6 +13,7 @@ import typer
 from ordered_set import OrderedSet
 
 from rbx import annotations, config, console, utils
+from rbx.annotations import PackagePath
 from rbx.box import (
     cd,
     compile,
@@ -289,6 +290,7 @@ async def run(
     verification: environment.VerificationParam,
     solutions: Annotated[
         Optional[List[str]],
+        PackagePath,
         typer.Argument(
             help='Path to solutions to run. If not specified, will run all solutions.'
         ),
@@ -589,6 +591,7 @@ async def irun(
     verification: environment.VerificationParam,
     solutions: Annotated[
         Optional[List[str]],
+        PackagePath,
         typer.Argument(
             help='Path to solutions to run. If not specified, will run all solutions.'
         ),
@@ -1012,6 +1015,7 @@ async def stress(
 async def compile_command(
     path: Annotated[
         Optional[str],
+        PackagePath,
         typer.Argument(help='Path to the asset to compile.'),
     ] = None,
     sanitized: bool = typer.Option(
@@ -1065,6 +1069,7 @@ async def compile_command(
 async def validate(
     path: Annotated[
         Optional[str],
+        PackagePath,
         typer.Option('--path', '-p', help='Path to the testcase to validate.'),
     ] = None,
 ):
