@@ -111,7 +111,7 @@ if [ ! -x "\$cc" ]; then
     exit 47
 fi
 cd src
-"\$cc" {{rbxFlags}} -o "../$exe" "$name"
+"\$cc" {{rbxFlags}} -o "../$exe" "$name" -lm
 echo \$? > ../compileit.retcode
 exit 0
 EOF
