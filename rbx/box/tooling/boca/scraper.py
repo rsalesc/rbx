@@ -176,7 +176,7 @@ class BocaScraper:
         if is_judge is not None:
             self.is_judge = is_judge
         else:
-            # If BOCA_USERNAME is set, this is a judge.
+            # If BOCA_USERNAME is set, this is NOT a judge.
             self.is_judge = not utils.environ().get('BOCA_USERNAME')
 
         self.base_url = _parse_env_var('BOCA_BASE_URL', self.base_url)
