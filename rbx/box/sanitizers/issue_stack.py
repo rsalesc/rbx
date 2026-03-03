@@ -112,7 +112,7 @@ class IssueAccumulator:
 
 
 issue_stack_var: contextvars.ContextVar[Optional[List[IssueAccumulator]]] = (
-    contextvars.ContextVar('issue_stack', default=None)
+    contextvars.ContextVar('issue_stack', default=[IssueAccumulator()])
 )
 issue_level_var = contextvars.ContextVar('issue_level', default=IssueLevel.DETAILED)
 
