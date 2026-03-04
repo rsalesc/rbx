@@ -18,6 +18,7 @@ from rbx.box.testcase_utils import (
     find_built_testcases,
     get_alternate_interaction_texts,
     get_samples,
+    merge_interaction_entries,
     parse_interaction,
     print_interaction,
 )
@@ -512,6 +513,84 @@ class TestTestcaseInteractionParsing:
 
         with pytest.raises(FileNotFoundError):
             parse_interaction(nonexistent_file)
+
+
+class TestMergeInteractionEntries:
+    """Test merge_interaction_entries function."""
+
+    def test_empty_list(self):
+        assert merge_interaction_entries([]) == []
+
+    def test_single_entry(self):
+        entries = [TestcaseInteractionEntry(data='hello', pipe=0)]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 1
+        assert result[0].data == 'hello'
+        assert result[0].pipe == 0
+
+    def test_alternating_pipes_no_merge(self):
+        entries = [
+            TestcaseInteractionEntry(data='a', pipe=0),
+            TestcaseInteractionEntry(data='b', pipe=1),
+            TestcaseInteractionEntry(data='c', pipe=0),
+        ]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 3
+        assert result[0].data == 'a'
+        assert result[1].data == 'b'
+        assert result[2].data == 'c'
+
+    def test_consecutive_same_pipe_merged(self):
+        entries = [
+            TestcaseInteractionEntry(data='line1', pipe=0),
+            TestcaseInteractionEntry(data='line2', pipe=0),
+            TestcaseInteractionEntry(data='line3', pipe=0),
+        ]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 1
+        assert result[0].data == 'line1\nline2\nline3'
+        assert result[0].pipe == 0
+
+    def test_merge_then_alternate(self):
+        entries = [
+            TestcaseInteractionEntry(data='a1', pipe=0),
+            TestcaseInteractionEntry(data='a2', pipe=0),
+            TestcaseInteractionEntry(data='b1', pipe=1),
+            TestcaseInteractionEntry(data='c1', pipe=0),
+        ]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 3
+        assert result[0].data == 'a1\na2'
+        assert result[0].pipe == 0
+        assert result[1].data == 'b1'
+        assert result[1].pipe == 1
+        assert result[2].data == 'c1'
+        assert result[2].pipe == 0
+
+    def test_multiple_merge_groups(self):
+        entries = [
+            TestcaseInteractionEntry(data='a', pipe=0),
+            TestcaseInteractionEntry(data='b', pipe=0),
+            TestcaseInteractionEntry(data='c', pipe=1),
+            TestcaseInteractionEntry(data='d', pipe=1),
+        ]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 2
+        assert result[0].data == 'a\nb'
+        assert result[0].pipe == 0
+        assert result[1].data == 'c\nd'
+        assert result[1].pipe == 1
+
+    def test_mutates_first_entry_of_consecutive_group(self):
+        """The first entry of a consecutive group is mutated in-place."""
+        entries = [
+            TestcaseInteractionEntry(data='a', pipe=0),
+            TestcaseInteractionEntry(data='b', pipe=0),
+        ]
+        result = merge_interaction_entries(entries)
+        # Result shares the same object as the first input entry
+        assert result[0] is entries[0]
+        assert entries[0].data == 'a\nb'
 
 
 class TestGetAlternateInteractionTexts:

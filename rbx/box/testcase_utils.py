@@ -177,6 +177,18 @@ class TestcaseInteractionParsingError(Exception):
     pass
 
 
+def merge_interaction_entries(
+    entries: List[TestcaseInteractionEntry],
+) -> List[TestcaseInteractionEntry]:
+    merged_entries: List[TestcaseInteractionEntry] = []
+    for entry in entries:
+        if len(merged_entries) > 0 and merged_entries[-1].pipe == entry.pipe:
+            merged_entries[-1].data += '\n' + entry.data
+        else:
+            merged_entries.append(entry)
+    return merged_entries
+
+
 def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     entries = []
     with file.open('r') as f:

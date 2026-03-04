@@ -5,14 +5,16 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import builder, checkers, testcase_extractors, validators
+from rbx.box import builder, checkers, package, testcase_extractors, validators
 from rbx.box.environment import VerificationLevel, VerificationParam
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.testcase_utils import (
     Testcase,
     TestcaseInteraction,
+    TestcaseInteractionEntry,
     TestcaseInteractionParsingError,
     get_best_interaction_file,
+    merge_interaction_entries,
     parse_interaction,
 )
 from rbx.box.validators import (
@@ -20,6 +22,15 @@ from rbx.box.validators import (
     compile_output_validators_for_entries,
 )
 from rbx.grading.steps import Outcome
+
+
+class SampleInteractionChunk(TestcaseInteractionEntry):
+    path: pathlib.Path
+
+
+class SampleTestcaseInteraction(BaseModel):
+    entries: List[TestcaseInteractionEntry]
+    chunks: List[SampleInteractionChunk]
 
 
 class StatementSample(BaseModel):
@@ -30,7 +41,28 @@ class StatementSample(BaseModel):
     explanationPath: Optional[pathlib.Path] = None
     hasOutput: bool = True
     checkOutput: bool = False
-    interaction: Optional[TestcaseInteraction] = None
+    interaction: Optional[SampleTestcaseInteraction] = None
+
+
+def _build_sample_interaction(
+    entry: GenerationTestcaseEntry,
+    interaction: TestcaseInteraction,
+) -> SampleTestcaseInteraction:
+    chunk_entries = merge_interaction_entries(interaction.entries)
+    chunks: List[SampleInteractionChunk] = []
+    chunks_folder = package.get_statement_chunks_folder()
+    for i, chunk_entry in enumerate(chunk_entries):
+        chunk_path = chunks_folder / str(entry.group_entry) / f'{i:03d}.txt'
+        chunk_path.parent.mkdir(parents=True, exist_ok=True)
+        chunk_path.write_text(chunk_entry.data)
+        chunks.append(
+            SampleInteractionChunk(
+                path=chunk_path.resolve(),
+                data=chunk_entry.data,
+                pipe=chunk_entry.pipe,
+            )
+        )
+    return SampleTestcaseInteraction(entries=interaction.entries, chunks=chunks)
 
 
 def _get_statement_sample_from_entry(
@@ -125,7 +157,9 @@ def _get_statement_sample_from_entry(
         answerPath=answer_path,
         hasOutput=output_path is not None,
         checkOutput=should_check_output,
-        interaction=interaction,
+        interaction=_build_sample_interaction(entry, interaction)
+        if interaction is not None
+        else None,
         explanationPath=explanation_path,
     )
 

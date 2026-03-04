@@ -524,6 +524,12 @@ def get_statement_or_nil(
     return None
 
 
+def get_statement_chunks_folder(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    dir = get_statements_build_path(root) / '.chunks'
+    dir.mkdir(parents=True, exist_ok=True)
+    return dir
+
+
 # Return each compilation file and to where it should be moved inside
 # the sandbox.
 def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
