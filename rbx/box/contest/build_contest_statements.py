@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 
-from rbx import console, testing_utils
+from rbx import console
 from rbx.box import cd, limits_info, naming, package_utils
 from rbx.box.contest import statement_overriding
 from rbx.box.contest.contest_package import get_problems
@@ -353,7 +353,7 @@ async def build_statement_rooted(
     )
     prepare_assets(joiner_assets, root)
 
-    testing_utils.print_directory_tree(root, show_hidden=True)
+    # testing_utils.print_directory_tree(root, show_hidden=True)
 
     joiner_context = StatementJoinerContext(
         languages=get_environment_languages_for_statement(),
