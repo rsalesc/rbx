@@ -25,6 +25,7 @@ from rbx.box import (
     global_package,
     limits_info,
     package,
+    package_utils,
     presets,
     setter_config,
     state,
@@ -975,7 +976,7 @@ async def stress(
             dest = package.find_problem_yaml()
             assert dest is not None
             utils.save_ruyaml(dest, ru, problem_yml)
-            package.clear_package_cache()
+            package_utils.clear_package_cache()
 
         if testgroup not in groups_by_name:
             break

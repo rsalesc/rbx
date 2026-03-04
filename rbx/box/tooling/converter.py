@@ -5,7 +5,7 @@ from typing import Optional
 import typer
 
 from rbx import console
-from rbx.box import builder, cd, package
+from rbx.box import builder, cd, package, package_utils
 from rbx.box.environment import VerificationLevel
 from rbx.box.packaging.boca.packager import BocaPackager
 from rbx.box.packaging.importer import BaseImporter
@@ -52,7 +52,7 @@ async def convert(
     await importer.import_package(pkg_dir, into_dir)
 
     with cd.new_package_cd(into_dir):
-        package.clear_package_cache()
+        package_utils.clear_package_cache()
 
         pkg = package.find_problem_package_or_die()
 

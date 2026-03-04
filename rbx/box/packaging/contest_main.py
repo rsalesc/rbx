@@ -6,7 +6,7 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import cd, environment, limits_info, package
+from rbx.box import cd, environment, limits_info, package, package_utils
 from rbx.box.contest import build_contest_statements, contest_package
 from rbx.box.packaging.packager import (
     BaseContestPackager,
@@ -40,7 +40,7 @@ async def run_contest_packager(
             f'Processing problem [item]{problem.short_name}[/item]...'
         )
         with cd.new_package_cd(problem.get_path()):
-            package.clear_package_cache()
+            package_utils.clear_package_cache()
             package_path = await run_packager(
                 packager_cls, verification=verification, **kwargs
             )

@@ -46,10 +46,11 @@ class TestcaseValidationInfo(BaseModel):
 def _compile_validator(validator: CodeItem) -> str:
     try:
         digest = compile_item(validator, sanitized=SanitizationLevel.PREFER)
-    except:
+    except Exception:
         console.console.print(
             f'[error]Failed compiling validator {validator.href()}.[/error]'
         )
+        # console.console.print_exception()
         raise
     return digest
 

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import typer
 
 from rbx import console, testing_utils
-from rbx.box import cd, limits_info, naming, package
+from rbx.box import cd, limits_info, naming, package_utils
 from rbx.box.contest import statement_overriding
 from rbx.box.contest.contest_package import get_problems
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
@@ -84,7 +84,7 @@ class StatementBuildIssue(Issue):
 
 def _get_samples(problem: ContestProblem) -> List[Testcase]:
     with cd.new_package_cd(problem.get_path()):
-        package.clear_package_cache()
+        package_utils.clear_package_cache()
         try:
             return get_samples()
         except Exception as e:
@@ -198,7 +198,7 @@ async def _build_problem_statements(
             f'Building statement for problem {extracted_problem.problem.short_name}...'
         )
         with cd.new_package_cd(extracted_problem.problem.get_path()):
-            package.clear_package_cache()
+            package_utils.clear_package_cache()
             # TODO: respect steps override
             try:
                 content, _ = await build_statements.build_statement_bytes(

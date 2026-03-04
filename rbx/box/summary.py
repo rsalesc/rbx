@@ -6,7 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from rbx import console
-from rbx.box import cd, package, testcase_extractors
+from rbx.box import cd, package, package_utils, testcase_extractors
 from rbx.box.contest.schema import Contest
 from rbx.box.formatting import get_formatted_memory, get_formatted_time
 from rbx.box.generation_schema import GenerationTestcaseEntry
@@ -400,7 +400,7 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
 
         try:
             with cd.new_package_cd(problem_path):
-                package.clear_package_cache()
+                package_utils.clear_package_cache()
                 entries = (
                     await testcase_extractors.extract_generation_testcases_from_groups()
                 )

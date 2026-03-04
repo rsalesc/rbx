@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from rbx import console, utils
-from rbx.box import package, presets
+from rbx.box import package_utils, presets
 from rbx.box.fields import Primitive
 from rbx.box.schema import (
     CheckerTest,
@@ -89,7 +89,7 @@ class TestingPackage(TestingShared):
         self.yml_path.write_text(utils.model_to_yaml(self.yml))
         # Clear internal cache and package cache to ensure the updated package is loaded fresh
         self._yml = None
-        package.clear_package_cache()
+        package_utils.clear_package_cache()
 
     def set_type(self, type: TaskType):
         self.yml.type = type

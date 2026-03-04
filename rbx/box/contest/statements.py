@@ -4,7 +4,7 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import cd, environment, package
+from rbx.box import cd, environment, package_utils
 from rbx.box.contest.build_contest_statements import (
     StatementBuildIssue,
     build_statement,
@@ -98,7 +98,7 @@ async def build(
                 f'Processing problem [item]{problem.short_name}[/item]...'
             )
             with cd.new_package_cd(problem.get_path()):
-                package.clear_package_cache()
+                package_utils.clear_package_cache()
 
                 try:
                     if not await build_samples(verification, validate):
