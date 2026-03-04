@@ -1,3 +1,9 @@
+## 0.31.5 (2026-03-03)
+
+### Fix
+
+- fix issue with rbx.h caching
+
 ## 0.31.4 (2026-03-03)
 
 ### Fix
