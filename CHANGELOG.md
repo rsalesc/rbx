@@ -1,3 +1,9 @@
+## 0.31.4 (2026-03-03)
+
+### Fix
+
+- fix verbatim on interaction changes
+
 ## 0.31.3 (2026-03-03)
 
 ### Fix
