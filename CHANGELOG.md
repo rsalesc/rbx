@@ -1,3 +1,14 @@
+## 0.31.8 (2026-03-05)
+
+### Fix
+
+- add boca submitter
+- add serial to kotlin
+- add GC serial to java
+- remove binary limit for java
+- increase boca compilation binary limit for c
+- increase size of c++ compiled binaries
+
 ## 0.31.7 (2026-03-04)
 
 ### Fix
