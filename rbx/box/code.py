@@ -18,6 +18,7 @@ from rbx.box import download, global_package, package, setter_config, state
 from rbx.box.environment import (
     BaseCompilationConfig,
     CompilationConfig,
+    EnvironmentLanguage,
     ExecutionConfig,
     FileMapping,
     get_compilation_config,
@@ -83,10 +84,14 @@ def get_extension(code: CodeItem) -> str:
     return path.suffix[1:]
 
 
-def find_language_name(code: CodeItem) -> str:
+def find_language(code: CodeItem) -> EnvironmentLanguage:
     if code.language is not None:
-        return get_language(code.language).name
-    return get_language_by_extension(get_extension(code)).name
+        return get_language(code.language)
+    return get_language_by_extension(get_extension(code))
+
+
+def find_language_name(code: CodeItem) -> str:
+    return find_language(code).name
 
 
 def is_executable_sanitized(executable: DigestOrSource) -> bool:

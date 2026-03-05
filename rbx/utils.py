@@ -42,7 +42,7 @@ def load_dotenv():
     for dotenv_file in DOTENV_FILES:
         file = dotenv.find_dotenv(dotenv_file, usecwd=True)
         if file:
-            dotenv.load_dotenv(file)
+            dotenv.load_dotenv(file, override=True)
 
 
 class SemVerCompatibility(enum.Enum):

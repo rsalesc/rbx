@@ -4,6 +4,7 @@ import typer
 
 from rbx import annotations
 from rbx.box.tooling.boca.scrape import scrape_boca
+from rbx.box.tooling.boca.scraper import get_boca_scraper
 from rbx.box.tooling.boca.ui import run_app
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -27,3 +28,11 @@ def view(
     # Normalize empty input to None to let the UI apply default
     cid = (contest_id or '').strip() or None
     run_app(contest_id=cid)
+
+
+@app.command('submit', help='Submit solutions to BOCA.')
+def submit() -> None:
+    from rbx.box.tooling.boca.submitter import judge_all, submit_all_solutions
+
+    judged_solutions = list(submit_all_solutions(get_boca_scraper(is_judge=True)))
+    judge_all(judged_solutions)

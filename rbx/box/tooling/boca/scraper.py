@@ -5,7 +5,7 @@ import pathlib
 import re
 import time
 import typing
-from typing import Any, Callable, List, NoReturn, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple, Union
 
 import dateparser
 import mechanize
@@ -541,6 +541,33 @@ class BocaScraper:
             )
 
         return problems
+
+    def list_problems_as_judge(self) -> Dict[str, int]:
+        _, html = self.open(
+            f'{self.base_url}/judge/team.php',
+            error_msg='Error while listing problems as judge in BOCA',
+        )
+
+        try:
+            self.br.select_form(name='form1')
+        except mechanize.FormNotFoundError:
+            self.error(
+                'Judge submission form not found in BOCA website. This might happen when the login failed.'
+            )
+
+        form = typing.cast(mechanize.HTMLForm, self.br.form)
+
+        problem_control = form.find_control(name='problem')
+
+        return {
+            (
+                labels[0].text
+                if (labels := item.get_labels())
+                else (item.attrs.get('label') or item.name)
+            ).strip(): int(item.name)
+            for item in problem_control.items
+            if item.name is not None
+        }
 
     def list_languages(self) -> List[BocaLanguage]:
         _, html = self.open(

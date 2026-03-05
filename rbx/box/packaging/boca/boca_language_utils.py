@@ -31,6 +31,13 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
     )
     if language_extension.bocaLanguage:
         return typing.cast(BocaLanguage, language_extension.bocaLanguage)
+    env = get_environment()
+    if (
+        env.extensions is not None
+        and env.extensions.boca is not None
+        and rbx_language.lower() in env.extensions.boca.languages
+    ):
+        return typing.cast(BocaLanguage, rbx_language.lower())
     if rbx_language.lower() in typing.get_args(BocaLanguage):
         return typing.cast(BocaLanguage, rbx_language.lower())
     raise ValueError(f'No Boca language found for Rbx language {rbx_language}')
