@@ -87,7 +87,7 @@ class BocaPackager(BasePackager):
         title = naming.get_problem_title(lang, statement, fallback_to_title=True)
         return (
             f'basename={self._get_problem_basename()}\n'
-            f'fullname={title}\n'
+            f'fullname="{title}"\n'
             f'descfile={self._get_problem_basename()}.pdf\n'
         )
 
