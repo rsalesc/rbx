@@ -1,3 +1,10 @@
+## 0.31.6 (2026-03-04)
+
+### Fix
+
+- enclose problem full name during packaging around quotes
+- stop printing dir tree when building statement
+
 ## 0.31.5 (2026-03-03)
 
 ### Fix
