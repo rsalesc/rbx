@@ -325,6 +325,11 @@ Whether this interactor is a legacy interactor and needs a checker to be specifi
 """,
     )
 
+    capture: bool = Field(
+        default=True,
+        description="""Whether the interactor should capture the pipes.""",
+    )
+
 
 class OutputFromItem(CodeItem):
     model_config = ConfigDict(extra='forbid')

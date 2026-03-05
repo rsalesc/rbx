@@ -213,8 +213,11 @@ async def _run_communication_solution_on_testcase(
     filestem: Optional[str] = None,
     is_stress: bool = False,
 ) -> Evaluation:
+    interactor = package.get_interactor()
     if capture_pipes is None:
-        capture_pipes = state.STATE.debug_logs
+        capture_pipes = state.STATE.debug_logs and (
+            interactor is not None and interactor.capture
+        )
 
     async def run_fn(retry_index: int) -> Evaluation:
         actual_sandbox = package.get_singleton_sandbox()

@@ -22,6 +22,7 @@ from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
     Generator,
+    Interactor,
     Package,
     ScoreType,
     Solution,
@@ -393,13 +394,13 @@ def get_checker_or_builtin(
 
 
 @functools.cache
-def get_interactor_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[CodeItem]:
+def get_interactor_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[Interactor]:
     package = find_problem_package_or_die(root)
     return package.interactor
 
 
 @functools.cache
-def get_interactor(root: pathlib.Path = pathlib.Path()) -> CodeItem:
+def get_interactor(root: pathlib.Path = pathlib.Path()) -> Interactor:
     interactor = get_interactor_or_nil(root)
     if interactor is None:
         console.console.print(

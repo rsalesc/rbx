@@ -396,6 +396,10 @@ def _get_report_skeleton(
     shutil.rmtree(str(runs_dir), ignore_errors=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
 
+    interactor = package.get_interactor_or_nil()
+    capture_pipes = state.STATE.debug_logs and (
+        interactor is not None and interactor.capture
+    )
     skeleton = SolutionReportSkeleton(
         solutions=[
             SolutionSkeleton(
@@ -409,7 +413,7 @@ def _get_report_skeleton(
         entries=entries,
         compiled_solutions=compiled_solutions,
         verification=verification,
-        capture_pipes=state.STATE.debug_logs,
+        capture_pipes=capture_pipes,
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
