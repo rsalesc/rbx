@@ -1,3 +1,10 @@
+## 0.31.7 (2026-03-04)
+
+### Fix
+
+- capture pipes depending on flag on interactor codeitem
+- capture pipes selectively during output generation
+
 ## 0.31.6 (2026-03-04)
 
 ### Fix
