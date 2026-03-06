@@ -192,9 +192,9 @@ def _save_skip_coinciding_testcases(problem: api.Problem, *args, **kwargs) -> bo
 
 
 def _get_test_params_for_statement(
-    testcase: Testcase, is_sample: bool
+    testcase: Optional[Testcase], is_sample: bool
 ) -> Dict[str, Any]:
-    if not is_sample:
+    if not is_sample or testcase is None:
         return {}
     res: Dict[str, Any] = {'test_use_in_statements': True}
     if testcase.outputPath is not None:
@@ -292,16 +292,19 @@ def _upload_testcases(problem: api.Problem):
                 )
                 continue
 
+            content = entry.metadata.content
             if (
-                entry.metadata.copied_from is None
-                or not entry.metadata.copied_from.inputPath.is_file()
+                entry.metadata.copied_from is not None
+                and entry.metadata.copied_from.inputPath.is_file()
             ):
+                content = entry.metadata.copied_from.inputPath.read_text()
+            if content is None:
                 continue
             saved = _save_skip_coinciding_testcases(
                 problem,
                 testset='tests',
                 test_index=next_index,
-                test_input=entry.metadata.copied_from.inputPath.read_text(),
+                test_input=content,
                 **_get_test_params_for_statement(
                     entry.metadata.copied_from,
                     is_sample=entry.is_sample(),

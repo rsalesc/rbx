@@ -356,3 +356,18 @@ def test_convert_to_polygon_tex_stress_cases(input_tex, expected):
     converted = convert_to_polygon_tex(input_tex)
     # Check strict equality as per stress test expectations
     assert converted.strip() == expected.strip()
+
+
+def test_convert_unwraps_mbox():
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    # Simple mbox unwrap
+    assert convert_to_polygon_tex(r'\mbox{content}') == 'content'
+    # mbox with nested commands
+    assert convert_to_polygon_tex(r'\mbox{\textbf{bold}}') == r'\textbf{bold}'
+    # mbox inside other commands
+    assert convert_to_polygon_tex(r'\textbf{\mbox{inner}}') == r'\textbf{inner}'
+    # mbox with math conversion inside
+    assert convert_to_polygon_tex(r'\mbox{\( x \)}') == r'$ x $'
+    # Multiple mboxes
+    assert convert_to_polygon_tex(r'\mbox{a} and \mbox{b}') == 'a and b'

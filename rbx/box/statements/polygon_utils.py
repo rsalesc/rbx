@@ -1,7 +1,7 @@
 import dataclasses
 from typing import List, NamedTuple, Optional, Set, Tuple
 
-from TexSoup.data import TexNode, Token
+from TexSoup.data import TexCmd, TexNode, Token
 
 from rbx.box.exception import RbxException
 from rbx.box.statements.texsoup_utils import (
@@ -129,6 +129,13 @@ MACRO_COMMANDS = {
     'newcommand',
     'renewcommand',
     'def',
+}
+
+# Commands that should be removed and replaced with their argument content.
+# These are LaTeX commands unsupported by Polygon that can be safely "unwrapped"
+# (i.e., \cmd{content} becomes just content).
+UNWRAPPABLE_COMMANDS = {
+    'mbox',
 }
 
 
@@ -376,6 +383,11 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
             # Restore any whitespace gap from the original text.
             _fill_gap(node)
 
+            # Wrap bare TexCmd (found inside args) into TexNode for
+            # uniform handling.
+            if isinstance(node, TexCmd):
+                node = TexNode(node)
+
             # Helper to handle non-TexNodes (Tokens, strings)
             if not isinstance(node, TexNode):
                 # Just append string representation
@@ -459,6 +471,15 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
 
                 # Advance main index
                 i = j
+                continue
+
+            # --- Unwrappable Commands ---
+            if node_name in UNWRAPPABLE_COMMANDS:
+                # Replace \cmd{content} with just the transformed content.
+                unwrapped = transform_nodes(node.contents)
+                result.append(unwrapped)
+                _update_end(node)
+                i += 1
                 continue
 
             # --- Default Recursive Step ---
