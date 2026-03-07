@@ -1,3 +1,11 @@
+## 0.31.9 (2026-03-06)
+
+### Fix
+
+- fix checker in stress tests
+- improve error handling in polygon upload
+- add \mbox as unwrap command in polygon
+
 ## 0.31.8 (2026-03-05)
 
 ### Fix
