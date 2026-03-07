@@ -241,12 +241,18 @@ def _upload_generator(problem: api.Problem, generator: Generator):
     console.console.print(
         f'Uploading generator {generator.href()} (lang: {generator_source_type})...'
     )
-    problem.save_file(
-        type=api.FileType.SOURCE,
-        name=generator.path.name,
-        file=generator.path.read_bytes(),
-        source_type=generator_source_type,
-    )
+    try:
+        problem.save_file(
+            type=api.FileType.SOURCE,
+            name=generator.path.name,
+            file=generator.path.read_bytes(),
+            source_type=generator_source_type,
+        )
+    except api.PolygonRequestFailedException as e:
+        console.console.print(
+            f'[error]Failed to upload generator {generator.href()}:[/error]\n{e.comment}'
+        )
+        raise typer.Exit(1) from None
 
 
 def _upload_testcases(problem: api.Problem):
@@ -350,8 +356,13 @@ def _upload_solutions(problem: api.Problem):
         futures = []
         for i, solution in enumerate(package.get_solutions()):
             futures.append(executor.submit(process_solution, solution, i))
-        for future in futures:
-            future.result()
+        for solution, future in zip(package.get_solutions(), futures):
+            try:
+                future.result()
+            except api.PolygonRequestFailedException as e:
+                console.console.print(
+                    f'[error]Failed to upload solution {solution.href()}:[/error]\n{e.comment}'
+                )
 
     def delete_solution(solution: api.Solution):
         console.console.print(f'Deleting solution [item]{solution.name}[/item]...')
@@ -367,8 +378,13 @@ def _upload_solutions(problem: api.Problem):
         for solution in problem.solutions():
             if solution.name not in saved_solutions:
                 futures.append(executor.submit(delete_solution, solution))
-        for future in futures:
-            future.result()
+        for solution, future in zip(problem.solutions(), futures):
+            try:
+                future.result()
+            except api.PolygonRequestFailedException as e:
+                console.console.print(
+                    f'[error]Failed to delete solution [item]{solution.name}[/item]:[/error]\n{e.comment}'  # pyright: ignore[reportAttributeAccessIssue]
+                )
 
 
 def _get_explanations(explanations: Dict[int, str]) -> str:
