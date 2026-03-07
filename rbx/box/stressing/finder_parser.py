@@ -136,7 +136,7 @@ def get_checking_mode_from_string(mode: Optional[str]) -> CheckingMode:
 
 
 def _get_main_checker() -> Optional[str]:
-    checker = package.get_checker_or_nil()
+    checker = package.get_checker()
     if checker is None:
         return None
     return str(checker.path)
