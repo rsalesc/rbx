@@ -29,7 +29,12 @@ from rbx.box.deferred import Deferred
 from rbx.box.environment import (
     VerificationLevel,
 )
-from rbx.box.formatting import get_formatted_memory, get_formatted_time, href
+from rbx.box.formatting import (
+    get_formatted_memory,
+    get_formatted_time,
+    get_formatted_time_in_seconds,
+    href,
+)
 from rbx.box.generation_schema import TestcaseOrScriptEntry
 from rbx.box.generators import (
     GenerationMetadata,
@@ -1019,6 +1024,12 @@ def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
     return max(int((eval.log.time or 0.0) * 1000) for eval in evals)
 
 
+def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
+    if not evals:
+        return 0
+    return sum((eval.log.wall_time or 0.0) for eval in evals)
+
+
 def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
     if not evals:
         return 0
@@ -1028,6 +1039,11 @@ def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
     return get_formatted_time(max_time)
+
+
+def get_evals_formatted_judging_time(evals: List[Evaluation]) -> str:
+    total_time = _get_evals_judging_time_in_seconds(evals)
+    return get_formatted_time_in_seconds(total_time)
 
 
 def get_capped_evals_formatted_time(
@@ -1174,6 +1190,7 @@ class SolutionOutcomeReport(BaseModel):
         res = self.get_verdict_markup_with_warnings(subset=subset)
         res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
+        # res += f'\nJudging time: {get_evals_formatted_judging_time(self.evals)}'
         if print_message and self.message is not None:
             tc, msg = self.message
             if msg:

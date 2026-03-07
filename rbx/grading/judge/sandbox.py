@@ -215,6 +215,7 @@ class SandboxLog(pydantic.BaseModel):
 
     params: SandboxParams
     execution_time: float  # seconds
+    wall_time: float  # seconds
     memory_used: int  # bytes
     exitcode: int
     exitstatus: str

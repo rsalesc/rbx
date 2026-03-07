@@ -50,3 +50,7 @@ def get_formatted_memory(memory_in_bytes: int, mib_decimal_places: int = 0) -> s
 
 def get_formatted_time(time_in_ms: int) -> str:
     return f'{time_in_ms} ms'
+
+
+def get_formatted_time_in_seconds(time_in_seconds: float) -> str:
+    return f'{time_in_seconds:.1f} s'

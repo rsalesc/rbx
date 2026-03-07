@@ -375,10 +375,14 @@ def _upload_solutions(problem: api.Problem):
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
-        for solution in problem.solutions():
-            if solution.name not in saved_solutions:
-                futures.append(executor.submit(delete_solution, solution))
-        for solution, future in zip(problem.solutions(), futures):
+        solutions = [
+            solution
+            for solution in problem.solutions()
+            if solution.name not in saved_solutions
+        ]
+        for solution in solutions:
+            futures.append(executor.submit(delete_solution, solution))
+        for solution, future in zip(solutions, futures):
             try:
                 future.result()
             except api.PolygonRequestFailedException as e:

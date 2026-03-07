@@ -251,6 +251,7 @@ class RunLog(BaseModel):
     exitcode: int = 0
     exitstatus: str = SandboxBase.EXIT_SANDBOX_ERROR
     time: Optional[float] = 0.0
+    wall_time: Optional[float] = 0.0
     memory: Optional[int] = 0
     sandbox: str = ''
     warnings: bool = False
@@ -671,6 +672,7 @@ def _build_program_error_run_log(
         exitcode=1,
         exitstatus=SandboxBase.EXIT_SANDBOX_ERROR,
         time=0.0,
+        wall_time=0.0,
         memory=0,
         metadata=metadata,
         sandbox=str(e),
@@ -695,6 +697,7 @@ def _build_run_log(
         exitcode=sandbox_log.exitcode,
         exitstatus=sandbox_log.exitstatus,
         time=execution_time,
+        wall_time=sandbox_log.wall_time,
         memory=sandbox_log.memory_used,
         metadata=metadata,
         sandbox=sandbox_log.dump_other_logs(),
@@ -765,6 +768,7 @@ def compile(
             exitcode=sandbox_log.exitcode,
             exitstatus=sandbox_log.exitstatus,
             time=sandbox_log.execution_time,
+            wall_time=sandbox_log.wall_time,
             memory=sandbox_log.memory_used,
             warnings=_check_for_compilation_warnings(sandbox, stderr_file),
             log='\n'.join(std_outputs),
