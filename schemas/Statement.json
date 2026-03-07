@@ -1,0 +1,271 @@
+{
+    "$defs": {
+        "JinjaTeX": {
+            "properties": {
+                "type": {
+                    "const": "jinja-tex",
+                    "title": "Type",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "JinjaTeX",
+            "type": "object"
+        },
+        "RecVars": {
+            "additionalProperties": {
+                "anyOf": [
+                    {
+                        "type": "integer"
+                    },
+                    {
+                        "type": "number"
+                    },
+                    {
+                        "type": "boolean"
+                    },
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "$ref": "#/$defs/RecVars"
+                    }
+                ]
+            },
+            "type": "object"
+        },
+        "StatementType": {
+            "enum": [
+                "rbxTeX",
+                "rbxMarkdown",
+                "TeX",
+                "JinjaTeX",
+                "PDF"
+            ],
+            "title": "StatementType",
+            "type": "string"
+        },
+        "TexToPDF": {
+            "description": "Configures the conversion between LaTeX and PDF using pdfLaTeX.",
+            "properties": {
+                "type": {
+                    "const": "tex2pdf",
+                    "title": "Type",
+                    "type": "string"
+                },
+                "externalize": {
+                    "default": false,
+                    "description": "Whether to externalize TikZ graphics.",
+                    "title": "Externalize",
+                    "type": "boolean"
+                },
+                "demacro": {
+                    "default": false,
+                    "description": "Whether to save macro definitions to a JSON file.",
+                    "title": "Demacro",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "TexToPDF",
+            "type": "object"
+        },
+        "rbxMarkdownToTeX": {
+            "description": "Configures the conversion between rbxMarkdown and LaTeX.",
+            "properties": {
+                "type": {
+                    "const": "rbx-md-tex",
+                    "title": "Type",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "rbxMarkdownToTeX",
+            "type": "object"
+        },
+        "rbxToTeX": {
+            "description": "Configures the conversion between rbxTeX and LaTeX.",
+            "properties": {
+                "type": {
+                    "const": "rbx-tex",
+                    "title": "Type",
+                    "type": "string"
+                },
+                "template": {
+                    "default": "template.rbx.tex",
+                    "description": "Path to the template that should be used to render the rbx-tex blocks.",
+                    "format": "path",
+                    "title": "Template",
+                    "type": "string"
+                },
+                "externalize": {
+                    "default": false,
+                    "description": "Whether to externalize TikZ graphics.",
+                    "title": "Externalize",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "title": "rbxToTeX",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "name": {
+            "description": "Name of this statement.",
+            "maxLength": 128,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+            "title": "Name",
+            "type": "string"
+        },
+        "inheritFromContest": {
+            "default": false,
+            "description": "Whether the configuration for this statement should be inherited from the contest. When this field is set to true, the statement for this problem can only be built if it's within a contest and there is a contest statement matching it.",
+            "title": "Inheritfromcontest",
+            "type": "boolean"
+        },
+        "extends": {
+            "anyOf": [
+                {
+                    "maxLength": 128,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Name of the statement that this statement extends.",
+            "title": "Extends"
+        },
+        "language": {
+            "default": "en",
+            "description": "Language code of this statement (ISO 639-1).",
+            "title": "Language",
+            "type": "string"
+        },
+        "title": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Title of the problem, as it appears in the statement. Can be left unset if the problem has no title or if title comes from the `titles` field of the package.",
+            "title": "Title"
+        },
+        "path": {
+            "description": "Path to the input statement file.",
+            "format": "path",
+            "title": "Path",
+            "type": "string"
+        },
+        "type": {
+            "$ref": "#/$defs/StatementType",
+            "default": "rbxTeX",
+            "description": "Type of the input statement file."
+        },
+        "steps": {
+            "default": [],
+            "description": "\nDescribes a sequence of conversion steps that should be applied to the statement file.\n\nUsually, it is not necessary to specify these, as they can be inferred from the\ninput statement type and the output statement type, but you can use this to force\ncertain conversion steps to happen.\n",
+            "items": {
+                "discriminator": {
+                    "mapping": {
+                        "jinja-tex": "#/$defs/JinjaTeX",
+                        "rbx-md-tex": "#/$defs/rbxMarkdownToTeX",
+                        "rbx-tex": "#/$defs/rbxToTeX",
+                        "tex2pdf": "#/$defs/TexToPDF"
+                    },
+                    "propertyName": "type"
+                },
+                "oneOf": [
+                    {
+                        "$ref": "#/$defs/TexToPDF"
+                    },
+                    {
+                        "$ref": "#/$defs/JinjaTeX"
+                    },
+                    {
+                        "$ref": "#/$defs/rbxToTeX"
+                    },
+                    {
+                        "$ref": "#/$defs/rbxMarkdownToTeX"
+                    }
+                ]
+            },
+            "title": "Steps",
+            "type": "array"
+        },
+        "configure": {
+            "default": [],
+            "description": "\nConfigure how certain conversion steps should happen when applied to the statement file.\n\nDifferent from the `steps` field, this does not force the steps to happen, but rather only\nconfigure them in case they are applied.\n",
+            "items": {
+                "discriminator": {
+                    "mapping": {
+                        "jinja-tex": "#/$defs/JinjaTeX",
+                        "rbx-md-tex": "#/$defs/rbxMarkdownToTeX",
+                        "rbx-tex": "#/$defs/rbxToTeX",
+                        "tex2pdf": "#/$defs/TexToPDF"
+                    },
+                    "propertyName": "type"
+                },
+                "oneOf": [
+                    {
+                        "$ref": "#/$defs/TexToPDF"
+                    },
+                    {
+                        "$ref": "#/$defs/JinjaTeX"
+                    },
+                    {
+                        "$ref": "#/$defs/rbxToTeX"
+                    },
+                    {
+                        "$ref": "#/$defs/rbxMarkdownToTeX"
+                    }
+                ]
+            },
+            "title": "Configure",
+            "type": "array"
+        },
+        "assets": {
+            "default": [],
+            "description": "\nAssets relative to the package directory that should be included while building\nthe statement. Files will be included in the same folder as the statement file, preserving\ntheir relativeness. Can be glob pattern as well, such as `imgs/*.png`.\n",
+            "items": {
+                "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+        },
+        "vars": {
+            "$ref": "#/$defs/RecVars",
+            "default": {},
+            "description": "Variables to be used in the statement."
+        },
+        "samples": {
+            "default": true,
+            "description": "Whether to build the statement with samples.",
+            "title": "Samples",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "name"
+    ],
+    "title": "Statement",
+    "type": "object"
+}
