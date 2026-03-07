@@ -1,3 +1,9 @@
+## 0.31.10 (2026-03-07)
+
+### Fix
+
+- implement the judging time bit, but do not show it for now
+
 ## 0.31.9 (2026-03-06)
 
 ### Fix
