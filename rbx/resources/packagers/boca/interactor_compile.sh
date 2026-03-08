@@ -18,9 +18,9 @@ if [ ! -x "$cc" ]; then
   exit 47
 fi
 
-read -r -d '' InteractorContent <<"EOF"
+read -r -d '' InteractorContent <<"RBXINTERACTOREOF"
 {{interactor_content}}
-EOF
+RBXINTERACTOREOF
 
 printf "%s" "${InteractorContent}" >$INTERACTOR_PATH
 

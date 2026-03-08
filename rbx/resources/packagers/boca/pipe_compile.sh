@@ -18,9 +18,9 @@ if [ ! -x "$cc" ]; then
   exit 47
 fi
 
-read -r -d '' PipeContent <<"EOF"
+read -r -d '' PipeContent <<"RBXPIPEEOF"
 {{pipe_content}}
-EOF
+RBXPIPEEOF
 
 printf "%s" "${PipeContent}" >$PIPE_PATH
 

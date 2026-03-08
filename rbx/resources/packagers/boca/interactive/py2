@@ -117,9 +117,9 @@ cdir=$(pwd)
 echo "Current directory is $cdir -- chrooting on it" >&2
 
 ### START OF BOCA RUN COMMAND
-cat >runit.sh <<"EOF"
+cat >runit.sh <<"RUNITEOF"
 {{runit_content}}
-EOF
+RUNITEOF
 chmod 755 runit.sh
 
 ret=0

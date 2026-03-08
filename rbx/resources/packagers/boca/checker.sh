@@ -13,17 +13,17 @@ if [ ! -x "$cc" ]; then
     echo "$cc not found or it's not executable"
     exit 47
 fi
-read -r -d '' TestlibContent <<"EOF"
+read -r -d '' TestlibContent <<"RBXTESTLIBEOF"
 {{testlib_content}}
-EOF
+RBXTESTLIBEOF
 
-read -r -d '' RbxHeaderContent <<"EOF"
+read -r -d '' RbxHeaderContent <<"RBXRBXHEADEREOF"
 {{rbx_header_content}}
-EOF
+RBXRBXHEADEREOF
 
-read -r -d '' CheckerContent <<"EOF"
+read -r -d '' CheckerContent <<"RBXCHECKEREOF"
 {{checker_content}}
-EOF
+RBXCHECKEREOF
 
 printf "%s" "${TestlibContent}" >testlib.h
 printf "%s" "${RbxHeaderContent}" >rbx.h

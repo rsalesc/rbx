@@ -18,9 +18,9 @@ if [ ! -x "$cc" ]; then
   exit 47
 fi
 
-read -r -d '' SafeexecContent <<"EOF"
+read -r -d '' SafeexecContent <<"RBXSAFEEXECEOF"
 {{safeexec_content}}
-EOF
+RBXSAFEEXECEOF
 
 printf "%s" "${SafeexecContent}" >$SAFEEXEC_PATH
 
