@@ -388,9 +388,13 @@ class BocaPackager(BasePackager):
             pdf_path.touch(exist_ok=True)
 
         # Copy solutions
-        solutions_path = into_path / 'solutions'
-        solutions_path.mkdir(parents=True, exist_ok=True)
-        self._copy_solutions(solutions_path)
+        # WARNING: this is broken, BOCA has a weird check
+        # for files with a substring "input". It's too
+        # dangerous to ship extra files in the package, let's
+        # avoid it for now.
+        # solutions_path = into_path / 'solutions'
+        # solutions_path.mkdir(parents=True, exist_ok=True)
+        # self._copy_solutions(solutions_path)
 
         # Prepare IO
         inputs_path = into_path / 'input'
