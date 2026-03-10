@@ -81,11 +81,13 @@ class ProgramParams:
     fs_limit: Optional[int] = None  # kilobytes
     env: Dict[str, str] = dataclasses.field(default_factory=dict)
     pgid: Optional[int] = None
+    pipesize: int = -1
 
 
 def get_preexec_fn(params: ProgramParams):
     def preexec_fn():
         os.setpgid(0, params.pgid or 0)
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         if params.time_limit is not None:
             time_limit_in_ms = int(params.time_limit * 1000)
             rlimit_cpu = int((time_limit_in_ms + 999) // 1000)
@@ -253,6 +255,7 @@ class Program:
                 cwd=self.params.chdir,
                 env={**os.environ, **self.params.env},
                 preexec_fn=get_preexec_fn(self.params),
+                pipesize=self.params.pipesize,
             )
         except FileNotFoundError as e:
             raise ProgramError(f'Command {self.command[0]} not found') from e
@@ -278,9 +281,8 @@ class Program:
         _maybe_close_files(self._files)
 
     def process_exit(self, exitstatus, ru) -> ProgramResult:
-        _maybe_close_files(self._files)
-
         wall_time = monotonic() - self.start_time
+        _maybe_close_files(self._files)
         cpu_time = get_cpu_time(ru)
         memory_used = get_memory_usage(ru)
         file_sizes = get_file_sizes(self.params.io)

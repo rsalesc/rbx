@@ -31,20 +31,7 @@ from rbx.grading.judge.sandbox import (
 
 logger = logging.getLogger(__name__)
 
-TEE_CODE = R"""
-import sys
-c = sys.argv[1]
-new = True
-while True:
-    l = sys.stdin.read(1)
-    if l=='': break
-    sys.stdout.write(l)
-    sys.stdout.flush()
-    if new: sys.stderr.write(c)
-    sys.stderr.write(l)
-    sys.stderr.flush()
-    new = l=='\n'
-"""
+BUFFER_SIZE_BYTES = 1024 * 1024
 
 
 class StupidSandbox(SandboxBase):
@@ -139,6 +126,7 @@ class StupidSandbox(SandboxBase):
             fs_limit=params.fsize,
             env=params.set_env,
             io=self._get_io(params),
+            pipesize=BUFFER_SIZE_BYTES,
         )
 
     def _get_tee_program_params(self, io: ProgramIO, pgid: int) -> ProgramParams:
@@ -149,6 +137,7 @@ class StupidSandbox(SandboxBase):
             memory_limit=None,
             io=io,
             pgid=pgid,
+            pipesize=BUFFER_SIZE_BYTES,
         )
 
     def _get_sandbox_log(
