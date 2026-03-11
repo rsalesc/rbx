@@ -5,7 +5,7 @@ import dataclasses
 class State:
     run_through_cli: bool = False
     sanitized: bool = False
-    debug_logs: bool = False
+    capture_pipes: bool = False
 
 
 STATE = State()

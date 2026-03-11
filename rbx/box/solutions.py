@@ -19,7 +19,7 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, code, limits_info, package, remote, state, visualizers
+from rbx.box import checkers, code, limits_info, package, remote, visualizers
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -56,6 +56,7 @@ from rbx.box.schema import (
 from rbx.box.tasks import (
     get_limits_for_language,
     run_solution_on_testcase,
+    should_capture_pipes,
 )
 from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_generic_entries,
@@ -267,6 +268,7 @@ def _run_solution(
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
     nruns: int = 0,
+    capture_pipes: bool = False,
 ) -> List[Deferred[Evaluation]]:
     group = package.get_testgroup(group_name)
     testcases = find_built_testcases(group)
@@ -293,6 +295,7 @@ def _run_solution(
                 verification=verification,
                 timelimit_override=timelimit_override,
                 nruns=nruns,
+                capture_pipes=capture_pipes,
             )
 
         res.append(Deferred(run_fn))
@@ -401,10 +404,6 @@ def _get_report_skeleton(
     shutil.rmtree(str(runs_dir), ignore_errors=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    interactor = package.get_interactor_or_nil()
-    capture_pipes = state.STATE.debug_logs and (
-        interactor is not None and interactor.capture
-    )
     skeleton = SolutionReportSkeleton(
         solutions=[
             SolutionSkeleton(
@@ -418,7 +417,7 @@ def _get_report_skeleton(
         entries=entries,
         compiled_solutions=compiled_solutions,
         verification=verification,
-        capture_pipes=capture_pipes,
+        capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
@@ -464,6 +463,7 @@ def _produce_solution_items(
                 verification=verification,
                 timelimit_override=timelimit_override,
                 nruns=nruns,
+                capture_pipes=skeleton.capture_pipes,
             )
         ):
             res.append(
@@ -706,7 +706,7 @@ def _run_interactive_solutions(
                 output_dir=output_dir,
                 interactor_digest=interactor_digest,
                 verification=verification,
-                capture_pipes=True,
+                capture_pipes=skeleton.capture_pipes,
             )
 
         yield EvaluationItem(
@@ -756,7 +756,7 @@ def _get_interactive_skeleton(
         entries=[TestcaseEntry.make_interactive()],
         verification=verification,
         compiled_solutions=compiled_solutions,
-        capture_pipes=True,
+        capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
@@ -832,11 +832,16 @@ async def run_and_print_interactive_solutions(
                 output_files = get_all_interaction_files(stdout_path) + [
                     stdout_path.with_suffix('.pout'),
                 ]
-                print_best_output(output_files, empty_warning=True)
+                print_best_output(
+                    output_files,
+                    pkg.type,
+                    empty_warning=True,
+                    capture_pipes=skeleton.capture_pipes,
+                )
 
             console.console.rule('Output', style='status')
             output_files = [stdout_path]
-            print_best_output(output_files, empty_warning=True)
+            print_best_output(output_files, pkg.type, empty_warning=True)
         elif stdout_path is not None:
             if stdout_path.with_suffix('.pout').is_file():
                 stdout_path = stdout_path.with_suffix('.pout')

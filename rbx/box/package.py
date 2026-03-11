@@ -396,6 +396,8 @@ def get_checker_or_builtin(
 @functools.cache
 def get_interactor_or_nil(root: pathlib.Path = pathlib.Path()) -> Optional[Interactor]:
     package = find_problem_package_or_die(root)
+    if package.type != TaskType.COMMUNICATION:
+        return None
     return package.interactor
 
 

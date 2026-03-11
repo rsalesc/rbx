@@ -22,6 +22,7 @@ from rbx.box.ui.utils.run_ui import (
     get_run_testcase_metadata_markup,
 )
 from rbx.box.ui.widgets.file_log import FileLog
+from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.box.ui.widgets.test_output_box import TestcaseRenderingData
 from rbx.box.ui.widgets.two_sided_test_output_box import TwoSidedTestBoxWidget
 
@@ -65,6 +66,7 @@ class RunTestExplorerScreen(Screen):
             with Vertical(id='test-list-container'):
                 yield ListView(id='test-list')
             with Vertical(id='test-details'):
+                yield RichLogBox(id='test-box-warning')
                 yield FileLog(id='test-input')
                 yield TwoSidedTestBoxWidget(id='test-output')
 
@@ -77,10 +79,24 @@ class RunTestExplorerScreen(Screen):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
 
+        warning_box = self.query_one('#test-box-warning', RichLogBox)
+        warning_box.markup = True
+        warning_box.wrap = True
+        if not self._is_interactive():
+            warning_box.display = False
+        elif not self.skeleton.capture_pipes:
+            warning_box.write(
+                '[yellow]Interactions are not captured. Use the [blue]rbx -cp ...[/blue] flag when running to capture them.[/yellow]'
+            )
+            warning_box.display = True
+
         # Ensure the output is show, even for interactive tests
         self.action_show_output()
 
         await self._update_tests()
+
+    def _is_interactive(self) -> bool:
+        return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
 
     def _get_rendering_data(
         self, solution: SolutionSkeleton, entry: GenerationTestcaseEntry

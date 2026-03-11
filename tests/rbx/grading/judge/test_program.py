@@ -566,8 +566,8 @@ class TestProgramMocks:
         # Verify setpgid was called
         mock_setpgid.assert_called_once_with(0, 12345)
 
-        # Verify setrlimit was called 3 times.
-        assert mock_setrlimit.call_count == 3
+        # Verify setrlimit was called 4 times.
+        assert mock_setrlimit.call_count == 4
         calls = mock_setrlimit.call_args_list
 
         # Check CPU limit call
@@ -596,8 +596,8 @@ class TestProgramMocks:
         # Verify setpgid was called
         mock_setpgid.assert_called_once_with(0, 12345)
 
-        # Verify setrlimit was called 2 times.
-        assert mock_setrlimit.call_count == 2
+        # Verify setrlimit was called 3 times.
+        assert mock_setrlimit.call_count == 3
         calls = mock_setrlimit.call_args_list
 
         # Check CPU limit call

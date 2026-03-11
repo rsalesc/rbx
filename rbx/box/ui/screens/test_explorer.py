@@ -39,6 +39,7 @@ class TestExplorerScreen(Screen):
             with Vertical(id='test-list-container'):
                 yield ListView(id='test-list')
             with Vertical(id='test-details'):
+                yield RichLogBox(id='test-box-warning')
                 yield FileLog(id='test-input')
                 yield TestBoxWidget(id='test-output')
                 yield RichLogBox(id='test-metadata')
@@ -46,6 +47,18 @@ class TestExplorerScreen(Screen):
     async def on_mount(self):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
+
+        warning_box = self.query_one('#test-box-warning', RichLogBox)
+        warning_box.markup = True
+        warning_box.wrap = True
+        if not self._is_interactive():
+            warning_box.display = False
+        else:
+            warning_box.write(
+                '[yellow]This is an interactive problem.\n'
+                'Interactions are not captured by default. Use the [blue]rbx -cp ...[/blue] flag when running to capture them.[/yellow]'
+            )
+            warning_box.display = True
 
         # Ensure either output or interaction is visible.
         self.action_show_output()
@@ -61,6 +74,9 @@ class TestExplorerScreen(Screen):
     def action_toggle_metadata(self):
         metadata = self.query_one('#test-metadata', RichLogBox)
         metadata.display = not metadata.display
+
+    def _is_interactive(self) -> bool:
+        return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
 
     def _update_selected_test(self, index: Optional[int]):
         input = self.query_one('#test-input', FileLog)

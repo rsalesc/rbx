@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from rbx import console, utils
 from rbx.box import package
 from rbx.box.package import get_build_testgroup_path, get_build_tests_path
-from rbx.box.schema import Testcase, TestcaseGroup
+from rbx.box.schema import TaskType, Testcase, TestcaseGroup
 
 
 class TestcaseEntry(BaseModel):
@@ -264,7 +264,12 @@ def get_all_interaction_files(stdout_path: pathlib.Path) -> List[pathlib.Path]:
     return [stdout_path.with_suffix(suffix) for suffix in valid_interaction_suffixes()]
 
 
-def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = False):
+def print_best_output(
+    output_files: List[pathlib.Path],
+    task_type: TaskType,
+    empty_warning: bool = False,
+    capture_pipes: bool = False,
+):
     for output_file in output_files:
         if not output_file.is_file():
             continue
@@ -278,4 +283,13 @@ def print_best_output(output_files: List[pathlib.Path], empty_warning: bool = Fa
             console.console.print(output_file.read_text())
         return
     if empty_warning:
-        console.console.print('[warning]Solution produced no output.[/warning]')
+        if task_type == TaskType.COMMUNICATION:
+            console.console.print(
+                '[warning]Solution produced no interaction.[/warning]'
+            )
+            if not capture_pipes:
+                console.console.print(
+                    '[warning]Use the [item]rbx -cp ...[/item] flag to capture the interaction.[/warning]'
+                )
+        else:
+            console.console.print('[warning]Solution produced no output.[/warning]')

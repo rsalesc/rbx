@@ -74,6 +74,12 @@ FileLog > Log {
         background: transparent;
 }
 
+#test-box-warning {
+        min-height: 1;
+        height: auto;
+        scrollbar-visibility: hidden;
+}
+
 TestExplorerScreen, RunTestExplorerScreen {
         #test-box-switcher {
                 height: 1fr;

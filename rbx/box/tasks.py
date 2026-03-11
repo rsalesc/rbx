@@ -11,7 +11,7 @@ from rbx.box.code import (
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
 from rbx.box.sanitizers.issue_stack import Issue, add_issue
-from rbx.box.schema import CodeItem, Testcase
+from rbx.box.schema import CodeItem, Interactor, Testcase
 from rbx.grading import profiling
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
@@ -61,6 +61,10 @@ def get_limits_for_language(
     if limits.time is not None and (not use_timelimit or limits.time <= 0):
         limits.time = None
     return limits
+
+
+def should_capture_pipes(interactor: Optional[Interactor]) -> bool:
+    return state.STATE.capture_pipes and (interactor is not None and interactor.capture)
 
 
 async def run_solution_on_testcase(
@@ -215,9 +219,7 @@ async def _run_communication_solution_on_testcase(
 ) -> Evaluation:
     interactor = package.get_interactor()
     if capture_pipes is None:
-        capture_pipes = state.STATE.debug_logs and (
-            interactor is not None and interactor.capture
-        )
+        capture_pipes = should_capture_pipes(interactor)
 
     async def run_fn(retry_index: int) -> Evaluation:
         actual_sandbox = package.get_singleton_sandbox()

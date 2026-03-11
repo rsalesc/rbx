@@ -595,14 +595,14 @@ async def generate_outputs_for_testcases(
 
         assert model_solution is not None
         model_solution_digest = solution_digest_map[model_solution.path]
-        capture_pipes = entry.is_sample()  # Always capture pipes for samples
 
         await generate_output_for_testcase(
             model_solution,
             model_solution_digest,
             tc,
             interactor_digest=interactor_digest,
-            capture_pipes=True if capture_pipes else None,
+            # Always capture pipes for samples
+            capture_pipes=True if entry.is_sample() else None,
             line_capture=entry.is_sample(),
         )
         step()

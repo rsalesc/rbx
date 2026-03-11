@@ -140,11 +140,14 @@ def main(
         help='Whether to compile and run testlib components with sanitizers enabled. '
         'If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command.',
     ),
-    capture: bool = typer.Option(
-        True,
-        '--nocapture',
-        help='Whether to save extra logs and outputs from interactive solutions.',
-    ),
+    capture: Annotated[
+        bool,
+        typer.Option(
+            '--capture',
+            '-cp',
+            help='Whether to save extra logs and outputs from interactive solutions.',
+        ),
+    ] = False,
     profile: Annotated[
         Optional[str],
         typer.Option(
@@ -184,7 +187,7 @@ def main(
             '[warning]Sanitizers are running just for testlib components.\n'
             'If you want to run the solutions with sanitizers enabled, use the [item]-s[/item] flag in the corresponding run command.[/warning]'
         )
-    state.STATE.debug_logs = capture
+    state.STATE.capture_pipes = capture
 
     grading_context.cache_level_var.set(grading_context.CacheLevel(cache))
     grading_context.check_integrity_var.set(
