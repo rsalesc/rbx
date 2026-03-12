@@ -175,6 +175,10 @@ def relcwd(path: pathlib.Path) -> pathlib.Path:
     return path.relative_to(cwd)
 
 
+def is_path_ancestor_of(ancestor: pathlib.Path, path: pathlib.Path) -> bool:
+    return path.resolve().is_relative_to(ancestor.resolve())
+
+
 def highlight_json_obj(obj: Any) -> text.Text:
     js = json.dumps(obj)
     return highlight_str(js)

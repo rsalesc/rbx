@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
@@ -306,6 +306,22 @@ class BocaPackager(BasePackager):
         content = self._replace_common(content, language)
         run_path.write_text(content)
 
+    def _validate_package(self, into_path: pathlib.Path):
+        for file in into_path.rglob('*'):
+            if not file.is_file():
+                continue
+            if file.is_relative_to(into_path / 'input'):
+                continue
+            relfile = utils.relpath(file, into_path)
+            if 'input' in str(relfile):
+                console.console.print(
+                    '[error]File whose name contains [item]input[/item] is not allowed in a BOCA package.[/error]'
+                )
+                console.console.print(
+                    f'[error]Offending file: [item]{relfile}[/item][/error]'
+                )
+                raise typer.Exit(1)
+
     @classmethod
     def name(cls) -> str:
         return 'boca'
@@ -409,6 +425,8 @@ class BocaPackager(BasePackager):
                 shutil.copyfile(testcase.outputPath, outputs_path / f'{i + 1:03d}')
             else:
                 (outputs_path / f'{i + 1:03d}').touch()
+
+        self._validate_package(into_path)
 
         # Zip all.
         shutil.make_archive(
