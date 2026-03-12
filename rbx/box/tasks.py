@@ -1,5 +1,5 @@
 import pathlib
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Type
 
 from rbx.box import checkers, limits_info, package, state
 from rbx.box.code import (
@@ -108,7 +108,7 @@ async def run_solution_on_testcase(
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
-        actual_sandbox = package.get_singleton_sandbox()
+        sandbox_type = package.get_sandbox_type()
 
         language = find_language_name(solution)
         limits = limits_override or get_limits_for_language(
@@ -117,7 +117,7 @@ async def run_solution_on_testcase(
             timelimit_override,
             use_timelimit=use_timelimit,
         )
-        extra_config = _get_execution_config(limits, actual_sandbox)
+        extra_config = _get_execution_config(limits, sandbox_type)
 
         if output_dir is None:
             assert testcase.outputPath is not None
@@ -183,7 +183,7 @@ async def run_solution_on_testcase(
 
 def _get_execution_config(
     limits: Limits,
-    actual_sandbox: SandboxBase,
+    sandbox_type: Type[SandboxBase],
 ) -> ExecutionConfig:
     sandbox = EnvironmentSandbox()
     sandbox.timeLimit = limits.time
@@ -191,7 +191,7 @@ def _get_execution_config(
         # Double TL.
         sandbox.timeLimit = sandbox.timeLimit * 2
     sandbox.wallTimeLimit = sandbox.timeLimit
-    if sandbox.timeLimit is not None and actual_sandbox.use_soft_timeout():
+    if sandbox.timeLimit is not None and sandbox_type.use_soft_timeout():
         sandbox.wallTimeLimit = sandbox.timeLimit * 2
     sandbox.memoryLimit = limits.memory
     sandbox.fileSizeLimit = limits.output
@@ -222,8 +222,7 @@ async def _run_communication_solution_on_testcase(
         capture_pipes = should_capture_pipes(interactor)
 
     async def run_fn(retry_index: int) -> Evaluation:
-        actual_sandbox = package.get_singleton_sandbox()
-        interactor_sandbox = package.get_singleton_interactor_sandbox()
+        sandbox_type = package.get_sandbox_type()
 
         language = find_language_name(solution)
         limits = limits_override or get_limits_for_language(
@@ -233,8 +232,8 @@ async def _run_communication_solution_on_testcase(
             use_timelimit=use_timelimit,
         )
 
-        extra_config = _get_execution_config(limits, actual_sandbox)
-        interactor_extra_config = _get_execution_config(limits, interactor_sandbox)
+        extra_config = _get_execution_config(limits, sandbox_type)
+        interactor_extra_config = _get_execution_config(limits, sandbox_type)
         if (
             interactor_extra_config.sandbox is not None
             and interactor_extra_config.sandbox.wallTimeLimit is not None

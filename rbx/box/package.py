@@ -1,8 +1,15 @@
-import atexit
+import contextlib
 import functools
 import pathlib
 import sys
-from typing import Dict, List, Optional, Tuple, TypeVar
+from typing import (
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import ruyaml
 import typer
@@ -237,22 +244,11 @@ def get_digest_as_string(
         return None
 
 
-def get_new_sandbox(root: pathlib.Path = pathlib.Path()) -> SandboxBase:
+@contextlib.contextmanager
+def get_new_sandbox(root: pathlib.Path = pathlib.Path()) -> Iterator[SandboxBase]:
     sandbox = get_sandbox_type()(file_cacher=get_file_cacher(root), temp_dir=TEMP_DIR)
-    atexit.register(lambda: sandbox.cleanup(delete=True))
-    return sandbox
-
-
-@functools.cache
-def get_singleton_sandbox(root: pathlib.Path = pathlib.Path()) -> SandboxBase:
-    return get_new_sandbox(root)
-
-
-@functools.cache
-def get_singleton_interactor_sandbox(
-    root: pathlib.Path = pathlib.Path(),
-) -> SandboxBase:
-    return get_new_sandbox(root)
+    yield sandbox
+    sandbox.cleanup(delete=True)
 
 
 @functools.cache

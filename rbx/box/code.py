@@ -560,169 +560,177 @@ def compile_item(
     verbose: bool = False,
     precompile: bool = True,
 ) -> str:
-    _check_stack_limit()
+    with package.get_new_sandbox() as sandbox:
+        _check_stack_limit()
 
-    compilable_path = PosixPath(code.path)
+        compilable_path = PosixPath(code.path)
 
-    if not compilable_path.is_file():
-        console.console.print(
-            f'[error]Compilation file not found: [item]{compilable_path}[/item][/error]'
+        if not compilable_path.is_file():
+            console.console.print(
+                f'[error]Compilation file not found: [item]{compilable_path}[/item][/error]'
+            )
+            raise typer.Exit(1)
+
+        language = find_language_name(code)
+        compilation_options = get_compilation_config(
+            language, solution=isinstance(code, Solution)
         )
-        raise typer.Exit(1)
+        code_variables = _get_code_variables(code, language)
+        file_mapping = get_file_mapping(language, code_variables)
+        dependency_cache = package.get_dependency_cache()
+        sandbox_params = get_sandbox_params_from_config(compilation_options.sandbox)
+        sandbox_params.set_env['CLICOLOR_FORCE'] = '1'
 
-    language = find_language_name(code)
-    compilation_options = get_compilation_config(
-        language, solution=isinstance(code, Solution)
-    )
-    code_variables = _get_code_variables(code, language)
-    file_mapping = get_file_mapping(language, code_variables)
-    dependency_cache = package.get_dependency_cache()
-    sandbox = package.get_singleton_sandbox()
-    sandbox_params = get_sandbox_params_from_config(compilation_options.sandbox)
-    sandbox_params.set_env['CLICOLOR_FORCE'] = '1'
+        if not compilation_options.commands:
+            # Language is not compiled.
+            return sandbox.file_cacher.put_file_from_path(compilable_path)
 
-    if not compilation_options.commands:
-        # Language is not compiled.
-        return sandbox.file_cacher.put_file_from_path(compilable_path)
-
-    commands = get_mapped_commands(
-        compilation_options.commands,
-        file_mapping,
-        code_variables,
-        passthrough=PASSTHROUGH_VARIABLES,
-    )
-    commands = add_cpp_flags(commands, force_warnings)
-    commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
-
-    if sanitized.should_sanitize():
-        commands = add_sanitizer_flags(commands)
-
-        # Remove any memory constraints for a sanitized executable.
-        # Sanitizers are known to be memory-hungry.
-        sandbox_params.address_space = None
-
-        # Reset timeout configs since sanitizers are known to be time-hungry.
-        sandbox_params.timeout = None
-        sandbox_params.wallclock_timeout = None
-
-    compiled_digest = DigestHolder()
-
-    artifacts = GradingArtifacts()
-    artifacts.inputs.extend(
-        GradingFileInput(src=src, dest=dest)
-        for src, dest in package.get_compilation_files(code)
-    )
-
-    download.maybe_add_testlib(code, artifacts)
-    download.maybe_add_jngen(code, artifacts)
-    download.maybe_add_rbx_header(code, artifacts)
-    compilable_path = maybe_rename_java_class(compilable_path, file_mapping)
-    artifacts.inputs.append(
-        GradingFileInput(src=compilable_path, dest=PosixPath(file_mapping.compilable))
-    )
-
-    artifacts.outputs.append(
-        GradingFileOutput(
-            src=PosixPath(file_mapping.executable)
-            if not compilation_options.passthrough
-            else PosixPath(file_mapping.compilable),
-            digest=compiled_digest,
-            executable=True,
+        commands = get_mapped_commands(
+            compilation_options.commands,
+            file_mapping,
+            code_variables,
+            passthrough=PASSTHROUGH_VARIABLES,
         )
-    )
+        commands = add_cpp_flags(commands, force_warnings)
+        commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
-    for input in artifacts.inputs:
-        _ignore_warning_in_cxx_input(input)
+        if sanitized.should_sanitize():
+            commands = add_sanitizer_flags(commands)
 
-    # Add system bits/stdc++.h to the compilation.
-    bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
-    if bits_artifact is not None:
-        artifacts.inputs.append(bits_artifact)
-        commands = [
-            command + ' -I.'
-            for command in commands
-            if is_cxx_command(get_exe_from_command(command))
-        ]
+            # Remove any memory constraints for a sanitized executable.
+            # Sanitizers are known to be memory-hungry.
+            sandbox_params.address_space = None
 
-    # Precompile C++ interesting header files.
-    if precompile and _should_precompile(commands):
-        with profiling.Profiler('code.precompile'):
-            precompilation_inputs = []
-            for input in artifacts.inputs:
-                if (
-                    input.src is not None
-                    and input.src.suffix == '.h'
-                    and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
-                ):
-                    precompilation_inputs.append(
-                        _precompile_header(
-                            compilation_options,
-                            sanitized,
-                            sandbox_params,
-                            artifacts,
-                            input,
-                            force_warnings,
-                            verbose=False,
+            # Reset timeout configs since sanitizers are known to be time-hungry.
+            sandbox_params.timeout = None
+            sandbox_params.wallclock_timeout = None
+
+        compiled_digest = DigestHolder()
+
+        artifacts = GradingArtifacts()
+        artifacts.inputs.extend(
+            GradingFileInput(src=src, dest=dest)
+            for src, dest in package.get_compilation_files(code)
+        )
+
+        download.maybe_add_testlib(code, artifacts)
+        download.maybe_add_jngen(code, artifacts)
+        download.maybe_add_rbx_header(code, artifacts)
+        compilable_path = maybe_rename_java_class(compilable_path, file_mapping)
+        artifacts.inputs.append(
+            GradingFileInput(
+                src=compilable_path, dest=PosixPath(file_mapping.compilable)
+            )
+        )
+
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=PosixPath(file_mapping.executable)
+                if not compilation_options.passthrough
+                else PosixPath(file_mapping.compilable),
+                digest=compiled_digest,
+                executable=True,
+            )
+        )
+
+        for input in artifacts.inputs:
+            _ignore_warning_in_cxx_input(input)
+
+        # Add system bits/stdc++.h to the compilation.
+        bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
+        if bits_artifact is not None:
+            artifacts.inputs.append(bits_artifact)
+            commands = [
+                command + ' -I.'
+                for command in commands
+                if is_cxx_command(get_exe_from_command(command))
+            ]
+
+        # Precompile C++ interesting header files.
+        if precompile and _should_precompile(commands):
+            with profiling.Profiler('code.precompile'):
+                precompilation_inputs = []
+                for input in artifacts.inputs:
+                    if (
+                        input.src is not None
+                        and input.src.suffix == '.h'
+                        and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
+                    ):
+                        precompilation_inputs.append(
+                            _precompile_header(
+                                compilation_options,
+                                sanitized,
+                                sandbox_params,
+                                artifacts,
+                                input,
+                                force_warnings,
+                                verbose=False,
+                            )
                         )
-                    )
-            if precompilation_inputs:
-                artifacts.inputs.extend(precompilation_inputs)
+                if precompilation_inputs:
+                    artifacts.inputs.extend(precompilation_inputs)
 
-    with profiling.Profiler('code.compile'):
-        # Compile the code.
-        # Do not cache remote solutions.
+        with profiling.Profiler('code.compile'):
+            # Compile the code.
+            # Do not cache remote solutions.
+            with grading_context.cache_level(
+                grading_context.CacheLevel.NO_CACHE,
+                when=lambda: is_path_remote(code.path),
+            ):
+                try:
+                    steps_with_caching.compile(
+                        commands,
+                        params=sandbox_params,
+                        artifacts=artifacts,
+                        sandbox=sandbox,
+                        dependency_cache=dependency_cache,
+                    )
+                except steps.CompilationError as e:
+                    e.print(f'[error]Failed to compile item: {code.href()}[/error]')
+                    raise
+
+        assert compiled_digest.value is not None
+
+        if (
+            verbose
+            and artifacts.logs is not None
+            and artifacts.logs.preprocess is not None
+        ):
+            console.console.print(f'[status]Compiled item: {code.href()}')
+            for log in artifacts.logs.preprocess:
+                console.console.print(f'[status]Command:[/status] {log.get_command()}')
+                console.console.print(f'[status]Summary:[/status] {log.get_summary()}')
+                console.console.print(
+                    rich.text.Text.from_ansi(log.log), style='default'
+                )
+
+        # Write compiler warnings.
+        cfg = setter_config.get_setter_config()
+        if (
+            (cfg.warnings.enabled or force_warnings)
+            and artifacts.logs is not None
+            and artifacts.logs.preprocess is not None
+        ):
+            any_warning = any(log.warnings for log in artifacts.logs.preprocess)
+            if any_warning:
+                warning_stack.get_warning_stack().add_warning(code)
+
+        # Create sentinel to indicate this executable is sanitized.
+        cacher = package.get_file_cacher()
         with grading_context.cache_level(
             grading_context.CacheLevel.NO_CACHE,
             when=lambda: is_path_remote(code.path),
         ):
-            try:
-                steps_with_caching.compile(
-                    commands,
-                    params=sandbox_params,
-                    artifacts=artifacts,
-                    sandbox=sandbox,
-                    dependency_cache=dependency_cache,
+            if sanitized.should_sanitize():
+                cacher.set_metadata(
+                    compiled_digest.value,
+                    'compilation',
+                    CompilationMetadata(is_sanitized=True),
                 )
-            except steps.CompilationError as e:
-                e.print(f'[error]Failed to compile item: {code.href()}[/error]')
-                raise
+            else:
+                cacher.set_metadata(compiled_digest.value, 'compilation', None)
 
-    assert compiled_digest.value is not None
-
-    if verbose and artifacts.logs is not None and artifacts.logs.preprocess is not None:
-        console.console.print(f'[status]Compiled item: {code.href()}')
-        for log in artifacts.logs.preprocess:
-            console.console.print(f'[status]Command:[/status] {log.get_command()}')
-            console.console.print(f'[status]Summary:[/status] {log.get_summary()}')
-            console.console.print(rich.text.Text.from_ansi(log.log), style='default')
-
-    # Write compiler warnings.
-    cfg = setter_config.get_setter_config()
-    if (
-        (cfg.warnings.enabled or force_warnings)
-        and artifacts.logs is not None
-        and artifacts.logs.preprocess is not None
-    ):
-        any_warning = any(log.warnings for log in artifacts.logs.preprocess)
-        if any_warning:
-            warning_stack.get_warning_stack().add_warning(code)
-
-    # Create sentinel to indicate this executable is sanitized.
-    cacher = package.get_file_cacher()
-    with grading_context.cache_level(
-        grading_context.CacheLevel.NO_CACHE,
-        when=lambda: is_path_remote(code.path),
-    ):
-        if sanitized.should_sanitize():
-            cacher.set_metadata(
-                compiled_digest.value,
-                'compilation',
-                CompilationMetadata(is_sanitized=True),
-            )
-        else:
-            cacher.set_metadata(compiled_digest.value, 'compilation', None)
-
-    return compiled_digest.value
+        return compiled_digest.value
 
 
 async def run_item(
@@ -737,49 +745,50 @@ async def run_item(
     extra_config: Optional[ExecutionConfig] = None,
     retry_index: Optional[int] = None,
 ) -> Optional[RunLog]:
-    _check_stack_limit()
+    with package.get_new_sandbox() as sandbox:
+        _check_stack_limit()
 
-    dependency_cache = package.get_dependency_cache()
+        dependency_cache = package.get_dependency_cache()
 
-    prepared = _prepare_run(
-        code,
-        executable,
-        stdin,
-        stdout,
-        stderr,
-        inputs,
-        outputs,
-        extra_args,
-        extra_config,
-        retry_index,
-    )
-
-    with profiling.PushContext('code.run_item'):
-        # Do not cache remote solutions.
-        with grading_context.cache_level(
-            grading_context.CacheLevel.NO_CACHE,
-            when=lambda: is_path_remote(code.path),
-        ):
-            run_log = await steps_with_caching.run(
-                prepared.command,
-                params=prepared.sandbox_params,
-                sandbox=package.get_singleton_sandbox(),
-                artifacts=prepared.artifacts,
-                dependency_cache=dependency_cache,
-                metadata=prepared.metadata,
-            )
-
-    # Find sanitizer logs.
-    if run_log is not None and run_log.warnings:
-        assert prepared.sandbox_params.stderr_file is not None
-        stderr_output = prepared.artifacts.get_output_file_for_src(
-            prepared.sandbox_params.stderr_file
+        prepared = _prepare_run(
+            code,
+            executable,
+            stdin,
+            stdout,
+            stderr,
+            inputs,
+            outputs,
+            extra_args,
+            extra_config,
+            retry_index,
         )
-        if stderr_output is not None:
-            warning_stack.get_warning_stack().add_sanitizer_warning(
-                package.get_file_cacher(), code, stderr_output
+
+        with profiling.PushContext('code.run_item'):
+            # Do not cache remote solutions.
+            with grading_context.cache_level(
+                grading_context.CacheLevel.NO_CACHE,
+                when=lambda: is_path_remote(code.path),
+            ):
+                run_log = await steps_with_caching.run(
+                    prepared.command,
+                    params=prepared.sandbox_params,
+                    sandbox=sandbox,
+                    artifacts=prepared.artifacts,
+                    dependency_cache=dependency_cache,
+                    metadata=prepared.metadata,
+                )
+
+        # Find sanitizer logs.
+        if run_log is not None and run_log.warnings:
+            assert prepared.sandbox_params.stderr_file is not None
+            stderr_output = prepared.artifacts.get_output_file_for_src(
+                prepared.sandbox_params.stderr_file
             )
-    return run_log
+            if stderr_output is not None:
+                warning_stack.get_warning_stack().add_sanitizer_warning(
+                    package.get_file_cacher(), code, stderr_output
+                )
+        return run_log
 
 
 @dataclasses.dataclass
@@ -815,51 +824,52 @@ async def run_communication(
     line_capture: bool = False,
     retry_index: Optional[int] = None,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
-    interactor_prepared = interactor.prepare()
-    solution_prepared = solution.prepare()
+    with package.get_new_sandbox() as sandbox:
+        interactor_prepared = interactor.prepare()
+        solution_prepared = solution.prepare()
 
-    # Prepare retry index.
-    interactor_prepared.metadata.retryIndex = retry_index
-    solution_prepared.metadata.retryIndex = retry_index
+        # Prepare retry index.
+        interactor_prepared.metadata.retryIndex = retry_index
+        solution_prepared.metadata.retryIndex = retry_index
 
-    grading_artifacts = GradingArtifacts()
-    grading_artifacts.inputs.extend(interactor_prepared.artifacts.inputs)
-    grading_artifacts.outputs.extend(interactor_prepared.artifacts.outputs)
-    grading_artifacts.inputs.extend(solution_prepared.artifacts.inputs)
-    grading_artifacts.outputs.extend(solution_prepared.artifacts.outputs)
+        grading_artifacts = GradingArtifacts()
+        grading_artifacts.inputs.extend(interactor_prepared.artifacts.inputs)
+        grading_artifacts.outputs.extend(interactor_prepared.artifacts.outputs)
+        grading_artifacts.inputs.extend(solution_prepared.artifacts.inputs)
+        grading_artifacts.outputs.extend(solution_prepared.artifacts.outputs)
 
-    merged_capture_path: Optional[pathlib.Path] = None
-    if merged_capture is not None:
-        merged_capture_path = pathlib.Path(MERGED_CAPTURE_FILENAME)
-        grading_artifacts.outputs.append(
-            GradingFileOutput(
-                src=merged_capture_path,
-                **merged_capture.expand(),
+        merged_capture_path: Optional[pathlib.Path] = None
+        if merged_capture is not None:
+            merged_capture_path = pathlib.Path(MERGED_CAPTURE_FILENAME)
+            grading_artifacts.outputs.append(
+                GradingFileOutput(
+                    src=merged_capture_path,
+                    **merged_capture.expand(),
+                )
             )
+
+        interactor_run_params = steps.CoordinatedRunParams(
+            command=interactor_prepared.command,
+            params=interactor_prepared.sandbox_params,
+            metadata=interactor_prepared.metadata,
+        )
+        solution_run_params = steps.CoordinatedRunParams(
+            command=solution_prepared.command,
+            params=solution_prepared.sandbox_params,
+            metadata=solution_prepared.metadata,
         )
 
-    interactor_run_params = steps.CoordinatedRunParams(
-        command=interactor_prepared.command,
-        params=interactor_prepared.sandbox_params,
-        metadata=interactor_prepared.metadata,
-    )
-    solution_run_params = steps.CoordinatedRunParams(
-        command=solution_prepared.command,
-        params=solution_prepared.sandbox_params,
-        metadata=solution_prepared.metadata,
-    )
-
-    # Do not cache remote solutions.
-    with grading_context.cache_level(
-        grading_context.CacheLevel.NO_CACHE,
-        when=lambda: is_path_remote(solution.code.path),
-    ):
-        return await steps_with_caching.run_coordinated(
-            interactor_run_params,
-            solution_run_params,
-            sandbox=package.get_singleton_sandbox(),
-            artifacts=grading_artifacts,
-            dependency_cache=package.get_dependency_cache(),
-            merged_capture=merged_capture_path,
-            line_capture=line_capture,
-        )
+        # Do not cache remote solutions.
+        with grading_context.cache_level(
+            grading_context.CacheLevel.NO_CACHE,
+            when=lambda: is_path_remote(solution.code.path),
+        ):
+            return await steps_with_caching.run_coordinated(
+                interactor_run_params,
+                solution_run_params,
+                sandbox=sandbox,
+                artifacts=grading_artifacts,
+                dependency_cache=package.get_dependency_cache(),
+                merged_capture=merged_capture_path,
+                line_capture=line_capture,
+            )

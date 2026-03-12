@@ -85,7 +85,9 @@ class StupidSandbox(SandboxBase):
         """
         return self._path
 
-    def use_soft_timeout(self) -> bool:
+    @classmethod
+    def use_soft_timeout(cls) -> bool:
+        """Whether the sandbox uses soft timeouts."""
         return True
 
     def _get_exit_status(self, result: ProgramResult) -> str:

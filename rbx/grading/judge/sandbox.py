@@ -277,7 +277,9 @@ class SandboxBase(abc.ABC):
         """
         pass
 
-    def use_soft_timeout(self) -> bool:
+    @classmethod
+    def use_soft_timeout(cls) -> bool:
+        """Whether the sandbox uses soft timeouts."""
         return False
 
     def relative_path(self, path: pathlib.Path) -> pathlib.Path:
