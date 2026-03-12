@@ -1,14 +1,19 @@
 import collections
+import concurrent.futures
 import functools
 import pathlib
 import shutil
 from typing import Dict, List, Optional, Set
 
 import typer
-from rich.console import Console
+from rich.columns import Columns
+from rich.console import Console, Group, RenderableType
+from rich.live import Live
+from rich.rule import Rule
+from rich.text import Text
 
 from rbx import console, utils
-from rbx.box import checkers, package, testcase_utils, validators
+from rbx.box import checkers, package, setter_config, testcase_utils, validators
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -256,22 +261,54 @@ def compile_generators(
     tracked_generators: Set[str],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
-    def update_status(text: str):
-        if progress is not None:
-            progress.update(text)
+    if progress is not None:
+        progress.update(f'Compiling {len(tracked_generators)} generators...')
 
     generator_to_compiled_digest = {}
+    failed_generator_name: Optional[str] = None
 
-    for generator_name in tracked_generators:
-        generator = package.get_generator(generator_name)
-        update_status(f'Compiling generator [item]{generator.name}[/item]')
-        try:
-            generator_to_compiled_digest[generator.name] = _compile_generator(generator)
-        except:
-            console.console.print(
-                f'[error]Failed compiling generator [item]{generator.name}[/item].[/error]'
+    def render_live() -> RenderableType:
+        renderables_left: List[Text] = []
+        renderables_right: List[Text] = []
+        for generator_name in tracked_generators:
+            generator = package.get_generator(generator_name)
+            renderables_left.append(
+                Text.from_markup(f'[info]Compiling {generator.href()}... [/info]')
             )
-            raise
+            # TODO: show warnings
+            if generator_name in generator_to_compiled_digest:
+                renderables_right.append(Text.from_markup('[success]OK[/success]'))
+            elif failed_generator_name is not None:
+                if failed_generator_name == generator_name:
+                    renderables_right.append(Text.from_markup('[error]FAILED[/error]'))
+                else:
+                    renderables_right.append(
+                        Text.from_markup('[status]SKIPPED[/status]')
+                    )
+            else:
+                renderables_right.append(Text())
+        return Group(
+            Rule(title='[status]Generators[/status]', style='status'),
+            Columns([Group(*renderables_left), Group(*renderables_right)]),
+            Text(),
+        )
+
+    with Live(render_live(), console=console.console, auto_refresh=False) as live:
+        executor = setter_config.get_thread_pool_executor()
+        futures = {}
+        for generator_name in tracked_generators:
+            generator = package.get_generator(generator_name)
+            futures[executor.submit(_compile_generator, generator)] = generator_name
+
+        for future in concurrent.futures.as_completed(futures):
+            generator_name = futures[future]
+            try:
+                generator_to_compiled_digest[generator_name] = future.result()
+                live.update(render_live())
+            except:
+                failed_generator_name = generator_name
+                live.update(render_live())
+                raise
 
     return generator_to_compiled_digest
 

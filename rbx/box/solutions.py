@@ -1,13 +1,14 @@
 from __future__ import generators
 
 import collections
+import concurrent.futures
 import dataclasses
 import pathlib
 import shutil
 import typing
 from collections.abc import Iterator
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Collection, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 import rich
 import rich.live
@@ -17,9 +18,20 @@ import rich.text
 import typer
 from ordered_set import OrderedSet
 from pydantic import BaseModel
+from rich.columns import Columns
+from rich.console import Group, RenderableType
+from rich.rule import Rule
 
 from rbx import console, utils
-from rbx.box import checkers, code, limits_info, package, remote, visualizers
+from rbx.box import (
+    checkers,
+    code,
+    limits_info,
+    package,
+    remote,
+    setter_config,
+    visualizers,
+)
 from rbx.box.code import (
     SanitizationLevel,
     compile_item,
@@ -222,37 +234,84 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
 
 def compile_solutions(
     progress: Optional[StatusProgress] = None,
-    tracked_solutions: Optional[Set[str]] = None,
+    tracked_solutions: Optional[Collection[str]] = None,
     sanitized: bool = False,
     fail_if_one: bool = True,
     skip_if_fail: bool = False,
 ) -> Dict[pathlib.Path, str]:
     compiled_solutions = {}
+    failed_solutions = {}
 
     if tracked_solutions is None:
-        tracked_solutions = set(str(sol.path) for sol in package.get_solutions())
+        tracked_solutions = [str(sol.path) for sol in package.get_solutions()]
 
-    for solution in expand_solutions(list(tracked_solutions)):
-        if progress:
-            progress.update(f'Compiling solution {href(solution.path)}...')
-        try:
-            compiled_solutions[solution.path] = compile_item(
-                solution,
-                sanitized=SanitizationLevel.FORCE
-                if sanitized
-                else SanitizationLevel.NONE,
+    expanded_solutions = expand_solutions(list(tracked_solutions))
+    should_fail = (fail_if_one and len(expanded_solutions) <= 1) or not skip_if_fail
+    if progress is not None:
+        progress.update(f'Compiling {len(expanded_solutions)} solutions...')
+
+    def render_live() -> RenderableType:
+        renderables_left: List[rich.text.Text] = []
+        renderables_right: List[rich.text.Text] = []
+        for solution in expanded_solutions:
+            renderables_left.append(
+                rich.text.Text.from_markup(
+                    f'[info]Compiling {solution.href()}... [/info]'
+                )
             )
-        except steps.CompilationError:
-            if fail_if_one and len(tracked_solutions) <= 1:
+            # TODO: show warnings
+            if solution.path in compiled_solutions:
+                renderables_right.append(
+                    rich.text.Text.from_markup('[success]OK[/success]')
+                )
+            elif solution.path in failed_solutions:
+                exception = failed_solutions[solution.path]
+                failed_text = rich.text.Text.from_markup('[error]FAILED[/error]')
+                if not should_fail and isinstance(exception, steps.CompilationError):
+                    failed_text.append(
+                        rich.text.Text.from_markup('[error], skipping[/error]')
+                    )
+                renderables_right.append(failed_text)
+            else:
+                renderables_right.append(rich.text.Text())
+
+        return Group(
+            Rule(title='[status]Solutions[/status]', style='status'),
+            Columns([Group(*renderables_left), Group(*renderables_right)]),
+            rich.text.Text(),
+        )
+
+    with rich.live.Live(
+        render_live(), console=console.console, auto_refresh=False
+    ) as live:
+        futures = {}
+        executor = setter_config.get_thread_pool_executor()
+        for solution in expanded_solutions:
+            futures[
+                executor.submit(
+                    compile_item,
+                    solution,
+                    sanitized=SanitizationLevel.FORCE
+                    if sanitized
+                    else SanitizationLevel.NONE,
+                )
+            ] = solution
+
+        for future in concurrent.futures.as_completed(futures):
+            solution = futures[future]
+            try:
+                compiled_solutions[solution.path] = future.result()
+                live.update(render_live())
+            except steps.CompilationError as e:
+                failed_solutions[solution.path] = e
+                live.update(render_live())
+                if should_fail:
+                    raise
+                issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
+            except Exception as e:
+                failed_solutions[solution.path] = e
+                live.update(render_live())
                 raise
-            if not skip_if_fail:
-                raise
-            issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
-        except:
-            console.console.print(
-                f'[error]Failed compiling solution {solution.href()}.[/error]'
-            )
-            raise
 
     return compiled_solutions
 
@@ -344,7 +403,7 @@ def _get_compiled_solutions_for_skeleton(
 
     compiled_solutions = compile_solutions(
         progress=progress,
-        tracked_solutions=set(str(solution.path) for solution in solutions_to_compile),
+        tracked_solutions=[str(solution.path) for solution in solutions_to_compile],
         sanitized=sanitized,
         skip_if_fail=True,
     )

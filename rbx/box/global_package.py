@@ -1,6 +1,8 @@
+import contextlib
 import functools
 import pathlib
 import shutil
+from typing import Iterator, Type
 
 from rbx.config import get_app_path
 from rbx.grading.caching import DependencyCache
@@ -70,8 +72,17 @@ def get_global_dependency_cache() -> DependencyCache:
 
 
 @functools.cache
-def get_global_sandbox() -> SandboxBase:
-    return StupidSandbox(get_global_file_cacher())
+def get_global_sandbox_type() -> Type[SandboxBase]:
+    return StupidSandbox
+
+
+@contextlib.contextmanager
+def get_new_global_sandbox() -> Iterator[SandboxBase]:
+    sandbox = get_global_sandbox_type()(
+        file_cacher=get_global_file_cacher(),
+    )
+    yield sandbox
+    sandbox.cleanup(delete=True)
 
 
 def clear_global_cache():

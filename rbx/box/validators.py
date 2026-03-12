@@ -452,9 +452,11 @@ def print_validation_report(
         return
 
     if output_validation:
-        console.console.rule('Output validation report', style='status')
+        console.console.rule(
+            '[status]Output validation report[/status]', style='status'
+        )
     else:
-        console.console.rule('Validation report', style='status')
+        console.console.rule('[status]Validation report[/status]', style='status')
     hit_bounds_per_group: Dict[Optional[str], HitBounds] = {}
     for info in infos:
         if not info.ok:

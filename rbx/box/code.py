@@ -452,104 +452,104 @@ def _precompile_header(
     """
     assert compilation_options.commands is not None
 
-    sandbox = global_package.get_global_sandbox()
-    dependency_cache = global_package.get_global_dependency_cache()
+    with global_package.get_new_global_sandbox() as sandbox:
+        dependency_cache = global_package.get_global_dependency_cache()
 
-    # TODO: deduplicate code with compile_item.
-    commands = get_mapped_commands(
-        compilation_options.commands,
-        FileMapping(
-            compilable='precompilable.h',
-            executable='precompilable.h.gch',
-        ),
-        passthrough=PASSTHROUGH_VARIABLES,
-    )
-    commands = add_cpp_flags(commands, force_warnings)
-    commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
-
-    if sanitized.should_sanitize():
-        commands = add_sanitizer_flags(commands)
-
-    precompilation_artifacts = GradingArtifacts()
-
-    # Keep only header files.
-    if include_other_headers:
-        precompilation_artifacts.inputs = [
-            input
-            for input in artifacts.inputs
-            if input.src is not None and input.src.suffix == '.h'
-        ]
-    precompilation_artifacts.inputs.append(
-        GradingFileInput(
-            src=input_artifact.src,
-            dest=PosixPath('precompilable.h'),
+        # TODO: deduplicate code with compile_item.
+        commands = get_mapped_commands(
+            compilation_options.commands,
+            FileMapping(
+                compilable='precompilable.h',
+                executable='precompilable.h.gch',
+            ),
+            passthrough=PASSTHROUGH_VARIABLES,
         )
-    )
+        commands = add_cpp_flags(commands, force_warnings)
+        commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
-    # Pull only the precompiled header file.
-    precompiled_digest = DigestHolder()
-    precompilation_artifacts.outputs.append(
-        GradingFileOutput(
-            src=PosixPath('precompilable.h.gch'),
-            digest=precompiled_digest,
+        if sanitized.should_sanitize():
+            commands = add_sanitizer_flags(commands)
+
+        precompilation_artifacts = GradingArtifacts()
+
+        # Keep only header files.
+        if include_other_headers:
+            precompilation_artifacts.inputs = [
+                input
+                for input in artifacts.inputs
+                if input.src is not None and input.src.suffix == '.h'
+            ]
+        precompilation_artifacts.inputs.append(
+            GradingFileInput(
+                src=input_artifact.src,
+                dest=PosixPath('precompilable.h'),
+            )
         )
-    )
 
-    with profiling.PushContext('code.precompile_header'):
-        try:
-            steps_with_caching.compile(
-                commands,
-                params=sandbox_params,
-                artifacts=precompilation_artifacts,
-                sandbox=sandbox,
-                dependency_cache=dependency_cache,
+        # Pull only the precompiled header file.
+        precompiled_digest = DigestHolder()
+        precompilation_artifacts.outputs.append(
+            GradingFileOutput(
+                src=PosixPath('precompilable.h.gch'),
+                digest=precompiled_digest,
             )
-        except steps.CompilationError as e:
-            e.print(
-                f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
-            )
-            raise
+        )
 
-        if verbose:
-            console.console.print(
-                f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
-            )
+        with profiling.PushContext('code.precompile_header'):
+            try:
+                steps_with_caching.compile(
+                    commands,
+                    params=sandbox_params,
+                    artifacts=precompilation_artifacts,
+                    sandbox=sandbox,
+                    dependency_cache=dependency_cache,
+                )
+            except steps.CompilationError as e:
+                e.print(
+                    f'[error]Failed to precompile header file: [item]{input_artifact.src}[/item][/error]'
+                )
+                raise
 
-            if (
-                precompilation_artifacts.logs is not None
-                and precompilation_artifacts.logs.preprocess is not None
-            ):
-                for log in precompilation_artifacts.logs.preprocess:
-                    console.console.print(
-                        f'[status]Command:[/status] {log.get_command()}'
-                    )
-                    console.console.print(
-                        f'[status]Summary:[/status] {log.get_summary()}'
-                    )
+            if verbose:
+                console.console.print(
+                    f'[status]Precompiled header file: [item]{input_artifact.src}[/item]'
+                )
 
-    assert precompiled_digest.value is not None
+                if (
+                    precompilation_artifacts.logs is not None
+                    and precompilation_artifacts.logs.preprocess is not None
+                ):
+                    for log in precompilation_artifacts.logs.preprocess:
+                        console.console.print(
+                            f'[status]Command:[/status] {log.get_command()}'
+                        )
+                        console.console.print(
+                            f'[status]Summary:[/status] {log.get_summary()}'
+                        )
 
-    digest_path = dependency_cache.cacher.path_for_symlink(precompiled_digest.value)
-    if digest_path is not None and digest_path.is_file():
-        # If storage backend supports symlinks, use it as the grading input.
-        input = DigestOrSource.create(digest_path)
-    else:
-        # Otherwise, copy the file to the local cache, transiently.
-        local_cacher = package.get_file_cacher()
-        with dependency_cache.cacher.get_file(precompiled_digest.value) as f:
-            with grading_context.cache_level(
-                grading_context.CacheLevel.CACHE_TRANSIENTLY
-            ):
-                input = DigestOrSource.create(local_cacher.put_file_from_fobj(f))
+        assert precompiled_digest.value is not None
 
-    res = GradingFileInput(
-        **input.expand(),
-        dest=input_artifact.dest.with_suffix('.h.gch'),
-        # Do not track fingerprint of the precompiled header file,
-        # trust the compilation step above.
-        hash=False,
-    )
-    return res
+        digest_path = dependency_cache.cacher.path_for_symlink(precompiled_digest.value)
+        if digest_path is not None and digest_path.is_file():
+            # If storage backend supports symlinks, use it as the grading input.
+            input = DigestOrSource.create(digest_path)
+        else:
+            # Otherwise, copy the file to the local cache, transiently.
+            local_cacher = package.get_file_cacher()
+            with dependency_cache.cacher.get_file(precompiled_digest.value) as f:
+                with grading_context.cache_level(
+                    grading_context.CacheLevel.CACHE_TRANSIENTLY
+                ):
+                    input = DigestOrSource.create(local_cacher.put_file_from_fobj(f))
+
+        res = GradingFileInput(
+            **input.expand(),
+            dest=input_artifact.dest.with_suffix('.h.gch'),
+            # Do not track fingerprint of the precompiled header file,
+            # trust the compilation step above.
+            hash=False,
+        )
+        return res
 
 
 # Compile code item and return its digest in the storage.

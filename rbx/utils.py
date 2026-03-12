@@ -321,6 +321,12 @@ def confirm_on_status(status: Optional[rich.status.Status], *args, **kwargs) -> 
     return res
 
 
+def get_available_cpu_count() -> int:
+    if sys.platform == 'linux':
+        return len(os.sched_getaffinity(0)) or 1
+    return os.cpu_count() or 1
+
+
 def get_open_fds() -> int:
     import psutil
 

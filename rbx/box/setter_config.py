@@ -3,8 +3,10 @@ import importlib.resources
 import pathlib
 import shlex
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 
+import async_executor
 import typer
 from pydantic import BaseModel, Field
 
@@ -53,6 +55,13 @@ class RepeatsConfig(BaseModel):
     )
 
 
+class ParallelizationConfig(BaseModel):
+    max_workers: int = Field(
+        default_factory=lambda: min(utils.get_available_cpu_count(), 4),
+        description='Maximum number of workers to use when running tasks in parallel.',
+    )
+
+
 class CachingConfig(BaseModel):
     level: CacheLevel = Field(
         default=CacheLevel.CACHE_ALL,
@@ -75,17 +84,22 @@ class JudgingConfig(BaseModel):
 
 class SetterConfig(BaseModel):
     sanitizers: SanitizersConfig = Field(
-        default_factory=SanitizersConfig,  # type: ignore
+        default_factory=SanitizersConfig,
         description='Configuration for sanitizers.',
     )
     warnings: WarningsConfig = Field(
-        default_factory=WarningsConfig,  # type: ignore
+        default_factory=WarningsConfig,
         description='Configuration for warnings.',
     )
 
     repeats: RepeatsConfig = Field(
-        default_factory=RepeatsConfig,  # type: ignore
+        default_factory=RepeatsConfig,
         description='Configuration for repeats.',
+    )
+
+    parallel: ParallelizationConfig = Field(
+        default_factory=ParallelizationConfig,
+        description='Configuration for parallelization.',
     )
 
     command_substitutions: Dict[str, str] = Field(
@@ -97,11 +111,11 @@ class SetterConfig(BaseModel):
         description='Whether to use hyperlinks in the terminal output.',
     )
     caching: CachingConfig = Field(
-        default_factory=CachingConfig,  # type: ignore
+        default_factory=CachingConfig,
         description='Configuration for caching.',
     )
     judging: JudgingConfig = Field(
-        default_factory=JudgingConfig,  # type: ignore
+        default_factory=JudgingConfig,
         description='Configuration for judging.',
     )
 
@@ -145,6 +159,16 @@ def get_setter_config() -> SetterConfig:
             config_path, get_default_setter_config_path().read_text()
         )
     return utils.model_from_yaml(SetterConfig, config_path.read_text())
+
+
+def get_thread_pool_executor() -> ThreadPoolExecutor:
+    return ThreadPoolExecutor(max_workers=get_setter_config().parallel.max_workers)
+
+
+def get_async_executor() -> async_executor.AsyncExecutor:
+    return async_executor.AsyncExecutor(
+        max_concurrent=get_setter_config().parallel.max_workers
+    )
 
 
 def save_setter_config(config: SetterConfig):

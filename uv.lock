@@ -165,6 +165,15 @@ wheels = [
 ]
 
 [[package]]
+name = "async-executor"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/bc/6bd2b0133f30854235748c7175c598c38e6b18aa3fb70d683dcbea09eda0/async_executor-0.1.2.tar.gz", hash = "sha256:910e74dd7aaaa2a39f3e3fc91e3f87a01d23bea650fbf431746d2961f928d482", size = 2810, upload-time = "2024-08-04T19:44:27.298Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/c4/78e168f6847d46e4f86a109ec88ba765fcb9d793c5c1968a44e7b71fc239/async_executor-0.1.2-py3-none-any.whl", hash = "sha256:44596587fae296ce12cfd25127ae91dadeb2f10e81769a7326ac7201b2d24e20", size = 3223, upload-time = "2024-08-04T19:44:25.867Z" },
+]
+
+[[package]]
 name = "async-lru"
 version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2334,6 +2343,7 @@ version = "0.31.10"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
+    { name = "async-executor" },
     { name = "async-lru" },
     { name = "beautifulsoup4" },
     { name = "chardet" },
@@ -2403,6 +2413,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
+    { name = "async-executor", specifier = ">=0.1.2" },
     { name = "async-lru", specifier = ">=2.0.5" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "chardet", specifier = ">=5.2.0" },
