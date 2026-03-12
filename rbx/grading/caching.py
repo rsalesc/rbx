@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, List, Optional
 
+from filelock import BaseFileLock, FileLock
 from pydantic import BaseModel
 from sqlitedict import SqliteDict
 
@@ -362,6 +363,7 @@ class DependencyCacheBlock:
 class DependencyCache:
     root: pathlib.Path
     cacher: FileCacher
+    lock: BaseFileLock
 
     def __init__(self, root: pathlib.Path, cacher: FileCacher):
         self.root = root
@@ -369,6 +371,7 @@ class DependencyCache:
         self.db = SqliteDict(self._cache_name(), autocommit=True)
         tmp_dir = pathlib.Path(tempfile.mkdtemp())
         self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
+        self.lock = FileLock(self.root / 'cache.lock', thread_local=False)
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
         atexit.register(lambda: shutil.rmtree(tmp_dir, ignore_errors=True))
@@ -408,70 +411,73 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ) -> bool:
-        input = _build_cache_input(
-            commands=commands,
-            artifact_list=artifact_list,
-            extra_params=extra_params,
-            cacher=self.cacher,
-        )
-        key = key or _build_cache_key(input)
+        with self.lock:
+            input = _build_cache_input(
+                commands=commands,
+                artifact_list=artifact_list,
+                extra_params=extra_params,
+                cacher=self.cacher,
+            )
+            key = key or _build_cache_key(input)
 
-        fingerprint = self._find_in_cache(key)
-        if fingerprint is None:
-            return False
+            fingerprint = self._find_in_cache(key)
+            if fingerprint is None:
+                return False
 
-        reference_fingerprint = _build_cache_fingerprint(
-            artifact_list,
-            self.cacher,
-        )
+            reference_fingerprint = _build_cache_fingerprint(
+                artifact_list,
+                self.cacher,
+            )
 
-        if not _fingerprints_match(fingerprint, reference_fingerprint):
-            self._evict_from_cache(key)
-            return False
+            if not _fingerprints_match(fingerprint, reference_fingerprint):
+                self._evict_from_cache(key)
+                return False
 
-        if not _output_fingerprints_match(fingerprint, reference_fingerprint):
-            self._evict_from_cache(key)
-            return False
+            if not _output_fingerprints_match(fingerprint, reference_fingerprint):
+                self._evict_from_cache(key)
+                return False
 
-        # Check whether existing storage files were not tampered with.
-        _check_digest_list_integrity(
-            artifact_list,
-            fingerprint.digests,
-        )
-        reference_digests = _build_digest_list(artifact_list)
+            # Check whether existing storage files were not tampered with.
+            _check_digest_list_integrity(
+                artifact_list,
+                fingerprint.digests,
+            )
+            reference_digests = _build_digest_list(artifact_list)
 
-        # Apply digest changes.
-        old_digest_values = [digest for digest in reference_fingerprint.digests]
-        for digest, reference_digest in zip(fingerprint.digests, reference_digests):
-            reference_digest.value = digest
+            # Apply digest changes.
+            old_digest_values = [digest for digest in reference_fingerprint.digests]
+            for digest, reference_digest in zip(fingerprint.digests, reference_digests):
+                reference_digest.value = digest
 
-        if not are_artifacts_ok(artifact_list, self.cacher):
-            # Rollback digest changes.
-            for old_digest_value, reference_digest in zip(
-                old_digest_values, reference_digests
+            if not are_artifacts_ok(artifact_list, self.cacher):
+                # Rollback digest changes.
+                for old_digest_value, reference_digest in zip(
+                    old_digest_values, reference_digests
+                ):
+                    reference_digest.value = old_digest_value
+                self._evict_from_cache(key)
+                return False
+
+            # Copy hashed files to file system.
+            _copy_hashed_files(artifact_list, self.cacher)
+
+            # Apply logs changes.
+            for logs, reference_logs in zip(
+                fingerprint.logs, reference_fingerprint.logs
             ):
-                reference_digest.value = old_digest_value
-            self._evict_from_cache(key)
-            return False
+                if logs.run is not None:
+                    reference_logs.run = logs.run.model_copy(deep=True)
+                if logs.interactor_run is not None:
+                    reference_logs.interactor_run = logs.interactor_run.model_copy(
+                        deep=True
+                    )
+                if logs.preprocess is not None:
+                    reference_logs.preprocess = [
+                        log.model_copy(deep=True) for log in logs.preprocess
+                    ]
+                reference_logs.cached = True
 
-        # Copy hashed files to file system.
-        _copy_hashed_files(artifact_list, self.cacher)
-
-        # Apply logs changes.
-        for logs, reference_logs in zip(fingerprint.logs, reference_fingerprint.logs):
-            if logs.run is not None:
-                reference_logs.run = logs.run.model_copy(deep=True)
-            if logs.interactor_run is not None:
-                reference_logs.interactor_run = logs.interactor_run.model_copy(
-                    deep=True
-                )
-            if logs.preprocess is not None:
-                reference_logs.preprocess = [
-                    log.model_copy(deep=True) for log in logs.preprocess
-                ]
-            reference_logs.cached = True
-
-        return True
+            return True
 
     def store_in_cache(
         self,
@@ -480,22 +486,23 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ):
-        input = _build_cache_input(
-            commands=commands,
-            artifact_list=artifact_list,
-            extra_params=extra_params,
-            cacher=self.cacher,
-        )
-        key = key or _build_cache_key(input)
+        with self.lock:
+            input = _build_cache_input(
+                commands=commands,
+                artifact_list=artifact_list,
+                extra_params=extra_params,
+                cacher=self.cacher,
+            )
+            key = key or _build_cache_key(input)
 
-        if not are_artifacts_ok(artifact_list, self.cacher):
-            return
+            if not are_artifacts_ok(artifact_list, self.cacher):
+                return
 
-        reference_fingerprint = _build_cache_fingerprint(
-            artifact_list,
-            self.cacher,
-        )
-        self._store_in_cache(
-            key,
-            reference_fingerprint,
-        )
+            reference_fingerprint = _build_cache_fingerprint(
+                artifact_list,
+                self.cacher,
+            )
+            self._store_in_cache(
+                key,
+                reference_fingerprint,
+            )
