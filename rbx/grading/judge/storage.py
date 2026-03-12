@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import IO, AnyStr, Dict, List, Optional, Type, TypeVar
 
 import lz4.frame
+from filelock import BaseFileLock, FileLock
 from pydantic import BaseModel
 
 from rbx import utils
@@ -237,100 +238,108 @@ class FilesystemStorage(Storage):
     the files in a file system directory, named after their filename.
     """
 
+    path: pathlib.Path
+    compress: bool
+    lock: BaseFileLock
+
     def __init__(self, path: pathlib.Path, compress: bool = False):
         """Initialize the backend.
         path (string): the base path for the storage.
         """
         self.path = path
         self.compress = compress
+        self.lock = FileLock(path / 'storage.lock', thread_local=False)
         # Create the directory if it doesn't exist
         (path / '.metadata').mkdir(parents=True, exist_ok=True)
 
     def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""
-        file_path = self.path / filename
+        with self.lock:
+            file_path = self.path / filename
 
-        if not file_path.is_file():
-            raise KeyError('File not found.')
+            if not file_path.is_file():
+                raise KeyError('File not found.')
 
-        compression_metadata = self.get_metadata(
-            filename, 'compression', CompressionMetadata
-        )
-        if compression_metadata is not None:
-            return typing.cast(
-                IO[bytes],
-                lz4.frame.open(
-                    file_path,
-                    mode='rb',
-                    compression_level=compression_metadata.compression_level,
-                ),
+            compression_metadata = self.get_metadata(
+                filename, 'compression', CompressionMetadata
             )
-        return file_path.open('rb')
+            if compression_metadata is not None:
+                return typing.cast(
+                    IO[bytes],
+                    lz4.frame.open(
+                        file_path,
+                        mode='rb',
+                        compression_level=compression_metadata.compression_level,
+                    ),
+                )
+            return file_path.open('rb')
 
     def create_file(self, filename: str) -> Optional[PendingFile]:
         """See FileCacherBackend.create_file()."""
         # Check if the file already exists. Return None if so, to inform the
         # caller they don't need to store the file.
-        file_path = self.path / filename
+        with self.lock:
+            file_path = self.path / filename
 
-        if file_path.is_file():
-            return None
+            if file_path.is_file():
+                return None
 
-        # Create a temporary file in the same directory
-        # Use only the basename for the suffix to avoid issues with subdirectories
-        filename_basename = pathlib.Path(filename).name
-        temp_file = tempfile.NamedTemporaryFile(
-            'wb',
-            delete=False,
-            prefix='.tmp.',
-            suffix=f'.{filename_basename}',
-            dir=self.path,
-        )
-        metadata: Dict[str, Optional[BaseModel]] = {'compression': None}
-        if self.compress or grading_context.should_compress():
-            fd_name = temp_file.name
-            level = grading_context.get_compression_level()
-            temp_file = typing.cast(
-                IO[bytes],
-                lz4.frame.open(
-                    temp_file,
-                    mode='wb',
-                    compression_level=level,
-                ),
+            # Create a temporary file in the same directory
+            # Use only the basename for the suffix to avoid issues with subdirectories
+            filename_basename = pathlib.Path(filename).name
+            temp_file = tempfile.NamedTemporaryFile(
+                'wb',
+                delete=False,
+                prefix='.tmp.',
+                suffix=f'.{filename_basename}',
+                dir=self.path,
             )
-            temp_file.name = fd_name  # type: ignore
-            metadata['compression'] = CompressionMetadata(compression_level=level)
+            metadata: Dict[str, Optional[BaseModel]] = {'compression': None}
+            if self.compress or grading_context.should_compress():
+                fd_name = temp_file.name
+                level = grading_context.get_compression_level()
+                temp_file = typing.cast(
+                    IO[bytes],
+                    lz4.frame.open(
+                        temp_file,
+                        mode='wb',
+                        compression_level=level,
+                    ),
+                )
+                temp_file.name = fd_name  # type: ignore
+                metadata['compression'] = CompressionMetadata(compression_level=level)
 
-        return PendingFile(fd=temp_file, filename=filename, metadata=metadata)
+            return PendingFile(fd=temp_file, filename=filename, metadata=metadata)
 
     def commit_file(
         self, file: PendingFile, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> bool:
         """See FileCacherBackend.commit_file()."""
-        file.fd.close()
+        with self.lock:
+            file.fd.close()
 
-        file_path: pathlib.Path = self.path / file.filename
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path: pathlib.Path = self.path / file.filename
+            file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        for key, value in file.metadata.items():
-            self._set_metadata(file.filename, key, value)
-
-        if metadata is not None:
-            for key, value in metadata.items():
+            for key, value in file.metadata.items():
                 self._set_metadata(file.filename, key, value)
 
-        # Move it into place in the cache. Skip if it already exists, and
-        # delete the temporary file instead.
-        if not file_path.is_file():
-            # There is a race condition here if someone else puts the file here
-            # between checking and renaming. Put it doesn't matter in practice,
-            # because rename will replace the file anyway (which should be
-            # identical).
-            pathlib.PosixPath(file.fd.name).rename(file_path)
-            return True
-        else:
-            pathlib.PosixPath(file.fd.name).unlink()
-            return False
+            if metadata is not None:
+                for key, value in metadata.items():
+                    self._set_metadata(file.filename, key, value)
+
+            # Move it into place in the cache. Skip if it already exists, and
+            # delete the temporary file instead.
+            if not file_path.is_file():
+                # There is a race condition here if someone else puts the file here
+                # between checking and renaming. Put it doesn't matter in practice,
+                # because rename will replace the file anyway (which should be
+                # identical).
+                pathlib.PosixPath(file.fd.name).rename(file_path)
+                return True
+            else:
+                pathlib.PosixPath(file.fd.name).unlink()
+                return False
 
     def _get_metadata_path(self, filename: str, key: str) -> pathlib.Path:
         return self.path / '.metadata' / f'{filename}__{key}.json'
@@ -344,111 +353,122 @@ class FilesystemStorage(Storage):
             metadata_path.write_text(value.model_dump_json())
 
     def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
-        if not self.exists(filename):
-            raise KeyError('File not found.')
+        with self.lock:
+            if not self.exists(filename):
+                raise KeyError('File not found.')
 
-        self._set_metadata(filename, key, value)
+            self._set_metadata(filename, key, value)
 
     def get_metadata(
         self, filename: str, key: str, model_cls: Type[BaseModelT]
     ) -> Optional[BaseModelT]:
-        path = self._get_metadata_path(filename, key)
-        if not path.is_file():
-            return None
-        return model_cls.model_validate_json(path.read_text())
+        with self.lock:
+            path = self._get_metadata_path(filename, key)
+            if not path.is_file():
+                return None
+            return model_cls.model_validate_json(path.read_text())
 
     def list_metadata(self, filename: str) -> List[str]:
-        return [
-            path.stem.split('__')[1]
-            for path in sorted((self.path / '.metadata').glob(f'{filename}__*.json'))
-        ]
+        with self.lock:
+            return [
+                path.stem.split('__')[1]
+                for path in sorted(
+                    (self.path / '.metadata').glob(f'{filename}__*.json')
+                )
+            ]
 
     def exists(self, filename: str) -> bool:
         """See FileCacherBackend.exists()."""
-        file_path: pathlib.Path = self.path / filename
+        with self.lock:
+            file_path: pathlib.Path = self.path / filename
 
-        return file_path.is_file()
+            return file_path.is_file()
 
     def get_size(self, filename: str) -> int:
         """See FileCacherBackend.get_size()."""
-        file_path: pathlib.Path = self.path / filename
+        with self.lock:
+            file_path: pathlib.Path = self.path / filename
 
-        if not file_path.is_file():
-            raise KeyError('File not found.')
+            if not file_path.is_file():
+                raise KeyError('File not found.')
 
-        return file_path.stat().st_size
+            return file_path.stat().st_size
 
     def delete(self, filename: str):
         """See FileCacherBackend.delete()."""
-        file_path: pathlib.Path = self.path / filename
+        with self.lock:
+            file_path: pathlib.Path = self.path / filename
 
-        file_path.unlink(missing_ok=True)
-        for key in self.list_metadata(filename):
-            self._get_metadata_path(filename, key).unlink(missing_ok=True)
+            file_path.unlink(missing_ok=True)
+            for key in self.list_metadata(filename):
+                self._get_metadata_path(filename, key).unlink(missing_ok=True)
 
     def list(self) -> List[FileWithMetadata]:
         """See FileCacherBackend.list()."""
-        res = []
-        for path in self.path.glob('*'):
-            if path.is_file():
-                filename = str(path.relative_to(self.path))
-                res.append(
-                    FileWithMetadata(
-                        filename=filename,
-                        metadata=self.list_metadata(filename),
+        with self.lock:
+            res = []
+            for path in self.path.glob('*'):
+                if path.is_file():
+                    filename = str(path.relative_to(self.path))
+                    res.append(
+                        FileWithMetadata(
+                            filename=filename,
+                            metadata=self.list_metadata(filename),
+                        )
                     )
-                )
-        return res
+            return res
 
     def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
-        file_path = self.path / filename
-        if not file_path.is_file():
-            raise KeyError('File not found.')
+        with self.lock:
+            file_path = self.path / filename
+            if not file_path.is_file():
+                raise KeyError('File not found.')
 
-        compression_metadata = self.get_metadata(
-            filename, 'compression', CompressionMetadata
-        )
-        if compression_metadata is not None:
-            return None
-        return file_path
+            compression_metadata = self.get_metadata(
+                filename, 'compression', CompressionMetadata
+            )
+            if compression_metadata is not None:
+                return None
+            return file_path
 
     def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
-        if not link.is_symlink():
-            return None
-
-        # Track visited symlinks to detect circular references
-        visited = set()
-        current = link
-        max_depth = 100  # Reasonable limit to prevent infinite loops
-        depth = 0
-
-        while current.is_symlink() and depth < max_depth:
-            # Convert to absolute path for consistent comparison
-            abs_current = utils.abspath(current)
-
-            # Check for circular reference
-            if abs_current in visited:
+        with self.lock:
+            if not link.is_symlink():
                 return None
 
-            visited.add(abs_current)
+            # Track visited symlinks to detect circular references
+            visited = set()
+            current = link
+            max_depth = 100  # Reasonable limit to prevent infinite loops
+            depth = 0
 
-            # Read the target of the symlink
-            target = current.readlink()
+            while current.is_symlink() and depth < max_depth:
+                # Convert to absolute path for consistent comparison
+                abs_current = utils.abspath(current)
 
-            # If target is relative, resolve it relative to the symlink's parent directory
-            if not target.is_absolute():
-                current = utils.abspath(current.parent / target)
-            else:
-                current = utils.abspath(target)
+                # Check for circular reference
+                if abs_current in visited:
+                    return None
 
-            depth += 1
+                visited.add(abs_current)
 
-        # If we hit the depth limit, assume circular reference
-        if depth >= max_depth:
-            return None
+                # Read the target of the symlink
+                target = current.readlink()
 
-        if not current.is_file():
-            return None
-        if not current.is_relative_to(self.path):
-            return None
-        return str(current.relative_to(self.path))
+                # If target is relative, resolve it relative to the symlink's parent directory
+                if not target.is_absolute():
+                    current = utils.abspath(current.parent / target)
+                else:
+                    current = utils.abspath(target)
+
+                depth += 1
+
+            # If we hit the depth limit, assume circular reference
+            if depth >= max_depth:
+                return None
+
+            if not current.is_file():
+                return None
+            if not current.is_relative_to(self.path):
+                return None
+            return str(current.relative_to(self.path))
