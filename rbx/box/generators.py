@@ -1,5 +1,4 @@
 import collections
-import concurrent.futures
 import functools
 import pathlib
 import shutil
@@ -53,8 +52,8 @@ class GenerationError(RbxException):
     pass
 
 
-def _compile_generator(generator: CodeItem) -> str:
-    return compile_item(generator, sanitized=SanitizationLevel.PREFER)
+async def _compile_generator(generator: CodeItem) -> str:
+    return await compile_item(generator, sanitized=SanitizationLevel.PREFER)
 
 
 @functools.cache
@@ -257,7 +256,7 @@ async def _get_necessary_generators_for_groups(
     return necessary_generators
 
 
-def compile_generators(
+async def compile_generators(
     tracked_generators: Set[str],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -294,13 +293,13 @@ def compile_generators(
         )
 
     with Live(render_live(), console=console.console, auto_refresh=False) as live:
-        executor = setter_config.get_thread_pool_executor()
+        executor = setter_config.get_async_executor()
         futures = {}
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)
             futures[executor.submit(_compile_generator, generator)] = generator_name
 
-        for future in concurrent.futures.as_completed(futures):
+        async for future in executor:
             generator_name = futures[future]
             try:
                 generator_to_compiled_digest[generator_name] = future.result()
@@ -356,7 +355,7 @@ async def generate_standalone(
         if generator_digest is None:
             if progress:
                 progress.update(f'Compiling generator {generator.name}...')
-            generator_digest = _compile_generator(generator)
+            generator_digest = await _compile_generator(generator)
 
         if progress:
             progress.update(
@@ -393,7 +392,7 @@ async def generate_standalone(
             # Compile validator if not already compiled.
             if str(validator.path) not in validators_digests:
                 validators_digests[str(validator.path)] = (
-                    validators.compile_validators([validator], progress=progress)
+                    await validators.compile_validators([validator], progress=progress)
                 )[str(validator.path)]
 
         if progress:
@@ -430,7 +429,7 @@ async def generate_testcases(
         if progress is not None:
             progress.step()
 
-    compiled_generators = compile_generators(
+    compiled_generators = await compile_generators(
         progress=progress,
         tracked_generators=await _get_necessary_generators_for_groups(groups),
     )
@@ -566,7 +565,7 @@ async def generate_outputs_for_testcases(
     pkg = package.find_problem_package_or_die()
 
     if pkg.type == TaskType.COMMUNICATION and needs_output:
-        interactor_digest = checkers.compile_interactor(progress)
+        interactor_digest = await checkers.compile_interactor(progress)
     else:
         interactor_digest = None
 
@@ -577,7 +576,7 @@ async def generate_outputs_for_testcases(
         if progress:
             progress.update('Compiling main solution...')
         try:
-            solution_digest_map[main_solution.path] = compile_item(main_solution)
+            solution_digest_map[main_solution.path] = await compile_item(main_solution)
         except:
             console.console.print('[error]Failed compiling main solution.[/error]')
             raise
@@ -592,7 +591,7 @@ async def generate_outputs_for_testcases(
                     f'Compiling model solution {entry.model_solution.href()}...'
                 )
             try:
-                solution_digest_map[entry.model_solution.path] = compile_item(
+                solution_digest_map[entry.model_solution.path] = await compile_item(
                     entry.model_solution
                 )
             except:

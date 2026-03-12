@@ -140,7 +140,7 @@ async def verify(
         }
 
     with utils.StatusProgress('Running solutions...') as s:
-        solution_result = run_solutions(
+        solution_result = await run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
             verification=VerificationLevel(verification),

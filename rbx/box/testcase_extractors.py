@@ -63,7 +63,7 @@ async def run_generator_script(testcase: TestcaseSubgroup) -> str:
         script_digest.value = cacher.put_file_from_path(testcase.generatorScript.path)
     else:
         try:
-            compiled_digest = compile_item(testcase.generatorScript)
+            compiled_digest = await compile_item(testcase.generatorScript)
         except:
             console.console.print(
                 f'[error]Failed compiling generator script for group [item]{testcase.name}[/item].[/error]'

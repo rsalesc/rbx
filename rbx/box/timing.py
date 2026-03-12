@@ -206,7 +206,7 @@ async def compute_time_limits(
             str(solution.path)
             for solution in get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)
         )
-        solution_result = run_solutions(
+        solution_result = await run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
             check=check,

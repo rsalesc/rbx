@@ -405,7 +405,7 @@ async def run(
         )
 
     with utils.StatusProgress('Running solutions...') as s:
-        solution_result = run_solutions(
+        solution_result = await run_solutions(
             progress=s,
             tracked_solutions=tracked_solutions,
             check=check,
@@ -1051,16 +1051,16 @@ async def compile_command(
 
     if all:
         for solution in package.get_solutions():
-            compile.any(str(solution.path), sanitized, warnings)
+            await compile.any(str(solution.path), sanitized, warnings)
         if package.get_checker() is not None:
-            compile.any(str(package.get_checker().path), sanitized, warnings)
+            await compile.any(str(package.get_checker().path), sanitized, warnings)
         if package.get_validator() is not None:
-            compile.any(str(package.get_validator().path), sanitized, warnings)
+            await compile.any(str(package.get_validator().path), sanitized, warnings)
         if package.get_interactor() is not None:
-            compile.any(str(package.get_interactor().path), sanitized, warnings)
+            await compile.any(str(package.get_interactor().path), sanitized, warnings)
 
     if path is not None:
-        compile.any(path, sanitized, warnings)
+        await compile.any(path, sanitized, warnings)
 
 
 @app.command(
@@ -1083,7 +1083,9 @@ async def validate(
         raise typer.Exit(1)
 
     with utils.StatusProgress('Compiling validators...') as s:
-        validators_digests = validators.compile_validators(all_validators, progress=s)
+        validators_digests = await validators.compile_validators(
+            all_validators, progress=s
+        )
 
     input = console.multiline_prompt('Testcase input')
 

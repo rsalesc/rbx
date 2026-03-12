@@ -218,7 +218,7 @@ async def _validate_sample_outputs(
         if progress is not None:
             progress.step()
 
-    validator_to_compiled_digest = compile_output_validators_for_entries(
+    validator_to_compiled_digest = await compile_output_validators_for_entries(
         [sample.entry for sample in samples]
     )
 
@@ -295,7 +295,7 @@ async def build_samples(
             'Checked [item]{processed}[/item] manual statement outputs...',
             keep=True,
         ) as s:
-            checker_digest = checkers.compile_checker()
+            checker_digest = await checkers.compile_checker()
             for sample in samples_to_check:
                 if not await _check_sample(checker_digest, sample):
                     ok = False

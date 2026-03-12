@@ -3,6 +3,7 @@ import pathlib
 import pytest
 import typer
 
+from rbx import testing_utils
 from rbx.box import validators as validators_mod
 from rbx.box.generators import (
     ValidationError,
@@ -290,7 +291,8 @@ async def test_generator_not_compile(
         await generate_testcases()
 
     out = capsys.readouterr().out
-    assert 'Failed compiling generator gens/gen.cpp' in out
+
+    testing_utils.has_columns(out, ['Compiling gens/gen.cpp...', 'FAILED'])
 
 
 async def test_generate_standalone_copied_from(
@@ -444,7 +446,7 @@ async def test_generate_standalone_reuses_validators_digests_cache(
     testing_pkg.save()
 
     # Precompile digests before monkeypatching
-    all_validators = validators_mod.compile_validators(
+    all_validators = await validators_mod.compile_validators(
         validators=[
             CodeItem(path=pathlib.Path('validator.cpp')),
             CodeItem(path=pathlib.Path('extra-validator-odd.cpp')),
@@ -453,7 +455,7 @@ async def test_generate_standalone_reuses_validators_digests_cache(
 
     calls = []
 
-    def fake_compile_validators(validators, progress=None):
+    async def fake_compile_validators(validators, progress=None):
         paths = [str(v.path) for v in validators]
         calls.append(paths)
         return {p: all_validators[p] for p in paths}

@@ -621,7 +621,7 @@ def mock_dependencies_for_build_samples(monkeypatch):
     mocks = {
         'build': AsyncMock(return_value=True),
         'get_statement_samples': AsyncMock(),
-        'compile_output_validators': MagicMock(),
+        'compile_output_validators': AsyncMock(),
         'validate_file': AsyncMock(),
         'print_validation_report': MagicMock(),
         'compile_checker': AsyncMock(return_value='checker_digest'),

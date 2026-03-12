@@ -1,8 +1,8 @@
-import functools
 import pathlib
 import shlex
 from typing import Dict, List, Optional
 
+import async_lru
 from pydantic import BaseModel
 
 from rbx import console, utils
@@ -50,9 +50,9 @@ class VisualizationPaths(BaseModel):
         return self.output is not None and self.output.is_file()
 
 
-def _compile_visualizer(visualizer: CodeItem) -> str:
+async def _compile_visualizer(visualizer: CodeItem) -> str:
     try:
-        digest = compile_item(visualizer, sanitized=SanitizationLevel.PREFER)
+        digest = await compile_item(visualizer, sanitized=SanitizationLevel.PREFER)
     except CompilationError as e:
         e.print(f'[error]Failed compiling visualizer {visualizer.href()}[/error]')
         raise
@@ -75,7 +75,7 @@ def get_visualization_stems(testcase: Testcase) -> VisualizationPaths:
     return paths
 
 
-def compile_visualizers(
+async def compile_visualizers(
     visualizers: List[Visualizer],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -87,9 +87,9 @@ def compile_visualizers(
 
         if progress:
             progress.update(f'Compiling visualizer {visualizer.href()}...')
-        visualizers_to_compiled_digest[str(visualizer.path)] = _compile_visualizer(
-            visualizer
-        )
+        visualizers_to_compiled_digest[
+            str(visualizer.path)
+        ] = await _compile_visualizer(visualizer)
 
         if visualizer.answer_from is None or not isinstance(
             visualizer.answer_from, CodeItem
@@ -100,15 +100,14 @@ def compile_visualizers(
             progress.update(
                 f'Compiling additional output for visualizer {visualizer.href()}...'
             )
-        visualizers_to_compiled_digest[str(visualizer.answer_from.path)] = (
-            _compile_visualizer(visualizer.answer_from)
-        )
+        visualizers_to_compiled_digest[
+            str(visualizer.answer_from.path)
+        ] = await _compile_visualizer(visualizer.answer_from)
 
     return visualizers_to_compiled_digest
 
 
-@functools.lru_cache(maxsize=None)
-def compile_package_visualizers(
+async def compile_package_visualizers(
     progress: Optional[StatusProgress] = None,
     input: bool = True,
     output: bool = True,
@@ -120,10 +119,11 @@ def compile_package_visualizers(
     solution_visualizer = pkg.solutionVisualizer or pkg.visualizer
     if solution_visualizer is not None and output:
         visualizers.append(solution_visualizer)
-    return compile_visualizers(visualizers, progress=progress)
+    return await compile_visualizers(visualizers, progress=progress)
 
 
-def compile_visualizers_for_entries(
+@async_lru.alru_cache(maxsize=None)
+async def compile_visualizers_for_entries(
     entries: List[GenerationTestcaseEntry],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -136,7 +136,7 @@ def compile_visualizers_for_entries(
         if solution_visualizer is not None:
             visualizers.append(solution_visualizer)
 
-    return compile_visualizers(visualizers, progress=progress)
+    return await compile_visualizers(visualizers, progress=progress)
 
 
 def _get_answer_from_with_digest(
@@ -155,11 +155,10 @@ def _get_answer_from_with_digest(
     )
 
 
-@functools.lru_cache(maxsize=None)
-def _compile_interactor() -> Optional[str]:
+async def _compile_interactor() -> Optional[str]:
     pkg = package.find_problem_package_or_die()
     if pkg.type == TaskType.COMMUNICATION:
-        return checkers.compile_interactor()
+        return await checkers.compile_interactor()
     return None
 
 
@@ -176,7 +175,7 @@ async def _run_output_from(
             inputPath=input_path,
             outputPath=output_path,
         ),
-        interactor_digest=_compile_interactor(),
+        interactor_digest=await _compile_interactor(),
         verification=VerificationLevel.NONE,
         capture_pipes=True,
         use_retries=False,
@@ -490,7 +489,9 @@ async def run_visualizers_for_entries(
     entries: List[GenerationTestcaseEntry],
     progress: Optional[StatusProgress] = None,
 ):
-    compiled_visualizers = compile_visualizers_for_entries(entries, progress=progress)
+    compiled_visualizers = await compile_visualizers_for_entries(
+        entries, progress=progress
+    )
 
     if not compiled_visualizers:
         return
@@ -506,7 +507,7 @@ async def run_visualizers_for_testcase(
     compiled_visualizers: Optional[Dict[str, str]] = None,
 ) -> Optional[pathlib.Path]:
     if compiled_visualizers is None:
-        compiled_visualizers = compile_package_visualizers(progress=progress)
+        compiled_visualizers = await compile_package_visualizers(progress=progress)
 
     pkg = package.find_problem_package_or_die()
 
@@ -532,7 +533,7 @@ async def run_visualizers_for_testcase(
 
 
 async def _run_ui_input_visualizer_for_testcase(testcase: Testcase):
-    compiled_visualizers = compile_package_visualizers(input=True, output=False)
+    compiled_visualizers = await compile_package_visualizers(input=True, output=False)
 
     pkg = package.find_problem_package_or_die()
     if pkg.visualizer is None:
@@ -570,7 +571,7 @@ async def _run_ui_solution_visualizer_for_testcase(
     use_stderr: bool = False,
 ):
     pkg = package.find_problem_package_or_die()
-    compiled_visualizers = compile_package_visualizers(input=False, output=True)
+    compiled_visualizers = await compile_package_visualizers(input=False, output=True)
     visualizer = pkg.solutionVisualizer or pkg.visualizer
     if visualizer is None:
         with VisualizationError() as e:

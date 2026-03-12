@@ -1,5 +1,3 @@
-import asyncio
-
 from rbx.box import code, tasks
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import CodeItem, Testcase
@@ -10,7 +8,7 @@ from rbx.grading.judge.sandbox import SandboxBase
 class TestRunSolutionOnTestcase:
     """Test suite for run_solution_on_testcase function."""
 
-    def test_run_solution_without_explicit_language(
+    async def test_run_solution_without_explicit_language(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that solutions without explicit language field work correctly.
@@ -30,7 +28,7 @@ class TestRunSolutionOnTestcase:
         assert solution.language is None
 
         # Compile the solution
-        compiled_digest = code.compile_item(solution)
+        compiled_digest = await code.compile_item(solution)
 
         # Create input and output files for testcase
         input_file = testing_pkg.add_file('test.in')
@@ -49,16 +47,14 @@ class TestRunSolutionOnTestcase:
 
         # Run solution on testcase - this should work without crashing
         # The fix ensures find_language_name() is used instead of solution.language
-        evaluation = asyncio.run(
-            tasks.run_solution_on_testcase(
-                solution=solution,
-                compiled_digest=compiled_digest,
-                checker_digest=None,
-                testcase=testcase,
-                output_dir=output_dir,
-                verification=VerificationLevel.NONE,
-                use_retries=False,
-            )
+        evaluation = await tasks.run_solution_on_testcase(
+            solution=solution,
+            compiled_digest=compiled_digest,
+            checker_digest=None,
+            testcase=testcase,
+            output_dir=output_dir,
+            verification=VerificationLevel.NONE,
+            use_retries=False,
         )
 
         # Verify execution succeeded
@@ -72,7 +68,7 @@ class TestRunSolutionOnTestcase:
         assert output_path.exists()
         assert output_path.read_text().strip() == 'Hello, World!'
 
-    def test_run_solution_without_explicit_language_cpp(
+    async def test_run_solution_without_explicit_language_cpp(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that C++ solutions without explicit language field work correctly."""
@@ -85,7 +81,7 @@ class TestRunSolutionOnTestcase:
         assert solution.language is None
 
         # Compile the solution
-        compiled_digest = code.compile_item(solution)
+        compiled_digest = await code.compile_item(solution)
 
         # Create input and output files for testcase
         input_file = testing_pkg.add_file('test.in')
@@ -103,16 +99,14 @@ class TestRunSolutionOnTestcase:
         output_dir.mkdir(exist_ok=True)
 
         # Run solution on testcase
-        evaluation = asyncio.run(
-            tasks.run_solution_on_testcase(
-                solution=solution,
-                compiled_digest=compiled_digest,
-                checker_digest=None,
-                testcase=testcase,
-                output_dir=output_dir,
-                verification=VerificationLevel.NONE,
-                use_retries=False,
-            )
+        evaluation = await tasks.run_solution_on_testcase(
+            solution=solution,
+            compiled_digest=compiled_digest,
+            checker_digest=None,
+            testcase=testcase,
+            output_dir=output_dir,
+            verification=VerificationLevel.NONE,
+            use_retries=False,
         )
 
         # Verify execution succeeded
@@ -125,7 +119,7 @@ class TestRunSolutionOnTestcase:
         output_path = output_dir / 'test.out'
         assert output_path.exists()
 
-    def test_run_solution_with_explicit_language_still_works(
+    async def test_run_solution_with_explicit_language_still_works(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that solutions with explicit language field still work correctly.
@@ -142,7 +136,7 @@ class TestRunSolutionOnTestcase:
         assert solution.language == 'py'
 
         # Compile the solution
-        compiled_digest = code.compile_item(solution)
+        compiled_digest = await code.compile_item(solution)
 
         # Create input and output files for testcase
         input_file = testing_pkg.add_file('test.in')
@@ -160,16 +154,14 @@ class TestRunSolutionOnTestcase:
         output_dir.mkdir(exist_ok=True)
 
         # Run solution on testcase
-        evaluation = asyncio.run(
-            tasks.run_solution_on_testcase(
-                solution=solution,
-                compiled_digest=compiled_digest,
-                checker_digest=None,
-                testcase=testcase,
-                output_dir=output_dir,
-                verification=VerificationLevel.NONE,
-                use_retries=False,
-            )
+        evaluation = await tasks.run_solution_on_testcase(
+            solution=solution,
+            compiled_digest=compiled_digest,
+            checker_digest=None,
+            testcase=testcase,
+            output_dir=output_dir,
+            verification=VerificationLevel.NONE,
+            use_retries=False,
         )
 
         # Verify execution succeeded
@@ -182,7 +174,7 @@ class TestRunSolutionOnTestcase:
 class TestRunCommunicationSolutionOnTestcase:
     """Test suite for _run_communication_solution_on_testcase function."""
 
-    def test_communication_solution_without_explicit_language(
+    async def test_communication_solution_without_explicit_language(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that communication solutions without explicit language work correctly.
@@ -225,8 +217,8 @@ sys.exit(0)
         testing_pkg.set_interactor('interactor.py', language='py')
 
         # Compile both
-        compiled_digest = code.compile_item(solution)
-        interactor_digest = code.compile_item(testing_pkg.yml.interactor)
+        compiled_digest = await code.compile_item(solution)
+        interactor_digest = await code.compile_item(testing_pkg.yml.interactor)
 
         # Create testcase
         input_file = testing_pkg.add_file('test.in')
@@ -245,18 +237,16 @@ sys.exit(0)
 
         # Run communication solution - this tests the fix in
         # _run_communication_solution_on_testcase
-        evaluation = asyncio.run(
-            tasks.run_solution_on_testcase(
-                solution=solution,
-                compiled_digest=compiled_digest,
-                checker_digest=None,
-                testcase=testcase,
-                output_dir=output_dir,
-                interactor_digest=interactor_digest,
-                verification=VerificationLevel.NONE,
-                use_retries=False,
-                capture_pipes=False,
-            )
+        evaluation = await tasks.run_solution_on_testcase(
+            solution=solution,
+            compiled_digest=compiled_digest,
+            checker_digest=None,
+            testcase=testcase,
+            output_dir=output_dir,
+            interactor_digest=interactor_digest,
+            verification=VerificationLevel.NONE,
+            use_retries=False,
+            capture_pipes=False,
         )
 
         # Verify execution succeeded

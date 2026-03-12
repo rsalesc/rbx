@@ -566,19 +566,23 @@ class TestProgramMocks:
         # Verify setpgid was called
         mock_setpgid.assert_called_once_with(0, 12345)
 
-        # Verify setrlimit was called 4 times.
+        # Verify setrlimit was called 4 times: CORE, CPU, FSIZE, STACK.
         assert mock_setrlimit.call_count == 4
         calls = mock_setrlimit.call_args_list
 
+        # First call is always RLIMIT_CORE
+        core_call = calls[0]
+        assert core_call[0][0] == resource_module.RLIMIT_CORE
+
         # Check CPU limit call
-        cpu_call = calls[0]
+        cpu_call = calls[1]
         assert cpu_call[0][0] == resource_module.RLIMIT_CPU
 
         # Check file size limit call
-        fs_call = calls[1]
+        fs_call = calls[2]
         assert fs_call[0][0] == resource_module.RLIMIT_FSIZE
 
-        stack_call = calls[2]
+        stack_call = calls[3]
         assert stack_call[0][0] == resource_module.RLIMIT_STACK
 
     @mock.patch('os.setpgid')
@@ -596,16 +600,20 @@ class TestProgramMocks:
         # Verify setpgid was called
         mock_setpgid.assert_called_once_with(0, 12345)
 
-        # Verify setrlimit was called 3 times.
+        # Verify setrlimit was called 3 times: CORE, CPU, FSIZE (no STACK on darwin).
         assert mock_setrlimit.call_count == 3
         calls = mock_setrlimit.call_args_list
 
+        # First call is always RLIMIT_CORE
+        core_call = calls[0]
+        assert core_call[0][0] == resource_module.RLIMIT_CORE
+
         # Check CPU limit call
-        cpu_call = calls[0]
+        cpu_call = calls[1]
         assert cpu_call[0][0] == resource_module.RLIMIT_CPU
 
         # Check file size limit call
-        fs_call = calls[1]
+        fs_call = calls[2]
         assert fs_call[0][0] == resource_module.RLIMIT_FSIZE
 
     @mock.patch('psutil.Process')

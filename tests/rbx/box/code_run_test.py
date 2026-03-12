@@ -1,4 +1,3 @@
-import asyncio
 import pathlib
 import resource
 from unittest import mock
@@ -23,7 +22,7 @@ from rbx.grading.steps import (
 class TestRunItem:
     """Test suite for run_item function."""
 
-    def test_run_simple_python_program(
+    async def test_run_simple_python_program(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test basic execution of a simple Python program."""
@@ -32,7 +31,7 @@ class TestRunItem:
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program (Python doesn't need compilation but creates digest)
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create output destination
@@ -40,12 +39,10 @@ class TestRunItem:
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run the program
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
         )
 
         # Verify execution succeeded
@@ -66,14 +63,16 @@ class TestRunItem:
         assert run_log.metadata.language == 'py'
         assert run_log.metadata.is_sanitized is False
 
-    def test_run_with_stdin_input(self, testing_pkg: testing_package.TestingPackage):
+    async def test_run_with_stdin_input(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
         """Test execution with stdin input."""
         # Create echo program
         py_file = testing_pkg.add_file('echo.py', src='program_test/input_echo.py')
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create input file
@@ -88,14 +87,12 @@ class TestRunItem:
         stderr_dest = DigestOrDest.create(error_path)
 
         # Run the program
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdin=stdin_source,
-                stdout=stdout_dest,
-                stderr=stderr_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdin=stdin_source,
+            stdout=stdout_dest,
+            stderr=stderr_dest,
         )
 
         # Verify execution succeeded
@@ -115,7 +112,9 @@ class TestRunItem:
         assert 'Read line: Hello' in stderr_content
         assert 'Read line: World' in stderr_content
 
-    def test_run_with_extra_args(self, testing_pkg: testing_package.TestingPackage):
+    async def test_run_with_extra_args(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
         """Test execution with extra command line arguments."""
         # Create program that accepts arguments
         py_file = testing_pkg.add_file(
@@ -124,7 +123,7 @@ class TestRunItem:
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create output destination
@@ -132,13 +131,11 @@ class TestRunItem:
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run with extra arguments
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                extra_args='42',
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            extra_args='42',
         )
 
         # Verify execution with expected exit code
@@ -150,7 +147,7 @@ class TestRunItem:
         assert output_path.exists()
         assert 'Exiting with code 42' in output_path.read_text()
 
-    def test_run_with_additional_input_files(
+    async def test_run_with_additional_input_files(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test execution with additional input files."""
@@ -165,7 +162,7 @@ print(f'File content: {content.strip()}')
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create additional input file
@@ -177,18 +174,16 @@ print(f'File content: {content.strip()}')
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run with additional input files
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                inputs=[
-                    GradingFileInput(
-                        src=data_file,
-                        dest=pathlib.Path('data.txt'),
-                    )
-                ],
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            inputs=[
+                GradingFileInput(
+                    src=data_file,
+                    dest=pathlib.Path('data.txt'),
+                )
+            ],
         )
 
         # Verify execution succeeded
@@ -200,7 +195,7 @@ print(f'File content: {content.strip()}')
         assert output_path.exists()
         assert 'File content: Hello from file!' in output_path.read_text()
 
-    def test_run_with_additional_output_files(
+    async def test_run_with_additional_output_files(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test execution with additional output files."""
@@ -215,7 +210,7 @@ print('Done')
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create output destinations
@@ -224,18 +219,16 @@ print('Done')
         result_path = testing_pkg.path('result.txt')
 
         # Run with additional output files
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                outputs=[
-                    GradingFileOutput(
-                        src=pathlib.Path('result.txt'),
-                        dest=result_path,
-                    )
-                ],
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            outputs=[
+                GradingFileOutput(
+                    src=pathlib.Path('result.txt'),
+                    dest=result_path,
+                )
+            ],
         )
 
         # Verify execution succeeded
@@ -251,7 +244,7 @@ print('Done')
         assert result_path.exists()
         assert 'Generated output' in result_path.read_text()
 
-    def test_run_with_custom_execution_config(
+    async def test_run_with_custom_execution_config(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test execution with custom execution configuration."""
@@ -260,7 +253,7 @@ print('Done')
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create custom execution config with stricter limits
@@ -275,13 +268,11 @@ print('Done')
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run with custom config
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                extra_config=custom_config,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            extra_config=custom_config,
         )
 
         # Verify execution succeeded
@@ -296,14 +287,16 @@ print('Done')
             run_log.metadata.memoryLimit == 512
         )  # Memory limit is stored as MiB, not bytes
 
-    def test_run_with_retry_index(self, testing_pkg: testing_package.TestingPackage):
+    async def test_run_with_retry_index(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
         """Test execution with retry index."""
         # Create a simple program
         py_file = testing_pkg.add_file('hello.py', src='program_test/simple_hello.py')
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create output destination
@@ -311,13 +304,11 @@ print('Done')
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run with retry index
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                retry_index=2,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            retry_index=2,
         )
 
         # Verify execution succeeded
@@ -328,7 +319,7 @@ print('Done')
         assert run_log.metadata is not None
         assert run_log.metadata.retryIndex == 2
 
-    def test_run_sanitized_executable_removes_limits(
+    async def test_run_sanitized_executable_removes_limits(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that sanitized executables have memory and time limits removed."""
@@ -337,7 +328,7 @@ print('Done')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         # Compile with sanitization
-        executable_digest = code.compile_item(
+        executable_digest = await code.compile_item(
             code_item, sanitized=code.SanitizationLevel.FORCE
         )
         executable = DigestOrSource.create(executable_digest)
@@ -347,12 +338,10 @@ print('Done')
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run the sanitized executable
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
         )
 
         # Verify execution succeeded
@@ -366,7 +355,7 @@ print('Done')
         assert run_log.metadata.timeLimit is None
         assert run_log.metadata.memoryLimit is None
 
-    def test_run_sanitized_executable_captures_stderr(
+    async def test_run_sanitized_executable_captures_stderr(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that sanitized executables automatically capture stderr."""
@@ -384,7 +373,7 @@ int main() {
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         # Compile with sanitization
-        executable_digest = code.compile_item(
+        executable_digest = await code.compile_item(
             code_item, sanitized=code.SanitizationLevel.FORCE
         )
         executable = DigestOrSource.create(executable_digest)
@@ -394,12 +383,10 @@ int main() {
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run the sanitized executable
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
         )
 
         # Verify execution succeeded
@@ -414,7 +401,7 @@ int main() {
         assert run_log.metadata is not None
         assert run_log.metadata.is_sanitized is True
 
-    def test_run_memory_limit_exceeded(
+    async def test_run_memory_limit_exceeded(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test execution that exceeds memory limits."""
@@ -425,7 +412,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create custom config with very low memory limit
@@ -440,14 +427,12 @@ int main() {
         stderr_dest = DigestOrDest.create(error_path)
 
         # Run with restrictive memory limit
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                stderr=stderr_dest,
-                extra_config=custom_config,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            stderr=stderr_dest,
+            extra_config=custom_config,
         )
 
         # Verify execution failed due to memory limit
@@ -462,7 +447,9 @@ int main() {
             SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED,
         ]
 
-    def test_run_timeout_exceeded(self, testing_pkg: testing_package.TestingPackage):
+    async def test_run_timeout_exceeded(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
         """Test execution that exceeds time limits."""
         # Create infinite loop program
         py_file = testing_pkg.add_file(
@@ -471,7 +458,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create custom config with very short timeout
@@ -484,13 +471,11 @@ int main() {
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run with short timeout
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-                extra_config=custom_config,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
+            extra_config=custom_config,
         )
 
         # Verify execution was terminated due to timeout
@@ -501,7 +486,7 @@ int main() {
         assert run_log.time is not None
         assert run_log.time >= 0.1
 
-    def test_run_nonexistent_executable_fails(
+    async def test_run_nonexistent_executable_fails(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that running with nonexistent executable fails gracefully."""
@@ -518,16 +503,14 @@ int main() {
 
         # Run should fail with KeyError which gets converted to None
         with pytest.raises(KeyError):
-            asyncio.run(
-                code.run_item(
-                    code_item,
-                    executable,
-                    stdout=stdout_dest,
-                )
+            await code.run_item(
+                code_item,
+                executable,
+                stdout=stdout_dest,
             )
 
     @mock.patch('rbx.box.code._check_stack_limit')
-    def test_run_checks_stack_limit(
+    async def test_run_checks_stack_limit(
         self, mock_check_stack_limit, testing_pkg: testing_package.TestingPackage
     ):
         """Test that run_item checks stack limits."""
@@ -536,22 +519,20 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Run the program
-        asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-            )
+        await code.run_item(
+            code_item,
+            executable,
         )
 
         # Verify stack limit was checked (may be called multiple times)
         assert mock_check_stack_limit.call_count >= 1
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_disabled_by_config(
+    async def test_stack_limit_check_disabled_by_config(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking can be disabled by configuration."""
@@ -583,15 +564,13 @@ int main() {
                     )  # 8MB soft, 256MB hard
 
                     # Compile the program
-                    executable_digest = code.compile_item(code_item)
+                    executable_digest = await code.compile_item(code_item)
                     executable = DigestOrSource.create(executable_digest)
 
                     # Run the program
-                    run_log = asyncio.run(
-                        code.run_item(
-                            code_item,
-                            executable,
-                        )
+                    run_log = await code.run_item(
+                        code_item,
+                        executable,
                     )
 
                     # Verify execution succeeded
@@ -607,7 +586,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_disabled_by_cli_state(
+    async def test_stack_limit_check_disabled_by_cli_state(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking is disabled when not run through CLI."""
@@ -639,15 +618,13 @@ int main() {
                     )  # 8MB soft, 256MB hard
 
                     # Compile the program
-                    executable_digest = code.compile_item(code_item)
+                    executable_digest = await code.compile_item(code_item)
                     executable = DigestOrSource.create(executable_digest)
 
                     # Run the program
-                    run_log = asyncio.run(
-                        code.run_item(
-                            code_item,
-                            executable,
-                        )
+                    run_log = await code.run_item(
+                        code_item,
+                        executable,
                     )
 
                     # Verify execution succeeded
@@ -663,7 +640,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'linux')
-    def test_stack_limit_check_disabled_on_linux(
+    async def test_stack_limit_check_disabled_on_linux(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking is disabled when not run through CLI."""
@@ -695,15 +672,13 @@ int main() {
                     )  # 8MB soft, 256MB hard
 
                     # Compile the program
-                    executable_digest = code.compile_item(code_item)
+                    executable_digest = await code.compile_item(code_item)
                     executable = DigestOrSource.create(executable_digest)
 
                     # Run the program
-                    run_log = asyncio.run(
-                        code.run_item(
-                            code_item,
-                            executable,
-                        )
+                    run_log = await code.run_item(
+                        code_item,
+                        executable,
                     )
 
                     # Verify execution succeeded
@@ -719,7 +694,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_warns_on_low_stack_limit(
+    async def test_stack_limit_check_warns_on_low_stack_limit(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking warns when stack limit is too low."""
@@ -752,7 +727,7 @@ int main() {
 
                     # Compile should fail with typer.Exit due to low stack limit
                     with pytest.raises(typer.Exit):
-                        code.compile_item(code_item)
+                        await code.compile_item(code_item)
 
                     # Verify stack limit warning was printed
                     captured = capsys.readouterr()
@@ -766,7 +741,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_no_warning_on_sufficient_stack_limit(
+    async def test_stack_limit_check_no_warning_on_sufficient_stack_limit(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking doesn't warn when stack limit is sufficient."""
@@ -798,15 +773,13 @@ int main() {
                     )  # 512MB soft and hard
 
                     # Compile the program
-                    executable_digest = code.compile_item(code_item)
+                    executable_digest = await code.compile_item(code_item)
                     executable = DigestOrSource.create(executable_digest)
 
                     # Run the program
-                    run_log = asyncio.run(
-                        code.run_item(
-                            code_item,
-                            executable,
-                        )
+                    run_log = await code.run_item(
+                        code_item,
+                        executable,
                     )
 
                     # Verify execution succeeded
@@ -822,7 +795,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_no_warning_on_unlimited_stack(
+    async def test_stack_limit_check_no_warning_on_unlimited_stack(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking doesn't warn when stack limit is unlimited."""
@@ -854,15 +827,13 @@ int main() {
                     )
 
                     # Compile the program
-                    executable_digest = code.compile_item(code_item)
+                    executable_digest = await code.compile_item(code_item)
                     executable = DigestOrSource.create(executable_digest)
 
                     # Run the program
-                    run_log = asyncio.run(
-                        code.run_item(
-                            code_item,
-                            executable,
-                        )
+                    run_log = await code.run_item(
+                        code_item,
+                        executable,
                     )
 
                     # Verify execution succeeded
@@ -878,7 +849,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_formats_memory_correctly(
+    async def test_stack_limit_check_formats_memory_correctly(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking formats memory limits correctly."""
@@ -911,7 +882,7 @@ int main() {
 
                     # Compile should fail with typer.Exit due to low stack limit
                     with pytest.raises(typer.Exit):
-                        code.compile_item(code_item)
+                        await code.compile_item(code_item)
 
                     # Verify stack limit warning was printed with correct formatting
                     captured = capsys.readouterr()
@@ -923,7 +894,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_handles_getrlimit_exception(
+    async def test_stack_limit_check_handles_getrlimit_exception(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking handles getrlimit exceptions gracefully."""
@@ -952,15 +923,13 @@ int main() {
                     mock_getrlimit.side_effect = OSError('getrlimit failed')
 
                     # Compile the program (should succeed despite exception)
-                    executable_digest = code.compile_item(code_item)
+                    executable_digest = await code.compile_item(code_item)
                     executable = DigestOrSource.create(executable_digest)
 
                     # Run the program
-                    run_log = asyncio.run(
-                        code.run_item(
-                            code_item,
-                            executable,
-                        )
+                    run_log = await code.run_item(
+                        code_item,
+                        executable,
                     )
 
                     # Verify execution succeeded
@@ -976,7 +945,7 @@ int main() {
                 state.STATE.run_through_cli = original_cli_state
 
     @mock.patch('sys.platform', 'darwin')
-    def test_stack_limit_check_calculates_target_correctly_with_hard_limit(
+    async def test_stack_limit_check_calculates_target_correctly_with_hard_limit(
         self, testing_pkg: testing_package.TestingPackage, capsys
     ):
         """Test that stack limit checking calculates target correctly when hard limit is lower than 256MB."""
@@ -1009,7 +978,7 @@ int main() {
 
                     # Compile should fail with typer.Exit due to low stack limit
                     with pytest.raises(typer.Exit):
-                        code.compile_item(code_item)
+                        await code.compile_item(code_item)
 
                     # Verify stack limit warning was printed with correct ulimit value
                     captured = capsys.readouterr()
@@ -1019,7 +988,7 @@ int main() {
             finally:
                 state.STATE.run_through_cli = original_cli_state
 
-    def test_run_with_warnings_detection(
+    async def test_run_with_warnings_detection(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that run_item detects warnings in sanitized executables."""
@@ -1039,7 +1008,7 @@ int main() {
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         # Compile with sanitization
-        executable_digest = code.compile_item(
+        executable_digest = await code.compile_item(
             code_item, sanitized=code.SanitizationLevel.FORCE
         )
         executable = DigestOrSource.create(executable_digest)
@@ -1058,13 +1027,11 @@ int main() {
             mock_warning_stack.return_value = mock_stack
 
             # Run the program
-            run_log = asyncio.run(
-                code.run_item(
-                    code_item,
-                    executable,
-                    stdout=stdout_dest,
-                    stderr=stderr_dest,
-                )
+            run_log = await code.run_item(
+                code_item,
+                executable,
+                stdout=stdout_dest,
+                stderr=stderr_dest,
             )
 
             # Verify execution succeeded
@@ -1078,7 +1045,7 @@ int main() {
             assert run_log.warnings
             mock_stack.add_sanitizer_warning.assert_called_once()
 
-    def test_run_python_program_not_sanitized(
+    async def test_run_python_program_not_sanitized(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that Python programs are never marked as sanitized."""
@@ -1087,7 +1054,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile with sanitization (but Python programs don't get sanitizer flags)
-        executable_digest = code.compile_item(
+        executable_digest = await code.compile_item(
             code_item, sanitized=code.SanitizationLevel.FORCE
         )
         executable = DigestOrSource.create(executable_digest)
@@ -1097,12 +1064,10 @@ int main() {
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run the executable
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
         )
 
         # Verify execution succeeded
@@ -1116,14 +1081,14 @@ int main() {
         assert run_log.metadata.timeLimit is not None
         assert run_log.metadata.memoryLimit is not None
 
-    def test_run_cpp_program(self, testing_pkg: testing_package.TestingPackage):
+    async def test_run_cpp_program(self, testing_pkg: testing_package.TestingPackage):
         """Test execution of a C++ program."""
         # Create a simple C++ program
         cpp_file = testing_pkg.add_file('hello.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create output destination
@@ -1131,12 +1096,10 @@ int main() {
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run the program
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
         )
 
         # Verify execution succeeded
@@ -1153,7 +1116,7 @@ int main() {
         assert run_log.metadata is not None
         assert run_log.metadata.language == 'cpp'
 
-    def test_run_java_program(self, testing_pkg: testing_package.TestingPackage):
+    async def test_run_java_program(self, testing_pkg: testing_package.TestingPackage):
         """Test execution of a Java program."""
         # Create a simple Java program
         java_file = testing_pkg.add_file(
@@ -1162,7 +1125,7 @@ int main() {
         code_item = CodeItem(path=java_file, language='java')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create output destination
@@ -1170,12 +1133,10 @@ int main() {
         stdout_dest = DigestOrDest.create(output_path)
 
         # Run the program
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                stdout=stdout_dest,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            stdout=stdout_dest,
         )
 
         # Verify execution succeeded
@@ -1192,7 +1153,7 @@ int main() {
         assert run_log.metadata is not None
         assert run_log.metadata.language == 'java'
 
-    def test_run_returns_none_on_sandbox_failure(
+    async def test_run_returns_none_on_sandbox_failure(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that run_item returns None when sandbox fails completely."""
@@ -1201,7 +1162,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Mock steps_with_caching.run to return None (complete failure)
@@ -1209,17 +1170,15 @@ int main() {
             mock_run.return_value = None
 
             # Run the program
-            run_log = asyncio.run(
-                code.run_item(
-                    code_item,
-                    executable,
-                )
+            run_log = await code.run_item(
+                code_item,
+                executable,
             )
 
             # Verify None is returned on complete failure
             assert run_log is None
 
-    def test_run_metadata_contains_correct_information(
+    async def test_run_metadata_contains_correct_information(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that RunLogMetadata contains all expected information."""
@@ -1228,7 +1187,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create custom config
@@ -1239,13 +1198,11 @@ int main() {
         )
 
         # Run with custom config and retry index
-        run_log = asyncio.run(
-            code.run_item(
-                code_item,
-                executable,
-                extra_config=custom_config,
-                retry_index=3,
-            )
+        run_log = await code.run_item(
+            code_item,
+            executable,
+            extra_config=custom_config,
+            retry_index=3,
         )
 
         # Verify metadata is complete
@@ -1260,7 +1217,7 @@ int main() {
         assert metadata.retryIndex == 3
         assert metadata.limits is not None
 
-    def test_run_artifacts_setup_correctly(
+    async def test_run_artifacts_setup_correctly(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that artifacts are set up correctly for execution."""
@@ -1269,7 +1226,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Create input/output files
@@ -1294,14 +1251,12 @@ int main() {
             )
 
             # Run the program
-            asyncio.run(
-                code.run_item(
-                    code_item,
-                    executable,
-                    stdin=stdin_source,
-                    stdout=stdout_dest,
-                    stderr=stderr_dest,
-                )
+            await code.run_item(
+                code_item,
+                executable,
+                stdin=stdin_source,
+                stdout=stdout_dest,
+                stderr=stderr_dest,
             )
 
             # Verify artifacts were set up correctly
@@ -1331,7 +1286,7 @@ int main() {
             assert any('error' in str(dest) for dest in output_dests)
 
     @mock.patch('rbx.box.code.is_path_remote')
-    def test_run_remote_path_disables_caching(
+    async def test_run_remote_path_disables_caching(
         self, mock_is_remote, testing_pkg: testing_package.TestingPackage
     ):
         """Test that remote paths disable caching during execution."""
@@ -1343,7 +1298,7 @@ int main() {
         code_item = CodeItem(path=py_file, language='py')
 
         # Compile the program
-        executable_digest = code.compile_item(code_item)
+        executable_digest = await code.compile_item(code_item)
         executable = DigestOrSource.create(executable_digest)
 
         # Mock grading_context.cache_level to verify it's called
@@ -1352,11 +1307,9 @@ int main() {
             mock_cache_level.return_value.__exit__ = mock.Mock()
 
             # Run the program
-            asyncio.run(
-                code.run_item(
-                    code_item,
-                    executable,
-                )
+            await code.run_item(
+                code_item,
+                executable,
             )
 
             # Verify caching was disabled for remote path (may be called multiple times)

@@ -53,9 +53,9 @@ class StressReport(BaseModel):
     skipped: int = 0
 
 
-def _compile_finder(finder: Checker) -> str:
+async def _compile_finder(finder: Checker) -> str:
     try:
-        digest = checkers.compile_checker(custom_checker=finder)
+        digest = await checkers.compile_checker(custom_checker=finder)
     except:
         console.console.print(
             f'[error]Failed compiling checker {finder.href()}.[/error]'
@@ -198,7 +198,7 @@ async def run_stress(
         if progress:
             progress.update('Compiling generator...')
         try:
-            generator_digest = compile_item(
+            generator_digest = await compile_item(
                 generator, sanitized=SanitizationLevel.PREFER
             )
         except:
@@ -225,7 +225,7 @@ async def run_stress(
             try:
                 if progress:
                     progress.update(f'Compiling generator [item]{gen_name}[/item]...')
-                generator_digests[gen_name] = compile_item(
+                generator_digests[gen_name] = await compile_item(
                     gen_item, sanitized=SanitizationLevel.PREFER
                 )
             except CompilationError:
@@ -251,24 +251,26 @@ async def run_stress(
     )
 
     solution_indices = {str(solution.path): i for i, solution in enumerate(solutions)}
-    solutions_digest = compile_solutions(
+    solutions_digest = await compile_solutions(
         tracked_solutions=set(str(solution.path) for solution in solutions),
         sanitized=sanitized,
         progress=progress,
     )
     if progress:
         progress.update('Compiling finders...')
-    finders_digest = {str(finder.path): _compile_finder(finder) for finder in finders}
+    finders_digest = {}
+    for finder_item in finders:
+        finders_digest[str(finder_item.path)] = await _compile_finder(finder_item)
 
     interactor_digest = None
     if pkg.type == TaskType.COMMUNICATION:
-        interactor_digest = checkers.compile_interactor(progress=progress)
+        interactor_digest = await checkers.compile_interactor(progress=progress)
 
     all_validators = package.get_all_validators()
     if validators:
         if progress:
             progress.update('Compiling validators...')
-        validators_digests = validators.compile_validators(
+        validators_digests = await validators.compile_validators(
             all_validators, progress=progress
         )
     else:

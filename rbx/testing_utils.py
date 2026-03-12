@@ -85,3 +85,12 @@ def print_directory_tree(directory: pathlib.Path, show_hidden: bool = False):
     tree = rich.tree.Tree(directory.name)
     walk_directory(directory, tree, show_hidden=show_hidden)
     console.console.print(tree)
+
+
+def has_columns(text: str, columns: list[str]):
+    import re
+
+    pattern = r'\s+'.join(re.escape(col) for col in columns)
+    assert re.search(pattern, text) is not None, (
+        f'Text does not contain columns: {columns}\nText:\n{text}'
+    )

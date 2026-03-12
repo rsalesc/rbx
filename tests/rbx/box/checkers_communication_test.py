@@ -3,6 +3,7 @@ import signal
 from typing import Dict, Iterator, Tuple
 
 import pytest
+import syncer
 
 from rbx.box import checkers
 from rbx.box.checkers import compile_checker
@@ -26,7 +27,7 @@ def pkg_with_compiled_checker(tmp_path_factory):
         checkers = {}
         for checker in INTERESTING_CHECKERS:
             testing_pkg.set_checker('checker.cpp', src=checker)
-            checkers[checker] = compile_checker()
+            checkers[checker] = syncer.sync(compile_checker())
         yield testing_pkg, checkers
 
 

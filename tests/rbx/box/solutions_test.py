@@ -45,7 +45,7 @@ async def test_solutions(pkg_from_testdata: pathlib.Path):
     ]
     await generate_outputs_for_testcases(entries)
 
-    result = run_solutions(verification=VerificationLevel.FULL)
+    result = await run_solutions(verification=VerificationLevel.FULL)
     res = await convert_list_of_solution_evaluations_to_dict(
         result.skeleton, result.items
     )
@@ -77,7 +77,7 @@ async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
     ]
     await generate_outputs_for_testcases(entries)
 
-    result = run_solutions(verification=VerificationLevel.FULL)
+    result = await run_solutions(verification=VerificationLevel.FULL)
     res = await convert_list_of_solution_evaluations_to_dict(
         result.skeleton, result.items
     )

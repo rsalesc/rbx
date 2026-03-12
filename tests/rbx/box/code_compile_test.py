@@ -1,4 +1,5 @@
 import pathlib
+import sys
 from unittest import mock
 
 import pytest
@@ -46,14 +47,14 @@ class TestCompileItem:
             )
             yield mock_precompile
 
-    def test_compile_cpp_commands_content(
+    async def test_compile_cpp_commands_content(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that C++ compilation commands are properly constructed."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         commands = call_args[0][0]
@@ -61,10 +62,26 @@ class TestCompileItem:
         assert isinstance(commands, list)
         assert len(commands) == 1
         # Should be the exact C++ compilation command with all modifications
-        expected_cmd = 'g++ -std=c++20 -O2 -o executable solution.cpp -fdiagnostics-color=always -Wall -Wshadow -Wno-unused-result -Wno-sign-compare -Wno-char-subscripts -I.'
-        assert commands[0] == expected_cmd
+        expected_cmd = [
+            'g++',
+            '-std=c++20',
+            '-O2',
+            '-o',
+            'executable',
+            'solution.cpp',
+            '-fdiagnostics-color=always',
+            '-ffp-contract=off' if sys.platform == 'darwin' else '',
+            '-Wall',
+            '-Wshadow',
+            '-Wno-unused-result',
+            '-Wno-sign-compare',
+            '-Wno-char-subscripts',
+            '-I.',
+        ]
 
-    def test_compile_java_commands_content(
+        assert commands[0] == ' '.join([cmd for cmd in expected_cmd if cmd])
+
+    async def test_compile_java_commands_content(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that Java compilation commands are properly constructed."""
@@ -73,7 +90,7 @@ class TestCompileItem:
         )
         code_item = CodeItem(path=java_file, language='java')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         commands = call_args[0][0]
@@ -86,28 +103,28 @@ class TestCompileItem:
         assert commands[0] == 'javac -Xlint -encoding UTF-8 Simple.java'
         assert commands[1] == 'jar cvf Main.jar @glob:*.class'
 
-    def test_compile_python_no_compilation(
+    async def test_compile_python_no_compilation(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that Python files bypass compilation."""
         py_file = testing_pkg.add_file('solution.py', src='compile_test/simple.py')
         code_item = CodeItem(path=py_file, language='py')
 
-        result = code.compile_item(code_item)
+        result = await code.compile_item(code_item)
 
         assert isinstance(result, str)
         assert len(result) > 0
         # Python files don't need compilation
         mock_steps_with_caching.assert_not_called()
 
-    def test_compile_sanitizer_flags_added(
+    async def test_compile_sanitizer_flags_added(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that sanitizer flags are properly added to commands."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
+        await code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
 
         call_args = mock_steps_with_caching.call_args
         commands = call_args[0][0]
@@ -117,14 +134,14 @@ class TestCompileItem:
         assert any('-fno-omit-frame-pointer' in cmd for cmd in commands)
         assert any('-g' in cmd for cmd in commands)
 
-    def test_compile_warning_flags_added(
+    async def test_compile_warning_flags_added(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that warning flags are properly added to commands."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item, force_warnings=True)
+        await code.compile_item(code_item, force_warnings=True)
 
         call_args = mock_steps_with_caching.call_args
         commands = call_args[0][0]
@@ -133,14 +150,14 @@ class TestCompileItem:
         assert any('-Wall' in cmd for cmd in commands)
         assert any('-Wshadow' in cmd for cmd in commands)
 
-    def test_compile_combined_flags(
+    async def test_compile_combined_flags(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that sanitizer and warning flags work together."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(
+        await code.compile_item(
             code_item, sanitized=code.SanitizationLevel.FORCE, force_warnings=True
         )
 
@@ -151,14 +168,14 @@ class TestCompileItem:
         assert any('-fsanitize=address,undefined' in cmd for cmd in commands)
         assert any('-Wall' in cmd for cmd in commands)
 
-    def test_compile_artifacts_input_files(
+    async def test_compile_artifacts_input_files(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that compilation artifacts contain correct input files."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -179,14 +196,14 @@ class TestCompileItem:
         )
         assert rbx_header_input is not None
 
-    def test_compile_artifacts_output_files(
+    async def test_compile_artifacts_output_files(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that compilation artifacts contain correct output files."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -197,14 +214,14 @@ class TestCompileItem:
         assert output.executable is True
         assert output.digest is not None
 
-    def test_compile_non_passthrough_uses_executable_output_src(
+    async def test_compile_non_passthrough_uses_executable_output_src(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """When passthrough is not set, output src should be executable."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -212,7 +229,7 @@ class TestCompileItem:
 
         assert output.src.name == 'executable'
 
-    def test_compile_passthrough_uses_compilable_output_src(
+    async def test_compile_passthrough_uses_compilable_output_src(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """When passthrough is set, output src should be compilable (source file)."""
@@ -234,7 +251,7 @@ class TestCompileItem:
 
             mock_get_cfg.side_effect = _side_effect
 
-            code.compile_item(code_item)
+            await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -243,14 +260,14 @@ class TestCompileItem:
         # Should point to the compilable (mapped source) instead of executable
         assert output.src.name == 'solution.cpp'
 
-    def test_compile_artifacts_with_testlib(
+    async def test_compile_artifacts_with_testlib(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that testlib.h is included in artifacts when available."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -261,14 +278,14 @@ class TestCompileItem:
         )
         assert testlib_input is not None
 
-    def test_compile_artifacts_with_jngen(
+    async def test_compile_artifacts_with_jngen(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that jngen.h is included in artifacts when available."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -279,14 +296,14 @@ class TestCompileItem:
         )
         assert jngen_input is not None
 
-    def test_compile_sandbox_params_basic(
+    async def test_compile_sandbox_params_basic(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test basic sandbox parameters setup."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         sandbox_params = call_args.kwargs['params']
@@ -297,14 +314,14 @@ class TestCompileItem:
         assert sandbox_params.timeout is not None
         assert sandbox_params.address_space is not None
 
-    def test_compile_sandbox_params_sanitized_removes_limits(
+    async def test_compile_sandbox_params_sanitized_removes_limits(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that sanitized compilation removes memory and time limits."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
+        await code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
 
         call_args = mock_steps_with_caching.call_args
         sandbox_params = call_args.kwargs['params']
@@ -314,7 +331,7 @@ class TestCompileItem:
         assert sandbox_params.timeout is None
         assert sandbox_params.wallclock_timeout is None
 
-    def test_compile_bits_stdcpp_added_for_cpp(
+    async def test_compile_bits_stdcpp_added_for_cpp(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that bits/stdc++.h is added for C++ compilation."""
@@ -327,7 +344,7 @@ class TestCompileItem:
                 dest=pathlib.Path('bits/stdc++.h'),
             )
 
-            code.compile_item(code_item)
+            await code.compile_item(code_item)
 
             call_args = mock_steps_with_caching.call_args
             commands = call_args[0][0]
@@ -345,7 +362,7 @@ class TestCompileItem:
             )
             assert bits_input is not None
 
-    def test_compile_precompilation_enabled_by_default(
+    async def test_compile_precompilation_enabled_by_default(
         self,
         testing_pkg: testing_package.TestingPackage,
         mock_steps_with_caching,
@@ -355,7 +372,7 @@ class TestCompileItem:
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -389,7 +406,7 @@ class TestCompileItem:
                         '#pragma GCC diagnostic ignored "-Wshadow"' in processed_content
                     )
 
-    def test_compile_precompilation_disabled(
+    async def test_compile_precompilation_disabled(
         self,
         testing_pkg: testing_package.TestingPackage,
         mock_steps_with_caching,
@@ -399,12 +416,12 @@ class TestCompileItem:
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        code.compile_item(code_item, precompile=False)
+        await code.compile_item(code_item, precompile=False)
 
         # Should not call precompile_header
         mock_precompile_header.assert_not_called()
 
-    def test_compile_warning_pragmas_processed(
+    async def test_compile_warning_pragmas_processed(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that warning pragmas are added to header files during compilation."""
@@ -423,7 +440,7 @@ int custom_function();
             path=cpp_file, language='cpp', compilationFiles=['custom.h']
         )
 
-        code.compile_item(code_item)
+        await code.compile_item(code_item)
 
         call_args = mock_steps_with_caching.call_args
         artifacts = call_args.kwargs['artifacts']
@@ -455,7 +472,7 @@ int custom_function();
         # Should be a different file (preprocessed version)
         assert custom_header_input.src != custom_header
 
-    def test_compile_failure_raises_compilation_error(
+    async def test_compile_failure_raises_compilation_error(
         self, testing_pkg: testing_package.TestingPackage
     ):
         """Test that compilation failure raises CompilationError."""
@@ -466,9 +483,9 @@ int custom_function();
             mock_compile.side_effect = steps.CompilationError()
 
             with pytest.raises(steps.CompilationError):
-                code.compile_item(code_item)
+                await code.compile_item(code_item)
 
-    def test_compile_nonexistent_file_raises_exit(
+    async def test_compile_nonexistent_file_raises_exit(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that compiling nonexistent file raises typer.Exit."""
@@ -476,11 +493,11 @@ int custom_function();
         code_item = CodeItem(path=nonexistent_file, language='cpp')
 
         with pytest.raises(typer.Exit):
-            code.compile_item(code_item)
+            await code.compile_item(code_item)
 
         mock_steps_with_caching.assert_not_called()
 
-    def test_compile_metadata_set_for_sanitized(
+    async def test_compile_metadata_set_for_sanitized(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that compilation metadata is set for sanitized builds."""
@@ -491,7 +508,7 @@ int custom_function();
             mock_cacher = mock.Mock()
             mock_get_cacher.return_value = mock_cacher
 
-            code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
+            await code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
 
             # Should set metadata indicating sanitized build
             mock_cacher.set_metadata.assert_called_once()
@@ -499,7 +516,7 @@ int custom_function();
             assert call_args[0][1] == 'compilation'
             assert call_args[0][2].is_sanitized is True
 
-    def test_compile_metadata_cleared_for_non_sanitized(
+    async def test_compile_metadata_cleared_for_non_sanitized(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that compilation metadata is cleared for non-sanitized builds."""
@@ -510,7 +527,7 @@ int custom_function();
             mock_cacher = mock.Mock()
             mock_get_cacher.return_value = mock_cacher
 
-            code.compile_item(code_item, sanitized=code.SanitizationLevel.NONE)
+            await code.compile_item(code_item, sanitized=code.SanitizationLevel.NONE)
 
             # Should clear metadata for non-sanitized build
             mock_cacher.set_metadata.assert_called_once()
@@ -518,7 +535,7 @@ int custom_function();
             assert call_args[0][1] == 'compilation'
             assert call_args[0][2] is None
 
-    def test_compile_verbose_mode_works(
+    async def test_compile_verbose_mode_works(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that verbose mode doesn't break compilation."""
@@ -526,11 +543,11 @@ int custom_function();
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         # Should not raise any exceptions
-        result = code.compile_item(code_item, verbose=True)
+        result = await code.compile_item(code_item, verbose=True)
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_compile_sanitization_level_prefer_vs_force(
+    async def test_compile_sanitization_level_prefer_vs_force(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test different sanitization levels."""
@@ -538,27 +555,27 @@ int custom_function();
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         # Test PREFER level (default)
-        code.compile_item(code_item, sanitized=code.SanitizationLevel.PREFER)
+        await code.compile_item(code_item, sanitized=code.SanitizationLevel.PREFER)
         mock_steps_with_caching.assert_called()
 
         # Test FORCE level
         mock_steps_with_caching.reset_mock()
-        code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
+        await code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
         mock_steps_with_caching.assert_called()
 
         # Test NONE level
         mock_steps_with_caching.reset_mock()
-        code.compile_item(code_item, sanitized=code.SanitizationLevel.NONE)
+        await code.compile_item(code_item, sanitized=code.SanitizationLevel.NONE)
         mock_steps_with_caching.assert_called()
 
-    def test_compile_returns_digest_string(
+    async def test_compile_returns_digest_string(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
         """Test that compile_item returns a valid digest string."""
         cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         code_item = CodeItem(path=cpp_file, language='cpp')
 
-        result = code.compile_item(code_item)
+        result = await code.compile_item(code_item)
 
         # Should return a non-empty string (digest)
         assert isinstance(result, str)

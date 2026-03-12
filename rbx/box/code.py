@@ -553,7 +553,7 @@ def _precompile_header(
 
 
 # Compile code item and return its digest in the storage.
-def compile_item(
+async def compile_item(
     code: CodeItem,
     sanitized: SanitizationLevel = SanitizationLevel.PREFER,
     force_warnings: bool = False,

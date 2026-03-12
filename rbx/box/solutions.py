@@ -1,12 +1,11 @@
 from __future__ import generators
 
 import collections
-import concurrent.futures
 import dataclasses
 import pathlib
 import shutil
 import typing
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from enum import Enum
 from typing import Collection, Dict, Iterable, List, Optional, Set, Tuple, Union
 
@@ -232,7 +231,7 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
         return f'{self.solution.href()} could not be compiled and was skipped.'
 
 
-def compile_solutions(
+async def compile_solutions(
     progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Collection[str]] = None,
     sanitized: bool = False,
@@ -285,7 +284,7 @@ def compile_solutions(
         render_live(), console=console.console, auto_refresh=False
     ) as live:
         futures = {}
-        executor = setter_config.get_thread_pool_executor()
+        executor = setter_config.get_async_executor()
         for solution in expanded_solutions:
             futures[
                 executor.submit(
@@ -297,7 +296,7 @@ def compile_solutions(
                 )
             ] = solution
 
-        for future in concurrent.futures.as_completed(futures):
+        async for future in executor:
             solution = futures[future]
             try:
                 compiled_solutions[solution.path] = future.result()
@@ -393,7 +392,7 @@ def _get_solutions_for_skeleton(
     return solutions
 
 
-def _get_compiled_solutions_for_skeleton(
+async def _get_compiled_solutions_for_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
@@ -401,7 +400,7 @@ def _get_compiled_solutions_for_skeleton(
 ) -> Tuple[List[Solution], Dict[str, str]]:
     solutions_to_compile = _get_solutions_for_skeleton(tracked_solutions, verification)
 
-    compiled_solutions = compile_solutions(
+    compiled_solutions = await compile_solutions(
         progress=progress,
         tracked_solutions=[str(solution.path) for solution in solutions_to_compile],
         sanitized=sanitized,
@@ -421,7 +420,7 @@ def _get_compiled_solutions_for_skeleton(
     }
 
 
-def _get_report_skeleton(
+async def _get_report_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
@@ -430,7 +429,7 @@ def _get_report_skeleton(
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
 
-    solutions, compiled_solutions = _get_compiled_solutions_for_skeleton(
+    solutions, compiled_solutions = await _get_compiled_solutions_for_skeleton(
         tracked_solutions=tracked_solutions,
         verification=verification,
         progress=progress,
@@ -485,7 +484,7 @@ def _get_report_skeleton(
     return skeleton
 
 
-def _produce_solution_items(
+async def _produce_solution_items(
     skeleton: SolutionReportSkeleton,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
@@ -497,13 +496,13 @@ def _produce_solution_items(
 
     if pkg.type == TaskType.COMMUNICATION:
         checker_digest = (
-            checkers.compile_checker()
+            await checkers.compile_checker()
             if check and package.get_checker_or_nil() is not None
             else None
         )
-        interactor_digest = checkers.compile_interactor()
+        interactor_digest = await checkers.compile_interactor()
     else:
-        checker_digest = checkers.compile_checker() if check else None
+        checker_digest = await checkers.compile_checker() if check else None
         interactor_digest = None
 
     def yield_items(
@@ -545,7 +544,7 @@ def _produce_solution_items(
     return res
 
 
-def run_solutions(
+async def run_solutions(
     progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
@@ -554,7 +553,7 @@ def run_solutions(
     sanitized: bool = False,
     nruns: int = 0,
 ) -> RunSolutionResult:
-    skeleton = _get_report_skeleton(
+    skeleton = await _get_report_skeleton(
         progress=progress,
         tracked_solutions=tracked_solutions,
         verification=verification,
@@ -563,7 +562,7 @@ def run_solutions(
     )
     result = RunSolutionResult(
         skeleton=skeleton,
-        items=_produce_solution_items(
+        items=await _produce_solution_items(
             skeleton=skeleton,
             progress=progress,
             verification=verification,
@@ -674,7 +673,7 @@ async def _generate_testcase_interactively(
         if progress:
             progress.update('Compiling main solution...')
         try:
-            main_solution_digest = compile_item(
+            main_solution_digest = await compile_item(
                 main_solution,
                 sanitized=SanitizationLevel.FORCE
                 if sanitized
@@ -689,7 +688,7 @@ async def _generate_testcase_interactively(
     if main_solution_digest is not None and not is_output_manual:
         pkg = package.find_problem_package_or_die()
         if pkg.type == TaskType.COMMUNICATION:
-            interactor_digest = checkers.compile_interactor(progress)
+            interactor_digest = await checkers.compile_interactor(progress)
         else:
             interactor_digest = None
 
@@ -733,21 +732,21 @@ async def _generate_testcase_interactively(
     return testcase
 
 
-def _run_interactive_solutions(
+async def _run_interactive_solutions(
     testcase: Testcase,
     skeleton: SolutionReportSkeleton,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     visualize: bool = False,
-) -> Iterator[EvaluationItem]:
+) -> AsyncIterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
     if pkg.type == TaskType.COMMUNICATION:
-        checker_digest = checkers.compile_checker() if check else None
-        interactor_digest = checkers.compile_interactor()
+        checker_digest = await checkers.compile_checker() if check else None
+        interactor_digest = await checkers.compile_interactor()
     else:
-        checker_digest = checkers.compile_checker() if check else None
+        checker_digest = await checkers.compile_checker() if check else None
         interactor_digest = None
 
     if progress:
@@ -775,13 +774,13 @@ def _run_interactive_solutions(
         )
 
 
-def _get_interactive_skeleton(
+async def _get_interactive_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
 ) -> SolutionReportSkeleton:
-    solutions, compiled_solutions = _get_compiled_solutions_for_skeleton(
+    solutions, compiled_solutions = await _get_compiled_solutions_for_skeleton(
         tracked_solutions,
         verification=verification,
         progress=progress,
@@ -838,7 +837,7 @@ async def run_and_print_interactive_solutions(
     visualize: bool = False,
 ):
     pkg = package.find_problem_package_or_die()
-    skeleton = _get_interactive_skeleton(
+    skeleton = await _get_interactive_skeleton(
         tracked_solutions=tracked_solutions,
         verification=verification,
         sanitized=sanitized,
@@ -869,7 +868,7 @@ async def run_and_print_interactive_solutions(
             visualize=visualize,
         )
 
-    for item in items:
+    async for item in items:
         sol = skeleton.find_solution_skeleton(item.solution)
         assert sol is not None
 

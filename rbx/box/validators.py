@@ -43,9 +43,9 @@ class TestcaseValidationInfo(BaseModel):
         return CodeItem(path=self.path).href()
 
 
-def _compile_validator(validator: CodeItem) -> str:
+async def _compile_validator(validator: CodeItem) -> str:
     try:
-        digest = compile_item(validator, sanitized=SanitizationLevel.PREFER)
+        digest = await compile_item(validator, sanitized=SanitizationLevel.PREFER)
     except Exception:
         console.console.print(
             f'[error]Failed compiling validator {validator.href()}.[/error]'
@@ -163,12 +163,12 @@ async def validate_file(
     )
 
 
-def compile_main_validator() -> Optional[Tuple[CodeItem, str]]:
+async def compile_main_validator() -> Optional[Tuple[CodeItem, str]]:
     pkg = package.find_problem_package_or_die()
     if pkg.validator is None:
         return None
 
-    return pkg.validator, _compile_validator(pkg.validator)
+    return pkg.validator, await _compile_validator(pkg.validator)
 
 
 async def validate_one_off(
@@ -206,7 +206,7 @@ async def validate_one_off(
     return res
 
 
-def compile_validators(
+async def compile_validators(
     validators: List[CodeItem],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -220,14 +220,14 @@ def compile_validators(
 
         if progress:
             progress.update(f'Compiling validator {validator.href()}...')
-        validator_to_compiled_digest[str(validator.path)] = _compile_validator(
+        validator_to_compiled_digest[str(validator.path)] = await _compile_validator(
             validator
         )
 
     return validator_to_compiled_digest
 
 
-def compile_validators_for_entries(
+async def compile_validators_for_entries(
     validation_entries: List[GenerationTestcaseEntry],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -238,10 +238,10 @@ def compile_validators_for_entries(
             validators.append(entry.validator)
         validators.extend(entry.extra_validators)
 
-    return compile_validators(validators, progress=progress)
+    return await compile_validators(validators, progress=progress)
 
 
-def compile_output_validators_for_entries(
+async def compile_output_validators_for_entries(
     validation_entries: List[GenerationTestcaseEntry],
     progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
@@ -250,7 +250,7 @@ def compile_output_validators_for_entries(
     for entry in validation_entries:
         validators.extend(entry.output_validators)
 
-    return compile_validators(validators, progress=progress)
+    return await compile_validators(validators, progress=progress)
 
 
 async def validate_testcases(
@@ -262,7 +262,7 @@ async def validate_testcases(
             progress.step()
 
     validation_entries = await extract_generation_testcases_from_groups(groups)
-    validator_to_compiled_digest = compile_validators_for_entries(
+    validator_to_compiled_digest = await compile_validators_for_entries(
         validation_entries, progress=progress
     )
 
@@ -335,7 +335,7 @@ async def validate_outputs_from_entries(
         if progress is not None:
             progress.step()
 
-    validator_to_compiled_digest = compile_output_validators_for_entries(
+    validator_to_compiled_digest = await compile_output_validators_for_entries(
         entries, progress=progress
     )
 
@@ -403,7 +403,7 @@ async def check_output_from_entries(
         return []
 
     checker = package.get_checker()
-    checker_digest = checkers.compile_checker(progress=progress)
+    checker_digest = await checkers.compile_checker(progress=progress)
 
     validation_info = []
     for entry in entries_to_check:

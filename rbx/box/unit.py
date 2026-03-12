@@ -237,7 +237,7 @@ async def run_validator_unit_tests(progress: StatusProgress, tmpd: pathlib.Path)
         console.console.print('No validator unit tests found.')
         return
 
-    compiled_validators = validators.compile_validators(vals, progress=progress)
+    compiled_validators = await validators.compile_validators(vals, progress=progress)
 
     if progress:
         progress.update('Running validator unit tests...')
@@ -307,7 +307,7 @@ async def run_checker_unit_tests(progress: StatusProgress, tmpd: pathlib.Path):
         console.console.print('No checker unit tests found.')
         return
 
-    compiled_digest = checkers.compile_checker(progress=progress)
+    compiled_digest = await checkers.compile_checker(progress=progress)
 
     if progress:
         progress.update('Running checker unit tests...')

@@ -12,7 +12,7 @@ from rbx.grading.steps import CompilationError
 
 @pytest.fixture
 def mock_compile_item():
-    with patch('rbx.box.visualizers.compile_item') as mock:
+    with patch('rbx.box.visualizers.compile_item', new_callable=AsyncMock) as mock:
         mock.return_value = 'compiled_digest'
         yield mock
 
@@ -24,7 +24,8 @@ def mock_run_item():
         yield mock
 
 
-def test_compile_visualizers_for_entries(mock_compile_item):
+@pytest.mark.asyncio
+async def test_compile_visualizers_for_entries(mock_compile_item):
     visualizer = Visualizer(path=pathlib.Path('vis.py'), extension='svg')
     output_visualizer = Visualizer(path=pathlib.Path('output_vis.py'), extension='png')
     entries = [
@@ -46,7 +47,7 @@ def test_compile_visualizers_for_entries(mock_compile_item):
         ),
     ]
 
-    compiled = visualizers.compile_visualizers_for_entries(entries)
+    compiled = await visualizers.compile_visualizers_for_entries(entries)
 
     assert compiled['vis.py'] == 'compiled_digest'
     assert compiled['output_vis.py'] == 'compiled_digest'
@@ -141,7 +142,8 @@ def test_get_visualization_stems():
     assert stems.output == pathlib.Path('dir/output_visualization/test')
 
 
-def test_compile_package_visualizers(mock_compile_item):
+@pytest.mark.asyncio
+async def test_compile_package_visualizers(mock_compile_item):
     pkg_mock = MagicMock()
     pkg_mock.visualizer = Visualizer(path=pathlib.Path('vis.py'), extension='svg')
     pkg_mock.outputVisualizer = Visualizer(
@@ -151,7 +153,7 @@ def test_compile_package_visualizers(mock_compile_item):
     with patch(
         'rbx.box.visualizers.package.find_problem_package_or_die', return_value=pkg_mock
     ):
-        compiled = visualizers.compile_package_visualizers()
+        compiled = await visualizers.compile_package_visualizers()
 
     assert compiled['vis.py'] == 'compiled_digest'
     assert compiled['out_vis.py'] == 'compiled_digest'
@@ -242,10 +244,13 @@ async def test_run_output_visualizer_missing_files(mock_run_item):
     mock_run_item.assert_not_called()
 
 
-def test_compile_visualizers_failure():
+@pytest.mark.asyncio
+async def test_compile_visualizers_failure():
     visualizer = Visualizer(path=pathlib.Path('vis.py'), extension='svg')
 
-    with patch('rbx.box.visualizers.compile_item') as mock_compile:
+    with patch(
+        'rbx.box.visualizers.compile_item', new_callable=AsyncMock
+    ) as mock_compile:
         # Define a dummy exception that mocks CompilationError behavior
         # We need it to be caught by `except CompilationError`.
         # So it must be an instance of CompilationError.
@@ -261,6 +266,6 @@ def test_compile_visualizers_failure():
         mock_compile.side_effect = err
 
         with pytest.raises(CompilationError):
-            visualizers.compile_visualizers([visualizer])
+            await visualizers.compile_visualizers([visualizer])
 
         assert getattr(err, 'print_called', False)

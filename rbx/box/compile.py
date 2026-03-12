@@ -16,9 +16,11 @@ def _compile_out():
     return package.get_build_path() / 'exe'
 
 
-def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
+async def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
     console.console.print(f'Compiling {item.href()}...')
-    digest = code.compile_item(item, sanitized, force_warnings=warnings, verbose=True)
+    digest = await code.compile_item(
+        item, sanitized, force_warnings=warnings, verbose=True
+    )
     cacher = package.get_file_cacher()
     out_path = _compile_out()
     cacher.get_file_to_path(digest, out_path)
@@ -33,14 +35,14 @@ def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
     )
 
 
-def any(path: str, sanitized: bool = False, warnings: bool = False):
+async def any(path: str, sanitized: bool = False, warnings: bool = False):
     pkg = package.find_problem_package_or_die()
 
     path = str(remote.expand_file(path))
 
     solution = package.get_solution_or_nil(path)
     if solution is not None:
-        _compile(
+        await _compile(
             solution,
             sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
             warnings=warnings,
@@ -49,7 +51,7 @@ def any(path: str, sanitized: bool = False, warnings: bool = False):
 
     for generator in pkg.generators:
         if generator.path == pathlib.Path(path) or generator.name == path:
-            _compile(
+            await _compile(
                 generator,
                 sanitized=SanitizationLevel.FORCE
                 if sanitized
@@ -60,7 +62,7 @@ def any(path: str, sanitized: bool = False, warnings: bool = False):
 
     checker = package.get_checker_or_nil()
     if checker is not None and checker.path == pathlib.Path(path):
-        _compile(
+        await _compile(
             checker,
             sanitized=SanitizationLevel.FORCE
             if sanitized
@@ -70,7 +72,7 @@ def any(path: str, sanitized: bool = False, warnings: bool = False):
         return
 
     if pkg.validator is not None and pkg.validator.path == pathlib.Path(path):
-        _compile(
+        await _compile(
             pkg.validator,
             sanitized=SanitizationLevel.FORCE
             if sanitized
@@ -79,7 +81,7 @@ def any(path: str, sanitized: bool = False, warnings: bool = False):
         )
         return
 
-    _compile(
+    await _compile(
         CodeItem(path=pathlib.Path(path)),
         sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
         warnings=warnings,

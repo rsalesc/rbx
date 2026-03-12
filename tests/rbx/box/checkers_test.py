@@ -3,6 +3,7 @@ from typing import Dict, Iterator, Tuple
 from unittest import mock
 
 import pytest
+import syncer
 import typer
 
 from rbx.box import checkers
@@ -34,7 +35,7 @@ def pkg_with_compiled_checker(tmp_path_factory):
         checkers = {}
         for checker in INTERESTING_CHECKERS:
             testing_pkg.set_checker('checker.cpp', src=checker)
-            checkers[checker] = compile_checker()
+            checkers[checker] = syncer.sync(compile_checker())
         yield testing_pkg, checkers
 
 
@@ -118,88 +119,88 @@ def run_log_with_warnings(run_log: RunLog) -> RunLog:
 
 
 # Compilation tests
-@mock.patch('rbx.box.code.compile_item')
+@mock.patch('rbx.box.code.compile_item', new_callable=mock.AsyncMock)
 @mock.patch('rbx.box.package.get_checker')
-def test_compile_checker_success(
+async def test_compile_checker_success(
     mock_get_checker: mock.Mock,
-    mock_compile_item: mock.Mock,
+    mock_compile_item: mock.AsyncMock,
 ) -> None:
     mock_get_checker.return_value = CodeItem(path=pathlib.Path('checker.cpp'))
     mock_compile_item.return_value = 'test_digest'
 
-    result = compile_checker()
+    result = await compile_checker()
 
     assert result == 'test_digest'
     mock_get_checker.assert_called_once()
     mock_compile_item.assert_called_once()
 
 
-@mock.patch('rbx.box.code.compile_item')
+@mock.patch('rbx.box.code.compile_item', new_callable=mock.AsyncMock)
 @mock.patch('rbx.box.package.get_checker')
-def test_compile_checker_failure(
+async def test_compile_checker_failure(
     mock_get_checker: mock.Mock,
-    mock_compile_item: mock.Mock,
+    mock_compile_item: mock.AsyncMock,
 ) -> None:
     mock_get_checker.return_value = CodeItem(path=pathlib.Path('checker.cpp'))
     mock_compile_item.side_effect = CompilationError()
 
     with pytest.raises(CompilationError):
-        compile_checker()
+        await compile_checker()
 
 
-@mock.patch('rbx.box.code.compile_item')
+@mock.patch('rbx.box.code.compile_item', new_callable=mock.AsyncMock)
 @mock.patch('rbx.box.package.get_interactor')
-def test_compile_interactor_success(
+async def test_compile_interactor_success(
     mock_get_interactor: mock.Mock,
-    mock_compile_item: mock.Mock,
+    mock_compile_item: mock.AsyncMock,
 ) -> None:
     mock_get_interactor.return_value = CodeItem(path=pathlib.Path('interactor.cpp'))
     mock_compile_item.return_value = 'test_digest'
 
-    result = compile_interactor()
+    result = await compile_interactor()
 
     assert result == 'test_digest'
     mock_get_interactor.assert_called_once()
     mock_compile_item.assert_called_once()
 
 
-@mock.patch('rbx.box.code.compile_item')
+@mock.patch('rbx.box.code.compile_item', new_callable=mock.AsyncMock)
 @mock.patch('rbx.box.package.get_interactor')
-def test_compile_interactor_with_progress(
+async def test_compile_interactor_with_progress(
     mock_get_interactor: mock.Mock,
-    mock_compile_item: mock.Mock,
+    mock_compile_item: mock.AsyncMock,
 ) -> None:
     mock_get_interactor.return_value = CodeItem(path=pathlib.Path('interactor.cpp'))
     mock_compile_item.return_value = 'test_digest'
     progress = mock.Mock(spec=StatusProgress)
 
-    result = compile_interactor(progress)
+    result = await compile_interactor(progress)
 
     assert result == 'test_digest'
     progress.update.assert_called_once_with('Compiling interactor...')
 
 
 @mock.patch('rbx.box.package.get_interactor')
-def test_compile_interactor_not_found(
+async def test_compile_interactor_not_found(
     mock_get_interactor: mock.Mock,
 ) -> None:
     mock_get_interactor.return_value = None
 
     with pytest.raises(typer.Exit):
-        compile_interactor()
+        await compile_interactor()
 
 
-@mock.patch('rbx.box.code.compile_item')
+@mock.patch('rbx.box.code.compile_item', new_callable=mock.AsyncMock)
 @mock.patch('rbx.box.package.get_interactor')
-def test_compile_interactor_failure(
+async def test_compile_interactor_failure(
     mock_get_interactor: mock.Mock,
-    mock_compile_item: mock.Mock,
+    mock_compile_item: mock.AsyncMock,
 ) -> None:
     mock_get_interactor.return_value = CodeItem(path=pathlib.Path('interactor.cpp'))
     mock_compile_item.side_effect = Exception('Compilation failed')
 
     with pytest.raises(typer.Exit):
-        compile_interactor()
+        await compile_interactor()
 
 
 # Test check_with_no_output function

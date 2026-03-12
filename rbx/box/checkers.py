@@ -80,7 +80,7 @@ def is_valid_checker(checker_path: pathlib.Path) -> bool:
     return checker_path.is_file() or get_builtin_checker(checker_path.name).is_file()
 
 
-def compile_checker(
+async def compile_checker(
     progress: Optional[StatusProgress] = None,
     custom_checker: Optional[Checker] = None,
 ) -> str:
@@ -90,7 +90,9 @@ def compile_checker(
         progress.update(f'Compiling checker {checker.href()}...')
 
     try:
-        digest = code.compile_item(checker, sanitized=code.SanitizationLevel.PREFER)
+        digest = await code.compile_item(
+            checker, sanitized=code.SanitizationLevel.PREFER
+        )
     except:
         console.console.print(
             f'[error]Failed compiling checker {checker.href()}[/error]'
@@ -99,7 +101,7 @@ def compile_checker(
     return digest
 
 
-def compile_interactor(progress: Optional[StatusProgress] = None) -> str:
+async def compile_interactor(progress: Optional[StatusProgress] = None) -> str:
     interactor = package.get_interactor()
 
     if interactor is None:
@@ -110,7 +112,9 @@ def compile_interactor(progress: Optional[StatusProgress] = None) -> str:
         progress.update('Compiling interactor...')
 
     try:
-        digest = code.compile_item(interactor, sanitized=code.SanitizationLevel.PREFER)
+        digest = await code.compile_item(
+            interactor, sanitized=code.SanitizationLevel.PREFER
+        )
     except Exception as e:
         console.console.print('[error]Failed compiling interactor.[/error]')
         raise typer.Exit(1) from e
