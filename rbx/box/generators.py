@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import functools
 import pathlib
@@ -33,6 +34,7 @@ from rbx.box.testcase_utils import (
     fill_output_for_defined_testcase,
     find_built_testcases,
 )
+from rbx.grading.async_executor import IdentifiedResult
 from rbx.grading.judge.digester import digest_file
 from rbx.grading.steps import (
     DigestHolder,
@@ -293,16 +295,21 @@ async def compile_generators(
         )
 
     with Live(render_live(), console=console.console, auto_refresh=False) as live:
-        executor = setter_config.get_async_executor()
-        futures = {}
+        executor = setter_config.get_async_executor(detach=True)
+        futures: List[asyncio.Future[IdentifiedResult[str, str]]] = []
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)
-            futures[executor.submit(_compile_generator, generator)] = generator_name
+            futures.append(
+                executor.submit_with_identity(
+                    generator_name, _compile_generator, generator
+                )
+            )
 
-        async for future in executor:
-            generator_name = futures[future]
+        for coro in asyncio.as_completed(futures):
+            awaited = await coro
+            generator_name = awaited.key
             try:
-                generator_to_compiled_digest[generator_name] = future.result()
+                generator_to_compiled_digest[generator_name] = awaited.result()
                 live.update(render_live())
             except:
                 failed_generator_name = generator_name

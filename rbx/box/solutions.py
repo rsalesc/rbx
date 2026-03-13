@@ -1,5 +1,6 @@
 from __future__ import generators
 
+import asyncio
 import collections
 import dataclasses
 import pathlib
@@ -80,6 +81,7 @@ from rbx.box.testcase_utils import (
     print_best_output,
 )
 from rbx.grading import grading_context, steps
+from rbx.grading.async_executor import IdentifiedResult
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     Evaluation,
@@ -283,23 +285,25 @@ async def compile_solutions(
     with rich.live.Live(
         render_live(), console=console.console, auto_refresh=False
     ) as live:
-        futures = {}
-        executor = setter_config.get_async_executor()
+        futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
+        executor = setter_config.get_async_executor(detach=True)
         for solution in expanded_solutions:
-            futures[
-                executor.submit(
+            futures.append(
+                executor.submit_with_identity(
+                    solution,
                     compile_item,
                     solution,
                     sanitized=SanitizationLevel.FORCE
                     if sanitized
                     else SanitizationLevel.NONE,
                 )
-            ] = solution
+            )
 
-        async for future in executor:
-            solution = futures[future]
+        for coro in asyncio.as_completed(futures):
+            awaited = await coro
+            solution = awaited.key
             try:
-                compiled_solutions[solution.path] = future.result()
+                compiled_solutions[solution.path] = awaited.result()
                 live.update(render_live())
             except steps.CompilationError as e:
                 failed_solutions[solution.path] = e

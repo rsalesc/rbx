@@ -715,7 +715,7 @@ class CompilationError(RbxException):
     pass
 
 
-def compile(
+async def compile(
     commands: List[str],
     params: SandboxParams,
     sandbox: SandboxBase,
@@ -745,7 +745,7 @@ def compile(
             params.address_space = None
 
         try:
-            sandbox_log = sandbox.run(cmd, params)
+            sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
         except ProgramError as e:
             with CompilationError() as err:
                 err.print(

@@ -6,11 +6,11 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 
-import async_executor
 import typer
 from pydantic import BaseModel, Field
 
 from rbx import config, console, utils
+from rbx.grading.async_executor import AsyncExecutor
 from rbx.grading.grading_context import CacheLevel
 
 app = typer.Typer(no_args_is_help=True)
@@ -165,9 +165,10 @@ def get_thread_pool_executor() -> ThreadPoolExecutor:
     return ThreadPoolExecutor(max_workers=get_setter_config().parallel.max_workers)
 
 
-def get_async_executor() -> async_executor.AsyncExecutor:
-    return async_executor.AsyncExecutor(
-        max_concurrent=get_setter_config().parallel.max_workers
+def get_async_executor(detach: bool = False) -> AsyncExecutor:
+    return AsyncExecutor(
+        max_workers=get_setter_config().parallel.max_workers,
+        detach=detach,
     )
 
 

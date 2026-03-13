@@ -27,16 +27,16 @@ def clear_steps_cache():
 class TestStepsCompile:
     """Test the steps.compile function."""
 
-    def test_compile_empty_commands_no_fail(
+    async def test_compile_empty_commands_no_fail(
         self, sandbox: SandboxBase, cleandir: pathlib.Path
     ):
         """Test that compile returns True when no commands are provided."""
         params = SandboxParams()
         artifacts = GradingArtifacts(root=cleandir)
 
-        steps.compile([], params, sandbox, artifacts)
+        await steps.compile([], params, sandbox, artifacts)
 
-    def test_compile_successful_cpp_compilation(
+    async def test_compile_successful_cpp_compilation(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test successful C++ compilation."""
@@ -59,7 +59,7 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
@@ -67,7 +67,7 @@ class TestStepsCompile:
         assert len(artifacts.logs.preprocess) == 1
         assert artifacts.logs.preprocess[0].exitcode == 0
 
-    def test_compile_program_error_raises_compilation_error(
+    async def test_compile_program_error_raises_compilation_error(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """ProgramError from sandbox.run should surface as CompilationError."""
@@ -90,11 +90,11 @@ class TestStepsCompile:
 
         with patch.object(sandbox, 'run', side_effect=ProgramError('boom')):
             with pytest.raises(steps.CompilationError):
-                steps.compile(commands, params, sandbox, artifacts)
+                await steps.compile(commands, params, sandbox, artifacts)
 
         assert not output_file.exists()
 
-    def test_compile_successful_python_no_compilation(
+    async def test_compile_successful_python_no_compilation(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that Python files don't need compilation."""
@@ -109,11 +109,11 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = []  # Python doesn't need compilation
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert artifacts.logs.preprocess is None or len(artifacts.logs.preprocess) == 0
 
-    def test_compile_java_compilation_removes_memory_constraints(
+    async def test_compile_java_compilation_removes_memory_constraints(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that Java compilation removes memory constraints."""
@@ -137,7 +137,7 @@ class TestStepsCompile:
 
         # Use mock to capture the params passed to sandbox.run
         with patch.object(sandbox, 'run', wraps=sandbox.run) as mock_run:
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
             assert output_file.exists()
             # Original params should not be modified
@@ -148,7 +148,7 @@ class TestStepsCompile:
             captured_params = call_args[0][1]  # Second argument (params)
             assert captured_params.address_space is None
 
-    def test_compile_compilation_error_returns_false(
+    async def test_compile_compilation_error_returns_false(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that compilation errors return False."""
@@ -172,14 +172,14 @@ class TestStepsCompile:
         commands = ['g++ -o error error.cpp']
 
         with pytest.raises(steps.CompilationError):
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
         assert not output_file.exists()  # No output file should be created on error
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
         assert artifacts.logs.preprocess[0].exitcode != 0
 
-    def test_compile_detects_compilation_warnings(
+    async def test_compile_detects_compilation_warnings(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that compilation warnings are detected."""
@@ -202,7 +202,7 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -Wall -o warning warning.cpp']
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
@@ -218,7 +218,7 @@ class TestStepsCompile:
             'unused_variable' in log.log or 'unused' in log.log
         )  # Should mention the unused variable
 
-    def test_compile_multiple_commands_stops_on_first_error(
+    async def test_compile_multiple_commands_stops_on_first_error(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that multiple commands stop on first error."""
@@ -264,7 +264,7 @@ class TestStepsCompile:
         ]
 
         with pytest.raises(steps.CompilationError):
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
         # When compilation fails, no output artifacts are processed
         # So even though the first command succeeded, no files are copied out
@@ -276,7 +276,7 @@ class TestStepsCompile:
         assert artifacts.logs.preprocess[0].exitcode == 0  # First command succeeded
         assert artifacts.logs.preprocess[1].exitcode != 0  # Second command failed
 
-    def test_compile_multiple_commands_all_succeed(
+    async def test_compile_multiple_commands_all_succeed(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that multiple commands all succeed."""
@@ -309,7 +309,7 @@ class TestStepsCompile:
             'g++ -o multi_step multi_step.o',  # Link to executable
         ]
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert object_file.exists()
         assert output_file.exists()
@@ -318,7 +318,7 @@ class TestStepsCompile:
         assert len(artifacts.logs.preprocess) == 2
         assert all(log.exitcode == 0 for log in artifacts.logs.preprocess)
 
-    def test_compile_with_input_and_output_artifacts(
+    async def test_compile_with_input_and_output_artifacts(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that input and output artifacts are handled correctly."""
@@ -340,12 +340,12 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
 
-    def test_compile_output_artifact_processing_failure_returns_false(
+    async def test_compile_output_artifact_processing_failure_returns_false(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that missing required output artifacts cause failure."""
@@ -368,9 +368,9 @@ class TestStepsCompile:
         commands = ['g++ -o simple simple.cpp']
 
         with pytest.raises(steps.CompilationError):
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
-    def test_compile_optional_output_artifacts_dont_cause_failure(
+    async def test_compile_optional_output_artifacts_dont_cause_failure(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that missing optional output artifacts don't cause failure."""
@@ -399,11 +399,11 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert output_file.exists()
 
-    def test_compile_creates_stdout_stderr_files_in_sandbox(
+    async def test_compile_creates_stdout_stderr_files_in_sandbox(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that stdout and stderr files are created in the sandbox."""
@@ -419,7 +419,7 @@ class TestStepsCompile:
         commands = ['g++ -o error error.cpp']
 
         with pytest.raises(steps.CompilationError):
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
@@ -431,7 +431,7 @@ class TestStepsCompile:
         # Should contain error information
         assert 'error' in log.log.lower() or 'undeclared' in log.log.lower()
 
-    def test_compile_with_sanitizer_command(
+    async def test_compile_with_sanitizer_command(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test compilation with sanitizer flags."""
@@ -456,7 +456,7 @@ class TestStepsCompile:
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         try:
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
             # Note: This might fail on some systems without proper sanitizer support
             # but we're testing the function's behavior, not the compiler's capabilities
@@ -469,7 +469,7 @@ class TestStepsCompile:
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
 
-    def test_compile_logs_contain_command_and_outputs(
+    async def test_compile_logs_contain_command_and_outputs(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test that logs contain the command and its outputs."""
@@ -491,7 +491,7 @@ class TestStepsCompile:
         params = SandboxParams()
         commands = ['g++ -o simple simple.cpp']
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
@@ -511,7 +511,7 @@ class TestStepsCompile:
         assert log.time is not None
         assert log.memory is not None
 
-    def test_compile_with_multiple_input_files(
+    async def test_compile_with_multiple_input_files(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
         """Test compilation with multiple input files."""
@@ -543,7 +543,7 @@ class TestStepsCompile:
         # Compile multiple files together
         commands = ['g++ -o combined main_with_utils.cpp math_utils.cpp']
 
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert output_file.exists()
         assert output_file.stat().st_mode & 0o111  # Check executable bit
@@ -581,7 +581,7 @@ class TestStepsCompile:
 
     @patch('sys.platform', 'linux')
     @patch('rbx.grading.steps._get_cxx_version_output')
-    def test_sanitizer_gcc_on_linux_no_warning(
+    async def test_sanitizer_gcc_on_linux_no_warning(
         self,
         mock_version_output,
         sandbox: SandboxBase,
@@ -619,7 +619,7 @@ gcc version 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.2)"""
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         # This should not raise an exception on Linux with GCC
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         # The compilation might fail due to missing sanitizer libraries,
         # but the function should not exit or complain about the platform
@@ -628,7 +628,7 @@ gcc version 9.4.0 (Ubuntu 9.4.0-1ubuntu1~20.04.2)"""
 
     @patch('sys.platform', 'darwin')
     @patch('rbx.grading.steps._get_cxx_version_output')
-    def test_sanitizer_gcc_on_macos_raises_error(
+    async def test_sanitizer_gcc_on_macos_raises_error(
         self,
         mock_version_output,
         sandbox: SandboxBase,
@@ -658,11 +658,11 @@ gcc version 11.3.0 (Homebrew GCC 11.3.0)"""
 
         # This should raise a typer.Exit exception on macOS with GCC
         with pytest.raises(typer.Exit):
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
     @patch('sys.platform', 'darwin')
     @patch('rbx.grading.steps._get_cxx_version_output')
-    def test_sanitizer_clang_on_macos_works(
+    async def test_sanitizer_clang_on_macos_works(
         self,
         mock_version_output,
         sandbox: SandboxBase,
@@ -695,7 +695,7 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         commands = ['clang++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         # This should not raise an exception on macOS with Clang
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         # The compilation might fail due to missing sanitizer libraries,
         # but the function should not exit or complain about the platform
@@ -703,7 +703,7 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         assert len(artifacts.logs.preprocess) == 1
 
     @patch('rbx.grading.steps._get_cxx_version_output')
-    def test_sanitizer_version_check_failure_handles_gracefully(
+    async def test_sanitizer_version_check_failure_handles_gracefully(
         self,
         mock_version_output,
         sandbox: SandboxBase,
@@ -733,14 +733,14 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         commands = ['g++ -fsanitize=address -o sanitizer sanitizer.cpp']
 
         # Should not crash when version check fails
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
 
     @patch('sys.platform', 'linux')
     @patch('rbx.grading.steps._get_cxx_version_output')
-    def test_sanitizer_warning_detection_in_stderr(
+    async def test_sanitizer_warning_detection_in_stderr(
         self,
         mock_version_output,
         sandbox: SandboxBase,
@@ -783,7 +783,7 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
 
             mock_get_file.side_effect = mock_get_file_to_string
 
-            steps.compile(commands, params, sandbox, artifacts)
+            await steps.compile(commands, params, sandbox, artifacts)
 
             # Check that logs were created
             assert artifacts.logs.preprocess is not None
@@ -829,7 +829,7 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
 
     @patch('sys.platform', 'darwin')
     @patch('rbx.grading.steps._get_cxx_version_output')
-    def test_non_sanitizer_command_on_macos_no_check(
+    async def test_non_sanitizer_command_on_macos_no_check(
         self,
         mock_version_output,
         sandbox: SandboxBase,
@@ -856,7 +856,7 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         commands = ['g++ -o simple simple.cpp']  # No sanitizer flags
 
         # This should work fine without any version checks
-        steps.compile(commands, params, sandbox, artifacts)
+        await steps.compile(commands, params, sandbox, artifacts)
 
         # _get_cxx_version_output should not have been called for non-sanitizer commands
         mock_version_output.assert_not_called()

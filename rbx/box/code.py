@@ -435,7 +435,7 @@ def _should_precompile(commands: List[str]) -> bool:
     return any(is_cpp_command(command) for command in commands)
 
 
-def _precompile_header(
+async def _precompile_header(
     compilation_options: Union[CompilationConfig, BaseCompilationConfig],
     sanitized: SanitizationLevel,
     sandbox_params: SandboxParams,
@@ -497,7 +497,7 @@ def _precompile_header(
 
         with profiling.PushContext('code.precompile_header'):
             try:
-                steps_with_caching.compile(
+                await steps_with_caching.compile(
                     commands,
                     params=sandbox_params,
                     artifacts=precompilation_artifacts,
@@ -657,7 +657,7 @@ async def compile_item(
                         and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
                     ):
                         precompilation_inputs.append(
-                            _precompile_header(
+                            await _precompile_header(
                                 compilation_options,
                                 sanitized,
                                 sandbox_params,
@@ -678,7 +678,7 @@ async def compile_item(
                 when=lambda: is_path_remote(code.path),
             ):
                 try:
-                    steps_with_caching.compile(
+                    await steps_with_caching.compile(
                         commands,
                         params=sandbox_params,
                         artifacts=artifacts,

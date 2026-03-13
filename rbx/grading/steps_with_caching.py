@@ -18,7 +18,7 @@ def _get_prefixed_cacheable_params(
     return {f'{prefix}.{k}': v for k, v in params.items()}
 
 
-def compile(
+async def compile(
     commands: List[str],
     params: SandboxParams,
     sandbox: SandboxBase,
@@ -37,7 +37,7 @@ def compile(
             with profiling.Profiler('steps.compile'):
                 profiling.add_to_counter('steps.compile')
                 try:
-                    steps.compile(
+                    await steps.compile(
                         commands=commands,
                         params=params,
                         artifacts=artifacts,
