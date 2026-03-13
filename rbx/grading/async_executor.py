@@ -127,36 +127,29 @@ class AsyncExecutor:
                     if future.cancelled():
                         return
                     result = await fn(*args, **kwargs)
-                    if not future.cancelled():
-                        future.set_result(result)
+                    _safe_set_result(future, result)
                     # Yield to the event loop so that done callbacks (e.g.
                     # from as_completed) fire before the next task starts.
                     # Without this, fast/cached coroutines that never truly
                     # suspend will monopolize the loop and batch all results.
                     await asyncio.sleep(0)
             except asyncio.CancelledError:
-                pass
-            except BaseException as exc:
                 if not future.done():
-                    future.set_exception(exc)
+                    future.cancel()
+            except BaseException as exc:
+                _safe_set_exception(future, exc)
+            finally:
+                self._tasks.discard(task)
 
         task = asyncio.ensure_future(_run())
         self._tasks.add(task)
 
-        def _on_task_done(t: asyncio.Task):
-            self._tasks.discard(t)
+        def _on_task_done(_: asyncio.Task):
+            # Safety net: if the task was cancelled before _run could execute
+            # (e.g. during shutdown), _run never resolves the future. Catch
+            # that here so the future doesn't stay pending forever.
             if not future.done():
-                if t.cancelled():
-                    future.cancel()
-                else:
-                    exc = t.exception()
-                    if exc is not None:
-                        future.set_exception(exc)
-                    # If no exception and future not done, _run completed
-                    # without setting the result (e.g. future was cancelled
-                    # before result was set). Cancel the future.
-                    elif not future.done():
-                        future.cancel()
+                future.cancel()
 
         task.add_done_callback(_on_task_done)
 
@@ -176,33 +169,24 @@ class AsyncExecutor:
         caller_future: asyncio.Future[T] = caller_loop.create_future()
 
         async def _run():
-            async with self._semaphore:
-                if caller_future.cancelled():
-                    return
-                return await fn(*args, **kwargs)
-
-        # Schedule on the detached loop from the caller thread.
-        inner_future = asyncio.run_coroutine_threadsafe(_run(), self._loop)
-
-        def _on_inner_done(fut):
-            # Called from the detached thread — must use call_soon_threadsafe
-            # to resolve the caller's future on its own loop.
-            if caller_future.cancelled():
-                return
-            if fut.cancelled():
+            try:
+                async with self._semaphore:
+                    if caller_future.cancelled():
+                        return
+                    result = await fn(*args, **kwargs)
+                    # Resolve immediately — no extra callback scheduling.
+                    caller_loop.call_soon_threadsafe(
+                        _safe_set_result, caller_future, result
+                    )
+            except asyncio.CancelledError:
                 caller_loop.call_soon_threadsafe(caller_future.cancel)
-                return
-            exc = fut.exception()
-            if exc is not None:
+            except BaseException as exc:
                 caller_loop.call_soon_threadsafe(
                     _safe_set_exception, caller_future, exc
                 )
-            else:
-                caller_loop.call_soon_threadsafe(
-                    _safe_set_result, caller_future, fut.result()
-                )
 
-        inner_future.add_done_callback(_on_inner_done)
+        # Schedule on the detached loop from the caller thread.
+        inner_future = asyncio.run_coroutine_threadsafe(_run(), self._loop)
 
         def _cancel_inner(f: asyncio.Future):
             if f.cancelled():
@@ -224,11 +208,14 @@ class AsyncExecutor:
             await self._shutdown_local(wait=wait, cancel=cancel)
 
     async def _shutdown_local(self, wait: bool = True, cancel: bool = False):
+        # Snapshot before cancelling — _run's finally block discards from
+        # self._tasks as tasks complete, so the set may shrink during iteration.
+        tasks = list(self._tasks)
         if cancel:
-            for task in self._tasks:
+            for task in tasks:
                 task.cancel()
-        if wait and self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+        if wait and tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         # Yield control so that callbacks (e.g. future.cancel()) scheduled
         # by completed tasks have a chance to fire.
         await asyncio.sleep(0)
