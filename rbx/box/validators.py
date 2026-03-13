@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 import shlex
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -6,7 +7,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import checkers, package
+from rbx.box import checkers, package, setter_config
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.fields import Primitive
 from rbx.box.schema import CodeItem
@@ -276,10 +277,10 @@ async def validate_testcases(
 
     validation_info = []
 
-    for entry in validation_entries:
+    async def _process_entry(entry: GenerationTestcaseEntry):
         input_path = entry.metadata.copied_to.inputPath
         if not input_path.is_file():
-            continue
+            return
 
         # Main validation.
         if entry.validator is not None:
@@ -322,6 +323,14 @@ async def validate_testcases(
                 )
             )
 
+    executor = setter_config.get_async_executor(detach=True)
+    futures: List[asyncio.Future] = []
+    for entry in validation_entries:
+        futures.append(executor.submit(_process_entry, entry))
+
+    # Wait for all validators to be compiled, and process exceptions.
+    for future in futures:
+        await future
         step()
 
     return validation_info
@@ -348,10 +357,11 @@ async def validate_outputs_from_entries(
         return []
 
     validation_info = []
-    for entry in entries:
+
+    async def _process_entry(entry: GenerationTestcaseEntry):
         output_path = entry.metadata.copied_to.outputPath
         if output_path is None or not output_path.is_file():
-            continue
+            return
         for output_validator in entry.output_validators:
             compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
             ok, message, _ = await validate_file(
@@ -371,7 +381,16 @@ async def validate_outputs_from_entries(
                     message=message,
                 )
             )
-            step()
+
+    executor = setter_config.get_async_executor(detach=True)
+    futures: List[asyncio.Future] = []
+    for entry in entries:
+        futures.append(executor.submit(_process_entry, entry))
+
+    # Wait for all outputs to be validated, and process exceptions.
+    for future in futures:
+        await future
+        step()
 
     return validation_info
 
