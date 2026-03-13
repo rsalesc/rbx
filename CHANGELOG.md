@@ -1,3 +1,28 @@
+## 0.32.0rc0 (2026-03-13)
+
+### Feat
+
+- make generator and solution compilation run in parallel with threads
+
+### Fix
+
+- improve async executor to run done callback immediately
+- add live tasks
+- ensure run_communication yields in steps.py
+- add async executor
+- ensure compile_item is now async
+- ensure sandboxes are created when needed
+- add filelock to DependencyCache
+- add lock to FilesystemStorage
+- add filelock to FileCacher
+- add validation for "input" name in BOCA package
+- ensure pipes are only captured for samples and when -cp is specified
+- modify color of OLE in markup verdict
+- add pipesize param to programs
+- update upgrade command
+- use better EOF delimiters in boca bash scripts
+- stop copying solutions into boca package
+
 ## 0.31.10 (2026-03-07)
 
 ### Fix

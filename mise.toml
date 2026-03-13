@@ -50,6 +50,10 @@ run = "pytest -m 'docker' -v -s"
 description = "Commitizen bump + push tags"
 run = "cz bump && git push && git push --tags"
 
+[tasks.bump-pre]
+description = "Commitizen bump pre-release + push tags"
+run = "cz bump --prerelease rc && git push && git push --tags"
+
 [tasks.build]
 description = "Clean build the package"
 run = "rm -rf dist/ && uv build"
