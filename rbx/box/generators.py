@@ -427,6 +427,9 @@ async def generate_testcases(
 
     testcase_utils.clear_built_testcases()
 
+    executor = setter_config.get_async_executor(detach=True)
+    futures: List[asyncio.Future] = []
+
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
         test_calls: Dict[str, List[GenerationTestcaseEntry]]
         test_digests: Dict[str, List[GenerationTestcaseEntry]]
@@ -437,6 +440,9 @@ async def generate_testcases(
             self.test_digests = collections.defaultdict(list)
 
         async def visit(self, entry: GenerationTestcaseEntry):
+            futures.append(executor.submit(self._visit, entry))
+
+        async def _visit(self, entry: GenerationTestcaseEntry):
             same_call = False
             if entry.metadata.copied_from is not None:
                 _copy_testcase_over(
@@ -484,10 +490,14 @@ async def generate_testcases(
                         f'is a hash duplicate of [item]{ref_entry}[/item].'
                     )
                 tests_with_same_digest.append(entry)
-            step()
 
     visitor = BuildTestcaseVisitor(groups)
     await run_testcase_visitor(visitor)
+
+    # Wait for all testcases to be generated, and process exceptions.
+    for future in futures:
+        await future
+        step()
 
 
 async def generate_output_for_testcase(
@@ -595,7 +605,7 @@ async def generate_outputs_for_testcases(
     shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
     gen_runs_dir.mkdir(parents=True, exist_ok=True)
 
-    for entry in generation_entries:
+    async def _process_entry(entry: GenerationTestcaseEntry):
         tc = entry.metadata.copied_to
         if not tc.inputPath.is_file():
             return
@@ -607,8 +617,7 @@ async def generate_outputs_for_testcases(
         if entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
             entry.metadata.copied_from, tc
         ):
-            step()
-            continue
+            return
 
         assert needs_output
         model_solution = entry.model_solution or main_solution
@@ -632,4 +641,13 @@ async def generate_outputs_for_testcases(
             capture_pipes=True if entry.is_sample() else None,
             line_capture=entry.is_sample(),
         )
+
+    executor = setter_config.get_async_executor(detach=True)
+    futures: List[asyncio.Future] = []
+    for entry in generation_entries:
+        futures.append(executor.submit(_process_entry, entry))
+
+    # Wait for all outputs to be generated, and process exceptions.
+    for future in futures:
+        await future
         step()
