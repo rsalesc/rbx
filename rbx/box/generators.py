@@ -6,14 +6,17 @@ import shutil
 from typing import Dict, List, Optional, Set
 
 import typer
-from rich.columns import Columns
-from rich.console import Console, Group, RenderableType
-from rich.live import Live
-from rich.rule import Rule
-from rich.text import Text
+from rich.console import Console
 
 from rbx import console, utils
-from rbx.box import checkers, package, setter_config, testcase_utils, validators
+from rbx.box import (
+    checkers,
+    live_tasks,
+    package,
+    setter_config,
+    testcase_utils,
+    validators,
+)
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -266,55 +269,36 @@ async def compile_generators(
         progress.update(f'Compiling {len(tracked_generators)} generators...')
 
     generator_to_compiled_digest = {}
-    failed_generator_name: Optional[str] = None
 
-    def render_live() -> RenderableType:
-        renderables_left: List[Text] = []
-        renderables_right: List[Text] = []
-        for generator_name in tracked_generators:
-            generator = package.get_generator(generator_name)
-            renderables_left.append(
-                Text.from_markup(f'[info]Compiling {generator.href()}... [/info]')
-            )
-            # TODO: show warnings
-            if generator_name in generator_to_compiled_digest:
-                renderables_right.append(Text.from_markup('[success]OK[/success]'))
-            elif failed_generator_name is not None:
-                if failed_generator_name == generator_name:
-                    renderables_right.append(Text.from_markup('[error]FAILED[/error]'))
-                else:
-                    renderables_right.append(
-                        Text.from_markup('[status]SKIPPED[/status]')
-                    )
-            else:
-                renderables_right.append(Text())
-        return Group(
-            Rule(title='[status]Generators[/status]', style='status'),
-            Columns([Group(*renderables_left), Group(*renderables_right)]),
-            Text(),
+    executor = setter_config.get_async_executor(detach=True)
+    futures: List[asyncio.Future[IdentifiedResult[str, str]]] = []
+    for generator_name in tracked_generators:
+        generator = package.get_generator(generator_name)
+        futures.append(
+            executor.submit_with_identity(generator_name, _compile_generator, generator)
         )
 
-    with Live(render_live(), console=console.console, auto_refresh=False) as live:
-        executor = setter_config.get_async_executor(detach=True)
-        futures: List[asyncio.Future[IdentifiedResult[str, str]]] = []
+    console.console.rule(title='[status]Generators[/status]', style='status')
+    with live_tasks.LiveTasks() as live:
+        task_per_generator_name = {}
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)
-            futures.append(
-                executor.submit_with_identity(
-                    generator_name, _compile_generator, generator
-                )
-            )
+            task = live_tasks.CompilationTask(generator)
+            live.append(task)
+            task_per_generator_name[generator_name] = task
+        live.update()
 
         for coro in asyncio.as_completed(futures):
             awaited = await coro
             generator_name = awaited.key
+            task = task_per_generator_name[generator_name]
             try:
                 generator_to_compiled_digest[generator_name] = awaited.result()
-                live.update(render_live())
+                task.status = live_tasks.CompilationStatus.SUCCESS
             except:
-                failed_generator_name = generator_name
-                live.update(render_live())
+                task.status = live_tasks.CompilationStatus.FAILED
                 raise
+            live.update()
 
     return generator_to_compiled_digest
 

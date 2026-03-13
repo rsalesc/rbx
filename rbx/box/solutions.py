@@ -18,15 +18,13 @@ import rich.text
 import typer
 from ordered_set import OrderedSet
 from pydantic import BaseModel
-from rich.columns import Columns
-from rich.console import Group, RenderableType
-from rich.rule import Rule
 
 from rbx import console, utils
 from rbx.box import (
     checkers,
     code,
     limits_info,
+    live_tasks,
     package,
     remote,
     setter_config,
@@ -233,6 +231,17 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
         return f'{self.solution.href()} could not be compiled and was skipped.'
 
 
+class SolutionCompilationTask(live_tasks.CompilationTask):
+    def render(self) -> live_tasks.TaskRenderable:
+        rendered = super().render()
+        if self.status == live_tasks.CompilationStatus.SKIPPED:
+            rendered.columns[1] = rich.text.Text.from_markup(
+                '[error]FAILED, skipped[/error]'
+            )
+
+        return rendered
+
+
 async def compile_solutions(
     progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Collection[str]] = None,
@@ -251,70 +260,49 @@ async def compile_solutions(
     if progress is not None:
         progress.update(f'Compiling {len(expanded_solutions)} solutions...')
 
-    def render_live() -> RenderableType:
-        renderables_left: List[rich.text.Text] = []
-        renderables_right: List[rich.text.Text] = []
-        for solution in expanded_solutions:
-            renderables_left.append(
-                rich.text.Text.from_markup(
-                    f'[info]Compiling {solution.href()}... [/info]'
-                )
+    futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
+    executor = setter_config.get_async_executor(detach=True)
+    for solution in expanded_solutions:
+        futures.append(
+            executor.submit_with_identity(
+                solution,
+                compile_item,
+                solution,
+                sanitized=SanitizationLevel.FORCE
+                if sanitized
+                else SanitizationLevel.NONE,
             )
-            # TODO: show warnings
-            if solution.path in compiled_solutions:
-                renderables_right.append(
-                    rich.text.Text.from_markup('[success]OK[/success]')
-                )
-            elif solution.path in failed_solutions:
-                exception = failed_solutions[solution.path]
-                failed_text = rich.text.Text.from_markup('[error]FAILED[/error]')
-                if not should_fail and isinstance(exception, steps.CompilationError):
-                    failed_text.append(
-                        rich.text.Text.from_markup('[error], skipping[/error]')
-                    )
-                renderables_right.append(failed_text)
-            else:
-                renderables_right.append(rich.text.Text())
-
-        return Group(
-            Rule(title='[status]Solutions[/status]', style='status'),
-            Columns([Group(*renderables_left), Group(*renderables_right)]),
-            rich.text.Text(),
         )
 
-    with rich.live.Live(
-        render_live(), console=console.console, auto_refresh=False
-    ) as live:
-        futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
-        executor = setter_config.get_async_executor(detach=True)
+    console.console.rule(title='[status]Solutions[/status]', style='status')
+
+    with live_tasks.LiveTasks() as live:
+        task_per_solution = {}
         for solution in expanded_solutions:
-            futures.append(
-                executor.submit_with_identity(
-                    solution,
-                    compile_item,
-                    solution,
-                    sanitized=SanitizationLevel.FORCE
-                    if sanitized
-                    else SanitizationLevel.NONE,
-                )
-            )
+            task = SolutionCompilationTask(solution)
+            live.append(task)
+            task_per_solution[solution.path] = task
+        live.update()
 
         for coro in asyncio.as_completed(futures):
             awaited = await coro
             solution = awaited.key
+            task = task_per_solution[solution.path]
             try:
                 compiled_solutions[solution.path] = awaited.result()
-                live.update(render_live())
+                task.status = live_tasks.CompilationStatus.SUCCESS
             except steps.CompilationError as e:
                 failed_solutions[solution.path] = e
-                live.update(render_live())
+                task.status = live_tasks.CompilationStatus.SKIPPED
                 if should_fail:
+                    task.status = live_tasks.CompilationStatus.FAILED
                     raise
                 issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
             except Exception as e:
                 failed_solutions[solution.path] = e
-                live.update(render_live())
+                task.status = live_tasks.CompilationStatus.FAILED
                 raise
+            live.update()
 
     return compiled_solutions
 
