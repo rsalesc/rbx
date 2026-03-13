@@ -157,7 +157,15 @@ class CompilationTask(LiveTask):
                 ),
                 Text.from_markup(self.status.markup()),
             ],
-            panel=self.exception.from_ansi() if self.exception is not None else None,
+            panel=self.exception.cropped(
+                max_lines=15,
+                footer=Text.from_markup(
+                    '[warning]The compilation error is too long to display. '
+                    'Run [item]rbx compile[/item] to see the full error.[/warning]'
+                ),
+            )
+            if self.exception is not None
+            else None,
         )
 
     def is_finished(self) -> bool:

@@ -4,6 +4,7 @@ import rich.text
 from rich.console import Capture, Console
 
 from rbx import console
+from rbx.box.ui.rich.cropped_text import CroppedText
 
 
 class PossiblyCapture:
@@ -73,6 +74,16 @@ class RbxException(RuntimeError):
 
     def from_ansi(self) -> rich.text.Text:
         return rich.text.Text.from_ansi(''.join(self.msg))
+
+    def cropped(
+        self,
+        max_lines: int,
+        footer: Optional[rich.text.Text] = None,
+        overflow: str = 'ellipsis',
+    ) -> CroppedText:
+        return CroppedText(
+            self.from_ansi(), max_lines, overflow=overflow, footer=footer
+        )
 
     def plain(self) -> str:
         return self.from_ansi().plain
