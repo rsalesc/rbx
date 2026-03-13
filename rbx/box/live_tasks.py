@@ -82,7 +82,9 @@ class LiveTasks:
         self._dump = dump
 
     def __enter__(self) -> 'LiveTasks':
-        self.live = Live(console=console.console, auto_refresh=False)
+        self.live = Live(
+            console=console.console, auto_refresh=False, vertical_overflow='visible'
+        )
         self.live.start()
         return self
 
