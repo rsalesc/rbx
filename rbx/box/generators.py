@@ -278,8 +278,7 @@ async def compile_generators(
             executor.submit_with_identity(generator_name, _compile_generator, generator)
         )
 
-    console.console.rule(title='[status]Generators[/status]', style='status')
-    with live_tasks.LiveTasks() as live:
+    with live_tasks.LiveTasks(title='Generators') as live:
         task_per_generator_name = {}
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)

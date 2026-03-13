@@ -274,10 +274,8 @@ async def compile_solutions(
             )
         )
 
-    console.console.rule(title='[status]Solutions[/status]', style='status')
-
-    with live_tasks.LiveTasks() as live:
-        task_per_solution = {}
+    with live_tasks.LiveTasks(title='Solutions') as live:
+        task_per_solution: Dict[pathlib.Path, SolutionCompilationTask] = {}
         for solution in expanded_solutions:
             task = SolutionCompilationTask(solution)
             live.append(task)
@@ -294,6 +292,7 @@ async def compile_solutions(
             except steps.CompilationError as e:
                 failed_solutions[solution.path] = e
                 task.status = live_tasks.CompilationStatus.SKIPPED
+                task.exception = e
                 if should_fail:
                     task.status = live_tasks.CompilationStatus.FAILED
                     raise
