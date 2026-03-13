@@ -859,7 +859,8 @@ async def run_coordinated(
         solution_params.address_space = None
 
     try:
-        solution_sandbox_log, interactor_sandbox_log = sandbox.run_communication(
+        solution_sandbox_log, interactor_sandbox_log = await asyncio.to_thread(
+            sandbox.run_communication,
             solution_cmd,
             solution_params,
             interactor_cmd,
