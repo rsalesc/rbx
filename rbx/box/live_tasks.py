@@ -177,8 +177,6 @@ class LiveTasks:
     live: Live
     tasks: List[LiveTask]
 
-    _dumped: List[bool]
-    _dump: bool
     _panel_indent: int
     _title: Optional[TextType]
     _rule_title: bool
@@ -189,15 +187,12 @@ class LiveTasks:
     def __init__(
         self,
         title: Optional[TextType] = None,
-        dump: bool = False,
         panel_indent: int = 0,
         rule_title: bool = True,
         console: Optional[Console] = None,
         suspend_lives: bool = True,
     ) -> None:
         self.tasks = []
-        self._dumped = []
-        self._dump = dump
         self._panel_indent = panel_indent
         self._title = title
         self._rule_title = rule_title
@@ -221,7 +216,6 @@ class LiveTasks:
             live.start()
 
     def update(self) -> None:
-        # TODO: implement dumping
         renderables = [task.render() for task in self.tasks]
         self.live.update(
             TaskGrid(
@@ -235,6 +229,5 @@ class LiveTasks:
 
     def append(self, task: LiveTask, update: bool = False) -> None:
         self.tasks.append(task)
-        self._dumped.append(False)
         if update:
             self.update()
