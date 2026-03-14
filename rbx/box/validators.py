@@ -326,7 +326,8 @@ async def validate_testcases(
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future] = []
     for entry in validation_entries:
-        futures.append(executor.submit(_process_entry, entry))
+        _, completed = executor.submit(_process_entry, entry)
+        futures.append(completed)
 
     # Wait for all validators to be compiled, and process exceptions.
     for future in futures:
@@ -385,7 +386,8 @@ async def validate_outputs_from_entries(
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future] = []
     for entry in entries:
-        futures.append(executor.submit(_process_entry, entry))
+        _, completed = executor.submit(_process_entry, entry)
+        futures.append(completed)
 
     # Wait for all outputs to be validated, and process exceptions.
     for future in futures:

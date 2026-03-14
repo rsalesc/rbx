@@ -8,11 +8,20 @@ K = TypeVar('K')
 T = TypeVar('T')
 
 
+class PendingResult(Exception):
+    """Sentinel exception used by IdentifiedResult to indicate the task
+    has been scheduled but has not completed yet."""
+
+
 class IdentifiedResult(Generic[K, T]):
     """Result wrapper that always carries a key, even on failure.
 
     Use with AsyncExecutor.submit_with_identity() and asyncio.as_completed().
     Call .result() to get the value or re-raise the original exception.
+
+    A *scheduled* IdentifiedResult (where ``pending`` is True) signals that
+    the task has acquired a worker slot and started running, but has not
+    finished yet.  Calling ``.result()`` on it raises ``PendingResult``.
     """
 
     __slots__ = ('key', '_value', '_exception')
@@ -25,10 +34,18 @@ class IdentifiedResult(Generic[K, T]):
         self._exception = exception
 
     def result(self) -> T:
-        """Return the result, or raise the original exception."""
+        """Return the result, or raise the original exception.
+
+        Raises ``PendingResult`` if the task is still running.
+        """
         if self._exception is not None:
             raise self._exception
         return self._value  # type: ignore[return-value]
+
+    @property
+    def pending(self) -> bool:
+        """True if this is a scheduled-but-not-completed result."""
+        return isinstance(self._exception, PendingResult)
 
     @property
     def ok(self) -> bool:
@@ -76,12 +93,17 @@ class AsyncExecutor:
 
     def submit(
         self, fn: Callable[..., Awaitable[T]], *args, **kwargs
-    ) -> asyncio.Future[T]:
+    ) -> tuple[asyncio.Future[None], asyncio.Future[T]]:
         """Submit an async callable for execution.
 
         The callable is started immediately if a worker slot is available,
-        otherwise it waits for a slot. Returns a Future that can be used
-        with asyncio.as_completed(), asyncio.gather(), etc.
+        otherwise it waits for a slot. Returns a tuple of two futures:
+        - **scheduled**: resolves (with ``None``) as soon as the task
+          acquires a worker slot and starts running.
+        - **completed**: resolves with the callable's return value (or
+          raises its exception) when the task finishes.
+
+        Both futures support asyncio.as_completed(), asyncio.gather(), etc.
         """
         if self._detach:
             return self._submit_detached(fn, *args, **kwargs)
@@ -89,22 +111,39 @@ class AsyncExecutor:
 
     def submit_with_identity(
         self, key: K, fn: Callable[..., Awaitable[T]], *args, **kwargs
-    ) -> asyncio.Future[IdentifiedResult[K, T]]:
+    ) -> tuple[
+        asyncio.Future[IdentifiedResult[K, T]],
+        asyncio.Future[IdentifiedResult[K, T]],
+    ]:
         """Submit an async callable, tagging the result with a key.
 
-        Returns a Future that resolves to an IdentifiedResult (never raises).
-        The key is always accessible, even when the callable failed.
+        Returns a tuple of two futures that both resolve to
+        ``IdentifiedResult`` (never raise):
+
+        - **scheduled**: resolves with a *pending* ``IdentifiedResult``
+          (``r.pending == True``) as soon as the task acquires a worker
+          slot.  The key is available but ``.result()`` raises
+          ``PendingResult``.
+        - **completed**: resolves with the final ``IdentifiedResult``.
+          The key is always accessible, even when the callable failed.
+
+        Because both futures share the same type you can mix them freely
+        in a single list and distinguish them via ``r.pending``.
 
         Usage::
 
-            futures = [
-                executor.submit_with_identity(name, compile, gen)
-                for name, gen in generators.items()
-            ]
+            futures = []
+            for name, gen in generators.items():
+                scheduled, completed = executor.submit_with_identity(
+                    name, compile, gen,
+                )
+                futures.extend([scheduled, completed])
             for coro in asyncio.as_completed(futures):
-                r = await coro       # never raises
-                name = r.key         # always available
-                digest = r.result()  # raises if the callable failed
+                r = await coro          # never raises
+                if r.pending:
+                    print(f'{r.key} started')
+                    continue
+                digest = r.result()     # raises if the callable failed
         """
 
         async def _tagged() -> IdentifiedResult[K, T]:
@@ -113,12 +152,32 @@ class AsyncExecutor:
             except BaseException as exc:
                 return IdentifiedResult(key, exception=exc)
 
-        return self.submit(_tagged)
+        scheduled_none, completed = self.submit(_tagged)
+
+        # Wrap the raw scheduled future so it resolves with a pending
+        # IdentifiedResult instead of None.
+        loop = scheduled_none.get_loop()
+        scheduled: asyncio.Future[IdentifiedResult[K, T]] = loop.create_future()
+
+        def _propagate_scheduled(f: asyncio.Future[None]):
+            if f.cancelled():
+                scheduled.cancel()
+            elif (exc := f.exception()) is not None:
+                _safe_set_exception(scheduled, exc)
+            else:
+                _safe_set_result(
+                    scheduled, IdentifiedResult(key, exception=PendingResult())
+                )
+
+        scheduled_none.add_done_callback(_propagate_scheduled)
+
+        return scheduled, completed
 
     def _submit_local(
         self, fn: Callable[..., Awaitable[T]], *args, **kwargs
-    ) -> asyncio.Future[T]:
+    ) -> tuple[asyncio.Future[None], asyncio.Future[T]]:
         loop = asyncio.get_running_loop()
+        scheduled: asyncio.Future[None] = loop.create_future()
         future: asyncio.Future[T] = loop.create_future()
 
         async def _run():
@@ -126,6 +185,7 @@ class AsyncExecutor:
                 async with self._semaphore:
                     if future.cancelled():
                         return
+                    _safe_set_result(scheduled, None)
                     result = await fn(*args, **kwargs)
                     _safe_set_result(future, result)
                     # Yield to the event loop so that done callbacks (e.g.
@@ -150,6 +210,8 @@ class AsyncExecutor:
             # that here so the future doesn't stay pending forever.
             if not future.done():
                 future.cancel()
+            if not scheduled.done():
+                scheduled.cancel()
 
         task.add_done_callback(_on_task_done)
 
@@ -159,13 +221,14 @@ class AsyncExecutor:
 
         future.add_done_callback(_cancel_task)
 
-        return future
+        return scheduled, future
 
     def _submit_detached(
         self, fn: Callable[..., Awaitable[T]], *args, **kwargs
-    ) -> asyncio.Future[T]:
+    ) -> tuple[asyncio.Future[None], asyncio.Future[T]]:
         assert self._loop is not None
         caller_loop = asyncio.get_running_loop()
+        scheduled: asyncio.Future[None] = caller_loop.create_future()
         caller_future: asyncio.Future[T] = caller_loop.create_future()
 
         async def _run():
@@ -173,6 +236,7 @@ class AsyncExecutor:
                 async with self._semaphore:
                     if caller_future.cancelled():
                         return
+                    caller_loop.call_soon_threadsafe(_safe_set_result, scheduled, None)
                     result = await fn(*args, **kwargs)
                     # Resolve immediately — no extra callback scheduling.
                     caller_loop.call_soon_threadsafe(
@@ -180,6 +244,7 @@ class AsyncExecutor:
                     )
             except asyncio.CancelledError:
                 caller_loop.call_soon_threadsafe(caller_future.cancel)
+                caller_loop.call_soon_threadsafe(scheduled.cancel)
             except BaseException as exc:
                 caller_loop.call_soon_threadsafe(
                     _safe_set_exception, caller_future, exc
@@ -194,7 +259,7 @@ class AsyncExecutor:
 
         caller_future.add_done_callback(_cancel_inner)
 
-        return caller_future
+        return scheduled, caller_future
 
     async def shutdown(self, wait: bool = True, cancel: bool = False):
         """Shut down the executor.

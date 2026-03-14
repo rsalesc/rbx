@@ -259,11 +259,16 @@ async def compile_solutions(
     expanded_solutions = expand_solutions(list(tracked_solutions))
     should_fail = (fail_if_one and len(expanded_solutions) <= 1) or not skip_if_fail
 
-    futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
-    executor = setter_config.get_async_executor(detach=True)
-    for solution in expanded_solutions:
-        futures.append(
-            executor.submit_with_identity(
+    with live_tasks.LiveTasks(
+        title='Solutions',
+        progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] solutions...[/info]',
+        final_message='[info]Compiled [item]{total}[/item] solutions...[/info]',
+    ) as live:
+        futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
+        task_per_solution: Dict[pathlib.Path, SolutionCompilationTask] = {}
+        executor = setter_config.get_async_executor(detach=True)
+        for solution in expanded_solutions:
+            scheduled, completed = executor.submit_with_identity(
                 solution,
                 compile_item,
                 solution,
@@ -271,26 +276,25 @@ async def compile_solutions(
                 if sanitized
                 else SanitizationLevel.NONE,
             )
-        )
+            futures.extend([scheduled, completed])
 
-    with live_tasks.LiveTasks(
-        title='Solutions',
-        progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] solutions...[/info]',
-        final_message='[info]Compiled [item]{total}[/item] solutions...[/info]',
-    ) as live:
-        task_per_solution: Dict[pathlib.Path, SolutionCompilationTask] = {}
-        for solution in expanded_solutions:
+            # Save the task for later.
             task = SolutionCompilationTask(solution)
             live.append(task)
             task_per_solution[solution.path] = task
+
         live.update()
 
         for coro in asyncio.as_completed(futures):
-            awaited = await coro
-            solution = awaited.key
+            identified_result = await coro
+            solution = identified_result.key
             task = task_per_solution[solution.path]
+            if identified_result.pending:
+                task.status = live_tasks.CompilationStatus.RUNNING
+                live.update()
+                continue
             try:
-                compiled_solutions[solution.path] = awaited.result()
+                compiled_solutions[solution.path] = identified_result.result()
                 task.status = live_tasks.CompilationStatus.SUCCESS
             except steps.CompilationError as e:
                 failed_solutions[solution.path] = e

@@ -266,33 +266,40 @@ async def compile_generators(
 ) -> Dict[str, str]:
     generator_to_compiled_digest = {}
 
-    executor = setter_config.get_async_executor(detach=True)
-    futures: List[asyncio.Future[IdentifiedResult[str, str]]] = []
-    for generator_name in tracked_generators:
-        generator = package.get_generator(generator_name)
-        futures.append(
-            executor.submit_with_identity(generator_name, _compile_generator, generator)
-        )
-
     with live_tasks.LiveTasks(
         title='Generators',
         progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] generators...[/info]',
         final_message='[info]Compiled [item]{total}[/item] generators...[/info]',
     ) as live:
+        executor = setter_config.get_async_executor(detach=True)
+        futures: List[asyncio.Future[IdentifiedResult[str, str]]] = []
         task_per_generator_name = {}
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)
+            scheduled, completed = executor.submit_with_identity(
+                generator_name, _compile_generator, generator
+            )
+            futures.extend([scheduled, completed])
+
+            # Save the task for later.
             task = live_tasks.CompilationTask(generator)
             live.append(task)
             task_per_generator_name[generator_name] = task
+
         live.update()
 
         for coro in asyncio.as_completed(futures):
-            awaited = await coro
-            generator_name = awaited.key
+            identified_result = await coro
+            generator_name = identified_result.key
             task = task_per_generator_name[generator_name]
+            if identified_result.pending:
+                task.status = live_tasks.CompilationStatus.RUNNING
+                live.update()
+                continue
             try:
-                generator_to_compiled_digest[generator_name] = awaited.result()
+                generator_to_compiled_digest[generator_name] = (
+                    identified_result.result()
+                )
                 task.status = live_tasks.CompilationStatus.SUCCESS
             except:
                 task.status = live_tasks.CompilationStatus.FAILED
@@ -438,7 +445,8 @@ async def generate_testcases(
             self.test_digests = collections.defaultdict(list)
 
         async def visit(self, entry: GenerationTestcaseEntry):
-            futures.append(executor.submit(self._visit, entry))
+            _, completed = executor.submit(self._visit, entry)
+            futures.append(completed)
 
         async def _visit(self, entry: GenerationTestcaseEntry):
             same_call = False
@@ -643,7 +651,8 @@ async def generate_outputs_for_testcases(
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future] = []
     for entry in generation_entries:
-        futures.append(executor.submit(_process_entry, entry))
+        _, completed = executor.submit(_process_entry, entry)
+        futures.append(completed)
 
     # Wait for all outputs to be generated, and process exceptions.
     for future in futures:

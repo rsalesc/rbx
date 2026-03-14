@@ -144,7 +144,7 @@ class CompilationStatus(enum.Enum):
     def markup(self) -> str:
         return {
             CompilationStatus.PENDING: '',
-            CompilationStatus.RUNNING: '[info]RUNNING[/info]',
+            CompilationStatus.RUNNING: '',
             CompilationStatus.SUCCESS: '[success]SUCCESS[/success]',
             CompilationStatus.SKIPPED: '[status]SKIPPED[/status]',
             CompilationStatus.FAILED: '[error]FAILED[/error]',
