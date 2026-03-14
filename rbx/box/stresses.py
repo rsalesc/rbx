@@ -254,7 +254,6 @@ async def run_stress(
     solutions_digest = await compile_solutions(
         tracked_solutions=set(str(solution.path) for solution in solutions),
         sanitized=sanitized,
-        progress=progress,
     )
     if progress:
         progress.update('Compiling finders...')

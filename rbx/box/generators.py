@@ -263,11 +263,7 @@ async def _get_necessary_generators_for_groups(
 
 async def compile_generators(
     tracked_generators: Set[str],
-    progress: Optional[StatusProgress] = None,
 ) -> Dict[str, str]:
-    if progress is not None:
-        progress.update(f'Compiling {len(tracked_generators)} generators...')
-
     generator_to_compiled_digest = {}
 
     executor = setter_config.get_async_executor(detach=True)
@@ -420,7 +416,6 @@ async def generate_testcases(
             progress.step()
 
     compiled_generators = await compile_generators(
-        progress=progress,
         tracked_generators=await _get_necessary_generators_for_groups(groups),
     )
 

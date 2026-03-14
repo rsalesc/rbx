@@ -13,9 +13,10 @@ from rich.style import StyleType
 from rich.table import Table
 from rich.text import Text, TextType
 
-from rbx import console
+from rbx import console as rbx_console
 from rbx.box.exception import RbxException
 from rbx.box.schema import CodeItem
+from rbx.box.ui.rich import live_utils
 
 
 @dataclasses.dataclass(frozen=True)
@@ -181,6 +182,9 @@ class LiveTasks:
     _panel_indent: int
     _title: Optional[TextType]
     _rule_title: bool
+    _console: Console
+    _suspend_lives: bool
+    _old_lives: List[Live]
 
     def __init__(
         self,
@@ -188,6 +192,8 @@ class LiveTasks:
         dump: bool = False,
         panel_indent: int = 0,
         rule_title: bool = True,
+        console: Optional[Console] = None,
+        suspend_lives: bool = True,
     ) -> None:
         self.tasks = []
         self._dumped = []
@@ -195,10 +201,15 @@ class LiveTasks:
         self._panel_indent = panel_indent
         self._title = title
         self._rule_title = rule_title
+        self._console = console or rbx_console.console
+        self._suspend_lives = suspend_lives
+        self._old_lives = []
 
     def __enter__(self) -> 'LiveTasks':
+        if self._suspend_lives:
+            self._old_lives = live_utils.hold_lives(self._console)
         self.live = Live(
-            console=console.console, auto_refresh=False, vertical_overflow='visible'
+            console=self._console, auto_refresh=False, vertical_overflow='visible'
         )
         self.live.start()
         return self
@@ -206,6 +217,8 @@ class LiveTasks:
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.update()
         self.live.stop()
+        for live in self._old_lives:
+            live.start()
 
     def update(self) -> None:
         # TODO: implement dumping
@@ -216,7 +229,8 @@ class LiveTasks:
                 panel_indent=self._panel_indent,
                 title=self._title,
                 rule_title=self._rule_title,
-            )
+            ),
+            refresh=True,
         )
 
     def append(self, task: LiveTask, update: bool = False) -> None:

@@ -243,7 +243,6 @@ class SolutionCompilationTask(live_tasks.CompilationTask):
 
 
 async def compile_solutions(
-    progress: Optional[StatusProgress] = None,
     tracked_solutions: Optional[Collection[str]] = None,
     sanitized: bool = False,
     fail_if_one: bool = True,
@@ -257,8 +256,6 @@ async def compile_solutions(
 
     expanded_solutions = expand_solutions(list(tracked_solutions))
     should_fail = (fail_if_one and len(expanded_solutions) <= 1) or not skip_if_fail
-    if progress is not None:
-        progress.update(f'Compiling {len(expanded_solutions)} solutions...')
 
     futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
     executor = setter_config.get_async_executor(detach=True)
@@ -392,7 +389,6 @@ async def _get_compiled_solutions_for_skeleton(
     solutions_to_compile = _get_solutions_for_skeleton(tracked_solutions, verification)
 
     compiled_solutions = await compile_solutions(
-        progress=progress,
         tracked_solutions=[str(solution.path) for solution in solutions_to_compile],
         sanitized=sanitized,
         skip_if_fail=True,
