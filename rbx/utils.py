@@ -436,14 +436,20 @@ class StatusProgress(rich.status.Status):
     _message: str
     processed: int
     keep: bool
+    total: int
 
     def __init__(
-        self, message: str, formatted_message: Optional[str] = None, keep: bool = False
+        self,
+        message: str,
+        formatted_message: Optional[str] = None,
+        keep: bool = False,
+        total: int = 0,
     ):
         self._message = formatted_message or message
         self.keep = keep
         self.processed = 0
-        super().__init__(message.format(processed=0), console=console)
+        self.total = total
+        super().__init__(message.format(processed=0, total=total), console=console)
         self.start()
 
     def __enter__(self):
@@ -453,11 +459,15 @@ class StatusProgress(rich.status.Status):
     def __exit__(self, *args, **kwargs):
         super().__exit__(*args, **kwargs)
         if self.keep:
-            console.print(self._message.format(processed=self.processed))
+            console.print(
+                self._message.format(processed=self.processed, total=self.total)
+            )
 
-    def update_with_progress(self, processed: int):
+    def update_with_progress(self, processed: int, total: Optional[int] = None):
         self.processed = processed
-        self.update(self._message.format(processed=processed))
+        if total is not None:
+            self.total = total
+        self.update(self._message.format(processed=processed, total=self.total))
 
     def step(self, delta: int = 1):
         self.processed += delta

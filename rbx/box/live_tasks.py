@@ -4,7 +4,7 @@ import enum
 from typing import List, Optional
 
 from rich.align import AlignMethod
-from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
+from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
 from rich.measure import Measurement
 from rich.padding import Padding, PaddingDimensions
@@ -184,6 +184,9 @@ class LiveTasks:
     _suspend_lives: bool
     _old_lives: List[Live]
 
+    _progress_message: Optional[str]
+    _final_message: Optional[str]
+
     def __init__(
         self,
         title: Optional[TextType] = None,
@@ -191,6 +194,8 @@ class LiveTasks:
         rule_title: bool = True,
         console: Optional[Console] = None,
         suspend_lives: bool = True,
+        progress_message: Optional[str] = None,
+        final_message: Optional[str] = None,
     ) -> None:
         self.tasks = []
         self._panel_indent = panel_indent
@@ -199,6 +204,8 @@ class LiveTasks:
         self._console = console or rbx_console.console
         self._suspend_lives = suspend_lives
         self._old_lives = []
+        self._progress_message = progress_message
+        self._final_message = final_message
 
     def __enter__(self) -> 'LiveTasks':
         if self._suspend_lives:
@@ -210,20 +217,43 @@ class LiveTasks:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.update()
+        self.update(finished=True)
         self.live.stop()
         for live in self._old_lives:
             live.start()
 
-    def update(self) -> None:
+    def update(self, finished: bool = False) -> None:
         renderables = [task.render() for task in self.tasks]
-        self.live.update(
+        update_renderable: List[RenderableType] = [
             TaskGrid(
                 renderables,
                 panel_indent=self._panel_indent,
                 title=self._title,
                 rule_title=self._rule_title,
-            ),
+            )
+        ]
+        finished_tasks = sum(1 for task in self.tasks if task.is_finished())
+        total_tasks = len(self.tasks)
+        has_finished = finished or finished_tasks == total_tasks
+        if self._progress_message is not None and not has_finished:
+            update_renderable.append(
+                Text.from_markup(
+                    self._progress_message.format(
+                        processed=finished_tasks,
+                        total=total_tasks,
+                    )
+                )
+            )
+        if self._final_message is not None and has_finished:
+            update_renderable.append(
+                Text.from_markup(
+                    self._final_message.format(
+                        processed=finished_tasks, total=total_tasks
+                    )
+                )
+            )
+        self.live.update(
+            Group(*update_renderable),
             refresh=True,
         )
 

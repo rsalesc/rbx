@@ -271,7 +271,11 @@ async def compile_solutions(
             )
         )
 
-    with live_tasks.LiveTasks(title='Solutions') as live:
+    with live_tasks.LiveTasks(
+        title='Solutions',
+        progress_message='[info]Compiling solutions...[/info]',
+        final_message='[info]Compiled [item]{total}[/item] solutions...[/info]',
+    ) as live:
         task_per_solution: Dict[pathlib.Path, SolutionCompilationTask] = {}
         for solution in expanded_solutions:
             task = SolutionCompilationTask(solution)

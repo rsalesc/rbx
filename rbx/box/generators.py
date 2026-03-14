@@ -274,7 +274,11 @@ async def compile_generators(
             executor.submit_with_identity(generator_name, _compile_generator, generator)
         )
 
-    with live_tasks.LiveTasks(title='Generators') as live:
+    with live_tasks.LiveTasks(
+        title='Generators',
+        progress_message='[info]Compiling generators...[/info]',
+        final_message='[info]Compiled [item]{total}[/item] generators...[/info]',
+    ) as live:
         task_per_generator_name = {}
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)
