@@ -199,6 +199,7 @@ class LiveTasks:
 
     _progress_message: Optional[str]
     _final_message: Optional[str]
+    _spinner: Optional[Spinner]
 
     def __init__(
         self,
@@ -222,8 +223,7 @@ class LiveTasks:
         self._suspend_lives = suspend_lives
         self._old_lives = []
         self._progress_message = progress_message
-        self._progress_spinner = progress_spinner
-        self._progress_spinner_style = progress_spinner_style
+        self._spinner = self._make_spinner(progress_spinner, progress_spinner_style)
         self._final_message = final_message
 
     def __enter__(self) -> 'LiveTasks':
@@ -232,7 +232,7 @@ class LiveTasks:
         self.live = Live(
             console=self._console,
             auto_refresh=self._should_auto_refresh(),
-            refresh_per_second=3,
+            refresh_per_second=2,
             vertical_overflow='visible',
         )
         self.live.start()
@@ -244,8 +244,15 @@ class LiveTasks:
         for live in self._old_lives:
             live.start()
 
+    def _make_spinner(
+        self, spinner: Optional[str], style: StyleType
+    ) -> Optional[Spinner]:
+        if spinner is None:
+            return None
+        return Spinner(spinner, style=style)
+
     def _should_auto_refresh(self) -> bool:
-        return self._progress_message is not None and self._progress_spinner is not None
+        return self._progress_message is not None and self._spinner is not None
 
     def _get_progress_renderable(
         self, finished_tasks: int, total_tasks: int
@@ -257,10 +264,9 @@ class LiveTasks:
                 total=total_tasks,
             )
         )
-        if self._progress_spinner is not None:
-            return Spinner(
-                self._progress_spinner, text, style=self._progress_spinner_style
-            )
+        if self._spinner is not None:
+            self._spinner.text = text
+            return self._spinner
         return text
 
     def update(self, finished: bool = False) -> None:
