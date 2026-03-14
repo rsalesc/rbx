@@ -44,6 +44,7 @@ class TaskGrid:
         title: Optional[TextType] = None,
         rule_title: bool = True,
         title_style: StyleType = 'status',
+        skip_empty: bool = True,
     ) -> None:
         self.renderables = list(renderables or [])
         self.padding = padding
@@ -52,6 +53,7 @@ class TaskGrid:
         self.title = title
         self.rule_title = rule_title
         self.title_style = title_style
+        self.skip_empty = skip_empty
 
     def _make_table(self, col_widths: List[int]) -> Table:
         table = Table.grid(padding=self.padding, collapse_padding=True, pad_edge=False)
@@ -65,10 +67,25 @@ class TaskGrid:
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
-        if not self.renderables:
+        if self.skip_empty and not self.renderables:
             return
 
-        column_count = max(len(r.columns) for r in self.renderables)
+        table_title: Optional[TextType] = None
+        if (self.rule_title or not self.renderables) and self.title is not None:
+            if isinstance(self.title, str):
+                title_text = Text.from_markup(self.title, style=self.title_style)
+            else:
+                title_text = self.title.copy()
+                title_text.stylize(self.title_style)
+            yield Rule(title_text, style=self.title_style)
+        else:
+            table_title = self.title
+
+        try:
+            column_count = max(len(r.columns) for r in self.renderables)
+        except ValueError:
+            return
+
         if column_count == 0:
             return
 
@@ -82,15 +99,8 @@ class TaskGrid:
         # Yield row tables and panels as separate renderables so that panels
         # span the full width rather than being confined to a single column.
         table = self._make_table(col_widths)
-        if self.rule_title and self.title is not None:
-            if isinstance(self.title, str):
-                title_text = Text.from_markup(self.title, style=self.title_style)
-            else:
-                title_text = self.title.copy()
-                title_text.stylize(self.title_style)
-            yield Rule(title_text, style=self.title_style)
-        else:
-            table.title = self.title
+        if table_title is not None:
+            table.title = table_title
 
         for renderable in self.renderables:
             # Pad row to column_count if needed.
@@ -115,7 +125,7 @@ class LiveTask(abc.ABC):
     finished: bool = False
 
     @abc.abstractmethod
-    def render(self) -> TaskRenderable:
+    def render(self) -> Optional[TaskRenderable]:
         pass
 
     def is_finished(self) -> bool:
@@ -150,7 +160,9 @@ class CompilationTask(LiveTask):
         self.item = item
         self.status = CompilationStatus.PENDING
 
-    def render(self) -> TaskRenderable:
+    def render(self) -> Optional[TaskRenderable]:
+        if self.status in (CompilationStatus.PENDING, CompilationStatus.SUCCESS):
+            return None
         return TaskRenderable(
             columns=[
                 Text.from_markup(
@@ -192,6 +204,7 @@ class LiveTasks:
         title: Optional[TextType] = None,
         panel_indent: int = 0,
         rule_title: bool = True,
+        skip_empty: bool = True,
         console: Optional[Console] = None,
         suspend_lives: bool = True,
         progress_message: Optional[str] = None,
@@ -201,6 +214,7 @@ class LiveTasks:
         self._panel_indent = panel_indent
         self._title = title
         self._rule_title = rule_title
+        self._skip_empty = skip_empty
         self._console = console or rbx_console.console
         self._suspend_lives = suspend_lives
         self._old_lives = []
@@ -224,12 +238,14 @@ class LiveTasks:
 
     def update(self, finished: bool = False) -> None:
         renderables = [task.render() for task in self.tasks]
+        renderables = [r for r in renderables if r is not None]
         update_renderable: List[RenderableType] = [
             TaskGrid(
                 renderables,
                 panel_indent=self._panel_indent,
                 title=self._title,
                 rule_title=self._rule_title,
+                skip_empty=self._skip_empty,
             )
         ]
         finished_tasks = sum(1 for task in self.tasks if task.is_finished())

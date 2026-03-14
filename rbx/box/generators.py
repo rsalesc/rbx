@@ -276,7 +276,7 @@ async def compile_generators(
 
     with live_tasks.LiveTasks(
         title='Generators',
-        progress_message='[info]Compiling generators...[/info]',
+        progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] generators...[/info]',
         final_message='[info]Compiled [item]{total}[/item] generators...[/info]',
     ) as live:
         task_per_generator_name = {}

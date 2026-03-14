@@ -232,8 +232,10 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
 
 
 class SolutionCompilationTask(live_tasks.CompilationTask):
-    def render(self) -> live_tasks.TaskRenderable:
+    def render(self) -> Optional[live_tasks.TaskRenderable]:
         rendered = super().render()
+        if rendered is None:
+            return None
         if self.status == live_tasks.CompilationStatus.SKIPPED:
             rendered.columns[1] = rich.text.Text.from_markup(
                 '[error]FAILED, skipped[/error]'
@@ -273,7 +275,7 @@ async def compile_solutions(
 
     with live_tasks.LiveTasks(
         title='Solutions',
-        progress_message='[info]Compiling solutions...[/info]',
+        progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] solutions...[/info]',
         final_message='[info]Compiled [item]{total}[/item] solutions...[/info]',
     ) as live:
         task_per_solution: Dict[pathlib.Path, SolutionCompilationTask] = {}
