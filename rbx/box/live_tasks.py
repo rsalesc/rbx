@@ -1,7 +1,7 @@
 import abc
 import dataclasses
 import enum
-from typing import List, Optional
+from typing import Generic, List, Optional, TypeVar
 
 from rich.align import AlignMethod
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
@@ -186,9 +186,12 @@ class CompilationTask(LiveTask):
         return self.status not in (CompilationStatus.PENDING, CompilationStatus.RUNNING)
 
 
-class LiveTasks:
+TypeVarTask = TypeVar('TypeVarTask', bound=LiveTask)
+
+
+class LiveTasks(Generic[TypeVarTask]):
     live: Live
-    tasks: List[LiveTask]
+    tasks: List[TypeVarTask]
 
     _panel_indent: int
     _title: Optional[TextType]
@@ -301,7 +304,7 @@ class LiveTasks:
             refresh=True,
         )
 
-    def append(self, task: LiveTask, update: bool = False) -> None:
+    def append(self, task: TypeVarTask, update: bool = False) -> None:
         self.tasks.append(task)
         if update:
             self.update()
