@@ -9,6 +9,7 @@ from rich.live import Live
 from rich.measure import Measurement
 from rich.padding import Padding, PaddingDimensions
 from rich.rule import Rule
+from rich.spinner import Spinner
 from rich.style import StyleType
 from rich.table import Table
 from rich.text import Text, TextType
@@ -208,6 +209,8 @@ class LiveTasks:
         console: Optional[Console] = None,
         suspend_lives: bool = True,
         progress_message: Optional[str] = None,
+        progress_spinner: Optional[str] = 'simpleDots',
+        progress_spinner_style: StyleType = 'green',
         final_message: Optional[str] = None,
     ) -> None:
         self.tasks = []
@@ -219,13 +222,18 @@ class LiveTasks:
         self._suspend_lives = suspend_lives
         self._old_lives = []
         self._progress_message = progress_message
+        self._progress_spinner = progress_spinner
+        self._progress_spinner_style = progress_spinner_style
         self._final_message = final_message
 
     def __enter__(self) -> 'LiveTasks':
         if self._suspend_lives:
             self._old_lives = live_utils.hold_lives(self._console)
         self.live = Live(
-            console=self._console, auto_refresh=False, vertical_overflow='visible'
+            console=self._console,
+            auto_refresh=self._should_auto_refresh(),
+            refresh_per_second=3,
+            vertical_overflow='visible',
         )
         self.live.start()
         return self
@@ -235,6 +243,25 @@ class LiveTasks:
         self.live.stop()
         for live in self._old_lives:
             live.start()
+
+    def _should_auto_refresh(self) -> bool:
+        return self._progress_message is not None and self._progress_spinner is not None
+
+    def _get_progress_renderable(
+        self, finished_tasks: int, total_tasks: int
+    ) -> RenderableType:
+        assert self._progress_message is not None
+        text = Text.from_markup(
+            self._progress_message.format(
+                processed=finished_tasks,
+                total=total_tasks,
+            )
+        )
+        if self._progress_spinner is not None:
+            return Spinner(
+                self._progress_spinner, text, style=self._progress_spinner_style
+            )
+        return text
 
     def update(self, finished: bool = False) -> None:
         renderables = [task.render() for task in self.tasks]
@@ -253,12 +280,7 @@ class LiveTasks:
         has_finished = finished or finished_tasks == total_tasks
         if self._progress_message is not None and not has_finished:
             update_renderable.append(
-                Text.from_markup(
-                    self._progress_message.format(
-                        processed=finished_tasks,
-                        total=total_tasks,
-                    )
-                )
+                self._get_progress_renderable(finished_tasks, total_tasks)
             )
         if self._final_message is not None and has_finished:
             update_renderable.append(
