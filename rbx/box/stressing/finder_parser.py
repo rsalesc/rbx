@@ -57,7 +57,8 @@ WILDCARD: "$"
 
 // File name
 _filename: FILENAME | "\"" FILENAME "\""
-_solution_filename: _filename | "@" _filename
+_solution_filename: _filename | AT _filename
+AT: "@"
 FILENAME: /[\/A-Za-z0-9\-_\.]/+
 
 // Names (Variables)
@@ -165,6 +166,14 @@ def _get_solution_from_token(token: lark.Token) -> str:
     return path
 
 
+def _get_solution_from_node(node: lark.ParseTree) -> str:
+    """Extract solution string from a solution parse node, preserving @ prefix."""
+    if len(node.children) == 2:
+        # AT + FILENAME
+        return '@' + _get_solution_from_token(typing.cast(lark.Token, node.children[1]))
+    return _get_solution_from_token(typing.cast(lark.Token, node.children[0]))
+
+
 def _get_checker_from_token(token: lark.Token) -> str:
     path = str(token)
     if path == '$':
@@ -206,12 +215,7 @@ def get_all_solutions(
     tree: lark.ParseTree, reference_solution: Optional[Solution] = None
 ) -> List[str]:
     solution_nodes = tree.find_data('solution')
-    res = set(
-        [
-            _get_solution_from_token(typing.cast(lark.Token, node.children[0]))
-            for node in solution_nodes
-        ]
-    )
+    res = set([_get_solution_from_node(node) for node in solution_nodes])
 
     if needs_expected_output(tree):
         assert reference_solution is not None
@@ -315,8 +319,11 @@ class FinderTreeRunner(lark.Transformer):
         self.run_fn = runner
         self.eval_only_outcome = eval_only_outcome
 
-    def solution(self, token: lark.Token) -> str:
-        return _get_solution_from_token(token)
+    def solution(self, *tokens: lark.Token) -> str:
+        if len(tokens) == 2:
+            # AT + FILENAME
+            return '@' + _get_solution_from_token(tokens[1])
+        return _get_solution_from_token(tokens[0])
 
     def outcome(self, token: lark.Token) -> Outcome:
         try:
