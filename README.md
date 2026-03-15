@@ -22,6 +22,11 @@
 - [Features](#features)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
+	- [Prerequisites](#prerequisites)
+	- [Getting Started](#getting-started)
+	- [Common Tasks](#common-tasks)
+	- [Code Style](#code-style)
+	- [Submitting Changes](#submitting-changes)
 - [License](#license)
 </details>
 <hr>
@@ -31,8 +36,8 @@
 <!--[![Usage video]](https://github.com/rsalesc/rbx/assets/4999965/111de01e-6cbd-495e-b8c2-4293921e49b3)-->
 
 [![GitHub license](https://img.shields.io/github/license/rsalesc/rbx.svg)](https://github.com/rsalesc/rbx/blob/master/LICENSE)
-[![PyPI pyversions](https://img.shields.io/pypi/pyversions/rbx.svg)](https://pypi.python.org/pypi/rbx/)
-[![PyPI version shields.io](https://img.shields.io/pypi/v/rbx.svg)](https://pypi.python.org/pypi/rbx/)
+[![PyPI pyversions](https://img.shields.io/pypi/pyversions/rbx.cp.svg)](https://pypi.python.org/pypi/rbx.cp/)
+[![PyPI version shields.io](https://img.shields.io/pypi/v/rbx.cp.svg)](https://pypi.python.org/pypi/rbx.cp/)
 
 **rbx** is a CLI tool that empowers setters from the competitive programming community.
 
@@ -78,19 +83,19 @@ pre-commit install
 
 All development commands are run through `mise`:
 
-| Command | Description |
-|---|---|
-| `mise run sync` | Install/sync all dependencies |
-| `mise run lock` | Regenerate `uv.lock` |
-| `mise run lint` | Run linter |
-| `mise run lint-fix` | Run linter with auto-fix |
-| `mise run format` | Format code |
-| `mise run format-check` | Check formatting without changes |
-| `mise run check` | Run all checks (lint + format) |
-| `mise run test` | Run tests (excludes e2e/slow/docker) |
-| `mise run test-cov` | Run tests with coverage |
-| `mise run test-e2e` | Run e2e tests |
-| `mise run build` | Clean build the package |
+| Command                 | Description                          |
+| ----------------------- | ------------------------------------ |
+| `mise run sync`         | Install/sync all dependencies        |
+| `mise run lock`         | Regenerate `uv.lock`                 |
+| `mise run lint`         | Run linter                           |
+| `mise run lint-fix`     | Run linter with auto-fix             |
+| `mise run format`       | Format code                          |
+| `mise run format-check` | Check formatting without changes     |
+| `mise run check`        | Run all checks (lint + format)       |
+| `mise run test`         | Run tests (excludes e2e/slow/docker) |
+| `mise run test-cov`     | Run tests with coverage              |
+| `mise run test-e2e`     | Run e2e tests                        |
+| `mise run build`        | Clean build the package              |
 
 Run `mise tasks` to see all available tasks.
 
