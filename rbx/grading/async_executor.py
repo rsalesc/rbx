@@ -370,8 +370,17 @@ class AsyncStreamer(Generic[AsyncStreamerKey, AsyncStreamerValue], ABC):
         scheduled, completed = self._executor.submit_with_identity(
             key, callable, *args, **kwargs
         )
+
+        await self.signaled(key)
         await self.queued(key)
+        await self.post_signaled(key)
         self._futures.extend([scheduled, completed])
+
+    async def signaled(self, key: AsyncStreamerKey) -> None:
+        pass
+
+    async def post_signaled(self, key: AsyncStreamerKey) -> None:
+        pass
 
     async def queued(self, key: AsyncStreamerKey) -> None:
         pass
@@ -397,11 +406,16 @@ class AsyncStreamer(Generic[AsyncStreamerKey, AsyncStreamerValue], ABC):
             identified_result = await coro
             key = identified_result.key
             if identified_result.pending:
+                await self.signaled(key)
                 await self.scheduled(key)
+                await self.post_signaled(key)
                 continue
+            await self.signaled(key)
             await self.completed(identified_result)
             try:
                 value = identified_result.result()
                 await self.succeeded(key, value)
             except BaseException as exc:
                 await self.failed(key, exc)
+            finally:
+                await self.post_signaled(key)

@@ -283,16 +283,17 @@ async def compile_generators(
         class GeneratorCompilationStreamer(
             AsyncStreamer[GeneratorCompilationTask, str]
         ):
+            async def post_signaled(self, key: GeneratorCompilationTask) -> None:
+                live.update()
+
             async def scheduled(self, key: GeneratorCompilationTask) -> None:
                 key.status = live_tasks.CompilationStatus.RUNNING
-                live.update()
 
             async def succeeded(
                 self, key: GeneratorCompilationTask, value: str
             ) -> None:
                 generator_to_compiled_digest[key.generator_name] = value
                 key.status = live_tasks.CompilationStatus.SUCCESS
-                live.update()
 
             async def failed(
                 self, key: GeneratorCompilationTask, exception: BaseException
@@ -309,7 +310,6 @@ async def compile_generators(
             live.append(task)
             await streamer.submit(task, _compile_generator, task.item)
 
-        live.update()
         await streamer.stream()
 
     return generator_to_compiled_digest

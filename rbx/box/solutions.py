@@ -270,6 +270,9 @@ async def compile_solutions(
     ) as live:
 
         class SolutionCompilationStreamer(AsyncStreamer[SolutionCompilationTask, str]):
+            async def post_signaled(self, key: SolutionCompilationTask) -> None:
+                live.update()
+
             async def scheduled(self, key: SolutionCompilationTask) -> None:
                 key.status = live_tasks.CompilationStatus.RUNNING
                 live.update()
@@ -304,7 +307,6 @@ async def compile_solutions(
                 else SanitizationLevel.NONE,
             )
 
-        live.update()
         await streamer.stream()
 
     return compiled_solutions
