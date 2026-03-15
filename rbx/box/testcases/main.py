@@ -15,7 +15,8 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases,
     extract_generation_testcases_from_patterns,
 )
-from rbx.box.testcase_utils import TestcaseEntry, TestcasePattern
+from rbx.box.testcase_schema import TestcaseEntry
+from rbx.box.testcase_utils import TestcasePattern
 from rbx.console import console
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)

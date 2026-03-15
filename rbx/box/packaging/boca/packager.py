@@ -8,6 +8,7 @@ import typer
 from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
 from rbx.box.environment import get_extension_or_default
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import TaskType
@@ -25,7 +26,12 @@ def test_time(time):
 
 
 class BocaPackager(BasePackager):
-    def __init__(self, language: Optional[str] = None):
+    def __init__(
+        self,
+        testcase_entries: List[GenerationTestcaseEntry],
+        language: Optional[str] = None,
+    ):
+        super().__init__(testcase_entries)
         self.language = language
 
     def languages(self) -> List[str]:

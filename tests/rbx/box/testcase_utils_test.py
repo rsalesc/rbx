@@ -5,19 +5,16 @@ import pytest
 import typer
 
 from rbx.box import package
-from rbx.box.schema import Testcase, TestcaseGroup
+from rbx.box.schema import Testcase
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import (
-    TestcaseEntry,
     TestcaseInteraction,
     TestcaseInteractionEntry,
     TestcaseInteractionParsingError,
     TestcasePattern,
     clear_built_testcases,
     fill_output_for_defined_testcase,
-    find_built_testcase_inputs,
-    find_built_testcases,
     get_alternate_interaction_texts,
-    get_samples,
     merge_interaction_entries,
     parse_interaction,
     print_interaction,
@@ -204,65 +201,6 @@ class TestTestcasePattern:
         assert pattern.index == 5
 
 
-class TestFindBuiltTestcases:
-    """Test functions for finding built testcases."""
-
-    def test_find_built_testcase_inputs(
-        self, testing_pkg: testing_package.TestingPackage
-    ):
-        """Test finding built testcase inputs."""
-        # Create test group and input files
-        group = TestcaseGroup(name='test_group')
-        testgroup_path = testing_pkg.get_build_testgroup_path('test_group')
-        testgroup_path.mkdir(parents=True, exist_ok=True)
-
-        # Create some input files
-        (testgroup_path / '001.in').write_text('input 1')
-        (testgroup_path / '002.in').write_text('input 2')
-        (testgroup_path / 'other.txt').write_text('not an input')
-
-        inputs = find_built_testcase_inputs(group)
-
-        assert len(inputs) == 2
-        assert all(path.suffix == '.in' for path in inputs)
-        assert inputs == sorted(inputs)  # Should be sorted
-
-    def test_find_built_testcase_inputs_no_directory(
-        self, testing_pkg: testing_package.TestingPackage
-    ):
-        """Test finding inputs when testgroup directory doesn't exist."""
-        group = TestcaseGroup(name='nonexistent_group')
-
-        # Instead of testing the exception, let's test that an empty list is returned
-        # when the directory doesn't exist, as this might be the actual behavior
-        inputs = find_built_testcase_inputs(group)
-
-        # If no directory exists, glob should return empty list
-        assert inputs == []
-
-    def test_find_built_testcases(self, testing_pkg: testing_package.TestingPackage):
-        """Test finding built testcases with input/output pairs."""
-        group = TestcaseGroup(name='test_group')
-        testgroup_path = testing_pkg.get_build_testgroup_path('test_group')
-        testgroup_path.mkdir(parents=True, exist_ok=True)
-
-        # Create input files
-        (testgroup_path / '001.in').write_text('input 1')
-        (testgroup_path / '002.in').write_text('input 2')
-
-        testcases = find_built_testcases(group)
-
-        assert len(testcases) == 2
-
-        # Check that testcases have correct paths
-        for testcase in testcases:
-            assert testcase.inputPath.exists()
-            assert testcase.inputPath.suffix == '.in'
-            assert (
-                testcase.outputPath is not None and testcase.outputPath.suffix == '.out'
-            )
-
-
 class TestClearBuiltTestcases:
     """Test clearing built testcases."""
 
@@ -283,75 +221,6 @@ class TestClearBuiltTestcases:
         """Test clearing when directory doesn't exist doesn't raise error."""
         # This should not raise an error
         clear_built_testcases()
-
-
-class TestGetSamples:
-    """Test get_samples function."""
-
-    def test_get_samples(self, testing_pkg: testing_package.TestingPackage):
-        """Test getting samples."""
-        # Mock the package.get_testgroup call
-        with (
-            mock.patch('rbx.box.package.get_testgroup') as mock_get_testgroup,
-            mock.patch(
-                'rbx.box.testcase_utils.find_built_testcases'
-            ) as mock_find_testcases,
-        ):
-            mock_group = mock.Mock()
-            mock_get_testgroup.return_value = mock_group
-
-            # Create mock testcases with mock paths
-            mock_input_path = mock.Mock(spec=pathlib.Path)
-            mock_output_path = mock.Mock(spec=pathlib.Path)
-            mock_output_path.is_file.return_value = True
-
-            mock_testcase = Testcase(
-                inputPath=mock_input_path, outputPath=mock_output_path
-            )
-            mock_find_testcases.return_value = [mock_testcase]
-
-            with mock.patch('rbx.utils.abspath') as mock_abspath:
-                mock_abspath.side_effect = lambda x: x  # Return path as-is
-
-                samples = get_samples()
-
-                assert len(samples) == 1
-                assert samples[0].inputPath == mock_input_path
-                assert samples[0].outputPath == mock_output_path
-
-                mock_get_testgroup.assert_called_once_with('samples')
-                mock_find_testcases.assert_called_once_with(mock_group)
-
-    def test_get_samples_no_output_file(
-        self, testing_pkg: testing_package.TestingPackage
-    ):
-        """Test getting samples when output file doesn't exist."""
-        with (
-            mock.patch('rbx.box.package.get_testgroup') as mock_get_testgroup,
-            mock.patch(
-                'rbx.box.testcase_utils.find_built_testcases'
-            ) as mock_find_testcases,
-        ):
-            mock_group = mock.Mock()
-            mock_get_testgroup.return_value = mock_group
-
-            mock_input_path = mock.Mock(spec=pathlib.Path)
-            mock_output_path = mock.Mock(spec=pathlib.Path)
-            mock_output_path.is_file.return_value = False
-
-            mock_testcase = Testcase(
-                inputPath=mock_input_path, outputPath=mock_output_path
-            )
-            mock_find_testcases.return_value = [mock_testcase]
-
-            with mock.patch('rbx.utils.abspath') as mock_abspath:
-                mock_abspath.side_effect = lambda x: x
-
-                samples = get_samples()
-
-                assert len(samples) == 1
-                assert samples[0].inputPath == mock_input_path
-                assert samples[0].outputPath is None
 
 
 class TestFillOutputForDefinedTestcase:

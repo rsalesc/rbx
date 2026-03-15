@@ -8,7 +8,7 @@ from rbx.box.generation_schema import (
     GeneratorScriptEntry,
     get_parsed_entry,
 )
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 
 
 class TestGeneratorScriptEntry:

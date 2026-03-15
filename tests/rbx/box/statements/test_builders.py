@@ -31,7 +31,7 @@ from rbx.box.statements.schema import (
     rbxMarkdownToTeX,
     rbxToTeX,
 )
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 
 
 def create_dummy_entry():

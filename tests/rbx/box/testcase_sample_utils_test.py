@@ -5,8 +5,8 @@ from rbx.box.testcase_sample_utils import (
     SampleTestcaseInteraction,
     _build_sample_interaction,
 )
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import (
-    TestcaseEntry,
     TestcaseInteraction,
     TestcaseInteractionEntry,
 )

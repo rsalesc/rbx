@@ -18,7 +18,8 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_patterns,
     run_testcase_visitor,
 )
-from rbx.box.testcase_utils import TestcaseEntry, TestcasePattern
+from rbx.box.testcase_schema import TestcaseEntry
+from rbx.box.testcase_utils import TestcasePattern
 from rbx.box.testing import testing_package
 
 

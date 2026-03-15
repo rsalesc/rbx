@@ -27,8 +27,8 @@ from rbx.box.schema import (
     TestcaseSubgroup,
     Visualizer,
 )
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import (
-    TestcaseEntry,
     TestcasePattern,
     fill_output_for_defined_testcase,
 )
@@ -469,3 +469,14 @@ async def extract_generation_testcases_from_patterns(
 
     await run_testcase_visitor(ExtractGenerationTestcasesVisitor())
     return res
+
+
+def find_built_testcases(
+    entries: List[GenerationTestcaseEntry],
+) -> List[GenerationTestcaseEntry]:
+    return [
+        entry
+        for entry in entries
+        if entry.metadata.copied_to is not None
+        and entry.metadata.copied_to.inputPath.is_file()
+    ]

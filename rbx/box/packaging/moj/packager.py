@@ -7,6 +7,7 @@ import typer
 from rbx import console
 from rbx.box import header, package
 from rbx.box.environment import get_extension_or_default
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.boca.packager import BocaPackager
 from rbx.box.packaging.packager import BuiltStatement
@@ -16,8 +17,10 @@ from rbx.grading.judge.digester import digest_cooperatively
 
 
 class MojPackager(BocaPackager):
-    def __init__(self, for_boca: bool = False):
-        super().__init__()
+    def __init__(
+        self, testcase_entries: List[GenerationTestcaseEntry], for_boca: bool = False
+    ):
+        super().__init__(testcase_entries)
         self.for_boca = for_boca
 
     @classmethod

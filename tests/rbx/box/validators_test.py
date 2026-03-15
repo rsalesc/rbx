@@ -5,7 +5,7 @@ from rbx.box.generators import (
     generate_testcases,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.validators import (
     check_output_from_entries,

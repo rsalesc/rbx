@@ -7,7 +7,7 @@ import pytest
 from rbx.box import testcase_sample_utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.schema import Testcase
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 
 
 @pytest.fixture

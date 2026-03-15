@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box.schema import CodeItem, GeneratorCall, Solution, Testcase, Visualizer
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 
 TestcaseOrScriptEntry = Union[TestcaseEntry, 'GeneratorScriptEntry']
 
@@ -80,6 +80,19 @@ class GenerationTestcaseEntry(BaseModel):
         if metadata_str:
             result += f' ({metadata_str})'
         return result
+
+    @staticmethod
+    def make_interactive(copied_to: Testcase) -> 'GenerationTestcaseEntry':
+        return GenerationTestcaseEntry(
+            group_entry=TestcaseEntry.make_interactive(),
+            subgroup_entry=TestcaseEntry.make_interactive(),
+            metadata=GenerationMetadata(
+                copied_to=copied_to,
+            ),
+            validator=None,
+            extra_validators=[],
+            output_validators=[],
+        )
 
 
 def get_parsed_entry(spec: str) -> TestcaseOrScriptEntry:

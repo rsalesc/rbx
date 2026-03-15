@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Optional
+from typing import Optional
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -13,7 +13,6 @@ from rbx.box.schema import TaskType, Testcase
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
-    extract_generation_testcases,
     get_testcase_metadata_markup,
 )
 from rbx.box.ui.screens.rich_log_modal import RichLogModal
@@ -56,8 +55,6 @@ class RunTestExplorerScreen(Screen):
         self.solution = solution
         self.diff_solution = diff_solution
         self.set_reactive(RunTestExplorerScreen.side_by_side, diff_solution is not None)
-
-        self._entries: List[GenerationTestcaseEntry] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -117,7 +114,7 @@ class RunTestExplorerScreen(Screen):
             input.path = None
             output.reset()
             return
-        entry = self._entries[index]
+        entry = self.skeleton.entries[index]
         input.path = entry.metadata.copied_to.inputPath
         output.data = self._get_rendering_data(self.solution, entry)
 
@@ -135,11 +132,9 @@ class RunTestExplorerScreen(Screen):
             self._update_selected_test,
         )
 
-        self._entries = await extract_generation_testcases(self.skeleton.entries)
-
         test_markups = [
             get_run_testcase_markup(self.solution, entry.group_entry)
-            for entry in self._entries
+            for entry in self.skeleton.entries
         ]
 
         await self.query_one('#test-list', ListView).clear()
@@ -197,7 +192,7 @@ class RunTestExplorerScreen(Screen):
         list_view = self.query_one('#test-list', ListView)
         if list_view.index is None:
             return
-        entry = self._entries[list_view.index]
+        entry = self.skeleton.entries[list_view.index]
         self.app.push_screen(
             RichLogModal(
                 get_testcase_metadata_markup(entry),

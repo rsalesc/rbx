@@ -43,7 +43,7 @@ from rbx.box.formatting import (
     get_formatted_time_in_seconds,
     href,
 )
-from rbx.box.generation_schema import TestcaseOrScriptEntry
+from rbx.box.generation_schema import GenerationTestcaseEntry, TestcaseOrScriptEntry
 from rbx.box.generators import (
     GenerationMetadata,
     expand_generator_call,
@@ -69,10 +69,11 @@ from rbx.box.tasks import (
 )
 from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_generic_entries,
-)
-from rbx.box.testcase_utils import (
-    TestcaseEntry,
+    extract_generation_testcases_from_groups,
     find_built_testcases,
+)
+from rbx.box.testcase_schema import TestcaseEntry
+from rbx.box.testcase_utils import (
     get_all_interaction_files,
     get_best_interaction_file,
     print_best_output,
@@ -116,7 +117,7 @@ class SolutionSkeleton(Solution):
 
 class SolutionReportSkeleton(BaseModel):
     solutions: List[SolutionSkeleton]
-    entries: List[TestcaseEntry]
+    entries: List[GenerationTestcaseEntry]
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
     compiled_solutions: Dict[str, str]
@@ -142,6 +143,11 @@ class SolutionReportSkeleton(BaseModel):
         if not groups:
             return None
         return groups[0]
+
+    def get_entries_for_group(self, group_name: str) -> List[GenerationTestcaseEntry]:
+        return [
+            entry for entry in self.entries if entry.group_entry.group == group_name
+        ]
 
     def find_solution_skeleton(self, solution: Solution) -> Optional[SolutionSkeleton]:
         for sol in self.solutions:
@@ -315,7 +321,7 @@ def _run_solution(
     compiled_digest: str,
     checker_digest: Optional[str],
     runs_dir: pathlib.Path,
-    group_name: str,
+    entries: List[GenerationTestcaseEntry],
     interactor_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
@@ -323,17 +329,17 @@ def _run_solution(
     nruns: int = 0,
     capture_pipes: bool = False,
 ) -> List[Deferred[Evaluation]]:
-    group = package.get_testgroup(group_name)
-    testcases = find_built_testcases(group)
     res: List[Deferred[Evaluation]] = []
-    for i, testcase in enumerate(testcases):
+    for i, entry in enumerate(entries):
+        testcase = entry.metadata.copied_to
+        group_name = entry.group_entry.group
         assert testcase.outputPath is not None
-        output_path = runs_dir / group.name
+        output_path = runs_dir / group_name
         output_path.mkdir(parents=True, exist_ok=True)
 
         if progress:
             progress.update(
-                f'Running solution {href(solution.path)} on test [item]{group.name}[/item] / [item]{i}[/item]...'
+                f'Running solution {href(solution.path)} on test [item]{entry}[/item]...'
             )
 
         async def run_fn(i=i, testcase=testcase, output_path=output_path):
@@ -437,19 +443,26 @@ async def _get_report_skeleton(
         if lang is not None
     }
 
+    # TODO: add filter for groups?
+    built_entries = find_built_testcases(
+        await extract_generation_testcases_from_groups()
+    )
+    testcases_per_group: Dict[str, List[Testcase]] = collections.defaultdict(list)
+    for entry in built_entries:
+        testcases_per_group[entry.group_entry.group].append(entry.metadata.copied_to)
+
     groups = []
     for group in pkg.testcases:
-        testcases = find_built_testcases(group)
+        if group.name not in testcases_per_group:
+            continue
         groups.append(
             GroupSkeleton(
-                name=group.name, score=group.score, deps=group.deps, testcases=testcases
+                name=group.name,
+                score=group.score,
+                deps=group.deps,
+                testcases=testcases_per_group[group.name],
             )
         )
-    entries = [
-        TestcaseEntry(group=group.name, index=i)
-        for group in groups
-        for i in range(len(group.testcases))
-    ]
 
     # Prepare directory.
     runs_dir = package.get_problem_runs_dir()
@@ -466,7 +479,7 @@ async def _get_report_skeleton(
         ],
         groups=groups,
         limits=limits,
-        entries=entries,
+        entries=built_entries,
         compiled_solutions=compiled_solutions,
         verification=verification,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
@@ -500,28 +513,29 @@ async def _produce_solution_items(
         interactor_digest = None
 
     def yield_items(
-        solution: SolutionSkeleton, group_name: str
+        solution: SolutionSkeleton, entries: List[GenerationTestcaseEntry]
     ) -> List[EvaluationItem]:
         res: List[EvaluationItem] = []
-        for i, eval in enumerate(
+        for entry, eval in zip(
+            entries,
             _run_solution(
                 solution,
                 skeleton.get_solution_compiled_digest(solution),
                 checker_digest,
                 solution.runs_dir,
-                group_name,
+                entries,
                 interactor_digest=interactor_digest,
                 progress=progress,
                 verification=verification,
                 timelimit_override=timelimit_override,
                 nruns=nruns,
                 capture_pipes=skeleton.capture_pipes,
-            )
+            ),
         ):
             res.append(
                 EvaluationItem(
                     solution=solution,
-                    testcase_entry=TestcaseEntry(group=group_name, index=i),
+                    testcase_entry=entry.group_entry,
                     eval=eval,
                 )
             )
@@ -530,10 +544,12 @@ async def _produce_solution_items(
 
     res: List[EvaluationItem] = []
 
-    groups = pkg.testcases
+    # Just ensure the iteration is (solution, group) order.
     for solution in skeleton.solutions:
-        for group in groups:
-            res.extend(yield_items(solution, group.name))
+        for group in skeleton.groups:
+            res.extend(
+                yield_items(solution, skeleton.get_entries_for_group(group.name))
+            )
 
     return res
 
@@ -580,13 +596,8 @@ async def _generate_testcase_interactively(
     print: bool = False,
 ) -> Testcase:
     main_solution = package.get_main_solution()
-    irun_dir = package.get_problem_iruns_dir()
-    inputs_dir = irun_dir / 'inputs'
-    inputs_dir.mkdir(parents=True, exist_ok=True)
-    testcase = Testcase(
-        inputPath=inputs_dir / '000.in',
-        outputPath=(inputs_dir / '000.out') if check else None,
-    )
+    interactive_entry = _get_interactive_testcase_entry(check)
+    testcase = interactive_entry.metadata.copied_to
 
     is_manual = False
     is_output_manual = False
@@ -768,11 +779,23 @@ async def _run_interactive_solutions(
         )
 
 
+def _get_interactive_testcase_entry(check: bool) -> GenerationTestcaseEntry:
+    irun_dir = package.get_problem_iruns_dir()
+    inputs_dir = irun_dir / 'inputs'
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    testcase = Testcase(
+        inputPath=inputs_dir / '000.in',
+        outputPath=(inputs_dir / '000.out') if check else None,
+    )
+    return GenerationTestcaseEntry.make_interactive(copied_to=testcase)
+
+
 async def _get_interactive_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
+    check: bool = True,
 ) -> SolutionReportSkeleton:
     solutions, compiled_solutions = await _get_compiled_solutions_for_skeleton(
         tracked_solutions,
@@ -805,7 +828,7 @@ async def _get_interactive_skeleton(
         limits=limits,
         # Entry does not correspond to a real test.
         # TODO: RECONSIDER THIS
-        entries=[TestcaseEntry.make_interactive()],
+        entries=[_get_interactive_testcase_entry(check)],
         verification=verification,
         compiled_solutions=compiled_solutions,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
@@ -836,6 +859,7 @@ async def run_and_print_interactive_solutions(
         verification=verification,
         sanitized=sanitized,
         progress=progress,
+        check=check,
     )
 
     should_cache = testcase_entry is not None
@@ -1189,7 +1213,7 @@ class SolutionOutcomeReport(BaseModel):
     limits: Limits
     evals: List[Evaluation]
     status: SolutionOutcomeStatus
-    message: Optional[Tuple[TestcaseEntry, str]]
+    message: Optional[Tuple[GenerationTestcaseEntry, str]]
     expectedOutcome: ExpectedOutcome
     gotVerdicts: Set[Outcome]
     expectedScore: Optional[Tuple[int, int]]
@@ -1377,9 +1401,9 @@ def _get_evals_per_group(
 ) -> Dict[str, List[Evaluation]]:
     res = {}
     for eval, entry in zip(evals, skeleton.entries):
-        if entry.group not in res:
-            res[entry.group] = []
-        res[entry.group].append(eval)
+        if entry.group_entry.group not in res:
+            res[entry.group_entry.group] = []
+        res[entry.group_entry.group].append(eval)
     return res
 
 
@@ -1420,7 +1444,7 @@ def get_solution_outcome_report(
         skeleton, evals, solution, solution.outcome, subset, verification
     )
     has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict()
-    message: Optional[Tuple[TestcaseEntry, str]] = None
+    message: Optional[Tuple[GenerationTestcaseEntry, str]] = None
     for eval, entry in zip(evals, skeleton.entries):
         if eval.result.outcome in [
             Outcome.WRONG_ANSWER,

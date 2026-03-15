@@ -4,45 +4,12 @@ from typing import List, Optional, Tuple
 
 import rich
 import rich.text
-import typer
 from pydantic import BaseModel
 
-from rbx import console, utils
-from rbx.box import package
-from rbx.box.package import get_build_testgroup_path, get_build_tests_path
-from rbx.box.schema import TaskType, Testcase, TestcaseGroup
-
-
-class TestcaseEntry(BaseModel):
-    __test__ = False
-
-    group: str
-    index: int
-
-    @staticmethod
-    def make_interactive() -> 'TestcaseEntry':
-        return TestcaseEntry(group='interactive', index=0)
-
-    def key(self) -> Tuple[str, int]:
-        return self.group, self.index
-
-    def __str__(self) -> str:
-        if self.group == 'interactive':
-            return 'interactive testcase'
-        return f'{self.group}/{self.index}'
-
-    @classmethod
-    def parse(cls, spec: str) -> 'TestcaseEntry':
-        if spec.count('/') != 1:
-            console.console.print(
-                f'[error]Invalid testcase spec [item]{spec}[/item]. Format should be [item]<group>/<index>[/item].[/error]',
-            )
-            raise typer.Exit(1)
-        group, index = spec.split('/')
-        return TestcaseEntry(group=group.strip(), index=int(index))
-
-    def get_prefix_path(self) -> pathlib.Path:
-        return package.get_build_testgroup_path(self.group) / f'{self.index:03d}'
+from rbx import console
+from rbx.box.package import get_build_tests_path
+from rbx.box.schema import TaskType, Testcase
+from rbx.box.testcase_schema import TestcaseEntry
 
 
 class TestcasePattern(BaseModel):
@@ -124,42 +91,8 @@ class TestcaseInteraction(BaseModel):
     prefixes: Tuple[str, str]
 
 
-def find_built_testcases(group: TestcaseGroup) -> List[Testcase]:
-    inputs = find_built_testcase_inputs(group)
-
-    testcases = []
-    for input in inputs:
-        output = input.with_suffix('.out')
-        testcases.append(Testcase(inputPath=input, outputPath=output))
-    return testcases
-
-
-def find_built_testcase_inputs(group: TestcaseGroup) -> List[pathlib.Path]:
-    testgroup_path = get_build_testgroup_path(group.name)
-    if not testgroup_path.is_dir():
-        console.console.print(
-            f'Testgroup {group.name} is not generated in build folder'
-        )
-        raise typer.Exit(1)
-
-    return sorted(testgroup_path.glob('*.in'))
-
-
 def clear_built_testcases():
     shutil.rmtree(str(get_build_tests_path()), ignore_errors=True)
-
-
-def get_samples() -> List[Testcase]:
-    tcs = find_built_testcases(package.get_testgroup('samples'))
-    return [
-        Testcase(
-            inputPath=utils.abspath(tc.inputPath),
-            outputPath=utils.abspath(tc.outputPath)
-            if tc.outputPath is not None and tc.outputPath.is_file()
-            else None,
-        )
-        for tc in tcs
-    ]
 
 
 def fill_output_for_defined_testcase(testcase: Testcase) -> Testcase:

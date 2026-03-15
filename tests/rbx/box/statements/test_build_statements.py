@@ -27,7 +27,7 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 
 

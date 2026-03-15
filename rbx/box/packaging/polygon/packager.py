@@ -6,6 +6,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging.packager import (
     BaseContestPackager,
@@ -50,7 +51,12 @@ def _select_main_language(
 
 
 class PolygonPackager(BasePackager):
-    def __init__(self, main_language: Optional[str] = None):
+    def __init__(
+        self,
+        testcase_entries: List[GenerationTestcaseEntry],
+        main_language: Optional[str] = None,
+    ):
+        super().__init__(testcase_entries)
         self.main_language = main_language
 
     @classmethod

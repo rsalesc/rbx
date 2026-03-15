@@ -6,7 +6,7 @@ import pytest
 from rbx.box import visualizers
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.schema import Testcase, Visualizer
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import CompilationError
 
 

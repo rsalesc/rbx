@@ -3,7 +3,7 @@ import typer
 
 from rbx.box.generators import generate_outputs_for_testcases, generate_testcases
 from rbx.box.schema import ExpectedOutcome
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.grading import steps
 

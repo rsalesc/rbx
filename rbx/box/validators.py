@@ -17,7 +17,7 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_groups,
     get_generation_metadata_markup,
 )
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.steps import (
     DigestHolder,

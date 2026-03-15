@@ -16,7 +16,7 @@ from rbx.box.fields import Primitive
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.sanitizers.issue_stack import Issue
-from rbx.box.schema import LimitsProfile, Package, Testcase
+from rbx.box.schema import LimitsProfile, Package
 from rbx.box.statements import build_statements, latex, statement_utils
 from rbx.box.statements.build_statements import (
     get_builders,
@@ -35,7 +35,6 @@ from rbx.box.statements.joiners import (
     StatementJoinerContext,
 )
 from rbx.box.statements.schema import Statement, StatementType
-from rbx.box.testcase_utils import get_samples
 
 
 @dataclasses.dataclass
@@ -80,19 +79,6 @@ class StatementBuildIssue(Issue):
 
     def get_overview_message(self) -> str:
         return f'Error building statement for problem [item]{self.problem.short_name}[/item].'
-
-
-def _get_samples(problem: ContestProblem) -> List[Testcase]:
-    with cd.new_package_cd(problem.get_path()):
-        package_utils.clear_package_cache()
-        try:
-            return get_samples()
-        except Exception as e:
-            console.console.print(
-                f'[error]Error getting samples for problem {problem.short_name}: {e}[/error]'
-            )
-            issue_stack.add_issue(StatementBuildIssue(problem))
-            return []
 
 
 def get_statement_builder_problems(

@@ -4,7 +4,7 @@ from typing import List, Optional
 from rbx import utils
 from rbx.box import package, solutions
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation
 
 
@@ -32,7 +32,9 @@ def get_solution_eval(
 def get_solution_evals(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton
 ) -> List[Optional[Evaluation]]:
-    return [get_solution_eval(solution, entry) for entry in skeleton.entries]
+    return [
+        get_solution_eval(solution, entry.group_entry) for entry in skeleton.entries
+    ]
 
 
 def get_solution_evals_or_null(

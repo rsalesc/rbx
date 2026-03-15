@@ -1,9 +1,10 @@
+import collections
 import dataclasses
 import pathlib
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Type
 
 import typer
 
@@ -12,8 +13,8 @@ from rbx.box import environment, header, limits_info, naming, package
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.formatting import href
-from rbx.box.generators import get_all_built_testcases
-from rbx.box.schema import Package, TaskType, Testcase, TestcaseGroup
+from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.schema import Package, TaskType, Testcase
 from rbx.box.statements.build_statements import (
     execute_build_on_statements,
 )
@@ -24,6 +25,10 @@ from rbx.box.statements.schema import (
     StatementType,
     TexToPDF,
     rbxToTeX,
+)
+from rbx.box.testcase_extractors import (
+    extract_generation_testcases_from_groups,
+    find_built_testcases,
 )
 
 
@@ -49,6 +54,11 @@ class BuiltProblemPackage:
 
 
 class BasePackager(ABC):
+    testcase_entries: List[GenerationTestcaseEntry]
+
+    def __init__(self, testcase_entries: List[GenerationTestcaseEntry]):
+        self.testcase_entries = testcase_entries
+
     @classmethod
     @abstractmethod
     def name(cls) -> str:
@@ -85,23 +95,22 @@ class BasePackager(ABC):
     ) -> pathlib.Path:
         pass
 
-    # Helper methods.
-    def get_built_testcases_per_group(self):
-        return get_all_built_testcases()
+    def get_built_testcase_entries(self) -> List[GenerationTestcaseEntry]:
+        return find_built_testcases(self.testcase_entries)
 
-    def get_built_testcases(self) -> List[Tuple[TestcaseGroup, List[Testcase]]]:
-        pkg = package.find_problem_package_or_die()
-        tests_per_group = self.get_built_testcases_per_group()
-        return [(group, tests_per_group[group.name]) for group in pkg.testcases]
+    # Helper methods.
+    def get_built_testcases_per_group(
+        self,
+    ) -> Dict[str, List[Testcase]]:
+        entries = self.get_built_testcase_entries()
+        res = collections.defaultdict(list)
+        for entry in entries:
+            res[entry.group_entry.group].append(entry.metadata.copied_to)
+        return dict(res)
 
     def get_flattened_built_testcases(self) -> List[Testcase]:
-        pkg = package.find_problem_package_or_die()
-        tests_per_group = self.get_built_testcases_per_group()
-
-        res = []
-        for group in pkg.testcases:
-            res.extend(tests_per_group[group.name])
-        return res
+        entries = self.get_built_testcase_entries()
+        return [entry.metadata.copied_to for entry in entries]
 
     def get_statement_for_language_or_null(self, lang: str) -> Optional[Statement]:
         pkg = package.find_problem_package_or_die()
@@ -210,6 +219,7 @@ async def run_packager(
     from rbx.box import builder
 
     header.generate_header()
+    built_groups = set(['samples']) if samples_only else None
 
     if limits_info.get_saved_limits_profile(packager_cls.name()) is not None:
         console.console.print(
@@ -217,14 +227,13 @@ async def run_packager(
         )
 
     with limits_info.use_profile(packager_cls.name()):
-        if not await builder.verify(
-            verification=verification, groups=set(['samples']) if samples_only else None
-        ):
+        if not await builder.verify(verification=verification, groups=built_groups):
             console.console.print(
                 '[error]Build or verification failed, check the report.[/error]'
             )
             raise typer.Exit(1)
 
+    testcase_entries = await extract_generation_testcases_from_groups(built_groups)
     pkg = package.find_problem_package_or_die()
 
     if pkg.type not in packager_cls.task_types():
@@ -233,7 +242,7 @@ async def run_packager(
         )
         raise typer.Exit(1)
 
-    packager = packager_cls(**kwargs)
+    packager = packager_cls(testcase_entries=testcase_entries, **kwargs)
 
     statement_types = packager.statement_types()
     built_statements = []

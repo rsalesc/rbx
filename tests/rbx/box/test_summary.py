@@ -23,7 +23,7 @@ from rbx.box.summary import (
     get_problem_summary,
     get_solution_counts,
 )
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 
 
 def _make_entry(group: str = 'tests', index: int = 0) -> GenerationTestcaseEntry:

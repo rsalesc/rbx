@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from rbx.box.environment import VerificationLevel
+from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
@@ -26,7 +27,7 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     CheckerResult,
@@ -131,6 +132,20 @@ def mock_limits():
     return Limits(time=1000, memory=256, profile=None, isDoubleTL=False)
 
 
+def make_generation_entry(
+    group: str, index: int, tmp_path: pathlib.Path
+) -> GenerationTestcaseEntry:
+    """Create a minimal GenerationTestcaseEntry for testing."""
+    entry = TestcaseEntry(group=group, index=index)
+    return GenerationTestcaseEntry(
+        group_entry=entry,
+        subgroup_entry=entry,
+        metadata=GenerationMetadata(
+            copied_to=Testcase(inputPath=tmp_path / f'{group}_{index}.in'),
+        ),
+    )
+
+
 @pytest.fixture
 def mock_skeleton(tmp_path, mock_limits):
     """Create a minimal skeleton for testing."""
@@ -144,7 +159,9 @@ def mock_skeleton(tmp_path, mock_limits):
                 SolutionSkeleton(**sol.model_dump(), runs_dir=tmp_path / f'run_{i}')
                 for i, sol in enumerate(solutions)
             ],
-            entries=[TestcaseEntry(group='test', index=i) for i in range(num_entries)],
+            entries=[
+                make_generation_entry('test', i, tmp_path) for i in range(num_entries)
+            ],
             groups=[],
             limits={'cpp': mock_limits},
             compiled_solutions={
@@ -506,8 +523,8 @@ def test_solution_outcome_report_points_scoring(tmp_path, mock_limits, mock_skel
             SolutionSkeleton(**solution.model_dump(), runs_dir=tmp_path / 'run')
         ],
         entries=[
-            TestcaseEntry(group='g1', index=0),
-            TestcaseEntry(group='g2', index=0),
+            make_generation_entry('g1', 0, tmp_path),
+            make_generation_entry('g2', 0, tmp_path),
         ],
         groups=[g1, g2],
         limits={'cpp': mock_limits},
@@ -609,9 +626,9 @@ def test_solution_outcome_report_points_scoring_with_dependencies(
             SolutionSkeleton(**solution.model_dump(), runs_dir=tmp_path / 'run')
         ],
         entries=[
-            TestcaseEntry(group='g1', index=0),
-            TestcaseEntry(group='g2', index=0),
-            TestcaseEntry(group='g3', index=0),
+            make_generation_entry('g1', 0, tmp_path),
+            make_generation_entry('g2', 0, tmp_path),
+            make_generation_entry('g3', 0, tmp_path),
         ],
         groups=[g1, g2, g3],
         limits={'cpp': mock_limits},

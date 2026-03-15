@@ -12,7 +12,7 @@ from rbx.box import schema, timing
 from rbx.box.deferred import Deferred
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.solutions import EvaluationItem, RunSolutionResult
-from rbx.box.testcase_utils import TestcaseEntry
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 
 

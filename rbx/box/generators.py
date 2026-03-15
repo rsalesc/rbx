@@ -32,10 +32,9 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases,
     run_testcase_visitor,
 )
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import (
-    TestcaseEntry,
     fill_output_for_defined_testcase,
-    find_built_testcases,
 )
 from rbx.grading.async_executor import AsyncStreamer
 from rbx.grading.judge.digester import digest_file
@@ -218,12 +217,6 @@ def _needs_output(generation_entries: List[GenerationTestcaseEntry]) -> bool:
             continue
         return True
     return False
-
-
-def get_all_built_testcases() -> Dict[str, List[Testcase]]:
-    pkg = package.find_problem_package_or_die()
-    res = {group.name: find_built_testcases(group) for group in pkg.testcases}
-    return res
 
 
 def get_call_from_string(call_str: str) -> GeneratorCall:
