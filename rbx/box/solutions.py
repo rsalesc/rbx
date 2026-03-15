@@ -275,12 +275,10 @@ async def compile_solutions(
 
             async def scheduled(self, key: SolutionCompilationTask) -> None:
                 key.status = live_tasks.CompilationStatus.RUNNING
-                live.update()
 
             async def succeeded(self, key: SolutionCompilationTask, value: str) -> None:
                 compiled_solutions[key.solution.path] = value
                 key.status = live_tasks.CompilationStatus.SUCCESS
-                live.update()
 
             async def failed(
                 self, key: SolutionCompilationTask, exception: BaseException
