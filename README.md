@@ -36,8 +36,8 @@
 <!--[![Usage video]](https://github.com/rsalesc/rbx/assets/4999965/111de01e-6cbd-495e-b8c2-4293921e49b3)-->
 
 [![GitHub license](https://img.shields.io/github/license/rsalesc/rbx.svg)](https://github.com/rsalesc/rbx/blob/master/LICENSE)
-[![PyPI pyversions](https://img.shields.io/pypi/pyversions/rbx.cp.svg)](https://pypi.python.org/pypi/rbx.cp/)
-[![PyPI version shields.io](https://img.shields.io/pypi/v/rbx.cp.svg)](https://pypi.python.org/pypi/rbx.cp/)
+[![PyPI pyversions](https://img.shields.io/pypi/pyversions/rbx-cp.svg)](https://pypi.python.org/pypi/rbx-cp/)
+[![PyPI version shields.io](https://img.shields.io/pypi/v/rbx-cp.svg)](https://pypi.python.org/pypi/rbx-cp/)
 
 **rbx** is a CLI tool that empowers setters from the competitive programming community.
 
