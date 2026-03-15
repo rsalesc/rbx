@@ -265,7 +265,7 @@ async def run_stress(
         ExpectedOutcome.ANY if find_slowest else ExpectedOutcome.INCORRECT
     )
 
-    solution_indices = {str(solution.path): i for i, solution in enumerate(solutions)}
+    solution_indices = {solution: i for i, solution in enumerate(solutions)}
     solutions_digest = await compile_solutions(
         tracked_solutions=set(str(solution.path) for solution in solutions),
         sanitized=sanitized,
@@ -404,16 +404,15 @@ async def run_stress(
 
             @async_lru.alru_cache(maxsize=None)
             async def run_solution_fn(
-                solution: str,
+                solution: Solution,
                 checker_digest: Optional[str] = None,
                 input_path=input_path,
                 output_path: Optional[pathlib.Path] = None,
             ) -> Evaluation:
                 index = solution_indices[solution]
-                sol = solutions[index]
                 return await tasks.run_solution_on_testcase(
-                    solutions[index],
-                    compiled_digest=solutions_digest[sol.path],
+                    solution,
+                    compiled_digest=solutions_digest[solution.path],
                     checker_digest=checker_digest,
                     interactor_digest=interactor_digest,
                     testcase=Testcase(inputPath=input_path, outputPath=output_path),
@@ -427,7 +426,7 @@ async def run_stress(
             # Get main solution output.
             expected_output_path = empty_path
             if needs_expected_output:
-                eval = await run_solution_fn(str(solutions[0].path))
+                eval = await run_solution_fn(solutions[0])
                 if eval.result.outcome != Outcome.ACCEPTED:
                     console.console.print(
                         f'[error]Error while generating main solution output for stress with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
@@ -575,11 +574,14 @@ async def run_stress(
                 seen_finder_results = set()
                 for finder_result in finder_outcome.results:
                     style = get_outcome_style_verdict(finder_result.outcome)
-                    finder_result_key = (finder_result.solution, finder_result.checker)
+                    finder_result_key = (
+                        str(finder_result.solution.path),
+                        finder_result.checker,
+                    )
                     if finder_result_key in seen_finder_results:
                         continue
                     seen_finder_results.add(finder_result_key)
-                    finder_result_report_line = f'{finder_result.solution} = [{style}]{finder_result.outcome.name}[/{style}]'
+                    finder_result_report_line = f'{finder_result.solution.href()} = [{style}]{finder_result.outcome.name}[/{style}]'
                     if finder_result.checker is not None:
                         finder_result_report_line += (
                             f' [item]ON[/item] {finder_result.checker.path}'

@@ -5,10 +5,10 @@ import typer
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.stressing.finder_parser import (
     LARK_PARSER,
+    FinderSolutionResolver,
     get_all_checker_items,
     get_all_checkers,
     get_all_solution_items,
-    get_all_solutions,
     needs_expected_output,
     parse,
     validate,
@@ -55,9 +55,10 @@ class TestParseFunction:
 
         # Should successfully parse and validate
         assert tree is not None
-        # Check that it can find solution nodes
-        solution_nodes = list(tree.find_data('solution'))
-        assert len(solution_nodes) > 0
+        # After resolver, solution nodes are replaced with Solution objects
+        solutions = get_all_solution_items(tree, reference_solution=reference)
+        assert len(solutions) > 0
+        assert any(str(s.path) == 'main.cpp' for s in solutions)
 
     def test_parse_solution_with_checker_expression(
         self, testing_pkg: testing_package.TestingPackage
@@ -73,7 +74,7 @@ class TestParseFunction:
         tree = parse('[sol.cpp on check.cpp]', reference_solution=reference)
 
         assert tree is not None
-        # Should have both eval and checking nodes
+        # Should have eval nodes
         eval_nodes = list(tree.find_data('eval'))
         assert len(eval_nodes) > 0
 
@@ -188,9 +189,10 @@ class TestParseFunction:
         tree = parse('$', reference_solution=reference)
 
         assert tree is not None
-        # Should successfully parse wildcard
-        solution_nodes = list(tree.find_data('solution'))
-        assert len(solution_nodes) > 0
+        # After resolver, solution nodes are replaced; verify via get_all_solution_items
+        solutions = get_all_solution_items(tree, reference_solution=reference)
+        assert len(solutions) > 0
+        assert any(str(s.path) == 'main.cpp' for s in solutions)
 
     def test_parse_two_way_checking_mode(
         self, testing_pkg: testing_package.TestingPackage
@@ -234,8 +236,10 @@ class TestParseFunction:
         tree = parse('"sol-file.cpp"', reference_solution=reference)
 
         assert tree is not None
-        solution_nodes = list(tree.find_data('solution'))
-        assert len(solution_nodes) > 0
+        # After resolver, solution nodes are replaced; verify via get_all_solution_items
+        solutions = get_all_solution_items(tree, reference_solution=reference)
+        assert len(solutions) > 0
+        assert any(str(s.path) == 'sol-file.cpp' for s in solutions)
 
     def test_parse_validation_fails_for_missing_solution(
         self, testing_pkg: testing_package.TestingPackage
@@ -245,7 +249,7 @@ class TestParseFunction:
         testing_pkg.save()
 
         reference = Solution(path='nonexistent.cpp')
-        with pytest.raises(typer.Exit):
+        with pytest.raises((typer.Exit, lark.exceptions.VisitError)):
             parse('nonexistent.cpp', reference_solution=reference)
 
     def test_parse_validation_fails_for_missing_checker(
@@ -330,19 +334,22 @@ class TestParseFunction:
     def test_parse_at_prefix_solution(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test parsing solution names with @ prefix."""
+        """Test parsing solution names with @ prefix at the grammar level."""
         testing_pkg.add_solution(
             'sol.cpp', outcome=ExpectedOutcome.ACCEPTED
         ).write_text('#include <iostream>\nint main() { return 0; }')
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        reference = Solution(path='sol.cpp')
-        tree = parse('@sol.cpp', reference_solution=reference)
-
-        assert tree is not None
-        solution_nodes = list(tree.find_data('solution'))
+        # Test grammar-level parsing (@ prefix is for remote expansion,
+        # so we test with the raw parser to avoid needing actual remote expanders)
+        raw_tree = LARK_PARSER.parse('@sol.cpp')
+        assert raw_tree is not None
+        solution_nodes = list(raw_tree.find_data('solution'))
         assert len(solution_nodes) > 0
+        # Verify the @ prefix is preserved in the node structure
+        sol_node = solution_nodes[0]
+        assert len(sol_node.children) == 2  # AT + FILENAME
 
     def test_parse_different_outcome_types(
         self, testing_pkg: testing_package.TestingPackage
@@ -372,10 +379,10 @@ class TestParseFunction:
 class TestParseTreeMethods:
     """Test suite for methods that work with ParseTree objects."""
 
-    def test_get_all_solutions_single_solution(
+    def test_get_all_solution_items_single_solution(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test get_all_solutions with a single solution."""
+        """Test get_all_solution_items with a single solution."""
         testing_pkg.add_solution(
             'sol.cpp', outcome=ExpectedOutcome.ACCEPTED
         ).write_text('#include <iostream>\nint main() { return 0; }')
@@ -384,15 +391,16 @@ class TestParseTreeMethods:
 
         reference = Solution(path='sol.cpp')
         tree = parse('sol.cpp', reference_solution=reference)
-        solutions = get_all_solutions(tree, reference_solution=reference)
+        solutions = get_all_solution_items(tree, reference_solution=reference)
 
-        assert 'sol.cpp' in solutions
+        solution_paths = [str(s.path) for s in solutions]
+        assert 'sol.cpp' in solution_paths
         assert len(solutions) == 1
 
-    def test_get_all_solutions_multiple_solutions(
+    def test_get_all_solution_items_multiple_solutions(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test get_all_solutions with multiple solutions in expression."""
+        """Test get_all_solution_items with multiple solutions in expression."""
         testing_pkg.add_solution(
             'sol1.cpp', outcome=ExpectedOutcome.ACCEPTED
         ).write_text('#include <iostream>\nint main() { return 0; }')
@@ -404,16 +412,17 @@ class TestParseTreeMethods:
 
         reference = Solution(path='sol1.cpp')
         tree = parse('[sol1.cpp] == [sol2.cpp]', reference_solution=reference)
-        solutions = get_all_solutions(tree, reference_solution=reference)
+        solutions = get_all_solution_items(tree, reference_solution=reference)
 
-        assert 'sol1.cpp' in solutions
-        assert 'sol2.cpp' in solutions
+        solution_paths = [str(s.path) for s in solutions]
+        assert 'sol1.cpp' in solution_paths
+        assert 'sol2.cpp' in solution_paths
         assert len(solutions) == 2
 
-    def test_get_all_solutions_with_wildcard(
+    def test_get_all_solution_items_with_wildcard(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test get_all_solutions with wildcard reference."""
+        """Test get_all_solution_items with wildcard reference."""
         testing_pkg.add_solution(
             'main.cpp', outcome=ExpectedOutcome.ACCEPTED
         ).write_text('#include <iostream>\nint main() { return 0; }')
@@ -422,15 +431,16 @@ class TestParseTreeMethods:
 
         reference = Solution(path='main.cpp')
         tree = parse('$', reference_solution=reference)
-        solutions = get_all_solutions(tree, reference_solution=reference)
+        solutions = get_all_solution_items(tree, reference_solution=reference)
 
-        assert 'main.cpp' in solutions
+        solution_paths = [str(s.path) for s in solutions]
+        assert 'main.cpp' in solution_paths
         assert len(solutions) == 1
 
-    def test_get_all_solutions_with_three_way_checking_adds_main_solution(
+    def test_get_all_solution_items_with_three_way_checking_adds_main_solution(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test that get_all_solutions adds main solution when three-way checking is needed."""
+        """Test that get_all_solution_items adds main solution when three-way checking is needed."""
         testing_pkg.add_solution(
             'main.cpp', outcome=ExpectedOutcome.ACCEPTED
         ).write_text('#include <iostream>\nint main() { return 0; }')
@@ -443,16 +453,17 @@ class TestParseTreeMethods:
         # Three-way checking (default) should include main solution
         reference = Solution(path='main.cpp')
         tree = parse('[other.cpp on checker.cpp]', reference_solution=reference)
-        solutions = get_all_solutions(tree, reference_solution=reference)
+        solutions = get_all_solution_items(tree, reference_solution=reference)
 
-        assert 'other.cpp' in solutions
-        assert 'main.cpp' in solutions  # Reference solution should be added
+        solution_paths = [str(s.path) for s in solutions]
+        assert 'other.cpp' in solution_paths
+        assert 'main.cpp' in solution_paths  # Reference solution should be added
         assert len(solutions) == 2
 
-    def test_get_all_solution_items_returns_code_items(
+    def test_get_all_solution_items_returns_solution_objects(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """Test get_all_solution_items returns proper CodeItem objects."""
+        """Test get_all_solution_items returns proper Solution objects."""
         testing_pkg.add_solution(
             'sol1.cpp', outcome=ExpectedOutcome.ACCEPTED
         ).write_text('#include <iostream>\nint main() { return 0; }')
@@ -467,7 +478,7 @@ class TestParseTreeMethods:
         solution_items = get_all_solution_items(tree, reference_solution=reference)
 
         assert len(solution_items) == 2
-        # Should be CodeItem objects with path attributes
+        # Should be Solution objects with path attributes
         solution_paths = [str(item.path) for item in solution_items]
         assert 'sol1.cpp' in solution_paths
         assert 'sol2.cpp' in solution_paths
@@ -667,7 +678,9 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
+        # Run resolver first since validate expects a resolved tree
         tree = LARK_PARSER.parse('[sol.cpp on checker.cpp]')
+        tree = FinderSolutionResolver().transform(tree)
 
         # Should not raise any exception
         reference = Solution(path='sol.cpp')
@@ -683,6 +696,8 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
+        # Validate checks three-way requirement before accessing solution items,
+        # so raw tree works here (fails early).
         tree = LARK_PARSER.parse('[sol.cpp on checker.cpp]')
 
         with pytest.raises(typer.Exit):
@@ -698,7 +713,9 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
+        # Run resolver first since validate expects a resolved tree
         tree = LARK_PARSER.parse('[sol.cpp on 2:checker.cpp]')
+        tree = FinderSolutionResolver().transform(tree)
 
         # Should not raise any exception
         validate(tree)
@@ -712,6 +729,8 @@ class TestParseTreeMethods:
         ).write_text('#include <iostream>\nint main() { return 0; }')
         testing_pkg.save()
 
+        # Checker validation happens before solution validation,
+        # so this fails early even without the resolver.
         tree = LARK_PARSER.parse('[sol.cpp on nonexistent.cpp]')
 
         # Patch _download_checker to avoid network calls and prevent file creation
@@ -730,8 +749,8 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = LARK_PARSER.parse('nonexistent.cpp')
-
+        # parse() runs the resolver which calls expand_solutions,
+        # failing for non-existent solutions (wrapped in VisitError by Lark).
         reference = Solution(path='nonexistent.cpp')
-        with pytest.raises(typer.Exit):
-            validate(tree, reference_solution=reference)
+        with pytest.raises((typer.Exit, lark.exceptions.VisitError)):
+            parse('nonexistent.cpp', reference_solution=reference)

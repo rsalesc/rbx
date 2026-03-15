@@ -9,7 +9,7 @@ import typer
 
 from rbx import console
 from rbx.box import checkers, package
-from rbx.box.schema import Checker, CodeItem, ExpectedOutcome, Solution
+from rbx.box.schema import Checker, ExpectedOutcome, Solution
 from rbx.box.solutions import expand_solutions
 from rbx.grading.steps import CheckerResult, Outcome, RunLog, TestcaseLog
 
@@ -88,7 +88,7 @@ class FinderChecker:
 
 @dataclasses.dataclass(frozen=True)
 class FinderCall:
-    solution: str
+    solution: Solution
     checker: Optional[FinderChecker]
 
 
@@ -101,7 +101,7 @@ class FinderSolutionResult:
 
 @dataclasses.dataclass(frozen=True)
 class FinderResult:
-    solution: str
+    solution: Solution
     outcome: Outcome
     checker: Optional[FinderChecker]
 
@@ -211,30 +211,30 @@ def _get_eval_checker(eval: lark.ParseTree) -> Optional[FinderChecker]:
     )
 
 
-def get_all_solutions(
+def get_all_solution_items(
     tree: lark.ParseTree, reference_solution: Optional[Solution] = None
-) -> List[str]:
-    solution_nodes = tree.find_data('solution')
-    res = set([_get_solution_from_node(node) for node in solution_nodes])
+) -> List[Solution]:
+    solution_nodes = tree.find_data('eval')
+    solutions = [
+        typing.cast(Solution, solution.children[0]) for solution in solution_nodes
+    ]
 
     if needs_expected_output(tree):
         assert reference_solution is not None
-        res.add(str(reference_solution.path))
-    return list(res)
+        solutions.append(reference_solution)
 
+    res: List[Solution] = []
+    seen_sols = set()
+    for solution in solutions:
+        if solution.path in seen_sols:
+            continue
+        res.append(solution)
+        seen_sols.add(solution.path)
 
-def get_all_solution_items(
-    tree: lark.ParseTree, reference_solution: Optional[Solution] = None
-) -> List[CodeItem]:
-    solution_names = get_all_solutions(tree, reference_solution)
-    res = typing.cast(List[CodeItem], expand_solutions(solution_names))
-
-    if reference_solution is None:
-        return res
-
-    for i, sol in enumerate(res):
-        if reference_solution.path == sol.path:
-            res[i], res[0] = res[0], res[i]
+    if reference_solution is not None:
+        for i, sol in enumerate(res):
+            if reference_solution.path == sol.path:
+                res[i], res[0] = res[0], res[i]
     return res
 
 
@@ -300,13 +300,31 @@ def validate(tree: lark.ParseTree, reference_solution: Optional[Solution] = None
             )
             raise typer.Exit(1)
 
-    all_solutions = get_all_solutions(tree, reference_solution)
+    all_solutions = get_all_solution_items(tree, reference_solution)
     for solution in all_solutions:
-        if not pathlib.Path(solution).is_file():
+        if not solution.path.is_file():
             console.console.print(
-                f'[error]Finder expression references non-existing solution [item]{solution}[/item][/error]'
+                f'[error]Finder expression references non-existing solution {solution.href()}.[/error]'
             )
             raise typer.Exit(1)
+
+
+@lark.v_args(inline=True)
+class FinderSolutionResolver(lark.Transformer):
+    """Resolves solution nodes in the parse tree to Solution objects.
+
+    Should be run before FinderTreeRunner to resolve all solution references.
+    """
+
+    @lark.v_args(inline=False, tree=True)
+    def solution(self, node: lark.ParseTree) -> Solution:
+        path = _get_solution_from_node(node)
+        solutions = expand_solutions([path])
+        if len(solutions) != 1:
+            raise ValueError(
+                f'Expected exactly one solution, got {len(solutions)}: {path}'
+            )
+        return solutions[0]
 
 
 @lark.v_args(inline=True)
@@ -318,12 +336,6 @@ class FinderTreeRunner(lark.Transformer):
     ):
         self.run_fn = runner
         self.eval_only_outcome = eval_only_outcome
-
-    def solution(self, *tokens: lark.Token) -> str:
-        if len(tokens) == 2:
-            # AT + FILENAME
-            return '@' + _get_solution_from_token(tokens[1])
-        return _get_solution_from_token(tokens[0])
 
     def outcome(self, token: lark.Token) -> Outcome:
         try:
@@ -352,7 +364,7 @@ class FinderTreeRunner(lark.Transformer):
 
     @lark.v_args(inline=False, tree=True)
     def eval(self, tree: lark.ParseTree) -> FinderResult:
-        solution = typing.cast(str, tree.children[0])
+        solution = typing.cast(Solution, tree.children[0])
         checker: Optional[FinderChecker] = _get_eval_checker(tree)
 
         call = FinderCall(solution, checker=checker)
@@ -422,5 +434,6 @@ def parse(
     expression: str, reference_solution: Optional[Solution] = None
 ) -> lark.ParseTree:
     tree = LARK_PARSER.parse(expression)
+    tree = FinderSolutionResolver().transform(tree)
     validate(tree, reference_solution)
     return tree

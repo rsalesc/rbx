@@ -245,6 +245,14 @@ class ScoreType(AutoEnum):
 class CodeItem(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CodeItem):
+            return NotImplemented
+        return self.path == other.path
+
+    def __hash__(self) -> int:
+        return hash(self.path)
+
     path: pathlib.Path = Field(
         description="""The path to the code file, relative to the package directory."""
     )
