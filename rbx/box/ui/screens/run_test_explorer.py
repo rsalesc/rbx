@@ -134,7 +134,7 @@ class RunTestExplorerScreen(Screen):
         )
 
         test_markups = [
-            get_run_testcase_markup(self.solution, entry.group_entry)
+            get_run_testcase_markup(self.solution, entry)
             for entry in self.skeleton.entries
         ]
 

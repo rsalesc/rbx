@@ -111,10 +111,7 @@ class TestExplorerScreen(Screen):
 
         self._entries = await extract_generation_testcases_from_groups()
 
-        test_names = [
-            f'{entry.group_entry.group}/{entry.group_entry.index}'
-            for entry in self._entries
-        ]
+        test_names = [f'{entry}' for entry in self._entries]
 
         await self.query_one('#test-list', ListView).clear()
         await self.query_one('#test-list', ListView).extend(
