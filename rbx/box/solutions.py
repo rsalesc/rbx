@@ -1,6 +1,5 @@
 from __future__ import generators
 
-import asyncio
 import collections
 import dataclasses
 import pathlib
@@ -79,7 +78,7 @@ from rbx.box.testcase_utils import (
     print_best_output,
 )
 from rbx.grading import grading_context, steps
-from rbx.grading.async_executor import IdentifiedResult
+from rbx.grading.async_executor import AsyncStreamer
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     Evaluation,
@@ -232,6 +231,12 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
 
 
 class SolutionCompilationTask(live_tasks.CompilationTask):
+    solution: Solution
+
+    def __init__(self, solution: Solution):
+        super().__init__(solution)
+        self.solution = solution
+
     def render(self) -> Optional[live_tasks.TaskRenderable]:
         rendered = super().render()
         if rendered is None:
@@ -251,7 +256,6 @@ async def compile_solutions(
     skip_if_fail: bool = False,
 ) -> Dict[pathlib.Path, str]:
     compiled_solutions = {}
-    failed_solutions = {}
 
     if tracked_solutions is None:
         tracked_solutions = [str(sol.path) for sol in package.get_solutions()]
@@ -261,54 +265,47 @@ async def compile_solutions(
 
     with live_tasks.LiveTasks(
         title='Solutions',
-        progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] solutions...[/info]',
+        progress_message='[info]Compiled [item]{processed}[/item] / [item]{total}[/item] solutions...[/info]',
         final_message='[info]Compiled [item]{total}[/item] solutions...[/info]',
     ) as live:
-        futures: List[asyncio.Future[IdentifiedResult[Solution, str]]] = []
-        task_per_solution: Dict[pathlib.Path, SolutionCompilationTask] = {}
-        executor = setter_config.get_async_executor(detach=True)
+
+        class SolutionCompilationStreamer(AsyncStreamer[SolutionCompilationTask, str]):
+            async def scheduled(self, key: SolutionCompilationTask) -> None:
+                key.status = live_tasks.CompilationStatus.RUNNING
+                live.update()
+
+            async def succeeded(self, key: SolutionCompilationTask, value: str) -> None:
+                compiled_solutions[key.solution.path] = value
+                key.status = live_tasks.CompilationStatus.SUCCESS
+                live.update()
+
+            async def failed(
+                self, key: SolutionCompilationTask, exception: BaseException
+            ) -> None:
+                key.status = live_tasks.CompilationStatus.SKIPPED
+                if not isinstance(exception, steps.CompilationError) or should_fail:
+                    key.status = live_tasks.CompilationStatus.FAILED
+                    raise exception
+                key.exception = exception
+                issue_stack.add_issue(FailedToCompileSolutionIssue(key.solution))
+
+        streamer = SolutionCompilationStreamer(
+            setter_config.get_async_executor(detach=True)
+        )
         for solution in expanded_solutions:
-            scheduled, completed = executor.submit_with_identity(
-                solution,
+            task = SolutionCompilationTask(solution)
+            live.append(task)
+            await streamer.submit(
+                task,
                 compile_item,
-                solution,
+                task.solution,
                 sanitized=SanitizationLevel.FORCE
                 if sanitized
                 else SanitizationLevel.NONE,
             )
-            futures.extend([scheduled, completed])
-
-            # Save the task for later.
-            task = SolutionCompilationTask(solution)
-            live.append(task)
-            task_per_solution[solution.path] = task
 
         live.update()
-
-        for coro in asyncio.as_completed(futures):
-            identified_result = await coro
-            solution = identified_result.key
-            task = task_per_solution[solution.path]
-            if identified_result.pending:
-                task.status = live_tasks.CompilationStatus.RUNNING
-                live.update()
-                continue
-            try:
-                compiled_solutions[solution.path] = identified_result.result()
-                task.status = live_tasks.CompilationStatus.SUCCESS
-            except steps.CompilationError as e:
-                failed_solutions[solution.path] = e
-                task.status = live_tasks.CompilationStatus.SKIPPED
-                task.exception = e
-                if should_fail:
-                    task.status = live_tasks.CompilationStatus.FAILED
-                    raise
-                issue_stack.add_issue(FailedToCompileSolutionIssue(solution))
-            except Exception as e:
-                failed_solutions[solution.path] = e
-                task.status = live_tasks.CompilationStatus.FAILED
-                raise
-            live.update()
+        await streamer.stream()
 
     return compiled_solutions
 

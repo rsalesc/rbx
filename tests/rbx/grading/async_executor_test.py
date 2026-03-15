@@ -2,7 +2,13 @@ import asyncio
 
 import pytest
 
-from rbx.grading.async_executor import AsyncExecutor, IdentifiedResult, PendingResult
+from rbx.grading.async_executor import (
+    AsyncExecutor,
+    AsyncStreamer,
+    AsyncTask,
+    IdentifiedResult,
+    PendingResult,
+)
 
 
 @pytest.fixture(params=[False, True], ids=['local', 'detached'])
@@ -509,3 +515,292 @@ class TestDetachedSpecific:
         # All should run on the same detached thread.
         assert len(thread_ids) == 1
         await executor.shutdown()
+
+
+class TestAsyncTask:
+    def test_create(self):
+        async def fn(a, b, key='v'):
+            return a + b
+
+        task = AsyncTask.create(fn, 1, 2, key='v')
+        assert task.callable is fn
+        assert task.args == (1, 2)
+        assert task.kwargs == {'key': 'v'}
+
+    def test_direct_construction(self):
+        async def fn(x):
+            return x
+
+        task = AsyncTask(fn, (42,), {'flag': True})
+        assert task.callable is fn
+        assert task.args == (42,)
+        assert task.kwargs == {'flag': True}
+
+
+class _RecordingStreamer(AsyncStreamer):
+    """Concrete AsyncStreamer that records all lifecycle hook calls."""
+
+    def __init__(self, executor: AsyncExecutor):
+        super().__init__(executor)
+        self.events: list[tuple] = []
+
+    async def queued(self, key):
+        self.events.append(('queued', key))
+
+    async def scheduled(self, key):
+        self.events.append(('scheduled', key))
+
+    async def completed(self, identified_result):
+        self.events.append(('completed', identified_result.key))
+
+    async def succeeded(self, key, value):
+        self.events.append(('succeeded', key, value))
+
+    async def failed(self, key, exception):
+        self.events.append(('failed', key, type(exception)))
+
+
+class TestAsyncStreamer:
+    @pytest.fixture(params=[False, True], ids=['local', 'detached'])
+    def detach(self, request):
+        return request.param
+
+    @pytest.mark.asyncio
+    async def test_single_submit_and_stream(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work():
+            return 'hello'
+
+        await streamer.submit('k1', work)
+        await streamer.stream()
+        await executor.shutdown()
+
+        hook_names = [e[0] for e in streamer.events]
+        assert 'queued' in hook_names
+        assert 'scheduled' in hook_names
+        assert 'completed' in hook_names
+        assert 'succeeded' in hook_names
+        assert 'failed' not in hook_names
+
+    @pytest.mark.asyncio
+    async def test_multiple_submits(self, detach):
+        executor = AsyncExecutor(max_workers=4, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work(x):
+            return x * 2
+
+        for i in range(5):
+            await streamer.submit(f'k{i}', work, i)
+        await streamer.stream()
+        await executor.shutdown()
+
+        for i in range(5):
+            key = f'k{i}'
+            key_events = [e[0] for e in streamer.events if e[1] == key]
+            assert 'queued' in key_events
+            assert 'scheduled' in key_events
+            assert 'completed' in key_events
+            assert 'succeeded' in key_events
+
+    @pytest.mark.asyncio
+    async def test_failed_task(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def fail():
+            raise ValueError('boom')
+
+        await streamer.submit('bad', fail)
+        await streamer.stream()
+        await executor.shutdown()
+
+        hook_names = [e[0] for e in streamer.events]
+        assert 'queued' in hook_names
+        assert 'scheduled' in hook_names
+        assert 'completed' in hook_names
+        assert 'failed' in hook_names
+        assert 'succeeded' not in hook_names
+
+    @pytest.mark.asyncio
+    async def test_mixed_success_and_failure(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work(should_fail):
+            if should_fail:
+                raise RuntimeError('oops')
+            return 'ok'
+
+        await streamer.submit('good', work, False)
+        await streamer.submit('bad', work, True)
+        await streamer.stream()
+        await executor.shutdown()
+
+        good_events = [e[0] for e in streamer.events if e[1] == 'good']
+        bad_events = [e[0] for e in streamer.events if e[1] == 'bad']
+
+        assert 'succeeded' in good_events
+        assert 'failed' not in good_events
+        assert 'failed' in bad_events
+        assert 'succeeded' not in bad_events
+
+    @pytest.mark.asyncio
+    async def test_stream_clears_futures(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work():
+            return 1
+
+        await streamer.submit('k', work)
+        await streamer.stream()
+
+        # Second stream should be a no-op — no new events.
+        events_before = len(streamer.events)
+        await streamer.stream()
+        assert len(streamer.events) == events_before
+        await executor.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_submit_after_stream(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work(x):
+            return x
+
+        await streamer.submit('first', work, 1)
+        await streamer.stream()
+
+        first_events = list(streamer.events)
+
+        await streamer.submit('second', work, 2)
+        await streamer.stream()
+        await executor.shutdown()
+
+        # Second batch should have produced new events.
+        new_events = streamer.events[len(first_events) :]
+        new_keys = {e[1] for e in new_events}
+        assert 'second' in new_keys
+        assert 'first' not in new_keys
+
+    @pytest.mark.asyncio
+    async def test_queued_called_at_submit_time(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work():
+            return 1
+
+        await streamer.submit('k', work)
+        # queued should have been called during submit, before stream.
+        assert ('queued', 'k') in streamer.events
+        await streamer.stream()
+        await executor.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_scheduled_before_completed_in_stream(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work():
+            await asyncio.sleep(0.02)
+            return 42
+
+        await streamer.submit('k', work)
+        await streamer.stream()
+        await executor.shutdown()
+
+        # Filter to stream-time events for key 'k' (exclude queued).
+        stream_events = [
+            e[0] for e in streamer.events if e[1] == 'k' and e[0] != 'queued'
+        ]
+        sched_idx = stream_events.index('scheduled')
+        comp_idx = stream_events.index('completed')
+        assert sched_idx < comp_idx
+
+    @pytest.mark.asyncio
+    async def test_succeeded_receives_value(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work():
+            return {'answer': 42}
+
+        await streamer.submit('k', work)
+        await streamer.stream()
+        await executor.shutdown()
+
+        succeeded = [e for e in streamer.events if e[0] == 'succeeded']
+        assert len(succeeded) == 1
+        assert succeeded[0] == ('succeeded', 'k', {'answer': 42})
+
+    @pytest.mark.asyncio
+    async def test_failed_receives_exception(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def work():
+            raise TypeError('bad type')
+
+        await streamer.submit('k', work)
+        await streamer.stream()
+        await executor.shutdown()
+
+        failed = [e for e in streamer.events if e[0] == 'failed']
+        assert len(failed) == 1
+        assert failed[0] == ('failed', 'k', TypeError)
+
+    @pytest.mark.asyncio
+    async def test_completed_receives_identified_result(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+
+        completed_results = []
+
+        class _CapturingStreamer(AsyncStreamer):
+            async def completed(self, identified_result):
+                completed_results.append(identified_result)
+
+        streamer = _CapturingStreamer(executor)
+
+        async def work():
+            return 'val'
+
+        await streamer.submit('k', work)
+        await streamer.stream()
+        await executor.shutdown()
+
+        assert len(completed_results) == 1
+        r = completed_results[0]
+        assert isinstance(r, IdentifiedResult)
+        assert r.key == 'k'
+        assert r.ok
+        assert r.result() == 'val'
+
+    @pytest.mark.asyncio
+    async def test_empty_stream(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        # stream with no submissions should be a no-op.
+        await streamer.stream()
+        await executor.shutdown()
+        assert streamer.events == []
+
+    @pytest.mark.asyncio
+    async def test_stream_with_kwargs(self, detach):
+        executor = AsyncExecutor(max_workers=2, detach=detach)
+        streamer = _RecordingStreamer(executor)
+
+        async def greet(name, greeting='hello'):
+            return f'{greeting} {name}'
+
+        await streamer.submit('k', greet, 'world', greeting='hi')
+        await streamer.stream()
+        await executor.shutdown()
+
+        succeeded = [e for e in streamer.events if e[0] == 'succeeded']
+        assert succeeded[0] == ('succeeded', 'k', 'hi world')

@@ -1,8 +1,10 @@
 import asyncio
 import concurrent.futures
+import dataclasses
 import threading
+from abc import ABC
 from collections.abc import Awaitable, Callable
-from typing import Generic, TypeVar
+from typing import Generic, List, TypeVar
 
 K = TypeVar('K')
 T = TypeVar('T')
@@ -329,3 +331,77 @@ def _safe_set_result(future: asyncio.Future, result):
 def _safe_set_exception(future: asyncio.Future, exc: BaseException):
     if not future.done():
         future.set_exception(exc)
+
+
+AsyncStreamerKey = TypeVar('AsyncStreamerKey')
+AsyncStreamerValue = TypeVar('AsyncStreamerValue')
+
+
+@dataclasses.dataclass
+class AsyncTask(Generic[AsyncStreamerValue]):
+    callable: Callable[..., Awaitable[AsyncStreamerValue]]
+    args: tuple
+    kwargs: dict
+
+    @staticmethod
+    def create(
+        callable: Callable[..., Awaitable[AsyncStreamerValue]], *args, **kwargs
+    ) -> 'AsyncTask[AsyncStreamerValue]':
+        return AsyncTask(callable, args, kwargs)
+
+
+class AsyncStreamer(Generic[AsyncStreamerKey, AsyncStreamerValue], ABC):
+    _executor: AsyncExecutor
+    _futures: List[
+        asyncio.Future[IdentifiedResult[AsyncStreamerKey, AsyncStreamerValue]]
+    ]
+
+    def __init__(self, executor: AsyncExecutor):
+        self._executor = executor
+        self._futures = []
+
+    async def submit(
+        self,
+        key: AsyncStreamerKey,
+        callable: Callable[..., Awaitable[AsyncStreamerValue]],
+        *args,
+        **kwargs,
+    ):
+        scheduled, completed = self._executor.submit_with_identity(
+            key, callable, *args, **kwargs
+        )
+        await self.queued(key)
+        self._futures.extend([scheduled, completed])
+
+    async def queued(self, key: AsyncStreamerKey) -> None:
+        pass
+
+    async def scheduled(self, key: AsyncStreamerKey) -> None:
+        pass
+
+    async def completed(
+        self, identified_result: IdentifiedResult[AsyncStreamerKey, AsyncStreamerValue]
+    ) -> None:
+        pass
+
+    async def succeeded(self, key: AsyncStreamerKey, value: AsyncStreamerValue) -> None:
+        pass
+
+    async def failed(self, key: AsyncStreamerKey, exception: BaseException) -> None:
+        pass
+
+    async def stream(self) -> None:
+        consumed_futures = list(self._futures)
+        self._futures = []
+        for coro in asyncio.as_completed(consumed_futures):
+            identified_result = await coro
+            key = identified_result.key
+            if identified_result.pending:
+                await self.scheduled(key)
+                continue
+            await self.completed(identified_result)
+            try:
+                value = identified_result.result()
+                await self.succeeded(key, value)
+            except BaseException as exc:
+                await self.failed(key, exc)

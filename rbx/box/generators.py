@@ -37,7 +37,7 @@ from rbx.box.testcase_utils import (
     fill_output_for_defined_testcase,
     find_built_testcases,
 )
-from rbx.grading.async_executor import IdentifiedResult
+from rbx.grading.async_executor import AsyncStreamer
 from rbx.grading.judge.digester import digest_file
 from rbx.grading.steps import (
     DigestHolder,
@@ -261,50 +261,56 @@ async def _get_necessary_generators_for_groups(
     return necessary_generators
 
 
+class GeneratorCompilationTask(live_tasks.CompilationTask):
+    generator_name: str
+
+    def __init__(self, generator_name: str, item: CodeItem):
+        super().__init__(item)
+        self.generator_name = generator_name
+
+
 async def compile_generators(
     tracked_generators: Set[str],
 ) -> Dict[str, str]:
     generator_to_compiled_digest = {}
 
-    with live_tasks.LiveTasks(
+    with live_tasks.LiveTasks[GeneratorCompilationTask](
         title='Generators',
         progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] generators...[/info]',
         final_message='[info]Compiled [item]{total}[/item] generators...[/info]',
     ) as live:
-        executor = setter_config.get_async_executor(detach=True)
-        futures: List[asyncio.Future[IdentifiedResult[str, str]]] = []
-        task_per_generator_name = {}
+
+        class GeneratorCompilationStreamer(
+            AsyncStreamer[GeneratorCompilationTask, str]
+        ):
+            async def scheduled(self, key: GeneratorCompilationTask) -> None:
+                key.status = live_tasks.CompilationStatus.RUNNING
+                live.update()
+
+            async def succeeded(
+                self, key: GeneratorCompilationTask, value: str
+            ) -> None:
+                generator_to_compiled_digest[key.generator_name] = value
+                key.status = live_tasks.CompilationStatus.SUCCESS
+                live.update()
+
+            async def failed(
+                self, key: GeneratorCompilationTask, exception: BaseException
+            ) -> None:
+                key.status = live_tasks.CompilationStatus.FAILED
+                raise exception
+
+        streamer = GeneratorCompilationStreamer(
+            setter_config.get_async_executor(detach=True)
+        )
         for generator_name in tracked_generators:
             generator = package.get_generator(generator_name)
-            scheduled, completed = executor.submit_with_identity(
-                generator_name, _compile_generator, generator
-            )
-            futures.extend([scheduled, completed])
-
-            # Save the task for later.
-            task = live_tasks.CompilationTask(generator)
+            task = GeneratorCompilationTask(generator_name, generator)
             live.append(task)
-            task_per_generator_name[generator_name] = task
+            await streamer.submit(task, _compile_generator, task.item)
 
         live.update()
-
-        for coro in asyncio.as_completed(futures):
-            identified_result = await coro
-            generator_name = identified_result.key
-            task = task_per_generator_name[generator_name]
-            if identified_result.pending:
-                task.status = live_tasks.CompilationStatus.RUNNING
-                live.update()
-                continue
-            try:
-                generator_to_compiled_digest[generator_name] = (
-                    identified_result.result()
-                )
-                task.status = live_tasks.CompilationStatus.SUCCESS
-            except:
-                task.status = live_tasks.CompilationStatus.FAILED
-                raise
-            live.update()
+        await streamer.stream()
 
     return generator_to_compiled_digest
 
