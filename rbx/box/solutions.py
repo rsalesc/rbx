@@ -23,7 +23,6 @@ from rbx.box import (
     checkers,
     code,
     limits_info,
-    live_tasks,
     package,
     remote,
     setter_config,
@@ -51,6 +50,7 @@ from rbx.box.generators import (
     generate_output_for_testcase,
     generate_standalone,
 )
+from rbx.box.parallel import live_tasks
 from rbx.box.rendering import CellSlot, Throttling
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import (

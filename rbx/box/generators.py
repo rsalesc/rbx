@@ -11,7 +11,6 @@ from rich.console import Console
 from rbx import console, utils
 from rbx.box import (
     checkers,
-    live_tasks,
     package,
     setter_config,
     testcase_utils,
@@ -20,6 +19,7 @@ from rbx.box import (
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.parallel import live_tasks
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
