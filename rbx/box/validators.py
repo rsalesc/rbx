@@ -275,13 +275,14 @@ async def validate_testcases(
             progress.omit()
         return []
 
-    validation_info = []
-
-    async def _process_entry(entry: GenerationTestcaseEntry):
+    async def _process_entry(
+        entry: GenerationTestcaseEntry,
+    ) -> List[TestcaseValidationInfo]:
         input_path = entry.metadata.copied_to.inputPath
         if not input_path.is_file():
-            return
+            return []
 
+        res = []
         # Main validation.
         if entry.validator is not None:
             compiled_digest = validator_to_compiled_digest[str(entry.validator.path)]
@@ -291,7 +292,7 @@ async def validate_testcases(
                 compiled_digest,
                 group=entry.group_entry.group,
             )
-            validation_info.append(
+            res.append(
                 TestcaseValidationInfo(
                     validator=entry.validator,
                     testcase=entry.group_entry,
@@ -311,7 +312,7 @@ async def validate_testcases(
                 compiled_digest,
                 group=entry.group_entry.group,
             )
-            validation_info.append(
+            res.append(
                 TestcaseValidationInfo(
                     validator=extra_validator,
                     testcase=entry.group_entry,
@@ -322,16 +323,20 @@ async def validate_testcases(
                     message=message,
                 )
             )
+        return res
 
     executor = setter_config.get_async_executor(detach=True)
-    futures: List[asyncio.Future] = []
+    futures: List[asyncio.Future[List[TestcaseValidationInfo]]] = []
     for entry in validation_entries:
         _, completed = executor.submit(_process_entry, entry)
         futures.append(completed)
 
     # Wait for all validators to be compiled, and process exceptions.
+    # Ensure they're in the same order as the entries.
+    validation_info: List[TestcaseValidationInfo] = []
     for future in futures:
-        await future
+        infos = await future
+        validation_info.extend(infos)
         step()
 
     return validation_info
@@ -357,12 +362,13 @@ async def validate_outputs_from_entries(
             progress.omit()
         return []
 
-    validation_info = []
-
-    async def _process_entry(entry: GenerationTestcaseEntry):
+    async def _process_entry(
+        entry: GenerationTestcaseEntry,
+    ) -> List[TestcaseValidationInfo]:
         output_path = entry.metadata.copied_to.outputPath
         if output_path is None or not output_path.is_file():
-            return
+            return []
+        res = []
         for output_validator in entry.output_validators:
             compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
             ok, message, _ = await validate_file(
@@ -371,7 +377,7 @@ async def validate_outputs_from_entries(
                 compiled_digest,
                 group=entry.group_entry.group,
             )
-            validation_info.append(
+            res.append(
                 TestcaseValidationInfo(
                     validator=output_validator,
                     testcase=entry.group_entry,
@@ -382,16 +388,20 @@ async def validate_outputs_from_entries(
                     message=message,
                 )
             )
+        return res
 
     executor = setter_config.get_async_executor(detach=True)
-    futures: List[asyncio.Future] = []
+    futures: List[asyncio.Future[List[TestcaseValidationInfo]]] = []
     for entry in entries:
         _, completed = executor.submit(_process_entry, entry)
         futures.append(completed)
 
     # Wait for all outputs to be validated, and process exceptions.
+    # Ensure they're in the same order as the entries.
+    validation_info: List[TestcaseValidationInfo] = []
     for future in futures:
-        await future
+        infos = await future
+        validation_info.extend(infos)
         step()
 
     return validation_info
