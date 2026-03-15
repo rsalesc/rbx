@@ -2,7 +2,7 @@ import lark
 import pytest
 import typer
 
-from rbx.box.schema import ExpectedOutcome
+from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.stressing.finder_parser import (
     LARK_PARSER,
     get_all_checker_items,
@@ -33,7 +33,8 @@ class TestParseFunction:
         testing_pkg.save()
 
         # Parse a simple expression
-        result = parse('sol.cpp')
+        reference = Solution(path='sol.cpp')
+        result = parse('sol.cpp', reference_solution=reference)
 
         # Should return a ParseTree
         assert isinstance(result, lark.Tree)
@@ -49,7 +50,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('main.cpp')
+        reference = Solution(path='main.cpp')
+        tree = parse('main.cpp', reference_solution=reference)
 
         # Should successfully parse and validate
         assert tree is not None
@@ -67,7 +69,8 @@ class TestParseFunction:
         testing_pkg.set_checker('check.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol.cpp on check.cpp]')
+        reference = Solution(path='sol.cpp')
+        tree = parse('[sol.cpp on check.cpp]', reference_solution=reference)
 
         assert tree is not None
         # Should have both eval and checking nodes
@@ -84,7 +87,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol.cpp] ~ CORRECT')
+        reference = Solution(path='sol.cpp')
+        tree = parse('[sol.cpp] ~ CORRECT', reference_solution=reference)
 
         assert tree is not None
         matching_nodes = list(tree.find_data('matching'))
@@ -103,7 +107,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol1.cpp] == [sol2.cpp]')
+        reference = Solution(path='sol1.cpp')
+        tree = parse('[sol1.cpp] == [sol2.cpp]', reference_solution=reference)
 
         assert tree is not None
         equating_nodes = list(tree.find_data('equating'))
@@ -122,7 +127,11 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol1.cpp] ~ CORRECT && [sol2.cpp] ~ INCORRECT')
+        reference = Solution(path='sol1.cpp')
+        tree = parse(
+            '[sol1.cpp] ~ CORRECT && [sol2.cpp] ~ INCORRECT',
+            reference_solution=reference,
+        )
 
         assert tree is not None
         conjunction_nodes = list(tree.find_data('conjunction'))
@@ -141,7 +150,10 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol1.cpp] ~ CORRECT || [sol2.cpp] ~ CORRECT')
+        reference = Solution(path='sol1.cpp')
+        tree = parse(
+            '[sol1.cpp] ~ CORRECT || [sol2.cpp] ~ CORRECT', reference_solution=reference
+        )
 
         assert tree is not None
         disjunction_nodes = list(tree.find_data('disjunction'))
@@ -157,7 +169,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('!([sol.cpp] ~ CORRECT)')
+        reference = Solution(path='sol.cpp')
+        tree = parse('!([sol.cpp] ~ CORRECT)', reference_solution=reference)
 
         assert tree is not None
         negation_nodes = list(tree.find_data('negation'))
@@ -171,7 +184,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('$')
+        reference = Solution(path='main.cpp')
+        tree = parse('$', reference_solution=reference)
 
         assert tree is not None
         # Should successfully parse wildcard
@@ -216,7 +230,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('"sol-file.cpp"')
+        reference = Solution(path='sol-file.cpp')
+        tree = parse('"sol-file.cpp"', reference_solution=reference)
 
         assert tree is not None
         solution_nodes = list(tree.find_data('solution'))
@@ -229,8 +244,9 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
+        reference = Solution(path='nonexistent.cpp')
         with pytest.raises(typer.Exit):
-            parse('nonexistent.cpp')
+            parse('nonexistent.cpp', reference_solution=reference)
 
     def test_parse_validation_fails_for_missing_checker(
         self, testing_pkg: testing_package.TestingPackage
@@ -246,8 +262,9 @@ class TestParseFunction:
         with pytest.MonkeyPatch.context() as m:
             m.setattr('rbx.config._download_checker', lambda name, path: None)
 
+            reference = Solution(path='sol.cpp')
             with pytest.raises(typer.Exit):
-                parse('[sol.cpp on nonexistent.cpp]')
+                parse('[sol.cpp on nonexistent.cpp]', reference_solution=reference)
 
     def test_parse_validation_fails_for_three_way_without_main_solution(
         self, testing_pkg: testing_package.TestingPackage
@@ -301,7 +318,8 @@ class TestParseFunction:
         testing_pkg.save()
 
         expression = '[sol.cpp on checker.cpp] ~ CORRECT'
-        tree = parse(expression)
+        reference = Solution(path='sol.cpp')
+        tree = parse(expression, reference_solution=reference)
 
         # Verify the tree structure matches what we expect from the grammar
         assert tree.data == 'start'
@@ -319,7 +337,8 @@ class TestParseFunction:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('@sol.cpp')
+        reference = Solution(path='sol.cpp')
+        tree = parse('@sol.cpp', reference_solution=reference)
 
         assert tree is not None
         solution_nodes = list(tree.find_data('solution'))
@@ -344,8 +363,9 @@ class TestParseFunction:
             '[sol.cpp] !~ INCORRECT',
         ]
 
+        reference = Solution(path='sol.cpp')
         for expr in expressions:
-            tree = parse(expr)
+            tree = parse(expr, reference_solution=reference)
             assert tree is not None, f'Failed to parse expression: {expr}'
 
 
@@ -362,8 +382,9 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('sol.cpp')
-        solutions = get_all_solutions(tree)
+        reference = Solution(path='sol.cpp')
+        tree = parse('sol.cpp', reference_solution=reference)
+        solutions = get_all_solutions(tree, reference_solution=reference)
 
         assert 'sol.cpp' in solutions
         assert len(solutions) == 1
@@ -381,8 +402,9 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol1.cpp] == [sol2.cpp]')
-        solutions = get_all_solutions(tree)
+        reference = Solution(path='sol1.cpp')
+        tree = parse('[sol1.cpp] == [sol2.cpp]', reference_solution=reference)
+        solutions = get_all_solutions(tree, reference_solution=reference)
 
         assert 'sol1.cpp' in solutions
         assert 'sol2.cpp' in solutions
@@ -398,8 +420,9 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('$')
-        solutions = get_all_solutions(tree)
+        reference = Solution(path='main.cpp')
+        tree = parse('$', reference_solution=reference)
+        solutions = get_all_solutions(tree, reference_solution=reference)
 
         assert 'main.cpp' in solutions
         assert len(solutions) == 1
@@ -418,11 +441,12 @@ class TestParseTreeMethods:
         testing_pkg.save()
 
         # Three-way checking (default) should include main solution
-        tree = parse('[other.cpp on checker.cpp]')
-        solutions = get_all_solutions(tree)
+        reference = Solution(path='main.cpp')
+        tree = parse('[other.cpp on checker.cpp]', reference_solution=reference)
+        solutions = get_all_solutions(tree, reference_solution=reference)
 
         assert 'other.cpp' in solutions
-        assert 'main.cpp' in solutions  # Main solution should be added
+        assert 'main.cpp' in solutions  # Reference solution should be added
         assert len(solutions) == 2
 
     def test_get_all_solution_items_returns_code_items(
@@ -438,8 +462,9 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol1.cpp] == [sol2.cpp]')
-        solution_items = get_all_solution_items(tree)
+        reference = Solution(path='sol1.cpp')
+        tree = parse('[sol1.cpp] == [sol2.cpp]', reference_solution=reference)
+        solution_items = get_all_solution_items(tree, reference_solution=reference)
 
         assert len(solution_items) == 2
         # Should be CodeItem objects with path attributes
@@ -460,10 +485,11 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[other.cpp] == [main.cpp]')
-        solution_items = get_all_solution_items(tree)
+        reference = Solution(path='main.cpp')
+        tree = parse('[other.cpp] == [main.cpp]', reference_solution=reference)
+        solution_items = get_all_solution_items(tree, reference_solution=reference)
 
-        # Main solution should be first regardless of order in expression
+        # Reference solution should be first regardless of order in expression
         assert str(solution_items[0].path) == 'main.cpp'
 
     def test_get_all_checkers_single_checker(
@@ -476,7 +502,8 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('mycheck.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol.cpp on mycheck.cpp]')
+        reference = Solution(path='sol.cpp')
+        tree = parse('[sol.cpp on mycheck.cpp]', reference_solution=reference)
         checkers = get_all_checkers(tree)
 
         assert 'mycheck.cpp' in checkers
@@ -498,7 +525,11 @@ class TestParseTreeMethods:
         )
         testing_pkg.save()
 
-        tree = parse('[sol1.cpp on check1.cpp] && [sol2.cpp on check2.cpp]')
+        reference = Solution(path='sol1.cpp')
+        tree = parse(
+            '[sol1.cpp on check1.cpp] && [sol2.cpp on check2.cpp]',
+            reference_solution=reference,
+        )
         checkers = get_all_checkers(tree)
 
         assert 'check1.cpp' in checkers
@@ -515,7 +546,8 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('main-checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol.cpp on $]')
+        reference = Solution(path='sol.cpp')
+        tree = parse('[sol.cpp on $]', reference_solution=reference)
         checkers = get_all_checkers(tree)
 
         assert 'main-checker.cpp' in checkers
@@ -546,7 +578,8 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('mycheck.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol.cpp on mycheck.cpp]')
+        reference = Solution(path='sol.cpp')
+        tree = parse('[sol.cpp on mycheck.cpp]', reference_solution=reference)
         checker_items = get_all_checker_items(tree)
 
         assert len(checker_items) == 1
@@ -563,7 +596,10 @@ class TestParseTreeMethods:
         testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
         testing_pkg.save()
 
-        tree = parse('[sol.cpp on checker.cpp]')  # Default is three-way
+        reference = Solution(path='sol.cpp')
+        tree = parse(
+            '[sol.cpp on checker.cpp]', reference_solution=reference
+        )  # Default is three-way
         result = needs_expected_output(tree)
 
         assert result is True
@@ -611,7 +647,11 @@ class TestParseTreeMethods:
         testing_pkg.save()
 
         # Mix of two-way and three-way checking
-        tree = parse('[sol1.cpp on 2:checker.cpp] && [sol2.cpp on checker.cpp]')
+        reference = Solution(path='sol1.cpp')
+        tree = parse(
+            '[sol1.cpp on 2:checker.cpp] && [sol2.cpp on checker.cpp]',
+            reference_solution=reference,
+        )
         result = needs_expected_output(tree)
 
         # Should return True because at least one uses three-way checking
@@ -630,7 +670,8 @@ class TestParseTreeMethods:
         tree = LARK_PARSER.parse('[sol.cpp on checker.cpp]')
 
         # Should not raise any exception
-        validate(tree)
+        reference = Solution(path='sol.cpp')
+        validate(tree, reference_solution=reference)
 
     def test_validate_fails_for_missing_main_solution_three_way(
         self, testing_pkg: testing_package.TestingPackage
@@ -675,11 +716,12 @@ class TestParseTreeMethods:
 
         # Patch _download_checker to avoid network calls and prevent file creation
         # for non-existent checkers.
+        reference = Solution(path='sol.cpp')
         with pytest.MonkeyPatch.context() as m:
             m.setattr('rbx.config._download_checker', lambda name, path: None)
 
             with pytest.raises(typer.Exit):
-                validate(tree)
+                validate(tree, reference_solution=reference)
 
     def test_validate_fails_for_nonexistent_solution(
         self, testing_pkg: testing_package.TestingPackage
@@ -690,5 +732,6 @@ class TestParseTreeMethods:
 
         tree = LARK_PARSER.parse('nonexistent.cpp')
 
+        reference = Solution(path='nonexistent.cpp')
         with pytest.raises(typer.Exit):
-            validate(tree)
+            validate(tree, reference_solution=reference)

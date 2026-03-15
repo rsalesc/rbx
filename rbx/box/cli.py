@@ -869,6 +869,12 @@ async def stress(
         True,
         help='Whether to validate inputs.',
     ),
+    reference_solution: Optional[str] = typer.Option(
+        None,
+        '--reference',
+        '-r',
+        help='Reference solution to use for the stress test.',
+    ),
 ):
     if generator_args and (fuzz or fuzz_on):
         console.console.print(
@@ -924,6 +930,7 @@ async def stress(
             find_slowest=find_slowest,
             fuzz=fuzz_arg,
             validate=validate,
+            reference_solution=reference_solution,
         )
 
     stresses.print_stress_report(report)

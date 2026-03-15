@@ -9,7 +9,7 @@ import typer
 
 from rbx import console
 from rbx.box import checkers, package
-from rbx.box.schema import Checker, CodeItem, ExpectedOutcome
+from rbx.box.schema import Checker, CodeItem, ExpectedOutcome, Solution
 from rbx.box.solutions import expand_solutions
 from rbx.grading.steps import CheckerResult, Outcome, RunLog, TestcaseLog
 
@@ -202,7 +202,9 @@ def _get_eval_checker(eval: lark.ParseTree) -> Optional[FinderChecker]:
     )
 
 
-def get_all_solutions(tree: lark.ParseTree) -> List[str]:
+def get_all_solutions(
+    tree: lark.ParseTree, reference_solution: Optional[Solution] = None
+) -> List[str]:
     solution_nodes = tree.find_data('solution')
     res = set(
         [
@@ -212,22 +214,22 @@ def get_all_solutions(tree: lark.ParseTree) -> List[str]:
     )
 
     if needs_expected_output(tree):
-        main_solution = package.get_main_solution()
-        assert main_solution is not None
-        res.add(str(main_solution.path))
+        assert reference_solution is not None
+        res.add(str(reference_solution.path))
     return list(res)
 
 
-def get_all_solution_items(tree: lark.ParseTree) -> List[CodeItem]:
-    solution_names = get_all_solutions(tree)
+def get_all_solution_items(
+    tree: lark.ParseTree, reference_solution: Optional[Solution] = None
+) -> List[CodeItem]:
+    solution_names = get_all_solutions(tree, reference_solution)
     res = typing.cast(List[CodeItem], expand_solutions(solution_names))
 
-    main_solution = package.get_main_solution()
-    if main_solution is None:
+    if reference_solution is None:
         return res
 
     for i, sol in enumerate(res):
-        if main_solution.path == sol.path:
+        if reference_solution.path == sol.path:
             res[i], res[0] = res[0], res[i]
     return res
 
@@ -275,9 +277,9 @@ def needs_expected_output(tree: lark.ParseTree) -> bool:
     return False
 
 
-def validate(tree: lark.ParseTree):
+def validate(tree: lark.ParseTree, reference_solution: Optional[Solution] = None):
     if needs_expected_output(tree):
-        if package.get_main_solution() is None:
+        if reference_solution is None:
             console.console.print(
                 '[error]Finder expression requires three-way checking, but problem has no main solution.[/error]'
             )
@@ -294,7 +296,7 @@ def validate(tree: lark.ParseTree):
             )
             raise typer.Exit(1)
 
-    all_solutions = get_all_solutions(tree)
+    all_solutions = get_all_solutions(tree, reference_solution)
     for solution in all_solutions:
         if not pathlib.Path(solution).is_file():
             console.console.print(
@@ -409,7 +411,9 @@ class FinderTreeRunner(lark.Transformer):
         return value
 
 
-def parse(expression: str) -> lark.ParseTree:
+def parse(
+    expression: str, reference_solution: Optional[Solution] = None
+) -> lark.ParseTree:
     tree = LARK_PARSER.parse(expression)
-    validate(tree)
+    validate(tree, reference_solution)
     return tree

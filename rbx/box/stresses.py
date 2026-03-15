@@ -27,11 +27,16 @@ from rbx.box.schema import (
     Checker,
     ExpectedOutcome,
     GeneratorCall,
+    Solution,
     Stress,
     TaskType,
     Testcase,
 )
-from rbx.box.solutions import compile_solutions, get_outcome_style_verdict
+from rbx.box.solutions import (
+    compile_solutions,
+    expand_solutions,
+    get_outcome_style_verdict,
+)
 from rbx.box.stressing import finder_parser
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.grading.steps import (
@@ -92,6 +97,12 @@ def _renumber_slowest_findings(
     rmtree(str(temp_dir), ignore_errors=True)
 
 
+def _get_reference_solution(reference_solution: Optional[str]) -> Optional[Solution]:
+    if reference_solution is not None:
+        return expand_solutions([reference_solution])[0]
+    return package.get_main_solution()
+
+
 async def run_stress(
     timeout_in_seconds: int,
     name: Optional[str] = None,
@@ -107,8 +118,10 @@ async def run_stress(
     find_slowest: bool = False,
     fuzz: Optional[Union[List[str], bool]] = None,
     validate: bool = True,
+    reference_solution: Optional[str] = None,
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
+    ref_sol = _get_reference_solution(reference_solution)
 
     if fuzz is not None and generator_call is not None:
         console.console.print(
@@ -241,9 +254,9 @@ async def run_stress(
             raise typer.Exit(1)
 
     # Finder expression parser
-    parsed_finder = finder_parser.parse(stress.finder)
+    parsed_finder = finder_parser.parse(stress.finder, ref_sol)
 
-    solutions = finder_parser.get_all_solution_items(parsed_finder)
+    solutions = finder_parser.get_all_solution_items(parsed_finder, ref_sol)
     finders = finder_parser.get_all_checker_items(parsed_finder)
     needs_expected_output = finder_parser.needs_expected_output(parsed_finder)
     eval_only_outcome = (
