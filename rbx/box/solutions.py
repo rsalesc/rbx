@@ -1275,10 +1275,10 @@ class SolutionOutcomeReport(BaseModel):
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
         # res += f'\nJudging time: {get_evals_formatted_judging_time(self.evals)}'
         if print_message and self.message is not None:
-            tc, msg = self.message
+            entry, msg = self.message
             if msg:
                 msg = get_truncated_message(msg)
-                res += f'\nMessage for {utils.escape_markup(str(tc))}: {utils.escape_markup(msg)}'
+                res += f'\nMessage for {utils.escape_markup(str(entry))}: {utils.escape_markup(msg)}'
         return res
 
 
@@ -2241,9 +2241,7 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
             return
         assert self.current_group is not None
         self.console.print(get_testcase_markup_verdict(evaluation), end=' ')
-        self.console.print(
-            f'{self.current_group.name}/{entry.group_entry.index}', end=''
-        )
+        self.console.print(f'{entry}', end='')
         if evaluation.result.sanitizer_warnings:
             self.console.print('[warning]*[/warning]', end='')
         time = get_capped_evals_formatted_time(

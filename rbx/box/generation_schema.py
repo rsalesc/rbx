@@ -46,16 +46,24 @@ class GenerationInput(BaseModel):
     generator_script: Optional[GeneratorScriptEntry] = None
     content: Optional[str] = None
 
+    def repr(self) -> str:
+        if self.copied_from is not None:
+            return f'{self.copied_from.inputPath}'
+        if self.generator_script is not None:
+            return utils.escape_markup(str(self.generator_script))
+        return ''
+
+    def full_repr(self) -> str:
+        if self.generator_call is not None:
+            return utils.escape_markup(str(self.generator_call))
+        return self.repr()
+
+    def __str__(self) -> str:
+        return self.repr()
+
 
 class GenerationMetadata(GenerationInput):
     copied_to: Testcase
-
-    def __str__(self) -> str:
-        if self.generator_call is not None:
-            return utils.escape_markup(str(self.generator_call))
-        elif self.copied_from is not None:
-            return f'{self.copied_from.inputPath}'
-        return ''
 
 
 class GenerationTestcaseEntry(BaseModel):
@@ -74,12 +82,25 @@ class GenerationTestcaseEntry(BaseModel):
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'
 
-    def __str__(self) -> str:
-        result = f'{self.group_entry}'
-        metadata_str = str(self.metadata)
+    def short_repr(self) -> str:
+        return f'{self.group_entry}'
+
+    def repr(self) -> str:
+        result = self.short_repr()
+        metadata_str = self.metadata.repr()
         if metadata_str:
             result += f' ({metadata_str})'
         return result
+
+    def full_repr(self) -> str:
+        result = self.short_repr()
+        metadata_str = self.metadata.full_repr()
+        if metadata_str:
+            result += f' ({metadata_str})'
+        return result
+
+    def __str__(self) -> str:
+        return self.repr()
 
     @staticmethod
     def make_interactive(copied_to: Testcase) -> 'GenerationTestcaseEntry':
