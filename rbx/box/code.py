@@ -195,8 +195,9 @@ def _add_warning_pragmas_around(code: str) -> str:
 def _ignore_warning_in_cxx_input(input: GradingFileInput):
     if input.src is None or input.src.suffix not in ('.h', '.hpp'):
         return
-    preprocessed_path = package.get_problem_preprocessed_path(input.src)
-    preprocessed_path.write_text(_add_warning_pragmas_around(input.src.read_text()))
+    preprocessed_path = package.write_preprocessed_file(
+        input.src, _add_warning_pragmas_around(input.src.read_text())
+    )
     input.src = preprocessed_path
 
 
@@ -250,9 +251,7 @@ def maybe_rename_java_class(
     if new_content == java_content:
         return compilable_path
 
-    preprocessed_path = package.get_problem_preprocessed_path(compilable_path)
-    preprocessed_path.write_text(new_content)
-    return preprocessed_path
+    return package.write_preprocessed_file(compilable_path, new_content)
 
 
 def _format_stack_limit(limit: int) -> str:

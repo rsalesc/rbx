@@ -13,6 +13,7 @@ from typing import (
 
 import ruyaml
 import typer
+from filelock import BaseFileLock, FileLock
 from pydantic import ValidationError
 
 from rbx import console, utils
@@ -213,6 +214,20 @@ def get_problem_preprocessed_path(
     path = get_problem_cache_dir(root) / '.preprocessed' / final_path
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+@functools.cache
+def get_preprocessed_file_lock(root: pathlib.Path = pathlib.Path()) -> BaseFileLock:
+    return FileLock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
+
+
+def write_preprocessed_file(
+    path: pathlib.Path, content: str, root: pathlib.Path = pathlib.Path()
+) -> pathlib.Path:
+    with get_preprocessed_file_lock(root):
+        path = get_problem_preprocessed_path(path, root)
+        path.write_text(content)
+        return path
 
 
 @functools.cache
