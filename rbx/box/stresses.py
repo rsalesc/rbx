@@ -122,6 +122,8 @@ async def run_stress(
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
     ref_sol = _get_reference_solution(reference_solution)
+    if ref_sol is not None:
+        console.console.print(f'Using {ref_sol.href()} as reference solution.')
 
     if fuzz is not None and generator_call is not None:
         console.console.print(
