@@ -5,6 +5,7 @@ from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
+from rbx import console
 from rbx.box.ui.screens.error import ErrorScreen
 from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
 from rbx.box.ui.screens.selector import SelectorScreen
@@ -26,7 +27,7 @@ class RunExplorerScreen(Screen):
         items = []
         if self.skeleton:
             items = [
-                Label(get_solution_markup(self.skeleton, sol), markup=True)
+                Label(console.expand_markup(get_solution_markup(self.skeleton, sol)))
                 for i, sol in enumerate(self.skeleton.solutions)
             ]
         with Vertical():

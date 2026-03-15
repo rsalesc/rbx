@@ -5,6 +5,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog
 
+from rbx import console
 from rbx.box import package, visualizers
 from rbx.box.exception import RbxException
 from rbx.box.schema import TaskType, Testcase
@@ -55,8 +56,10 @@ class TestExplorerScreen(Screen):
             warning_box.display = False
         else:
             warning_box.write(
-                '[yellow]This is an interactive problem.\n'
-                'Interactions are not captured by default. Use the [blue]rbx -cp ...[/blue] flag when running to capture them.[/yellow]'
+                console.expand_markup(
+                    '[warning]This is an interactive problem.\n'
+                    'Interactions are not captured by default. Use the [item]rbx -cp ...[/item] flag when running to capture them.[/warning]'
+                )
             )
             warning_box.display = True
 

@@ -7,6 +7,7 @@ from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Label, ListItem, ListView
 
+from rbx import console
 from rbx.box import package, visualizers
 from rbx.box.exception import RbxException
 from rbx.box.schema import TaskType, Testcase
@@ -139,7 +140,7 @@ class RunTestExplorerScreen(Screen):
 
         await self.query_one('#test-list', ListView).clear()
         await self.query_one('#test-list', ListView).extend(
-            [ListItem(Label(name, markup=True)) for name in test_markups]
+            [ListItem(Label(console.expand_markup(name))) for name in test_markups]
         )
 
     def has_diffable_solution(self) -> bool:

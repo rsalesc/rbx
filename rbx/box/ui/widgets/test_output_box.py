@@ -8,6 +8,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher
 
+from rbx import console
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.interaction_box import InteractionBox
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
@@ -88,7 +89,7 @@ class TestBoxWidget(Widget, can_focus=False):
         metadata = self.query_one('#test-box-metadata', RichLogBox)
         metadata.clear()
         if data.rich_content is not None:
-            metadata.write(data.rich_content)
+            metadata.write(console.expand_markup(data.rich_content))
         else:
             metadata.write('No metadata')
 
