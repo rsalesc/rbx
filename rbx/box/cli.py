@@ -309,7 +309,6 @@ async def run(
         Optional[List[str]],
         typer.Option(
             '--tag',
-            '-t',
             help='Include only solutions whose tags intersect with this.',
         ),
     ] = None,
@@ -610,7 +609,6 @@ async def irun(
         Optional[List[str]],
         typer.Option(
             '--tag',
-            '-t',
             help='Include only solutions whose tags intersect with this.',
         ),
     ] = None,
