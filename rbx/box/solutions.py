@@ -1205,6 +1205,7 @@ class SolutionOutcomeReport(BaseModel):
     gotVerdicts: Set[Outcome]
     expectedScore: Optional[Tuple[int, int]]
     gotScore: int
+    gotScorePerGroup: Dict[str, int]
     maxScore: int
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
@@ -1448,6 +1449,7 @@ def get_solution_outcome_report(
 
     max_score = 0
     got_score = 0
+    got_score_per_group = {}
     if scoring == ScoreType.POINTS:
         evals_per_group = _get_evals_per_group(evals, skeleton)
         verdict_report_per_group = {}
@@ -1476,6 +1478,7 @@ def get_solution_outcome_report(
         for group in skeleton.groups:
             if _check_deps(group):
                 got_score += group.score
+                got_score_per_group[group.name] = group.score
 
         if expected_score is not None and not fulfills_expected_score(
             expected_score, got_score
@@ -1496,6 +1499,7 @@ def get_solution_outcome_report(
         gotVerdicts=verdict_report.got_verdicts,
         expectedScore=expected_score,
         gotScore=got_score,
+        gotScorePerGroup=got_score_per_group,
         maxScore=max_score,
         runUnderDoubleTl=verdict_report.run_under_double_tl,
         doubleTlVerdicts=verdict_report.double_tl_verdicts,
@@ -1513,14 +1517,14 @@ def _print_solution_outcome(
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
     print_message: bool = True,
-) -> bool:
+) -> SolutionOutcomeReport:
     report = get_solution_outcome_report(
         solution, skeleton, evals, verification, subset
     )
     if not report.status:
         issue_stack.add_issue(FailedSolutionIssue(solution))
     console.print(report.get_outcome_markup(subset=subset, print_message=print_message))
-    return report.status.ok()
+    return report
 
 
 def consume_and_key_evaluation_items(
@@ -1885,7 +1889,7 @@ async def _print_detailed_run_report(
     structured_evaluations: StructuredEvaluation,
     timing: bool = True,
     verification: VerificationLevel = VerificationLevel.NONE,
-):
+) -> bool:
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
 
@@ -1906,14 +1910,14 @@ async def _print_detailed_run_report(
         # Resolve futures.
         all_evals = [await eval() for eval in all_evals if eval is not None]
         _print_solution_header(solution, console)
-        cur_ok = _print_solution_outcome(
+        report = _print_solution_outcome(
             solution,
             result.skeleton,
             all_evals,
             console,
             verification=verification,
         )
-        ok = ok and cur_ok
+        ok = ok and report.status.ok()
         console.print()
 
     console.print()
@@ -2076,7 +2080,7 @@ class FullRunReporter(TraditionalRunReporter):
         )
 
     def render_solution_end(self, solution: Solution) -> bool:
-        ok = _print_solution_outcome(
+        report = _print_solution_outcome(
             solution,
             self.result.skeleton,
             self.current_solution_evals,
@@ -2085,7 +2089,7 @@ class FullRunReporter(TraditionalRunReporter):
             print_message=True,
         )
         self.console.print()
-        return ok
+        return report.status.ok()
 
     def render_group(self, group: GroupSkeleton):
         self.console.print(
@@ -2201,7 +2205,7 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print()
 
     def render_solution_end(self, solution: Solution) -> bool:
-        ok = _print_solution_outcome(
+        report = _print_solution_outcome(
             solution,
             self.result.skeleton,
             self.current_solution_evals,
@@ -2210,7 +2214,7 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
             print_message=False,
         )
         self.console.print()
-        return ok
+        return report.status.ok()
 
     def render_group_end(self, group: GroupSkeleton):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')
