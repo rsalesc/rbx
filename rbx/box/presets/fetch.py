@@ -44,7 +44,9 @@ def get_remote_uri_from_tool_preset(tool_preset: str) -> str:
     return f'rsalesc/rbx/{get_inner_dir_from_tool_preset(tool_preset)}'
 
 
-def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
+def get_preset_fetch_info(
+    uri: Optional[str], local: bool = False
+) -> Optional[PresetFetchInfo]:
     if uri is None:
         return None
 
@@ -102,12 +104,18 @@ def get_preset_fetch_info(uri: Optional[str]) -> Optional[PresetFetchInfo]:
             tool_tag = None
         return PresetFetchInfo(name=s, tool_tag=tool_tag)
 
+    def get_local_rbx_fetch_info(s: str) -> Optional[PresetFetchInfo]:
+        return PresetFetchInfo(name=s)
+
     extractors = [
         get_github_fetch_info,
         get_short_github_fetch_info,
         get_local_dir_fetch_info,
         get_tool_fetch_info,
     ]
+
+    if local:
+        extractors = [get_local_rbx_fetch_info]
 
     for extract in extractors:
         res = extract(uri)

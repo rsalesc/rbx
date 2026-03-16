@@ -546,19 +546,20 @@ def _get_active_preset_package_path(
 
 def get_preset_fetch_info_with_fallback(
     uri: Optional[str],
+    local: bool = False,
 ) -> Optional[PresetFetchInfo]:
     if uri is None:
         # Use active preset if any, otherwise use the default preset.
         if get_active_preset_or_null() is not None:
             return None
-        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_NAME)
+        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_NAME, local=local)
         if default_preset is None:
             console.console.print(
                 '[error]Internal error: could not find [item]default[/item] preset.[/error]'
             )
             raise typer.Exit(1)
         return default_preset
-    return get_preset_fetch_info(uri)
+    return get_preset_fetch_info(uri, local=local)
 
 
 def clean_copied_package_dir(dest: pathlib.Path):
@@ -1072,10 +1073,17 @@ def create(
             '--preset', '-p', help='The URI of the preset to init the new preset from.'
         ),
     ] = None,
+    local: Annotated[
+        bool,
+        typer.Option(
+            '--local',
+            help='Whether to fetch the init preset from the local version of rbx, instead of the remote one (not recommended).',
+        ),
+    ] = False,
 ):
     console.console.print(f'Creating new preset [item]{name}[/item]...')
 
-    fetch_info = get_preset_fetch_info_with_fallback(from_preset)
+    fetch_info = get_preset_fetch_info_with_fallback(from_preset, local=local)
     dest_path = pathlib.Path(name)
     if dest_path.exists():
         console.console.print(

@@ -56,10 +56,17 @@ def create(
             'If not provided, the default preset will be used, or the active preset if any.',
         ),
     ] = None,
+    local: Annotated[
+        bool,
+        typer.Option(
+            '--local',
+            help='Whether to use a preset from the local version of rbx, instead of the global one (not recommended).',
+        ),
+    ] = False,
 ):
     console.console.print(f'Creating new contest at [item]{path}[/item]...')
 
-    fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
+    fetch_info = presets.get_preset_fetch_info_with_fallback(preset, local=local)
     dest_path = pathlib.Path(path)
 
     if dest_path.exists():

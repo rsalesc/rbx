@@ -23,10 +23,17 @@ def create(
         ),
     ] = None,
     path: Optional[pathlib.Path] = None,
+    local: Annotated[
+        bool,
+        typer.Option(
+            '--local',
+            help='Whether to fetch the init preset from the local version of rbx, instead of the remote one (not recommended).',
+        ),
+    ] = False,
 ):
     console.console.print(f'Creating new problem [item]{name}[/item]...')
 
-    fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
+    fetch_info = presets.get_preset_fetch_info_with_fallback(preset, local=local)
     dest_path = path or pathlib.Path(name)
 
     if dest_path.exists():

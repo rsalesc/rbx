@@ -740,6 +740,13 @@ def create(
     preset: Annotated[
         Optional[str], typer.Option(help='Preset to use when creating the problem.')
     ] = None,
+    local: Annotated[
+        bool,
+        typer.Option(
+            '--local',
+            help='Whether to use a preset from the local version of rbx, instead of the global one (not recommended).',
+        ),
+    ] = False,
 ):
     if find_contest_yaml() is not None:
         console.console.print(
@@ -750,10 +757,7 @@ def create(
         )
         raise typer.Exit(1)
 
-    if preset is not None:
-        creation.create(name, preset=preset)
-        return
-    creation.create(name)
+    creation.create(name, preset=preset, local=local)
 
 
 @app.command(
