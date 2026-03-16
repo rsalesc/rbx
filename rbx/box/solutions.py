@@ -45,7 +45,6 @@ from rbx.box.formatting import (
 )
 from rbx.box.generation_schema import GenerationTestcaseEntry, TestcaseOrScriptEntry
 from rbx.box.generators import (
-    GenerationMetadata,
     expand_generator_call,
     generate_output_for_testcase,
     generate_standalone,
@@ -594,19 +593,15 @@ async def _generate_testcase_interactively(
     visualize: bool = False,
     sanitized: bool = False,
     print: bool = False,
-) -> Testcase:
+) -> GenerationTestcaseEntry:
     main_solution = package.get_main_solution()
-    interactive_entry = _get_interactive_testcase_entry(check)
-    testcase = interactive_entry.metadata.copied_to
+    testcase = _get_interactive_testcase(check)
+    interactive_entry = GenerationTestcaseEntry.make_interactive(copied_to=testcase)
 
     is_manual = False
     is_output_manual = False
-    generation_metadata = None
     if generator is not None:
-        generation_metadata = GenerationMetadata(
-            generator_call=expand_generator_call(generator),
-            copied_to=testcase,
-        )
+        interactive_entry.metadata.generator_call = expand_generator_call(generator)
     elif testcase_entry is not None:
         extracted = await extract_generation_testcases_from_generic_entries(
             [testcase_entry]
@@ -616,9 +611,10 @@ async def _generate_testcase_interactively(
                 f'[error]Failed searching for testcase [item]{testcase_entry}[/item].[/error]'
             )
             raise typer.Exit(1)
-        generation_metadata = extracted[0].metadata
+        extracted_entry = extracted[0]
+        interactive_entry = extracted_entry.model_copy(deep=True)
         # Replace destination with the irun testcase we're using.
-        generation_metadata.copied_to = testcase
+        interactive_entry.metadata.copied_to = testcase
     else:
         with utils.no_progress(progress):
             input = console.multiline_prompt('Testcase input')
@@ -636,27 +632,16 @@ async def _generate_testcase_interactively(
                 console.console.print()
             is_output_manual = True
 
-        generation_metadata = GenerationMetadata(
-            copied_to=testcase,
-        )
         is_manual = True
 
     # 1. Generate testcase.
     should_print_testcase = False
-    if generation_metadata is not None:
+    if interactive_entry.metadata is not None:
         await generate_standalone(
-            generation_metadata,
+            interactive_entry.metadata,
             progress=progress,
             validate=validate,
         )
-        if testcase_entry is not None:
-            console.console.print(
-                f'Using input from testcase [item]{testcase_entry}[/item].'
-            )
-        elif generation_metadata.generator_call is not None:
-            console.console.print(
-                f'Using input from generator call [item]{generation_metadata.generator_call.name} {generation_metadata.generator_call.args}[/item].'
-            )
         if print and not is_manual:
             should_print_testcase = True
         else:
@@ -734,11 +719,11 @@ async def _generate_testcase_interactively(
         )
         raise typer.Exit(1)
 
-    return testcase
+    return interactive_entry
 
 
 async def _run_interactive_solutions(
-    testcase: Testcase,
+    entry: GenerationTestcaseEntry,
     skeleton: SolutionReportSkeleton,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
@@ -765,7 +750,7 @@ async def _run_interactive_solutions(
                 solution,
                 skeleton.get_solution_compiled_digest(solution),
                 checker_digest,
-                testcase,
+                entry.metadata.copied_to,
                 output_dir=output_dir,
                 interactor_digest=interactor_digest,
                 verification=verification,
@@ -774,12 +759,12 @@ async def _run_interactive_solutions(
 
         yield EvaluationItem(
             solution=solution,
-            testcase_entry=TestcaseEntry.make_interactive(),
+            testcase_entry=entry.group_entry,
             eval=Deferred(run_fn),
         )
 
 
-def _get_interactive_testcase_entry(check: bool) -> GenerationTestcaseEntry:
+def _get_interactive_testcase(check: bool) -> Testcase:
     irun_dir = package.get_problem_iruns_dir()
     inputs_dir = irun_dir / 'inputs'
     inputs_dir.mkdir(parents=True, exist_ok=True)
@@ -787,10 +772,11 @@ def _get_interactive_testcase_entry(check: bool) -> GenerationTestcaseEntry:
         inputPath=inputs_dir / '000.in',
         outputPath=(inputs_dir / '000.out') if check else None,
     )
-    return GenerationTestcaseEntry.make_interactive(copied_to=testcase)
+    return testcase
 
 
 async def _get_interactive_skeleton(
+    entry: GenerationTestcaseEntry,
     tracked_solutions: Optional[Iterable[str]] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
@@ -813,9 +799,6 @@ async def _get_interactive_skeleton(
 
     # Ensure path is new.
     irun_dir = package.get_problem_iruns_dir()
-    shutil.rmtree(str(irun_dir), ignore_errors=True)
-    irun_dir.mkdir(parents=True, exist_ok=True)
-
     skeleton = SolutionReportSkeleton(
         solutions=[
             SolutionSkeleton(
@@ -826,9 +809,7 @@ async def _get_interactive_skeleton(
         ],
         groups=[],
         limits=limits,
-        # Entry does not correspond to a real test.
-        # TODO: RECONSIDER THIS
-        entries=[_get_interactive_testcase_entry(check)],
+        entries=[entry],
         verification=verification,
         compiled_solutions=compiled_solutions,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
@@ -854,19 +835,17 @@ async def run_and_print_interactive_solutions(
     visualize: bool = False,
 ):
     pkg = package.find_problem_package_or_die()
-    skeleton = await _get_interactive_skeleton(
-        tracked_solutions=tracked_solutions,
-        verification=verification,
-        sanitized=sanitized,
-        progress=progress,
-        check=check,
-    )
+
+    # Refresh irun dir.
+    irun_dir = package.get_problem_iruns_dir()
+    shutil.rmtree(str(irun_dir), ignore_errors=True)
+    irun_dir.mkdir(parents=True, exist_ok=True)
 
     should_cache = testcase_entry is not None
     with grading_context.cache_level(
         grading_context.CacheLevel.CACHE_COMPILATION, when=not should_cache
     ):
-        testcase = await _generate_testcase_interactively(
+        entry = await _generate_testcase_interactively(
             progress=progress,
             generator=generator,
             testcase_entry=testcase_entry,
@@ -877,8 +856,16 @@ async def run_and_print_interactive_solutions(
             validate=validate,
             visualize=visualize,
         )
+        skeleton = await _get_interactive_skeleton(
+            entry,
+            tracked_solutions=tracked_solutions,
+            verification=verification,
+            sanitized=sanitized,
+            progress=progress,
+            check=check,
+        )
         items = _run_interactive_solutions(
-            testcase,
+            entry,
             skeleton=skeleton,
             progress=progress,
             verification=verification,
