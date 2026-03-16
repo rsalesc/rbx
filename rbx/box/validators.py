@@ -356,7 +356,7 @@ async def validate_outputs_from_entries(
 
     if not validator_to_compiled_digest:
         console.console.print(
-            '[warning]No output validators found, skipping validation.[/warning]'
+            '[warning]No output validators found, skipping output validation.[/warning]'
         )
         if progress is not None:
             progress.omit()
