@@ -298,7 +298,7 @@ async def run_stress(
         if not use_timelimit:
             limits.time = None
         console.console.print(
-            '[bright_white]Running stress tests with the following limits:[/bright_white]'
+            '[bstatus]Running stress tests with the following limits:[/bstatus]'
         )
         console.console.print(limits)
 

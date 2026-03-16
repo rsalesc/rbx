@@ -499,7 +499,7 @@ async def time(
     current_profile = limits_info.get_limits_profile(profile)
     if current_profile is not None:
         console.console.print(
-            f'[bright_white]Current limits for profile [item]{profile}[/item]:[/bright_white]'
+            f'[status]Current limits for profile [item]{profile}[/item]:[/status]'
         )
         limits_info.pretty_print_profile(current_profile)
         console.console.print()

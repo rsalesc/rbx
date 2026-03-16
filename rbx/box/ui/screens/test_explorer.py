@@ -100,7 +100,7 @@ class TestExplorerScreen(Screen):
         )
 
         metadata.clear()
-        metadata.write(get_testcase_metadata_markup(entry))
+        metadata.write(console.expand_markup(get_testcase_metadata_markup(entry)))
 
     async def _update_tests(self):
         self.watch(

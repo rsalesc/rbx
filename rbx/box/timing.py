@@ -39,16 +39,12 @@ class TimingProfile(BaseModel):
 
 
 def pretty_print_profile(profile: TimingProfile):
+    console.console.print(f'[bstatus]Time limit:[/bstatus] {profile.timeLimit} ms')
     console.console.print(
-        f'[bright_white]Time limit:[/bright_white] {profile.timeLimit} ms'
-    )
-    console.console.print(
-        f'[bright_white]Time limit per language:[/bright_white] {profile.timeLimitPerLanguage}'
+        f'[bstatus]Time limit per language:[/bstatus] {profile.timeLimitPerLanguage}'
     )
     if profile.formula:
-        console.console.print(
-            f'[bright_white]Used formula:[/bright_white] {profile.formula}'
-        )
+        console.console.print(f'[bstatus]Used formula:[/bstatus] {profile.formula}')
 
 
 def step_down(x: Any, step: int) -> int:
@@ -241,7 +237,7 @@ async def compute_time_limits(
 
     limits_path = package.get_limits_file(profile)
     console.console.print(
-        f'[green]Writing the following timing profile to [item]{href(limits_path)}[/item].[/green]'
+        f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
     )
     console.console.print(estimated_tl, highlight=True)
     limits_path.parent.mkdir(parents=True, exist_ok=True)
@@ -257,7 +253,7 @@ def inherit_time_limits(profile: str = 'local'):
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(
-        f'[green]Inherit time limits from package for profile [item]{profile}[/item].[/green]'
+        f'[success]Inherit time limits from package for profile [item]{profile}[/item].[/success]'
     )
 
 
@@ -268,7 +264,7 @@ def set_time_limit(timelimit: int, profile: str = 'local'):
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(
-        f'[green]Set time limit for profile [item]{profile}[/item] to [item]{timelimit} ms[/item].[/green]'
+        f'[success]Set time limit for profile [item]{profile}[/item] to [item]{timelimit} ms[/item].[/success]'
     )
 
 
@@ -309,5 +305,5 @@ def integrate(profile: str = 'local'):
     utils.save_ruyaml(dest_yml, ru, pkg)
 
     console.console.print(
-        f'[green]Integrated limits profile [item]{profile}[/item] into package.[/green]'
+        f'[success]Integrated limits profile [item]{profile}[/item] into package.[/success]'
     )

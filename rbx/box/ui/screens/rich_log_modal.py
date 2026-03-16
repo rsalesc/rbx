@@ -1,5 +1,6 @@
 from typing import Optional
 
+from rich.console import RenderableType
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.screen import ModalScreen
@@ -13,7 +14,7 @@ class RichLogModal(ModalScreen[None]):
         ('g', 'app.pop_screen', 'Close'),
     ]
 
-    def __init__(self, log: str, title: Optional[str] = None):
+    def __init__(self, log: RenderableType, title: Optional[str] = None):
         super().__init__()
         self._log = log
         self._title = title

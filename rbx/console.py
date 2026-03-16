@@ -14,6 +14,7 @@ theme = Theme(
         'info': 'bright_black',
         'hilite': 'color(243)',
         'status': 'bright_white',
+        'bstatus': 'bold bright_white',
         'item': 'bold blue',
         'error': 'bold red',
         'success': 'bold green',
@@ -21,9 +22,9 @@ theme = Theme(
         'warning': 'bold yellow',
         # Inverted.
         'istatus': 'bold black on bright_white',
-        'isuccess': 'bold green on bright_white',
-        'ierror': 'bold red on bright_white',
-        'iwarning': 'bold yellow on bright_white',
+        'isuccess': 'bold white on green',
+        'ierror': 'bold white on red',
+        'iwarning': 'bold white on yellow',
     }
 )
 console = Console(theme=theme, style='info', highlight=False)

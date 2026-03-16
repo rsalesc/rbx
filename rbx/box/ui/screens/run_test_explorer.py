@@ -196,7 +196,7 @@ class RunTestExplorerScreen(Screen):
         entry = self.skeleton.entries[list_view.index]
         self.app.push_screen(
             RichLogModal(
-                get_testcase_metadata_markup(entry),
+                console.expand_markup(get_testcase_metadata_markup(entry)),
                 title='Testcase metadata',
             )
         )

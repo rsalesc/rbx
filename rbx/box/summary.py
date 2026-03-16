@@ -167,7 +167,7 @@ def _get_flags_short(flags: ProblemFlags) -> str:
         parts.append('[dim]I[/dim]')
 
     if flags.has_validator:
-        parts.append('[green]V[/green]')
+        parts.append('[success]V[/success]')
     else:
         parts.append('[dim]V[/dim]')
 

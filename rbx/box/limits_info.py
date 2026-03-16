@@ -190,11 +190,7 @@ def get_limits(
 
 
 def pretty_print_profile(profile: LimitsProfile):
-    console.console.print(
-        f'[bright_white]Time limit:[/bright_white] {profile.timeLimit} ms'
-    )
-    console.console.print(
-        f'[bright_white]Modifiers:[/bright_white] {profile.modifiers}'
-    )
+    console.console.print(f'[status]Time limit:[/status] {profile.timeLimit} ms')
+    console.console.print(f'[status]Modifiers:[/status] {profile.modifiers}')
     if profile.inheritFromPackage:
-        console.console.print('[bright_white]Inherits from package.[/bright_white]')
+        console.console.print('[status]Inherits from package.[/status]')

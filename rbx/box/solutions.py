@@ -1241,13 +1241,13 @@ class SolutionOutcomeReport(BaseModel):
     scoring: ScoreType
 
     def get_verdict_markup(self, incomplete: bool = False, subset: bool = False) -> str:
-        success_str = '[bold green]OK[/] '
+        success_str = '[success]OK[/success] '
         if subset:
             success_str = ''
         if not self.status:
-            success_str = '[bold white on red]FAILED[/] '
+            success_str = '[ierror]FAILED[/ierror] '
         if incomplete:
-            success_str = '[bold white on yellow]INCOMPLETE[/] '
+            success_str = '[iwarning]INCOMPLETE[/iwarning] '
 
         gotVerdicts = self.gotVerdicts if not incomplete else {}
 
@@ -1275,11 +1275,11 @@ class SolutionOutcomeReport(BaseModel):
         res = self.get_verdict_markup(subset=subset)
         if self.runUnderDoubleTl:
             if self.doubleTlVerdicts:
-                res += f'\n[bold yellow]WARNING[/bold yellow] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
             else:
-                res += '\n[bold yellow]WARNING[/bold yellow] The solution still passed in double TL.'
+                res += '\n[warning]WARNING[/warning] The solution still passed in double TL.'
         if self.sanitizerWarnings:
-            res += '\n[bold yellow]WARNING[/bold yellow] The solution had sanitizer errors or warnings, marked with [bold yellow]*[/bold yellow]. See their stderr for more details.'
+            res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
         return res
 
     def get_outcome_markup(
@@ -2172,7 +2172,7 @@ class LiveRunReporter(FullRunReporter):
             return
         assert self.current_group is not None
         renderable = rich.text.Text.from_markup(
-            f'[bold bright_white]{self.current_group.name} ({len(self.current_group.testcases)})[/bold bright_white] '
+            f'[bstatus]{self.current_group.name} ({len(self.current_group.testcases)})[/bstatus] '
         )
         for i in range(self.pre_evaluated):
             if i >= self.post_evaluated:

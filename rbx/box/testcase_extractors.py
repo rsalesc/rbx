@@ -121,7 +121,7 @@ def _extract_script_lines(
 def get_testcase_metadata_markup(entry: GenerationTestcaseEntry) -> str:
     lines = []
     lines.append(
-        f'[b bright_white]{entry.group_entry.group}[/b bright_white] / [b bright_white]{entry.group_entry.index}[/b bright_white]'
+        f'[bstatus]{entry.group_entry.group}[/bstatus] / [bstatus]{entry.group_entry.index}[/bstatus]'
     )
     lines.append(get_generation_metadata_markup(entry.metadata))
     return '\n'.join(lines)
@@ -131,15 +131,15 @@ def get_generation_metadata_markup(metadata: GenerationMetadata) -> str:
     lines = []
     if metadata.copied_from is not None:
         lines.append(
-            f'[b bright_white]Copied from:[/b bright_white] {metadata.copied_from.inputPath}'
+            f'[bstatus]Copied from:[/bstatus] {metadata.copied_from.inputPath}'
         )
     if metadata.generator_call is not None:
         lines.append(
-            f'[b bright_white]Gen. call:[/b bright_white] {utils.escape_markup(str(metadata.generator_call))}'
+            f'[bstatus]Gen. call:[/bstatus] {utils.escape_markup(str(metadata.generator_call))}'
         )
     if metadata.generator_script is not None:
         lines.append(
-            f'[b bright_white]Gen. script:[/b bright_white] {utils.escape_markup(str(metadata.generator_script))}'
+            f'[bstatus]Gen. script:[/bstatus] {utils.escape_markup(str(metadata.generator_script))}'
         )
     return '\n'.join(lines)
 
