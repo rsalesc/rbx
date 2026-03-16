@@ -2100,8 +2100,15 @@ class FullRunReporter(TraditionalRunReporter):
     def render_group_end(self, group: GroupSkeleton):
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
         if group.score > 0:
-            # TODO: fix scoring
-            bracketed = f'?/{group.score} pts, ' + bracketed
+            assert self.current_solution is not None
+            partial_report = get_solution_outcome_report(
+                self.current_solution,
+                self.result.skeleton,
+                self.current_solution_evals,
+                verification=self.verification,
+            )
+            got_score = partial_report.gotScorePerGroup.get(group.name, 0)
+            bracketed = f'{got_score}/{group.score} pts, ' + bracketed
         self.console.print(
             f'[info]({bracketed})[/info]',
         )
@@ -2128,7 +2135,7 @@ class LiveRunReporter(FullRunReporter):
         self.pre_evaluated = 0
         self.post_evaluated = 0
 
-    def _update_live(self):
+    def _update_live(self, finished: bool = False):
         if self.live is None:
             return
         assert self.current_group is not None
@@ -2162,9 +2169,16 @@ class LiveRunReporter(FullRunReporter):
             renderable.append(rich.text.Text(' ', end=''))
 
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
-        if self.current_group.score > 0:
-            # TODO: fix scoring
-            bracketed = f'?/{self.current_group.score} pts, ' + bracketed
+        if finished and self.current_group.score > 0:
+            assert self.current_solution is not None
+            partial_report = get_solution_outcome_report(
+                self.current_solution,
+                self.result.skeleton,
+                self.current_solution_evals,
+                verification=self.verification,
+            )
+            got_score = partial_report.gotScorePerGroup.get(self.current_group.name, 0)
+            bracketed = f'{got_score}/{self.current_group.score} pts, ' + bracketed
         renderable.append(
             rich.text.Text.from_markup(
                 f'({bracketed})',
@@ -2183,6 +2197,7 @@ class LiveRunReporter(FullRunReporter):
 
     def render_group_end(self, group: GroupSkeleton):
         assert self.live is not None
+        self._update_live(finished=True)
         self.live.stop()
         self.live = None
 
@@ -2220,8 +2235,15 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
         if group.score > 0:
-            # TODO: figure out scoring
-            bracketed = f'?/{group.score} pts, ' + bracketed
+            assert self.current_solution is not None
+            partial_report = get_solution_outcome_report(
+                self.current_solution,
+                self.result.skeleton,
+                self.current_solution_evals,
+                verification=self.verification,
+            )
+            got_score = partial_report.gotScorePerGroup.get(group.name, 0)
+            bracketed = f'{got_score}/{group.score} pts, ' + bracketed
         self.console.print(f'({bracketed})')
         self.console.print()
 
