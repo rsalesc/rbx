@@ -1,3 +1,50 @@
+## 0.32.0rc1 (2026-03-16)
+
+### Fix
+
+- improve console phrase
+- use console style markup instead of custom markup
+- improve score markups
+- add scoring to reporters
+- change outcome report signature
+- fix color of ANY solutions
+- add bits to force preset installation from resources
+- run generation before skeleton construction in irun
+- use generation metadata repr in rbx ui list views
+- use expand_markup in rbx ui
+- improve reprs of testcase entries
+- make reporters use entries instead of indices (at least in most places)
+- fix non determinism in validators.py
+- fix duplicate order determinism in generators.py
+- add python classifiers to toml
+- fix flag conflict in irun
+- support remote expressions inside finder expressions
+- ensure @ can be part of solution token in finder parser
+- print reference solution in stress
+- add option to set reference solution in stress tests
+- add locks around preprocessed paths
+- remove unnecessary updates
+- add signal hooks to AsyncStreamer
+- add AsyncStreamer to simplify executor code
+- bind type of LiveTask
+- fix spinner jittering
+- create scheduled future for AsyncGenerator
+- add slow spinner to LiveTasks
+- add ability to hide rendered tasks in LiveTasks
+- add status messages to LiveTasks
+- remove references to dumping in LiveTasks
+- put other Lives on hold on LiveTasks kicks in
+- show cropped version of the compilation error for solutions
+- improve compilation live view with panels
+- make live tasks vertical overflow visible
+- validate testcases in parallel
+- make testcase generation and output generation run in parallel
+
+### Refactor
+
+- refactor skeleton to include GenerationTestcaseEntries
+- move live_tasks to parallel folder
+
 ## 0.32.0rc0 (2026-03-13)
 
 ### Feat
