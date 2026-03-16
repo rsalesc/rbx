@@ -120,7 +120,7 @@ class ExpectedOutcome(AutoEnum):
 
     def style(self) -> str:
         if self == ExpectedOutcome.ANY:
-            return 'orange'
+            return 'bold white'
         if self.match(Outcome.ACCEPTED):
             return 'green'
         if self == ExpectedOutcome.WRONG_ANSWER:
