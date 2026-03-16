@@ -8,6 +8,7 @@ from rich.theme import Theme
 
 theme = Theme(
     {
+        # Normal.
         'default': 'bright_white',
         'rbx': 'bold italic yellow',
         'info': 'bright_black',
@@ -18,6 +19,11 @@ theme = Theme(
         'success': 'bold green',
         'lnumber': 'dim cyan',
         'warning': 'bold yellow',
+        # Inverted.
+        'istatus': 'bold black on bright_white',
+        'isuccess': 'bold green on bright_white',
+        'ierror': 'bold red on bright_white',
+        'iwarning': 'bold yellow on bright_white',
     }
 )
 console = Console(theme=theme, style='info', highlight=False)

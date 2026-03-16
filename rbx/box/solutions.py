@@ -1171,16 +1171,43 @@ def get_expected_score_repr(range: Tuple[int, int]) -> str:
     return f'{range[0]}..{range[1]}'
 
 
+def get_expected_score_markup(range: Tuple[int, int]) -> str:
+    score_repr = get_expected_score_repr(range)
+    return f'[item]{score_repr}[/item]'
+
+
 def get_expected_score_in_phrase(range: Tuple[int, int]) -> str:
+    score_markup = get_expected_score_markup(range)
     if range[0] == range[1]:
-        return f'{range[0]}'
-    if range[1] == 10**9:
-        return f'in {range[0]}..'
-    return f'in {range[0]}..{range[1]}'
+        return f'{score_markup}'
+    return f'in {score_markup}'
 
 
 def fulfills_expected_score(range: Tuple[int, int], score: int) -> bool:
     return score >= range[0] and score <= range[1]
+
+
+def get_solution_score_style(score: int, max_score: Optional[int] = None) -> str:
+    if max_score is None:
+        max_score = 1
+    if score >= max_score:
+        return 'success'
+    if score > 0:
+        return 'warning'
+    return 'error'
+
+
+def get_solution_score_markup(
+    score: int, max_score: Optional[int] = None, pts: bool = False
+) -> str:
+
+    res = f'{score}'
+    if max_score is not None:
+        res += f'/{max_score}'
+    if pts:
+        res += ' pts'
+    style = get_solution_score_style(score, max_score)
+    return f'[{style}][{res}][/{style}]'
 
 
 class SolutionOutcomeStatus(Enum):
@@ -1229,11 +1256,11 @@ class SolutionOutcomeReport(BaseModel):
         if self.scoring == ScoreType.POINTS:
             if self.expectedScore is not None:
                 verdict_str = (
-                    f'Expected score [bright_white]{get_expected_score_in_phrase(self.expectedScore)}[/bright_white], '
-                    f'got [bright_white]{self.gotScore}/{self.maxScore} pts[/bright_white]'
+                    f'Expected score {get_expected_score_markup(self.expectedScore)}, '
+                    f'got {get_solution_score_markup(self.gotScore, self.maxScore, pts=True)}'
                 )
             else:
-                verdict_str = f'Got [bright_white]{self.gotScore}/{self.maxScore} pts[/bright_white]'
+                verdict_str = f'Got {get_solution_score_markup(self.gotScore, self.maxScore, pts=True)}'
 
         if self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS:
             if self.expectedOutcome != ExpectedOutcome.ANY:
@@ -2099,6 +2126,10 @@ class FullRunReporter(TraditionalRunReporter):
 
     def render_group_end(self, group: GroupSkeleton):
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
+        self.console.print(
+            f'[info]({bracketed})[/info]',
+            end='',
+        )
         if group.score > 0:
             assert self.current_solution is not None
             partial_report = get_solution_outcome_report(
@@ -2108,10 +2139,11 @@ class FullRunReporter(TraditionalRunReporter):
                 verification=self.verification,
             )
             got_score = partial_report.gotScorePerGroup.get(group.name, 0)
-            bracketed = f'{got_score}/{group.score} pts, ' + bracketed
-        self.console.print(
-            f'[info]({bracketed})[/info]',
-        )
+            self.console.print(
+                f' {get_solution_score_markup(got_score, group.score, pts=True)}',
+                end='',
+            )
+        self.console.print()
 
     def render_pre_evaluation(self, entry: GenerationTestcaseEntry):
         self.console.print(f'[info]{entry.group_entry.index}/[/info]', end='')
@@ -2169,6 +2201,13 @@ class LiveRunReporter(FullRunReporter):
             renderable.append(rich.text.Text(' ', end=''))
 
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
+        renderable.append(
+            rich.text.Text.from_markup(
+                f'({bracketed})',
+                style='bright_black',
+                end='',
+            )
+        )
         if finished and self.current_group.score > 0:
             assert self.current_solution is not None
             partial_report = get_solution_outcome_report(
@@ -2178,14 +2217,13 @@ class LiveRunReporter(FullRunReporter):
                 verification=self.verification,
             )
             got_score = partial_report.gotScorePerGroup.get(self.current_group.name, 0)
-            bracketed = f'{got_score}/{self.current_group.score} pts, ' + bracketed
-        renderable.append(
-            rich.text.Text.from_markup(
-                f'({bracketed})',
-                style='bright_black',
-                end='',
+            renderable.append(
+                rich.text.Text.from_markup(
+                    f' {get_solution_score_markup(got_score, self.current_group.score, pts=True)}',
+                    end='',
+                )
             )
-        )
+
         self.live.update(renderable, refresh=True)
 
     def render_group(self, group: GroupSkeleton):
@@ -2234,6 +2272,7 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
     def render_group_end(self, group: GroupSkeleton):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
+        self.console.print(f'({bracketed})', end='')
         if group.score > 0:
             assert self.current_solution is not None
             partial_report = get_solution_outcome_report(
@@ -2243,8 +2282,11 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
                 verification=self.verification,
             )
             got_score = partial_report.gotScorePerGroup.get(group.name, 0)
-            bracketed = f'{got_score}/{group.score} pts, ' + bracketed
-        self.console.print(f'({bracketed})')
+            self.console.print(
+                f' {get_solution_score_markup(got_score, group.score, pts=True)}',
+                end='',
+            )
+        self.console.print()
         self.console.print()
 
     def render_post_evaluation(
