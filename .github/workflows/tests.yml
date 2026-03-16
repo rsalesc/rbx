@@ -7,9 +7,9 @@ on:
   push:
     tags:
       - "*.*.*" # Will trigger for every tag, alternative: 'v*'
-    branches:
-      - master
-      - main
+    # branches:
+    #   - master
+    #   - main
 jobs:
   deploy:
     runs-on: ${{ matrix.runs-on }}
