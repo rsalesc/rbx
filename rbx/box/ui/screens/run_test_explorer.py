@@ -1,5 +1,5 @@
 import pathlib
-from typing import Optional
+from typing import List, Optional
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -18,7 +18,7 @@ from rbx.box.testcase_extractors import (
 )
 from rbx.box.ui.screens.rich_log_modal import RichLogModal
 from rbx.box.ui.utils.run_ui import (
-    get_run_testcase_markup,
+    get_entries_options,
     get_run_testcase_metadata_markup,
 )
 from rbx.box.ui.widgets.file_log import FileLog
@@ -45,6 +45,8 @@ class RunTestExplorerScreen(Screen):
         default=None,
     )
 
+    _option_entries: List[Optional[GenerationTestcaseEntry]]
+
     def __init__(
         self,
         skeleton: SolutionReportSkeleton,
@@ -56,6 +58,7 @@ class RunTestExplorerScreen(Screen):
         self.solution = solution
         self.diff_solution = diff_solution
         self.set_reactive(RunTestExplorerScreen.side_by_side, diff_solution is not None)
+        self._option_entries = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -115,7 +118,9 @@ class RunTestExplorerScreen(Screen):
             input.path = None
             output.reset()
             return
-        entry = self.skeleton.entries[index]
+        entry = self._option_entries[index]
+        if entry is None:
+            return
         input.path = entry.metadata.copied_to.inputPath
         output.data = self._get_rendering_data(self.solution, entry)
 
@@ -133,14 +138,13 @@ class RunTestExplorerScreen(Screen):
             self._update_selected_test,
         )
 
-        test_markups = [
-            get_run_testcase_markup(self.solution, entry)
-            for entry in self.skeleton.entries
-        ]
+        options, self._option_entries = get_entries_options(
+            self.skeleton.entries, self.solution
+        )
 
         option_list = self.query_one('#test-list', OptionList)
         option_list.clear_options()
-        option_list.add_options([console.expand_markup(name) for name in test_markups])
+        option_list.add_options(options)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()
@@ -195,7 +199,9 @@ class RunTestExplorerScreen(Screen):
         option_list = self.query_one('#test-list', OptionList)
         if option_list.highlighted is None:
             return
-        entry = self.skeleton.entries[option_list.highlighted]
+        entry = self._option_entries[option_list.highlighted]
+        if entry is None:
+            return
         self.app.push_screen(
             RichLogModal(
                 console.expand_markup(get_testcase_metadata_markup(entry)),

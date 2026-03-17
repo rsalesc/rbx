@@ -14,6 +14,7 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_groups,
     get_testcase_metadata_markup,
 )
+from rbx.box.ui.utils.run_ui import get_entries_options
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
@@ -29,9 +30,11 @@ class TestExplorerScreen(Screen):
         ('v', 'open_visualizer', 'Open visualization'),
     ]
 
+    _option_entries: List[Optional[GenerationTestcaseEntry]]
+
     def __init__(self):
         super().__init__()
-        self._entries: List[GenerationTestcaseEntry] = []
+        self._option_entries = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -91,7 +94,9 @@ class TestExplorerScreen(Screen):
             output.reset()
             metadata.clear().write('No test selected')
             return
-        entry = self._entries[index]
+        entry = self._option_entries[index]
+        if entry is None:
+            return
         input.path = entry.metadata.copied_to.inputPath
 
         assert entry.metadata.copied_to.outputPath is not None
@@ -109,13 +114,12 @@ class TestExplorerScreen(Screen):
             self._update_selected_test,
         )
 
-        self._entries = await extract_generation_testcases_from_groups()
-
-        test_names = [f'{entry}' for entry in self._entries]
+        entries = await extract_generation_testcases_from_groups()
+        options, self._option_entries = get_entries_options(entries)
 
         option_list = self.query_one('#test-list', OptionList)
         option_list.clear_options()
-        option_list.add_options(test_names)
+        option_list.add_options(options)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()

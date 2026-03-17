@@ -1,7 +1,11 @@
+import collections
 import typing
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
-from rbx import utils
+from textual.visual import VisualType
+from textual.widgets.option_list import Option
+
+from rbx import console, utils
 from rbx.box import package, solutions
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
@@ -45,6 +49,48 @@ def get_solution_evals_or_null(
     if any(e is None for e in evals):
         return None
     return typing.cast(List[Evaluation], evals)
+
+
+def get_entries_per_group(
+    entries: List[GenerationTestcaseEntry],
+) -> Dict[str, List[GenerationTestcaseEntry]]:
+    res = collections.OrderedDict()
+    for entry in entries:
+        if entry.group_entry.group not in res:
+            res[entry.group_entry.group] = []
+        res[entry.group_entry.group].append(entry)
+    return res
+
+
+def get_entries_options(
+    entries: List[GenerationTestcaseEntry],
+    solution: Optional[SolutionSkeleton] = None,
+) -> Tuple[
+    List[Union[VisualType, Option, None]], List[Optional[GenerationTestcaseEntry]]
+]:
+    entries_per_group = get_entries_per_group(entries)
+    options = []
+    expanded_entries = []
+
+    def _add(
+        renderable: Union[VisualType, Option, None],
+        entry: Optional[GenerationTestcaseEntry] = None,
+    ):
+        expanded_entries.append(entry)
+        options.append(renderable)
+
+    for group, entries in entries_per_group.items():
+        _add(Option(console.expand_markup(f'[b]{group}[/b]'), disabled=True))
+        for entry in entries:
+            if solution is not None:
+                _add(
+                    console.expand_markup(get_run_testcase_markup(solution, entry)),
+                    entry,
+                )
+            else:
+                _add(console.expand_markup(f'{entry}'), entry)
+        _add(None)
+    return options, expanded_entries
 
 
 def get_solution_markup(
