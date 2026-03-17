@@ -58,7 +58,9 @@ def get_solution_markup(
     )
     if evals is None:
         return header + '\n' + report.get_verdict_markup(incomplete=True)
-    return header + '\n' + report.get_outcome_markup()
+    return (
+        header + '\n' + report.get_outcome_markup(skeleton=skeleton, print_scoring=True)
+    )
 
 
 def get_run_testcase_markup(
