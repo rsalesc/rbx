@@ -1283,9 +1283,23 @@ class SolutionOutcomeReport(BaseModel):
         return res
 
     def get_outcome_markup(
-        self, subset: bool = False, print_message: bool = True
+        self,
+        skeleton: SolutionReportSkeleton,
+        subset: bool = False,
+        print_message: bool = True,
+        print_scoring: bool = False,
     ) -> str:
         res = self.get_verdict_markup_with_warnings(subset=subset)
+        if print_scoring and self.scoring == ScoreType.POINTS:
+            # Print pretty scoring for each group.
+            scoring_res = ''
+            for group in skeleton.groups:
+                if group.score > 0:
+                    group_res = f'[bstatus]{group.name}[/bstatus]'
+                    got_score = self.gotScorePerGroup.get(group.name, 0)
+                    group_res += f' {get_solution_score_markup(got_score, group.score, pts=True)}'
+                    scoring_res += group_res + '\n'
+            res = scoring_res + res
         res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
         # res += f'\nJudging time: {get_evals_formatted_judging_time(self.evals)}'
@@ -1544,13 +1558,21 @@ def _print_solution_outcome(
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
     print_message: bool = True,
+    print_scoring: bool = False,
 ) -> SolutionOutcomeReport:
     report = get_solution_outcome_report(
         solution, skeleton, evals, verification, subset
     )
     if not report.status:
         issue_stack.add_issue(FailedSolutionIssue(solution))
-    console.print(report.get_outcome_markup(subset=subset, print_message=print_message))
+    console.print(
+        report.get_outcome_markup(
+            skeleton=skeleton,
+            subset=subset,
+            print_message=print_message,
+            print_scoring=print_scoring,
+        )
+    )
     return report
 
 
@@ -1943,6 +1965,7 @@ async def _print_detailed_run_report(
             all_evals,
             console,
             verification=verification,
+            print_scoring=True,
         )
         ok = ok and report.status.ok()
         console.print()
