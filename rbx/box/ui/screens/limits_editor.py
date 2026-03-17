@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from rich.text import Text, TextType
 from textual.app import ComposeResult
@@ -99,37 +99,41 @@ class LimitsEditorScreen(Screen):
             return False
         return current != self._last_saved_profile
 
-    def _check_dirty_then(self, callback: Callable[[], None]) -> None:
+    async def _check_dirty_then(self, callback: Callable[[], Awaitable[None]]) -> None:
         """If dirty, show confirmation modal. On confirm (or not dirty), run callback."""
         if not self._is_dirty():
-            callback()
+            await callback()
             return
 
-        def _on_dismiss(discard: Optional[bool]) -> None:
+        async def _on_dismiss(discard: Optional[bool]) -> None:
             if discard:
-                callback()
+                await callback()
 
         self.app.push_screen(ConfirmDiscardScreen(), callback=_on_dismiss)
 
     async def action_quit_screen(self) -> None:
         """Quit with dirty check."""
-        self._check_dirty_then(lambda: self.app.pop_screen())
 
-    def _on_profile_selected(self, index: Optional[int]):
+        async def _pop_screen() -> None:
+            await self.app.pop_screen()
+
+        await self._check_dirty_then(_pop_screen)
+
+    async def _on_profile_selected(self, index: Optional[int]):
         if index is None:
             return
         self._delete_pending = None
 
-        def _do_switch():
+        async def _do_switch() -> None:
             if index == len(self._profile_names):
                 self._selected_profile = None
                 self._last_saved_profile = None
-                asyncio.ensure_future(self._show_new_profile_form())
+                await self._show_new_profile_form()
             else:
                 self._selected_profile = self._profile_names[index]
-                asyncio.ensure_future(self._load_profile_detail())
+                await self._load_profile_detail()
 
-        self._check_dirty_then(_do_switch)
+        await self._check_dirty_then(_do_switch)
 
     async def _show_new_profile_form(self):
         """Replace detail pane with a form to enter a new profile name."""
