@@ -139,7 +139,7 @@ class RunTestExplorerScreen(Screen):
         )
 
         options, self._option_entries = get_entries_options(
-            self.skeleton.entries, self.solution
+            self.skeleton.entries, skeleton=self.skeleton, solution=self.solution
         )
 
         option_list = self.query_one('#test-list', OptionList)

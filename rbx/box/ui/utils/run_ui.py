@@ -8,7 +8,12 @@ from textual.widgets.option_list import Option
 from rbx import console, utils
 from rbx.box import package, solutions
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
+from rbx.box.solutions import (
+    SolutionOutcomeReport,
+    SolutionReportSkeleton,
+    SolutionSkeleton,
+    get_solution_score_markup,
+)
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation
 
@@ -64,10 +69,15 @@ def get_entries_per_group(
 
 def get_entries_options(
     entries: List[GenerationTestcaseEntry],
+    skeleton: Optional[SolutionReportSkeleton] = None,
     solution: Optional[SolutionSkeleton] = None,
 ) -> Tuple[
     List[Union[VisualType, Option, None]], List[Optional[GenerationTestcaseEntry]]
 ]:
+    report: Optional[SolutionOutcomeReport] = None
+    if skeleton is not None and solution is not None:
+        report = get_solution_outcome_report(skeleton, solution)
+
     entries_per_group = get_entries_per_group(entries)
     options = []
     expanded_entries = []
@@ -79,8 +89,25 @@ def get_entries_options(
         expanded_entries.append(entry)
         options.append(renderable)
 
+    total_got_score = 0
+    max_score = 0
     for group, entries in entries_per_group.items():
-        _add(Option(console.expand_markup(f'[b]{group}[/b]'), disabled=True))
+        score_str = ''
+        if skeleton is not None:
+            group_skeleton = skeleton.find_group_skeleton(group)
+            if group_skeleton is not None and group_skeleton.score > 0:
+                # Deal with POINTS scoring.
+                max_score += group_skeleton.score
+                got_score = 0
+                if report is not None:
+                    got_score = report.gotScorePerGroup.get(group, 0)
+                total_got_score += got_score
+                score_str = (
+                    f' {get_solution_score_markup(got_score, group_skeleton.score)}'
+                )
+        _add(
+            Option(console.expand_markup(f'[b]{group}[/b] {score_str}'), disabled=True)
+        )
         for entry in entries:
             if solution is not None:
                 _add(
@@ -90,7 +117,34 @@ def get_entries_options(
             else:
                 _add(console.expand_markup(f'{entry}'), entry)
         _add(None)
+
+    if max_score > 0:
+        _add(
+            Option(
+                console.expand_markup(
+                    f'[b]TOTAL[/b]  {get_solution_score_markup(total_got_score, max_score)}'
+                ),
+                disabled=True,
+            )
+        )
     return options, expanded_entries
+
+
+def _get_solution_outcome_report_from_evals(
+    skeleton: SolutionReportSkeleton,
+    solution: SolutionSkeleton,
+    evals: List[Evaluation],
+) -> SolutionOutcomeReport:
+    return solutions.get_solution_outcome_report(
+        solution, skeleton, evals, skeleton.verification, subset=False
+    )
+
+
+def get_solution_outcome_report(
+    skeleton: SolutionReportSkeleton, solution: SolutionSkeleton
+) -> SolutionOutcomeReport:
+    evals = get_solution_evals_or_null(skeleton, solution)
+    return _get_solution_outcome_report_from_evals(skeleton, solution, evals or [])
 
 
 def get_solution_markup(
@@ -99,9 +153,7 @@ def get_solution_markup(
     header = solution.display()
 
     evals = get_solution_evals_or_null(skeleton, solution)
-    report = solutions.get_solution_outcome_report(
-        solution, skeleton, evals or [], skeleton.verification, subset=False
-    )
+    report = _get_solution_outcome_report_from_evals(skeleton, solution, evals or [])
     if evals is None:
         return header + '\n' + report.get_verdict_markup(incomplete=True)
     return (
