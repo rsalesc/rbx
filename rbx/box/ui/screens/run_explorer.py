@@ -67,7 +67,9 @@ class RunExplorerScreen(Screen):
             return
         test_solution = self.skeleton.solutions[option_list.highlighted]
 
-        options = [f'{sol.path}' for sol in self.skeleton.solutions]
+        options = [
+            console.expand_markup(f'{sol.href()}') for sol in self.skeleton.solutions
+        ]
 
         def on_selected(index: Optional[int]):
             if index is None:
