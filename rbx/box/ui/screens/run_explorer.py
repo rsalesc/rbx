@@ -3,7 +3,7 @@ from typing import Optional
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Label, ListItem, ListView
+from textual.widgets import Footer, Header, OptionList
 
 from rbx import console
 from rbx.box.ui.screens.error import ErrorScreen
@@ -26,12 +26,14 @@ class RunExplorerScreen(Screen):
 
         items = []
         if self.skeleton:
-            items = [
-                Label(console.expand_markup(get_solution_markup(self.skeleton, sol)))
-                for i, sol in enumerate(self.skeleton.solutions)
-            ]
+            for i, sol in enumerate(self.skeleton.solutions):
+                if i > 0:
+                    items.append(None)
+                items.append(
+                    console.expand_markup(get_solution_markup(self.skeleton, sol))
+                )
         with Vertical():
-            run_list = ListView(*[ListItem(item) for item in items], id='run-list')
+            run_list = OptionList(*items, id='run-list')
             run_list.border_title = 'Runs'
             yield run_list
 
@@ -46,10 +48,9 @@ class RunExplorerScreen(Screen):
             self.app.switch_screen(ErrorScreen('No runs found. Run `rbx run` first.'))
             return
 
-    def on_list_view_selected(self, event: ListView.Selected):
-        selected_index = event.list_view.index
-        if selected_index is None:
-            return
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        event.stop()
+        selected_index = event.option_index
         if self.skeleton is None:
             return
         self.app.push_screen(
@@ -61,15 +62,12 @@ class RunExplorerScreen(Screen):
     def action_compare_with(self):
         if self.skeleton is None:
             return
-        list_view = self.query_one('#run-list', ListView)
-        if list_view.index is None:
+        option_list = self.query_one('#run-list', OptionList)
+        if option_list.highlighted is None:
             return
-        test_solution = self.skeleton.solutions[list_view.index]
+        test_solution = self.skeleton.solutions[option_list.highlighted]
 
-        options = [
-            ListItem(Label(f'{sol.path}', markup=False))
-            for sol in self.skeleton.solutions
-        ]
+        options = [f'{sol.path}' for sol in self.skeleton.solutions]
 
         def on_selected(index: Optional[int]):
             if index is None:

@@ -5,7 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Label, ListItem, ListView
+from textual.widgets import Footer, Header, OptionList
 
 from rbx import console
 from rbx.box import package, visualizers
@@ -62,7 +62,7 @@ class RunTestExplorerScreen(Screen):
         yield Footer()
         with Horizontal(id='test-explorer'):
             with Vertical(id='test-list-container'):
-                yield ListView(id='test-list')
+                yield OptionList(id='test-list')
             with Vertical(id='test-details'):
                 yield RichLogBox(id='test-box-warning')
                 yield FileLog(id='test-input')
@@ -128,8 +128,8 @@ class RunTestExplorerScreen(Screen):
 
     async def _update_tests(self):
         self.watch(
-            self.query_one('#test-list', ListView),
-            'index',
+            self.query_one('#test-list', OptionList),
+            'highlighted',
             self._update_selected_test,
         )
 
@@ -138,10 +138,12 @@ class RunTestExplorerScreen(Screen):
             for entry in self.skeleton.entries
         ]
 
-        await self.query_one('#test-list', ListView).clear()
-        await self.query_one('#test-list', ListView).extend(
-            [ListItem(Label(console.expand_markup(name))) for name in test_markups]
-        )
+        option_list = self.query_one('#test-list', OptionList)
+        option_list.clear_options()
+        option_list.add_options([console.expand_markup(name) for name in test_markups])
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        event.stop()
 
     def has_diffable_solution(self) -> bool:
         return self.diff_solution is not None or package.get_main_solution() is not None
@@ -190,10 +192,10 @@ class RunTestExplorerScreen(Screen):
         widget.diff_with_data = diff_with_data
 
     def action_toggle_test_metadata(self):
-        list_view = self.query_one('#test-list', ListView)
-        if list_view.index is None:
+        option_list = self.query_one('#test-list', OptionList)
+        if option_list.highlighted is None:
             return
-        entry = self.skeleton.entries[list_view.index]
+        entry = self.skeleton.entries[option_list.highlighted]
         self.app.push_screen(
             RichLogModal(
                 console.expand_markup(get_testcase_metadata_markup(entry)),

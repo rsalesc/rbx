@@ -3,7 +3,7 @@ from typing import List, Optional
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog
+from textual.widgets import Footer, Header, OptionList, RichLog
 
 from rbx import console
 from rbx.box import package, visualizers
@@ -38,7 +38,7 @@ class TestExplorerScreen(Screen):
         yield Footer()
         with Horizontal(id='test-explorer'):
             with Vertical(id='test-list-container'):
-                yield ListView(id='test-list')
+                yield OptionList(id='test-list')
             with Vertical(id='test-details'):
                 yield RichLogBox(id='test-box-warning')
                 yield FileLog(id='test-input')
@@ -104,8 +104,8 @@ class TestExplorerScreen(Screen):
 
     async def _update_tests(self):
         self.watch(
-            self.query_one('#test-list', ListView),
-            'index',
+            self.query_one('#test-list', OptionList),
+            'highlighted',
             self._update_selected_test,
         )
 
@@ -113,10 +113,12 @@ class TestExplorerScreen(Screen):
 
         test_names = [f'{entry}' for entry in self._entries]
 
-        await self.query_one('#test-list', ListView).clear()
-        await self.query_one('#test-list', ListView).extend(
-            [ListItem(Label(name)) for name in test_names]
-        )
+        option_list = self.query_one('#test-list', OptionList)
+        option_list.clear_options()
+        option_list.add_options(test_names)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        event.stop()
 
     def is_interactive(self) -> bool:
         pkg = package.find_problem_package_or_die()

@@ -53,6 +53,7 @@ class rbxApp(rbxBaseApp):
         self.query_one(OptionList).border_title = 'Select a flow'
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        event.stop()
         self.show_screen(SCREEN_OPTIONS[event.option_index][1])
 
     def show_screen(self, screen_cls: Type[Screen]):

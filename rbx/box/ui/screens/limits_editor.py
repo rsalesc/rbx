@@ -1,6 +1,7 @@
 import asyncio
 from typing import Callable, Dict, List, Optional
 
+from rich.text import Text, TextType
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
@@ -10,9 +11,7 @@ from textual.widgets import (
     Footer,
     Header,
     Input,
-    Label,
-    ListItem,
-    ListView,
+    OptionList,
     Rule,
     Static,
     Switch,
@@ -64,7 +63,7 @@ class LimitsEditorScreen(Screen):
         yield Footer()
         with Horizontal(id='limits-editor'):
             with Vertical(id='limits-sidebar'):
-                yield ListView(id='limits-profile-list')
+                yield OptionList(id='limits-profile-list')
             with VerticalScroll(id='limits-detail'):
                 yield Static('Select a profile', id='limits-placeholder')
 
@@ -72,18 +71,21 @@ class LimitsEditorScreen(Screen):
         self.query_one('#limits-profile-list').border_title = 'Profiles'
         await self._load_profiles()
         self.watch(
-            self.query_one('#limits-profile-list', ListView),
-            'index',
+            self.query_one('#limits-profile-list', OptionList),
+            'highlighted',
             self._on_profile_selected,
         )
 
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        event.stop()
+
     async def _load_profiles(self):
         self._profile_names = limits_info.get_available_profile_names()
-        lv = self.query_one('#limits-profile-list', ListView)
-        await lv.clear()
-        items = [ListItem(Label(name)) for name in self._profile_names]
-        items.append(ListItem(Label('[dim]+ New Profile[/dim]', markup=True)))
-        await lv.extend(items)
+        ol = self.query_one('#limits-profile-list', OptionList)
+        ol.clear_options()
+        items: List[TextType] = list(self._profile_names)
+        items.append(Text.from_markup('[dim]+ New Profile[/dim]'))
+        ol.add_options(items)
 
     def _is_dirty(self) -> bool:
         """Check if the form has unsaved changes."""
@@ -405,9 +407,9 @@ class LimitsEditorScreen(Screen):
 
         # Select the new profile in the list and load its detail form.
         self._selected_profile = name
-        lv = self.query_one('#limits-profile-list', ListView)
+        ol = self.query_one('#limits-profile-list', OptionList)
         new_index = self._profile_names.index(name)
-        lv.index = new_index
+        ol.highlighted = new_index
         await self._load_profile_detail()
 
     async def _handle_add_language_submit(self, event: Input.Submitted) -> None:
