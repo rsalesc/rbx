@@ -156,9 +156,7 @@ def get_solution_markup(
     report = _get_solution_outcome_report_from_evals(skeleton, solution, evals or [])
     if evals is None:
         return header + '\n' + report.get_verdict_markup(incomplete=True)
-    return (
-        header + '\n' + report.get_outcome_markup(skeleton=skeleton, print_scoring=True)
-    )
+    return header + '\n' + report.get_outcome_markup(skeleton=skeleton)
 
 
 def get_run_testcase_markup(
