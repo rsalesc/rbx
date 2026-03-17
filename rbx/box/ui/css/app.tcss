@@ -167,6 +167,24 @@ TestExplorerScreen, RunTestExplorerScreen {
         padding: 0 1;
 }
 
+ListView {
+        &:focus > .list-view--option-highlighted {
+                background: white 10%;
+        }
+        &:blur > .list-view--option-highlighted {
+                background: transparent;
+        }
+}
+
+OptionList {
+        &:focus > .option-list--option-highlighted {
+                background: white 10%;
+        }
+        &:blur > .option-list--option-highlighted {
+                background: transparent;
+        }
+}
+
 LimitsEditorScreen {
         #limits-sidebar {
                 min-width: 20;
