@@ -16,9 +16,9 @@ from rbx.box.ui.screens.run_explorer import RunExplorerScreen
 from rbx.box.ui.screens.test_explorer import TestExplorerScreen
 
 SCREEN_OPTIONS = [
-    ('Explore tests built by `rbx build`.', TestExplorerScreen),
-    ('Explore results of a past `rbx run`.', RunExplorerScreen),
-    ('Edit limits profiles.', LimitsEditorScreen),
+    ('Explore tests built by `rbx build`', TestExplorerScreen),
+    ('Explore results of a past `rbx run`', RunExplorerScreen),
+    ('Edit limits profiles (in development)', LimitsEditorScreen),
 ]
 
 
