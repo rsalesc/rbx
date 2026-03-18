@@ -1,3 +1,20 @@
+## 0.32.0 (2026-03-18)
+
+### Fix
+
+- propagate problems of interesting based on which problems passed building/validation before statement building
+- improve menu phrasing
+- fix several issues in limits_editor.py
+- remove group-specific scoring from run selection in ui
+- add score to entries in rbx ui
+- add styling to sxs solution selector
+- add headers to testcase entries in ui
+- improve highlighted colors of listviews and optionlists
+- migrate from ListView to OptionList in a few UI components
+- fix run_ui issue with solution markup
+- print scoring in detailed view
+- **ci**: remove .x suffix from python version matrix
+
 ## 0.32.0rc1 (2026-03-16)
 
 ### Fix
