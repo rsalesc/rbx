@@ -359,7 +359,7 @@ def needs_samples(statement: Statement) -> bool:
 async def build_statement(
     statement: Statement,
     pkg: Package,
-    output_type: Optional[StatementType] = None,
+    output_type: StatementType,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
@@ -396,7 +396,7 @@ async def build_statement(
 async def execute_build_on_statements(
     statements: List[Statement],
     verification: environment.VerificationParam,
-    output: Optional[StatementType] = StatementType.PDF,
+    output: StatementType = StatementType.PDF,
     samples: bool = True,
     vars: Optional[List[str]] = None,
     validate: bool = True,
@@ -436,7 +436,7 @@ async def execute_build(
     verification: environment.VerificationParam,
     names: Optional[List[str]] = None,
     languages: Optional[List[str]] = None,
-    output: Optional[StatementType] = StatementType.PDF,
+    output: StatementType = StatementType.PDF,
     samples: bool = True,
     vars: Optional[List[str]] = None,
     validate: bool = True,
@@ -488,10 +488,10 @@ async def build(
         ),
     ] = None,
     output: Annotated[
-        Optional[StatementType],
+        StatementType,
         typer.Option(
             case_sensitive=False,
-            help='Output type to be generated. If not specified, will infer from the conversion steps specified in the package.',
+            help='Output type to be generated.',
         ),
     ] = StatementType.PDF,
     samples: Annotated[

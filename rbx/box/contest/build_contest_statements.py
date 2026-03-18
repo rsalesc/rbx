@@ -114,6 +114,7 @@ def get_problems_for_statement(
     contest: Contest,
     contest_statement: ContestStatement,
     requires_matching_statement: bool = False,
+    problems_of_interest: Optional[List[ContestProblem]] = None,
 ) -> List[ExtractedProblem]:
     pkgs = get_problems(contest)
     if not pkgs and requires_matching_statement:
@@ -127,8 +128,12 @@ def get_problems_for_statement(
             return statement.language == contest_statement.language
         return statement.name == contest_statement.match
 
+    short_names = set(p.short_name for p in problems_of_interest or [])
+
     res = []
     for pkg, problem in zip(pkgs, contest.problems):
+        if problems_of_interest is not None and problem.short_name not in short_names:
+            continue
         matching_statements = [
             statement for statement in pkg.expanded_statements if matches(statement)
         ]
@@ -169,12 +174,16 @@ async def _build_problem_statements(
     contest: Contest,
     root: pathlib.Path,
     output_type: StatementType,
+    problems_of_interest: Optional[List[ContestProblem]] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
 ) -> List[ExtractedProblem]:
     console.console.print('Building problem-level statements...')
     extracted_problems = get_problems_for_statement(
-        contest, statement, requires_matching_statement=True
+        contest,
+        statement,
+        requires_matching_statement=True,
+        problems_of_interest=problems_of_interest,
     )
     res = []
     overrides = statement_overriding.get_overrides(statement)
@@ -286,6 +295,7 @@ async def build_statement_rooted(
     statement: ContestStatement,
     contest: Contest,
     root: pathlib.Path,
+    problems_of_interest: Optional[List[ContestProblem]] = None,
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
@@ -312,6 +322,7 @@ async def build_statement_rooted(
             contest,
             root,
             output_type=joiner.joined_type(),
+            problems_of_interest=problems_of_interest,
             use_samples=use_samples,
             custom_vars=custom_vars,
         )
@@ -376,6 +387,7 @@ def get_statement_build_dir(statement: ContestStatement) -> pathlib.Path:
 async def build_statement(
     statement: ContestStatement,
     contest: Contest,
+    problems_of_interest: Optional[List[ContestProblem]] = None,
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
@@ -388,6 +400,7 @@ async def build_statement(
         statement,
         contest,
         root,
+        problems_of_interest=problems_of_interest,
         output_type=output_type,
         use_samples=use_samples,
         custom_vars=custom_vars,

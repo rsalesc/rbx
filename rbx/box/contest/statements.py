@@ -13,7 +13,7 @@ from rbx.box.contest.contest_package import (
     find_contest_package_or_die,
     within_contest,
 )
-from rbx.box.contest.schema import ContestStatement
+from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import expand_any_vars
@@ -44,10 +44,10 @@ async def build(
         typer.Option(help='Whether to validate outputs for testcases or not.'),
     ] = True,
     output: Annotated[
-        Optional[StatementType],
+        StatementType,
         typer.Option(
             case_sensitive=False,
-            help='Output type to be generated. If not specified, will infer from the conversion steps specified in the package.',
+            help='Output type to be generated.',
         ),
     ] = StatementType.PDF,
     samples: Annotated[
@@ -90,9 +90,11 @@ async def build(
     samples = samples and any(st.samples for st in valid_statements)
 
     # At most run the validators, only in samples.
+    problems_of_interest: Optional[List[ContestProblem]] = None
     if samples:
         from rbx.box.testcase_sample_utils import build_samples
 
+        problems_of_interest = []
         for problem in contest.problems:
             console.console.print(
                 f'Processing problem [item]{problem.short_name}[/item]...'
@@ -103,6 +105,8 @@ async def build(
                 try:
                     if not await build_samples(verification, validate):
                         issue_stack.add_issue(StatementBuildIssue(problem))
+                    else:
+                        problems_of_interest.append(problem)
                 except Exception:
                     issue_stack.add_issue(StatementBuildIssue(problem))
 
@@ -113,6 +117,7 @@ async def build(
             await build_statement(
                 statement,
                 contest,
+                problems_of_interest=problems_of_interest,
                 output_type=output,
                 use_samples=samples,
                 install_tex=install_tex,
