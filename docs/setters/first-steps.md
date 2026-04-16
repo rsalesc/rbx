@@ -22,23 +22,24 @@ This is how the directory structure of the pre-initialized problem preset will l
 
 ```bash
 test
-├── sols  # (1)!
+├── sols # (1)!
 │   ├── main.cpp
-│   ├── slow.cpp
-│   └── wa.cpp
-├── statement  # (2)!
+│   └── wa-overflow.cpp
+├── statement # (2)!
 │   ├── olymp.sty
 │   ├── projecao.png
 │   ├── statement.rbx.tex
 │   └── template.rbx.tex
-├── tests  # (3)!
+├── manual_tests # (3)!
 │   └── samples
 │       ├── 000.in
 │       └── 001.in
-├── gen.cpp # (4)!
-├── problem.rbx.yml # (5)!
-├── random.txt # (6)!
-├── random.py # (7)!
+├── testplan
+│   ├── random.txt # (4)!
+│   └── random.py # (5)!
+├── gens
+│   └── gen # (6)!
+├── problem.rbx.yml # (7)!
 ├── validator.cpp # (8)!
 └── wcmp.cpp # (9)!
 ```
@@ -51,29 +52,22 @@ test
     !!! note
         Automatically generated tests are not defined by explicit input and output files, but are rather defined by generator entries in the problem configuration.
 
-4.  An example of a {{testlib}} generator. In this case, the generator is used to
-    generate testcases for two testgroups: `random` and `program-random`.
-
-    !!! note
-        A problem can have multiple generators. This one is just an example.
-
-5.  The {{YAML}} configuration file for this problem.
-6.  A generator script for the problem.
+4.  A generator script for the problem.
 
     Each line of a generator script describes one call to a generator, and a generator script groups all these calls together.
 
     Example:
 
     ```
-    gen 123
-    gen 456
+    gens/gen 123
+    gens/gen 456
     ```
 
     Calls the generator named `gen` (here in this problem, implemented through `gen.cpp`) twice, thus generating two testcases.
 
     In this problem, this script is used to generate the testcase group `random`.
 
-7.  A program that outputs a generator script. Pretty similar to `random.txt`
+5.  A program that outputs a generator script. Pretty similar to `random.txt`
     above, except that this is a program that prints to the **stdout** a
     generator script, and thus provides more flexibility to the setter.
 
@@ -82,13 +76,21 @@ test
     ```python
     #! /usr/bin/python3
     for i in range(10):
-        print(f'gen {i}')
+        print(f'gens/gen {i}')
     ```
 
     This program outputs a generator script that creates 10 testcases with increasing
     parameter `i`.
 
     In this problem, this program is used to generate the testcase group `program-random`.
+
+6.  An example of a {{testlib}} generator. In this case, the generator is used to
+    generate testcases for two testgroups: `random` and `program-random`.
+
+    !!! note
+        A problem can have multiple generators. This one is just an example.
+
+7.  The {{YAML}} configuration file for this problem.
 
 8.  A {{testlib}} validator that checks whether the generated tests are
     in the correct format.
@@ -166,7 +168,7 @@ We can develop the following {{tags.accepted}} and {{tags.wrong_answer}} solutio
     }
     ```
 
-=== "sols/wa.cpp"
+=== "sols/wa-overflow.cpp"
     ```c++
     #include <bits/stdc++.h>
 
@@ -185,46 +187,63 @@ We can develop the following {{tags.accepted}} and {{tags.wrong_answer}} solutio
     }
     ```
 
-To delete the `slow.cpp` solution from our package, we can just delete the file and the reference to it in `problem.rbx.yml`. The reference is located in the `solutions` section, which will look like this after the deletion:
+If you want to add or delete solutions from our package, you can just make the changes to the files and update the
+references to them in the `problem.rbx.yml`, on the `solutions` section.
 
-```yaml
-solutions:
-  - path: 'sols/main.cpp'
-    outcome: ACCEPTED
-  - path: 'sols/wa.cpp'
-    outcome: WRONG_ANSWER
-```
+By default, the `solutions` section is configured to use the file name to determine the outcome of that solution,
+example: if the file name starts with `ac-`, its outcome should be `ACCEPTED`, and if it starts with `wa-`, its outcome
+should be `WRONG_ANSWER`, etc.
+You can manually edit the `solutions` section if you want a bespoke setup.
 
 You can find the full list of expected outcomes [here][rbx.box.schema.ExpectedOutcome].
 
 ### Write the validator
+
+The new input limits have to be updated in the `problems.rbx.yml`. The `vars` sections should look like this:
+
+=== "validator.cpp"
+    ```yaml
+    vars:
+      N:
+        min: 1
+        max: 1000000000
+      A:
+        min: 1
+        max: 1000000000
+    ```
 
 The {{testlib}} validator is implemented by `validator.cpp` and will look like this:
 
 
 === "validator.cpp"
     ```c++
-    #include "testlib.h"
     #include "rbx.h"
+    #include "testlib.h"
 
     using namespace std;
 
     int main(int argc, char *argv[]) {
-        registerValidation(argc, argv);
+      registerValidation(argc, argv);
+      prepareOpts(argc, argv);
 
-        int MAX_N = getVar<int>("N.max"); // (1)!
-        int MAX_A = getVar<int>("A.max");
+      // Read from package vars. // (1)!
+      int MIN_N = getVar<int>("N.min");
+      int MAX_N = getVar<int>("N.max");
+      int MIN_A = getVar<int>("A.min");
+      int MAX_A = getVar<int>("A.max");
 
-        for (int i = 0; i < n; i++) {
-            if (i) inf.readSpace();
-            inf.readInt(1, MAX_A, "A_i");
-        }
-        inf.readEoln();
-        inf.readEof();
+      int n = inf.readInt(1, MAX_N, "N");
+      inf.readEoln();
+      for (int i = 0; i < n; i++) {
+        if (i) inf.readSpace();
+        inf.readInt(MIN_A, MAX_A, "A_i");
+      }
+      inf.readEoln();
+      inf.readEof();
     }
     ```
 
-    1.  `N.max` is a variable defined in `problem.rbx.yaml` that is accessible
+    1.  `getVar` reads a variable defined in `problem.rbx.yaml` that is accessible
         in the validator. It allows you to change the constraints of the problem,
         and instantly replicate the change in validators and statements.
 
@@ -234,10 +253,10 @@ Now, let's rewrite our random generator to generate `N` numbers instead of only 
 
 We have to actually call this generator and generate testcases into some of the testgroups.
 
-Let's delete the existing test groups in `problem.rbx.yml`, except for the `samples` one, and create a new `main_tests` group. Let's generate 10 random tests for this group by using a generator script. We can either use a static generator script
+Let's delete the existing test groups in `problem.rbx.yml`, except for the `samples` one, and create a new `random` group. Let's generate 10 random tests for this group by using a generator script. We can either use a static generator script
 (represented in the example below as `random.txt`) or a dynamic generator script (represented in the example below as `random.py`).
 
-=== "gen.cpp"
+=== "gens/gen.cpp"
     ```c++
     #include "testlib.h"
 
@@ -247,7 +266,7 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
         registerGen(argc, argv, 1); // (1)!
 
         int n = rnd.next(1, opt<int>(1));
-
+        cout << endl;
         for (int i = 0; i < n; i++) {
             if (i) cout << " ";
             cout << rnd.next(1, opt<int>(2));
@@ -258,24 +277,24 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
 
     1.  The generator now receive two parameters `N.max` (accessed through `#!c++ opt<int>(1)`) and `A.max` (accessed through `#!c++ opt<int>(2)`).
 
-=== "random.txt (static)"
+=== "testplan/random.txt (static)"
     ```
-    gen 1000 1000000000 1
-    gen 1000 1000000000 2
-    gen 1000 1000000000 3
-    gen 1000 1000000000 4
-    gen 1000 1000000000 5
-    gen 1000 1000000000 6
-    gen 1000 1000000000 7
-    gen 1000 1000000000 8
-    gen 1000 1000000000 9
-    gen 1000 1000000000 10
+    gens/gen 1000 1000000000 1
+    gens/gen 1000 1000000000 2
+    gens/gen 1000 1000000000 3
+    gens/gen 1000 1000000000 4
+    gens/gen 1000 1000000000 5
+    gens/gen 1000 1000000000 6
+    gens/gen 1000 1000000000 7
+    gens/gen 1000 1000000000 8
+    gens/gen 1000 1000000000 9
+    gens/gen 1000 1000000000 10
     ```
 
-=== "random.py (dynamic)"
+=== "testplan/random.py (dynamic)"
     ```python
     for i in range(10):
-        print(f'gen 1000 1000000000 {i}') # (1)!
+        print(f'gens/gen 1000 1000000000 {i}') # (1)!
     ```
 
     1.  This line defines 10 random calls to the generator `gen`, 
@@ -298,12 +317,12 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
     testcases:
     - name: 'samples'
         testcaseGlob: 'tests/samples/*.in'
-    - name: 'main_tests'  # (1)!
+    - name: 'random'  # (1)!
         generatorScript:
             path: 'random.txt'  # or 'random.py', in case you want to use a dynamic generator
     ```
     
-    1.  Here, `main_tests` would contain the 10 tests defined in `random.txt` or `random.py`.
+    1.  Here, `random` would contain the 10 tests defined in `random.txt` or `random.py`.
 
 Our newly defined generator `gen.cpp` will receive two positional arguments, `N` and `A`, and generate
 a list of `N` integers, each of which is at most `A`.
