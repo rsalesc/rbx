@@ -58,6 +58,8 @@ def _collect_expansions(
         if exp.replacement == ReplacementMode.PROMPT:
             assert exp.prompt is not None
             value = questionary.text(exp.prompt).ask()
+            if value is None:
+                raise typer.Exit(1)
             result.append((exp.needle, value, exp.glob))
     return result
 
