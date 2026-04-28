@@ -27,6 +27,19 @@ app = typer.Typer(no_args_is_help=True)
 
 _FALLBACK_PRESET_NAME = 'default'
 
+_MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
+
+
+def _should_expand_file(src: pathlib.Path, content: bytes) -> bool:
+    """Check whether a preset file should undergo variable expansion."""
+    if src.is_symlink():
+        return False
+    if len(content) > _MAX_EXPAND_SIZE:
+        return False
+    if b'\x00' in content:
+        return False
+    return True
+
 
 def find_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     found = root / 'preset.rbx.yml'
