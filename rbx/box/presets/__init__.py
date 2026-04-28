@@ -1,3 +1,4 @@
+import fnmatch
 import functools
 import os
 import pathlib
@@ -28,6 +29,19 @@ app = typer.Typer(no_args_is_help=True)
 _FALLBACK_PRESET_NAME = 'default'
 
 _MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
+
+
+def _expand_content(
+    content: bytes,
+    expansions: List[Tuple[str, str, List[str]]],
+    src_relative: pathlib.PurePosixPath,
+) -> bytes:
+    """Apply variable expansions to file content."""
+    for needle, value, globs in expansions:
+        if globs and not any(fnmatch.fnmatch(str(src_relative), g) for g in globs):
+            continue
+        content = content.replace(needle.encode(), value.encode())
+    return content
 
 
 def _should_expand_file(src: pathlib.Path, content: bytes) -> bool:
