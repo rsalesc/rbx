@@ -1,6 +1,8 @@
 import pathlib
+from unittest import mock
 
-from rbx.box.presets import _expand_content, _should_expand_file
+from rbx.box.presets import _collect_expansions, _expand_content, _should_expand_file
+from rbx.box.presets.schema import ReplacementMode, VariableExpansion
 
 
 class TestShouldExpandFile:
@@ -87,3 +89,45 @@ class TestExpandContent:
             content, expansions, pathlib.PurePosixPath('subdir/main.tex')
         )
         assert result == b'val'
+
+
+class TestCollectExpansions:
+    def test_prompt_mode_asks_user(self):
+        expansions = [
+            VariableExpansion(
+                needle='__NAME__',
+                replacement=ReplacementMode.PROMPT,
+                prompt='Enter the problem name:',
+            ),
+        ]
+        with mock.patch('rbx.box.presets.questionary') as mock_q:
+            mock_q.text.return_value.ask.return_value = 'my-problem'
+            result = _collect_expansions(expansions)
+
+        assert result == [('__NAME__', 'my-problem', [])]
+        mock_q.text.assert_called_once_with('Enter the problem name:')
+
+    def test_multiple_expansions(self):
+        expansions = [
+            VariableExpansion(
+                needle='__A__',
+                prompt='A?',
+                glob=['*.txt'],
+            ),
+            VariableExpansion(
+                needle='__B__',
+                prompt='B?',
+            ),
+        ]
+        with mock.patch('rbx.box.presets.questionary') as mock_q:
+            mock_q.text.return_value.ask.side_effect = ['val_a', 'val_b']
+            result = _collect_expansions(expansions)
+
+        assert result == [
+            ('__A__', 'val_a', ['*.txt']),
+            ('__B__', 'val_b', []),
+        ]
+
+    def test_empty_expansions(self):
+        result = _collect_expansions([])
+        assert result == []

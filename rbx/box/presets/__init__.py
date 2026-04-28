@@ -20,7 +20,12 @@ from rbx.box.presets.fetch import (
     get_remote_uri_from_tool_preset,
 )
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock, SymlinkInfo
-from rbx.box.presets.schema import Preset, TrackedAsset
+from rbx.box.presets.schema import (
+    Preset,
+    ReplacementMode,
+    TrackedAsset,
+    VariableExpansion,
+)
 from rbx.config import get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
 
@@ -42,6 +47,19 @@ def _expand_content(
             continue
         content = content.replace(needle.encode(), value.encode())
     return content
+
+
+def _collect_expansions(
+    expansions: List[VariableExpansion],
+) -> List[Tuple[str, str, List[str]]]:
+    """Prompt the user for expansion values and return (needle, value, globs) tuples."""
+    result: List[Tuple[str, str, List[str]]] = []
+    for exp in expansions:
+        if exp.replacement == ReplacementMode.PROMPT:
+            assert exp.prompt is not None
+            value = questionary.text(exp.prompt).ask()
+            result.append((exp.needle, value, exp.glob))
+    return result
 
 
 def _should_expand_file(src: pathlib.Path, content: bytes) -> bool:
