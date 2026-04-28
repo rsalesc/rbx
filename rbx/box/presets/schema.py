@@ -2,9 +2,10 @@ import pathlib
 from typing import List, Optional
 
 import typer
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from rbx import console, utils
+from rbx.autoenum import AutoEnum, alias
 from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
 
 
@@ -34,6 +35,40 @@ class Tracking(BaseModel):
     contest: List[TrackedAsset] = []
 
 
+class ReplacementMode(AutoEnum):
+    PROMPT = alias('prompt')
+    """Replace the needle with an user provided string."""
+
+
+class VariableExpansion(BaseModel):
+    # The needle to be replaced.
+    needle: str
+
+    # The mode to use for the replacement.
+    replacement: ReplacementMode = Field(default=ReplacementMode.PROMPT)
+
+    # The prompt to use for the replacement.
+    # Only used when the replacement mode is PROMPT.
+    prompt: Optional[str] = Field(default=None)
+
+    # A glob pattern for the files to be expanded. If left empty, expand all files.
+    glob: List[str] = Field(default=[])
+
+    @model_validator(mode='after')
+    def validate_prompt_required(self) -> 'VariableExpansion':
+        if self.replacement == ReplacementMode.PROMPT and self.prompt is None:
+            raise ValueError('prompt is required when replacement mode is PROMPT')
+        return self
+
+
+class Expansion(BaseModel):
+    # Problem variables that should be expanded.
+    problem: List[VariableExpansion] = []
+
+    # Contest variables that should be expanded.
+    contest: List[VariableExpansion] = []
+
+
 class Preset(BaseModel):
     # Name of the preset, or a GitHub repository containing it.
     name: str = NameField()
@@ -59,6 +94,9 @@ class Preset(BaseModel):
     # preset has an update. Usually useful when a common library used by the
     # package changes in the preset, or when a latex template is changed.
     tracking: Tracking = Field(default_factory=Tracking)
+
+    # Configures how variables should be expanded in the preset.
+    expansion: Expansion = Field(default_factory=Expansion)
 
     @field_validator('min_version')
     @classmethod
