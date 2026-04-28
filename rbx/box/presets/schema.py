@@ -36,7 +36,7 @@ class Tracking(BaseModel):
 
 
 class ReplacementMode(AutoEnum):
-    PROMPT = alias('prompt')
+    PROMPT = alias('prompt')  # type: ignore
     """Replace the needle with an user provided string."""
 
 
