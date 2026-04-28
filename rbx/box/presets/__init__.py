@@ -407,6 +407,7 @@ def copy_preset_file(
     preset_package_path: pathlib.Path,
     preset_path: pathlib.Path,
     force_symlink: bool = False,
+    expansions: Optional[List[Tuple[str, str, List[str]]]] = None,
 ):
     if dst.is_file() or dst.is_symlink():
         dst.unlink(missing_ok=True)
@@ -414,7 +415,11 @@ def copy_preset_file(
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
     if not src.is_symlink() and not force_symlink:
-        shutil.copyfile(str(src), str(dst))
+        content = src.read_bytes()
+        if expansions and _should_expand_file(src, content):
+            relative = pathlib.PurePosixPath(src.relative_to(preset_package_path))
+            content = _expand_content(content, expansions, relative)
+        dst.write_bytes(content)
         return
 
     # Ensure preset package path is inside the preset path.
@@ -879,6 +884,7 @@ def _install_package_from_preset(
     preset_package_inner_path: pathlib.Path,
     dest_pkg: pathlib.Path,
     tracked_assets: List[TrackedAsset],
+    expansions: Optional[List[Tuple[str, str, List[str]]]] = None,
 ):
     preset_package_path = preset_path / preset_package_inner_path
     if not preset_package_path.is_dir():
@@ -899,6 +905,7 @@ def _install_package_from_preset(
             dest_pkg / file.relative_to(preset_package_path),
             preset_package_path,
             preset_path,
+            expansions=expansions,
         )
 
     for asset in tracked_assets:
@@ -931,11 +938,16 @@ def install_contest(
         )
         raise typer.Exit(1)
 
+    expansions = _collect_expansions(preset.expansion.contest)
     console.console.print(
         f'Installing contest from [item]{preset_path / preset.contest}[/item] to [item]{dest_pkg}[/item]...'
     )
     _install_package_from_preset(
-        preset_path, preset.contest, dest_pkg, preset.tracking.contest
+        preset_path,
+        preset.contest,
+        dest_pkg,
+        preset.tracking.contest,
+        expansions=expansions,
     )
     clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
 
@@ -958,11 +970,16 @@ def install_problem(
         )
         raise typer.Exit(1)
 
+    expansions = _collect_expansions(preset.expansion.problem)
     console.console.print(
         f'Installing problem from [item]{preset_path / preset.problem}[/item] to [item]{dest_pkg}[/item]...'
     )
     _install_package_from_preset(
-        preset_path, preset.problem, dest_pkg, preset.tracking.problem
+        preset_path,
+        preset.problem,
+        dest_pkg,
+        preset.tracking.problem,
+        expansions=expansions,
     )
     clean_copied_problem_dir(dest_pkg)
 

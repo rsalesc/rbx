@@ -1,7 +1,12 @@
 import pathlib
 from unittest import mock
 
-from rbx.box.presets import _collect_expansions, _expand_content, _should_expand_file
+from rbx.box.presets import (
+    _collect_expansions,
+    _expand_content,
+    _should_expand_file,
+    copy_preset_file,
+)
 from rbx.box.presets.schema import ReplacementMode, VariableExpansion
 
 
@@ -131,3 +136,46 @@ class TestCollectExpansions:
     def test_empty_expansions(self):
         result = _collect_expansions([])
         assert result == []
+
+
+class TestCopyPresetFileExpansion:
+    def test_expansion_applied_to_regular_file(self, tmp_path):
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        src = preset_dir / 'hello.txt'
+        src.write_text('Hello __NAME__!')
+
+        dest = tmp_path / 'dest' / 'hello.txt'
+        expansions = [('__NAME__', 'World', [])]
+
+        copy_preset_file(src, dest, preset_dir, tmp_path, expansions=expansions)
+
+        assert dest.read_text() == 'Hello World!'
+
+    def test_no_expansion_on_symlink(self, tmp_path):
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        target = preset_dir / 'target.txt'
+        target.write_text('Hello __NAME__!')
+        src = preset_dir / 'link.txt'
+        src.symlink_to(target)
+
+        dest = tmp_path / 'dest' / 'link.txt'
+        expansions = [('__NAME__', 'World', [])]
+
+        copy_preset_file(src, dest, preset_dir, tmp_path, expansions=expansions)
+
+        # Symlink content should be copied as symlink pointing within preset, NOT expanded
+        assert dest.is_symlink()
+
+    def test_no_expansion_when_empty(self, tmp_path):
+        preset_dir = tmp_path / 'preset'
+        preset_dir.mkdir()
+        src = preset_dir / 'hello.txt'
+        src.write_text('Hello __NAME__!')
+
+        dest = tmp_path / 'dest' / 'hello.txt'
+
+        copy_preset_file(src, dest, preset_dir, tmp_path)
+
+        assert dest.read_text() == 'Hello __NAME__!'
