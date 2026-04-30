@@ -19,7 +19,8 @@
 - Imports must be **absolute**, not relative (ruff `TID`).
 - The Rich console exposes `console.console.print(...)`. Existing error messages use `'[error]...[/error]'` markup or `style='error'`. Match what's already in `contest_package.py` (uses `[error]...[/error]` with explicit closing tags).
 - `ContestProblem.get_path()` returns `self.path or pathlib.Path(self.short_name)`. The returned path may be relative or absolute. Resolve relative paths against the contest root (parent of `contest.rbx.yml`).
-- Tests for the helpers should call them directly (no need to load YAML through `find_contest_package`). Construct `Contest(name='c', problems=[ContestProblem(short_name='A', path=...)])` directly.
+- Tests for the helpers should call them directly (no need to load YAML through `find_contest_package`). Construct `Contest(name='ctt', problems=[ContestProblem(short_name='A', path=...)])` directly. Note: `Contest.name` uses `NameField` with `min_length=3` (see `rbx/box/fields.py:12`), so any 3+ character name works — `'c'` is rejected at parse time.
+- Don't pre-import `pytest` or `typer` in the test file until a test actually uses them. Ruff's `F401` (unused-import) is enforced by pre-commit and will block any commit that stages an unused import.
 - `typer.Exit(1)` is raised, not returned. Catch via `pytest.raises(typer.Exit)` and inspect the captured output via `capsys` or rich's recording — matching the existing test patterns (the codebase uses `pytest.raises(typer.Exit)` in several tests).
 - Run only contest-related tests during the cycle for fast feedback: `uv run pytest tests/rbx/box/contest/ -v`. Run the full non-CLI suite once at the end.
 
@@ -45,7 +46,7 @@ from rbx.box.contest.schema import Contest, ContestProblem
 
 
 def _make_contest(*problems: ContestProblem) -> Contest:
-    return Contest(name='c', problems=list(problems))
+    return Contest(name='ctt', problems=list(problems))
 
 
 class TestValidateProblemFoldersExist:
@@ -401,7 +402,7 @@ class TestFindContestPackageValidation:
     def _write_contest(self, root: pathlib.Path, problems: list[str]) -> None:
         problems_yaml = '\n'.join(f'  - short_name: {p}' for p in problems)
         (root / 'contest.rbx.yml').write_text(
-            f'name: c\nproblems:\n{problems_yaml}\n'
+            f'name: ctt\nproblems:\n{problems_yaml}\n'
         )
 
     def test_returns_contest_when_all_problem_folders_valid(
