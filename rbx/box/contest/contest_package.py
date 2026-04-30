@@ -16,6 +16,12 @@ from rbx.box.schema import Package
 YAML_NAME = 'contest.rbx.yml'
 
 
+def validate_problem_folders_exist(
+    contest: Contest, contest_root: pathlib.Path
+) -> None:
+    pass
+
+
 @functools.cache
 def find_contest_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     root = utils.abspath(root)
