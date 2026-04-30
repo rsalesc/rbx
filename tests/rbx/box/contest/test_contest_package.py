@@ -5,6 +5,7 @@ import pathlib
 import pytest
 import typer
 
+from rbx.box.contest import contest_package as cp_module
 from rbx.box.contest.contest_package import (
     validate_problem_folders_are_packages,
     validate_problem_folders_exist,
@@ -137,3 +138,59 @@ class TestValidateProblemFoldersArePackages:
         assert '- B:' in out
         assert '- C:' in out
         assert '- A:' not in out
+
+
+class TestFindContestPackageValidation:
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+        yield
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+
+    def _write_contest(self, root: pathlib.Path, problems: list[str]) -> None:
+        problems_yaml = '\n'.join(f'  - short_name: {p}' for p in problems)
+        (root / 'contest.rbx.yml').write_text(
+            f'name: ctt\nproblems:\n{problems_yaml}\n'
+        )
+
+    def test_returns_contest_when_all_problem_folders_valid(
+        self, tmp_path: pathlib.Path
+    ):
+        self._write_contest(tmp_path, ['A', 'B'])
+        for short_name in ['A', 'B']:
+            (tmp_path / short_name).mkdir()
+            (tmp_path / short_name / 'problem.rbx.yml').write_text('name: p\n')
+
+        result = cp_module.find_contest_package(tmp_path)
+
+        assert result is not None
+        assert [p.short_name for p in result.problems] == ['A', 'B']
+
+    def test_exits_when_a_problem_folder_is_missing(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
+        self._write_contest(tmp_path, ['A', 'B'])
+        (tmp_path / 'A').mkdir()
+        (tmp_path / 'A' / 'problem.rbx.yml').write_text('name: a\n')
+        # No B folder.
+
+        with pytest.raises(typer.Exit):
+            cp_module.find_contest_package(tmp_path)
+
+        assert '- B:' in capsys.readouterr().out
+
+    def test_exits_when_problem_folder_lacks_yaml(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
+        self._write_contest(tmp_path, ['A'])
+        (tmp_path / 'A').mkdir()
+        # No problem.rbx.yml in A.
+
+        with pytest.raises(typer.Exit):
+            cp_module.find_contest_package(tmp_path)
+
+        out = capsys.readouterr().out
+        assert '- A:' in out
+        assert 'problem.rbx.yml' in out

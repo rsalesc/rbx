@@ -81,7 +81,7 @@ def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contes
     if not contest_yaml_path:
         return None
     try:
-        return utils.model_from_yaml(Contest, contest_yaml_path.read_text())
+        contest = utils.model_from_yaml(Contest, contest_yaml_path.read_text())
     except ValidationError as e:
         console.console.print(e)
         console.console.print('[error]Error parsing contest.rbx.yml.[/error]')
@@ -90,6 +90,11 @@ def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contes
             'in the latest version of [item]rbx[/item].[/error]'
         )
         raise typer.Exit(1) from e
+
+    contest_root = contest_yaml_path.parent
+    validate_problem_folders_exist(contest, contest_root)
+    validate_problem_folders_are_packages(contest, contest_root)
+    return contest
 
 
 def find_contest_package_or_die(root: pathlib.Path = pathlib.Path()) -> Contest:
