@@ -2,6 +2,9 @@
 
 import pathlib
 
+import pytest
+import typer
+
 from rbx.box.contest.contest_package import validate_problem_folders_exist
 from rbx.box.contest.schema import Contest, ContestProblem
 
@@ -20,3 +23,20 @@ class TestValidateProblemFoldersExist:
         )
 
         validate_problem_folders_exist(contest, tmp_path)
+
+    def test_missing_folder_exits_and_names_short_name(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
+        (tmp_path / 'A').mkdir()
+        # B has no folder.
+        contest = _make_contest(
+            ContestProblem(short_name='A'),
+            ContestProblem(short_name='B'),
+        )
+
+        with pytest.raises(typer.Exit):
+            validate_problem_folders_exist(contest, tmp_path)
+
+        captured = capsys.readouterr()
+        assert 'B' in captured.out
+        assert 'A' not in captured.out.replace('[error]', '').replace('[/error]', '')

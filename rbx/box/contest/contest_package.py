@@ -19,7 +19,24 @@ YAML_NAME = 'contest.rbx.yml'
 def validate_problem_folders_exist(
     contest: Contest, contest_root: pathlib.Path
 ) -> None:
-    pass
+    missing: List[Tuple[str, pathlib.Path]] = []
+    for problem in contest.problems:
+        problem_path = problem.get_path()
+        resolved = (
+            problem_path if problem_path.is_absolute() else contest_root / problem_path
+        )
+        if not resolved.is_dir():
+            missing.append((problem.short_name, resolved))
+
+    if not missing:
+        return
+
+    console.console.print(
+        '[error]Some contest problems point to folders that do not exist:[/error]'
+    )
+    for short_name, resolved in missing:
+        console.console.print(f'[error]  - {short_name}: {resolved}[/error]')
+    raise typer.Exit(1)
 
 
 @functools.cache
