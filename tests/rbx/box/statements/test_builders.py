@@ -197,6 +197,39 @@ class TestStatementBuilderProblem:
         assert kwargs['problem']['statement'] == sample_statement
         assert kwargs['problem']['limits'] == sample_limits
 
+    def test_build_inner_jinja_kwargs_exposes_groups(
+        self, sample_statement, sample_limits
+    ):
+        from rbx.box.schema import ScoreType, TestcaseGroup
+        from rbx.box.statements.latex_jinja import (
+            JinjaGroupsGetter,
+            StrictChainableUndefined,
+        )
+
+        package = Package(
+            name='test-problem',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=30),
+                TestcaseGroup(name='subtask2', score=70),
+            ],
+        )
+        problem = StatementBuilderProblem(
+            package=package, statement=sample_statement, limits=sample_limits
+        )
+
+        kwargs = problem.build_inner_jinja_kwargs()
+
+        groups = kwargs['groups']
+        assert isinstance(groups, JinjaGroupsGetter)
+        assert [g.name for g in groups] == ['samples', 'subtask1', 'subtask2']
+        assert groups['subtask1'].score == 30
+        assert groups['subtask2'].score == 70
+        assert isinstance(groups['bogus'], StrictChainableUndefined)
+
 
 class TestStatementBuilderContest:
     """Test StatementBuilderContest functionality."""

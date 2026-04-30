@@ -19,6 +19,7 @@ from rbx.box.statements.demacro_utils import collect_macro_definitions
 from rbx.box.statements.latex_jinja import (
     JinjaDictGetter,
     JinjaDictWrapper,
+    JinjaGroupsGetter,
     render_latex_template,
     render_latex_template_blocks,
     render_markdown_template_blocks,
@@ -131,6 +132,10 @@ class StatementBuilderProblem(StatementBuilderItem):
                 ),
                 'limits': self.limits,
                 'profiles': JinjaDictGetter('profiles', **self.profiles),
+                'groups': JinjaGroupsGetter(
+                    'groups',
+                    {g.name: g for g in self.package.testcases},
+                ),
             }
         )
         if self.short_name is not None:
