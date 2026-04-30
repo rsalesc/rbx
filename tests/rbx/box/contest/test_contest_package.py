@@ -55,8 +55,9 @@ class TestValidateProblemFoldersExist:
             validate_problem_folders_exist(contest, tmp_path)
 
         out = capsys.readouterr().out
-        assert 'A' in out
-        assert 'C' in out
+        assert '- A:' in out
+        assert '- C:' in out
+        assert '- B:' not in out
 
     def test_custom_relative_path_resolved_against_contest_root(
         self, tmp_path: pathlib.Path
@@ -91,4 +92,4 @@ class TestValidateProblemFoldersExist:
         with pytest.raises(typer.Exit):
             validate_problem_folders_exist(contest, tmp_path)
 
-        assert 'A' in capsys.readouterr().out
+        assert '- A:' in capsys.readouterr().out
