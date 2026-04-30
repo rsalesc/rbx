@@ -224,6 +224,18 @@ class JinjaDictGetter(dict):
             )
 
 
+class JinjaGroupsGetter(JinjaDictGetter):
+    """A name-keyed accessor whose iteration yields values in insertion order.
+
+    Used to expose testgroups to statement templates so that ``for g in groups``
+    naturally iterates over group objects, while ``groups['subtask1']`` and
+    ``groups.subtask1`` still resolve by name.
+    """
+
+    def __iter__(self):
+        return iter(self.values())
+
+
 class JinjaDictWrapper(dict):
     def __init__(
         self,
