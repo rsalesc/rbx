@@ -5,7 +5,10 @@ import pathlib
 import pytest
 import typer
 
-from rbx.box.contest.contest_package import validate_problem_folders_exist
+from rbx.box.contest.contest_package import (
+    validate_problem_folders_are_packages,
+    validate_problem_folders_exist,
+)
 from rbx.box.contest.schema import Contest, ContestProblem
 
 
@@ -93,3 +96,44 @@ class TestValidateProblemFoldersExist:
             validate_problem_folders_exist(contest, tmp_path)
 
         assert '- A:' in capsys.readouterr().out
+
+
+class TestValidateProblemFoldersArePackages:
+    def test_folder_with_yaml_does_not_raise(self, tmp_path: pathlib.Path):
+        (tmp_path / 'A').mkdir()
+        (tmp_path / 'A' / 'problem.rbx.yml').write_text('name: a\n')
+        contest = _make_contest(ContestProblem(short_name='A'))
+
+        validate_problem_folders_are_packages(contest, tmp_path)
+
+    def test_folder_without_yaml_exits(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
+        (tmp_path / 'A').mkdir()
+        contest = _make_contest(ContestProblem(short_name='A'))
+
+        with pytest.raises(typer.Exit):
+            validate_problem_folders_are_packages(contest, tmp_path)
+
+        assert '- A:' in capsys.readouterr().out
+
+    def test_multiple_folders_without_yaml_listed_together(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ):
+        (tmp_path / 'A').mkdir()
+        (tmp_path / 'A' / 'problem.rbx.yml').write_text('name: a\n')
+        (tmp_path / 'B').mkdir()
+        (tmp_path / 'C').mkdir()
+        contest = _make_contest(
+            ContestProblem(short_name='A'),
+            ContestProblem(short_name='B'),
+            ContestProblem(short_name='C'),
+        )
+
+        with pytest.raises(typer.Exit):
+            validate_problem_folders_are_packages(contest, tmp_path)
+
+        out = capsys.readouterr().out
+        assert '- B:' in out
+        assert '- C:' in out
+        assert '- A:' not in out
