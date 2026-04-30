@@ -60,7 +60,7 @@ def pretty_print_request_data(req: Any) -> None:
                                                 console.console.print(
                                                     f'  [green]{field_name}[/green]: [white]{field_value}[/white]'
                                                 )
-                                    except (ValueError, IndexError):
+                                    except ValueError, IndexError:
                                         console.console.print(
                                             f'  [green]{field_name}[/green]: [dim](could not parse value)[/dim]'
                                         )
