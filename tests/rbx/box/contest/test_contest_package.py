@@ -41,9 +41,9 @@ class TestValidateProblemFoldersExist:
         with pytest.raises(typer.Exit):
             validate_problem_folders_exist(contest, tmp_path)
 
-        captured = capsys.readouterr()
-        assert 'B' in captured.out
-        assert 'A' not in captured.out.replace('[error]', '').replace('[/error]', '')
+        out = capsys.readouterr().out
+        assert '- B:' in out
+        assert '- A:' not in out
 
     def test_multiple_missing_folders_listed_together(
         self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
