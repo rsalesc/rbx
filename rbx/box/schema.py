@@ -65,6 +65,15 @@ def is_unique_by_name(statements: List['Statement']) -> List['Statement']:
     return statements
 
 
+def is_unique_testcase_group_names(
+    groups: List['TestcaseGroup'],
+) -> List['TestcaseGroup']:
+    names = {g.name for g in groups}
+    if len(names) != len(groups):
+        raise ValueError('Testcase group names must be unique.')
+    return groups
+
+
 class ExpectedOutcome(AutoEnum):
     ANY = alias('any')  # type: ignore
     """Expected outcome for any outcome."""
@@ -881,9 +890,10 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 """,
     )
 
-    testcases: List[TestcaseGroup] = Field(
-        default=[], description='Testcases for the problem.'
-    )
+    testcases: Annotated[
+        List[TestcaseGroup],
+        AfterValidator(is_unique_testcase_group_names),
+    ] = Field(default=[], description='Testcases for the problem.')
 
     stresses: List[Stress] = Field(
         default=[], description='Stress tests for the problem.'

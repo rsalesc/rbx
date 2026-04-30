@@ -240,3 +240,44 @@ class TestLimitsProfile:
         assert profile.memorylimit_for_language('python') == 1024  # memory override
         assert profile.memorylimit_for_language('java') == 512  # no memory modifier
         assert profile.memorylimit_for_language('go') == 128  # memory override
+
+
+class TestPackageTestcaseGroupUniqueness:
+    def test_duplicate_top_level_group_names_are_rejected(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import Package, TestcaseGroup
+
+        with pytest.raises(
+            ValidationError, match='Testcase group names must be unique'
+        ):
+            Package(
+                name='dup',
+                timeLimit=1000,
+                memoryLimit=256,
+                testcases=[
+                    TestcaseGroup(name='samples'),
+                    TestcaseGroup(name='samples'),
+                ],
+            )
+
+    def test_unique_top_level_group_names_are_accepted(self):
+        from rbx.box.schema import Package, ScoreType, TestcaseGroup
+
+        package = Package(
+            name='okay',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=30),
+                TestcaseGroup(name='subtask2', score=70),
+            ],
+        )
+
+        assert [g.name for g in package.testcases] == [
+            'samples',
+            'subtask1',
+            'subtask2',
+        ]
