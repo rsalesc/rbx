@@ -73,7 +73,7 @@ def boca_environment(
     try:
         subprocess.run(['docker', '--version'], check=True, capture_output=True)
         subprocess.run(['docker-compose', '--version'], check=True, capture_output=True)
-    except subprocess.CalledProcessError, FileNotFoundError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip('Docker or docker-compose not available')
 
     # Start the BOCA environment

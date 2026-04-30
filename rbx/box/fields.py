@@ -84,7 +84,7 @@ def expand_vars(recvars: RecVars) -> Vars:
             else:
                 try:
                     new_ctx[k] = expand_var(v, ctx)
-                except safeeval.NameNotDefined, safeeval.AttributeDoesNotExist:
+                except (safeeval.NameNotDefined, safeeval.AttributeDoesNotExist):
                     if should_raise:
                         raise
 

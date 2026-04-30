@@ -99,7 +99,7 @@ def app():
         nest_asyncio.apply()
 
         run_app_cli()
-    except KeyboardInterrupt, typer.Abort:
+    except (KeyboardInterrupt, typer.Abort):
         _abort()
     except SystemExit as e:
         if e.code == 130:
