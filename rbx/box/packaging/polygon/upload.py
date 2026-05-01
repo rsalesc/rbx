@@ -252,6 +252,25 @@ def _resolve_raw_test_input_path(
     return None
 
 
+def _validate_raw_tests(
+    entries: List['GenerationTestcaseEntry'],
+) -> List[str]:
+    errors: List[str] = []
+    for entry in entries:
+        label = entry.short_repr()
+        path = _resolve_raw_test_input_path(entry)
+        if path is None:
+            errors.append(f'"{label}" was not built (input file missing)')
+            continue
+        size = path.stat().st_size
+        if size >= _RAW_TEST_SIZE_LIMIT:
+            errors.append(
+                f'"{label}" is {utils.format_size(size)}, '
+                f'exceeds the 1 MiB Polygon limit'
+            )
+    return errors
+
+
 def _upload_generator(problem: api.Problem, generator: Generator):
     generator_source_type = get_polygon_language_from_code_item(generator)
     console.console.print(
