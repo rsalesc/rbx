@@ -14,7 +14,6 @@ from typing import (
 import ruyaml
 import typer
 from filelock import BaseFileLock, FileLock
-from pydantic import ValidationError
 
 from rbx import console, utils
 from rbx.box import cd, environment, global_package, path_resolution
@@ -40,6 +39,7 @@ from rbx.box.schema import (
     TestcaseSubgroup,
 )
 from rbx.box.statements.schema import Statement
+from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_builtin_checker
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
@@ -69,18 +69,7 @@ def find_problem_package(root: pathlib.Path = pathlib.Path()) -> Optional[Packag
     problem_yaml_path = find_problem_yaml(root)
     if not problem_yaml_path:
         return None
-    try:
-        return utils.model_from_yaml(Package, problem_yaml_path.read_text())
-    except ValidationError as e:
-        console.console.print(e)
-        console.console.print(
-            '[error]Error parsing [item]problem.rbx.yml[/item].[/error]'
-        )
-        console.console.print(
-            '[error]If you are sure the file is correct, ensure you are '
-            'in the latest version of [item]rbx[/item].[/error]'
-        )
-        raise typer.Exit(1) from e
+    return load_yaml_model(problem_yaml_path, Package)
 
 
 def find_problem_package_or_die(root: pathlib.Path = pathlib.Path()) -> Package:
