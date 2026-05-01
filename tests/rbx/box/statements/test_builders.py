@@ -888,9 +888,7 @@ Explanation for first sample.
             package=package, statement=statement, limits=limits
         )
 
-        result = builder.build(
-            b'%- block legend\nignored\n%- endblock\n', context, problem_item
-        )
+        result = builder.build(b'', context, problem_item)
 
         text = result.decode()
         assert '30|70' in text
@@ -900,6 +898,43 @@ Explanation for first sample.
         assert (
             text.index('samples=') < text.index('subtask1=') < text.index('subtask2=')
         )
+
+    def test_build_aborts_on_missing_group(self, builder, tmp_path):
+        import typer
+
+        from rbx.box.schema import ScoreType, TestcaseGroup
+
+        template_file = tmp_path / 'template.tex'
+        template_file.write_text('\\VAR{problem.groups.nope.score}\n')
+
+        params = rbxToTeX(
+            type=ConversionType.rbxToTex, template=pathlib.Path('template.tex')
+        )
+        context = StatementBuilderContext(
+            lang='en', languages=[], params=params, root=tmp_path
+        )
+        package = Package(
+            name='test-problem',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=100),
+            ],
+        )
+        statement = Statement(
+            name='statement',
+            path=pathlib.Path('statement.rbx.tex'),
+            type=StatementType.rbxTeX,
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        problem_item = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
+
+        with pytest.raises(typer.Abort):
+            builder.build(b'', context, problem_item)
 
 
 class TestrbxMarkdownToTeXBuilder:
