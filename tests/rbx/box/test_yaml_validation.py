@@ -59,3 +59,57 @@ def test_locate_list_of_maps():
     assert line == 4
     assert col == 5
     assert span == len('name')
+
+
+def test_locate_missing_key_falls_back_to_parent():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'items:\n  - name: alice\n  - name: bob\n'
+    root = _parse(text)
+
+    # 'absent' is missing from items[1]; walk should stop at items[1]
+    line, col, span = _locate(('items', 1, 'absent'), root)
+
+    assert line == 3  # items[1] starts on line 3
+    assert col == 5  # column of 'name' key inside items[1]
+    # span should still be the last walked key length (== len('name'))
+    assert span == len('name')
+
+
+def test_locate_out_of_range_index_falls_back():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'items:\n  - a\n  - b\n'
+    root = _parse(text)
+
+    line, col, span = _locate(('items', 99), root)
+
+    # falls back to the 'items' key location
+    assert line == 1
+    assert col == 1
+    assert span == len('items')
+
+
+def test_locate_skips_pydantic_internal_segments():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'step:\n  type: foo\n  arg: bar\n'
+    root = _parse(text)
+
+    # 'union_tag' is not a real key; walker should skip and resolve 'type'
+    line, col, span = _locate(('step', 'union_tag', 'type'), root)
+
+    assert line == 2
+    assert col == 3
+    assert span == len('type')
+
+
+def test_locate_empty_loc():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'name: x\n'
+    root = _parse(text)
+
+    line, col, span = _locate((), root)
+
+    assert (line, col, span) == (1, 1, 1)
