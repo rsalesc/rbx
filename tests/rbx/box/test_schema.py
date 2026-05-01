@@ -281,3 +281,57 @@ class TestPackageTestcaseGroupUniqueness:
             'subtask1',
             'subtask2',
         ]
+
+
+class TestTestcaseGroupSubgroupUniqueness:
+    def test_duplicate_subgroup_names_within_parent_are_rejected(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import TestcaseGroup, TestcaseSubgroup
+
+        with pytest.raises(
+            ValidationError, match='Testcase subgroup names must be unique'
+        ):
+            TestcaseGroup(
+                name='subtask1',
+                subgroups=[
+                    TestcaseSubgroup(name='small'),
+                    TestcaseSubgroup(name='small'),
+                ],
+            )
+
+    def test_duplicate_subgroup_names_across_parents_are_allowed(self):
+        from rbx.box.schema import (
+            Package,
+            ScoreType,
+            TestcaseGroup,
+            TestcaseSubgroup,
+        )
+
+        package = Package(
+            name='okay',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(
+                    name='subtask1',
+                    score=30,
+                    subgroups=[TestcaseSubgroup(name='small')],
+                ),
+                TestcaseGroup(
+                    name='subtask2',
+                    score=70,
+                    subgroups=[TestcaseSubgroup(name='small')],
+                ),
+            ],
+        )
+
+        assert [g.name for g in package.testcases] == [
+            'samples',
+            'subtask1',
+            'subtask2',
+        ]
+        assert [sg.name for sg in package.testcases[1].subgroups] == ['small']
+        assert [sg.name for sg in package.testcases[2].subgroups] == ['small']

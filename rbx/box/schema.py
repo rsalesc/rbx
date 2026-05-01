@@ -74,6 +74,17 @@ def is_unique_testcase_group_names(
     return groups
 
 
+def is_unique_testcase_subgroup_names(
+    subgroups: List['TestcaseSubgroup'],
+) -> List['TestcaseSubgroup']:
+    names = {sg.name for sg in subgroups}
+    if len(names) != len(subgroups):
+        raise ValueError(
+            'Testcase subgroup names must be unique within their parent group.'
+        )
+    return subgroups
+
+
 class ExpectedOutcome(AutoEnum):
     ANY = alias('any')  # type: ignore
     """Expected outcome for any outcome."""
@@ -498,7 +509,10 @@ A list of output validators to use to validate the output of the testcases of th
 class TestcaseGroup(TestcaseSubgroup):
     model_config = ConfigDict(extra='forbid')
 
-    subgroups: List[TestcaseSubgroup] = Field(
+    subgroups: Annotated[
+        List[TestcaseSubgroup],
+        AfterValidator(is_unique_testcase_subgroup_names),
+    ] = Field(
         default=[],
         description="""
 A list of test subgroups to define for this group.
