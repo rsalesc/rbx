@@ -1,4 +1,5 @@
 import asyncio
+import pathlib
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Optional, Set
 
@@ -8,6 +9,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import download, header, naming, package
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.statement_block_utils import (
     get_processed_statement_blocks,
@@ -43,6 +45,7 @@ ParamChoices = Literal['statements', 'solutions', 'tests', 'files']
 
 ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
 MAX_WORKERS = 4
+_RAW_TEST_SIZE_LIMIT = 1024 * 1024
 
 
 def _get_polygon_api() -> api.Polygon:
@@ -234,6 +237,19 @@ def _get_freemarker_for_calls(calls: List[GeneratorCall], next_index: int = 1) -
         )
         + '\n'
     )
+
+
+def _resolve_raw_test_input_path(
+    entry: 'GenerationTestcaseEntry',
+) -> Optional[pathlib.Path]:
+    if entry.metadata.copied_to.inputPath.is_file():
+        return entry.metadata.copied_to.inputPath
+    if (
+        entry.metadata.copied_from is not None
+        and entry.metadata.copied_from.inputPath.is_file()
+    ):
+        return entry.metadata.copied_from.inputPath
+    return None
 
 
 def _upload_generator(problem: api.Problem, generator: Generator):
