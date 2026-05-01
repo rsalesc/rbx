@@ -21,3 +21,16 @@ def test_locate_top_level_scalar():
     assert line == 2  # 1-based line of `timeLimit:`
     assert col == 1  # 1-based column of `t` in `timeLimit`
     assert span == len('timeLimit')
+
+
+def test_locate_nested_map():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'a:\n  b:\n    c: hello\n'
+    root = _parse(text)
+
+    line, col, span = _locate(('a', 'b', 'c'), root)
+
+    assert line == 3
+    assert col == 5
+    assert span == len('c')
