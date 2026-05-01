@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import ruyaml
 
 
 def _parse(text: str) -> ruyaml.comments.CommentedBase:
     """Parse YAML text with ruyaml in round-trip mode for tests."""
     return ruyaml.YAML(typ='rt').load(text)
+
+
+def _render(*args, **kwargs):
+    """Helper: render a diagnostic to plain text."""
+    from rich.console import Console
+
+    from rbx.box.yaml_validation import _render_diagnostic
+
+    out = _render_diagnostic(*args, **kwargs)
+    console = Console(width=120, record=True, color_system=None)
+    console.print(out)
+    return console.export_text()
 
 
 def test_locate_top_level_scalar():
@@ -184,3 +198,58 @@ def test_dedupe_keeps_discriminated_union_errors_separate():
     out = _dedupe(errors)
 
     assert len(out) == 2
+
+
+def test_render_diagnostic_includes_header_and_location():
+    text = 'name: x\ntimeLimit: 1000\n'
+    rendered = _render(
+        source=text,
+        path=pathlib.Path('problem.rbx.yml'),
+        line=2,
+        col=12,
+        span=4,
+        msg='input should be a valid integer',
+        loc_label='timeLimit',
+        header='error',
+    )
+
+    assert 'error' in rendered
+    assert 'timeLimit' in rendered
+    assert 'problem.rbx.yml:2:12' in rendered
+    assert 'input should be a valid integer' in rendered
+    assert 'timeLimit: 1000' in rendered
+
+
+def test_render_diagnostic_window_clipped_at_file_start():
+    text = 'a: 1\nb: 2\n'
+    rendered = _render(
+        source=text,
+        path=pathlib.Path('x.yml'),
+        line=1,
+        col=1,
+        span=1,
+        msg='bad',
+        loc_label='a',
+        header='error',
+    )
+
+    # No phantom line numbers below 1
+    assert '\n 0 ' not in rendered
+    assert '\n-1 ' not in rendered
+
+
+def test_render_diagnostic_caret_under_correct_column():
+    text = 'name: my-problem\n'
+    rendered = _render(
+        source=text,
+        path=pathlib.Path('p.yml'),
+        line=1,
+        col=7,
+        span=10,
+        msg='bad name',
+        loc_label='name',
+        header='error',
+    )
+
+    caret_line = next(line for line in rendered.splitlines() if '^^^' in line)
+    assert '^' * 10 in caret_line

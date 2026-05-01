@@ -15,6 +15,9 @@ import pathlib
 from typing import Any, List, Tuple, Type, TypeVar
 
 import pydantic
+import rich.text
+from rich.console import Group
+from rich.syntax import Syntax
 from ruyaml.comments import CommentedMap, CommentedSeq
 
 from rbx.box.exception import RbxException
@@ -22,6 +25,8 @@ from rbx.box.exception import RbxException
 T = TypeVar('T', bound=pydantic.BaseModel)
 
 PYDANTIC_INTERNAL_LOC_SEGMENTS = frozenset({'union_tag', 'tagged-union'})
+
+WINDOW = 2  # lines of context before and after the offending line
 
 
 class YamlSyntaxError(RbxException):
@@ -207,6 +212,73 @@ def _dedupe(errors: List[dict]) -> List[dict]:
             out.extend(unique)
 
     return out
+
+
+def _render_diagnostic(
+    *,
+    source: str,
+    path: pathlib.Path,
+    line: int,
+    col: int,
+    span: int,
+    msg: str,
+    loc_label: str,
+    header: str,
+) -> Group:
+    """Build a single caret diagnostic block.
+
+    Layout::
+
+        <header>: <loc_label> -- <msg>
+          --> <path>:<line>:<col>
+          [snippet via rich.syntax.Syntax with line numbers]
+          [caret line aligned under the offending column]
+
+    Args:
+        source: Full source text of the file (for the snippet window).
+        path: Path used in the ``--> path:line:col`` header.
+        line: 1-based line of the offending token.
+        col: 1-based column of the offending token (within ``line``).
+        span: Number of caret characters to emit.
+        msg: Short, plain-English error message.
+        loc_label: Human-readable dotted path (from ``_format_loc``).
+        header: ``"error"`` or ``"YAML syntax error"``.
+
+    Returns:
+        A ``rich.console.Group`` ready to ``console.print``.
+    """
+    lines = source.splitlines()
+    total = len(lines)
+    start = max(1, line - WINDOW)
+    end = min(total, line + WINDOW)
+    snippet_text = '\n'.join(lines[start - 1 : end])
+
+    syntax = Syntax(
+        snippet_text,
+        'yaml',
+        line_numbers=True,
+        start_line=start,
+        highlight_lines={line},
+        theme='ansi_dark',
+    )
+
+    # Caret line: align under the correct column.
+    # rich.syntax.Syntax renders a gutter of ``len(str(end)) + 2`` chars
+    # before the source (line number + space + pipe + space). Adjust if
+    # the caret column drifts in tests.
+    gutter = len(str(end)) + 3
+    caret = rich.text.Text(
+        ' ' * (gutter + col - 1) + '^' * max(1, span), style='bold red'
+    )
+
+    header_text = rich.text.Text.from_markup(
+        f'[error]{header}[/error]: [item]{loc_label}[/item] -- {msg}'
+    )
+    location_text = rich.text.Text.from_markup(
+        f'  [info]-->[/info] {path}:{line}:{col}'
+    )
+
+    return Group(header_text, location_text, syntax, caret)
 
 
 def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:
