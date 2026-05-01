@@ -26,6 +26,7 @@ from rbx.box.presets.schema import (
     TrackedAsset,
     VariableExpansion,
 )
+from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
 
@@ -116,7 +117,7 @@ def get_preset_yaml(root: pathlib.Path = pathlib.Path()) -> Preset:
             f'[error][item]preset.rbx.yml[/item] not found in [item]{root.absolute()}[/item][/error]'
         )
         raise typer.Exit(1)
-    preset = utils.model_from_yaml(Preset, found.read_text())
+    preset = load_yaml_model(found, Preset)
     _check_preset_compatibility(preset.name, preset.min_version)
     return preset
 
@@ -155,7 +156,7 @@ def get_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[PresetLock]
     found = _find_preset_lock(root)
     if not found:
         return None
-    return utils.model_from_yaml(PresetLock, found.read_text())
+    return load_yaml_model(found, PresetLock)
 
 
 def find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
