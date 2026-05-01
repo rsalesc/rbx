@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pathlib
 
+import pydantic
+import pytest
 import ruyaml
+
+from rbx.box.yaml_validation import (
+    YamlSyntaxError,
+    load_yaml_model,
+)
 
 
 def _parse(text: str) -> ruyaml.comments.CommentedBase:
@@ -253,3 +260,20 @@ def test_render_diagnostic_caret_under_correct_column():
 
     caret_line = next(line for line in rendered.splitlines() if '^^^' in line)
     assert '^' * 10 in caret_line
+
+
+def test_yaml_syntax_error_renders_diagnostic(tmp_path):
+    bad_yaml = 'a: 1\nb: [unterminated\n'
+    p = tmp_path / 'bad.yml'
+    p.write_text(bad_yaml)
+
+    class M(pydantic.BaseModel):
+        a: int = 0
+
+    with pytest.raises(YamlSyntaxError) as exc_info:
+        load_yaml_model(p, M)
+
+    rendered = str(exc_info.value)
+    assert 'YAML syntax error' in rendered
+    assert 'bad.yml' in rendered
+    assert ':2' in rendered

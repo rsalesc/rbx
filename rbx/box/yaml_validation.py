@@ -16,6 +16,7 @@ from typing import Any, List, Tuple, Type, TypeVar
 
 import pydantic
 import rich.text
+import ruyaml
 from rich.console import Group
 from rich.syntax import Syntax
 from ruyaml.comments import CommentedMap, CommentedSeq
@@ -30,7 +31,44 @@ WINDOW = 2  # lines of context before and after the offending line
 
 
 class YamlSyntaxError(RbxException):
-    """Raised when a YAML file cannot be parsed."""
+    """Raised when a YAML file cannot be parsed.
+
+    Wraps a ``ruyaml.YAMLError`` and renders a single caret diagnostic
+    pointing at ``problem_mark.line / .column``.
+    """
+
+    def __init__(
+        self,
+        path: pathlib.Path,
+        source: str,
+        cause: ruyaml.YAMLError,
+    ):
+        super().__init__()
+        # Prefer context_mark (where the broken construct began) over
+        # problem_mark (which often points at the stream end for
+        # unterminated flow collections), falling back as needed.
+        mark = getattr(cause, 'context_mark', None) or getattr(
+            cause, 'problem_mark', None
+        )
+        if mark is not None:
+            line = mark.line + 1
+            col = mark.column + 1
+        else:
+            line, col = 1, 1
+        msg = getattr(cause, 'problem', None) or str(cause)
+
+        self.print(
+            _render_diagnostic(
+                source=source,
+                path=path,
+                line=line,
+                col=col,
+                span=1,
+                msg=str(msg),
+                loc_label='<root>',
+                header='YAML syntax error',
+            )
+        )
 
 
 class YamlValidationError(RbxException):
@@ -298,4 +336,11 @@ def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:
         YamlValidationError: The file parses but does not match ``model``.
         FileNotFoundError: The file does not exist.
     """
-    raise NotImplementedError
+    source = path.read_text()
+    try:
+        data = ruyaml.YAML(typ='rt').load(source)
+    except ruyaml.YAMLError as exc:
+        raise YamlSyntaxError(path, source, exc) from exc
+
+    # Validation path implemented in the next task (Task 11).
+    return model.model_validate(data)
