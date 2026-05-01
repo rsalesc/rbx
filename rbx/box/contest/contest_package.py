@@ -4,7 +4,6 @@ from typing import List, Optional, Tuple
 
 import ruyaml
 import typer
-from pydantic import ValidationError
 
 from rbx import console, utils
 from rbx.box import cd
@@ -12,6 +11,7 @@ from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import Package
+from rbx.box.yaml_validation import load_yaml_model
 
 YAML_NAME = 'contest.rbx.yml'
 PROBLEM_YAML_NAME = 'problem.rbx.yml'
@@ -80,16 +80,7 @@ def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contes
     contest_yaml_path = find_contest_yaml(root)
     if not contest_yaml_path:
         return None
-    try:
-        contest = utils.model_from_yaml(Contest, contest_yaml_path.read_text())
-    except ValidationError as e:
-        console.console.print(e)
-        console.console.print('[error]Error parsing contest.rbx.yml.[/error]')
-        console.console.print(
-            '[error]If you are sure the file is correct, ensure you are '
-            'in the latest version of [item]rbx[/item].[/error]'
-        )
-        raise typer.Exit(1) from e
+    contest = load_yaml_model(contest_yaml_path, Contest)
 
     contest_root = contest_yaml_path.parent
     validate_problem_folders_exist(contest, contest_root)
