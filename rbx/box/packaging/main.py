@@ -44,6 +44,16 @@ async def polygon(
         '--upload-skip',
         help='Skip uploading the following types of assets to Polygon.',
     ),
+    upload_tests_raw: bool = typer.Option(
+        False,
+        '--upload-tests-raw',
+        help=(
+            'Upload built test inputs directly instead of relying on '
+            'Polygon-side generators. Skips generator uploads and clears '
+            'the test script. All test inputs must be < 1 MiB. Forces a '
+            'full local build. Requires --upload.'
+        ),
+    ),
     validate_statement: bool = typer.Option(
         False,
         '--validate-statement',
@@ -52,7 +62,13 @@ async def polygon(
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
-    should_build = not upload and not validate_statement
+    if upload_tests_raw and not upload:
+        raise typer.BadParameter(
+            '--upload-tests-raw requires --upload.',
+            param_hint='--upload-tests-raw',
+        )
+
+    should_build = (not upload and not validate_statement) or upload_tests_raw
 
     await run_packager(
         PolygonPackager,
@@ -76,6 +92,7 @@ async def polygon(
             upload_as_english=upload_as_english,
             upload_only=set(upload_only or []),
             dont_upload=set(dont_upload or []),
+            raw_tests=upload_tests_raw,
         )
 
 
