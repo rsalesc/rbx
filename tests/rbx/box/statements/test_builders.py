@@ -197,6 +197,39 @@ class TestStatementBuilderProblem:
         assert kwargs['problem']['statement'] == sample_statement
         assert kwargs['problem']['limits'] == sample_limits
 
+    def test_build_inner_jinja_kwargs_exposes_groups(
+        self, sample_statement, sample_limits
+    ):
+        from rbx.box.schema import ScoreType, TestcaseGroup
+        from rbx.box.statements.latex_jinja import (
+            JinjaGroupsGetter,
+            StrictChainableUndefined,
+        )
+
+        package = Package(
+            name='test-problem',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=30),
+                TestcaseGroup(name='subtask2', score=70),
+            ],
+        )
+        problem = StatementBuilderProblem(
+            package=package, statement=sample_statement, limits=sample_limits
+        )
+
+        kwargs = problem.build_inner_jinja_kwargs()
+
+        groups = kwargs['groups']
+        assert isinstance(groups, JinjaGroupsGetter)
+        assert [g.name for g in groups] == ['samples', 'subtask1', 'subtask2']
+        assert groups['subtask1'].score == 30
+        assert groups['subtask2'].score == 70
+        assert isinstance(groups['bogus'], StrictChainableUndefined)
+
 
 class TestStatementBuilderContest:
     """Test StatementBuilderContest functionality."""
@@ -812,6 +845,96 @@ Explanation for first sample.
 
         # Substituted blocks file
         assert (tmp_path / 'blocks.sub.yml').exists()
+
+    def test_build_renders_groups_accessor(self, builder, tmp_path):
+        from rbx.box.schema import ScoreType, TestcaseGroup
+
+        template_file = tmp_path / 'template.tex'
+        template_file.write_text(
+            '\\documentclass{article}\n'
+            '\\begin{document}\n'
+            '\\VAR{problem.groups.subtask1.score}|\\VAR{problem.groups.subtask2.score}\n'
+            '%- for g in problem.groups\n'
+            '\\VAR{g.name}=\\VAR{g.score};\n'
+            '%- endfor\n'
+            '\\end{document}\n'
+        )
+
+        params = rbxToTeX(
+            type=ConversionType.rbxToTex, template=pathlib.Path('template.tex')
+        )
+        context = StatementBuilderContext(
+            lang='en', languages=[], params=params, root=tmp_path
+        )
+
+        package = Package(
+            name='test-problem',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=30),
+                TestcaseGroup(name='subtask2', score=70),
+            ],
+        )
+        statement = Statement(
+            name='statement',
+            path=pathlib.Path('statement.rbx.tex'),
+            type=StatementType.rbxTeX,
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        problem_item = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
+
+        result = builder.build(b'', context, problem_item)
+
+        text = result.decode()
+        assert '30|70' in text
+        assert 'samples=0;' in text
+        assert 'subtask1=30;' in text
+        assert 'subtask2=70;' in text
+        assert (
+            text.index('samples=') < text.index('subtask1=') < text.index('subtask2=')
+        )
+
+    def test_build_aborts_on_missing_group(self, builder, tmp_path):
+        import typer
+
+        from rbx.box.schema import ScoreType, TestcaseGroup
+
+        template_file = tmp_path / 'template.tex'
+        template_file.write_text('\\VAR{problem.groups.nope.score}\n')
+
+        params = rbxToTeX(
+            type=ConversionType.rbxToTex, template=pathlib.Path('template.tex')
+        )
+        context = StatementBuilderContext(
+            lang='en', languages=[], params=params, root=tmp_path
+        )
+        package = Package(
+            name='test-problem',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=100),
+            ],
+        )
+        statement = Statement(
+            name='statement',
+            path=pathlib.Path('statement.rbx.tex'),
+            type=StatementType.rbxTeX,
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        problem_item = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
+
+        with pytest.raises(typer.Abort):
+            builder.build(b'', context, problem_item)
 
 
 class TestrbxMarkdownToTeXBuilder:

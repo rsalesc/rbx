@@ -65,6 +65,26 @@ def is_unique_by_name(statements: List['Statement']) -> List['Statement']:
     return statements
 
 
+def is_unique_testcase_group_names(
+    groups: List['TestcaseGroup'],
+) -> List['TestcaseGroup']:
+    names = {g.name for g in groups}
+    if len(names) != len(groups):
+        raise ValueError('Testcase group names must be unique.')
+    return groups
+
+
+def is_unique_testcase_subgroup_names(
+    subgroups: List['TestcaseSubgroup'],
+) -> List['TestcaseSubgroup']:
+    names = {sg.name for sg in subgroups}
+    if len(names) != len(subgroups):
+        raise ValueError(
+            'Testcase subgroup names must be unique within their parent group.'
+        )
+    return subgroups
+
+
 class ExpectedOutcome(AutoEnum):
     ANY = alias('any')  # type: ignore
     """Expected outcome for any outcome."""
@@ -489,7 +509,10 @@ A list of output validators to use to validate the output of the testcases of th
 class TestcaseGroup(TestcaseSubgroup):
     model_config = ConfigDict(extra='forbid')
 
-    subgroups: List[TestcaseSubgroup] = Field(
+    subgroups: Annotated[
+        List[TestcaseSubgroup],
+        AfterValidator(is_unique_testcase_subgroup_names),
+    ] = Field(
         default=[],
         description="""
 A list of test subgroups to define for this group.
@@ -881,9 +904,10 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 """,
     )
 
-    testcases: List[TestcaseGroup] = Field(
-        default=[], description='Testcases for the problem.'
-    )
+    testcases: Annotated[
+        List[TestcaseGroup],
+        AfterValidator(is_unique_testcase_group_names),
+    ] = Field(default=[], description='Testcases for the problem.')
 
     stresses: List[Stress] = Field(
         default=[], description='Stress tests for the problem.'

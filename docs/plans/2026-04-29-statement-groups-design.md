@@ -19,15 +19,15 @@ Per-group `vars` are explicitly out of scope (no schema changes); only existing 
 A new `groups` accessor is injected into the per-problem Jinja kwargs alongside `package`, `vars`, `samples`, etc.
 
 ```latex
-\VAR{groups.subtask1.score}        % attribute lookup by group name
-\VAR{groups['subtask1'].name}      % item lookup by group name
+\VAR{problem.groups.subtask1.score}        % attribute lookup by group name
+\VAR{problem.groups['subtask1'].name}      % item lookup by group name
 
-%- for g in groups
+%- for g in problem.groups
   \subsection*{\VAR{g.name} — \VAR{g.score} pts}
 %- endfor
 ```
 
-Iteration yields `TestcaseGroup` objects (not keys), in declaration order from `package.testcases`. Missing keys (`groups.bogus`) return a `StrictChainableUndefined` with a clear hint, matching the existing `JinjaDictGetter` behaviour and failing the render with a useful message.
+Iteration yields `TestcaseGroup` objects (not keys), in declaration order from `package.testcases`. Missing keys (`problem.groups.bogus`) return a `StrictChainableUndefined` with a clear hint, matching the existing `JinjaDictGetter` behaviour and failing the render with a useful message.
 
 ### Implementation
 
@@ -57,7 +57,7 @@ No new schema fields, no other changes to the build pipeline.
 ### Error handling
 
 - Missing key → `StrictChainableUndefined` with hint `"<name>" was not found in "groups"` (existing pattern).
-- Group names are validated by Pydantic's `NameField` already; no additional validation needed.
+- Top-level group names and per-parent subgroup names must be unique. Enforced by `is_unique_testcase_group_names` and `is_unique_testcase_subgroup_names` `AfterValidator`s on `Package.testcases` and `TestcaseGroup.subgroups`, so the name-keyed dict cannot silently collapse duplicates.
 
 ### Testing
 
@@ -66,7 +66,7 @@ No new schema fields, no other changes to the build pipeline.
   - attribute / item lookup work;
   - `len`, `in`, `.keys()`, `.values()`, `.items()` behave as expected;
   - missing keys return `StrictChainableUndefined`.
-- **Integration test** in the existing statement-builder test layout: a problem package with two scoring groups + a small `.rbx.tex` template that references `\VAR{groups.subtask1.score}` and a `for` loop, asserting the rendered output.
+- **Integration test** in the existing statement-builder test layout: a problem package with two scoring groups + a small `.rbx.tex` template that references `\VAR{problem.groups.subtask1.score}` and a `for` loop, asserting the rendered output.
 
 ## Out of scope
 
