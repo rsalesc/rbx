@@ -4,10 +4,11 @@ from typing import Callable, Dict, Optional
 
 import typer
 
-from rbx import console, utils
+from rbx import console
 from rbx.box import package
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import LimitModifiers, LimitsProfile
+from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.limits import Limits
 
 profile_var = contextvars.ContextVar[Optional[str]]('profile', default=None)
@@ -104,7 +105,7 @@ def get_saved_limits_profile(
     limits_path = package.get_limits_file(profile, root=root)
     if not limits_path.exists():
         return None
-    return utils.model_from_yaml(LimitsProfile, limits_path.read_text())
+    return load_yaml_model(limits_path, LimitsProfile)
 
 
 def get_package_limits_profile(root: pathlib.Path = pathlib.Path()) -> LimitsProfile:

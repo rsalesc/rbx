@@ -3,11 +3,10 @@ from unittest import mock
 
 import pytest
 import typer
-import yaml
-from pydantic import ValidationError
 
 from rbx.box import limits_info, schema
 from rbx.box.environment import VerificationLevel
+from rbx.box.yaml_validation import YamlSyntaxError, YamlValidationError
 from rbx.grading.limits import Limits
 from rbx.utils import model_to_yaml
 
@@ -288,7 +287,7 @@ class TestGetLimitsProfile:
         profile_path.write_text('invalid: yaml: content: [unclosed')
 
         with pkg_cder(test_dir):
-            with pytest.raises(yaml.YAMLError):  # Should raise YAML parsing exception
+            with pytest.raises(YamlSyntaxError):  # Should raise YAML parsing exception
                 limits_info.get_saved_limits_profile('invalid')
 
     def test_get_profile_malformed_limits_profile(self, pkg_cder, tmp_path):
@@ -307,7 +306,9 @@ class TestGetLimitsProfile:
         """)
 
         with pkg_cder(test_dir):
-            with pytest.raises(ValidationError):  # Should raise validation exception
+            with pytest.raises(
+                YamlValidationError
+            ):  # Should raise validation exception
                 limits_info.get_saved_limits_profile('malformed')
 
     def test_get_profile_empty_yaml_file(self, pkg_cder, tmp_path):
@@ -323,7 +324,7 @@ class TestGetLimitsProfile:
 
         with pkg_cder(test_dir):
             with pytest.raises(
-                (ValidationError, TypeError)
+                (YamlValidationError, TypeError)
             ):  # Should raise validation exception for missing required fields
                 limits_info.get_saved_limits_profile('empty')
 
