@@ -4,11 +4,12 @@ from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar, Union
 
 import typer
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
-from rbx import config, console, utils
+from rbx import config, console
 from rbx.box import presets, safeeval
 from rbx.box.extensions import Extensions, LanguageExtensions
+from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 from rbx.grading.limits import Limits
@@ -323,18 +324,7 @@ def get_environment(env: Optional[str] = None) -> Environment:
             f'Environment file [item]{env_path}[/item] not found.', style='error'
         )
         raise typer.Exit()
-    try:
-        return utils.model_from_yaml(Environment, env_path.read_text())
-    except ValidationError as e:
-        console.console.print(e)
-        console.console.print(
-            f'[error]Error parsing environment file [item]{env_path}[/item][/error]'
-        )
-        console.console.print(
-            '[error]If you are sure the file is correct, ensure you are '
-            'in the latest version of [item]rbx[/item].[/error]'
-        )
-        raise typer.Exit(1) from e
+    return load_yaml_model(env_path, Environment)
 
 
 @functools.cache
