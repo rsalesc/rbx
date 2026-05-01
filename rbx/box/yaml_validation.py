@@ -75,6 +75,7 @@ def _locate(
     last_span = 1
 
     node: Any = root
+    broke_on_missing_map_key = False
     for seg in loc:
         if isinstance(node, CommentedMap) and isinstance(seg, str) and seg in node:
             line, col = node.lc.key(seg)
@@ -94,7 +95,22 @@ def _locate(
             continue
         if seg in PYDANTIC_INTERNAL_LOC_SEGMENTS:
             continue
+        # Failed to walk -- note whether it was a missing key in a map.
+        if isinstance(node, CommentedMap) and isinstance(seg, str):
+            broke_on_missing_map_key = True
         break
+
+    # Anchor on the first key when a map walk fails, so the caret spans
+    # something visible instead of a single-char position.
+    if broke_on_missing_map_key and isinstance(node, CommentedMap) and len(node) > 0:
+        first_key = next(iter(node))
+        if isinstance(first_key, str):
+            try:
+                line, col = node.lc.key(first_key)
+                last_line, last_col = line, col
+                last_span = len(first_key)
+            except KeyError, AttributeError:
+                pass
 
     return last_line + 1, last_col + 1, last_span
 
