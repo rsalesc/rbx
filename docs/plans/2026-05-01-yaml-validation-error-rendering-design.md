@@ -308,3 +308,23 @@ piece that is non-obvious to a future reader.
 - **`ruyaml` returns `CommentedMap` instead of `dict`.** Pydantic's
   `model_validate` accepts any mapping; we already use ruyaml-loaded data in
   parts of the codebase without issue.
+
+## Implementation notes
+
+This section records any deviations from the original design that surfaced during implementation.
+
+### `_locate` — first-key fallback for missing-map-key case
+
+The design's "missing required field — falls back to parent map location" was made more concrete: when the walk breaks because a string segment is missing inside a CommentedMap with at least one key, the caret is anchored on the first existing key of that map (and span = that key's length) rather than on the parent's position. Without this, the caret is a single character at column 1 of the failed item, which is not visually anchored. Implementation in `_locate`'s `broke_on_missing_map_key` post-loop block.
+
+### `YamlSyntaxError` — prefer `context_mark` over `problem_mark`
+
+ruyaml's `problem_mark` for an unterminated construct often points at EOF (where the parser noticed) rather than at the opener (`[`, `"`, etc.) where the user's mistake actually is. The exception now prefers `context_mark` (the position where the problematic construct started) when present, falling back to `problem_mark`. Comment in `YamlSyntaxError.__init__` documents the rationale.
+
+### `limits_info_test` exception assertions
+
+Three tests in `tests/rbx/box/limits_info_test.py` previously asserted on raw `yaml.YAMLError` / `pydantic.ValidationError`. They were updated to assert the new wrapped types `YamlSyntaxError` / `YamlValidationError` as part of the `refactor(limits)` commit, since changing the exception class is a behaviour change tied to the migration.
+
+### Expression `except (X, Y):` rewritten to `except X, Y:`
+
+Ruff format strips the redundant parens in this construct. Both forms are equivalent in modern Python — the tuple is implicit. No semantic change.
