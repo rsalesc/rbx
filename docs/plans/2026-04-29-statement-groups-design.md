@@ -57,7 +57,7 @@ No new schema fields, no other changes to the build pipeline.
 ### Error handling
 
 - Missing key → `StrictChainableUndefined` with hint `"<name>" was not found in "groups"` (existing pattern).
-- Group names are validated by Pydantic's `NameField` already; no additional validation needed.
+- Top-level group names and per-parent subgroup names must be unique. Enforced by `is_unique_testcase_group_names` and `is_unique_testcase_subgroup_names` `AfterValidator`s on `Package.testcases` and `TestcaseGroup.subgroups`, so the name-keyed dict cannot silently collapse duplicates.
 
 ### Testing
 

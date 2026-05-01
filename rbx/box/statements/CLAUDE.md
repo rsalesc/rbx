@@ -132,3 +132,4 @@ Helpers for extracting statement sections (legend, input, output, notes) for Pol
 - `problems` -- (Contest only) List of all problems
 - `contest` -- (Contest only) Contest metadata
 - `samples` -- Auto-generated sample I/O from built test cases
+- `problem.groups` -- Name-keyed accessor over `package.testcases`. Iteration yields `TestcaseGroup` objects in declaration order; lookup by name (`problem.groups.subtask1.score`, `problem.groups['subtask1']`) returns the group or `StrictChainableUndefined` on miss
