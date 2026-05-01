@@ -328,3 +328,22 @@ def test_validation_error_collects_multiple_errors_sorted_by_line(tmp_path):
         if 'p.yml:' in line
     ]
     assert len(locs) >= 2
+
+
+def test_load_yaml_model_returns_instance_on_success(tmp_path):
+    text = 'title: ok\nitems:\n  - name: a\n    score: 1\n'
+    p = tmp_path / 'p.yml'
+    p.write_text(text)
+
+    out = load_yaml_model(p, _RootModel)
+
+    assert isinstance(out, _RootModel)
+    assert out.title == 'ok'
+    assert out.items[0].score == 1
+
+
+def test_load_yaml_model_propagates_file_not_found(tmp_path):
+    p = tmp_path / 'missing.yml'
+
+    with pytest.raises(FileNotFoundError):
+        load_yaml_model(p, _RootModel)
