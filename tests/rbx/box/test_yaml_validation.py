@@ -140,3 +140,47 @@ def test_format_loc_renders_path_human_readably():
     assert _format_loc(('items', 2)) == 'items[2]'
     assert _format_loc(('items', 2, 'name')) == 'items[2].name'
     assert _format_loc(('a', 'union_tag', 'b')) == 'a.b'
+
+
+def test_dedupe_collapses_identical_errors():
+    from rbx.box.yaml_validation import _dedupe
+
+    errors = [
+        {'loc': ('a',), 'msg': 'oops', 'type': 'value_error'},
+        {'loc': ('a',), 'msg': 'oops', 'type': 'value_error'},
+        {'loc': ('b',), 'msg': 'bad', 'type': 'value_error'},
+    ]
+
+    out = _dedupe(errors)
+
+    assert len(out) == 2
+    assert {e['loc'] for e in out} == {('a',), ('b',)}
+
+
+def test_dedupe_folds_union_branches_at_same_loc():
+    from rbx.box.yaml_validation import _dedupe
+
+    errors = [
+        {'loc': ('score',), 'msg': 'expected int', 'type': 'union_int_expected'},
+        {'loc': ('score',), 'msg': 'expected tuple', 'type': 'union_tuple_expected'},
+    ]
+
+    out = _dedupe(errors)
+
+    assert len(out) == 1
+    msg = out[0]['msg']
+    assert 'union' in msg.lower() or 'any of' in msg.lower()
+    assert 'int' in msg and 'tuple' in msg
+
+
+def test_dedupe_keeps_discriminated_union_errors_separate():
+    from rbx.box.yaml_validation import _dedupe
+
+    errors = [
+        {'loc': ('step', 'foo'), 'msg': 'foo bad', 'type': 'value_error'},
+        {'loc': ('step', 'bar'), 'msg': 'bar bad', 'type': 'value_error'},
+    ]
+
+    out = _dedupe(errors)
+
+    assert len(out) == 2

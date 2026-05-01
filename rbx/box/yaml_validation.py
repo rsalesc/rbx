@@ -158,6 +158,57 @@ def _format_loc(loc: Tuple[Any, ...]) -> str:
     return ''.join(parts) or '<root>'
 
 
+def _dedupe(errors: List[dict]) -> List[dict]:
+    """Collapse Pydantic ``ValidationError.errors()`` for cleaner output.
+
+    - Identical ``(loc, msg)`` pairs are deduplicated.
+    - Multiple errors at the same ``loc`` whose ``type`` starts with
+      ``union_`` are folded into a single synthetic message of the form
+      ``"value did not match any of the allowed types (... | ...)"``.
+    - Errors at distinct ``loc`` values stay distinct (covers
+      discriminated unions where each branch lives at a different path).
+
+    Output order matches first appearance per ``loc``; final
+    line/column ordering is applied later by the renderer.
+    """
+    by_loc: 'dict[tuple, list[dict]]' = {}
+    order: List[tuple] = []
+    for e in errors:
+        key = tuple(e['loc'])
+        if key not in by_loc:
+            by_loc[key] = []
+            order.append(key)
+        by_loc[key].append(e)
+
+    out: List[dict] = []
+    for key in order:
+        group = by_loc[key]
+        seen_msgs = set()
+        unique = []
+        for e in group:
+            if e['msg'] in seen_msgs:
+                continue
+            seen_msgs.add(e['msg'])
+            unique.append(e)
+
+        union_branches = [
+            e for e in unique if str(e.get('type', '')).startswith('union_')
+        ]
+        if len(union_branches) >= 2 and len(union_branches) == len(unique):
+            joined = ' | '.join(e['msg'] for e in union_branches)
+            out.append(
+                {
+                    'loc': key,
+                    'msg': f'value did not match any of the allowed types ({joined})',
+                    'type': 'union_folded',
+                }
+            )
+        else:
+            out.extend(unique)
+
+    return out
+
+
 def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:
     """Load a YAML file and validate it against a Pydantic model.
 
