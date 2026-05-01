@@ -371,6 +371,42 @@ def _upload_testcases(problem: api.Problem):
         progress.update(task_id, completed=len(entries))
 
 
+def _upload_testcases_raw(problem: api.Problem):
+    entries = asyncio.run(extract_generation_testcases_from_groups())
+
+    errors = _validate_raw_tests(entries)
+    if errors:
+        console.console.print('[error]Cannot upload raw tests:[/error]')
+        for error in errors:
+            console.console.print(f'[error]  - {error}[/error]')
+        raise typer.Exit(1)
+
+    console.console.print('Clearing existing script...')
+    problem.save_script(testset='tests', source='<#-- empty placeholder script -->')
+
+    with rich.progress.Progress(speed_estimate_period=5) as progress:
+        next_index = 1
+        task_id = progress.add_task('Uploading raw testcases...', total=len(entries))
+        for entry in entries:
+            path = _resolve_raw_test_input_path(entry)
+            assert path is not None  # validated above
+            content = path.read_text()
+            saved = _save_skip_coinciding_testcases(
+                problem,
+                testset='tests',
+                test_index=next_index,
+                test_input=content,
+                **_get_test_params_for_statement(
+                    entry.metadata.copied_from,
+                    is_sample=entry.is_sample(),
+                ),
+            )
+            progress.update(task_id, advance=1)
+            if saved:
+                next_index += 1
+        progress.update(task_id, completed=len(entries))
+
+
 def _upload_solutions(problem: api.Problem):
     saved_solutions = set()
 
