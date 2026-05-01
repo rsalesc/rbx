@@ -18,9 +18,10 @@ def test_locate_top_level_scalar():
 
     line, col, span = _locate(('timeLimit',), root)
 
-    assert line == 2  # 1-based line of `timeLimit:`
-    assert col == 1  # 1-based column of `t` in `timeLimit`
-    assert span == len('timeLimit')
+    assert line == 2
+    # caret on the value, not the key
+    assert col == len('timeLimit: ') + 1
+    assert span == len('1000')
 
 
 def test_locate_nested_map():
@@ -32,8 +33,8 @@ def test_locate_nested_map():
     line, col, span = _locate(('a', 'b', 'c'), root)
 
     assert line == 3
-    assert col == 5
-    assert span == len('c')
+    assert col == len('    c: ') + 1
+    assert span == len('hello')
 
 
 def test_locate_list_index():
@@ -57,8 +58,8 @@ def test_locate_list_of_maps():
     line, col, span = _locate(('items', 2, 'name'), root)
 
     assert line == 4
-    assert col == 5
-    assert span == len('name')
+    assert col == len('  - name: ') + 1
+    assert span == len('carol')
 
 
 def test_locate_missing_key_falls_back_to_parent():
@@ -100,8 +101,8 @@ def test_locate_skips_pydantic_internal_segments():
     line, col, span = _locate(('step', 'union_tag', 'type'), root)
 
     assert line == 2
-    assert col == 3
-    assert span == len('type')
+    assert col == len('  type: ') + 1
+    assert span == len('foo')
 
 
 def test_locate_empty_loc():
@@ -113,3 +114,18 @@ def test_locate_empty_loc():
     line, col, span = _locate((), root)
 
     assert (line, col, span) == (1, 1, 1)
+
+
+def test_locate_widens_span_to_scalar_value():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'timeLimit: 1234567\n'
+    root = _parse(text)
+
+    line, col, span = _locate(('timeLimit',), root)
+
+    # After widening: caret column moves to where the value starts,
+    # span equals value length.
+    assert line == 1
+    assert col == len('timeLimit: ') + 1
+    assert span == len('1234567')

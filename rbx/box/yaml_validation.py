@@ -75,13 +75,18 @@ def _locate(
     last_span = 1
 
     node: Any = root
+    parent: Any = None
+    last_seg: Any = None
+    walked_any = False
     broke_on_missing_map_key = False
     for seg in loc:
         if isinstance(node, CommentedMap) and isinstance(seg, str) and seg in node:
             line, col = node.lc.key(seg)
             last_line, last_col = line, col
             last_span = len(seg)
+            parent, last_seg = node, seg
             node = node[seg]
+            walked_any = True
             continue
         if (
             isinstance(node, CommentedSeq)
@@ -91,7 +96,9 @@ def _locate(
             line, col = node.lc.item(seg)
             last_line, last_col = line, col
             last_span = 1
+            parent, last_seg = node, seg
             node = node[seg]
+            walked_any = True
             continue
         if seg in PYDANTIC_INTERNAL_LOC_SEGMENTS:
             continue
@@ -111,6 +118,23 @@ def _locate(
                 last_span = len(first_key)
             except KeyError, AttributeError:
                 pass
+
+    # Scalar-value widening: when we descended fully into a scalar inside
+    # a map, point the caret at the value (not the key) so users see what
+    # is wrong, not where it is.
+    if (
+        walked_any
+        and not isinstance(node, (CommentedMap, CommentedSeq))
+        and node is not None
+        and isinstance(parent, CommentedMap)
+        and isinstance(last_seg, str)
+    ):
+        try:
+            v_line, v_col = parent.lc.value(last_seg)
+            last_line, last_col = v_line, v_col
+            last_span = max(1, len(str(node)))
+        except KeyError, AttributeError:
+            pass
 
     return last_line + 1, last_col + 1, last_span
 
