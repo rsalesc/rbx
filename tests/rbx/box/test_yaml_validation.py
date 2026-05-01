@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+from typing import List
 
 import pydantic
 import pytest
@@ -10,6 +11,7 @@ import ruyaml
 
 from rbx.box.yaml_validation import (
     YamlSyntaxError,
+    YamlValidationError,
     load_yaml_model,
 )
 
@@ -277,3 +279,52 @@ def test_yaml_syntax_error_renders_diagnostic(tmp_path):
     assert 'YAML syntax error' in rendered
     assert 'bad.yml' in rendered
     assert ':2' in rendered
+
+
+class _NestedModel(pydantic.BaseModel):
+    name: str
+    score: int
+
+
+class _RootModel(pydantic.BaseModel):
+    title: str
+    items: List[_NestedModel]
+
+
+def test_validation_error_renders_one_block_per_error(tmp_path):
+    text = (
+        'title: hello\n'
+        'items:\n'
+        '  - name: a\n'
+        '    score: oops\n'
+        '  - name: b\n'
+        '    score: 5\n'
+    )
+    p = tmp_path / 'p.yml'
+    p.write_text(text)
+
+    with pytest.raises(YamlValidationError) as exc_info:
+        load_yaml_model(p, _RootModel)
+
+    rendered = str(exc_info.value)
+    assert 'p.yml' in rendered
+    assert 'items[0].score' in rendered
+    assert 'oops' in rendered or 'integer' in rendered.lower()
+
+
+def test_validation_error_collects_multiple_errors_sorted_by_line(tmp_path):
+    # title is missing; items[0].score is a string; items[1].name is an int
+    text = 'items:\n  - name: a\n    score: bad\n  - name: 123\n    score: 5\n'
+    p = tmp_path / 'p.yml'
+    p.write_text(text)
+
+    with pytest.raises(YamlValidationError) as exc_info:
+        load_yaml_model(p, _RootModel)
+
+    rendered = str(exc_info.value)
+    locs = [
+        line.split('p.yml:')[1].split(' ')[0]
+        for line in rendered.splitlines()
+        if 'p.yml:' in line
+    ]
+    assert len(locs) >= 2

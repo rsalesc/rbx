@@ -72,7 +72,58 @@ class YamlSyntaxError(RbxException):
 
 
 class YamlValidationError(RbxException):
-    """Raised when a YAML file parses but fails Pydantic schema validation."""
+    """Raised when a YAML file parses but does not match a Pydantic model.
+
+    Wraps a ``pydantic.ValidationError``. On construction, every error
+    (after deduplication) is rendered as its own caret diagnostic block,
+    sorted by source line/column. A trailing hint reminds the user to
+    check they are running the latest ``rbx``.
+    """
+
+    def __init__(
+        self,
+        path: pathlib.Path,
+        source: str,
+        root: Any,
+        cause: pydantic.ValidationError,
+    ):
+        super().__init__()
+        deduped = _dedupe(list(cause.errors()))
+
+        rendered_blocks: List[Tuple[int, int, Group]] = []
+        for err in deduped:
+            line, col, span = _locate(tuple(err['loc']), root)
+            block = _render_diagnostic(
+                source=source,
+                path=path,
+                line=line,
+                col=col,
+                span=span,
+                msg=str(err['msg']),
+                loc_label=_format_loc(tuple(err['loc'])),
+                header='error',
+            )
+            rendered_blocks.append((line, col, block))
+
+        rendered_blocks.sort(key=lambda t: (t[0], t[1]))
+
+        n = len(rendered_blocks)
+        plural = 's' if n != 1 else ''
+        self.print(
+            rich.text.Text.from_markup(
+                f'[error]Failed to load[/error] [item]{path}[/item] '
+                f'-- {n} validation error{plural}'
+            )
+        )
+        self.print('')
+        for _, _, block in rendered_blocks:
+            self.print(block)
+            self.print('')
+        self.print(
+            rich.text.Text.from_markup(
+                '[error]If you believe this is a bug, ensure you are on the latest rbx.[/error]'
+            )
+        )
 
 
 def _locate(
@@ -342,5 +393,7 @@ def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:
     except ruyaml.YAMLError as exc:
         raise YamlSyntaxError(path, source, exc) from exc
 
-    # Validation path implemented in the next task (Task 11).
-    return model.model_validate(data)
+    try:
+        return model.model_validate(data)
+    except pydantic.ValidationError as exc:
+        raise YamlValidationError(path, source, data, exc) from exc
