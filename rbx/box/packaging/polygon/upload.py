@@ -575,6 +575,7 @@ async def upload_problem(
     upload_as_english: bool = False,
     upload_only: Optional[Set[str]] = None,
     dont_upload: Optional[Set[str]] = None,
+    raw_tests: bool = False,
 ):
     if upload_only is None:
         upload_only = set()
@@ -608,7 +609,10 @@ async def upload_problem(
     if 'solutions' in which_upload:
         _upload_solutions(problem)
     if 'tests' in which_upload:
-        _upload_testcases(problem)
+        if raw_tests:
+            _upload_testcases_raw(problem)
+        else:
+            _upload_testcases(problem)
     if 'statements' in which_upload:
         await _upload_statement(
             problem, main_language=main_language, upload_as_english=upload_as_english
