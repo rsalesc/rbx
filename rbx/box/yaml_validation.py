@@ -12,7 +12,7 @@ The single public entry point is :func:`load_yaml_model`.
 from __future__ import annotations
 
 import pathlib
-from typing import Any, Tuple, Type, TypeVar
+from typing import Any, List, Tuple, Type, TypeVar
 
 import pydantic
 from ruyaml.comments import CommentedMap, CommentedSeq
@@ -137,6 +137,25 @@ def _locate(
             pass
 
     return last_line + 1, last_col + 1, last_span
+
+
+def _format_loc(loc: Tuple[Any, ...]) -> str:
+    """Render a Pydantic loc tuple as ``a.b[2].c``.
+
+    Empty tuples render as ``<root>``. Pydantic-internal segments
+    (``union_tag`` etc.) are skipped so users do not see them.
+    """
+    if not loc:
+        return '<root>'
+    parts: List[str] = []
+    for seg in loc:
+        if seg in PYDANTIC_INTERNAL_LOC_SEGMENTS:
+            continue
+        if isinstance(seg, int):
+            parts.append(f'[{seg}]')
+        else:
+            parts.append(f'.{seg}' if parts else str(seg))
+    return ''.join(parts) or '<root>'
 
 
 def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:

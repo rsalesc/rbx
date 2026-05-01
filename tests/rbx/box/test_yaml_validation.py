@@ -129,3 +129,14 @@ def test_locate_widens_span_to_scalar_value():
     assert line == 1
     assert col == len('timeLimit: ') + 1
     assert span == len('1234567')
+
+
+def test_format_loc_renders_path_human_readably():
+    from rbx.box.yaml_validation import _format_loc
+
+    assert _format_loc(()) == '<root>'
+    assert _format_loc(('name',)) == 'name'
+    assert _format_loc(('a', 'b', 'c')) == 'a.b.c'
+    assert _format_loc(('items', 2)) == 'items[2]'
+    assert _format_loc(('items', 2, 'name')) == 'items[2].name'
+    assert _format_loc(('a', 'union_tag', 'b')) == 'a.b'
