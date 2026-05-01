@@ -846,6 +846,61 @@ Explanation for first sample.
         # Substituted blocks file
         assert (tmp_path / 'blocks.sub.yml').exists()
 
+    def test_build_renders_groups_accessor(self, builder, tmp_path):
+        from rbx.box.schema import ScoreType, TestcaseGroup
+
+        template_file = tmp_path / 'template.tex'
+        template_file.write_text(
+            '\\documentclass{article}\n'
+            '\\begin{document}\n'
+            '\\VAR{problem.groups.subtask1.score}|\\VAR{problem.groups.subtask2.score}\n'
+            '%- for g in problem.groups\n'
+            '\\VAR{g.name}=\\VAR{g.score};\n'
+            '%- endfor\n'
+            '\\end{document}\n'
+        )
+
+        params = rbxToTeX(
+            type=ConversionType.rbxToTex, template=pathlib.Path('template.tex')
+        )
+        context = StatementBuilderContext(
+            lang='en', languages=[], params=params, root=tmp_path
+        )
+
+        package = Package(
+            name='test-problem',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=ScoreType.POINTS,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='subtask1', score=30),
+                TestcaseGroup(name='subtask2', score=70),
+            ],
+        )
+        statement = Statement(
+            name='statement',
+            path=pathlib.Path('statement.rbx.tex'),
+            type=StatementType.rbxTeX,
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+        problem_item = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits
+        )
+
+        result = builder.build(
+            b'%- block legend\nignored\n%- endblock\n', context, problem_item
+        )
+
+        text = result.decode()
+        assert '30|70' in text
+        assert 'samples=0;' in text
+        assert 'subtask1=30;' in text
+        assert 'subtask2=70;' in text
+        assert (
+            text.index('samples=') < text.index('subtask1=') < text.index('subtask2=')
+        )
+
 
 class TestrbxMarkdownToTeXBuilder:
     """Test rbxMarkdownToTeXBuilder functionality."""
