@@ -34,3 +34,28 @@ def test_locate_nested_map():
     assert line == 3
     assert col == 5
     assert span == len('c')
+
+
+def test_locate_list_index():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'items:\n  - a\n  - b\n  - c\n'
+    root = _parse(text)
+
+    line, col, span = _locate(('items', 2), root)
+
+    assert line == 4  # third item is on line 4
+    assert col == 5  # column of the scalar after "- "
+
+
+def test_locate_list_of_maps():
+    from rbx.box.yaml_validation import _locate
+
+    text = 'items:\n  - name: alice\n  - name: bob\n  - name: carol\n'
+    root = _parse(text)
+
+    line, col, span = _locate(('items', 2, 'name'), root)
+
+    assert line == 4
+    assert col == 5
+    assert span == len('name')
