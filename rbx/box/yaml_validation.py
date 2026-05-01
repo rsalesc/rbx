@@ -12,9 +12,10 @@ The single public entry point is :func:`load_yaml_model`.
 from __future__ import annotations
 
 import pathlib
-from typing import Type, TypeVar
+from typing import Any, Tuple, Type, TypeVar
 
 import pydantic
+from ruyaml.comments import CommentedMap, CommentedSeq
 
 from rbx.box.exception import RbxException
 
@@ -29,6 +30,73 @@ class YamlSyntaxError(RbxException):
 
 class YamlValidationError(RbxException):
     """Raised when a YAML file parses but fails Pydantic schema validation."""
+
+
+def _locate(
+    loc: Tuple[Any, ...],
+    root: Any,
+) -> Tuple[int, int, int]:
+    """Walk a Pydantic ``loc`` tuple against a ruyaml-parsed tree.
+
+    ruyaml's ``CommentedMap`` and ``CommentedSeq`` carry source positions
+    via ``.lc``: ``lc.key(name)``, ``lc.value(name)``, and ``lc.item(i)``
+    each return ``(line, col)`` 0-based. This function normalises to
+    1-based line/column for display and computes a caret span.
+
+    Algorithm (see design doc, "Locating the source line"):
+
+    - Walk each segment. If the current node is a CommentedMap and the
+      segment is a string key that exists, record its key position and
+      descend.
+    - If the current node is a CommentedSeq and the segment is an int
+      index in range, record its item position and descend.
+    - If the segment is a Pydantic-internal marker (``union_tag``,
+      ``tagged-union``), skip it and continue.
+    - Otherwise, stop walking and return the last known position
+      (the deepest resolvable ancestor).
+
+    The caret span widens to the length of the final node's scalar
+    representation when applicable; otherwise it stays at the length of
+    the last walked key.
+
+    Args:
+        loc: Pydantic error ``loc`` tuple; segments are ``str`` (map
+            keys), ``int`` (sequence indices), or internal markers.
+        root: ruyaml-parsed root node (CommentedMap or CommentedSeq).
+
+    Returns:
+        ``(line, col, span)``, all 1-based for line/col.
+    """
+    # ruyaml uses 0-based line/col; we convert to 1-based on return.
+    if hasattr(root, 'lc'):
+        last_line, last_col = root.lc.line, root.lc.col
+    else:
+        last_line, last_col = 0, 0
+    last_span = 1
+
+    node: Any = root
+    for seg in loc:
+        if isinstance(node, CommentedMap) and isinstance(seg, str) and seg in node:
+            line, col = node.lc.key(seg)
+            last_line, last_col = line, col
+            last_span = len(seg)
+            node = node[seg]
+            continue
+        if (
+            isinstance(node, CommentedSeq)
+            and isinstance(seg, int)
+            and 0 <= seg < len(node)
+        ):
+            line, col = node.lc.item(seg)
+            last_line, last_col = line, col
+            last_span = 1
+            node = node[seg]
+            continue
+        if seg in PYDANTIC_INTERNAL_LOC_SEGMENTS:
+            continue
+        break
+
+    return last_line + 1, last_col + 1, last_span
 
 
 def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:
