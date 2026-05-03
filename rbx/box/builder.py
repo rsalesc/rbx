@@ -42,7 +42,9 @@ async def build(
         'Built [item]{processed}[/item] testcases...',
         keep=True,
     ) as s:
-        await generate_testcases(s, groups=groups)
+        await generate_testcases(
+            s, groups=groups, verification=VerificationLevel(verification)
+        )
 
     if verification > 0 and validate:
         with utils.StatusProgress(

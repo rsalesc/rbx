@@ -535,3 +535,45 @@ gens/gen.cpp 2
 
     out = capsys.readouterr().out
     assert 'is a hash duplicate of' not in out
+
+
+async def test_generator_determinism_check_detects_nondeterministic_generator(
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.environment import VerificationLevel
+    from rbx.box.generators import GenerationError
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-nondet.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gens/gen.cpp 123\n')
+
+    with pytest.raises(GenerationError):
+        await generate_testcases(verification=VerificationLevel.VALIDATE)
+
+
+async def test_generator_determinism_check_passes_for_deterministic_generator(
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.environment import VerificationLevel
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gens/gen.cpp 123\n')
+
+    # Should not raise.
+    await generate_testcases(verification=VerificationLevel.VALIDATE)
+
+    assert (
+        testing_pkg.get_build_testgroup_path('main') / '000.in'
+    ).read_text() == '123\n'
+
+
+async def test_generator_determinism_check_skipped_at_verification_none(
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.environment import VerificationLevel
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-nondet.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gens/gen.cpp 123\n')
+
+    # No verification → no determinism check → no error even though the
+    # generator is non-deterministic.
+    await generate_testcases(verification=VerificationLevel.NONE)

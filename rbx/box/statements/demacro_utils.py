@@ -221,7 +221,7 @@ def _collect_recursive(
 
     try:
         content = tex_path.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError):
+    except OSError, UnicodeDecodeError:
         return MacroDefinitions()
 
     defs = extract_definitions(content, source_file=str(resolved))

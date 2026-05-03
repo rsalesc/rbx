@@ -1,0 +1,369 @@
+# E2E Testing Strategy — Design
+
+## Problem
+
+`rbx` has no broad, declarative e2e coverage. The existing e2e tests live in
+`tests/rbx/box/cli/problem_test.py` (CLI smoke tests against the default preset
+and an interactive problem) and `tests/rbx/box/packaging/e2e/test_boca_e2e.py`
+(docker-orchestrated BOCA upload). They are written as ad-hoc Python and only
+assert exit codes; adding a new e2e case means writing a new Python test by
+hand.
+
+We want a way to drop a barebones problem package into a directory tree, write
+a small YAML file next to it describing what `rbx` should do with it and what
+the expected outcomes are, and have pytest automatically pick it up.
+
+## Goals
+
+- Adding a new e2e test = create a directory + write `e2e.rbx.yml`.
+- Expressive enough to assert verdict matrices for `rbx run`, generated tests
+  for `rbx build`, statement artifacts for `rbx st b`, and packaging artifacts
+  for `rbx pkg <format>`.
+- Always opt-in (gated by `@pytest.mark.e2e`); never runs on `mise run test`.
+- Reuses the existing `TestingPackage` helper for tmpdir isolation.
+
+## Non-goals (v1)
+
+- `rbx stress` assertions — deferred. Needs a `--report` JSON flag added to
+  `stress`; design captured at the bottom under "Future work."
+- Migrating the docker-based BOCA upload test (`test_boca_e2e.py`). The DSL is
+  not a good fit for orchestrating an external service; it stays Python.
+- Multi-problem contest packages.
+
+## Layout
+
+A new tree, separate from the existing CLI/packaging e2e tests:
+
+```
+tests/e2e/
+  __init__.py
+  conftest.py            # collection hook + Pydantic schema
+  e2e_runner.py          # pytest Item + assertion classes
+  testdata/
+    simple-ac/
+      e2e.rbx.yml
+      problem.rbx.yml
+      sols/main.cpp
+      gens/gen.cpp
+      ...
+    mixed-solutions/
+      e2e.rbx.yml
+      ...
+    bad-validator/
+      e2e.rbx.yml
+      ...
+```
+
+Pytest collects every `e2e.rbx.yml` automatically; the directory tree itself is
+the test suite. Each `e2e.rbx.yml` describes one or more **scenarios**; pytest
+reports one node per scenario as `tests/e2e/testdata/<pkg>/e2e.rbx.yml::<scenario>`.
+
+## Execution model
+
+- Each scenario gets a fresh tmpdir copy of its package via the existing
+  `rbx.box.testing.testing_package.TestingPackage` helper. Scenarios are
+  independent.
+- Steps within a scenario share the tmpdir and run in order. The first failing
+  step fails the scenario; subsequent steps are skipped.
+- All scenarios are marked `@pytest.mark.e2e` so they are excluded from
+  `mise run test` and run only via the existing `mise run test-e2e`.
+- Commands are invoked with Typer's `CliRunner` against `rbx.box.cli.app`, the
+  same approach the current CLI tests use. Command strings are split with
+  `shlex.split`.
+
+## Schema
+
+Top-level `e2e.rbx.yml`:
+
+```yaml
+scenarios:
+  - name: <string, required, unique within file>
+    description: <string, optional>
+    steps: [<step>]
+```
+
+Step:
+
+```yaml
+cmd: <string, required>           # e.g. "build", "run", "pkg boca", "st b -l en"
+expect_exit: <int, default 0>
+expect:                           # all keys optional
+  stdout_contains: <string | list[string]>
+  stderr_contains: <string | list[string]>
+  stdout_matches: <regex>
+  files_exist: <list[glob]>       # paths relative to package root (tmpdir)
+  files_absent: <list[glob]>
+  file_contains:
+    <path>: <substring or /regex/>
+  zip_contains:
+    path: <glob to zip artifact>
+    entries: <list[glob within zip]>
+  zip_not_contains:
+    path: <glob>
+    entries: <list[glob]>
+  # Command-specific structured matchers (only valid for that cmd):
+  solutions: ...                  # only with cmd: run
+  tests: ...                      # only with cmd: build
+```
+
+The schema is a Pydantic model with `extra="forbid"` so typos surface at
+collection time, not run time.
+
+`expect_exit` defaults to `0`. Negative tests opt in by setting it. When
+`expect_exit != 0`, structured assertions (`solutions:`, `tests:`) may produce
+no data; it is the user's responsibility to write only assertions that make
+sense for the expected exit state.
+
+### Structured matcher: `solutions:` (cmd: `run`)
+
+Source of truth: `skeleton.yml` produced by `rbx run`, which already contains
+per-(solution, group) outcomes and per-(solution, test) verdicts.
+
+Per solution path, the value is either a bare verdict or a map:
+
+```yaml
+solutions:
+  # Bare: shorthand for {"*": ac}
+  sols/main.cpp: ac
+
+  # Map: '*' baseline + group/test overrides
+  sols/wa.cpp:
+    "*": wa                         # every group's outcome is WA
+    samples: ac                     # group 'samples' outcome is AC (overrides *)
+    main_tests/edge_case: ac        # specific test verdict is AC
+```
+
+**Verdict vocabulary:** values are parsed as `ExpectedOutcome`
+(`rbx/box/schema.py`), reusing the same matching grammar (and aliases:
+`ac`/`wa`/`tle`/`incorrect`/`any`/`ac+tle`/etc.) that `problem.rbx.yml`'s
+`outcome:` field already accepts. Each `ExpectedOutcome` exposes
+`match(outcome: Outcome) -> bool`, which the runner uses for assertions.
+
+**Resolution (per user-written entry):**
+
+1. If the key contains `/` it is interpreted as a **test path**; assert that
+   test's verdict matches the `ExpectedOutcome`.
+2. Else if the key matches a **group name** in the package; assert that
+   group's overall outcome matches.
+3. Else if the key is `*`; assert every group's overall outcome matches
+   (groups separately overridden by name take precedence).
+
+**Sparse coverage is valid.** Untouched groups and tests are simply not
+asserted. The user opts into whatever subset they care about.
+
+**Group vs. test verdicts** (important distinction):
+- `<group>: wa` asserts the **group's aggregated outcome** (the same notion
+  rbx already computes from `skeleton.yml` and uses for reporting and for
+  `expectedOutcomes` in `problem.rbx.yml`). It does **not** assert "every
+  test in the group is WA."
+- `<group>/<test>: wa` asserts the specific test's verdict.
+
+### Structured matcher: `tests:` (cmd: `build`)
+
+Source: enumerate generated test files in `build/tests/` after the build
+completes, plus the validation report (if a structured one is not currently
+persisted, the implementation will add one — same pattern as the
+`--report`-flag escape hatch we're considering for `stress`).
+
+```yaml
+tests:
+  count: <int>                    # optional total count
+  groups:                         # optional per-group counts
+    samples: 3
+    main_tests: 9
+  all_valid: <bool, default true> # all generated tests passed validation
+  exist: [<path>, ...]            # specific paths under build/tests/ that must exist
+```
+
+Anything more granular (asserting test file content) is expressed via the
+generic `file_contains:` matcher; no need to special-case it here.
+
+## Concrete examples
+
+### Vanilla AC pipeline
+
+```yaml
+# tests/e2e/testdata/simple-ac/e2e.rbx.yml
+scenarios:
+  - name: full-pipeline
+    steps:
+      - cmd: build
+        expect:
+          tests:
+            count: 5
+            all_valid: true
+
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+
+      - cmd: st b
+        expect:
+          files_exist: [build/statements/statement.pdf]
+
+      - cmd: pkg boca
+        expect:
+          files_exist: ["build/boca/*.zip"]
+          zip_contains:
+            path: build/boca/*.zip
+            entries: [description.xml, "limits/*"]
+```
+
+### Mixed verdicts, sparse assertions
+
+```yaml
+# tests/e2e/testdata/mixed-solutions/e2e.rbx.yml
+scenarios:
+  - name: verdict-matrix
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/wa_on_big.cpp:
+              "*": ac
+              main_tests: wa
+              main_tests/edge_case: ac
+            sols/tle.cpp:
+              "*": tle
+              samples: ac
+            sols/sometimes_wa.cpp:
+              samples/0: ac
+              main_tests/tricky: wa
+```
+
+### Negative test (broken validator)
+
+```yaml
+# tests/e2e/testdata/bad-validator/e2e.rbx.yml
+scenarios:
+  - name: build-should-fail
+    steps:
+      - cmd: build
+        expect_exit: 1
+        expect:
+          stderr_contains: "validator"
+```
+
+### Multiple scenarios per package
+
+```yaml
+# tests/e2e/testdata/full-coverage/e2e.rbx.yml
+scenarios:
+  - name: build-and-run
+    steps:
+      - cmd: build
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+
+  - name: package-boca
+    steps:
+      - cmd: build
+      - cmd: pkg boca
+        expect:
+          files_exist: ["build/boca/*.zip"]
+
+  - name: package-polygon
+    steps:
+      - cmd: build
+      - cmd: pkg polygon
+        expect:
+          files_exist: ["build/polygon/*.zip"]
+```
+
+Each scenario starts from a fresh tmpdir copy, so `build` is repeated in
+scenarios 2 and 3.
+
+## Implementation sketch
+
+### Collection hook
+
+```python
+# tests/e2e/conftest.py
+def pytest_collect_file(parent, file_path):
+    if file_path.name == "e2e.rbx.yml":
+        return E2EYamlFile.from_parent(parent, path=file_path)
+```
+
+`E2EYamlFile.collect()` parses the YAML through a Pydantic `E2ESpec` model
+and yields one `E2EScenarioItem` per scenario. Schema errors fail at
+collection (clear pytest error) rather than runtime.
+
+### Scenario item
+
+```python
+class E2EScenarioItem(pytest.Item):
+    def runtest(self):
+        with TestingPackage(self.package_dir) as pkg:
+            for step in self.scenario.steps:
+                self._run_step(pkg, step)
+
+    def _run_step(self, pkg, step):
+        result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
+        assert result.exit_code == step.expect_exit, ...
+        for assertion in step.assertions:
+            assertion.check(pkg, result)
+```
+
+### Assertion classes
+
+Each assertion is a small Pydantic submodel with a `check(pkg, result)`
+method. One class per matcher: `StdoutContains`, `StderrContains`,
+`StdoutMatches`, `FilesExist`, `FilesAbsent`, `FileContains`, `ZipContains`,
+`ZipNotContains`, `SolutionsMatcher`, `TestsMatcher`.
+
+All assertion failures embed: package name, scenario name, step `cmd`,
+expected vs. found.
+
+### Marker
+
+`pytest_collection_modifyitems` adds `pytest.mark.e2e` to every collected
+`E2EScenarioItem` so `mise run test` keeps ignoring them. No new mise task is
+required — `mise run test-e2e` already runs everything tagged `e2e`.
+
+## Migration of existing e2e tests
+
+**Migrate to the new tree:**
+
+- `tests/rbx/box/cli/problem_test.py::test_default_preset_problem` →
+  one package + scenario invoking `run`, `unit`, `st b`, `pkg boca`,
+  `pkg polygon`. Strengthen the assertions beyond exit code where the
+  structured matchers can express something.
+- `tests/rbx/box/cli/problem_test.py::test_interactive_problem` →
+  same structure for an interactive problem package.
+- `tests/rbx/box/packaging/e2e/testdata/simple-problem/` → moves under
+  `tests/e2e/testdata/`.
+
+**Leave in Python:**
+
+- `tests/rbx/box/packaging/e2e/test_boca_e2e.py` — docker-compose
+  orchestration and HTTP uploads to a real BOCA service; not a fit for the
+  YAML DSL. Keep its existing markers.
+
+## Future work
+
+- **`rbx stress` support.** Add a `--report <path>` flag to `rbx stress` that
+  emits structured JSON (counterexamples found, seeds, finder verdicts).
+  Then add a `stress:` matcher with assertions like
+  `found_counterexample: true|false`, `count_at_least: <int>`. Determinism
+  via pinned `--seed` in `cmd:`.
+- **Multi-language statement assertions.** Trivial extension once the v1
+  `files_exist` matcher exists.
+- **Contest packages (`contest.rbx.yml`).** Same DSL with a top-level
+  contest scenario; deferred until needed.
+
+## Risks
+
+- **Schema drift.** Adding new `expect:` keys is cheap, but renaming or
+  changing the resolution algorithm later breaks existing YAML. Mitigation:
+  `extra="forbid"` plus this design doc as the schema's source of truth.
+- **`skeleton.yml` format dependency.** If `rbx run` ever changes that
+  file's shape, every e2e test breaks at once. Mitigation: a single
+  `SolutionsMatcher` reads it, isolating the parsing concern.
+- **`build` validation report not yet structured.** If `rbx build` does not
+  already persist a validation report, the `tests.all_valid` matcher needs
+  one added during implementation. The implementation plan should confirm
+  this on day one.

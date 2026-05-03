@@ -17,6 +17,7 @@ from rbx.box import (
     validators,
 )
 from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.parallel import live_tasks
@@ -58,6 +59,33 @@ class GenerationError(RbxException):
 
 async def _compile_generator(generator: CodeItem) -> str:
     return await compile_item(generator, sanitized=SanitizationLevel.PREFER)
+
+
+async def _run_generator_to_digest(
+    generator: CodeItem,
+    generator_digest: str,
+    args: Optional[str],
+) -> str:
+    """Run a generator with stdout captured into a DigestHolder and return the digest.
+
+    Used by the determinism check: re-runs a generator with the same args as a
+    prior invocation and returns the digest of its stdout, without touching the
+    on-disk testcase file.
+    """
+    holder = DigestHolder()
+    log = await run_item(
+        generator,
+        DigestOrSource.create(generator_digest),
+        stdout=DigestOrDest.create(holder),
+        extra_args=args or None,
+    )
+    if not log or log.exitcode != 0 or holder.value is None:
+        with GenerationError() as err:
+            err.print(
+                f'[error]Determinism re-run of generator [item]{generator.path}[/item] '
+                f'failed (exit={None if log is None else log.exitcode}).[/error]'
+            )
+    return holder.value
 
 
 @functools.cache
@@ -419,7 +447,9 @@ async def generate_standalone(
 
 
 async def generate_testcases(
-    progress: Optional[StatusProgress] = None, groups: Optional[Set[str]] = None
+    progress: Optional[StatusProgress] = None,
+    groups: Optional[Set[str]] = None,
+    verification: VerificationLevel = VerificationLevel.NONE,
 ):
     def step():
         if progress is not None:
@@ -430,16 +460,27 @@ async def generate_testcases(
     )
 
     testcase_utils.clear_built_testcases()
+    check_determinism = verification.value >= VerificationLevel.VALIDATE.value
 
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future[IdentifiedResult[GenerationTestcaseEntry, str]]] = []
 
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
+        def __init__(
+            self,
+            groups: Optional[Set[str]],
+            *,
+            check_determinism: bool = False,
+        ):
+            super().__init__(groups)
+            self.check_determinism = check_determinism
+
         async def visit(self, entry: GenerationTestcaseEntry):
             _, completed = executor.submit_with_identity(entry, self._visit, entry)
             futures.append(completed)
 
         async def _visit(self, entry: GenerationTestcaseEntry) -> str:
+            verify_digest = None
             if entry.metadata.copied_from is not None:
                 _copy_testcase_over(
                     entry.metadata.copied_from,
@@ -451,20 +492,39 @@ async def generate_testcases(
                 )
                 entry.metadata.copied_to.inputPath.write_text(entry.metadata.content)
             elif entry.metadata.generator_call is not None:
-                await generate_standalone(
+                call = entry.metadata.generator_call
+                generator_digest = compiled_generators[call.name]
+                primary = generate_standalone(
                     entry.metadata,
                     group_entry=entry.group_entry,
                     validate=False,
-                    generator_digest=compiled_generators[
-                        entry.metadata.generator_call.name
-                    ],
+                    generator_digest=generator_digest,
                 )
+                if self.check_determinism:
+                    verify = _run_generator_to_digest(
+                        package.get_generator(call.name),
+                        generator_digest,
+                        call.args,
+                    )
+                    _, verify_digest = await asyncio.gather(primary, verify)
+                else:
+                    await primary
             else:
                 raise ValueError(f'Invalid generation metadata: {entry.metadata}')
             assert entry.metadata.copied_to.inputPath.is_file()
-            return digest_file(entry.metadata.copied_to.inputPath)
+            first_digest = digest_file(entry.metadata.copied_to.inputPath)
+            if verify_digest is not None and verify_digest != first_digest:
+                call = entry.metadata.generator_call
+                with GenerationError() as err:
+                    err.print(
+                        f'[error]Generator [item]{call.name}[/item] with args '
+                        f'[item]{call.args}[/item] is non-deterministic: two runs '
+                        f'produced different output. This usually means the generator '
+                        f'is not seeded from its argv.[/error]'
+                    )
+            return first_digest
 
-    visitor = BuildTestcaseVisitor(groups)
+    visitor = BuildTestcaseVisitor(groups, check_determinism=check_determinism)
     await run_testcase_visitor(visitor)
 
     # Wait for all testcases to be generated (in original order), and process exceptions and duplicates.
