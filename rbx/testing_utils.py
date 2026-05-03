@@ -67,7 +67,7 @@ def walk_directory(
                     resolved = path.resolve()
                     text_filename.append(' → ', 'cyan')
                     text_filename.append(str(resolved), 'cyan italic')
-                except (OSError, RuntimeError):
+                except OSError, RuntimeError:
                     text_filename.append(' → ', 'red')
                     text_filename.append(f'{os.readlink(path)}', 'red italic')
 
