@@ -42,6 +42,7 @@ The main entry point in `packager.py`. Pipeline:
 - Maps solutions to Polygon tags: MA (main accepted), OK, WA, TL, ML, RE, RJ
 - Statement upload: renders Jinja blocks to Polygon's structured format, uploads resources (images, TikZ PDFs)
 - API client in `polygon_api.py` with SHA-512 signed requests, env vars `POLYGON_API_KEY`/`POLYGON_API_SECRET`
+- `--upload-tests-raw` escape hatch: uploads built test inputs as raw files (1 MiB cap each), skips generator uploads, and clears the freemarker script. Use when Polygon-side generator compilation is failing.
 
 **`xml_schema.py`** -- pydantic-xml models: `Problem`, `Contest`, `Testset`, `Checker`, `Interactor`, `Name`, `Statement`, `File`, `Test`.
 
@@ -83,7 +84,7 @@ Reverse operation: `PolygonImporter` imports from Polygon packages into rbx form
 
 | Command | Packager | Extra Options |
 |---------|----------|---------------|
-| `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip` |
+| `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip`, `--upload-tests-raw` |
 | `rbx package boca` | `BocaPackager` | `--upload`, `--language` |
 | `rbx package moj` | `MojPackager` | `--for-boca` |
 | `rbx package pkg` | `PkgPackager` | (none) |

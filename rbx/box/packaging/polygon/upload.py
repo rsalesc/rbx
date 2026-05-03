@@ -1,4 +1,5 @@
 import asyncio
+import pathlib
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Optional, Set
 
@@ -8,6 +9,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import download, header, naming, package
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.statement_block_utils import (
     get_processed_statement_blocks,
@@ -43,6 +45,7 @@ ParamChoices = Literal['statements', 'solutions', 'tests', 'files']
 
 ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
 MAX_WORKERS = 4
+_RAW_TEST_SIZE_LIMIT = 1024 * 1024
 
 
 def _get_polygon_api() -> api.Polygon:
@@ -236,6 +239,38 @@ def _get_freemarker_for_calls(calls: List[GeneratorCall], next_index: int = 1) -
     )
 
 
+def _resolve_raw_test_input_path(
+    entry: 'GenerationTestcaseEntry',
+) -> Optional[pathlib.Path]:
+    if entry.metadata.copied_to.inputPath.is_file():
+        return entry.metadata.copied_to.inputPath
+    if (
+        entry.metadata.copied_from is not None
+        and entry.metadata.copied_from.inputPath.is_file()
+    ):
+        return entry.metadata.copied_from.inputPath
+    return None
+
+
+def _validate_raw_tests(
+    entries: List['GenerationTestcaseEntry'],
+) -> List[str]:
+    errors: List[str] = []
+    for entry in entries:
+        label = entry.short_repr()
+        path = _resolve_raw_test_input_path(entry)
+        if path is None:
+            errors.append(f'"{label}" was not built (input file missing)')
+            continue
+        size = path.stat().st_size
+        if size >= _RAW_TEST_SIZE_LIMIT:
+            errors.append(
+                f'"{label}" is {utils.format_size(size)}, '
+                f'exceeds the 1 MiB Polygon limit'
+            )
+    return errors
+
+
 def _upload_generator(problem: api.Problem, generator: Generator):
     generator_source_type = get_polygon_language_from_code_item(generator)
     console.console.print(
@@ -333,6 +368,42 @@ def _upload_testcases(problem: api.Problem):
                     )
                     raise typer.Exit(1) from None
                 raise
+        progress.update(task_id, completed=len(entries))
+
+
+def _upload_testcases_raw(problem: api.Problem):
+    entries = asyncio.run(extract_generation_testcases_from_groups())
+
+    errors = _validate_raw_tests(entries)
+    if errors:
+        console.console.print('[error]Cannot upload raw tests:[/error]')
+        for error in errors:
+            console.console.print(f'[error]  - {error}[/error]')
+        raise typer.Exit(1)
+
+    console.console.print('Clearing existing script...')
+    problem.save_script(testset='tests', source='<#-- empty placeholder script -->')
+
+    with rich.progress.Progress(speed_estimate_period=5) as progress:
+        next_index = 1
+        task_id = progress.add_task('Uploading raw testcases...', total=len(entries))
+        for entry in entries:
+            path = _resolve_raw_test_input_path(entry)
+            assert path is not None  # validated above
+            content = path.read_text()
+            saved = _save_skip_coinciding_testcases(
+                problem,
+                testset='tests',
+                test_index=next_index,
+                test_input=content,
+                **_get_test_params_for_statement(
+                    entry.metadata.copied_from,
+                    is_sample=entry.is_sample(),
+                ),
+            )
+            progress.update(task_id, advance=1)
+            if saved:
+                next_index += 1
         progress.update(task_id, completed=len(entries))
 
 
@@ -504,6 +575,7 @@ async def upload_problem(
     upload_as_english: bool = False,
     upload_only: Optional[Set[str]] = None,
     dont_upload: Optional[Set[str]] = None,
+    raw_tests: bool = False,
 ):
     if upload_only is None:
         upload_only = set()
@@ -537,7 +609,10 @@ async def upload_problem(
     if 'solutions' in which_upload:
         _upload_solutions(problem)
     if 'tests' in which_upload:
-        _upload_testcases(problem)
+        if raw_tests:
+            _upload_testcases_raw(problem)
+        else:
+            _upload_testcases(problem)
     if 'statements' in which_upload:
         await _upload_statement(
             problem, main_language=main_language, upload_as_english=upload_as_english
