@@ -1,23 +1,23 @@
-name: "simple-ac"
+name: simple-ac
 timeLimit: 1000
 memoryLimit: 256
 
 generators:
-  - name: "gen"
-    path: "gens/gen.cpp"
+  - name: gen
+    path: gens/gen.cpp
 
 solutions:
-  - path: "sols/main.cpp"
-    outcome: "ACCEPTED"
+  - path: sols/main.cpp
+    outcome: ac
 
 testcases:
-  - name: "main"
+  - name: main
     subgroups:
-      - name: "gen"
+      - name: gen
         generators:
-          - name: "gen"
-            args: "1 2"
-          - name: "gen"
-            args: "3 4"
-          - name: "gen"
-            args: "5 6"
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4
+          - name: gen
+            args: 5 6
