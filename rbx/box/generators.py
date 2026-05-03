@@ -433,12 +433,21 @@ async def generate_testcases(
     )
 
     testcase_utils.clear_built_testcases()
-    check_determinism = verification.value >= VerificationLevel.VALIDATE.value  # noqa: F841
+    check_determinism = verification.value >= VerificationLevel.VALIDATE.value
 
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future[IdentifiedResult[GenerationTestcaseEntry, str]]] = []
 
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
+        def __init__(
+            self,
+            groups: Optional[Set[str]],
+            *,
+            check_determinism: bool = False,
+        ):
+            super().__init__(groups)
+            self.check_determinism = check_determinism
+
         async def visit(self, entry: GenerationTestcaseEntry):
             _, completed = executor.submit_with_identity(entry, self._visit, entry)
             futures.append(completed)
@@ -468,7 +477,7 @@ async def generate_testcases(
             assert entry.metadata.copied_to.inputPath.is_file()
             return digest_file(entry.metadata.copied_to.inputPath)
 
-    visitor = BuildTestcaseVisitor(groups)
+    visitor = BuildTestcaseVisitor(groups, check_determinism=check_determinism)
     await run_testcase_visitor(visitor)
 
     # Wait for all testcases to be generated (in original order), and process exceptions and duplicates.
