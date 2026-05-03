@@ -16,6 +16,8 @@ def test_find_contest_package_raises_yaml_validation_error_on_bad_yml(
     (cleandir / 'contest.rbx.yml').write_text(
         'name: my-contest\nproblems: "not-a-list"\n'
     )
+    # The cache may already hold a None from prior tests; clear it.
+    find_contest_package.cache_clear()
 
     with pytest.raises(YamlValidationError) as exc_info:
         find_contest_package(cleandir)

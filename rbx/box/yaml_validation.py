@@ -210,7 +210,7 @@ def _locate(
                 line, col = node.lc.key(first_key)
                 last_line, last_col = line, col
                 last_span = len(first_key)
-            except KeyError, AttributeError:
+            except Exception:
                 pass
 
     # Scalar-value widening: when we descended fully into a scalar inside
@@ -227,7 +227,7 @@ def _locate(
             v_line, v_col = parent.lc.value(last_seg)
             last_line, last_col = v_line, v_col
             last_span = max(1, len(str(node)))
-        except KeyError, AttributeError:
+        except Exception:
             pass
 
     return last_line + 1, last_col + 1, last_span

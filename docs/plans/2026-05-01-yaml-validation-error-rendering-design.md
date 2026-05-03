@@ -325,6 +325,6 @@ ruyaml's `problem_mark` for an unterminated construct often points at EOF (where
 
 Three tests in `tests/rbx/box/limits_info_test.py` previously asserted on raw `yaml.YAMLError` / `pydantic.ValidationError`. They were updated to assert the new wrapped types `YamlSyntaxError` / `YamlValidationError` as part of the `refactor(limits)` commit, since changing the exception class is a behaviour change tied to the migration.
 
-### Expression `except (X, Y):` rewritten to `except X, Y:`
+### Defensive `except` blocks in `_locate` use `except Exception:`
 
-Ruff format strips the redundant parens in this construct. Both forms are equivalent in modern Python — the tuple is implicit. No semantic change.
+Initial drafts caught `(KeyError, AttributeError)` around the `node.lc.key(...)` / `node.lc.value(...)` calls in the first-key fallback and scalar-widening blocks of `_locate`. Ruff format (0.15) strips the redundant parens, leaving `except KeyError, AttributeError:` — which Python 3.14 parses as a bare-tuple exception type but is a `SyntaxError` on 3.13 and earlier. The blocks were rewritten to `except Exception:` since the intent is "fall back if anything goes wrong reading position info" — broader, but truthful and cross-version safe.
