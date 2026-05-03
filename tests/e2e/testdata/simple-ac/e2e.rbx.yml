@@ -1,0 +1,4 @@
+scenarios:
+  - name: smoke
+    steps:
+      - cmd: build
