@@ -1,7 +1,11 @@
+import copy
+import pathlib
+
 import pytest
+from pydantic import ValidationError
 
 from rbx.box.schema import ExpectedOutcome
-from tests.e2e.spec import parse_spec
+from tests.e2e.spec import load_spec, parse_spec
 
 
 def test_minimal():
@@ -247,3 +251,83 @@ def test_unknown_verdict_in_full_form():
                 ]
             }
         )
+
+
+def test_unknown_verdict_error_includes_location_path():
+    data = {
+        'scenarios': [
+            {
+                'name': 's',
+                'steps': [
+                    {
+                        'cmd': 'run',
+                        'expect': {'solutions': {'sols/x.cpp': 'BOGUS'}},
+                    }
+                ],
+            }
+        ]
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        parse_spec(data)
+    errors = exc_info.value.errors()
+    locs = [err['loc'] for err in errors]
+    assert any(
+        'scenarios' in loc
+        and 0 in loc
+        and 'steps' in loc
+        and 'expect' in loc
+        and 'solutions' in loc
+        and 'sols/x.cpp' in loc
+        for loc in locs
+    ), f'expected location path through solutions/sols/x.cpp, got {locs!r}'
+
+
+def test_parse_spec_does_not_mutate_input():
+    data = {
+        'scenarios': [
+            {
+                'name': 's',
+                'steps': [
+                    {
+                        'cmd': 'run',
+                        'expect': {'solutions': {'sols/main.cpp': 'ac'}},
+                    }
+                ],
+            }
+        ]
+    }
+    snapshot = copy.deepcopy(data)
+    parse_spec(data)
+    assert data == snapshot
+
+
+def test_empty_solution_matcher_is_rejected():
+    with pytest.raises(ValueError):
+        parse_spec(
+            {
+                'scenarios': [
+                    {
+                        'name': 's',
+                        'steps': [
+                            {
+                                'cmd': 'run',
+                                'expect': {'solutions': {'sols/main.cpp': {}}},
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+
+def test_load_spec_against_simple_ac():
+    path = (
+        pathlib.Path(__file__).resolve().parent
+        / 'testdata'
+        / 'simple-ac'
+        / 'e2e.rbx.yml'
+    )
+    spec = load_spec(path)
+    assert [s.name for s in spec.scenarios] == ['smoke']
+    assert spec.scenarios[0].steps[0].cmd == 'build'
+    assert spec.scenarios[0].steps[0].expect_exit == 0

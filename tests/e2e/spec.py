@@ -1,8 +1,9 @@
+import copy
 import pathlib
-from typing import Dict, List, Optional, Union
+from typing import Annotated, Dict, List, Optional, Union
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from rbx.box.schema import ExpectedOutcome
 
@@ -14,6 +15,29 @@ class _Forbid(BaseModel):
 class SolutionMatcher(_Forbid):
     star: Optional[ExpectedOutcome] = None
     entries: Dict[str, ExpectedOutcome] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def _non_empty(self):
+        if self.star is None and not self.entries:
+            raise ValueError(
+                'solution matcher must specify at least one of `*` or a '
+                'per-group entry; an empty matcher asserts nothing'
+            )
+        return self
+
+
+def _coerce_solution_matcher(value):
+    if isinstance(value, SolutionMatcher):
+        return value
+    if isinstance(value, str):
+        return SolutionMatcher(star=ExpectedOutcome(value), entries={})
+    if isinstance(value, dict):
+        star_raw = value.get('*')
+        return SolutionMatcher(
+            star=ExpectedOutcome(star_raw) if star_raw is not None else None,
+            entries={k: ExpectedOutcome(v) for k, v in value.items() if k != '*'},
+        )
+    raise ValueError(f'invalid solution matcher: {value!r}')
 
 
 class TestsMatcher(_Forbid):
@@ -37,7 +61,9 @@ class Expect(_Forbid):
     file_contains: Dict[str, str] = Field(default_factory=dict)
     zip_contains: Optional[ZipMatcher] = None
     zip_not_contains: Optional[ZipMatcher] = None
-    solutions: Optional[Dict[str, SolutionMatcher]] = None
+    solutions: Optional[
+        Dict[str, Annotated[SolutionMatcher, BeforeValidator(_coerce_solution_matcher)]]
+    ] = None
     tests: Optional[TestsMatcher] = None
 
 
@@ -64,28 +90,8 @@ class E2ESpec(_Forbid):
         return self
 
 
-def _parse_solution_matcher(value) -> SolutionMatcher:
-    if isinstance(value, str):
-        return SolutionMatcher(star=ExpectedOutcome(value), entries={})
-    if isinstance(value, dict):
-        star_raw = value.get('*')
-        star = ExpectedOutcome(star_raw) if star_raw is not None else None
-        entries = {k: ExpectedOutcome(v) for k, v in value.items() if k != '*'}
-        return SolutionMatcher(star=star, entries=entries)
-    raise ValueError(f'invalid solution matcher: {value!r}')
-
-
 def parse_spec(data: dict) -> E2ESpec:
-    for sc in data.get('scenarios', []) or []:
-        for step in sc.get('steps', []) or []:
-            expect = step.get('expect') or {}
-            sols = expect.get('solutions')
-            if sols:
-                expect['solutions'] = {
-                    k: _parse_solution_matcher(v) for k, v in sols.items()
-                }
-                step['expect'] = expect
-    return E2ESpec.model_validate(data)
+    return E2ESpec.model_validate(copy.deepcopy(data))
 
 
 def load_spec(path: pathlib.Path) -> E2ESpec:
