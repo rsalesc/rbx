@@ -421,12 +421,27 @@ class Evaluation(BaseModel):
                                      # absolute paths
 ```
 
-`Outcome` (`rbx/grading/steps.py:37`) values on disk are the lowercased enum
-serializations: `accepted`, `wrong-answer`, `time-limit-exceeded`,
-`runtime-error`, `memory-limit-exceeded`, `output-limit-exceeded`,
-`idleness-limit-exceeded`, `judge-failed`, `internal-error`,
-`compilation-error`. Each YAML file is preceded by a `# yaml-language-server`
-comment line, which is fine for `utils.model_from_yaml`.
+`Outcome` values on disk are the lowercased enum serializations declared at
+`rbx/grading/steps.py:37-47`:
+
+```python
+class Outcome(Enum):
+    ACCEPTED = 'accepted'
+    WRONG_ANSWER = 'wrong-answer'
+    MEMORY_LIMIT_EXCEEDED = 'memory-limit-exceeded'
+    TIME_LIMIT_EXCEEDED = 'time-limit-exceeded'
+    IDLENESS_LIMIT_EXCEEDED = 'idleness-limit-exceeded'
+    RUNTIME_ERROR = 'runtime-error'
+    OUTPUT_LIMIT_EXCEEDED = 'output-limit-exceeded'
+    JUDGE_FAILED = 'judge-failed'
+    INTERNAL_ERROR = 'internal-error'
+    COMPILATION_ERROR = 'compilation-error'
+```
+
+These ten string aliases are the exact tokens the matcher's verdict-comparison
+code (Task 7) will compare against. Each YAML file is preceded by a
+`# yaml-language-server` comment line, which is fine for
+`utils.model_from_yaml`.
 
 The sibling `<idx>.log` file is intentionally identical to `<idx>.eval` —
 both come from the same `model_to_yaml(eval)` call (lines 173-174). The
@@ -459,10 +474,18 @@ The matcher's lookup, given a YAML row addressing `solutions/foo.cpp` on
 group `main` index `1`:
 
 1. Load `.box/runs/skeleton.yml` once per scenario into
-   `SolutionReportSkeleton` via `utils.model_from_yaml`.
+   `SolutionReportSkeleton` via `utils.model_from_yaml`. When walking
+   `.box/runs/` for skeletons, ignore the `.box/runs/.irun/` subtree —
+   that is the interactive-debug scratch space (`rbx irun`) and is not
+   part of the matcher's input.
 2. Find the `SolutionSkeleton` whose `path` equals `solutions/foo.cpp`
    (skeleton stores it as a relative `pathlib.Path`, identical to the
-   `Solution.path` declared in `problem.rbx.yml`).
+   `Solution.path` declared in `problem.rbx.yml`). Do **not** construct
+   `runs_dir` yourself: always read it back from
+   `SolutionReportSkeleton.solutions[i].runs_dir`. The field is absolute
+   (see `SolutionSkeleton.runs_dir_href` at `rbx/box/solutions.py:112-114`,
+   which calls `relative_to(package.find_problem())` on it), so matching
+   solutions by `path` equality across different CWDs would otherwise bite.
 3. Build a `TestcaseEntry(group="main", index=1)` and call
    `solution_skeleton.get_entry_prefix(entry).with_suffix('.eval')`.
 4. Parse with `utils.model_from_yaml(Evaluation, …)` and read
@@ -470,7 +493,10 @@ group `main` index `1`:
 
 For "all testcases in a group" assertions, iterate the testcase indices
 exposed by `skeleton.find_group_skeleton(group).testcases` (length gives
-the index range; per-index files are `000`, `001`, …).
+the index range; per-index files are `000`, `001`, …). Note
+`find_group_skeleton` only resolves top-level groups; subgroups
+(`TestcaseGroup.subgroups`) are out of scope for v1 and could later be
+addressed via `<group>/<subgroup>` syntax in the DSL.
 
 ### Soft-TLE preservation
 
@@ -517,6 +543,11 @@ read each `.eval`, compare `result.outcome` against the expected
 `Outcome` (or `ExpectedOutcome`-style alias). One implementation
 follow-up worth recording: the matcher should accept solution paths
 exactly as written in `problem.rbx.yml` (e.g. `solutions/main.cpp`), and
-should fail loudly with a clear message if the targeted `.eval` is
-missing — that almost always means the scenario forgot to actually run
-`rbx run` before the matcher fired.
+should fail loudly with a clear message when:
+
+- the targeted `.eval` is missing — almost always means the scenario
+  forgot to actually run `rbx run` before the matcher fired;
+- a group named in the e2e YAML is not present in the skeleton —
+  `skeleton.find_group_skeleton(...)` returns `Optional[GroupSkeleton]`,
+  so the matcher must check for `None` and surface a clear "unknown
+  group `X`" error rather than letting an `AttributeError` bubble up.
