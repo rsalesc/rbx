@@ -564,3 +564,16 @@ async def test_generator_determinism_check_passes_for_deterministic_generator(
     assert (
         testing_pkg.get_build_testgroup_path('main') / '000.in'
     ).read_text() == '123\n'
+
+
+async def test_generator_determinism_check_skipped_at_verification_none(
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.environment import VerificationLevel
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-nondet.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gens/gen.cpp 123\n')
+
+    # No verification → no determinism check → no error even though the
+    # generator is non-deterministic.
+    await generate_testcases(verification=VerificationLevel.NONE)
