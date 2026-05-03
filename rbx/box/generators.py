@@ -17,6 +17,7 @@ from rbx.box import (
     validators,
 )
 from rbx.box.code import SanitizationLevel, compile_item, run_item
+from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.parallel import live_tasks
@@ -419,7 +420,9 @@ async def generate_standalone(
 
 
 async def generate_testcases(
-    progress: Optional[StatusProgress] = None, groups: Optional[Set[str]] = None
+    progress: Optional[StatusProgress] = None,
+    groups: Optional[Set[str]] = None,
+    verification: VerificationLevel = VerificationLevel.NONE,
 ):
     def step():
         if progress is not None:
@@ -430,6 +433,7 @@ async def generate_testcases(
     )
 
     testcase_utils.clear_built_testcases()
+    check_determinism = verification.value >= VerificationLevel.VALIDATE.value  # noqa: F841
 
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future[IdentifiedResult[GenerationTestcaseEntry, str]]] = []
