@@ -535,3 +535,16 @@ gens/gen.cpp 2
 
     out = capsys.readouterr().out
     assert 'is a hash duplicate of' not in out
+
+
+async def test_generator_determinism_check_detects_nondeterministic_generator(
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.environment import VerificationLevel
+    from rbx.box.generators import GenerationError
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-nondet.cpp')
+    testing_pkg.add_testgroup_from_plan('main', 'gens/gen.cpp 123\n')
+
+    with pytest.raises(GenerationError):
+        await generate_testcases(verification=VerificationLevel.VALIDATE)
