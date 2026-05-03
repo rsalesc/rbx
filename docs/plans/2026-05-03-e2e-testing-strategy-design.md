@@ -367,3 +367,156 @@ required — `mise run test-e2e` already runs everything tagged `e2e`.
   already persist a validation report, the `tests.all_valid` matcher needs
   one added during implementation. The implementation plan should confirm
   this on day one.
+
+## Verdict source (Task 0 spike findings)
+
+This section documents how the `SolutionsMatcher` (Task 7) reads
+per-(solution, group, testcase) verdicts off disk. Confirmed by reading
+`rbx/box/tasks.py`, `rbx/box/solutions.py`, and `rbx/box/ui/utils/run_ui.py`,
+and by running `uv run rbx run` against
+`tests/rbx/box/packaging/e2e/testdata/simple-problem` (copied to a tmpdir).
+
+### Directory layout
+
+After `rbx run`, the runs directory at `package.get_problem_runs_dir()` —
+which resolves to `<problem-root>/.box/runs/` (see
+`rbx/box/package.py:172`) — has this shape:
+
+```
+.box/runs/
+  skeleton.yml                  # the plan (SolutionReportSkeleton)
+  0/                            # solution index 0 (== solutions[0] in skeleton)
+    samples/
+      000.eval                  # YAML-serialized Evaluation
+      000.log                   # same content (TestcaseLog dump)
+      000.out / 000.err         # captured stdout / stderr (binary)
+    main/
+      000.eval
+      000.log
+      000.out / 000.err
+      001.eval
+      001.log
+      001.out / 001.err
+  1/                            # solution index 1
+    samples/000.eval ...
+    main/000.eval ...
+    main/001.eval ...
+```
+
+For the `simple-problem` package (2 solutions × 3 testcases across 2 groups)
+the spike produced exactly the files above.
+
+### File format and Pydantic model
+
+Each `<idx:03d>.eval` is YAML serialized via `utils.model_to_yaml(eval)` from
+`rbx/box/tasks.py:174`. The model is `rbx.grading.steps.Evaluation`:
+
+```python
+class Evaluation(BaseModel):
+    result: CheckerResult            # outcome (Outcome enum), message,
+                                     # no_tle_outcome, sanitizer_warnings
+    testcase: TestcaseIO             # index, input, output (paths)
+    log: TestcaseLog                 # exitcode, exitstatus, time, wall_time,
+                                     # memory, metadata, stdout/stderr/log/eval
+                                     # absolute paths
+```
+
+`Outcome` (`rbx/grading/steps.py:37`) values on disk are the lowercased enum
+serializations: `accepted`, `wrong-answer`, `time-limit-exceeded`,
+`runtime-error`, `memory-limit-exceeded`, `output-limit-exceeded`,
+`idleness-limit-exceeded`, `judge-failed`, `internal-error`,
+`compilation-error`. Each YAML file is preceded by a `# yaml-language-server`
+comment line, which is fine for `utils.model_from_yaml`.
+
+The sibling `<idx>.log` file is intentionally identical to `<idx>.eval` —
+both come from the same `model_to_yaml(eval)` call (lines 173-174). The
+matcher reads `.eval` (canonical for run_ui too, see below).
+
+### Lookup procedure (solution_path, group, index) → file
+
+The skeleton at `.box/runs/skeleton.yml` is a `SolutionReportSkeleton` whose
+`solutions: List[SolutionSkeleton]` carries the per-solution `runs_dir`
+(absolute path, e.g. `<root>/.box/runs/0`). `SolutionSkeleton` exposes:
+
+```python
+def get_entry_prefix(self, entry: TestcaseEntry) -> Path:
+    return self.runs_dir / entry.group / f'{entry.index:03d}'
+```
+
+so the eval path is `skeleton.yml`-driven, not constructed from raw input.
+The TUI helper `rbx/box/ui/utils/run_ui.py:34-39` (already production code)
+is the exact pattern the matcher should reuse:
+
+```python
+def get_solution_eval(solution, entry):
+    path = solution.get_entry_prefix(entry).with_suffix('.eval')
+    if not path.is_file():
+        return None
+    return utils.model_from_yaml(Evaluation, path.read_text())
+```
+
+The matcher's lookup, given a YAML row addressing `solutions/foo.cpp` on
+group `main` index `1`:
+
+1. Load `.box/runs/skeleton.yml` once per scenario into
+   `SolutionReportSkeleton` via `utils.model_from_yaml`.
+2. Find the `SolutionSkeleton` whose `path` equals `solutions/foo.cpp`
+   (skeleton stores it as a relative `pathlib.Path`, identical to the
+   `Solution.path` declared in `problem.rbx.yml`).
+3. Build a `TestcaseEntry(group="main", index=1)` and call
+   `solution_skeleton.get_entry_prefix(entry).with_suffix('.eval')`.
+4. Parse with `utils.model_from_yaml(Evaluation, …)` and read
+   `eval.result.outcome` (an `Outcome` enum value).
+
+For "all testcases in a group" assertions, iterate the testcase indices
+exposed by `skeleton.find_group_skeleton(group).testcases` (length gives
+the index range; per-index files are `000`, `001`, …).
+
+### Soft-TLE preservation
+
+Soft-TLE conversion happens in `rbx/box/checkers.py:_convert_tle` BEFORE the
+`Evaluation` is serialized. When CPU time exceeds the configured `timeLimit`
+but the checker would otherwise have returned AC/WA/RTE, the function sets
+`result.outcome = Outcome.TIME_LIMIT_EXCEEDED` and stores the original
+verdict in `result.no_tle_outcome` (line 203-204). Both fields land in the
+on-disk YAML. The matcher therefore sees:
+
+- `result.outcome` — the user-facing verdict (already TLE-promoted).
+- `result.no_tle_outcome` — the un-promoted verdict, available if a future
+  e2e DSL ever needs to assert "would have been WA without the TL."
+
+Caveat observed during the spike: the slow solution in `simple-problem`
+sleeps via wall-clock, so its CPU time stays at ~8 ms while wall_time hits
+~3 s. With sandbox `wallTimeLimit = 2 × timeLimit = 4 s`, neither the CPU
+soft-TLE check (`run_log.time * 1000 >= timelimit`) nor the wall-time kill
+fires, so its `.eval` records `outcome: accepted` despite the run report
+rendering `>2000 ms ⧖`. That rendering is a presentation-layer concern in
+`solutions.get_capped_evals_formatted_time` (and a sibling `is_slow()`
+short-circuit in the score column). It is **not** persisted, and the
+canonical verdict for the matcher is the on-disk `Outcome` enum — which
+matches what `ExpectedOutcome.match()` already operates on inside
+`run_solutions`. This means our DSL will agree with `ExpectedOutcome` and
+may diverge from the cosmetic "⧖" display in pathological CPU-vs-wall
+cases. That is acceptable; document it in the matcher's docstring (Task 7).
+
+### Persistence status: yes, no work needed
+
+`Evaluation` IS persisted today, on every `rbx run` (and every `rbx irun`,
+which uses `.box/runs/.irun/<i>/...` instead — same file shape, see
+`solutions.py:801-819`). No `--report` flag, no new code path required.
+The matcher's only dependency on production code is reading two existing
+formats: `SolutionReportSkeleton` from `skeleton.yml` and `Evaluation` from
+`<runs_dir>/<group>/<idx:03d>.eval`. Both already have stable Pydantic
+schemas (with `# yaml-language-server: $schema=…` headers exported to
+`https://rsalesc.github.io/rbx/schemas/`), so drift is detectable.
+
+The "TBD: implement during Task 7" branch from the original task brief
+(adding a `--report` flag or new persistence path) is therefore **not
+needed** and Task 7 collapses to: load skeleton, walk YAML expectations,
+read each `.eval`, compare `result.outcome` against the expected
+`Outcome` (or `ExpectedOutcome`-style alias). One implementation
+follow-up worth recording: the matcher should accept solution paths
+exactly as written in `problem.rbx.yml` (e.g. `solutions/main.cpp`), and
+should fail loudly with a clear message if the targeted `.eval` is
+missing — that almost always means the scenario forgot to actually run
+`rbx run` before the matcher fired.
