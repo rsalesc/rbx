@@ -192,10 +192,10 @@ def _add_warning_pragmas_around(code: str) -> str:
     )
 
 
-def _ignore_warning_in_cxx_input(input: GradingFileInput):
+async def _ignore_warning_in_cxx_input(input: GradingFileInput):
     if input.src is None or input.src.suffix not in ('.h', '.hpp'):
         return
-    preprocessed_path = package.write_preprocessed_file(
+    preprocessed_path = await package.write_preprocessed_file(
         input.src, _add_warning_pragmas_around(input.src.read_text())
     )
     input.src = preprocessed_path
@@ -221,7 +221,7 @@ def _get_code_variables(code: CodeItem, language: str) -> dict[str, Any]:
     return res
 
 
-def maybe_rename_java_class(
+async def maybe_rename_java_class(
     compilable_path: pathlib.Path,
     file_mapping: FileMapping,
 ) -> pathlib.Path:
@@ -251,7 +251,7 @@ def maybe_rename_java_class(
     if new_content == java_content:
         return compilable_path
 
-    return package.write_preprocessed_file(compilable_path, new_content)
+    return await package.write_preprocessed_file(compilable_path, new_content)
 
 
 def _format_stack_limit(limit: int) -> str:
@@ -619,7 +619,7 @@ async def compile_item(
         download.maybe_add_testlib(code, artifacts)
         download.maybe_add_jngen(code, artifacts)
         download.maybe_add_rbx_header(code, artifacts)
-        compilable_path = maybe_rename_java_class(compilable_path, file_mapping)
+        compilable_path = await maybe_rename_java_class(compilable_path, file_mapping)
         artifacts.inputs.append(
             GradingFileInput(
                 src=compilable_path, dest=PosixPath(file_mapping.compilable)
@@ -637,7 +637,7 @@ async def compile_item(
         )
 
         for input in artifacts.inputs:
-            _ignore_warning_in_cxx_input(input)
+            await _ignore_warning_in_cxx_input(input)
 
         # Add system bits/stdc++.h to the compilation.
         bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)

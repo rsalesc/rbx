@@ -14,7 +14,7 @@ from typing import (
 import async_lru
 import ruyaml
 import typer
-from filelock import BaseFileLock, FileLock
+from filelock import AsyncFileLock, BaseAsyncFileLock
 
 from rbx import console, utils
 from rbx.box import cd, environment, global_package, path_resolution
@@ -207,14 +207,16 @@ def get_problem_preprocessed_path(
 
 
 @functools.cache
-def get_preprocessed_file_lock(root: pathlib.Path = pathlib.Path()) -> BaseFileLock:
-    return FileLock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
+def get_preprocessed_file_lock(
+    root: pathlib.Path = pathlib.Path(),
+) -> BaseAsyncFileLock:
+    return AsyncFileLock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
 
 
-def write_preprocessed_file(
+async def write_preprocessed_file(
     path: pathlib.Path, content: str, root: pathlib.Path = pathlib.Path()
 ) -> pathlib.Path:
-    with get_preprocessed_file_lock(root):
+    async with get_preprocessed_file_lock(root):
         path = get_problem_preprocessed_path(path, root)
         path.write_text(content)
         return path

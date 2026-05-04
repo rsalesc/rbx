@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from filelock import BaseFileLock, FileLock
+from filelock import AsyncFileLock, BaseAsyncFileLock
 from pydantic import BaseModel
 from sqlitedict import SqliteDict
 
@@ -367,7 +367,7 @@ class DependencyCacheBlock:
 class DependencyCache:
     root: pathlib.Path
     cacher: FileCacher
-    lock: BaseFileLock
+    lock: BaseAsyncFileLock
 
     def __init__(self, root: pathlib.Path, cacher: FileCacher):
         self.root = root
@@ -375,7 +375,7 @@ class DependencyCache:
         self.db = SqliteDict(self._cache_name(), autocommit=True)
         tmp_dir = pathlib.Path(tempfile.mkdtemp())
         self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
-        self.lock = FileLock(self.root / 'cache.lock', thread_local=False)
+        self.lock = AsyncFileLock(self.root / 'cache.lock', thread_local=False)
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
         atexit.register(lambda: shutil.rmtree(tmp_dir, ignore_errors=True))
@@ -415,8 +415,7 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ) -> bool:
-        # TODO(#394 task 4): swap to AsyncFileLock
-        with self.lock:
+        async with self.lock:
             input = await _build_cache_input(
                 commands=commands,
                 artifact_list=artifact_list,
@@ -491,8 +490,7 @@ class DependencyCache:
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ):
-        # TODO(#394 task 4): swap to AsyncFileLock
-        with self.lock:
+        async with self.lock:
             input = await _build_cache_input(
                 commands=commands,
                 artifact_list=artifact_list,
