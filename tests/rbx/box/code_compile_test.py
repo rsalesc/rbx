@@ -19,7 +19,7 @@ class TestCompileItem:
     def mock_steps_with_caching(self, testing_pkg: testing_package.TestingPackage):
         """Mock steps_with_caching.compile to avoid heavy operations."""
 
-        def mock_compile_side_effect(
+        async def mock_compile_side_effect(
             commands, params, artifacts, sandbox, dependency_cache
         ):
             # Simulate setting digest values for output artifacts
@@ -28,7 +28,7 @@ class TestCompileItem:
                     cacher = package.get_file_cacher()
                     # Add the file to the actual file cacher to avoid KeyError
                     # Use the digest returned by put_file_content
-                    actual_digest = cacher.put_file_content(b'mock file content')
+                    actual_digest = await cacher.put_file_content(b'mock file content')
                     output.digest.value = actual_digest
             return True
 
@@ -505,7 +505,9 @@ int custom_function();
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         with mock.patch('rbx.box.code.package.get_file_cacher') as mock_get_cacher:
-            mock_cacher = mock.Mock()
+            mock_cacher = mock.MagicMock()
+            mock_cacher.set_metadata = mock.AsyncMock()
+            mock_cacher.put_file_content = mock.AsyncMock(return_value='mock_digest')
             mock_get_cacher.return_value = mock_cacher
 
             await code.compile_item(code_item, sanitized=code.SanitizationLevel.FORCE)
@@ -524,7 +526,9 @@ int custom_function();
         code_item = CodeItem(path=cpp_file, language='cpp')
 
         with mock.patch('rbx.box.code.package.get_file_cacher') as mock_get_cacher:
-            mock_cacher = mock.Mock()
+            mock_cacher = mock.MagicMock()
+            mock_cacher.set_metadata = mock.AsyncMock()
+            mock_cacher.put_file_content = mock.AsyncMock(return_value='mock_digest')
             mock_get_cacher.return_value = mock_cacher
 
             await code.compile_item(code_item, sanitized=code.SanitizationLevel.NONE)

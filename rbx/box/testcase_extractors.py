@@ -60,7 +60,9 @@ async def run_generator_script(testcase: TestcaseSubgroup) -> str:
 
     script_digest = DigestHolder()
     if testcase.generatorScript.path.suffix == '.txt':
-        script_digest.value = cacher.put_file_from_path(testcase.generatorScript.path)
+        script_digest.value = await cacher.put_file_from_path(
+            testcase.generatorScript.path
+        )
     else:
         try:
             compiled_digest = await compile_item(testcase.generatorScript)
@@ -89,12 +91,12 @@ async def run_generator_script(testcase: TestcaseSubgroup) -> str:
             if run_stderr.value is not None:
                 console.console.print('[error]Stderr:[/error]')
                 console.console.print(
-                    package.get_digest_as_string(run_stderr.value) or ''
+                    await package.get_digest_as_string(run_stderr.value) or ''
                 )
             raise typer.Exit(1)
 
     assert script_digest.value
-    script = cacher.get_file_content(script_digest.value).decode()
+    script = (await cacher.get_file_content(script_digest.value)).decode()
     return script
 
 

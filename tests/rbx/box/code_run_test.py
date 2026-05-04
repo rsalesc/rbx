@@ -1023,7 +1023,8 @@ int main() {
         with mock.patch(
             'rbx.box.code.warning_stack.get_warning_stack'
         ) as mock_warning_stack:
-            mock_stack = mock.Mock()
+            mock_stack = mock.MagicMock()
+            mock_stack.add_sanitizer_warning = mock.AsyncMock()
             mock_warning_stack.return_value = mock_stack
 
             # Run the program

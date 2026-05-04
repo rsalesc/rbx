@@ -11,6 +11,7 @@ from typing import (
     TypeVar,
 )
 
+import async_lru
 import ruyaml
 import typer
 from filelock import BaseFileLock, FileLock
@@ -234,15 +235,15 @@ def get_file_cacher(root: pathlib.Path = pathlib.Path()) -> FileCacher:
     return FileCacher(get_cache_storage(root))
 
 
-@functools.cache
-def get_digest_as_string(
+@async_lru.alru_cache(maxsize=None)
+async def get_digest_as_string(
     digest: Optional[str], root: pathlib.Path = pathlib.Path()
 ) -> Optional[str]:
     if not digest:
         return None
     cacher = get_file_cacher(root)
     try:
-        content = cacher.get_file_content(digest)
+        content = await cacher.get_file_content(digest)
         return content.decode()
     except KeyError:
         return None

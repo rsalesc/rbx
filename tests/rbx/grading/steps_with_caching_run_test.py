@@ -25,7 +25,7 @@ async def test_run_from_digest(
     sandbox: SandboxBase,
     file_cacher: FileCacher,
 ):
-    executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+    executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
     artifacts = GradingArtifacts()
     artifacts.inputs.append(
         GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -85,7 +85,7 @@ async def test_run_reruns_if_cache_disabled(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -123,7 +123,7 @@ async def test_run_reruns_if_first_run_cache_disabled(
     async def configure_and_run_with_dest(
         dest: pathlib.Path, cache: bool = True
     ) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -163,7 +163,7 @@ async def test_run_reruns_if_second_run_cache_disabled(
     async def configure_and_run_with_dest(
         dest: pathlib.Path, cache: bool = True
     ) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -203,7 +203,7 @@ async def test_run_caches_intermediate_digest_if_dest_changes(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -240,7 +240,7 @@ async def test_run_caches_intermediate_digest_if_dest_changes_and_cache_transien
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -279,7 +279,7 @@ async def test_run_overwrites_changed_file_when_storage_value_is_changed_and_cac
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -317,7 +317,7 @@ async def test_run_overwrites_changed_file_when_file_deleted_and_cache_transient
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -355,7 +355,7 @@ async def test_run_fails_when_storage_value_is_changed_and_integrity_check_is_en
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -392,7 +392,7 @@ async def test_run_evicts_and_recreates_deleted_file_with_storage_value(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -429,7 +429,7 @@ async def test_run_evicts_when_storage_value_deleted(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -454,7 +454,7 @@ async def test_run_evicts_when_storage_value_deleted(
     # Delete the file from the cache
     with pathlib.Path('out.txt').open('rb') as f:
         digest = digest_cooperatively(f)
-    file_cacher.delete(digest)
+    await file_cacher.delete(digest)
 
     another_artifacts = await configure_and_run_with_dest(pathlib.Path('out.txt'))
     assert (cleandir / 'out.txt').read_text().strip() == '5'
@@ -469,7 +469,7 @@ async def test_run_overwrite_exec_bit_when_changed(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(
@@ -513,7 +513,7 @@ async def test_run_evicts_when_changed_file_and_no_hash(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -550,7 +550,7 @@ async def test_run_evicts_when_exec_bit_different_and_no_hash(
     file_cacher: FileCacher,
 ):
     async def configure_and_run_with_dest(dest: pathlib.Path) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -673,7 +673,7 @@ async def test_run_misses_when_input_file_changes(
 ):
     async def configure_and_run(number: int) -> GradingArtifacts:
         executable = DigestOrSource.create(
-            file_cacher.put_file_text(f'print({number})')
+            await file_cacher.put_file_text(f'print({number})')
         )
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
@@ -715,10 +715,10 @@ async def test_run_coordinated_from_digest(
     file_cacher: FileCacher,
 ):
     interactor_executable = DigestOrSource.create(
-        file_cacher.put_file_text('print("hello"); input()')
+        await file_cacher.put_file_text('print("hello"); input()')
     )
     solution_executable = DigestOrSource.create(
-        file_cacher.put_file_text('print("world")')
+        await file_cacher.put_file_text('print("world")')
     )
 
     artifacts = GradingArtifacts()
@@ -784,10 +784,10 @@ async def test_run_coordinated_caches_intermediate_digest_if_dest_changes(
         int_dest: pathlib.Path, sol_dest: pathlib.Path
     ) -> GradingArtifacts:
         interactor_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("hello"); input()')
+            await file_cacher.put_file_text('print("hello"); input()')
         )
         solution_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("world")')
+            await file_cacher.put_file_text('print("world")')
         )
 
         artifacts = GradingArtifacts()
@@ -855,10 +855,10 @@ async def test_run_coordinated_evicts_when_retry_index_changes(
         interactor_retry: Optional[int], solution_retry: Optional[int]
     ) -> GradingArtifacts:
         interactor_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("hello"); input()')
+            await file_cacher.put_file_text('print("hello"); input()')
         )
         solution_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("world")')
+            await file_cacher.put_file_text('print("world")')
         )
 
         artifacts = GradingArtifacts()
@@ -944,7 +944,7 @@ async def test_run_transient_fallback_when_sanitized(
     async def configure_and_run_with_metadata(
         metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -991,7 +991,7 @@ async def test_run_no_transient_fallback_when_not_sanitized(
     async def configure_and_run_with_metadata(
         metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -1038,7 +1038,7 @@ async def test_run_no_transient_fallback_when_no_metadata(
     """Test that run() does not use transient cache when metadata is None during compilation-only mode."""
 
     async def configure_and_run() -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -1084,7 +1084,7 @@ async def test_run_stress_mode_disables_transient_fallback(
     async def configure_and_run_with_metadata(
         metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
-        executable = DigestOrSource.create(file_cacher.put_file_text('print(5)'))
+        executable = DigestOrSource.create(await file_cacher.put_file_text('print(5)'))
         artifacts = GradingArtifacts()
         artifacts.inputs.append(
             GradingFileInput(**executable.expand(), dest=pathlib.Path('executable.py'))
@@ -1139,10 +1139,10 @@ async def test_run_coordinated_transient_fallback_when_interactor_sanitized(
         solution_metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
         interactor_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("hello"); input()')
+            await file_cacher.put_file_text('print("hello"); input()')
         )
         solution_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("world")')
+            await file_cacher.put_file_text('print("world")')
         )
 
         artifacts = GradingArtifacts()
@@ -1222,10 +1222,10 @@ async def test_run_coordinated_transient_fallback_when_solution_sanitized(
         solution_metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
         interactor_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("hello"); input()')
+            await file_cacher.put_file_text('print("hello"); input()')
         )
         solution_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("world")')
+            await file_cacher.put_file_text('print("world")')
         )
 
         artifacts = GradingArtifacts()
@@ -1305,10 +1305,10 @@ async def test_run_coordinated_no_transient_fallback_when_not_sanitized(
         solution_metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
         interactor_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("hello"); input()')
+            await file_cacher.put_file_text('print("hello"); input()')
         )
         solution_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("world")')
+            await file_cacher.put_file_text('print("world")')
         )
 
         artifacts = GradingArtifacts()
@@ -1390,10 +1390,10 @@ async def test_run_coordinated_stress_mode_disables_transient_fallback(
         solution_metadata: Optional[RunLogMetadata],
     ) -> GradingArtifacts:
         interactor_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("hello"); input()')
+            await file_cacher.put_file_text('print("hello"); input()')
         )
         solution_executable = DigestOrSource.create(
-            file_cacher.put_file_text('print("world")')
+            await file_cacher.put_file_text('print("world")')
         )
 
         artifacts = GradingArtifacts()
