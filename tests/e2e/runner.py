@@ -28,7 +28,16 @@ from typer.testing import CliRunner
 
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
-from tests.e2e.spec import Scenario, Step
+from tests.e2e.assertions import (
+    AssertionContext,
+    check_file_contains,
+    check_files_absent,
+    check_files_exist,
+    check_stderr_contains,
+    check_stdout_contains,
+    check_stdout_matches,
+)
+from tests.e2e.spec import Expect, Scenario, Step
 
 # Patterns excluded when copying a fixture directory into the run tmpdir.
 # These are paths that ``rbx`` (or prior test runs) generates and that should
@@ -44,6 +53,29 @@ COPY_IGNORE_PATTERNS = (
     '.cache',
     '.testdata',
 )
+
+
+# Field names on ``Expect`` paired with the assertion check they dispatch to.
+# Solutions/tests/zip matchers are intentionally NOT in this list -- they are
+# implemented in later tasks.
+_GENERIC_CHECKS = (
+    ('stdout_contains', check_stdout_contains),
+    ('stderr_contains', check_stderr_contains),
+    ('stdout_matches', check_stdout_matches),
+    ('files_exist', check_files_exist),
+    ('files_absent', check_files_absent),
+    ('file_contains', check_file_contains),
+)
+
+
+def _run_generic_assertions(ctx: AssertionContext, expect: Expect) -> None:
+    for name, fn in _GENERIC_CHECKS:
+        value = getattr(expect, name)
+        if value is None:
+            continue
+        if isinstance(value, (list, dict)) and not value:
+            continue
+        fn(ctx, value)
 
 
 def run_step(
@@ -82,6 +114,21 @@ def run_step(
             f'stderr:\n{result.stderr}'
             f'{exc}'
         )
+
+    ctx = AssertionContext(
+        package_root=cwd,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
+    try:
+        _run_generic_assertions(ctx, step.expect)
+    except AssertionError as e:
+        raise AssertionError(
+            f'[{scenario_path.parent.name}::{scenario_name}] '
+            f'step {step.cmd!r}: {e}\n'
+            f'stdout:\n{result.stdout}\n'
+            f'stderr:\n{result.stderr}'
+        ) from e
 
 
 class E2EScenarioItem(pytest.Item):

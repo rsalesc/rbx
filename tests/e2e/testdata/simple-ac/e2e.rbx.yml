@@ -2,3 +2,6 @@ scenarios:
   - name: smoke
     steps:
       - cmd: build
+        expect:
+          files_exist:
+            - "build/tests/main/*.in"
