@@ -248,9 +248,11 @@ class FilesystemStorage(Storage):
         """
         self.path = path
         self.compress = compress
-        self.lock = FileLock(path / 'storage.lock', thread_local=False)
         # Create the directory if it doesn't exist
         (path / '.metadata').mkdir(parents=True, exist_ok=True)
+        # Place the lock in the parent directory so it doesn't appear in list().
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock = FileLock(path.parent / f'{path.name}.lock', thread_local=False)
 
     def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""

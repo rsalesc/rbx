@@ -14,7 +14,9 @@ class TestGetPresetFetchInfoWithFallback:
         )
         # Stub default preset fetch info
         dummy = SimpleNamespace(name='default', fetch_uri='https://example/repo.git')
-        monkeypatch.setattr(presets, 'get_preset_fetch_info', lambda name: dummy)
+        monkeypatch.setattr(
+            presets, 'get_preset_fetch_info', lambda name, local=False: dummy
+        )
 
         res = presets.get_preset_fetch_info_with_fallback(None)
         assert res is dummy
@@ -30,7 +32,9 @@ class TestGetPresetFetchInfoWithFallback:
         monkeypatch.setattr(
             presets, 'get_active_preset_or_null', lambda root=Path(): None
         )
-        monkeypatch.setattr(presets, 'get_preset_fetch_info', lambda name: None)
+        monkeypatch.setattr(
+            presets, 'get_preset_fetch_info', lambda name, local=False: None
+        )
 
         with pytest.raises(click.exceptions.Exit):
             presets.get_preset_fetch_info_with_fallback(None)
