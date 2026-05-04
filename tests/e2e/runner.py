@@ -36,6 +36,8 @@ from tests.e2e.assertions import (
     check_stderr_contains,
     check_stdout_contains,
     check_stdout_matches,
+    check_zip_contains,
+    check_zip_not_contains,
 )
 from tests.e2e.spec import Expect, Scenario, Step
 
@@ -56,7 +58,7 @@ COPY_IGNORE_PATTERNS = (
 
 
 # Field names on ``Expect`` paired with the assertion check they dispatch to.
-# Solutions/tests/zip matchers are intentionally NOT in this list -- they are
+# Solutions/tests matchers are intentionally NOT in this list -- they are
 # implemented in later tasks.
 _GENERIC_CHECKS = (
     ('stdout_contains', check_stdout_contains),
@@ -65,6 +67,8 @@ _GENERIC_CHECKS = (
     ('files_exist', check_files_exist),
     ('files_absent', check_files_absent),
     ('file_contains', check_file_contains),
+    ('zip_contains', check_zip_contains),
+    ('zip_not_contains', check_zip_not_contains),
 )
 
 

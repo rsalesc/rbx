@@ -1,6 +1,7 @@
 """Unit tests for the generic e2e assertion helpers."""
 
 import pathlib
+import zipfile
 
 import pytest
 
@@ -12,7 +13,10 @@ from tests.e2e.assertions import (
     check_stderr_contains,
     check_stdout_contains,
     check_stdout_matches,
+    check_zip_contains,
+    check_zip_not_contains,
 )
+from tests.e2e.spec import ZipMatcher
 
 
 def _ctx(
@@ -192,3 +196,103 @@ def test_files_exist_bracket_charclass_globs(tmp_path):
 def test_files_absent_literal_with_unmatched_bracket(tmp_path):
     # No file present; literal lookup must return empty without raising.
     check_files_absent(_ctx(tmp_path), ['ghost[name'])
+
+
+# ---------------------------------------------------------------------------
+# zip_contains / zip_not_contains
+# ---------------------------------------------------------------------------
+
+
+def _build_zip(
+    path: pathlib.Path, entries: list[str], contents: str = 'x'
+) -> pathlib.Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, 'w') as zf:
+        for entry in entries:
+            zf.writestr(entry, contents)
+    return path
+
+
+def test_zip_contains_literal_entries_pass(tmp_path):
+    _build_zip(
+        tmp_path / 'pkg.zip',
+        ['description.xml', 'limits/cc', 'limits/py3'],
+    )
+    check_zip_contains(
+        _ctx(tmp_path),
+        ZipMatcher(path='pkg.zip', entries=['description.xml', 'limits/cc']),
+    )
+
+
+def test_zip_contains_glob_entries_pass(tmp_path):
+    _build_zip(
+        tmp_path / 'pkg.zip',
+        ['description.xml', 'limits/cc', 'limits/py3', 'input/001'],
+    )
+    check_zip_contains(
+        _ctx(tmp_path),
+        ZipMatcher(path='pkg.zip', entries=['*.xml', 'limits/*']),
+    )
+
+
+def test_zip_contains_path_glob_pass(tmp_path):
+    _build_zip(tmp_path / 'build' / 'boca' / 'pkg-name.zip', ['description.xml'])
+    check_zip_contains(
+        _ctx(tmp_path),
+        ZipMatcher(path='build/boca/*.zip', entries=['description.xml']),
+    )
+
+
+def test_zip_contains_zip_not_found_raises(tmp_path):
+    with pytest.raises(AssertionError, match='no zip matched'):
+        check_zip_contains(
+            _ctx(tmp_path),
+            ZipMatcher(path='build/boca/*.zip', entries=['description.xml']),
+        )
+
+
+def test_zip_contains_missing_entry_raises(tmp_path):
+    _build_zip(tmp_path / 'pkg.zip', ['description.xml'])
+    with pytest.raises(AssertionError, match='missing entry'):
+        check_zip_contains(
+            _ctx(tmp_path),
+            ZipMatcher(path='pkg.zip', entries=['description.xml', 'missing.txt']),
+        )
+
+
+def test_zip_contains_glob_no_match_raises(tmp_path):
+    _build_zip(tmp_path / 'pkg.zip', ['description.xml'])
+    with pytest.raises(AssertionError, match='missing entry'):
+        check_zip_contains(
+            _ctx(tmp_path),
+            ZipMatcher(path='pkg.zip', entries=['limits/*']),
+        )
+
+
+def test_zip_not_contains_pass(tmp_path):
+    _build_zip(tmp_path / 'pkg.zip', ['description.xml'])
+    check_zip_not_contains(
+        _ctx(tmp_path),
+        ZipMatcher(path='pkg.zip', entries=['secrets/*', 'private.key']),
+    )
+
+
+def test_zip_not_contains_unexpected_entry_raises(tmp_path):
+    _build_zip(tmp_path / 'pkg.zip', ['description.xml', 'secrets/api.key'])
+    with pytest.raises(AssertionError, match='unexpected entry'):
+        check_zip_not_contains(
+            _ctx(tmp_path),
+            ZipMatcher(path='pkg.zip', entries=['secrets/*']),
+        )
+
+
+def test_zip_not_contains_missing_zip_raises(tmp_path):
+    # Decision: if the user wrote a path expecting a zip and it does not
+    # exist, that's far more likely to be a typo than a deliberate
+    # "nothing to assert against" — so we surface it as an error rather
+    # than silently no-op.
+    with pytest.raises(AssertionError, match='no zip matched'):
+        check_zip_not_contains(
+            _ctx(tmp_path),
+            ZipMatcher(path='build/boca/*.zip', entries=['secrets/*']),
+        )

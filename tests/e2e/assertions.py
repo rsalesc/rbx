@@ -8,10 +8,14 @@ the wrapped message pinpoints the failure but should NOT duplicate the
 package/scenario prefix.
 """
 
+import fnmatch
 import pathlib
 import re
+import zipfile
 from dataclasses import dataclass
 from typing import Dict, List, Union
+
+from tests.e2e.spec import ZipMatcher
 
 
 @dataclass
@@ -102,3 +106,35 @@ def check_file_contains(ctx: AssertionContext, mapping: Dict[str, str]) -> None:
                 raise AssertionError(f'{path}: regex {needle} no match')
         elif needle not in text:
             raise AssertionError(f'{path}: missing {needle!r}')
+
+
+def _glob_in_zip(zip_path: pathlib.Path, pattern: str) -> bool:
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+    return any(fnmatch.fnmatch(n, pattern) for n in names)
+
+
+def check_zip_contains(ctx: AssertionContext, matcher: ZipMatcher) -> None:
+    zip_paths = _glob(ctx.package_root, matcher.path)
+    if not zip_paths:
+        raise AssertionError(f'no zip matched {matcher.path!r}')
+    zip_path = zip_paths[0]
+    for entry in matcher.entries:
+        if not _glob_in_zip(zip_path, entry):
+            raise AssertionError(f'{zip_path.name}: missing entry {entry!r}')
+
+
+def check_zip_not_contains(ctx: AssertionContext, matcher: ZipMatcher) -> None:
+    # Decision: a missing zip is treated as an error rather than a benign
+    # no-op. A user writing ``zip_not_contains`` is asserting against a
+    # specific zip they expect to exist; if the path resolves to nothing,
+    # the most likely explanation is a typo in ``path``, not a deliberate
+    # "nothing to assert against" intent. Pair with ``files_exist`` if you
+    # need to be explicit that the zip itself must exist.
+    zip_paths = _glob(ctx.package_root, matcher.path)
+    if not zip_paths:
+        raise AssertionError(f'no zip matched {matcher.path!r}')
+    zip_path = zip_paths[0]
+    for entry in matcher.entries:
+        if _glob_in_zip(zip_path, entry):
+            raise AssertionError(f'{zip_path.name}: unexpected entry {entry!r}')
