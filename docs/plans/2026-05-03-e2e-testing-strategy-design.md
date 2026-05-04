@@ -510,8 +510,16 @@ group `main` index `1`:
    (see `SolutionSkeleton.runs_dir_href` at `rbx/box/solutions.py:112-114`,
    which calls `relative_to(package.find_problem())` on it), so matching
    solutions by `path` equality across different CWDs would otherwise bite.
-3. Build a `TestcaseEntry(group="main", index=1)` and call
-   `solution_skeleton.get_entry_prefix(entry).with_suffix('.eval')`.
+3. Build a `TestcaseEntry(group="main", index=1)` and resolve the eval
+   filename via the testcase's `inputPath.stem` (looked up from the
+   matching `GenerationTestcaseEntry` in `skeleton.entries`). On packages
+   with subgroups the on-disk filename is e.g. `1-gen-000.eval`, **not**
+   `f'{idx:03d}.eval'`. The `SolutionSkeleton.get_entry_prefix` helper at
+   `rbx/box/solutions.py:109-110` returns the latter form and is therefore
+   only correct for packages without subgroups; the matcher recovers the
+   real stem from `entry.metadata.copied_to.inputPath.stem`. (Production
+   code in `rbx/box/ui/utils/run_ui.py` has the same blind spot — fixing
+   it is out of scope for Task 7 and is filed as a follow-up.)
 4. Parse with `utils.model_from_yaml(Evaluation, …)` and read
    `eval.result.outcome` (an `Outcome` enum value).
 

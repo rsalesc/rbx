@@ -33,6 +33,7 @@ from tests.e2e.assertions import (
     check_file_contains,
     check_files_absent,
     check_files_exist,
+    check_solutions,
     check_stderr_contains,
     check_stdout_contains,
     check_stdout_matches,
@@ -58,8 +59,8 @@ COPY_IGNORE_PATTERNS = (
 
 
 # Field names on ``Expect`` paired with the assertion check they dispatch to.
-# Solutions/tests matchers are intentionally NOT in this list -- they are
-# implemented in later tasks.
+# The ``tests`` matcher is intentionally NOT in this list -- it lands in
+# Task 8.
 _GENERIC_CHECKS = (
     ('stdout_contains', check_stdout_contains),
     ('stderr_contains', check_stderr_contains),
@@ -69,6 +70,7 @@ _GENERIC_CHECKS = (
     ('file_contains', check_file_contains),
     ('zip_contains', check_zip_contains),
     ('zip_not_contains', check_zip_not_contains),
+    ('solutions', check_solutions),
 )
 
 

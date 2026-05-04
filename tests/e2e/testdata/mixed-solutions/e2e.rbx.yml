@@ -1,0 +1,15 @@
+scenarios:
+  - name: verdict-matrix
+    description: |
+      Exercises the full solution matcher syntax: bare verdict, '*' with
+      per-group override, per-test override.
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/wa.cpp:
+              "*": wa
+              samples: wa
+              main/0: wa
+            sols/tle.cpp: tle

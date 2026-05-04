@@ -15,7 +15,14 @@ import zipfile
 from dataclasses import dataclass
 from typing import Dict, List, Union
 
-from tests.e2e.spec import ZipMatcher
+from rbx import utils
+from rbx.box.solutions import (
+    SolutionReportSkeleton,
+    SolutionSkeleton,
+    get_worst_outcome,
+)
+from rbx.grading.steps import Evaluation
+from tests.e2e.spec import SolutionMatcher, ZipMatcher
 
 
 @dataclass
@@ -122,6 +129,151 @@ def check_zip_contains(ctx: AssertionContext, matcher: ZipMatcher) -> None:
     for entry in matcher.entries:
         if not _glob_in_zip(zip_path, entry):
             raise AssertionError(f'{zip_path.name}: missing entry {entry!r}')
+
+
+def _load_skeleton(package_root: pathlib.Path) -> SolutionReportSkeleton:
+    """Load ``<package_root>/.box/runs/skeleton.yml``.
+
+    Note: ``.box/runs/.irun/`` is the interactive-debug scratch space and is
+    never read here; we only ever read the top-level ``skeleton.yml``.
+    """
+    skeleton_path = package_root / '.box' / 'runs' / 'skeleton.yml'
+    if not skeleton_path.is_file():
+        raise AssertionError(
+            f'no run results found at {skeleton_path}; did the scenario run '
+            f'`rbx run` before asserting `solutions:`?'
+        )
+    return utils.model_from_yaml(SolutionReportSkeleton, skeleton_path.read_text())
+
+
+def _find_solution_skeleton(
+    skeleton: SolutionReportSkeleton, sol_path: str
+) -> SolutionSkeleton:
+    target = pathlib.PurePath(sol_path)
+    for sol in skeleton.solutions:
+        if pathlib.PurePath(sol.path) == target:
+            return sol
+    known = sorted(str(s.path) for s in skeleton.solutions)
+    raise AssertionError(
+        f'solution {sol_path!r} not present in skeleton.yml; known solutions: {known}'
+    )
+
+
+def _resolve_eval_path(
+    skeleton: SolutionReportSkeleton,
+    sol: SolutionSkeleton,
+    group: str,
+    idx: int,
+) -> pathlib.Path:
+    """Compute the on-disk ``.eval`` path for a (solution, group, index) cell.
+
+    The eval filename stem is taken from ``Testcase.inputPath.stem``, which
+    for generated tests reflects the subgroup naming
+    (e.g. ``1-gen-000``), not a flat ``{idx:03d}``. We recover it by looking
+    up the matching ``GenerationTestcaseEntry`` in ``skeleton.entries``.
+    """
+    for entry in skeleton.entries:
+        ge = entry.group_entry
+        if ge.group == group and ge.index == idx:
+            stem = entry.metadata.copied_to.inputPath.stem
+            return sol.runs_dir / group / f'{stem}.eval'
+    # Fallback to the historical ``{idx:03d}`` convention so cleanly-laid-out
+    # packages still resolve even if entries metadata is sparse.
+    return sol.runs_dir / group / f'{idx:03d}.eval'
+
+
+def _read_eval(
+    skeleton: SolutionReportSkeleton,
+    sol: SolutionSkeleton,
+    group: str,
+    idx: int,
+) -> Evaluation:
+    eval_path = _resolve_eval_path(skeleton, sol, group, idx)
+    if not eval_path.is_file():
+        raise AssertionError(
+            f'missing eval file for {sol.path}::{group}/{idx} at {eval_path}; '
+            f'did the run finish without errors?'
+        )
+    return utils.model_from_yaml(Evaluation, eval_path.read_text())
+
+
+def check_solutions(
+    ctx: AssertionContext, matchers: Dict[str, SolutionMatcher]
+) -> None:
+    """Assert verdicts for one or more solutions.
+
+    See ``docs/plans/2026-05-03-e2e-testing-strategy-design.md`` (Verdict
+    source section) for the on-disk format. The matcher reads only what is
+    asserted: groups/tests not mentioned (and not covered by ``*``) are
+    silently allowed to have any verdict.
+
+    Caveat: verdicts are the on-disk ``Outcome`` enum (post soft-TLE
+    promotion). The cosmetic "⧖" rendering in the run report is a
+    presentation-layer concern and is not what we compare against here.
+    """
+    skeleton = _load_skeleton(ctx.package_root)
+
+    for sol_path, matcher in matchers.items():
+        sol = _find_solution_skeleton(skeleton, sol_path)
+
+        per_test = {k: v for k, v in matcher.entries.items() if '/' in k}
+        per_group = {k: v for k, v in matcher.entries.items() if '/' not in k}
+
+        # Validate unknown group references early.
+        known_groups = {g.name for g in skeleton.groups}
+        for gname in per_group:
+            if gname not in known_groups:
+                raise AssertionError(
+                    f'{sol_path}: unknown group {gname!r}; '
+                    f'known groups: {sorted(known_groups)}'
+                )
+        for test_path in per_test:
+            gname, _, _ = test_path.partition('/')
+            if gname not in known_groups:
+                raise AssertionError(
+                    f'{sol_path}: unknown group {gname!r} in test path '
+                    f'{test_path!r}; known groups: {sorted(known_groups)}'
+                )
+
+        # 1. Per-test assertions.
+        for test_path, expected in per_test.items():
+            gname, _, idx_str = test_path.partition('/')
+            try:
+                idx = int(idx_str)
+            except ValueError as e:
+                raise AssertionError(
+                    f'{sol_path}: invalid test index in {test_path!r}; '
+                    f'expected `<group>/<int>`'
+                ) from e
+            actual = _read_eval(skeleton, sol, gname, idx).result.outcome
+            if not expected.match(actual):
+                raise AssertionError(
+                    f'{sol_path}::{gname}/{idx}: expected {expected.name}, '
+                    f'got {actual.short_name()} ({actual.value})'
+                )
+
+        # 2. Per-group + '*' fallback. Groups already covered by per-test
+        # entries do NOT also receive an implicit group-level assertion.
+        groups_with_per_test = {p.partition('/')[0] for p in per_test}
+
+        for group in skeleton.groups:
+            gname = group.name
+            if gname in per_group:
+                expected = per_group[gname]
+            elif matcher.star is not None and gname not in groups_with_per_test:
+                expected = matcher.star
+            else:
+                continue
+            n = len(group.testcases)
+            if n == 0:
+                continue
+            evals = [_read_eval(skeleton, sol, gname, i) for i in range(n)]
+            actual = get_worst_outcome(evals)
+            if not expected.match(actual):
+                raise AssertionError(
+                    f'{sol_path}::{gname}: expected {expected.name}, '
+                    f'got {actual.short_name()} ({actual.value})'
+                )
 
 
 def check_zip_not_contains(ctx: AssertionContext, matcher: ZipMatcher) -> None:
