@@ -25,9 +25,16 @@ def get_resources_path() -> pathlib.Path:
 
 
 def clear_all_functools_cache():
-    from rbx.box import environment, header, package
+    from rbx.box import (
+        environment,
+        global_package,
+        header,
+        lang,
+        package,
+        visualizers,
+    )
 
-    pkgs = [environment, package, header]
+    pkgs = [environment, package, header, global_package, lang, visualizers]
 
     for pkg in pkgs:
         for fn in pkg.__dict__.values():
