@@ -10,6 +10,13 @@
 
 **Reference:** Design doc at `docs/plans/2026-05-03-async-filelock-design.md`.
 
+**Resolved friction points** (from sync-caller audit, decided 2026-05-03):
+
+- `DependencyCacheBlock` (`rbx/grading/caching.py`) is currently a sync CM whose `__enter__`/`__exit__` call `DependencyCache.find_in_cache` / `.store_in_cache`. **Convert it to an async CM** (`__aenter__` / `__aexit__`); update the 3 `with dependency_cache(...)` callsites in `rbx/grading/steps_with_caching.py:33, 84, 144` to `async with`. All 3 enclosing functions are already `async def`. Do NOT add `_sync` siblings on `DependencyCache`.
+- `get_digest_as_string` (`rbx/box/package.py:238-248`) is `@functools.cache`-decorated and called only from async contexts. **Convert to `async def`** and replace `@functools.cache` with **`@async_lru.alru_cache(maxsize=None)`** — `async_lru` is already a dependency (used in `rbx/box/visualizers.py:125`, `rbx/box/stresses.py:405,453`). Do NOT add `_sync` siblings on `FileCacher`.
+
+**Net `_sync` siblings expected: ZERO.** If new sync callers surface during cascade, prefer making them async over adding `_sync`.
+
 ---
 
 ## Cascade order
