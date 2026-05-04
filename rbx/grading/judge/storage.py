@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import IO, AnyStr, Dict, List, Optional, Type, TypeVar
 
 import lz4.frame
-from filelock import BaseFileLock, FileLock
+from filelock import AsyncFileLock, BaseAsyncFileLock
 from pydantic import BaseModel
 
 from rbx import utils
@@ -77,7 +77,7 @@ class Storage(ABC):
     """Abstract base class for all concrete storages."""
 
     @abstractmethod
-    def get_file(self, filename: str) -> IO[bytes]:
+    async def get_file(self, filename: str) -> IO[bytes]:
         """Retrieve a file from the storage.
         filename (unicode): the path of the file to retrieve.
         return (fileobj): a readable binary file-like object from which
@@ -87,7 +87,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def create_file(self, filename: str) -> Optional[PendingFile]:
+    async def create_file(self, filename: str) -> Optional[PendingFile]:
         """Create an empty file that will live in the storage.
         Once the caller has written the contents to the file, the commit_file()
         method must be called to commit it into the store.
@@ -99,7 +99,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def commit_file(
+    async def commit_file(
         self, file: PendingFile, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> bool:
         """Commit a file created by create_file() to be stored.
@@ -116,7 +116,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
+    async def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
         """Set the metadata of a file given its filename.
         filename (unicode): the filename of the file to set the metadata.
         key (unicode): the key of the metadata to set.
@@ -125,7 +125,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def get_metadata(
+    async def get_metadata(
         self, filename: str, key: str, model_cls: Type[BaseModel]
     ) -> Optional[BaseModel]:
         """Get the metadata of a file given its filename and key.
@@ -138,7 +138,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def list_metadata(self, filename: str) -> List[str]:
+    async def list_metadata(self, filename: str) -> List[str]:
         """List the metadata of a file given its filename.
         filename (unicode): the filename of the file to list the metadata.
         return (List[str]): the list of metadata keys.
@@ -146,12 +146,12 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def exists(self, filename: str) -> bool:
+    async def exists(self, filename: str) -> bool:
         """Check if a file exists in the storage."""
         pass
 
     @abstractmethod
-    def get_size(self, filename: str) -> int:
+    async def get_size(self, filename: str) -> int:
         """Return the size of a file given its filename.
         filename (unicode): the filename of the file to calculate the size
             of.
@@ -161,14 +161,14 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def delete(self, filename: str):
+    async def delete(self, filename: str):
         """Delete a file from the storage.
         filename (unicode): the filename of the file to delete.
         """
         pass
 
     @abstractmethod
-    def list(self) -> List[FileWithMetadata]:
+    async def list(self) -> List[FileWithMetadata]:
         """List the files available in the storage.
         return ([(unicode, unicode)]): a list of pairs, each
             representing a file in the form (filename, description).
@@ -176,11 +176,11 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
+    async def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
         pass
 
     @abstractmethod
-    def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+    async def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
         pass
 
 
@@ -192,44 +192,44 @@ class NullStorage(Storage):
 
     """
 
-    def get_file(self, digest: str) -> IO[bytes]:
+    async def get_file(self, digest: str) -> IO[bytes]:
         raise KeyError('File not found.')
 
-    def create_file(self, digest: str) -> Optional[PendingFile]:
+    async def create_file(self, digest: str) -> Optional[PendingFile]:
         return None
 
-    def commit_file(
+    async def commit_file(
         self, file: PendingFile, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> bool:
         return False
 
-    def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
+    async def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
         pass
 
-    def get_metadata(
+    async def get_metadata(
         self, filename: str, key: str, model_cls: Type[BaseModel]
     ) -> Optional[BaseModel]:
         raise KeyError('File not found.')
 
-    def list_metadata(self, filename: str) -> List[str]:
+    async def list_metadata(self, filename: str) -> List[str]:
         return []
 
-    def exists(self, filename: str) -> bool:
+    async def exists(self, filename: str) -> bool:
         return False
 
-    def get_size(self, digest: str) -> int:
+    async def get_size(self, digest: str) -> int:
         raise KeyError('File not found.')
 
-    def delete(self, digest: str):
+    async def delete(self, digest: str):
         pass
 
-    def list(self) -> List[FileWithMetadata]:
+    async def list(self) -> List[FileWithMetadata]:
         return list()
 
-    def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
+    async def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
         return None
 
-    def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+    async def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
         return None
 
 
@@ -240,7 +240,7 @@ class FilesystemStorage(Storage):
 
     path: pathlib.Path
     compress: bool
-    lock: BaseFileLock
+    lock: BaseAsyncFileLock
 
     def __init__(self, path: pathlib.Path, compress: bool = False):
         """Initialize the backend.
@@ -252,17 +252,17 @@ class FilesystemStorage(Storage):
         (path / '.metadata').mkdir(parents=True, exist_ok=True)
         # Place the lock in the parent directory so it doesn't appear in list().
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock = FileLock(path.parent / f'{path.name}.lock', thread_local=False)
+        self.lock = AsyncFileLock(path.parent / f'{path.name}.lock', thread_local=False)
 
-    def get_file(self, filename: str) -> IO[bytes]:
+    async def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""
-        with self.lock:
+        async with self.lock:
             file_path = self.path / filename
 
             if not file_path.is_file():
                 raise KeyError('File not found.')
 
-            compression_metadata = self.get_metadata(
+            compression_metadata = await self.get_metadata(
                 filename, 'compression', CompressionMetadata
             )
             if compression_metadata is not None:
@@ -276,11 +276,11 @@ class FilesystemStorage(Storage):
                 )
             return file_path.open('rb')
 
-    def create_file(self, filename: str) -> Optional[PendingFile]:
+    async def create_file(self, filename: str) -> Optional[PendingFile]:
         """See FileCacherBackend.create_file()."""
         # Check if the file already exists. Return None if so, to inform the
         # caller they don't need to store the file.
-        with self.lock:
+        async with self.lock:
             file_path = self.path / filename
 
             if file_path.is_file():
@@ -313,11 +313,11 @@ class FilesystemStorage(Storage):
 
             return PendingFile(fd=temp_file, filename=filename, metadata=metadata)
 
-    def commit_file(
+    async def commit_file(
         self, file: PendingFile, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> bool:
         """See FileCacherBackend.commit_file()."""
-        with self.lock:
+        async with self.lock:
             file.fd.close()
 
             file_path: pathlib.Path = self.path / file.filename
@@ -354,24 +354,24 @@ class FilesystemStorage(Storage):
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
             metadata_path.write_text(value.model_dump_json())
 
-    def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
-        with self.lock:
-            if not self.exists(filename):
+    async def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
+        async with self.lock:
+            if not await self.exists(filename):
                 raise KeyError('File not found.')
 
             self._set_metadata(filename, key, value)
 
-    def get_metadata(
+    async def get_metadata(
         self, filename: str, key: str, model_cls: Type[BaseModelT]
     ) -> Optional[BaseModelT]:
-        with self.lock:
+        async with self.lock:
             path = self._get_metadata_path(filename, key)
             if not path.is_file():
                 return None
             return model_cls.model_validate_json(path.read_text())
 
-    def list_metadata(self, filename: str) -> List[str]:
-        with self.lock:
+    async def list_metadata(self, filename: str) -> List[str]:
+        async with self.lock:
             return [
                 path.stem.split('__')[1]
                 for path in sorted(
@@ -379,16 +379,16 @@ class FilesystemStorage(Storage):
                 )
             ]
 
-    def exists(self, filename: str) -> bool:
+    async def exists(self, filename: str) -> bool:
         """See FileCacherBackend.exists()."""
-        with self.lock:
+        async with self.lock:
             file_path: pathlib.Path = self.path / filename
 
             return file_path.is_file()
 
-    def get_size(self, filename: str) -> int:
+    async def get_size(self, filename: str) -> int:
         """See FileCacherBackend.get_size()."""
-        with self.lock:
+        async with self.lock:
             file_path: pathlib.Path = self.path / filename
 
             if not file_path.is_file():
@@ -396,45 +396,46 @@ class FilesystemStorage(Storage):
 
             return file_path.stat().st_size
 
-    def delete(self, filename: str):
+    async def delete(self, filename: str):
         """See FileCacherBackend.delete()."""
-        with self.lock:
+        async with self.lock:
             file_path: pathlib.Path = self.path / filename
 
             file_path.unlink(missing_ok=True)
-            for key in self.list_metadata(filename):
+            for key in await self.list_metadata(filename):
                 self._get_metadata_path(filename, key).unlink(missing_ok=True)
 
-    def list(self) -> List[FileWithMetadata]:
+    async def list(self) -> List[FileWithMetadata]:
         """See FileCacherBackend.list()."""
-        with self.lock:
+        async with self.lock:
             res = []
             for path in self.path.glob('*'):
-                if path.is_file():
-                    filename = str(path.relative_to(self.path))
-                    res.append(
-                        FileWithMetadata(
-                            filename=filename,
-                            metadata=self.list_metadata(filename),
-                        )
+                if not path.is_file():
+                    continue
+                filename = str(path.relative_to(self.path))
+                res.append(
+                    FileWithMetadata(
+                        filename=filename,
+                        metadata=await self.list_metadata(filename),
                     )
+                )
             return res
 
-    def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
-        with self.lock:
+    async def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
+        async with self.lock:
             file_path = self.path / filename
             if not file_path.is_file():
                 raise KeyError('File not found.')
 
-            compression_metadata = self.get_metadata(
+            compression_metadata = await self.get_metadata(
                 filename, 'compression', CompressionMetadata
             )
             if compression_metadata is not None:
                 return None
             return file_path
 
-    def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
-        with self.lock:
+    async def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+        async with self.lock:
             if not link.is_symlink():
                 return None
 

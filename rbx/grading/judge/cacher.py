@@ -9,7 +9,7 @@ import tempfile
 import typing
 from typing import IO, Dict, List, Optional, Type
 
-from filelock import BaseFileLock, FileLock
+from filelock import AsyncFileLock, BaseAsyncFileLock
 from pydantic import BaseModel
 
 from rbx.grading import grading_context
@@ -52,7 +52,7 @@ class FileCacher:
     file_dir: pathlib.Path
     temp_dir: pathlib.Path
     folder: Optional[pathlib.Path]
-    lock: BaseFileLock
+    lock: BaseAsyncFileLock
 
     def __init__(
         self,
@@ -89,7 +89,7 @@ class FileCacher:
             tempfile.mkdtemp(dir=self.file_dir, prefix='_temp')
         )
         atexit.register(lambda: shutil.rmtree(str(self.temp_dir), ignore_errors=True))
-        self.lock = FileLock(self.file_dir / 'cache.lock', thread_local=False)
+        self.lock = AsyncFileLock(self.file_dir / 'cache.lock', thread_local=False)
         # Just to make sure it was created.
 
     def is_shared(self) -> bool:
@@ -131,7 +131,7 @@ class FileCacher:
             if not returned:
                 fobj.close()
 
-    def _load(self, digest: str, cache_only: bool) -> Optional[IO[bytes]]:
+    async def _load(self, digest: str, cache_only: bool) -> Optional[IO[bytes]]:
         """Load a file into the cache and open it for reading.
 
         cache_only (bool): don't open the file for reading.
@@ -142,7 +142,7 @@ class FileCacher:
         raise (KeyError): if the file cannot be found.
 
         """
-        with self.lock:
+        async with self.lock:
             cache_file_path = self.file_dir / digest
 
             if cache_only:
@@ -156,7 +156,7 @@ class FileCacher:
 
             logger.debug('File %s not in cache, downloading from database.', digest)
 
-            if (symlink := self.backend.path_for_symlink(digest)) is not None:
+            if (symlink := await self.backend.path_for_symlink(digest)) is not None:
                 cache_file_path.unlink(missing_ok=True)
                 cache_file_path.symlink_to(symlink)
                 return cache_file_path.open('rb') if not cache_only else None
@@ -165,7 +165,10 @@ class FileCacher:
                 dir=self.temp_dir, text=False
             )
             temp_file_path = pathlib.Path(temp_file_path)
-            with open(ftmp_handle, 'wb') as ftmp, self.backend.get_file(digest) as fobj:
+            with (
+                open(ftmp_handle, 'wb') as ftmp,
+                await self.backend.get_file(digest) as fobj,
+            ):
                 storage.copyfileobj(fobj, ftmp, self.CHUNK_SIZE)
 
             if not cache_only:
@@ -185,24 +188,24 @@ class FileCacher:
             if not cache_only:
                 return fd
 
-    def exists(self, digest: str, cache_only: bool = False) -> bool:
+    async def exists(self, digest: str, cache_only: bool = False) -> bool:
         """Check if a file exists in the cacher.
 
         cache_only (bool): don't check the backend.
 
         """
-        with self.lock:
+        async with self.lock:
             cache_file_path = self.file_dir / digest
             if cache_file_path.exists() or digest in self.existing:
                 return True
             if cache_only:
                 return False
-            exists = self.backend.exists(digest)
+            exists = await self.backend.exists(digest)
             if exists:
                 self.existing.add(digest)
             return exists
 
-    def cache_file(self, digest: str):
+    async def cache_file(self, digest: str):
         """Load a file into the cache.
 
         Ask the backend to provide the file and store it in the cache for the
@@ -220,9 +223,9 @@ class FileCacher:
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
 
-        self._load(digest, True)
+        await self._load(digest, True)
 
-    def get_file(self, digest: str) -> IO[bytes]:
+    async def get_file(self, digest: str) -> IO[bytes]:
         """Retrieve a file from the storage.
 
         If it's available in the cache use that copy, without querying
@@ -247,9 +250,9 @@ class FileCacher:
 
         logger.debug('Getting file %s.', digest)
 
-        return typing.cast(IO[bytes], self._load(digest, False))
+        return typing.cast(IO[bytes], await self._load(digest, False))
 
-    def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
+    async def path_for_symlink(self, digest: str) -> Optional[pathlib.Path]:
         """Retrieve the symlink path that points to the backend file.
 
         If the file is not in the cache, or it is stored in a transformed
@@ -263,9 +266,9 @@ class FileCacher:
             return None
 
         logger.debug('Getting symlink file path %s.', digest)
-        return self.backend.path_for_symlink(digest)
+        return await self.backend.path_for_symlink(digest)
 
-    def transient_path_for_symlink(self, digest: str):
+    async def transient_path_for_symlink(self, digest: str):
         """Retrieve a file from the storage and return a path to it.
 
         Notice that this is different than `path_for_symlink', which
@@ -282,15 +285,15 @@ class FileCacher:
         """
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
-        with self.lock:
-            self._load(digest, cache_only=True)
+        async with self.lock:
+            await self._load(digest, cache_only=True)
 
             cache_file_path = self.file_dir / digest
             if not cache_file_path.exists():
                 raise FileNotFoundError(f'File {digest} not found in cache.')
             return cache_file_path
 
-    def digest_from_symlink(self, link: pathlib.Path) -> Optional[str]:
+    async def digest_from_symlink(self, link: pathlib.Path) -> Optional[str]:
         """Retrieve the digest of the file that the symlink points to.
 
         This is supposed to be used as a counterpart to `path_for_symlink'.
@@ -300,9 +303,9 @@ class FileCacher:
         if grading_context.is_transient():
             return None
 
-        return self.backend.filename_from_symlink(link)
+        return await self.backend.filename_from_symlink(link)
 
-    def get_file_content(self, digest: str) -> bytes:
+    async def get_file_content(self, digest: str) -> bytes:
         """Retrieve a file from the storage.
 
         See `get_file'. This method returns the content of the file, as
@@ -316,13 +319,13 @@ class FileCacher:
         raise (TombstoneError): if the digest is the tombstone
 
         """
-        with self.lock:
+        async with self.lock:
             if digest == storage.TOMBSTONE:
                 raise TombstoneError()
-            with self.get_file(digest) as src:
+            with await self.get_file(digest) as src:
                 return src.read()
 
-    def get_file_to_fobj(self, digest: str, dst: IO[bytes]):
+    async def get_file_to_fobj(self, digest: str, dst: IO[bytes]):
         """Retrieve a file from the storage.
 
         See `get_file'. This method will write the content of the file
@@ -336,13 +339,13 @@ class FileCacher:
         raise (TombstoneError): if the digest is the tombstone
 
         """
-        with self.lock:
+        async with self.lock:
             if digest == storage.TOMBSTONE:
                 raise TombstoneError()
-            with self.get_file(digest) as src:
+            with await self.get_file(digest) as src:
                 storage.copyfileobj(src, dst, self.CHUNK_SIZE)
 
-    def get_file_to_path(self, digest: str, dst_path: pathlib.Path):
+    async def get_file_to_path(self, digest: str, dst_path: pathlib.Path):
         """Retrieve a file from the storage.
 
         See `get_file'. This method will write the content of a file
@@ -355,15 +358,15 @@ class FileCacher:
         raise (KeyError): if the file cannot be found.
 
         """
-        with self.lock:
+        async with self.lock:
             if digest == storage.TOMBSTONE:
                 raise TombstoneError()
-            with self.get_file(digest) as src:
+            with await self.get_file(digest) as src:
                 dst_path.parent.mkdir(parents=True, exist_ok=True)
                 with dst_path.open('wb') as dst:
                     storage.copyfileobj(src, dst, self.CHUNK_SIZE)
 
-    def put_file_from_fobj(
+    async def put_file_from_fobj(
         self, src: IO[bytes], metadata: Optional[Dict[str, BaseModel]] = None
     ) -> str:
         """Store a file in the storage.
@@ -384,7 +387,7 @@ class FileCacher:
 
         """
         logger.debug('Reading input file to store on the database.')
-        with self.lock:
+        async with self.lock:
             # Unfortunately, we have to read the whole file-obj to compute
             # the digest but we take that chance to save it to a temporary
             # path so that we then just need to move it. Hoping that both
@@ -423,16 +426,16 @@ class FileCacher:
                 # Only store file when not in transient mode.
                 if not grading_context.is_transient():
                     with open(dst.name, 'rb') as src:
-                        pending_file = self.backend.create_file(digest)
+                        pending_file = await self.backend.create_file(digest)
                         if pending_file is not None:
                             storage.copyfileobj(src, pending_file.fd, self.CHUNK_SIZE)
-                            self.backend.commit_file(pending_file, metadata)
+                            await self.backend.commit_file(pending_file, metadata)
 
                 os.rename(dst.name, cache_file_path)
 
             return digest
 
-    def put_file_content(
+    async def put_file_content(
         self, content: bytes, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> str:
         """Store a file in the storage.
@@ -447,17 +450,17 @@ class FileCacher:
         return (unicode): the digest of the stored file.
 
         """
-        with self.lock:
+        async with self.lock:
             with io.BytesIO(content) as src:
-                return self.put_file_from_fobj(src, metadata)
+                return await self.put_file_from_fobj(src, metadata)
 
-    def put_file_text(
+    async def put_file_text(
         self, text: str, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> str:
-        with self.lock:
-            return self.put_file_content(text.encode('utf-8'), metadata)
+        async with self.lock:
+            return await self.put_file_content(text.encode('utf-8'), metadata)
 
-    def put_file_from_path(
+    async def put_file_from_path(
         self, src_path: pathlib.Path, metadata: Optional[Dict[str, BaseModel]] = None
     ) -> str:
         """Store a file in the storage.
@@ -473,11 +476,11 @@ class FileCacher:
         return (unicode): the digest of the stored file.
 
         """
-        with self.lock:
+        async with self.lock:
             with src_path.open('rb') as src:
-                return self.put_file_from_fobj(src, metadata)
+                return await self.put_file_from_fobj(src, metadata)
 
-    def set_metadata(self, digest: str, key: str, value: Optional[BaseModel]):
+    async def set_metadata(self, digest: str, key: str, value: Optional[BaseModel]):
         """Set the description of a file given its digest.
 
         digest (unicode): the digest of the file to add the description.
@@ -486,9 +489,9 @@ class FileCacher:
         """
         if grading_context.is_transient():
             return
-        self.backend.set_metadata(digest, key, value)
+        await self.backend.set_metadata(digest, key, value)
 
-    def get_metadata(
+    async def get_metadata(
         self, digest: str, key: str, model_cls: Type[storage.BaseModelT]
     ) -> Optional[storage.BaseModelT]:
         """Return the description of a file given its digest.
@@ -505,18 +508,18 @@ class FileCacher:
             raise TombstoneError()
         return typing.cast(
             Optional[storage.BaseModelT],
-            self.backend.get_metadata(digest, key, model_cls),
+            await self.backend.get_metadata(digest, key, model_cls),
         )
 
-    def list_metadata(self, filename: str) -> List[str]:
+    async def list_metadata(self, filename: str) -> List[str]:
         """List the metadata of a file given its filename.
 
         filename (str): the filename of the file to list the metadata.
         return (List[str]): the list of metadata keys.
         """
-        return self.backend.list_metadata(filename)
+        return await self.backend.list_metadata(filename)
 
-    def get_size(self, digest: str) -> int:
+    async def get_size(self, digest: str) -> int:
         """Return the size of a file given its digest.
 
         digest (unicode): the digest of the file to calculate the size
@@ -530,40 +533,40 @@ class FileCacher:
         """
         if digest == storage.TOMBSTONE:
             raise TombstoneError()
-        return self.backend.get_size(digest)
+        return await self.backend.get_size(digest)
 
-    def delete(self, digest: str):
+    async def delete(self, digest: str):
         """Delete a file from the backend and the local cache.
 
         digest (unicode): the digest of the file to delete.
 
         """
-        with self.lock:
+        async with self.lock:
             if digest == storage.TOMBSTONE:
                 return
-            self.drop(digest)
-            self.backend.delete(digest)
+            await self.drop(digest)
+            await self.backend.delete(digest)
 
-    def drop(self, digest):
+    async def drop(self, digest):
         """Delete a file only from the local cache.
 
         digest (unicode): the file to delete.
 
         """
-        with self.lock:
+        async with self.lock:
             if digest == storage.TOMBSTONE:
                 return
             cache_file_path: pathlib.Path = self.file_dir / digest
             cache_file_path.unlink(missing_ok=True)
             self.existing.discard(digest)
 
-    def purge_cache(self):
+    async def purge_cache(self):
         """Empty the local cache.
 
         This function must not be called if the cache directory is shared.
 
         """
-        with self.lock:
+        async with self.lock:
             self.destroy_cache()
             self.file_dir.mkdir(parents=True, exist_ok=True)
             if self.folder is not None:
@@ -583,16 +586,16 @@ class FileCacher:
             raise Exception('You may not destroy a shared cache.')
         shutil.rmtree(str(self.file_dir), ignore_errors=True)
 
-    def list(self) -> List[storage.FileWithMetadata]:
+    async def list(self) -> List[storage.FileWithMetadata]:
         """List the files available in the storage.
 
         return ([(unicode, unicode)]): a list of pairs, each
             representing a file in the form (digest, description).
 
         """
-        return self.backend.list()
+        return await self.backend.list()
 
-    def check_backend_integrity(self, delete: bool = False) -> bool:
+    async def check_backend_integrity(self, delete: bool = False) -> bool:
         """Check the integrity of the backend.
 
         Request all the files from the backend. For each of them the
@@ -606,12 +609,12 @@ class FileCacher:
         delete (bool): if True, files with wrong digest are deleted.
 
         """
-        with self.lock:
+        async with self.lock:
             clean = True
-            for fwd in self.list():
+            for fwd in await self.list():
                 digest = fwd.filename
                 d = digester.Digester()
-                with self.backend.get_file(digest) as fobj:
+                with await self.backend.get_file(digest) as fobj:
                     buf = fobj.read(self.CHUNK_SIZE)
                     while len(buf) > 0:
                         d.update(buf)
@@ -624,7 +627,7 @@ class FileCacher:
                         computed_digest,
                     )
                     if delete:
-                        self.delete(digest)
+                        await self.delete(digest)
                     clean = False
 
             return clean

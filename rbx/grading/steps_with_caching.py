@@ -30,7 +30,7 @@ async def compile(
     cached_profile = profiling.Profiler('steps.compile[cached]', start=True)
     err: Optional[steps.CompilationError] = None
 
-    with dependency_cache(
+    async with dependency_cache(
         commands, [artifacts], params.get_cacheable_params()
     ) as is_cached:
         if not is_cached:
@@ -81,7 +81,9 @@ async def run(
         when=grading_context.is_compilation_only,
     ):
         cached_profile = profiling.Profiler('steps.run[cached]', start=True)
-        with dependency_cache([command], [artifacts], cacheable_params) as is_cached:
+        async with dependency_cache(
+            [command], [artifacts], cacheable_params
+        ) as is_cached:
             if not is_cached:
                 with profiling.Profiler('steps.run'):
                     profiling.add_to_counter('steps.run')
@@ -141,7 +143,7 @@ async def run_coordinated(
         when=grading_context.is_compilation_only,
     ):
         cached_profile = profiling.Profiler('steps.run_coordinated[cached]', start=True)
-        with dependency_cache(
+        async with dependency_cache(
             [interactor.command, solution.command],
             [artifacts],
             cacheable_params,

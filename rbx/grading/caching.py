@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from filelock import BaseFileLock, FileLock
+from filelock import AsyncFileLock, BaseAsyncFileLock
 from pydantic import BaseModel
 from sqlitedict import SqliteDict
 
@@ -112,7 +112,7 @@ def _build_digest_list(artifacts_list: List[GradingArtifacts]) -> List[DigestHol
     return digests
 
 
-def _build_fingerprint_list(
+async def _build_fingerprint_list(
     artifacts_list: List[GradingArtifacts], cacher: FileCacher
 ) -> List[str]:
     fingerprints = []
@@ -120,7 +120,7 @@ def _build_fingerprint_list(
         for input in artifacts.inputs:
             if input.src is None or not input.hash:
                 continue
-            if cacher.digest_from_symlink(input.src) is not None:
+            if await cacher.digest_from_symlink(input.src) is not None:
                 continue
             with input.src.open('rb') as f:
                 fingerprints.append(digest_cooperatively(f))
@@ -183,12 +183,12 @@ def _build_logs_list(artifacts_list: List[GradingArtifacts]) -> List[GradingLogs
     return logs
 
 
-def _build_cache_fingerprint(
+async def _build_cache_fingerprint(
     artifacts_list: List[GradingArtifacts],
     cacher: FileCacher,
 ) -> CacheFingerprint:
     digests = [digest.value for digest in _build_digest_list(artifacts_list)]
-    fingerprints = _build_fingerprint_list(artifacts_list, cacher)
+    fingerprints = await _build_fingerprint_list(artifacts_list, cacher)
     output_fingerprints = _build_output_fingerprint_list(
         artifacts_list,
     )
@@ -216,7 +216,7 @@ def _output_fingerprints_match(
     return tuple(lhs) == tuple(rhs)
 
 
-def _build_cache_input(
+async def _build_cache_input(
     commands: List[str],
     artifact_list: List[GradingArtifacts],
     extra_params: Dict[str, Any],
@@ -233,7 +233,7 @@ def _build_cache_input(
         for input in artifacts.inputs:
             if input.src is None:
                 continue
-            inferred_digest = cacher.digest_from_symlink(input.src)
+            inferred_digest = await cacher.digest_from_symlink(input.src)
             if inferred_digest is not None:
                 # Consume cache from digest instead of file.
                 input.digest = DigestHolder(value=inferred_digest)
@@ -260,7 +260,7 @@ def _build_cache_key(input: CacheInput) -> str:
         return digest_cooperatively(fobj)
 
 
-def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher):
+async def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher):
     for artifact in artifact_list:
         for output in artifact.outputs:
             if not output.hash or output.dest is None:
@@ -270,7 +270,7 @@ def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher
                 continue
             assert output.digest.value is not None
             if (
-                path_to_symlink := cacher.path_for_symlink(output.digest.value)
+                path_to_symlink := await cacher.path_for_symlink(output.digest.value)
             ) is not None:
                 # Use a symlink to the file in the persistent cache, if available.
                 output.dest.unlink(missing_ok=True)
@@ -278,19 +278,21 @@ def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: FileCacher
                 output.dest.symlink_to(path_to_symlink)
             else:
                 # Otherwise, copy it.
-                with cacher.get_file(output.digest.value) as fobj:
+                with await cacher.get_file(output.digest.value) as fobj:
                     with output.dest.open('wb') as f:
                         copyfileobj(fobj, f, maxlen=output.maxlen)
             if output.executable:
                 output.dest.chmod(0o755)
 
 
-def is_artifact_ok(artifact: GradingArtifacts, cacher: FileCacher) -> bool:
+async def is_artifact_ok(artifact: GradingArtifacts, cacher: FileCacher) -> bool:
     for output in artifact.outputs:
         if output.optional or output.intermediate:
             continue
         if output.digest is not None:
-            if output.digest.value is None or not cacher.exists(output.digest.value):
+            if output.digest.value is None or not await cacher.exists(
+                output.digest.value
+            ):
                 return False
             return True
         assert output.dest is not None
@@ -303,9 +305,11 @@ def is_artifact_ok(artifact: GradingArtifacts, cacher: FileCacher) -> bool:
     return True
 
 
-def are_artifacts_ok(artifacts: List[GradingArtifacts], cacher: FileCacher) -> bool:
+async def are_artifacts_ok(
+    artifacts: List[GradingArtifacts], cacher: FileCacher
+) -> bool:
     for artifact in artifacts:
-        if not is_artifact_ok(artifact, cacher):
+        if not await is_artifact_ok(artifact, cacher):
             return False
     return True
 
@@ -327,11 +331,11 @@ class DependencyCacheBlock:
         self.extra_params = extra_params
         self._key = None
 
-    def __enter__(self):
+    async def __aenter__(self):
         with Profiler('enter_in_cache'):
             if grading_context.is_no_cache():
                 return False
-            input = _build_cache_input(
+            input = await _build_cache_input(
                 commands=self.commands,
                 artifact_list=self.artifact_list,
                 extra_params=self.extra_params,
@@ -342,17 +346,17 @@ class DependencyCacheBlock:
             self._key = _build_cache_key(input)
             if VERBOSE:
                 console.console.log(f'Cache key is: {self._key}')
-            found = self.cache.find_in_cache(
+            found = await self.cache.find_in_cache(
                 self.commands, self.artifact_list, self.extra_params, key=self._key
             )
             return found
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         with Profiler('exit_in_cache'):
             if grading_context.is_no_cache():
                 return True if exc_type is NoCacheException else None
             if exc_type is None:
-                self.cache.store_in_cache(
+                await self.cache.store_in_cache(
                     self.commands, self.artifact_list, self.extra_params, key=self._key
                 )
             if exc_type is NoCacheException:
@@ -363,7 +367,7 @@ class DependencyCacheBlock:
 class DependencyCache:
     root: pathlib.Path
     cacher: FileCacher
-    lock: BaseFileLock
+    lock: BaseAsyncFileLock
 
     def __init__(self, root: pathlib.Path, cacher: FileCacher):
         self.root = root
@@ -371,7 +375,7 @@ class DependencyCache:
         self.db = SqliteDict(self._cache_name(), autocommit=True)
         tmp_dir = pathlib.Path(tempfile.mkdtemp())
         self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
-        self.lock = FileLock(self.root / 'cache.lock', thread_local=False)
+        self.lock = AsyncFileLock(self.root / 'cache.lock', thread_local=False)
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
         atexit.register(lambda: shutil.rmtree(tmp_dir, ignore_errors=True))
@@ -404,15 +408,15 @@ class DependencyCache:
         _check_digests(artifact_list)
         return DependencyCacheBlock(self, commands, artifact_list, extra_params or {})
 
-    def find_in_cache(
+    async def find_in_cache(
         self,
         commands: List[str],
         artifact_list: List[GradingArtifacts],
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ) -> bool:
-        with self.lock:
-            input = _build_cache_input(
+        async with self.lock:
+            input = await _build_cache_input(
                 commands=commands,
                 artifact_list=artifact_list,
                 extra_params=extra_params,
@@ -424,7 +428,7 @@ class DependencyCache:
             if fingerprint is None:
                 return False
 
-            reference_fingerprint = _build_cache_fingerprint(
+            reference_fingerprint = await _build_cache_fingerprint(
                 artifact_list,
                 self.cacher,
             )
@@ -449,7 +453,7 @@ class DependencyCache:
             for digest, reference_digest in zip(fingerprint.digests, reference_digests):
                 reference_digest.value = digest
 
-            if not are_artifacts_ok(artifact_list, self.cacher):
+            if not await are_artifacts_ok(artifact_list, self.cacher):
                 # Rollback digest changes.
                 for old_digest_value, reference_digest in zip(
                     old_digest_values, reference_digests
@@ -459,7 +463,7 @@ class DependencyCache:
                 return False
 
             # Copy hashed files to file system.
-            _copy_hashed_files(artifact_list, self.cacher)
+            await _copy_hashed_files(artifact_list, self.cacher)
 
             # Apply logs changes.
             for logs, reference_logs in zip(
@@ -479,15 +483,15 @@ class DependencyCache:
 
             return True
 
-    def store_in_cache(
+    async def store_in_cache(
         self,
         commands: List[str],
         artifact_list: List[GradingArtifacts],
         extra_params: Dict[str, Any],
         key: Optional[str] = None,
     ):
-        with self.lock:
-            input = _build_cache_input(
+        async with self.lock:
+            input = await _build_cache_input(
                 commands=commands,
                 artifact_list=artifact_list,
                 extra_params=extra_params,
@@ -495,10 +499,10 @@ class DependencyCache:
             )
             key = key or _build_cache_key(input)
 
-            if not are_artifacts_ok(artifact_list, self.cacher):
+            if not await are_artifacts_ok(artifact_list, self.cacher):
                 return
 
-            reference_fingerprint = _build_cache_fingerprint(
+            reference_fingerprint = await _build_cache_fingerprint(
                 artifact_list,
                 self.cacher,
             )

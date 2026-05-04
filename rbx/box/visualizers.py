@@ -352,7 +352,7 @@ async def run_visualizer(
             if run_log is not None:
                 e.print(f'[error]Summary:[/error] {run_log.get_summary()}')
                 e.print(
-                    f'[error]Stderr:[/error] {package.get_digest_as_string(stderr_holder.value or "")}'
+                    f'[error]Stderr:[/error] {await package.get_digest_as_string(stderr_holder.value or "")}'
                 )
 
     return visualization_path

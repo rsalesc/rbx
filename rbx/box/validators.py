@@ -128,7 +128,7 @@ async def _validate_testcase(
         extra_args=shlex.join(var_args) if var_args else None,
     )
 
-    message = package.get_digest_as_string(message_digest.value or '')
+    message = await package.get_digest_as_string(message_digest.value or '')
     if (
         run_log is not None
         and run_log.exitcode != 0
@@ -144,7 +144,7 @@ async def _validate_testcase(
 
     log_overview = ''
     if log_digest.value is not None:
-        log_overview = package.get_digest_as_string(log_digest.value or '')
+        log_overview = await package.get_digest_as_string(log_digest.value or '')
     return (
         run_log is not None and run_log.exitcode == 0,
         message,
