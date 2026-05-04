@@ -30,6 +30,59 @@ from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from tests.e2e.spec import Scenario, Step
 
+# Patterns excluded when copying a fixture directory into the run tmpdir.
+# These are paths that ``rbx`` (or prior test runs) generates and that should
+# regenerate freshly inside the tmpdir rather than leak in from source.
+COPY_IGNORE_PATTERNS = (
+    '.box',
+    'build',
+    '.limits',
+    '__pycache__',
+    '*.pyc',
+    'rbx.h',
+    '.local.rbx',
+    '.cache',
+    '.testdata',
+)
+
+
+def run_step(
+    scenario_path: pathlib.Path,
+    scenario_name: str,
+    step: Step,
+    cwd: pathlib.Path,
+) -> None:
+    """Invoke a single step's CLI command and assert its exit code.
+
+    Raises ``AssertionError`` with package name, scenario name, command,
+    expected vs actual exit codes, and stdout/stderr if the exit code does
+    not match.
+    """
+    old_cwd = pathlib.Path.cwd()
+    os.chdir(cwd)
+    try:
+        result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
+    finally:
+        os.chdir(old_cwd)
+    if result.exit_code != step.expect_exit:
+        exc = ''
+        if result.exception is not None:
+            exc = '\nexception:\n' + ''.join(
+                traceback.format_exception(
+                    type(result.exception),
+                    result.exception,
+                    result.exception.__traceback__,
+                )
+            )
+        raise AssertionError(
+            f'[{scenario_path.parent.name}::{scenario_name}] '
+            f'step {step.cmd!r} exited {result.exit_code}, '
+            f'expected {step.expect_exit}\n'
+            f'stdout:\n{result.stdout}\n'
+            f'stderr:\n{result.stderr}'
+            f'{exc}'
+        )
+
 
 class E2EScenarioItem(pytest.Item):
     def __init__(self, *, scenario: Scenario, **kwargs):
@@ -44,12 +97,9 @@ class E2EScenarioItem(pytest.Item):
                     source_dir,
                     tmp_root,
                     dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(
-                        '.box', 'build', '.limits', '__pycache__', '*.pyc'
-                    ),
+                    ignore=shutil.ignore_patterns(*COPY_IGNORE_PATTERNS),
                 )
             )
-            old_cwd = pathlib.Path.cwd()
             # ``rbx`` CLI commands use ``syncer`` which calls
             # ``asyncio.get_event_loop()``; on Python 3.12+ that requires a
             # current loop to be set. Provision one for the duration of the
@@ -57,36 +107,19 @@ class E2EScenarioItem(pytest.Item):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                os.chdir(pkg_dir)
                 testing_utils.clear_all_functools_cache()
                 for step in self.scenario.steps:
-                    self._run_step(pkg_dir, step)
+                    run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
-                os.chdir(old_cwd)
                 testing_utils.clear_all_functools_cache()
-                asyncio.set_event_loop(None)
-                loop.close()
-
-    def _run_step(self, pkg_dir: pathlib.Path, step: Step):
-        result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
-        if result.exit_code != step.expect_exit:
-            exc = ''
-            if result.exception is not None:
-                exc = '\nexception:\n' + ''.join(
-                    traceback.format_exception(
-                        type(result.exception),
-                        result.exception,
-                        result.exception.__traceback__,
-                    )
-                )
-            raise AssertionError(
-                f'[{self.path.parent.name}::{self.scenario.name}] '
-                f'step {step.cmd!r} exited {result.exit_code}, '
-                f'expected {step.expect_exit}\n'
-                f'stdout:\n{result.stdout}\n'
-                f'stderr:\n{result.stderr}'
-                f'{exc}'
-            )
+                try:
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                    loop.run_until_complete(loop.shutdown_default_executor())
+                except Exception:
+                    pass
+                finally:
+                    asyncio.set_event_loop(None)
+                    loop.close()
 
     def reportinfo(self):
         return self.path, 0, f'scenario: {self.name}'

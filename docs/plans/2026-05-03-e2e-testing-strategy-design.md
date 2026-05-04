@@ -20,7 +20,9 @@ the expected outcomes are, and have pytest automatically pick it up.
   for `rbx build`, statement artifacts for `rbx st b`, and packaging artifacts
   for `rbx pkg <format>`.
 - Always opt-in (gated by `@pytest.mark.e2e`); never runs on `mise run test`.
-- Reuses the existing `TestingPackage` helper for tmpdir isolation.
+- Hermetic tmpdir isolation per scenario via `shutil.copytree` plus
+  session-scoped autouse fixtures (mirrored from `tests/rbx/box/conftest.py`)
+  that redirect the global app/cache/setter-config paths.
 
 ## Non-goals (v1)
 
@@ -60,9 +62,24 @@ reports one node per scenario as `tests/e2e/testdata/<pkg>/e2e.rbx.yml::<scenari
 
 ## Execution model
 
-- Each scenario gets a fresh tmpdir copy of its package via the existing
-  `rbx.box.testing.testing_package.TestingPackage` helper. Scenarios are
-  independent.
+- Each scenario gets a fresh tmpdir copy of its package directory via
+  `shutil.copytree` (with an ignore list that drops `.box`, `build`,
+  `.limits`, `__pycache__`, `*.pyc`, `rbx.h`, `.local.rbx`, `.cache`,
+  `.testdata`). The scenario's CLI invocations run with that tmpdir as
+  cwd. Scenarios are independent.
+- We deliberately bypass `rbx.box.testing.testing_package.TestingPackage`
+  because its `initialize_preset` step writes a
+  `.local.rbx/preset.rbx.yml` without a `min_version` field, which the
+  `rbx` CLI then rejects on load (see
+  `rbx/box/testing/testing_preset.py:14-27`). The runner instead chdirs
+  into the copied package and lets `rbx` resolve `problem.rbx.yml` via
+  its normal lookup path.
+- Global isolation (the user's real `~/.local/share/rbx/`,
+  `setter_config.yml`, `pdflatex` binary) is provided by autouse
+  session-scoped fixtures in `tests/e2e/conftest.py` that mirror the
+  ones already present in `tests/rbx/box/conftest.py`. They are
+  re-declared (not inherited) because `tests/e2e/` is a sibling of
+  `tests/rbx/`, not a descendant.
 - Steps within a scenario share the tmpdir and run in order. The first failing
   step fails the scenario; subsequent steps are skipped.
 - All scenarios are marked `@pytest.mark.e2e` so they are excluded from
@@ -297,15 +314,22 @@ collection (clear pytest error) rather than runtime.
 ```python
 class E2EScenarioItem(pytest.Item):
     def runtest(self):
-        with TestingPackage(self.package_dir) as pkg:
+        source_dir = self.path.parent
+        with tempfile.TemporaryDirectory(prefix='rbx-e2e-') as tmp_root:
+            pkg_dir = pathlib.Path(shutil.copytree(
+                source_dir, tmp_root, dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(*COPY_IGNORE_PATTERNS),
+            ))
             for step in self.scenario.steps:
-                self._run_step(pkg, step)
+                run_step(self.path, self.scenario.name, step, pkg_dir)
 
-    def _run_step(self, pkg, step):
-        result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
-        assert result.exit_code == step.expect_exit, ...
-        for assertion in step.assertions:
-            assertion.check(pkg, result)
+# `run_step` is a free function so it can be unit-tested without going
+# through pytest collection.
+def run_step(scenario_path, scenario_name, step, cwd):
+    result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
+    assert result.exit_code == step.expect_exit, ...
+    for assertion in step.assertions:
+        assertion.check(cwd, result)
 ```
 
 ### Assertion classes
