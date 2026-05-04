@@ -1,0 +1,23 @@
+rbx: |
+  The `rbx` CLI is the main entry point for all operations. It provides a set of commands to manage problems, contests, and the environment.
+
+rbx build: |
+  Builds the problem package.
+
+  This command compiles all generators, validators, and checkers. Then it generates inputs using the generator script and validates them with the validator. Finally, it generates the outputs using the main solution.
+
+  It is recommended to run this command before packaging the problem to ensure everything is up-to-date.
+
+rbx run: |
+  Runs solutions against the testcases.
+
+  This is the primary way to test your solutions. You can run all solutions, a specific set of solutions, or only accepted solutions.
+  
+  You can also filter which testcases to run against, by using the `--outcome` flag to only confirm that solutions match a certain expected outcome (e.g. TLE, WA).
+
+rbx stress: |
+  Runs stress testing on the current problem.
+
+  Stress testing allows you to find counter-examples where your solution fails (or where two solutions differ).
+  
+  You usually provide a generator command (with random seed) and a reference solution (or validator/checker).
