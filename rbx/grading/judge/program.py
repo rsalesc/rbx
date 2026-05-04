@@ -238,7 +238,6 @@ class Program:
                     if memory_used > self.params.memory_limit * 1024 * 1024:
                         self._alarm_msg = 'memorylimit'
                         self._kill_process()
-                self._stop_alarm_handler.clear()
             except psutil.NoSuchProcess:
                 return
 
@@ -334,6 +333,8 @@ class Program:
     def wait(self):
         assert self.popen is not None
         _, exitstatus, ru = os.wait4(self.pid, 0)
+        self._stop_wall_handler.set()
+        self._stop_alarm_handler.set()
         res = self.process_exit(exitstatus, ru)
         self.close_pipes()
         return res
