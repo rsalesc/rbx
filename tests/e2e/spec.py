@@ -41,10 +41,47 @@ def _coerce_solution_matcher(value):
 
 
 class TestsMatcher(_Forbid):
+    """Assertions about the output of ``rbx build`` under ``build/tests/``.
+
+    Fields:
+
+    * ``count``: optional total count of generated ``*.in`` files.
+    * ``groups``: mapping of group name (the immediate subdirectory of
+      ``build/tests/``) to expected ``*.in`` count.
+    * ``exist``: literal paths under ``build/tests/`` that must exist
+      after the step runs.
+    * ``all_valid``: reserved for future enforcement of "every generated
+      test passed validation". ``rbx build`` does not currently persist a
+      structured per-testcase validation report on disk, so we cannot
+      verify this matcher field. It is kept in the schema with default
+      ``None`` so existing fixtures don't accidentally enable it; setting
+      it explicitly raises ``NotImplementedError`` at check time. See
+      ``docs/plans/2026-05-03-e2e-testing-strategy.md`` Task 8 notes.
+    """
+
+    # Disable pytest collection -- the ``Test`` prefix in the class name
+    # is otherwise heuristically treated as a test class.
+    __test__ = False
+
     count: Optional[int] = None
     groups: Dict[str, int] = Field(default_factory=dict)
-    all_valid: bool = True
+    all_valid: Optional[bool] = None
     exist: List[str] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def _non_empty(self):
+        if (
+            self.count is None
+            and not self.groups
+            and self.all_valid is None
+            and not self.exist
+        ):
+            raise ValueError(
+                'tests matcher must specify at least one of `count`, '
+                '`groups`, `exist`, or `all_valid`; an empty matcher '
+                'asserts nothing'
+            )
+        return self
 
 
 class ZipMatcher(_Forbid):

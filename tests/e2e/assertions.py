@@ -8,6 +8,7 @@ the wrapped message pinpoints the failure but should NOT duplicate the
 package/scenario prefix.
 """
 
+import collections
 import fnmatch
 import pathlib
 import re
@@ -22,7 +23,7 @@ from rbx.box.solutions import (
     get_worst_outcome,
 )
 from rbx.grading.steps import Evaluation
-from tests.e2e.spec import SolutionMatcher, ZipMatcher
+from tests.e2e.spec import SolutionMatcher, TestsMatcher, ZipMatcher
 
 
 @dataclass
@@ -290,3 +291,53 @@ def check_zip_not_contains(ctx: AssertionContext, matcher: ZipMatcher) -> None:
     for entry in matcher.entries:
         if _glob_in_zip(zip_path, entry):
             raise AssertionError(f'{zip_path.name}: unexpected entry {entry!r}')
+
+
+def check_tests(ctx: AssertionContext, matcher: TestsMatcher) -> None:
+    """Assert against the contents of ``build/tests/`` after ``rbx build``.
+
+    Counts are computed from ``*.in`` files only -- ``*.out``, ``*.eval``
+    and ``*.log`` siblings are ignored. Group names are the immediate
+    subdirectories of ``build/tests/`` (e.g. ``main``, ``samples``).
+
+    ``all_valid`` is currently unsupported because ``rbx build`` does not
+    persist a per-testcase validation report. Setting it to ``True``
+    raises rather than silently passing -- see :class:`TestsMatcher` for
+    background.
+    """
+    tests_root = ctx.package_root / 'build' / 'tests'
+    if not tests_root.is_dir():
+        raise AssertionError(
+            "build/tests/ not found; did 'rbx build' run successfully?"
+        )
+
+    inputs = sorted(p for p in tests_root.rglob('*.in') if p.is_file())
+    actual_count = len(inputs)
+    actual_groups: Dict[str, int] = collections.Counter(p.parent.name for p in inputs)
+
+    if matcher.count is not None and actual_count != matcher.count:
+        raise AssertionError(
+            f'tests.count: expected {matcher.count}, got {actual_count}'
+        )
+
+    for grp, n in matcher.groups.items():
+        if grp not in actual_groups:
+            raise AssertionError(
+                f'tests.groups.{grp}: group not found; '
+                f'known groups: {sorted(actual_groups)}'
+            )
+        if actual_groups[grp] != n:
+            raise AssertionError(
+                f'tests.groups.{grp}: expected {n}, got {actual_groups[grp]}'
+            )
+
+    for path in matcher.exist:
+        if not (tests_root / path).exists():
+            raise AssertionError(f'tests.exist: missing {path!r}')
+
+    if matcher.all_valid is True:
+        raise AssertionError(
+            'tests.all_valid: not yet supported; rbx build does not persist '
+            'a structured per-testcase validation report. Drop the flag '
+            'until the build report lands.'
+        )
