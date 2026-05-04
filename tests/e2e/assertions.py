@@ -29,11 +29,17 @@ def _as_list(value: Union[str, List[str], None]) -> List[str]:
     return list(value)
 
 
+# Bracket characters are interpreted as glob char-classes; literal brackets
+# must be escaped with ``[[]``.
+_GLOB_MAGIC = re.compile(r'[*?]|\[[^]]+\]')
+
+
 def _glob(root: pathlib.Path, pattern: str) -> List[pathlib.Path]:
     # ``Path.glob`` does not accept absolute patterns; route plain literal
     # paths through ``exists()`` so callers can write ``foo.txt`` without
-    # any wildcards.
-    if any(ch in pattern for ch in '*?['):
+    # any wildcards. Only treat ``[`` as magic when it forms a matched
+    # ``[...]`` pair, so stray brackets in literal paths do not confuse glob.
+    if _GLOB_MAGIC.search(pattern):
         return list(root.glob(pattern))
     target = root / pattern
     return [target] if target.exists() else []
@@ -73,12 +79,24 @@ def check_files_absent(ctx: AssertionContext, patterns: List[str]) -> None:
 
 
 def check_file_contains(ctx: AssertionContext, mapping: Dict[str, str]) -> None:
+    """Assert that each file under ``package_root`` contains the given value.
+
+    Values whose length is greater than 2 and which both start and end with
+    a forward slash (``/``) are interpreted as Python regular expressions
+    (the surrounding slashes are stripped). All other values are treated as
+    literal substrings.
+
+    Note the ambiguity: a value like ``/usr/bin/`` is interpreted as the
+    regex ``usr/bin``, not as the literal substring ``/usr/bin/``. Callers
+    that need a literal value with leading and trailing slashes should pad
+    the value or rely on a different assertion.
+    """
     for path, needle in mapping.items():
         target = ctx.package_root / path
         if not target.exists():
             raise AssertionError(f'{path}: file does not exist')
         text = target.read_text()
-        if len(needle) >= 2 and needle.startswith('/') and needle.endswith('/'):
+        if len(needle) > 2 and needle.startswith('/') and needle.endswith('/'):
             regex = needle[1:-1]
             if not re.search(regex, text):
                 raise AssertionError(f'{path}: regex {needle} no match')

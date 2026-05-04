@@ -150,3 +150,45 @@ def test_file_contains_regex_fail(tmp_path):
     (tmp_path / 'b.txt').write_text('nope\n')
     with pytest.raises(AssertionError, match='no match'):
         check_file_contains(_ctx(tmp_path), {'b.txt': r'/build OK in \d+/'})
+
+
+def test_file_contains_double_slash_is_literal_not_empty_regex(tmp_path):
+    # ``//`` has length 2 and so must be treated as a literal substring,
+    # not as an empty regex (which would silently match anything).
+    (tmp_path / 'a.txt').write_text('no slashes here\n')
+    with pytest.raises(AssertionError, match='missing'):
+        check_file_contains(_ctx(tmp_path), {'a.txt': '//'})
+
+    (tmp_path / 'b.txt').write_text('a // b\n')
+    check_file_contains(_ctx(tmp_path), {'b.txt': '//'})
+
+
+def test_file_contains_regex_precedence_over_literal(tmp_path):
+    # ``/x.+y/`` is interpreted as the regex ``x.+y``; ``x123y`` matches
+    # the regex but not the literal value (which contains slashes).
+    (tmp_path / 'c.txt').write_text('prefix x123y suffix\n')
+    check_file_contains(_ctx(tmp_path), {'c.txt': '/x.+y/'})
+
+
+# ---------------------------------------------------------------------------
+# _glob magic-character detection
+# ---------------------------------------------------------------------------
+
+
+def test_files_exist_literal_with_unmatched_bracket_does_not_glob(tmp_path):
+    # A stray ``[`` with no matching ``]`` must be treated as a literal
+    # path component, not handed to ``Path.glob`` (which would either
+    # raise or silently match nothing).
+    (tmp_path / 'foo[bar').write_text('x')
+    check_files_exist(_ctx(tmp_path), ['foo[bar'])
+
+
+def test_files_exist_bracket_charclass_globs(tmp_path):
+    (tmp_path / 'a1.txt').write_text('x')
+    (tmp_path / 'a2.txt').write_text('y')
+    check_files_exist(_ctx(tmp_path), ['a[12].txt'])
+
+
+def test_files_absent_literal_with_unmatched_bracket(tmp_path):
+    # No file present; literal lookup must return empty without raising.
+    check_files_absent(_ctx(tmp_path), ['ghost[name'])
