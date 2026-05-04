@@ -1,0 +1,15 @@
+scenarios:
+  - name: smoke
+    steps:
+      - cmd: build
+        expect:
+          files_exist:
+            - "build/tests/main/*.in"
+          tests:
+            count: 3
+            groups:
+              main: 3
+            exist:
+              - main/1-gen-000.in
+              - main/1-gen-001.in
+              - main/1-gen-002.in

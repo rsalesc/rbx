@@ -25,9 +25,27 @@ def get_resources_path() -> pathlib.Path:
 
 
 def clear_all_functools_cache():
-    from rbx.box import environment, header, package
+    from rbx.box import (
+        environment,
+        global_package,
+        header,
+        package,
+        presets,
+        setter_config,
+    )
+    from rbx.box.contest import contest_package
+    from rbx.grading import steps as grading_steps
 
-    pkgs = [environment, package, header]
+    pkgs = [
+        environment,
+        package,
+        header,
+        global_package,
+        contest_package,
+        setter_config,
+        presets,
+        grading_steps,
+    ]
 
     for pkg in pkgs:
         for fn in pkg.__dict__.values():
