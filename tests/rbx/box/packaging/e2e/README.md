@@ -1,5 +1,13 @@
 # BOCA E2E Tests
 
+> **Looking for the YAML-driven e2e framework?** Most CLI-level e2e tests now
+> live under [`tests/e2e/`](../../../../e2e/), where each fixture is a
+> self-contained `rbx` package with an `e2e.rbx.yml` describing scenarios. See
+> [`tests/e2e/README.md`](../../../../e2e/README.md) for the schema and
+> authoring guide. **This directory now houses only the docker-based BOCA
+> upload test** (`test_boca_e2e.py`), which stays as Python because it needs
+> docker-compose orchestration that the YAML DSL deliberately doesn't model.
+
 This directory contains end-to-end tests for BOCA package generation and upload functionality.
 
 ## Prerequisites
