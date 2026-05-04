@@ -320,6 +320,29 @@ def test_empty_solution_matcher_is_rejected():
         )
 
 
+def test_markers_default_empty():
+    spec = parse_spec({'scenarios': [{'name': 's', 'steps': []}]})
+    assert spec.scenarios[0].markers == []
+
+
+def test_markers_slow_parses():
+    spec = parse_spec({'scenarios': [{'name': 's', 'markers': ['slow'], 'steps': []}]})
+    assert spec.scenarios[0].markers == ['slow']
+
+
+def test_markers_slow_and_docker_parses():
+    spec = parse_spec(
+        {'scenarios': [{'name': 's', 'markers': ['slow', 'docker'], 'steps': []}]}
+    )
+    assert spec.scenarios[0].markers == ['slow', 'docker']
+
+
+def test_markers_unknown_rejected():
+    with pytest.raises(ValueError) as exc_info:
+        parse_spec({'scenarios': [{'name': 's', 'markers': ['bogus'], 'steps': []}]})
+    assert 'bogus' in str(exc_info.value)
+
+
 def test_load_spec_against_simple_ac():
     path = (
         pathlib.Path(__file__).resolve().parent

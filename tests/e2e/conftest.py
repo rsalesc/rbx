@@ -94,3 +94,5 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if isinstance(item, E2EScenarioItem):
             item.add_marker(pytest.mark.e2e)
+            for marker in item.scenario.markers:
+                item.add_marker(getattr(pytest.mark, marker))

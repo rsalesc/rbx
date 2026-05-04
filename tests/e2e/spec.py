@@ -3,7 +3,14 @@ import pathlib
 from typing import Annotated, Dict, List, Optional, Union
 
 import yaml
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from rbx.box.schema import ExpectedOutcome
 
@@ -110,10 +117,24 @@ class Step(_Forbid):
     expect: Expect = Field(default_factory=Expect)
 
 
+_ALLOWED_MARKERS = frozenset({'slow', 'docker'})
+
+
 class Scenario(_Forbid):
     name: str
     description: Optional[str] = None
+    markers: List[str] = Field(default_factory=list)
     steps: List[Step] = Field(default_factory=list)
+
+    @field_validator('markers')
+    @classmethod
+    def _validate_markers(cls, v):
+        bad = [m for m in v if m not in _ALLOWED_MARKERS]
+        if bad:
+            raise ValueError(
+                f'unknown markers: {bad}; allowed: {sorted(_ALLOWED_MARKERS)}'
+            )
+        return v
 
 
 class E2ESpec(_Forbid):
