@@ -1,0 +1,13 @@
+scenarios:
+  - name: build-statement
+    description: >
+      Build the package and then build the rbxTeX statement. The
+      mock_pdflatex fixture short-circuits the actual pdflatex run
+      and yields an empty PDF, so we only assert the artefact path
+      exists -- contents are not verified.
+    steps:
+      - cmd: build
+      - cmd: st b
+        expect:
+          files_exist:
+            - "build/main.pdf"
