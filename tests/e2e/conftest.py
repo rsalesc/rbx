@@ -28,7 +28,10 @@ from rbx.box.statements.latex import LatexResult
 from tests.e2e.runner import E2EScenarioItem
 from tests.e2e.spec import load_spec
 
-pytest_plugins = ['pytester']
+# NOTE: ``pytest_plugins = ['pytester']`` is declared at the repo-root
+# ``conftest.py`` because pytest only honours that hook in the rootdir
+# conftest. The fixture is consumed by ``tests/e2e/test_collection.py`` and
+# friends.
 
 
 @pytest.fixture(scope='session')
