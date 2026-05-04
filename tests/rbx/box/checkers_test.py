@@ -1,9 +1,9 @@
+import asyncio
 import pathlib
 from typing import Dict, Iterator, Tuple
 from unittest import mock
 
 import pytest
-import syncer
 import typer
 
 from rbx.box import checkers
@@ -35,7 +35,7 @@ def pkg_with_compiled_checker(tmp_path_factory):
         checkers = {}
         for checker in INTERESTING_CHECKERS:
             testing_pkg.set_checker('checker.cpp', src=checker)
-            checkers[checker] = syncer.sync(compile_checker())
+            checkers[checker] = asyncio.run(compile_checker())
         yield testing_pkg, checkers
 
 

@@ -245,6 +245,9 @@ class TestStepsRun:
         assert result.exitstatus == SandboxBase.EXIT_TIMEOUT_WALL
         assert result.exitcode != 0
 
+    @pytest.mark.skip(
+        reason='Flaky across platforms; tracked in https://github.com/rsalesc/rbx/issues/422'
+    )
     async def test_run_with_memory_limit(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
