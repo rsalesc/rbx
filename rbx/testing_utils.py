@@ -25,9 +25,14 @@ def get_resources_path() -> pathlib.Path:
 
 
 def clear_all_functools_cache():
-    from rbx.box import environment, header, package
+    """Clear cwd-dependent caches between tests. Excludes global_package
+    on purpose — its singletons (FileCacher, DependencyCache) are session-
+    scoped resources backed by a mocked tmp dir; clearing them forces each
+    test to rebuild compilation caches and OOMs CI under xdist parallelism.
+    """
+    from rbx.box import environment, header, lang, package, visualizers
 
-    pkgs = [environment, package, header]
+    pkgs = [environment, package, header, lang, visualizers]
 
     for pkg in pkgs:
         for fn in pkg.__dict__.values():

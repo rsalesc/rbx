@@ -154,3 +154,5 @@ Singleton factories (via `@functools.cache`) for shared resources:
 - `get_global_dependency_cache()` -- Shared `DependencyCache`
 - Cache versioning via `CACHE_STEP_VERSION` -- incremented when cache format changes
 - `clear_global_cache()` -- Nukes the cache directory (used by `rbx clear`)
+
+**Test isolation rule:** any new `@functools.cache` (or `@async_lru.alru_cache`) on a module-level function in `rbx/box/` must be added to `rbx.testing_utils.clear_all_functools_cache`. The autouse `_isolate_global_state` fixture in `tests/rbx/conftest.py` calls this between every test; uncovered caches will leak path-resolved state across tests and surface as flaky cross-test failures (#423).
