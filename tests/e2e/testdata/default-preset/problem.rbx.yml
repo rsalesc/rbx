@@ -1,0 +1,73 @@
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Package.json
+name: "new-problem"
+timeLimit: 1000 # ms
+memoryLimit: 256 # MiB
+titles:
+  en: "New problem"
+checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
+validator: {path: "validator.cpp"}
+testcases:
+  - name: "samples"
+    testcaseGlob: "manual_tests/samples/*.in" # Pattern for the sample inputs.
+  - name: "random"
+    generatorScript:
+      path: "testplan/random.txt" # Static generator script (testplan).
+  - name: "program-random"
+    generatorScript:
+      path: "testplan/random.py" # Generator script written programatically.
+solutions:
+  - path: "sols/main*.*"
+    outcome: "ACCEPTED"
+  - path: "sols/ac-*.*"
+    outcome: "ACCEPTED"
+  - path: "sols/wa-*.*"
+    outcome: "WRONG_ANSWER"
+  - path: "sols/tle-*.*"
+    outcome: "TIME_LIMIT_EXCEEDED"
+  - path: "sols/mle-*.*"
+    outcome: "MEMORY_LIMIT_EXCEEDED"
+  - path: "sols/re-*.*"
+    outcome: "RUNTIME_ERROR"
+  - path: "sols/fail-*.*"
+    outcome: "INCORRECT"
+statements:
+  - name: "statement-en"
+    path: "statement/statement.rbx.tex" # Open this file to edit your statement.
+    type: "rbxTeX"
+    language: "en"
+    assets: # Define assets for the statement.
+      - "statement/icpc.sty"
+      - "statement/*.png"
+    configure:
+      - type: "rbx-tex" # Convert rbxTeX to TeX
+        template: "statement/template.rbx.tex"
+    vars:
+      # Set to false to hide time limits and memory limits in the problem statement.
+      show_limits: true
+stresses:
+  - name: "stress"
+    generator:
+      name: "gens/gen"
+      args: "[1..<N.max>] @" # `@` generates a random string
+    finder: "[sols/wa.cpp] ~ INCORRECT"
+unitTests:
+  validator:
+    - glob: "unit/validator/valid*.in"
+      outcome: "VALID"
+    - glob: "unit/validator/invalid*.in"
+      outcome: "INVALID"
+  checker:
+    - glob: "unit/checker/ac*"
+      outcome: "ACCEPTED"
+    - glob: "unit/checker/wa*"
+      outcome: "WRONG_ANSWER"
+# Can be used in the validator, checker, interactor, stress tests
+# and in the statement.
+vars:
+  # Author name to be displayed in the editorial.
+  author: "John Doe"
+  # Constraints of the problem.
+  N:
+    min: 1
+    max: 1000000000

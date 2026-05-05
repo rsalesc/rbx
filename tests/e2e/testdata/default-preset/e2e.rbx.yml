@@ -1,0 +1,38 @@
+scenarios:
+  - name: full-pipeline
+    description: >
+      End-to-end migration of the legacy `test_default_preset_problem`
+      CLI test. The fixture is a verbatim copy of
+      `rbx/resources/presets/default/problem/`, so it exercises the
+      same code paths as a freshly-created problem from the default
+      preset: build, run all reference solutions, run unit tests,
+      build the rbxTeX statement (mocked pdflatex), and produce both
+      BOCA and Polygon packages.
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/wa-overflow.cpp: wa
+      - cmd: unit
+      - cmd: time -s inherit -p boca
+      - cmd: time -s inherit -p polygon
+      - cmd: st b
+        expect:
+          files_exist:
+            - build/statement-en.pdf
+      - cmd: pkg boca
+        expect:
+          files_exist:
+            - build/*.zip
+          zip_contains:
+            path: build/*.zip
+            entries:
+              - description/problem.info
+              - input/*
+              - output/*
+              - limits/*
+      - cmd: pkg polygon
+        expect:
+          files_exist:
+            - build/problem.zip

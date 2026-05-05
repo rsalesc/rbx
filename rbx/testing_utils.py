@@ -30,9 +30,29 @@ def clear_all_functools_cache():
     scoped resources backed by a mocked tmp dir; clearing them forces each
     test to rebuild compilation caches and OOMs CI under xdist parallelism.
     """
-    from rbx.box import environment, header, lang, package, visualizers
+    from rbx.box import (
+        environment,
+        header,
+        lang,
+        package,
+        presets,
+        setter_config,
+        visualizers,
+    )
+    from rbx.box.contest import contest_package
+    from rbx.grading import steps as grading_steps
 
-    pkgs = [environment, package, header, lang, visualizers]
+    pkgs = [
+        environment,
+        package,
+        header,
+        lang,
+        visualizers,
+        contest_package,
+        setter_config,
+        presets,
+        grading_steps,
+    ]
 
     for pkg in pkgs:
         for fn in pkg.__dict__.values():

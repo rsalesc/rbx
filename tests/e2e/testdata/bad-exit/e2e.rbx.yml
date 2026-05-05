@@ -1,0 +1,5 @@
+scenarios:
+  - name: nonexistent-cmd
+    steps:
+      - cmd: this-is-not-a-command
+        expect_exit: 2

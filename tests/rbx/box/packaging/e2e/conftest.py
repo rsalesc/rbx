@@ -1,11 +1,31 @@
 """Pytest configuration for E2E tests."""
 
+import asyncio
 import pathlib
 from typing import Iterator
 
 import pytest
 
 from rbx.box.testing import testing_package
+
+
+@pytest.fixture(autouse=True)
+def _ensure_event_loop():
+    """Provision a fresh asyncio loop per test so syncer-wrapped Typer
+    commands work under Python 3.14, where get_event_loop() no longer
+    creates one implicitly."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield
+    finally:
+        try:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+        except Exception:
+            pass
+        asyncio.set_event_loop(None)
+        loop.close()
 
 
 def pytest_configure(config):

@@ -1,0 +1,21 @@
+scenarios:
+  - name: package-boca
+    description: >
+      Build the package, set up an inherited BOCA limits profile
+      non-interactively, then produce the BOCA zip and assert the
+      zip layout (description metadata, per-language limits, test
+      I/O directories) is present.
+    steps:
+      - cmd: build
+      - cmd: time -s inherit -p boca
+      - cmd: pkg boca
+        expect:
+          files_exist:
+            - "build/*.zip"
+          zip_contains:
+            path: build/*.zip
+            entries:
+              - description/problem.info
+              - "input/*"
+              - "output/*"
+              - "limits/*"

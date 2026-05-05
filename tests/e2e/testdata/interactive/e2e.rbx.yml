@@ -1,0 +1,20 @@
+scenarios:
+  - name: run
+    description: >
+      End-to-end migration of the legacy `test_interactive_problem`
+      CLI test. The fixture is a copy of
+      `rbx/testdata/problems/interactive/`, exercising the full
+      interactor pipeline: generators, validator, interactor, checker,
+      and a wide variety of solutions across C++/Python/Java/Kotlin.
+      The original test asserted exit 0 plus `'FAILED' not in stdout`;
+      we strengthen that to a verdict-by-solution check on the main
+      AC reference.
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/ac.py: ac
+            sols/ac.java: ac
+            sols/ac.kt: ac
+            sols/af_wa.cpp: wa

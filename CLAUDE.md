@@ -33,6 +33,8 @@ uv run pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml
 
 Test markers: `e2e`, `slow`, `docker` (these are excluded from default CI runs via `mise run test`).
 
+End-to-end CLI scenarios live under `tests/e2e/` and are written in a YAML DSL (one `e2e.rbx.yml` per fixture package). Run them with `mise run test-e2e`. See [`tests/e2e/README.md`](tests/e2e/README.md) for the schema and authoring guide.
+
 ### Linting and Formatting
 ```bash
 uv run ruff check .        # Lint

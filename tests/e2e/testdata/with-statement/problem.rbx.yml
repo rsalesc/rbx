@@ -1,0 +1,28 @@
+name: with-statement
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+
+statements:
+  - name: main
+    path: statement/statement.rbx.tex
+    type: rbx-tex
+    language: en
+    configure:
+      - type: rbx-tex
+        template: statement/template.rbx.tex
