@@ -8,11 +8,12 @@ from abc import ABC, abstractmethod
 from typing import IO, AnyStr, Dict, List, Optional, Type, TypeVar
 
 import lz4.frame
-from filelock import AsyncFileLock, BaseAsyncFileLock
+from filelock import BaseAsyncFileLock
 from pydantic import BaseModel
 
 from rbx import utils
 from rbx.grading import grading_context
+from rbx.grading.judge.lock import make_async_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +253,7 @@ class FilesystemStorage(Storage):
         (path / '.metadata').mkdir(parents=True, exist_ok=True)
         # Place the lock in the parent directory so it doesn't appear in list().
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock = AsyncFileLock(path.parent / f'{path.name}.lock', thread_local=False)
+        self.lock = make_async_file_lock(path.parent / f'{path.name}.lock')
 
     async def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""
