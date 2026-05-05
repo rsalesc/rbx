@@ -25,13 +25,19 @@ def get_resources_path() -> pathlib.Path:
 
 
 def clear_all_functools_cache():
+    """Clear cwd-dependent caches between tests. Excludes global_package
+    on purpose — its singletons (FileCacher, DependencyCache) are session-
+    scoped resources backed by a mocked tmp dir; clearing them forces each
+    test to rebuild compilation caches and OOMs CI under xdist parallelism.
+    """
     from rbx.box import (
         environment,
-        global_package,
         header,
+        lang,
         package,
         presets,
         setter_config,
+        visualizers,
     )
     from rbx.box.contest import contest_package
     from rbx.grading import steps as grading_steps
@@ -40,7 +46,8 @@ def clear_all_functools_cache():
         environment,
         package,
         header,
-        global_package,
+        lang,
+        visualizers,
         contest_package,
         setter_config,
         presets,

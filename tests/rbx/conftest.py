@@ -74,3 +74,32 @@ def mock_app_path(monkeysession, tmp_path_factory):
     app_path = tmp_path_factory.mktemp('app')
     monkeysession.setattr('rbx.utils.get_app_path', lambda: app_path)
     yield app_path
+
+
+@pytest.fixture(autouse=True)
+def _isolate_global_state() -> Iterator[None]:
+    from rbx import testing_utils
+    from rbx.box import package as _package
+    from rbx.grading import grading_context as _gc
+
+    original_cwd = os.getcwd()
+    original_temp_dir = _package.TEMP_DIR
+    context_vars = [
+        _gc.cache_level_var,
+        _gc.compression_level_var,
+        _gc.use_compression_var,
+        _gc.check_integrity_var,
+        _gc.is_stress_var,
+    ]
+    snapshots = [(v, v.get()) for v in context_vars]
+    try:
+        yield
+    finally:
+        try:
+            os.chdir(original_cwd)
+        except FileNotFoundError, OSError:
+            pass
+        _package.TEMP_DIR = original_temp_dir
+        for var, value in snapshots:
+            var.set(value)
+        testing_utils.clear_all_functools_cache()
