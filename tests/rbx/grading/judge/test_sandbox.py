@@ -259,7 +259,7 @@ class TestSandboxBase:
         content = sandbox.get_file_to_string(file_path)
         assert content == test_string_content
 
-    def test_create_file_from_other_file(self, sandbox, tmp_path):
+    async def test_create_file_from_other_file(self, sandbox, tmp_path):
         """Test creating a file from another file."""
         # Create source file
         source_file = tmp_path / 'source.txt'
@@ -268,13 +268,13 @@ class TestSandboxBase:
 
         dest_path = pathlib.Path('test_from_file.txt')
 
-        sandbox.create_file_from_other_file(dest_path, source_file)
+        await sandbox.create_file_from_other_file(dest_path, source_file)
 
         # Verify content
         content = sandbox.get_file_to_bytes(dest_path)
         assert content == source_content
 
-    def test_create_file_from_storage(self, sandbox):
+    async def test_create_file_from_storage(self, sandbox):
         """Test creating a file from storage."""
         file_path = pathlib.Path('test_from_storage.txt')
         test_content = b'Storage file content'
@@ -283,10 +283,12 @@ class TestSandboxBase:
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(test_content)
             tmp.flush()
-            digest = sandbox.file_cacher.put_file_from_path(pathlib.Path(tmp.name))
+            digest = await sandbox.file_cacher.put_file_from_path(
+                pathlib.Path(tmp.name)
+            )
 
         # Create file from storage
-        sandbox.create_file_from_storage(file_path, digest)
+        await sandbox.create_file_from_storage(file_path, digest)
 
         # Verify content
         content = sandbox.get_file_to_bytes(file_path)
@@ -350,16 +352,16 @@ class TestSandboxBase:
         content = sandbox.get_file_to_string(file_path)
         assert content == test_string_content
 
-    def test_get_file_to_storage(self, sandbox, test_file_content):
+    async def test_get_file_to_storage(self, sandbox, test_file_content):
         """Test putting a file into storage."""
         file_path = pathlib.Path('test_to_storage.txt')
         sandbox.create_file_from_bytes(file_path, test_file_content)
 
-        digest = sandbox.get_file_to_storage(file_path)
+        digest = await sandbox.get_file_to_storage(file_path)
 
         # Verify we can retrieve the same content
         with tempfile.NamedTemporaryFile() as tmp:
-            sandbox.file_cacher.get_file_to_path(digest, pathlib.Path(tmp.name))
+            await sandbox.file_cacher.get_file_to_path(digest, pathlib.Path(tmp.name))
             retrieved_content = pathlib.Path(tmp.name).read_bytes()
 
         assert retrieved_content == test_file_content
@@ -557,19 +559,19 @@ class TestTruncator:
 class TestSandboxEdgeCases:
     """Test edge cases and error conditions."""
 
-    def test_get_file_to_storage_with_truncation(self, sandbox, tmp_path_factory):
+    async def test_get_file_to_storage_with_truncation(self, sandbox, tmp_path_factory):
         """Test putting truncated file to storage."""
         file_path = pathlib.Path('test_trunc_storage.txt')
         long_content = b'A' * 1000
         sandbox.create_file_from_bytes(file_path, long_content)
 
         # Put truncated version to storage
-        digest = sandbox.get_file_to_storage(file_path, trunc_len=100)
+        digest = await sandbox.get_file_to_storage(file_path, trunc_len=100)
 
         # Verify truncated content in storage
         tmp_path = tmp_path_factory.mktemp('test_trunc')
         tmp_file = tmp_path / 'truncated.txt'
-        sandbox.file_cacher.get_file_to_path(digest, tmp_file)
+        await sandbox.file_cacher.get_file_to_path(digest, tmp_file)
         retrieved_content = tmp_file.read_bytes()
 
         assert len(retrieved_content) == 100

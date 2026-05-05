@@ -6,7 +6,7 @@ from rbx.box.environment import FileMapping
 
 
 class TestMaybeRenameJavaClass:
-    def test_basic_class_renaming(self, testing_pkg):
+    async def test_basic_class_renaming(self, testing_pkg):
         """Test basic class renaming from Solution to Main"""
         java_file = testing_pkg.add_file('Solution.java')
         java_file.write_text("""public class Solution {
@@ -16,7 +16,7 @@ class TestMaybeRenameJavaClass:
 }""")
 
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
-        result_path = maybe_rename_java_class(java_file, file_mapping)
+        result_path = await maybe_rename_java_class(java_file, file_mapping)
 
         expected_content = """public class Main {
     public static void main(String[] args) {
@@ -27,7 +27,7 @@ class TestMaybeRenameJavaClass:
         assert result_path.read_text() == expected_content
         assert result_path != java_file  # Should create new file
 
-    def test_no_change_needed(self, testing_pkg):
+    async def test_no_change_needed(self, testing_pkg):
         """Test when class is already named correctly"""
         java_file = testing_pkg.add_file('Main.java')
         original_content = """public class Main {
@@ -38,12 +38,12 @@ class TestMaybeRenameJavaClass:
         java_file.write_text(original_content)
 
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
-        result_path = maybe_rename_java_class(java_file, file_mapping)
+        result_path = await maybe_rename_java_class(java_file, file_mapping)
 
         assert result_path.read_text() == original_content
         assert result_path == java_file  # Should return original file
 
-    def test_whitespace_variations(self, testing_pkg):
+    async def test_whitespace_variations(self, testing_pkg):
         """Test handling of various whitespace patterns"""
         java_file = testing_pkg.add_file('MyClass.java')
         java_file.write_text("""public   class    MyClass   {
@@ -53,7 +53,7 @@ class TestMaybeRenameJavaClass:
 }""")
 
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
-        result_path = maybe_rename_java_class(java_file, file_mapping)
+        result_path = await maybe_rename_java_class(java_file, file_mapping)
 
         expected_content = """public class Main   {
     public static void main(String[] args) {
@@ -63,7 +63,7 @@ class TestMaybeRenameJavaClass:
 
         assert result_path.read_text() == expected_content
 
-    def test_complex_class_name(self, testing_pkg):
+    async def test_complex_class_name(self, testing_pkg):
         """Test renaming with complex class names containing underscores, numbers, and dollar signs"""
         java_file = testing_pkg.add_file('Complex_Class_123$.java')
         java_file.write_text("""public class Complex_Class_123$ {
@@ -73,7 +73,7 @@ class TestMaybeRenameJavaClass:
 }""")
 
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
-        result_path = maybe_rename_java_class(java_file, file_mapping)
+        result_path = await maybe_rename_java_class(java_file, file_mapping)
 
         expected_content = """public class Main {
     public static void main(String[] args) {
@@ -83,7 +83,7 @@ class TestMaybeRenameJavaClass:
 
         assert result_path.read_text() == expected_content
 
-    def test_no_public_class_raises_error(self, testing_pkg):
+    async def test_no_public_class_raises_error(self, testing_pkg):
         """Test that missing public class raises typer.Exit"""
         java_file = testing_pkg.add_file('NoPublic.java')
         java_file.write_text("""class NoPublic {
@@ -95,9 +95,9 @@ class TestMaybeRenameJavaClass:
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
 
         with pytest.raises(typer.Exit):
-            maybe_rename_java_class(java_file, file_mapping)
+            await maybe_rename_java_class(java_file, file_mapping)
 
-    def test_multiple_classes_only_renames_public(self, testing_pkg):
+    async def test_multiple_classes_only_renames_public(self, testing_pkg):
         """Test that only the public class gets renamed when multiple classes exist"""
         java_file = testing_pkg.add_file('MultiClass.java')
         java_file.write_text("""class Helper {
@@ -120,7 +120,7 @@ class AnotherHelper {
 }""")
 
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
-        result_path = maybe_rename_java_class(java_file, file_mapping)
+        result_path = await maybe_rename_java_class(java_file, file_mapping)
 
         expected_content = """class Helper {
     public void help() {
@@ -143,7 +143,7 @@ class AnotherHelper {
 
         assert result_path.read_text() == expected_content
 
-    def test_preserves_comments_and_imports(self, testing_pkg):
+    async def test_preserves_comments_and_imports(self, testing_pkg):
         """Test that comments and imports are preserved during renaming"""
         java_file = testing_pkg.add_file('Solution.java')
         java_file.write_text("""// This is a comment
@@ -160,7 +160,7 @@ public class Solution {
 }""")
 
         file_mapping = FileMapping(compilable='Main.java', executable='Main')
-        result_path = maybe_rename_java_class(java_file, file_mapping)
+        result_path = await maybe_rename_java_class(java_file, file_mapping)
 
         expected_content = """// This is a comment
 import java.util.*;
@@ -177,7 +177,7 @@ public class Main {
 
         assert result_path.read_text() == expected_content
 
-    def test_non_java_files_unaffected(self, testing_pkg):
+    async def test_non_java_files_unaffected(self, testing_pkg):
         """Test that non-Java files are returned unchanged"""
         cpp_file = testing_pkg.add_file('solution.cpp')
         original_content = """#include <iostream>
@@ -190,7 +190,7 @@ int main() {
         cpp_file.write_text(original_content)
 
         file_mapping = FileMapping(compilable='solution.cpp', executable='solution')
-        result_path = maybe_rename_java_class(cpp_file, file_mapping)
+        result_path = await maybe_rename_java_class(cpp_file, file_mapping)
 
         assert result_path.read_text() == original_content
         assert result_path == cpp_file  # Should return original file unchanged

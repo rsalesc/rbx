@@ -62,7 +62,7 @@ class TestFileCacher:
         """Create a shared FileCacher."""
         return FileCacher(filesystem_storage, shared=True, folder=temp_dir)
 
-    def test_init_non_shared_creates_temp_directory(self, mock_storage):
+    async def test_init_non_shared_creates_temp_directory(self, mock_storage):
         """Test that non-shared cacher creates temporary directories."""
         cacher = FileCacher(mock_storage, shared=False)
 
@@ -71,7 +71,7 @@ class TestFileCacher:
         assert cacher.temp_dir.exists()
         assert cacher.temp_dir.parent == cacher.file_dir
 
-    def test_init_shared_uses_provided_folder(self, mock_storage, temp_dir):
+    async def test_init_shared_uses_provided_folder(self, mock_storage, temp_dir):
         """Test that shared cacher uses provided folder."""
         cacher = FileCacher(mock_storage, shared=True, folder=temp_dir)
 
@@ -80,7 +80,7 @@ class TestFileCacher:
         assert cacher.file_dir.exists()
         assert cacher.temp_dir.exists()
 
-    def test_init_shared_creates_folder_if_provided(self, mock_storage, temp_dir):
+    async def test_init_shared_creates_folder_if_provided(self, mock_storage, temp_dir):
         """Test that shared cacher creates folder if it doesn't exist."""
         folder = temp_dir / 'new_folder'
         cacher = FileCacher(mock_storage, shared=True, folder=folder)
@@ -88,7 +88,7 @@ class TestFileCacher:
         assert cacher.is_shared()
         assert folder.exists()
 
-    def test_precache_lock_exclusive(self, shared_cacher):
+    async def test_precache_lock_exclusive(self, shared_cacher):
         """Test precache lock functionality."""
         # First lock should succeed
         lock1 = shared_cacher.precache_lock()
@@ -104,58 +104,60 @@ class TestFileCacher:
         assert lock3 is not None
         lock3.close()
 
-    def test_exists_cache_only_true_when_cached(self, cacher_with_mock):
+    async def test_exists_cache_only_true_when_cached(self, cacher_with_mock):
         """Test exists with cache_only=True returns True when file is cached."""
         digest = 'test_digest'
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(b'test content')
 
-        assert cacher_with_mock.exists(digest, cache_only=True) is True
+        assert await cacher_with_mock.exists(digest, cache_only=True) is True
 
-    def test_exists_cache_only_false_when_not_cached(self, cacher_with_mock):
+    async def test_exists_cache_only_false_when_not_cached(self, cacher_with_mock):
         """Test exists with cache_only=True returns False when file is not cached."""
         digest = 'nonexistent_digest'
 
-        assert cacher_with_mock.exists(digest, cache_only=True) is False
+        assert await cacher_with_mock.exists(digest, cache_only=True) is False
 
-    def test_exists_checks_backend_when_not_cache_only(self, cacher_with_mock):
+    async def test_exists_checks_backend_when_not_cache_only(self, cacher_with_mock):
         """Test exists checks backend when cache_only=False."""
         digest = 'test_digest'
         cacher_with_mock.backend.exists.return_value = True
 
-        result = cacher_with_mock.exists(digest, cache_only=False)
+        result = await cacher_with_mock.exists(digest, cache_only=False)
 
         assert result is True
         cacher_with_mock.backend.exists.assert_called_once_with(digest)
         assert digest in cacher_with_mock.existing
 
-    def test_exists_remembers_existing_files(self, cacher_with_mock):
+    async def test_exists_remembers_existing_files(self, cacher_with_mock):
         """Test that exists remembers files that exist in backend."""
         digest = 'test_digest'
         cacher_with_mock.existing.add(digest)
 
-        result = cacher_with_mock.exists(digest, cache_only=True)
+        result = await cacher_with_mock.exists(digest, cache_only=True)
 
         assert result is True
 
-    def test_cache_file_tombstone_raises_error(self, cacher_with_mock):
+    async def test_cache_file_tombstone_raises_error(self, cacher_with_mock):
         """Test that cache_file raises TombstoneError for tombstone digest."""
         with pytest.raises(TombstoneError):
-            cacher_with_mock.cache_file(storage.TOMBSTONE)
+            await cacher_with_mock.cache_file(storage.TOMBSTONE)
 
-    def test_cache_file_with_cache_only_behavior(self, cacher_with_mock):
+    async def test_cache_file_with_cache_only_behavior(self, cacher_with_mock):
         """Test cache_file method behavior when file already exists in cache."""
         digest = 'test_digest'
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(b'cached content')
 
         # This should not raise an error and should not call backend
-        cacher_with_mock.cache_file(digest)
+        await cacher_with_mock.cache_file(digest)
 
         # Verify backend wasn't called since file was already cached
         cacher_with_mock.backend.get_file.assert_not_called()
 
-    def test_cache_file_loads_from_backend_when_not_cached(self, cacher_with_mock):
+    async def test_cache_file_loads_from_backend_when_not_cached(
+        self, cacher_with_mock
+    ):
         """Test cache_file loads from backend when file not in cache."""
         digest = 'test_digest'
         test_content = b'backend content'
@@ -163,7 +165,7 @@ class TestFileCacher:
         cacher_with_mock.backend.path_for_symlink.return_value = None
         cacher_with_mock.backend.get_file.return_value = io.BytesIO(test_content)
 
-        cacher_with_mock.cache_file(digest)
+        await cacher_with_mock.cache_file(digest)
 
         # Verify file was loaded from backend and cached
         cache_file = cacher_with_mock.file_dir / digest
@@ -171,12 +173,12 @@ class TestFileCacher:
         assert cache_file.read_bytes() == test_content
         cacher_with_mock.backend.get_file.assert_called_once_with(digest)
 
-    def test_get_file_tombstone_raises_error(self, cacher_with_mock):
+    async def test_get_file_tombstone_raises_error(self, cacher_with_mock):
         """Test that get_file raises TombstoneError for tombstone digest."""
         with pytest.raises(TombstoneError):
-            cacher_with_mock.get_file(storage.TOMBSTONE)
+            await cacher_with_mock.get_file(storage.TOMBSTONE)
 
-    def test_get_file_from_cache_when_available(self, cacher_with_mock):
+    async def test_get_file_from_cache_when_available(self, cacher_with_mock):
         """Test get_file returns cached file when available."""
         digest = 'test_digest'
         test_content = b'cached content'
@@ -184,12 +186,12 @@ class TestFileCacher:
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(test_content)
 
-        with cacher_with_mock.get_file(digest) as f:
+        with await cacher_with_mock.get_file(digest) as f:
             content = f.read()
 
         assert content == test_content
 
-    def test_get_file_loads_from_backend_when_not_cached(self, cacher_with_mock):
+    async def test_get_file_loads_from_backend_when_not_cached(self, cacher_with_mock):
         """Test get_file loads from backend when not cached."""
         digest = 'test_digest'
         test_content = b'backend content'
@@ -197,7 +199,7 @@ class TestFileCacher:
         cacher_with_mock.backend.path_for_symlink.return_value = None
         cacher_with_mock.backend.get_file.return_value = io.BytesIO(test_content)
 
-        with cacher_with_mock.get_file(digest) as f:
+        with await cacher_with_mock.get_file(digest) as f:
             content = f.read()
 
         assert content == test_content
@@ -206,7 +208,9 @@ class TestFileCacher:
         assert cache_file.exists()
         assert cache_file.read_bytes() == test_content
 
-    def test_get_file_uses_symlink_when_available(self, cacher_with_mock, temp_dir):
+    async def test_get_file_uses_symlink_when_available(
+        self, cacher_with_mock, temp_dir
+    ):
         """Test get_file creates symlink when backend provides path."""
         digest = 'test_digest'
         test_content = b'symlink content'
@@ -217,7 +221,7 @@ class TestFileCacher:
 
         cacher_with_mock.backend.path_for_symlink.return_value = source_file
 
-        with cacher_with_mock.get_file(digest) as f:
+        with await cacher_with_mock.get_file(digest) as f:
             content = f.read()
 
         assert content == test_content
@@ -227,7 +231,7 @@ class TestFileCacher:
         # Use resolve() to handle macOS /private symlink differences
         assert cache_file.resolve().samefile(source_file)
 
-    def test_get_file_content_returns_bytes(self, cacher_with_mock):
+    async def test_get_file_content_returns_bytes(self, cacher_with_mock):
         """Test get_file_content returns file content as bytes."""
         digest = 'test_digest'
         test_content = b'test content'
@@ -235,11 +239,11 @@ class TestFileCacher:
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(test_content)
 
-        content = cacher_with_mock.get_file_content(digest)
+        content = await cacher_with_mock.get_file_content(digest)
 
         assert content == test_content
 
-    def test_get_file_to_fobj_writes_to_file_object(self, cacher_with_mock):
+    async def test_get_file_to_fobj_writes_to_file_object(self, cacher_with_mock):
         """Test get_file_to_fobj writes content to file object."""
         digest = 'test_digest'
         test_content = b'test content'
@@ -248,11 +252,11 @@ class TestFileCacher:
         cache_file.write_bytes(test_content)
 
         output = io.BytesIO()
-        cacher_with_mock.get_file_to_fobj(digest, output)
+        await cacher_with_mock.get_file_to_fobj(digest, output)
 
         assert output.getvalue() == test_content
 
-    def test_get_file_to_path_writes_to_path(self, cacher_with_mock, temp_dir):
+    async def test_get_file_to_path_writes_to_path(self, cacher_with_mock, temp_dir):
         """Test get_file_to_path writes content to specified path."""
         digest = 'test_digest'
         test_content = b'test content'
@@ -261,12 +265,12 @@ class TestFileCacher:
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(test_content)
 
-        cacher_with_mock.get_file_to_path(digest, dest_path)
+        await cacher_with_mock.get_file_to_path(digest, dest_path)
 
         assert dest_path.exists()
         assert dest_path.read_bytes() == test_content
 
-    def test_get_file_to_path_creates_parent_directories(
+    async def test_get_file_to_path_creates_parent_directories(
         self, cacher_with_mock, temp_dir
     ):
         """Test get_file_to_path creates parent directories."""
@@ -277,25 +281,25 @@ class TestFileCacher:
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(test_content)
 
-        cacher_with_mock.get_file_to_path(digest, dest_path)
+        await cacher_with_mock.get_file_to_path(digest, dest_path)
 
         assert dest_path.exists()
         assert dest_path.read_bytes() == test_content
 
-    def test_put_file_from_fobj_stores_content(self, cacher_with_mock):
+    async def test_put_file_from_fobj_stores_content(self, cacher_with_mock):
         """Test put_file_from_fobj stores file content and returns digest."""
         test_content = b'test content for storage'
 
         cacher_with_mock.backend.create_file.return_value = None
 
         with patch('rbx.grading.grading_context.is_transient', return_value=True):
-            cacher_with_mock.put_file_from_fobj(io.BytesIO(test_content))
+            await cacher_with_mock.put_file_from_fobj(io.BytesIO(test_content))
 
         # Verify content is cached
         # Note: digest is computed and used for caching verification
         assert len([f for f in cacher_with_mock.file_dir.iterdir() if f.is_file()]) > 0
 
-    def test_put_file_from_fobj_stores_in_backend_when_not_transient(
+    async def test_put_file_from_fobj_stores_in_backend_when_not_transient(
         self, cacher_with_mock
     ):
         """Test put_file_from_fobj stores in backend when not in transient mode."""
@@ -306,12 +310,12 @@ class TestFileCacher:
         cacher_with_mock.backend.create_file.return_value = mock_pending
 
         with patch('rbx.grading.grading_context.is_transient', return_value=False):
-            digest = cacher_with_mock.put_file_from_fobj(io.BytesIO(test_content))
+            digest = await cacher_with_mock.put_file_from_fobj(io.BytesIO(test_content))
 
         cacher_with_mock.backend.create_file.assert_called_once_with(digest)
         cacher_with_mock.backend.commit_file.assert_called_once_with(mock_pending, None)
 
-    def test_put_file_from_fobj_with_metadata(self, cacher_with_mock):
+    async def test_put_file_from_fobj_with_metadata(self, cacher_with_mock):
         """Test put_file_from_fobj stores metadata."""
         test_content = b'test content'
         metadata = {'test': CacherTestMetadata(value='test', number=123)}
@@ -321,19 +325,21 @@ class TestFileCacher:
         cacher_with_mock.backend.create_file.return_value = mock_pending
 
         with patch('rbx.grading.grading_context.is_transient', return_value=False):
-            cacher_with_mock.put_file_from_fobj(io.BytesIO(test_content), metadata)
+            await cacher_with_mock.put_file_from_fobj(
+                io.BytesIO(test_content), metadata
+            )
 
         cacher_with_mock.backend.commit_file.assert_called_once_with(
             mock_pending, metadata
         )
 
-    def test_put_file_content_calls_put_file_from_fobj(self, cacher_with_mock):
+    async def test_put_file_content_calls_put_file_from_fobj(self, cacher_with_mock):
         """Test put_file_content calls put_file_from_fobj with BytesIO."""
         test_content = b'test bytes content'
 
         with patch.object(cacher_with_mock, 'put_file_from_fobj') as mock_put:
             mock_put.return_value = 'test_digest'
-            result = cacher_with_mock.put_file_content(test_content)
+            result = await cacher_with_mock.put_file_content(test_content)
 
         assert result == 'test_digest'
         mock_put.assert_called_once()
@@ -342,19 +348,19 @@ class TestFileCacher:
         fobj = args[0]
         assert isinstance(fobj, io.BytesIO)
 
-    def test_put_file_text_encodes_to_utf8(self, cacher_with_mock):
+    async def test_put_file_text_encodes_to_utf8(self, cacher_with_mock):
         """Test put_file_text encodes text to UTF-8."""
         test_text = 'Hello, 世界!'
         expected_bytes = test_text.encode('utf-8')
 
         with patch.object(cacher_with_mock, 'put_file_content') as mock_put:
             mock_put.return_value = 'test_digest'
-            result = cacher_with_mock.put_file_text(test_text)
+            result = await cacher_with_mock.put_file_text(test_text)
 
         assert result == 'test_digest'
         mock_put.assert_called_once_with(expected_bytes, None)
 
-    def test_put_file_from_path_reads_file(self, cacher_with_mock, temp_dir):
+    async def test_put_file_from_path_reads_file(self, cacher_with_mock, temp_dir):
         """Test put_file_from_path reads file from filesystem."""
         test_content = b'file system content'
         source_file = temp_dir / 'source.txt'
@@ -362,24 +368,26 @@ class TestFileCacher:
 
         with patch.object(cacher_with_mock, 'put_file_from_fobj') as mock_put:
             mock_put.return_value = 'test_digest'
-            result = cacher_with_mock.put_file_from_path(source_file)
+            result = await cacher_with_mock.put_file_from_path(source_file)
 
         assert result == 'test_digest'
         mock_put.assert_called_once()
 
-    def test_path_for_symlink_tombstone_raises_error(self, cacher_with_mock):
+    async def test_path_for_symlink_tombstone_raises_error(self, cacher_with_mock):
         """Test path_for_symlink raises TombstoneError for tombstone."""
         with pytest.raises(TombstoneError):
-            cacher_with_mock.path_for_symlink(storage.TOMBSTONE)
+            await cacher_with_mock.path_for_symlink(storage.TOMBSTONE)
 
-    def test_path_for_symlink_returns_none_when_transient(self, cacher_with_mock):
+    async def test_path_for_symlink_returns_none_when_transient(self, cacher_with_mock):
         """Test path_for_symlink returns None when in transient mode."""
         with patch('rbx.grading.grading_context.is_transient', return_value=True):
-            result = cacher_with_mock.path_for_symlink('test_digest')
+            result = await cacher_with_mock.path_for_symlink('test_digest')
 
         assert result is None
 
-    def test_path_for_symlink_delegates_to_backend(self, cacher_with_mock, temp_dir):
+    async def test_path_for_symlink_delegates_to_backend(
+        self, cacher_with_mock, temp_dir
+    ):
         """Test path_for_symlink delegates to backend when not transient."""
         digest = 'test_digest'
         expected_path = temp_dir / 'symlink_target'
@@ -387,23 +395,25 @@ class TestFileCacher:
         cacher_with_mock.backend.path_for_symlink.return_value = expected_path
 
         with patch('rbx.grading.grading_context.is_transient', return_value=False):
-            result = cacher_with_mock.path_for_symlink(digest)
+            result = await cacher_with_mock.path_for_symlink(digest)
 
         assert result == expected_path
         cacher_with_mock.backend.path_for_symlink.assert_called_once_with(digest)
 
-    def test_digest_from_symlink_returns_none_when_transient(
+    async def test_digest_from_symlink_returns_none_when_transient(
         self, cacher_with_mock, temp_dir
     ):
         """Test digest_from_symlink returns None when in transient mode."""
         link_path = temp_dir / 'link'
 
         with patch('rbx.grading.grading_context.is_transient', return_value=True):
-            result = cacher_with_mock.digest_from_symlink(link_path)
+            result = await cacher_with_mock.digest_from_symlink(link_path)
 
         assert result is None
 
-    def test_digest_from_symlink_delegates_to_backend(self, cacher_with_mock, temp_dir):
+    async def test_digest_from_symlink_delegates_to_backend(
+        self, cacher_with_mock, temp_dir
+    ):
         """Test digest_from_symlink delegates to backend when not transient."""
         link_path = temp_dir / 'link'
         expected_digest = 'test_digest'
@@ -411,41 +421,43 @@ class TestFileCacher:
         cacher_with_mock.backend.filename_from_symlink.return_value = expected_digest
 
         with patch('rbx.grading.grading_context.is_transient', return_value=False):
-            result = cacher_with_mock.digest_from_symlink(link_path)
+            result = await cacher_with_mock.digest_from_symlink(link_path)
 
         assert result == expected_digest
         cacher_with_mock.backend.filename_from_symlink.assert_called_once_with(
             link_path
         )
 
-    def test_set_metadata_skips_when_transient(self, cacher_with_mock):
+    async def test_set_metadata_skips_when_transient(self, cacher_with_mock):
         """Test set_metadata does nothing when in transient mode."""
         with patch('rbx.grading.grading_context.is_transient', return_value=True):
-            cacher_with_mock.set_metadata(
+            await cacher_with_mock.set_metadata(
                 'digest', 'key', CacherTestMetadata(value='test')
             )
 
         cacher_with_mock.backend.set_metadata.assert_not_called()
 
-    def test_set_metadata_delegates_to_backend(self, cacher_with_mock):
+    async def test_set_metadata_delegates_to_backend(self, cacher_with_mock):
         """Test set_metadata delegates to backend when not transient."""
         digest = 'test_digest'
         key = 'test_key'
         value = CacherTestMetadata(value='test')
 
         with patch('rbx.grading.grading_context.is_transient', return_value=False):
-            cacher_with_mock.set_metadata(digest, key, value)
+            await cacher_with_mock.set_metadata(digest, key, value)
 
         cacher_with_mock.backend.set_metadata.assert_called_once_with(
             digest, key, value
         )
 
-    def test_get_metadata_tombstone_raises_error(self, cacher_with_mock):
+    async def test_get_metadata_tombstone_raises_error(self, cacher_with_mock):
         """Test get_metadata raises TombstoneError for tombstone."""
         with pytest.raises(TombstoneError):
-            cacher_with_mock.get_metadata(storage.TOMBSTONE, 'key', CacherTestMetadata)
+            await cacher_with_mock.get_metadata(
+                storage.TOMBSTONE, 'key', CacherTestMetadata
+            )
 
-    def test_get_metadata_delegates_to_backend(self, cacher_with_mock):
+    async def test_get_metadata_delegates_to_backend(self, cacher_with_mock):
         """Test get_metadata delegates to backend."""
         digest = 'test_digest'
         key = 'test_key'
@@ -453,43 +465,43 @@ class TestFileCacher:
 
         cacher_with_mock.backend.get_metadata.return_value = expected_metadata
 
-        result = cacher_with_mock.get_metadata(digest, key, CacherTestMetadata)
+        result = await cacher_with_mock.get_metadata(digest, key, CacherTestMetadata)
 
         assert result == expected_metadata
         cacher_with_mock.backend.get_metadata.assert_called_once_with(
             digest, key, CacherTestMetadata
         )
 
-    def test_list_metadata_delegates_to_backend(self, cacher_with_mock):
+    async def test_list_metadata_delegates_to_backend(self, cacher_with_mock):
         """Test list_metadata delegates to backend."""
         filename = 'test_file'
         expected_keys = ['key1', 'key2', 'key3']
 
         cacher_with_mock.backend.list_metadata.return_value = expected_keys
 
-        result = cacher_with_mock.list_metadata(filename)
+        result = await cacher_with_mock.list_metadata(filename)
 
         assert result == expected_keys
         cacher_with_mock.backend.list_metadata.assert_called_once_with(filename)
 
-    def test_get_size_tombstone_raises_error(self, cacher_with_mock):
+    async def test_get_size_tombstone_raises_error(self, cacher_with_mock):
         """Test get_size raises TombstoneError for tombstone."""
         with pytest.raises(TombstoneError):
-            cacher_with_mock.get_size(storage.TOMBSTONE)
+            await cacher_with_mock.get_size(storage.TOMBSTONE)
 
-    def test_get_size_delegates_to_backend(self, cacher_with_mock):
+    async def test_get_size_delegates_to_backend(self, cacher_with_mock):
         """Test get_size delegates to backend."""
         digest = 'test_digest'
         expected_size = 1024
 
         cacher_with_mock.backend.get_size.return_value = expected_size
 
-        result = cacher_with_mock.get_size(digest)
+        result = await cacher_with_mock.get_size(digest)
 
         assert result == expected_size
         cacher_with_mock.backend.get_size.assert_called_once_with(digest)
 
-    def test_delete_removes_from_cache_and_backend(self, cacher_with_mock):
+    async def test_delete_removes_from_cache_and_backend(self, cacher_with_mock):
         """Test delete removes file from both cache and backend."""
         digest = 'test_digest'
 
@@ -498,7 +510,7 @@ class TestFileCacher:
         cache_file.write_bytes(b'test content')
         cacher_with_mock.existing.add(digest)
 
-        cacher_with_mock.delete(digest)
+        await cacher_with_mock.delete(digest)
 
         # Verify file removed from cache
         assert not cache_file.exists()
@@ -507,13 +519,13 @@ class TestFileCacher:
         # Verify backend delete called
         cacher_with_mock.backend.delete.assert_called_once_with(digest)
 
-    def test_delete_tombstone_does_nothing(self, cacher_with_mock):
+    async def test_delete_tombstone_does_nothing(self, cacher_with_mock):
         """Test delete does nothing for tombstone."""
-        cacher_with_mock.delete(storage.TOMBSTONE)
+        await cacher_with_mock.delete(storage.TOMBSTONE)
 
         cacher_with_mock.backend.delete.assert_not_called()
 
-    def test_drop_removes_only_from_cache(self, cacher_with_mock):
+    async def test_drop_removes_only_from_cache(self, cacher_with_mock):
         """Test drop removes file only from cache."""
         digest = 'test_digest'
 
@@ -522,7 +534,7 @@ class TestFileCacher:
         cache_file.write_bytes(b'test content')
         cacher_with_mock.existing.add(digest)
 
-        cacher_with_mock.drop(digest)
+        await cacher_with_mock.drop(digest)
 
         # Verify file removed from cache
         assert not cache_file.exists()
@@ -531,13 +543,13 @@ class TestFileCacher:
         # Verify backend not touched
         cacher_with_mock.backend.delete.assert_not_called()
 
-    def test_drop_tombstone_does_nothing(self, cacher_with_mock):
+    async def test_drop_tombstone_does_nothing(self, cacher_with_mock):
         """Test drop does nothing for tombstone."""
-        cacher_with_mock.drop(storage.TOMBSTONE)
+        await cacher_with_mock.drop(storage.TOMBSTONE)
 
         # Should not raise any error
 
-    def test_purge_cache_clears_cache_directory(self, cacher_with_mock):
+    async def test_purge_cache_clears_cache_directory(self, cacher_with_mock):
         """Test purge_cache clears cache directory and recreates it."""
         # Add some files to cache
         (cacher_with_mock.file_dir / 'file1').write_bytes(b'content1')
@@ -545,7 +557,7 @@ class TestFileCacher:
         cacher_with_mock.existing.add('file1')
         cacher_with_mock.existing.add('file2')
 
-        cacher_with_mock.purge_cache()
+        await cacher_with_mock.purge_cache()
 
         # Verify directory is recreated and existing set is cleared
         assert cacher_with_mock.file_dir.exists()
@@ -558,7 +570,7 @@ class TestFileCacher:
         ]
         assert len(cache_files) == 0
 
-    def test_destroy_cache_removes_cache_directory(self, cacher_with_mock):
+    async def test_destroy_cache_removes_cache_directory(self, cacher_with_mock):
         """Test destroy_cache removes cache directory completely."""
         cache_dir = cacher_with_mock.file_dir
 
@@ -566,12 +578,12 @@ class TestFileCacher:
 
         assert not cache_dir.exists()
 
-    def test_destroy_cache_raises_for_shared_cache(self, shared_cacher):
+    async def test_destroy_cache_raises_for_shared_cache(self, shared_cacher):
         """Test destroy_cache raises exception for shared cache."""
         with pytest.raises(Exception, match='You may not destroy a shared cache'):
             shared_cacher.destroy_cache()
 
-    def test_list_delegates_to_backend(self, cacher_with_mock):
+    async def test_list_delegates_to_backend(self, cacher_with_mock):
         """Test list delegates to backend."""
         expected_files = [
             storage.FileWithMetadata(filename='file1', metadata=['key1']),
@@ -580,96 +592,96 @@ class TestFileCacher:
 
         cacher_with_mock.backend.list.return_value = expected_files
 
-        result = cacher_with_mock.list()
+        result = await cacher_with_mock.list()
 
         assert result == expected_files
         cacher_with_mock.backend.list.assert_called_once()
 
-    def test_check_backend_integrity_valid_files(self, cacher_with_filesystem):
+    async def test_check_backend_integrity_valid_files(self, cacher_with_filesystem):
         """Test check_backend_integrity with valid files."""
         # Store a file with known content
         test_content = b'integrity test content'
-        cacher_with_filesystem.put_file_content(test_content)
+        await cacher_with_filesystem.put_file_content(test_content)
 
         # Check integrity
-        result = cacher_with_filesystem.check_backend_integrity()
+        result = await cacher_with_filesystem.check_backend_integrity()
 
         assert result
 
-    def test_check_backend_integrity_invalid_file_reports_error(
+    async def test_check_backend_integrity_invalid_file_reports_error(
         self, cacher_with_filesystem, caplog
     ):
         """Test check_backend_integrity reports error for corrupted file."""
         # Store a file
         test_content = b'original content'
-        digest = cacher_with_filesystem.put_file_content(test_content)
+        digest = await cacher_with_filesystem.put_file_content(test_content)
 
         # Corrupt the backend file directly
         backend_file = cacher_with_filesystem.backend.path / digest
         backend_file.write_bytes(b'corrupted content')
 
         # Check integrity
-        result = cacher_with_filesystem.check_backend_integrity()
+        result = await cacher_with_filesystem.check_backend_integrity()
 
         assert not result
         assert 'actually has hash' in caplog.text
 
-    def test_check_backend_integrity_delete_corrupted_files(
+    async def test_check_backend_integrity_delete_corrupted_files(
         self, cacher_with_filesystem
     ):
         """Test check_backend_integrity deletes corrupted files when delete=True."""
         # Store a file
         test_content = b'original content'
-        digest = cacher_with_filesystem.put_file_content(test_content)
+        digest = await cacher_with_filesystem.put_file_content(test_content)
 
         # Corrupt the backend file
         backend_file = cacher_with_filesystem.backend.path / digest
         backend_file.write_bytes(b'corrupted content')
 
         # Check integrity with delete=True
-        result = cacher_with_filesystem.check_backend_integrity(delete=True)
+        result = await cacher_with_filesystem.check_backend_integrity(delete=True)
 
         assert not result
         # File should be deleted from backend
-        assert not cacher_with_filesystem.backend.exists(digest)
+        assert not await cacher_with_filesystem.backend.exists(digest)
 
-    def test_integration_put_and_get_file(self, cacher_with_filesystem):
+    async def test_integration_put_and_get_file(self, cacher_with_filesystem):
         """Integration test: put file and retrieve it."""
         test_content = b'integration test content'
 
         # Store file
-        digest = cacher_with_filesystem.put_file_content(test_content)
+        digest = await cacher_with_filesystem.put_file_content(test_content)
 
         # Retrieve file
-        retrieved_content = cacher_with_filesystem.get_file_content(digest)
+        retrieved_content = await cacher_with_filesystem.get_file_content(digest)
 
         assert retrieved_content == test_content
 
-    def test_integration_cache_persistence(self, cacher_with_filesystem):
+    async def test_integration_cache_persistence(self, cacher_with_filesystem):
         """Integration test: verify cache persists across operations."""
         test_content = b'persistent content'
 
         # Store and cache file
-        digest = cacher_with_filesystem.put_file_content(test_content)
+        digest = await cacher_with_filesystem.put_file_content(test_content)
 
         # Remove from backend to test cache
-        cacher_with_filesystem.backend.delete(digest)
+        await cacher_with_filesystem.backend.delete(digest)
 
         # Should still be accessible from cache
         cache_file = cacher_with_filesystem.file_dir / digest
         assert cache_file.exists()
         assert cache_file.read_bytes() == test_content
 
-    def test_integration_with_metadata(self, cacher_with_filesystem):
+    async def test_integration_with_metadata(self, cacher_with_filesystem):
         """Integration test: store and retrieve file with metadata."""
         test_content = b'content with metadata'
         metadata = {'test': CacherTestMetadata(value='integration', number=999)}
 
         # Store with metadata
-        digest = cacher_with_filesystem.put_file_content(test_content, metadata)
+        digest = await cacher_with_filesystem.put_file_content(test_content, metadata)
 
         # Retrieve metadata
-        retrieved_metadata = cacher_with_filesystem.get_metadata(
+        retrieved_metadata = await cacher_with_filesystem.get_metadata(
             digest, 'test', CacherTestMetadata
         )
 
@@ -677,26 +689,26 @@ class TestFileCacher:
         assert retrieved_metadata.value == 'integration'
         assert retrieved_metadata.number == 999
 
-    def test_large_file_handling(self, cacher_with_filesystem):
+    async def test_large_file_handling(self, cacher_with_filesystem):
         """Test handling of files larger than chunk size."""
         # Create content larger than CHUNK_SIZE (1MB)
         chunk_size = FileCacher.CHUNK_SIZE
         large_content = b'x' * (chunk_size + 1000)
 
         # Store and retrieve large file
-        digest = cacher_with_filesystem.put_file_content(large_content)
-        retrieved_content = cacher_with_filesystem.get_file_content(digest)
+        digest = await cacher_with_filesystem.put_file_content(large_content)
+        retrieved_content = await cacher_with_filesystem.get_file_content(digest)
 
         assert retrieved_content == large_content
 
-    def test_concurrent_cache_operations(self, shared_cacher):
+    async def test_concurrent_cache_operations(self, shared_cacher):
         """Test concurrent cache operations with locking."""
         # This test verifies that the locking mechanism works
         # Multiple cachers using same shared directory
         test_content = b'concurrent test'
 
         # Store file in first cacher
-        digest = shared_cacher.put_file_content(test_content)
+        digest = await shared_cacher.put_file_content(test_content)
 
         # Create second cacher with same backend and folder
         second_cacher = FileCacher(
@@ -704,13 +716,13 @@ class TestFileCacher:
         )
 
         # Both should be able to access the file
-        content1 = shared_cacher.get_file_content(digest)
-        content2 = second_cacher.get_file_content(digest)
+        content1 = await shared_cacher.get_file_content(digest)
+        content2 = await second_cacher.get_file_content(digest)
 
         assert content1 == test_content
         assert content2 == test_content
 
-    def test_error_handling_missing_file(self, cacher_with_mock):
+    async def test_error_handling_missing_file(self, cacher_with_mock):
         """Test error handling when backend file is missing."""
         digest = 'nonexistent_digest'
 
@@ -718,14 +730,16 @@ class TestFileCacher:
         cacher_with_mock.backend.get_file.side_effect = KeyError('File not found')
 
         with pytest.raises(KeyError):
-            cacher_with_mock.get_file(digest)
+            await cacher_with_mock.get_file(digest)
 
-    def test_transient_path_for_symlink_tombstone_raises_error(self, cacher_with_mock):
+    async def test_transient_path_for_symlink_tombstone_raises_error(
+        self, cacher_with_mock
+    ):
         """Test transient_path_for_symlink raises TombstoneError for tombstone."""
         with pytest.raises(TombstoneError):
-            cacher_with_mock.transient_path_for_symlink(storage.TOMBSTONE)
+            await cacher_with_mock.transient_path_for_symlink(storage.TOMBSTONE)
 
-    def test_transient_path_for_symlink_returns_cached_file_path(
+    async def test_transient_path_for_symlink_returns_cached_file_path(
         self, cacher_with_mock
     ):
         """Test transient_path_for_symlink returns path when file is already cached."""
@@ -736,13 +750,13 @@ class TestFileCacher:
         cache_file = cacher_with_mock.file_dir / digest
         cache_file.write_bytes(test_content)
 
-        result = cacher_with_mock.transient_path_for_symlink(digest)
+        result = await cacher_with_mock.transient_path_for_symlink(digest)
 
         assert result == cache_file
         assert result.exists()
         assert result.read_bytes() == test_content
 
-    def test_transient_path_for_symlink_loads_from_backend_when_not_cached(
+    async def test_transient_path_for_symlink_loads_from_backend_when_not_cached(
         self, cacher_with_mock
     ):
         """Test transient_path_for_symlink loads file from backend when not cached."""
@@ -753,7 +767,7 @@ class TestFileCacher:
         cacher_with_mock.backend.path_for_symlink.return_value = None
         cacher_with_mock.backend.get_file.return_value = io.BytesIO(test_content)
 
-        result = cacher_with_mock.transient_path_for_symlink(digest)
+        result = await cacher_with_mock.transient_path_for_symlink(digest)
 
         # Verify file was loaded from backend and cached
         cache_file = cacher_with_mock.file_dir / digest
@@ -762,7 +776,7 @@ class TestFileCacher:
         assert cache_file.read_bytes() == test_content
         cacher_with_mock.backend.get_file.assert_called_once_with(digest)
 
-    def test_transient_path_for_symlink_uses_symlink_when_available(
+    async def test_transient_path_for_symlink_uses_symlink_when_available(
         self, cacher_with_mock, temp_dir
     ):
         """Test transient_path_for_symlink creates symlink when backend provides path."""
@@ -775,7 +789,7 @@ class TestFileCacher:
 
         cacher_with_mock.backend.path_for_symlink.return_value = source_file
 
-        result = cacher_with_mock.transient_path_for_symlink(digest)
+        result = await cacher_with_mock.transient_path_for_symlink(digest)
 
         cache_file = cacher_with_mock.file_dir / digest
         assert result == cache_file
@@ -783,7 +797,7 @@ class TestFileCacher:
         # Use resolve() to handle macOS /private symlink differences
         assert cache_file.resolve().samefile(source_file)
 
-    def test_transient_path_for_symlink_backend_keyerror_propagates(
+    async def test_transient_path_for_symlink_backend_keyerror_propagates(
         self, cacher_with_mock
     ):
         """Test transient_path_for_symlink propagates KeyError when backend file doesn't exist."""
@@ -794,9 +808,9 @@ class TestFileCacher:
         cacher_with_mock.backend.get_file.side_effect = KeyError('File not found')
 
         with pytest.raises(KeyError, match='File not found'):
-            cacher_with_mock.transient_path_for_symlink(digest)
+            await cacher_with_mock.transient_path_for_symlink(digest)
 
-    def test_transient_path_for_symlink_cache_file_disappears_after_load(
+    async def test_transient_path_for_symlink_cache_file_disappears_after_load(
         self, cacher_with_mock
     ):
         """Test transient_path_for_symlink raises FileNotFoundError when cache file disappears after _load."""
@@ -809,11 +823,11 @@ class TestFileCacher:
             with pytest.raises(
                 FileNotFoundError, match=f'File {digest} not found in cache'
             ):
-                cacher_with_mock.transient_path_for_symlink(digest)
+                await cacher_with_mock.transient_path_for_symlink(digest)
 
             mock_load.assert_called_once_with(digest, cache_only=True)
 
-    def test_transient_path_for_symlink_multiple_calls_same_digest(
+    async def test_transient_path_for_symlink_multiple_calls_same_digest(
         self, cacher_with_mock
     ):
         """Test transient_path_for_symlink handles multiple calls for same digest efficiently."""
@@ -825,13 +839,13 @@ class TestFileCacher:
         cacher_with_mock.backend.get_file.return_value = io.BytesIO(test_content)
 
         # First call should load from backend
-        result1 = cacher_with_mock.transient_path_for_symlink(digest)
+        result1 = await cacher_with_mock.transient_path_for_symlink(digest)
 
         # Reset mock to verify second call doesn't hit backend
         cacher_with_mock.backend.get_file.reset_mock()
 
         # Second call should use cached file
-        result2 = cacher_with_mock.transient_path_for_symlink(digest)
+        result2 = await cacher_with_mock.transient_path_for_symlink(digest)
 
         assert result1 == result2
         cache_file = cacher_with_mock.file_dir / digest

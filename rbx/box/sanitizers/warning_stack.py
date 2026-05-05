@@ -18,7 +18,7 @@ class WarningStack:
     def add_warning(self, code: CodeItem):
         self.warnings.add(code.path)
 
-    def add_sanitizer_warning(
+    async def add_sanitizer_warning(
         self, cacher: FileCacher, code: CodeItem, reference: GradingFileOutput
     ):
         if code.path in self.sanitizer_warnings:
@@ -27,7 +27,7 @@ class WarningStack:
             code.path.with_suffix(code.path.suffix + '.log')
         )
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        f = reference.get_file(cacher)
+        f = await reference.get_file(cacher)
         if f is None:
             return
         with f:

@@ -400,7 +400,8 @@ async def generate_standalone(
                 if generation_stderr.value is not None:
                     err.print('[error]Stderr:[/error]')
                     err.print(
-                        package.get_digest_as_string(generation_stderr.value) or '',
+                        await package.get_digest_as_string(generation_stderr.value)
+                        or '',
                     )
     elif spec.content is not None:
         spec.copied_to.inputPath.parent.mkdir(parents=True, exist_ok=True)

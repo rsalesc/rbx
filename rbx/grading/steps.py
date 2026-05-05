@@ -181,15 +181,15 @@ class GradingFileOutput(BaseModel):
     # Whether to touch the file before the command runs.
     touch: bool = False
 
-    def get_file(self, cacher: FileCacher) -> Optional[IO[bytes]]:
+    async def get_file(self, cacher: FileCacher) -> Optional[IO[bytes]]:
         if self.dest is not None:
             if self.optional and not self.dest.exists():
                 return None
             return self.dest.open('rb')
         if self.digest is not None and self.digest.value is not None:
-            if self.optional and not cacher.exists(self.digest.value):
+            if self.optional and not await cacher.exists(self.digest.value):
                 return None
-            return cacher.get_file(self.digest.value)
+            return await cacher.get_file(self.digest.value)
         raise ValueError('No file to get')
 
 
@@ -299,11 +299,11 @@ class Evaluation(BaseModel):
     log: TestcaseLog
 
 
-def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: SandboxBase):
+async def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: SandboxBase):
     for input_artifact in artifacts.inputs:
         if input_artifact.digest is not None:
             assert input_artifact.digest.value is not None
-            sandbox.create_file_from_storage(
+            await sandbox.create_file_from_storage(
                 input_artifact.dest,
                 input_artifact.digest.value,
                 override=True,
@@ -312,7 +312,7 @@ def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: SandboxBase):
             )
             continue
         assert input_artifact.src is not None
-        sandbox.create_file_from_other_file(
+        await sandbox.create_file_from_other_file(
             input_artifact.dest,
             artifacts.root / input_artifact.src,
             executable=input_artifact.executable,
@@ -329,7 +329,7 @@ def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: SandboxBase):
             )
 
 
-def _process_output_artifacts(
+async def _process_output_artifacts(
     artifacts: GradingArtifacts,
     sandbox: SandboxBase,
 ) -> bool:
@@ -352,7 +352,7 @@ def _process_output_artifacts(
                 use_compression=True,
                 when=output_artifact.executable,
             ):
-                output_artifact.digest.value = sandbox.get_file_to_storage(
+                output_artifact.digest.value = await sandbox.get_file_to_storage(
                     output_artifact.src, trunc_len=output_artifact.maxlen
                 )
         if output_artifact.dest is None:
@@ -366,7 +366,7 @@ def _process_output_artifacts(
             output_artifact.digest is not None
             and output_artifact.digest.value is not None
             and (
-                path_to_symlink := sandbox.file_cacher.path_for_symlink(
+                path_to_symlink := await sandbox.file_cacher.path_for_symlink(
                     output_artifact.digest.value
                 )
             )
@@ -724,7 +724,7 @@ async def compile(
     sandbox.reset()
 
     commands = _try_following_alias_for_commands(commands)
-    _process_input_artifacts(artifacts, sandbox)
+    await _process_input_artifacts(artifacts, sandbox)
 
     if not commands:
         # Code does not need preprocessing of any kind.
@@ -792,7 +792,7 @@ async def compile(
             err.print(Text.from_ansi(logs[-1].log), style='default')
 
     # testing_utils.print_directory_tree(sandbox.get_root_path())
-    if not _process_output_artifacts(artifacts, sandbox):
+    if not await _process_output_artifacts(artifacts, sandbox):
         raise CompilationError()
 
 
@@ -805,7 +805,7 @@ async def run(
 ) -> Optional[RunLog]:
     sandbox.reset()
 
-    _process_input_artifacts(artifacts, sandbox)
+    await _process_input_artifacts(artifacts, sandbox)
     _process_fifos(artifacts, sandbox)
     cmd = _split_and_expand(command, sandbox, params)
     params = params.model_copy(deep=True)  # Copy to allow further modification.
@@ -817,7 +817,7 @@ async def run(
     try:
         sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
 
-        if not _process_output_artifacts(artifacts, sandbox):
+        if not await _process_output_artifacts(artifacts, sandbox):
             return None
 
         run_log = _build_run_log(sandbox_log, sandbox, params, metadata)
@@ -846,7 +846,7 @@ async def run_coordinated(
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     sandbox.reset()
 
-    _process_input_artifacts(artifacts, sandbox)
+    await _process_input_artifacts(artifacts, sandbox)
     _process_fifos(artifacts, sandbox)
 
     interactor_cmd = _split_and_expand(interactor.command, sandbox, interactor.params)
@@ -871,7 +871,7 @@ async def run_coordinated(
             ),
         )
 
-        if not _process_output_artifacts(artifacts, sandbox):
+        if not await _process_output_artifacts(artifacts, sandbox):
             return None, None
 
         solution_log = _build_run_log(
