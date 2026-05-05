@@ -94,13 +94,13 @@ def find_language_name(code: CodeItem) -> str:
     return find_language(code).name
 
 
-def is_executable_sanitized(executable: DigestOrSource) -> bool:
+async def is_executable_sanitized(executable: DigestOrSource) -> bool:
     if executable.digest is None:
         return False
     if executable.digest.value is None:
         return False
     cacher = package.get_file_cacher()
-    desc = cacher.get_metadata(
+    desc = await cacher.get_metadata(
         executable.digest.value, 'compilation', CompilationMetadata
     )
     if desc is None:
@@ -192,10 +192,10 @@ def _add_warning_pragmas_around(code: str) -> str:
     )
 
 
-def _ignore_warning_in_cxx_input(input: GradingFileInput):
+async def _ignore_warning_in_cxx_input(input: GradingFileInput):
     if input.src is None or input.src.suffix not in ('.h', '.hpp'):
         return
-    preprocessed_path = package.write_preprocessed_file(
+    preprocessed_path = await package.write_preprocessed_file(
         input.src, _add_warning_pragmas_around(input.src.read_text())
     )
     input.src = preprocessed_path
@@ -221,7 +221,7 @@ def _get_code_variables(code: CodeItem, language: str) -> dict[str, Any]:
     return res
 
 
-def maybe_rename_java_class(
+async def maybe_rename_java_class(
     compilable_path: pathlib.Path,
     file_mapping: FileMapping,
 ) -> pathlib.Path:
@@ -251,7 +251,7 @@ def maybe_rename_java_class(
     if new_content == java_content:
         return compilable_path
 
-    return package.write_preprocessed_file(compilable_path, new_content)
+    return await package.write_preprocessed_file(compilable_path, new_content)
 
 
 def _format_stack_limit(limit: int) -> str:
@@ -320,7 +320,7 @@ class PreparedRun:
     metadata: RunLogMetadata
 
 
-def _prepare_run(
+async def _prepare_run(
     code: CodeItem,
     executable: DigestOrSource,
     stdin: Optional[DigestOrSource] = None,
@@ -345,7 +345,7 @@ def _prepare_run(
 
     # Sanitization parameters.
     sanitized = False
-    if is_executable_sanitized(executable):
+    if await is_executable_sanitized(executable):
         # Remove any memory constraints for a sanitized executable.
         # Sanitizers are known to be memory-hungry.
         sandbox_params.address_space = None
@@ -528,18 +528,22 @@ async def _precompile_header(
 
         assert precompiled_digest.value is not None
 
-        digest_path = dependency_cache.cacher.path_for_symlink(precompiled_digest.value)
+        digest_path = await dependency_cache.cacher.path_for_symlink(
+            precompiled_digest.value
+        )
         if digest_path is not None and digest_path.is_file():
             # If storage backend supports symlinks, use it as the grading input.
             input = DigestOrSource.create(digest_path)
         else:
             # Otherwise, copy the file to the local cache, transiently.
             local_cacher = package.get_file_cacher()
-            with dependency_cache.cacher.get_file(precompiled_digest.value) as f:
+            with await dependency_cache.cacher.get_file(precompiled_digest.value) as f:
                 with grading_context.cache_level(
                     grading_context.CacheLevel.CACHE_TRANSIENTLY
                 ):
-                    input = DigestOrSource.create(local_cacher.put_file_from_fobj(f))
+                    input = DigestOrSource.create(
+                        await local_cacher.put_file_from_fobj(f)
+                    )
 
         res = GradingFileInput(
             **input.expand(),
@@ -582,7 +586,7 @@ async def compile_item(
 
         if not compilation_options.commands:
             # Language is not compiled.
-            return sandbox.file_cacher.put_file_from_path(compilable_path)
+            return await sandbox.file_cacher.put_file_from_path(compilable_path)
 
         commands = get_mapped_commands(
             compilation_options.commands,
@@ -615,7 +619,7 @@ async def compile_item(
         download.maybe_add_testlib(code, artifacts)
         download.maybe_add_jngen(code, artifacts)
         download.maybe_add_rbx_header(code, artifacts)
-        compilable_path = maybe_rename_java_class(compilable_path, file_mapping)
+        compilable_path = await maybe_rename_java_class(compilable_path, file_mapping)
         artifacts.inputs.append(
             GradingFileInput(
                 src=compilable_path, dest=PosixPath(file_mapping.compilable)
@@ -633,7 +637,7 @@ async def compile_item(
         )
 
         for input in artifacts.inputs:
-            _ignore_warning_in_cxx_input(input)
+            await _ignore_warning_in_cxx_input(input)
 
         # Add system bits/stdc++.h to the compilation.
         bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
@@ -721,13 +725,13 @@ async def compile_item(
             when=lambda: is_path_remote(code.path),
         ):
             if sanitized.should_sanitize():
-                cacher.set_metadata(
+                await cacher.set_metadata(
                     compiled_digest.value,
                     'compilation',
                     CompilationMetadata(is_sanitized=True),
                 )
             else:
-                cacher.set_metadata(compiled_digest.value, 'compilation', None)
+                await cacher.set_metadata(compiled_digest.value, 'compilation', None)
 
         return compiled_digest.value
 
@@ -749,7 +753,7 @@ async def run_item(
 
         dependency_cache = package.get_dependency_cache()
 
-        prepared = _prepare_run(
+        prepared = await _prepare_run(
             code,
             executable,
             stdin,
@@ -784,7 +788,7 @@ async def run_item(
                 prepared.sandbox_params.stderr_file
             )
             if stderr_output is not None:
-                warning_stack.get_warning_stack().add_sanitizer_warning(
+                await warning_stack.get_warning_stack().add_sanitizer_warning(
                     package.get_file_cacher(), code, stderr_output
                 )
         return run_log
@@ -802,8 +806,8 @@ class CommunicationItem:
     extra_config: Optional[ExecutionConfig] = None
     capture: Optional[DigestOrDest] = None
 
-    def prepare(self) -> PreparedRun:
-        return _prepare_run(
+    async def prepare(self) -> PreparedRun:
+        return await _prepare_run(
             self.code,
             self.executable,
             stdout=self.capture,
@@ -824,8 +828,8 @@ async def run_communication(
     retry_index: Optional[int] = None,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     with package.get_new_sandbox() as sandbox:
-        interactor_prepared = interactor.prepare()
-        solution_prepared = solution.prepare()
+        interactor_prepared = await interactor.prepare()
+        solution_prepared = await solution.prepare()
 
         # Prepare retry index.
         interactor_prepared.metadata.retryIndex = retry_index

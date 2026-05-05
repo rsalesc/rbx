@@ -353,7 +353,7 @@ class SandboxBase(abc.ABC):
         os.mkfifo(str(real_path))
         return real_path
 
-    def create_file_from_storage(
+    async def create_file_from_storage(
         self,
         path: pathlib.Path,
         digest: str,
@@ -369,7 +369,7 @@ class SandboxBase(abc.ABC):
 
         """
         if try_symlink and executable:
-            symlink_path = self.file_cacher.transient_path_for_symlink(digest)
+            symlink_path = await self.file_cacher.transient_path_for_symlink(digest)
             if symlink_path is not None:
                 created = self.create_symlink(
                     path,
@@ -380,7 +380,7 @@ class SandboxBase(abc.ABC):
                     created.chmod(0o755)
                     return
         with self.create_file(path, executable, override=override) as dest_fobj:
-            self.file_cacher.get_file_to_fobj(digest, dest_fobj)
+            await self.file_cacher.get_file_to_fobj(digest, dest_fobj)
 
     def create_file_from_bytes(
         self,
@@ -399,7 +399,7 @@ class SandboxBase(abc.ABC):
         with self.create_file(path, executable, override=override) as dest_fobj:
             dest_fobj.write(content)
 
-    def create_file_from_other_file(
+    async def create_file_from_other_file(
         self,
         path: pathlib.Path,
         from_path: pathlib.Path,
@@ -519,7 +519,7 @@ class SandboxBase(abc.ABC):
         """
         return self.get_file_to_bytes(path, maxlen).decode('utf-8')
 
-    def get_file_to_storage(
+    async def get_file_to_storage(
         self,
         path: pathlib.Path,
         metadata: Optional[Dict[str, pydantic.BaseModel]] = None,
@@ -536,7 +536,7 @@ class SandboxBase(abc.ABC):
 
         """
         with self.get_file(path, trunc_len=trunc_len) as file_:
-            return self.file_cacher.put_file_from_fobj(file_, metadata)
+            return await self.file_cacher.put_file_from_fobj(file_, metadata)
 
     def stat_file(self, path: pathlib.Path) -> os.stat_result:
         """Return the stats of a file in the sandbox.

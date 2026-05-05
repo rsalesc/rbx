@@ -23,7 +23,7 @@ async def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool)
     )
     cacher = package.get_file_cacher()
     out_path = _compile_out()
-    cacher.get_file_to_path(digest, out_path)
+    await cacher.get_file_to_path(digest, out_path)
     out_path.chmod(0o755)
 
     # Clear the warning stack as we don't really worry about it when running

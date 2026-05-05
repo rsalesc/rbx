@@ -310,7 +310,7 @@ async def _check(
             extra_args=checker_mode.get_args('input.txt', 'output.txt', 'expected.txt'),
         )
     )
-    message = package.get_digest_as_string(error.value) or ''
+    message = await package.get_digest_as_string(error.value) or ''
 
     processed_checker_result = process_checker_run_log(checker_run_log, message)
     if processed_checker_result.outcome == Outcome.INTERNAL_ERROR:

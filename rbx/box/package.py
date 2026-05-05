@@ -11,9 +11,10 @@ from typing import (
     TypeVar,
 )
 
+import async_lru
 import ruyaml
 import typer
-from filelock import BaseFileLock, FileLock
+from filelock import AsyncFileLock, BaseAsyncFileLock
 
 from rbx import console, utils
 from rbx.box import cd, environment, global_package, path_resolution
@@ -206,14 +207,16 @@ def get_problem_preprocessed_path(
 
 
 @functools.cache
-def get_preprocessed_file_lock(root: pathlib.Path = pathlib.Path()) -> BaseFileLock:
-    return FileLock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
+def get_preprocessed_file_lock(
+    root: pathlib.Path = pathlib.Path(),
+) -> BaseAsyncFileLock:
+    return AsyncFileLock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
 
 
-def write_preprocessed_file(
+async def write_preprocessed_file(
     path: pathlib.Path, content: str, root: pathlib.Path = pathlib.Path()
 ) -> pathlib.Path:
-    with get_preprocessed_file_lock(root):
+    async with get_preprocessed_file_lock(root):
         path = get_problem_preprocessed_path(path, root)
         path.write_text(content)
         return path
@@ -234,15 +237,15 @@ def get_file_cacher(root: pathlib.Path = pathlib.Path()) -> FileCacher:
     return FileCacher(get_cache_storage(root))
 
 
-@functools.cache
-def get_digest_as_string(
+@async_lru.alru_cache(maxsize=None)
+async def get_digest_as_string(
     digest: Optional[str], root: pathlib.Path = pathlib.Path()
 ) -> Optional[str]:
     if not digest:
         return None
     cacher = get_file_cacher(root)
     try:
-        content = cacher.get_file_content(digest)
+        content = await cacher.get_file_content(digest)
         return content.decode()
     except KeyError:
         return None
