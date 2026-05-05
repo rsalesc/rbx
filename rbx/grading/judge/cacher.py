@@ -89,7 +89,11 @@ class FileCacher:
             tempfile.mkdtemp(dir=self.file_dir, prefix='_temp')
         )
         atexit.register(lambda: shutil.rmtree(str(self.temp_dir), ignore_errors=True))
-        self.lock = AsyncFileLock(self.file_dir / 'cache.lock', thread_local=False)
+        self.lock = AsyncFileLock(
+            self.file_dir / 'cache.lock',
+            thread_local=False,
+            run_in_executor=False,
+        )
         # Just to make sure it was created.
 
     def is_shared(self) -> bool:

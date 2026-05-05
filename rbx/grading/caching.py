@@ -375,7 +375,11 @@ class DependencyCache:
         self.db = SqliteDict(self._cache_name(), autocommit=True)
         tmp_dir = pathlib.Path(tempfile.mkdtemp())
         self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
-        self.lock = AsyncFileLock(self.root / 'cache.lock', thread_local=False)
+        self.lock = AsyncFileLock(
+            self.root / 'cache.lock',
+            thread_local=False,
+            run_in_executor=False,
+        )
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
         atexit.register(lambda: shutil.rmtree(tmp_dir, ignore_errors=True))

@@ -210,7 +210,10 @@ def get_problem_preprocessed_path(
 def get_preprocessed_file_lock(
     root: pathlib.Path = pathlib.Path(),
 ) -> BaseAsyncFileLock:
-    return AsyncFileLock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
+    return AsyncFileLock(
+        get_problem_cache_dir(root) / '.preprocessed' / '.lock',
+        run_in_executor=False,
+    )
 
 
 async def write_preprocessed_file(

@@ -252,7 +252,11 @@ class FilesystemStorage(Storage):
         (path / '.metadata').mkdir(parents=True, exist_ok=True)
         # Place the lock in the parent directory so it doesn't appear in list().
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock = AsyncFileLock(path.parent / f'{path.name}.lock', thread_local=False)
+        self.lock = AsyncFileLock(
+            path.parent / f'{path.name}.lock',
+            thread_local=False,
+            run_in_executor=False,
+        )
 
     async def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""
