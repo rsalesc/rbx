@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from filelock import AsyncFileLock, BaseAsyncFileLock
+from filelock import BaseAsyncFileLock
 from pydantic import BaseModel
 from sqlitedict import SqliteDict
 
@@ -15,6 +15,7 @@ from rbx import console
 from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.digester import digest_cooperatively
+from rbx.grading.judge.lock import make_async_file_lock
 from rbx.grading.judge.storage import copyfileobj
 from rbx.grading.profiling import Profiler
 from rbx.grading.steps import (
@@ -375,11 +376,7 @@ class DependencyCache:
         self.db = SqliteDict(self._cache_name(), autocommit=True)
         tmp_dir = pathlib.Path(tempfile.mkdtemp())
         self.transient_db = SqliteDict(str(tmp_dir / '.cache_db'), autocommit=True)
-        self.lock = AsyncFileLock(
-            self.root / 'cache.lock',
-            thread_local=False,
-            run_in_executor=False,
-        )
+        self.lock = make_async_file_lock(self.root / 'cache.lock')
         atexit.register(lambda: self.db.close())
         atexit.register(lambda: self.transient_db.close())
         atexit.register(lambda: shutil.rmtree(tmp_dir, ignore_errors=True))

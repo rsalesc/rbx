@@ -9,11 +9,12 @@ import tempfile
 import typing
 from typing import IO, Dict, List, Optional, Type
 
-from filelock import AsyncFileLock, BaseAsyncFileLock
+from filelock import BaseAsyncFileLock
 from pydantic import BaseModel
 
 from rbx.grading import grading_context
 from rbx.grading.judge import digester, storage
+from rbx.grading.judge.lock import make_async_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +90,7 @@ class FileCacher:
             tempfile.mkdtemp(dir=self.file_dir, prefix='_temp')
         )
         atexit.register(lambda: shutil.rmtree(str(self.temp_dir), ignore_errors=True))
-        self.lock = AsyncFileLock(
-            self.file_dir / 'cache.lock',
-            thread_local=False,
-            run_in_executor=False,
-        )
+        self.lock = make_async_file_lock(self.file_dir / 'cache.lock')
         # Just to make sure it was created.
 
     def is_shared(self) -> bool:

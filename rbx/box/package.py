@@ -14,7 +14,7 @@ from typing import (
 import async_lru
 import ruyaml
 import typer
-from filelock import AsyncFileLock, BaseAsyncFileLock
+from filelock import BaseAsyncFileLock
 
 from rbx import console, utils
 from rbx.box import cd, environment, global_package, path_resolution
@@ -44,6 +44,7 @@ from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_builtin_checker
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
+from rbx.grading.judge.lock import make_async_file_lock
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.judge.storage import FilesystemStorage, Storage
 
@@ -210,10 +211,7 @@ def get_problem_preprocessed_path(
 def get_preprocessed_file_lock(
     root: pathlib.Path = pathlib.Path(),
 ) -> BaseAsyncFileLock:
-    return AsyncFileLock(
-        get_problem_cache_dir(root) / '.preprocessed' / '.lock',
-        run_in_executor=False,
-    )
+    return make_async_file_lock(get_problem_cache_dir(root) / '.preprocessed' / '.lock')
 
 
 async def write_preprocessed_file(
