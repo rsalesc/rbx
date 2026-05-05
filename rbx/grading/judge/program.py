@@ -223,26 +223,31 @@ class Program:
         self._kill_process()
 
     def _handle_alarm(self):
-        if self._stop_alarm_handler.wait(0.3):
-            return
+        # Pin the child by (pid, create_time) so a poll after PID reuse
+        # cannot read another process's stats and trigger a false MLE/TLE.
         try:
             process = psutil.Process(self.pid)
-            if self.params.time_limit is not None:
-                times = process.cpu_times()
-                cpu_time = times.user + times.system
-                if cpu_time > self.params.time_limit:
-                    self._alarm_msg = 'timelimit'
-                    self._kill_process()
-            if self.params.memory_limit is not None:
-                memory_info = process.memory_info()
-                memory_used = memory_info.rss
-                if memory_used > self.params.memory_limit * 1024 * 1024:
-                    self._alarm_msg = 'memorylimit'
-                    self._kill_process()
-            self._stop_alarm_handler.clear()
-            self._handle_alarm()
+            create_time = process.create_time()
         except psutil.NoSuchProcess:
             return
+        while not self._stop_alarm_handler.wait(0.3):
+            try:
+                if process.create_time() != create_time:
+                    return
+                if self.params.time_limit is not None:
+                    times = process.cpu_times()
+                    cpu_time = times.user + times.system
+                    if cpu_time > self.params.time_limit:
+                        self._alarm_msg = 'timelimit'
+                        self._kill_process()
+                if self.params.memory_limit is not None:
+                    memory_info = process.memory_info()
+                    memory_used = memory_info.rss
+                    if memory_used > self.params.memory_limit * 1024 * 1024:
+                        self._alarm_msg = 'memorylimit'
+                        self._kill_process()
+            except psutil.NoSuchProcess:
+                return
 
     def _run(self):
         self._files = self.params.io.get_file_objects()
@@ -336,6 +341,8 @@ class Program:
     def wait(self):
         assert self.popen is not None
         _, exitstatus, ru = os.wait4(self.pid, 0)
+        self._stop_wall_handler.set()
+        self._stop_alarm_handler.set()
         res = self.process_exit(exitstatus, ru)
         self.close_pipes()
         return res
