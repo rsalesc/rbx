@@ -210,12 +210,17 @@ class TestDiscoverVariants:
         assert set(variants.keys()) == {'div1', 'div2'}
         assert variants['div1'].name == 'contest.div1.rbx.yml'
 
-    def test_dispatcher_with_invalid_id_silently_skipped(self, tmp_path):
+    def test_dispatcher_with_invalid_id_skipped_with_warning(
+        self, tmp_path, capsys: pytest.CaptureFixture[str]
+    ):
         (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
         (tmp_path / 'contest.bad name.rbx.yml').write_text('name: bad-id-contest\n')
         variants = cp_module.discover_contest_variants(tmp_path)
-        # Files with invalid ids are silently skipped.
+        # Files with invalid ids are skipped, with a warning printed.
         assert variants == {}
+        out = capsys.readouterr().out
+        assert 'Skipping contest.bad name.rbx.yml' in out
+        assert 'not a valid contest variant id' in out
 
     def test_no_yaml_returns_empty(self, tmp_path):
         assert cp_module.discover_contest_variants(tmp_path) == {}

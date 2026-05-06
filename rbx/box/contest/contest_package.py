@@ -39,18 +39,23 @@ def discover_contest_variants(
         # Strip leading 'contest.' and trailing '.rbx.yml'.
         name = path.name[len('contest.') : -len('.rbx.yml')]
         if not is_valid_variant_id(name):
+            console.console.print(
+                f'[warning]Skipping {path.name}: not a valid contest '
+                f'variant id.[/warning]'
+            )
             continue
         siblings[name] = path
 
     if canonical_contest.is_dispatcher:
-        return {vid: p for vid, p in siblings.items()}
+        return dict(siblings)
 
     if siblings:
+        names = [p.name for p in siblings.values()]
         console.console.print(
-            f'[error]{canonical} is a real contest but sibling variant files '
-            f'exist: {[p.name for p in siblings.values()]}. Set '
-            f'use_variants: true on contest.rbx.yml to enable dispatcher '
-            f'mode.[/error]'
+            f'[error]contest.rbx.yml at {contest_root} is configured as a '
+            f'real contest but sibling variant files exist: {names}. Either '
+            f'set `use_variants: true` on contest.rbx.yml to enable '
+            f'dispatcher mode, or rename/remove the sibling files.[/error]'
         )
         raise typer.Exit(1)
 
