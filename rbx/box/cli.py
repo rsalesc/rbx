@@ -161,12 +161,34 @@ def main(
         '--profiling',
         help='Whether to profile (capture performance statistics) of the execution.',
     ),
+    contest_id: Annotated[
+        Optional[str],
+        typer.Option(
+            '-C',
+            '--contest',
+            help=(
+                'Select a contest variant by id (when contest.rbx.yml has '
+                'use_variants: true). Defaults to the RBX_CONTEST env var.'
+            ),
+            envvar='RBX_CONTEST',
+        ),
+    ] = None,
     version: Annotated[
         bool, typer.Option('--version', '-v', callback=version_callback, is_eager=True)
     ] = False,
 ):
     # Load .env variables.
     utils.load_dotenv()
+
+    from rbx.box.contest import contest_state as _contest_state
+
+    if contest_id is not None:
+        if not _contest_state.is_valid_variant_id(contest_id):
+            console.console.print(f'[error]Invalid contest id: {contest_id!r}[/error]')
+            raise typer.Exit(1)
+        # Note: when both this callback and the contest sub-app callback fire
+        # in one process, the sub-app's -C runs later and wins (local override).
+        _contest_state.selected_variant_id_var.set(contest_id)
 
     presets.check_active_preset_compatibility()
     if cd.is_problem_package() and not package.is_cache_valid():

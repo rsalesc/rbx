@@ -9,7 +9,7 @@ import typer
 
 from rbx import annotations, console, utils
 from rbx.box import cd, creation, presets, summary
-from rbx.box.contest import contest_package, contest_utils, statements
+from rbx.box.contest import contest_package, contest_state, contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
     find_contest_package_or_die,
@@ -24,6 +24,29 @@ from rbx.box.ui.command_app import CommandEntry, start_command_app
 from rbx.config import open_editor
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+
+
+@app.callback()
+def contest_main(
+    contest_id: Annotated[
+        Optional[str],
+        typer.Option(
+            '-C',
+            '--contest',
+            help='Select a contest variant by id.',
+            envvar='RBX_CONTEST',
+        ),
+    ] = None,
+):
+    if contest_id is not None:
+        if not contest_state.is_valid_variant_id(contest_id):
+            console.console.print(f'[error]Invalid contest id: {contest_id!r}[/error]')
+            raise typer.Exit(1)
+        # When the root cli callback also set this, the sub-app's value wins
+        # (local override beats global), since this fires after the root.
+        contest_state.selected_variant_id_var.set(contest_id)
+
+
 app.add_typer(
     statements.app,
     name='statements, st',
