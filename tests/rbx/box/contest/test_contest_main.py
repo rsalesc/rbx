@@ -105,20 +105,60 @@ class TestContestList:
         assert result.exit_code == 0, result.output
         assert 'No contests found' in result.output
 
-    def test_list_errors_on_real_contest_with_siblings(
+    def test_list_in_real_contest_with_siblings_lists_default_and_variants(
         self,
         runner: CliRunner,
         tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
     ):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / 'contest.rbx.yml').write_text('name: real-c\nproblems: []\n')
+        (tmp_path / 'contest.rbx.yml').write_text('name: main-c\nproblems: []\n')
         (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\nproblems: []\n')
 
         result = runner.invoke(contest_main.app, ['list'])
 
-        assert result.exit_code != 0
-        # The error message in discover_contest_variants mentions 'use_variants'.
-        stderr = getattr(result, 'stderr', '') or ''
-        combined = result.output + stderr
-        assert 'use_variants' in combined
+        assert result.exit_code == 0, result.output
+        # The default contest is listed, plus the sibling variant.
+        assert 'contest.rbx.yml' in result.output
+        assert 'default' in result.output
+        assert 'div1' in result.output
+
+    def test_list_real_contest_with_siblings_marks_default_when_no_selection(
+        self,
+        runner: CliRunner,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text('name: main-c\nproblems: []\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\nproblems: []\n')
+
+        result = runner.invoke(contest_main.app, ['list'])
+
+        assert result.exit_code == 0, result.output
+        default_line = next(
+            line for line in result.output.splitlines() if 'default' in line
+        )
+        div1_line = next(line for line in result.output.splitlines() if 'div1' in line)
+        assert '*' in default_line
+        assert '*' not in div1_line
+
+    def test_list_real_contest_with_siblings_marks_active_variant(
+        self,
+        runner: CliRunner,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text('name: main-c\nproblems: []\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\nproblems: []\n')
+
+        result = runner.invoke(contest_main.app, ['-C', 'div1', 'list'])
+
+        assert result.exit_code == 0, result.output
+        default_line = next(
+            line for line in result.output.splitlines() if 'default' in line
+        )
+        div1_line = next(line for line in result.output.splitlines() if 'div1' in line)
+        assert '*' not in default_line
+        assert '*' in div1_line

@@ -327,11 +327,22 @@ def list_contests():
     # find_contest_root returned a real path, so canonical contest.rbx.yml exists.
     variants = contest_package.discover_contest_variants(contest_root)
 
+    if not variants:
+        console.console.print('[warning]No contests found in this directory.[/warning]')
+        return
+
     if list(variants.keys()) == [None]:
         console.console.print('[item]contest.rbx.yml[/item] (single contest)')
         return
 
     active = contest_state.resolve_explicit_selection()
+    default_path = variants.get(None)
+
+    if default_path is not None:
+        # When no explicit selection is set, the default is implicitly active.
+        marker = ' *' if active is None else ''
+        console.console.print(f'[item]contest.rbx.yml[/item] (default){marker}')
+
     for vid in sorted(k for k in variants if k is not None):
         marker = ' *' if vid == active else ''
         console.console.print(f'[item]{vid}[/item]{marker}')

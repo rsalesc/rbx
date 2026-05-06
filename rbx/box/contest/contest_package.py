@@ -22,10 +22,12 @@ VARIANT_GLOB = 'contest.*.rbx.yml'
 def discover_contest_variants(
     contest_root: pathlib.Path,
 ) -> Dict[Optional[str], pathlib.Path]:
-    """Returns variant_id -> yaml path. Single-contest mode uses key None.
+    """Returns variant_id -> yaml path.
 
-    Errors via typer.Exit if contest.rbx.yml is a real contest AND there are
-    sibling contest.<id>.rbx.yml files (ambiguous).
+    - No contest.rbx.yml -> {}.
+    - Dispatcher canonical (`use_variants: true`) -> {sibling ids only}.
+    - Real canonical -> {None: canonical, **siblings}; the canonical is the
+      default selection, siblings are additional selectable variants.
     """
     canonical = contest_root / YAML_NAME
     if not canonical.is_file():
@@ -49,17 +51,7 @@ def discover_contest_variants(
     if canonical_contest.is_dispatcher:
         return dict(siblings)
 
-    if siblings:
-        names = [p.name for p in siblings.values()]
-        console.console.print(
-            f'[error]contest.rbx.yml at {contest_root} is configured as a '
-            f'real contest but sibling variant files exist: {names}. Either '
-            f'set `use_variants: true` on contest.rbx.yml to enable '
-            f'dispatcher mode, or rename/remove the sibling files.[/error]'
-        )
-        raise typer.Exit(1)
-
-    return {None: canonical}
+    return {None: canonical, **siblings}
 
 
 def validate_problem_folders_exist(
@@ -139,39 +131,27 @@ def find_contest_yaml(
     contest_root = find_contest_root(root)
     if contest_root is None:
         return None
-    contest_yaml_path = contest_root / YAML_NAME
-    canonical_contest = load_yaml_model(contest_yaml_path, Contest)
 
     effective_id = (
         contest_id if contest_id is not None else resolve_explicit_selection()
     )
-
-    if not canonical_contest.is_dispatcher:
-        if effective_id is not None:
-            console.console.print(
-                f'[error]Contest at {contest_root} is not a dispatcher (no '
-                f'use_variants). Cannot select variant {effective_id!r}.[/error]'
-            )
-            raise typer.Exit(1)
-        # Single-mode: return canonical without calling
-        # `discover_contest_variants`, which would error if stray sibling
-        # variant files exist. The strict check is deferred to explicit
-        # callers (e.g. `rbx contest list`).
-        return contest_yaml_path
-
-    # Dispatcher mode.
     variants = discover_contest_variants(contest_root)
+
     if effective_id is None:
-        return None
-    if effective_id not in variants:
-        # Dispatcher mode never produces a None key.
-        console.console.print(
-            f'[error]Contest variant {effective_id!r} not found. '
-            f'Pass -C <id> or set RBX_CONTEST=<id>. '
-            f'Available: {sorted(variants)}.[/error]'
-        )
-        raise typer.Exit(1)
-    return variants[effective_id]
+        # Returns the canonical default if there is one, else None
+        # (dispatcher with no selection).
+        return variants.get(None)
+
+    if effective_id in variants and effective_id is not None:
+        return variants[effective_id]
+
+    available = sorted(k for k in variants if k is not None)
+    console.console.print(
+        f'[error]Contest variant {effective_id!r} not found. '
+        f'Pass -C <id> or set RBX_CONTEST=<id>. '
+        f'Available: {available}.[/error]'
+    )
+    raise typer.Exit(1)
 
 
 @functools.cache
@@ -198,8 +178,7 @@ def _die_no_contest(root: pathlib.Path) -> NoReturn:
         canonical = load_yaml_model(contest_root / YAML_NAME, Contest)
         if canonical.is_dispatcher:
             variants = discover_contest_variants(contest_root)
-            # Dispatcher mode never produces a None key.
-            available = sorted(variants)
+            available = sorted(k for k in variants if k is not None)
             console.console.print(
                 f'[error]Multiple contests are defined in this directory. '
                 f'Pass -C <id> or set RBX_CONTEST=<id>. '

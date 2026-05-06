@@ -225,11 +225,14 @@ class TestDiscoverVariants:
     def test_no_yaml_returns_empty(self, tmp_path):
         assert cp_module.discover_contest_variants(tmp_path) == {}
 
-    def test_real_contest_with_siblings_errors(self, tmp_path):
+    def test_real_contest_with_siblings_returns_default_plus_variants(self, tmp_path):
         (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
         (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
-        with pytest.raises(typer.Exit):
-            cp_module.discover_contest_variants(tmp_path)
+        variants = cp_module.discover_contest_variants(tmp_path)
+        assert variants == {
+            None: tmp_path / 'contest.rbx.yml',
+            'div1': tmp_path / 'contest.div1.rbx.yml',
+        }
 
 
 class TestFindContestYamlVariantAware:
@@ -259,11 +262,26 @@ class TestFindContestYamlVariantAware:
         cp_module.find_contest_yaml.cache_clear()
         assert cp_module.find_contest_yaml(tmp_path) is None
 
-    def test_single_mode_with_id_errors(self, tmp_path):
+    def test_single_mode_with_unknown_id_errors(self, tmp_path):
         (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
         cp_module.find_contest_yaml.cache_clear()
         with pytest.raises(typer.Exit):
+            cp_module.find_contest_yaml(tmp_path, contest_id='ghost')
+
+    def test_single_mode_with_known_id_resolves_to_sibling(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert (
             cp_module.find_contest_yaml(tmp_path, contest_id='div1')
+            == tmp_path / 'contest.div1.rbx.yml'
+        )
+
+    def test_real_canonical_with_siblings_no_id_returns_canonical(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert cp_module.find_contest_yaml(tmp_path) == tmp_path / 'contest.rbx.yml'
 
     def test_uses_contextvar_when_no_arg(self, tmp_path):
         from rbx.box.contest.contest_state import selected_variant_id_var
