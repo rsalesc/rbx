@@ -62,3 +62,77 @@ scenarios:
         expect:
           stdout_contains:
             - 'Invalid contest id'
+
+  - name: run-inside-A-without-c
+    description: >-
+      `rbx run` inside problem A succeeds without -C: it does not require a
+      deterministic contest letter, so dispatcher mode without a selection
+      is fine here.
+    steps:
+      - cmd: run
+        cwd: A
+        expect:
+          stdout_contains:
+            - sols/main.cpp
+
+  - name: build-inside-A-with-c
+    description: >-
+      `rbx -C div1 build` inside problem A builds the 3 generated tests.
+    steps:
+      - cmd: -C div1 build
+        cwd: A
+        expect:
+          files_exist:
+            - A/build/tests/main/*.in
+            - A/build/tests/main/*.out
+
+  - name: run-inside-B-autopicks-div1
+    description: >-
+      B is only listed in div1, so the naming chain auto-picks div1 even
+      without -C. `rbx run` succeeds.
+    steps:
+      - cmd: run
+        cwd: B
+        expect:
+          stdout_contains:
+            - sols/main.cpp
+
+  - name: package-inside-A-without-c-errors-with-picker
+    description: >-
+      A is in both div1 and div2, so `rbx package pkg` (which routes through
+      naming.get_problem_shortname_or_require) fails with the picker hint.
+    steps:
+      - cmd: package pkg
+        cwd: A
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - '-C'
+            - RBX_CONTEST
+            - div1
+            - div2
+
+  - name: package-inside-A-with-c-succeeds
+    description: >-
+      With -C div1, the naming chain resolves A's contest letter and the
+      pkg package is built. The output filename includes the contest letter
+      `A` (the short_name in div1).
+    markers: [slow]
+    steps:
+      - cmd: -C div1 package pkg
+        cwd: A
+        expect:
+          files_exist:
+            - A/build/A.zip
+
+  - name: package-inside-B-autopicks-div1
+    description: >-
+      B is only in div1, so naming auto-picks the variant and pkg packaging
+      succeeds without -C. Output uses B's contest letter.
+    markers: [slow]
+    steps:
+      - cmd: package pkg
+        cwd: B
+        expect:
+          files_exist:
+            - B/build/B.zip
