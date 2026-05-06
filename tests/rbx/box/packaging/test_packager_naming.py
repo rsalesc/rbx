@@ -133,3 +133,27 @@ class TestBocaPackagerBasename:
 
         out = capsys.readouterr().out
         assert '-C' in out
+
+    def test_boca_basename_returns_package_name_when_prefer_letter_false(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        # No -C selection. Even though the dispatcher is ambiguous, with
+        # preferContestLetter=False the basename should fall back to the
+        # package name without raising. Guards the gating at packager.py:84-89.
+        _setup_ambiguous_problem(tmp_path)
+
+        from rbx.box.packaging.boca import packager as boca_mod
+        from rbx.box.packaging.boca.extension import BocaExtension
+
+        ext = BocaExtension(preferContestLetter=False)
+        monkeypatch.setattr(boca_mod, 'get_extension_or_default', lambda name, cls: ext)
+
+        packager = BocaPackager.__new__(BocaPackager)
+        packager.testcase_entries = []
+        packager.language = None
+
+        result = packager._get_problem_basename()  # noqa: SLF001
+        # _get_problem_name() replaces '-' with '_' in the package name.
+        assert result == 'prob_a'

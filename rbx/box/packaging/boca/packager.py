@@ -83,10 +83,17 @@ class BocaPackager(BasePackager):
     def _get_problem_basename(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
         if extension.preferContestLetter:
+            # Strict path: enforce explicit variant selection in dispatcher mode.
             shortname = naming.get_problem_shortname_or_require()
             if shortname is not None:
                 return shortname
-        return self._get_problem_name()
+            # Stand-alone problem (no contest at all): no letter to use.
+            return package.find_problem_package_or_die().name.replace('-', '_')
+        # Lenient path: user opted out of the letter prefix, so we use the
+        # package name directly without going through the strict letter
+        # resolution. This matches the pre-strictness behavior for
+        # preferContestLetter=False.
+        return package.find_problem_package_or_die().name.replace('-', '_')
 
     def _get_problem_info(self) -> str:
         statement = self._get_main_statement()

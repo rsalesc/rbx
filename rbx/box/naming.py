@@ -125,13 +125,21 @@ def get_problem_shortname() -> Optional[str]:
 
 
 def get_problem_shortname_or_require() -> Optional[str]:
-    """Return the problem's contest letter, or None if no contest exists.
+    """Return the problem's contest letter, or None if the problem is outside any contest.
 
-    Unlike `get_problem_shortname`, this raises the picker `typer.Exit` error
-    when a contest is present but the active variant is ambiguous (dispatcher
-    mode with no `-C`). Use this at call sites that compose filenames or
-    archive keys: returning `None` is fine for stand-alone problems, but
-    silently dropping the letter in dispatcher mode is not.
+    Unlike `get_problem_shortname`, this raises `typer.Exit(1)` with a picker
+    message (delegating to `require_problem_in_contest`) whenever a contest
+    root is present but the entry cannot be uniquely resolved. Concretely:
+
+    - dispatcher mode without explicit selection, AND multiple variants
+      contain (or could contain) this problem,
+    - explicit selection set but the problem is not listed in the selected
+      variant's problems[],
+    - single-mode contest exists but does not list this problem.
+
+    Returning `None` is reserved for the stand-alone case (no contest at all).
+    Use this at call sites that compose filenames or archive keys: silently
+    dropping the letter in any of the above cases would be wrong.
     """
     entry = get_problem_entry_in_contest()
     if entry is not None:
