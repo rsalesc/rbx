@@ -103,7 +103,7 @@ class RunTestExplorerScreen(Screen):
         self, solution: SolutionSkeleton, entry: GenerationTestcaseEntry
     ) -> TestcaseRenderingData:
         rendering_data = TestcaseRenderingData.from_one_path(
-            solution.get_entry_prefix(entry.group_entry)
+            self.skeleton.get_solution_entry_prefix(solution, entry.group_entry)
         )
         rendering_data.rich_content = get_run_testcase_metadata_markup(
             self.skeleton, solution, entry.group_entry

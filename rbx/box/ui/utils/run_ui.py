@@ -31,9 +31,11 @@ def get_skeleton() -> SolutionReportSkeleton:
 
 
 def get_solution_eval(
-    solution: SolutionSkeleton, entry: TestcaseEntry
+    skeleton: SolutionReportSkeleton,
+    solution: SolutionSkeleton,
+    entry: TestcaseEntry,
 ) -> Optional[Evaluation]:
-    path = solution.get_entry_prefix(entry).with_suffix('.eval')
+    path = skeleton.get_solution_entry_prefix(solution, entry).with_suffix('.eval')
     if not path.is_file():
         return None
     return utils.model_from_yaml(Evaluation, path.read_text())
@@ -43,7 +45,8 @@ def get_solution_evals(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton
 ) -> List[Optional[Evaluation]]:
     return [
-        get_solution_eval(solution, entry.group_entry) for entry in skeleton.entries
+        get_solution_eval(skeleton, solution, entry.group_entry)
+        for entry in skeleton.entries
     ]
 
 
@@ -109,9 +112,11 @@ def get_entries_options(
             Option(console.expand_markup(f'[b]{group}[/b] {score_str}'), disabled=True)
         )
         for entry in entries:
-            if solution is not None:
+            if solution is not None and skeleton is not None:
                 _add(
-                    console.expand_markup(get_run_testcase_markup(solution, entry)),
+                    console.expand_markup(
+                        get_run_testcase_markup(skeleton, solution, entry)
+                    ),
                     entry,
                 )
             else:
@@ -160,9 +165,11 @@ def get_solution_markup(
 
 
 def get_run_testcase_markup(
-    solution: SolutionSkeleton, entry: GenerationTestcaseEntry
+    skeleton: SolutionReportSkeleton,
+    solution: SolutionSkeleton,
+    entry: GenerationTestcaseEntry,
 ) -> str:
-    eval = get_solution_eval(solution, entry.group_entry)
+    eval = get_solution_eval(skeleton, solution, entry.group_entry)
     if eval is None:
         return f'{entry}'
     testcase_markup = solutions.get_testcase_markup_verdict(eval)
@@ -178,7 +185,7 @@ def _get_checker_msg_last_line(eval: Evaluation) -> Optional[str]:
 def get_run_testcase_metadata_markup(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton, entry: TestcaseEntry
 ) -> Optional[str]:
-    eval = get_solution_eval(solution, entry)
+    eval = get_solution_eval(skeleton, solution, entry)
     if eval is None:
         return None
     limits = skeleton.get_solution_limits(solution)
