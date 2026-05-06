@@ -314,3 +314,25 @@ def on(ctx: typer.Context, problems: str) -> None:
 async def summary_cmd():
     contest = find_contest_package_or_die()
     await summary.print_contest_summary(contest, get_problems(contest))
+
+
+@app.command('list, ls', help='List all contests in the current directory.')
+def list_contests():
+    contest_root = contest_package.find_contest_root()
+    if contest_root is None:
+        console.console.print('[warning]No contests found in this directory.[/warning]')
+        return
+
+    variants = contest_package.discover_contest_variants(contest_root)
+    if not variants:
+        console.console.print('[warning]No contests found in this directory.[/warning]')
+        return
+
+    if list(variants.keys()) == [None]:
+        console.console.print('[item]contest.rbx.yml[/item] (single contest)')
+        return
+
+    active = contest_state.resolve_explicit_selection()
+    for vid in sorted(k for k in variants if k is not None):
+        marker = ' *' if vid == active else ''
+        console.console.print(f'[item]{vid}[/item]{marker}')
