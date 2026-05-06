@@ -1,6 +1,6 @@
 import functools
 import pathlib
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NoReturn, Optional, Tuple
 
 import ruyaml
 import typer
@@ -154,9 +154,11 @@ def find_contest_yaml(
     if effective_id is None:
         return None
     if effective_id not in variants:
+        # Dispatcher mode never produces a None key.
         console.console.print(
             f'[error]Contest variant {effective_id!r} not found. '
-            f'Available: {sorted(k for k in variants if k is not None)}.[/error]'
+            f'Pass -C <id> or set RBX_CONTEST=<id>. '
+            f'Available: {sorted(variants)}.[/error]'
         )
         raise typer.Exit(1)
     return variants[effective_id]
@@ -178,7 +180,7 @@ def find_contest_package(
     return contest
 
 
-def _die_no_contest(root: pathlib.Path) -> None:
+def _die_no_contest(root: pathlib.Path) -> NoReturn:
     """Errors with a contextual message when no contest is resolved.
 
     Re-walks the tree to detect dispatcher mode. This duplicates the walk
@@ -194,7 +196,8 @@ def _die_no_contest(root: pathlib.Path) -> None:
         canonical = load_yaml_model(contest_yaml_path, Contest)
         if canonical.is_dispatcher:
             variants = discover_contest_variants(contest_yaml_path.parent)
-            available = sorted(k for k in variants if k is not None)
+            # Dispatcher mode never produces a None key.
+            available = sorted(variants)
             console.console.print(
                 f'[error]Multiple contests are defined in this directory. '
                 f'Pass -C <id> or set RBX_CONTEST=<id>. '
@@ -212,7 +215,6 @@ def find_contest_package_or_die(
     package = find_contest_package(root, contest_id=contest_id)
     if package is None:
         _die_no_contest(root)
-    assert package is not None  # _die_no_contest raises
     return package
 
 
@@ -223,7 +225,6 @@ def find_contest(
     found = find_contest_yaml(root, contest_id=contest_id)
     if found is None:
         _die_no_contest(root)
-        return pathlib.Path()  # unreachable, satisfies type checker
     return found.parent
 
 
@@ -243,10 +244,12 @@ def within_contest(func):
 
 
 def save_contest(
-    package: Optional[Contest] = None, root: pathlib.Path = pathlib.Path()
+    package: Optional[Contest] = None,
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
 ) -> None:
-    package = package or find_contest_package_or_die(root)
-    contest_yaml_path = find_contest_yaml(root)
+    package = package or find_contest_package_or_die(root, contest_id=contest_id)
+    contest_yaml_path = find_contest_yaml(root, contest_id=contest_id)
     if not contest_yaml_path:
         console.console.print(f'Contest not found in {root.absolute()}', style='error')
         raise typer.Exit(1)
@@ -260,8 +263,11 @@ def get_problems(contest: Contest) -> List[Package]:
     return problems
 
 
-def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
-    contest_yaml_path = find_contest_yaml(root)
+def get_ruyaml(
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
+) -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    contest_yaml_path = find_contest_yaml(root, contest_id=contest_id)
     if contest_yaml_path is None:
         console.console.print(f'[error]Contest not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
