@@ -323,10 +323,9 @@ def list_contests():
         console.console.print('[warning]No contests found in this directory.[/warning]')
         return
 
+    # discover_contest_variants always returns a non-empty dict here:
+    # find_contest_root returned a real path, so canonical contest.rbx.yml exists.
     variants = contest_package.discover_contest_variants(contest_root)
-    if not variants:
-        console.console.print('[warning]No contests found in this directory.[/warning]')
-        return
 
     if list(variants.keys()) == [None]:
         console.console.print('[item]contest.rbx.yml[/item] (single contest)')

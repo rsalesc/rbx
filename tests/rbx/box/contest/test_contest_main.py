@@ -104,3 +104,21 @@ class TestContestList:
 
         assert result.exit_code == 0, result.output
         assert 'No contests found' in result.output
+
+    def test_list_errors_on_real_contest_with_siblings(
+        self,
+        runner: CliRunner,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text('name: real-c\nproblems: []\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\nproblems: []\n')
+
+        result = runner.invoke(contest_main.app, ['list'])
+
+        assert result.exit_code != 0
+        # The error message in discover_contest_variants mentions 'use_variants'.
+        stderr = getattr(result, 'stderr', '') or ''
+        combined = result.output + stderr
+        assert 'use_variants' in combined
