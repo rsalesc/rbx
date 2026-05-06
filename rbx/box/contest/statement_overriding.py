@@ -4,7 +4,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from rbx import utils
 from rbx.box import naming
-from rbx.box.contest import contest_package
+from rbx.box.contest import contest_package, contest_state
+from rbx.box.contest.contest_package import (
+    discover_contest_variants,
+    find_contest_root,
+)
 from rbx.box.contest.schema import ContestStatement
 from rbx.box.exception import RbxException
 from rbx.box.fields import Primitive
@@ -65,6 +69,26 @@ def get_overrides(
 def get_inheritance_overrides(statement: Statement) -> StatementOverrideData:
     contest = contest_package.find_contest_package()
     if contest is None:
+        # Either there's no contest at all, OR we're in dispatcher mode
+        # without an explicit selection. Disambiguate to give a clearer
+        # error message.
+        contest_root = find_contest_root()
+        if contest_root is not None:
+            variants = discover_contest_variants(contest_root)
+            available = sorted(k for k in variants if k is not None)
+            if (
+                len(available) > 0
+                and contest_state.resolve_explicit_selection() is None
+            ):
+                with StatementInheritanceError() as e:
+                    e.print(
+                        f'[error]Statement [item]{statement.name}[/item] extends '
+                        f'a contest statement, but multiple contests are defined. '
+                        f'Pass -C <id> or set RBX_CONTEST=<id>. '
+                        f'Available contests: {available}.[/error]'
+                    )
+                raise e
+
         with StatementInheritanceError() as e:
             e.print(
                 f'[error][item]{statement.name}[/item] inherits its configuration from the contest, but no contest was found.[/error]'
