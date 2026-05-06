@@ -1,12 +1,13 @@
 import pathlib
-import re
 from typing import Annotated, Dict, List, Optional, Set
 
+import pydantic
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     model_validator,
 )
 
@@ -256,9 +257,7 @@ If not provided, will try to infer a color name from the color provided.
         return {self.short_name.lower()} | {a.lower() for a in self.aliases}
 
 
-_CONTEST_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$')
-_CONTEST_NAME_MIN_LENGTH = 3
-_CONTEST_NAME_MAX_LENGTH = 32
+_CONTEST_NAME_VALIDATOR = TypeAdapter(Annotated[str, NameField()])
 
 
 class Contest(BaseModel):
@@ -291,6 +290,8 @@ class Contest(BaseModel):
 
     @model_validator(mode='after')
     def _validate_dispatcher_or_real(self):
+        # Maintenance contract: keep this tuple in sync with Contest's non-dispatcher
+        # fields. `use_variants` is the only field allowed alongside dispatcher mode.
         if self.use_variants:
             for field in ('name', 'titles', 'problems', 'statements', 'vars'):
                 value = getattr(self, field)
@@ -299,20 +300,10 @@ class Contest(BaseModel):
                         f'Field {field!r} cannot be set when use_variants is true.'
                     )
             return self
-        if not self.name:
-            raise ValueError('Field "name" is required for a contest.')
-        if (
-            len(self.name) < _CONTEST_NAME_MIN_LENGTH
-            or len(self.name) > _CONTEST_NAME_MAX_LENGTH
-        ):
-            raise ValueError(
-                f'Field "name" must be between {_CONTEST_NAME_MIN_LENGTH} and '
-                f'{_CONTEST_NAME_MAX_LENGTH} characters long.'
-            )
-        if not _CONTEST_NAME_PATTERN.match(self.name):
-            raise ValueError(
-                f'Field "name" must match pattern {_CONTEST_NAME_PATTERN.pattern!r}.'
-            )
+        try:
+            _CONTEST_NAME_VALIDATOR.validate_python(self.name)
+        except pydantic.ValidationError as exc:
+            raise ValueError(f'Invalid contest name: {exc}') from exc
         return self
 
     @property
