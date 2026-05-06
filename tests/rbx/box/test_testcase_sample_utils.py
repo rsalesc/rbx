@@ -8,6 +8,7 @@ from rbx.box import testcase_sample_utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.schema import Testcase
 from rbx.box.testcase_schema import TestcaseEntry
+from rbx.box.testing import testing_package
 
 
 @pytest.fixture
@@ -323,7 +324,9 @@ async def test_get_statement_samples_out_statement_vs_out(
 
 @pytest.mark.asyncio
 async def test_get_statement_samples_interaction_generated(
-    tmp_path, mock_extract_generation_testcases_from_groups
+    tmp_path,
+    mock_extract_generation_testcases_from_groups,
+    testing_pkg: testing_package.TestingPackage,
 ):
     """Test 14: Interaction (Generated)."""
     dest_input = tmp_path / 'dest.in'
