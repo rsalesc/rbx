@@ -114,8 +114,14 @@ def run_step(
     expected vs actual exit codes, and stdout/stderr if the exit code does
     not match.
     """
+    target_cwd = cwd / step.cwd if step.cwd else cwd
+    if not target_cwd.is_dir():
+        raise AssertionError(
+            f'[{scenario_path.parent.name}::{scenario_name}] '
+            f'step cwd {step.cwd!r} does not exist under {cwd}'
+        )
     old_cwd = pathlib.Path.cwd()
-    os.chdir(cwd)
+    os.chdir(target_cwd)
     try:
         result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
     finally:

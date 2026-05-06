@@ -113,6 +113,7 @@ class Expect(_Forbid):
 
 class Step(_Forbid):
     cmd: str
+    cwd: Optional[str] = None
     expect_exit: int = 0
     expect: Expect = Field(default_factory=Expect)
 

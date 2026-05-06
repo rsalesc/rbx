@@ -75,10 +75,18 @@ scenarios:
 
 ```yaml
 - cmd: build              # required, parsed via shlex.split, no `rbx` prefix
+  cwd: A                  # optional, path relative to the package root
   expect_exit: 0          # optional, defaults to 0
   expect:                 # optional, all sub-fields below are optional
     ...
 ```
+
+* `cwd`: optional path relative to the package root. The step runs with
+  cwd set to `pkg_dir / cwd`. Default is the package root. Use this to
+  invoke problem-level commands inside a specific problem subdirectory
+  while keeping the contest tree available above. A missing directory
+  fails the step. `expect.files_exist` and friends remain rooted at the
+  package root (the contest root), not the step `cwd`.
 
 ### `Expect`
 
