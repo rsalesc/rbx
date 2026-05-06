@@ -1,0 +1,64 @@
+scenarios:
+  - name: list-shows-all-variants
+    description: 'rbx contest list enumerates all sibling variant files.'
+    steps:
+      - cmd: contest list
+        expect:
+          stdout_contains:
+            - div1
+            - div2
+
+  - name: list-marks-active-with-flag
+    description: 'rbx -C div1 contest list marks the active variant with " *".'
+    steps:
+      - cmd: -C div1 contest list
+        expect:
+          stdout_contains:
+            - 'div1 *'
+            - div2
+
+  - name: summary-without-c-errors-with-picker
+    description: >-
+      In dispatcher mode, contest summary without -C exits 1 and prints the
+      picker hint listing both variants.
+    steps:
+      - cmd: contest summary
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - '-C'
+            - RBX_CONTEST
+            - div1
+            - div2
+
+  - name: summary-with-c-succeeds
+    description: 'rbx -C div1 contest summary loads the div1 variant successfully.'
+    steps:
+      - cmd: -C div1 contest summary
+        expect:
+          stdout_contains:
+            - div1-c
+
+  - name: bogus-c-rejected
+    description: >-
+      Unknown variant id passed via -C is rejected by find_contest_yaml.
+      Uses contest summary because contest list does not validate -C.
+    steps:
+      - cmd: -C bogus contest summary
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - bogus
+            - div1
+            - div2
+
+  - name: invalid-c-pattern-rejected
+    description: >-
+      Variant id failing the is_valid_variant_id regex is rejected by the
+      root callback before any contest discovery happens.
+    steps:
+      - cmd: -C "bad id" contest list
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - 'Invalid contest id'

@@ -1,0 +1,6 @@
+name: div1-c
+problems:
+  - short_name: A
+    path: A
+  - short_name: B
+    path: B

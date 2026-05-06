@@ -159,11 +159,21 @@ class E2EScenarioItem(pytest.Item):
             # scenario.
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            # Snapshot contextvars that the CLI mutates, so a scenario that
+            # sets `-C <id>` does not leak its variant id into the next
+            # scenario run in the same process. Mirrors the autouse
+            # `_isolate_global_state` fixture in tests/rbx/conftest.py.
+            from rbx.box.contest import contest_state as _contest_state
+
+            context_vars = [_contest_state.selected_variant_id_var]
+            snapshots = [(v, v.get()) for v in context_vars]
             try:
                 testing_utils.clear_all_functools_cache()
                 for step in self.scenario.steps:
                     run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
+                for var, value in snapshots:
+                    var.set(value)
                 testing_utils.clear_all_functools_cache()
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
