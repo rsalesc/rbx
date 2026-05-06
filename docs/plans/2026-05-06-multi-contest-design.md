@@ -35,21 +35,21 @@ Out (deferred):
 `contest.rbx.yml` is **always required** to mark a directory as a contest dir.
 It has two modes:
 
-1. **Single-contest mode** (today's behavior). The file is a normal `Contest`.
-   It is the default contest. No variants exist.
+1. **Real-contest mode** (today's behavior). The file is a normal `Contest`.
+   It is the default contest. Sibling `contest.<id>.rbx.yml` files MAY also
+   exist; they are additional selectable variants. The canonical is the
+   default selection (used when no `-C`/`RBX_CONTEST` is set).
 2. **Dispatcher mode**. The file is a sentinel:
    ```yaml
    use_variants: true
    ```
    No other fields are validated. There is no default contest. All variants
-   live in sibling files matching `contest.<id>.rbx.yml`.
+   live in sibling files matching `contest.<id>.rbx.yml`. `use_variants` is
+   purely a permission flag that allows the canonical to be empty.
 
 Variant id rules: `^[A-Za-z][A-Za-z0-9_-]*$`. Variant discovery is purely
 filesystem-driven (`glob('contest.*.rbx.yml')`); the dispatcher does not list
 variants.
-
-It is an error for `contest.rbx.yml` to be a real contest *and* to have
-`contest.<id>.rbx.yml` siblings.
 
 ## Schema changes
 
@@ -98,13 +98,14 @@ Updated signature. Algorithm:
    - Real contest → mode = `single`.
    - `use_variants: true` → mode = `dispatcher`.
 3. Resolve effective `contest_id`: parameter > contextvar > `None`.
-4. Decide:
-   - `single` mode, no `contest_id` → return `contest_root/contest.rbx.yml`.
-   - `single` mode, `contest_id` set → error: this directory is not a
-     dispatcher.
-   - `dispatcher` mode, `contest_id` set → return
-     `contest_root/contest.<contest_id>.rbx.yml` if exists, else error.
-   - `dispatcher` mode, no `contest_id` → return `None` (caller decides).
+4. Discover variants. Real-contest mode yields `{None: canonical, **siblings}`;
+   dispatcher mode yields `{**siblings}` only.
+5. Decide:
+   - No `contest_id` → return `variants.get(None)`. That is the canonical
+     in real-contest mode (default selection), or `None` in dispatcher mode.
+   - `contest_id` set and present in `variants` → return that path. (Real
+     contests with siblings can resolve `-C <sibling>` to the sibling path.)
+   - `contest_id` set but unknown → error with picker (`Available: [...]`).
 
 `find_contest_package(root)` then loads the path returned, or returns `None`
 when the resolver returned `None`. Both functions remain `@functools.cache`d,

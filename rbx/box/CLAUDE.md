@@ -38,7 +38,7 @@ Each has a `match(outcome: Outcome) -> bool` method. `INCORRECT` matches WA/RTE/
 
 ### Multi-contest mode
 
-`contest.rbx.yml` may be either a real Contest or a dispatcher sentinel (`use_variants: true`) with sibling `contest.<id>.rbx.yml` variants. Variant selection comes from `-C <id>` (CLI flag) or `RBX_CONTEST=<id>` env var, materialized into `rbx.box.contest.contest_state.selected_variant_id_var`.
+`contest.rbx.yml` may be a real Contest, a dispatcher sentinel (`use_variants: true`), or a real Contest that ALSO has sibling `contest.<id>.rbx.yml` variants. In the third case the canonical is the default selection and siblings are additional selectable variants. Dispatcher mode (`use_variants: true`) is purely a permission flag that allows the canonical to be empty (all contests live in siblings). Variant selection comes from `-C <id>` (CLI flag) or `RBX_CONTEST=<id>` env var, materialized into `rbx.box.contest.contest_state.selected_variant_id_var`.
 
 `find_contest_yaml(root, contest_id=None)` consults the contextvar when no explicit `contest_id` is passed. In dispatcher mode without selection, problem-side helpers in `naming.py` walk all variants and auto-pick when the current problem belongs to exactly one. Sites that REQUIRE a deterministic letter use `naming.require_problem_in_contest()` (errors with picker hint) or `naming.get_problem_shortname_or_require()` (lenient when no contest exists).
 
