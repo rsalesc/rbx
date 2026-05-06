@@ -95,7 +95,7 @@ Low-level sandboxed execution layer:
 ### Configuration Files (user-facing, not project config)
 
 - `problem.rbx.yml`: Problem structure, test cases, solutions, validators
-- `contest.rbx.yml`: Contest-level settings
+- `contest.rbx.yml`: Contest-level settings. May be a single contest or a dispatcher (`use_variants: true`); when dispatcher, contests live in sibling `contest.<id>.rbx.yml` files. Selected via `-C <id>` or `RBX_CONTEST=<id>`. See `docs/plans/2026-05-06-multi-contest-design.md`.
 - `env.rbx.yml`: Language settings, compilation flags, sandbox configuration
 
 ### Submodules
