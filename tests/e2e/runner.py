@@ -16,6 +16,7 @@ runner instead just chdirs into the copied package and lets ``rbx`` discover
 """
 
 import asyncio
+import contextlib
 import os
 import pathlib
 import shlex
@@ -28,6 +29,7 @@ from typer.testing import CliRunner
 
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
+from rbx.box.contest import contest_state
 from tests.e2e.assertions import (
     AssertionContext,
     check_file_contains,
@@ -72,6 +74,22 @@ _GENERIC_CHECKS = (
     ('solutions', check_solutions),
     ('tests', check_tests),
 )
+
+
+@contextlib.contextmanager
+def _snapshot_e2e_contextvars():
+    """Snapshots and restores ContextVars that scenarios may mutate.
+
+    Keep the list of vars in sync with ``_isolate_global_state`` in
+    ``tests/rbx/conftest.py`` so unit and e2e suites have matching isolation.
+    """
+    context_vars = [contest_state.selected_variant_id_var]
+    snapshots = [(v, v.get()) for v in context_vars]
+    try:
+        yield
+    finally:
+        for var, value in snapshots:
+            var.set(value)
 
 
 def _run_generic_assertions(ctx: AssertionContext, expect: Expect) -> None:
@@ -163,17 +181,12 @@ class E2EScenarioItem(pytest.Item):
             # sets `-C <id>` does not leak its variant id into the next
             # scenario run in the same process. Mirrors the autouse
             # `_isolate_global_state` fixture in tests/rbx/conftest.py.
-            from rbx.box.contest import contest_state as _contest_state
-
-            context_vars = [_contest_state.selected_variant_id_var]
-            snapshots = [(v, v.get()) for v in context_vars]
             try:
                 testing_utils.clear_all_functools_cache()
-                for step in self.scenario.steps:
-                    run_step(self.path, self.scenario.name, step, pkg_dir)
+                with _snapshot_e2e_contextvars():
+                    for step in self.scenario.steps:
+                        run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
-                for var, value in snapshots:
-                    var.set(value)
                 testing_utils.clear_all_functools_cache()
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
