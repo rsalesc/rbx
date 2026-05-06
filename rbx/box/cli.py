@@ -33,6 +33,7 @@ from rbx.box import (
     timing,
     validators,
 )
+from rbx.box.contest import contest_state
 from rbx.box.contest import main as contest
 from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.environment import VerificationLevel, get_app_environment_path
@@ -180,15 +181,9 @@ def main(
     # Load .env variables.
     utils.load_dotenv()
 
-    from rbx.box.contest import contest_state as _contest_state
-
-    if contest_id is not None:
-        if not _contest_state.is_valid_variant_id(contest_id):
-            console.console.print(f'[error]Invalid contest id: {contest_id!r}[/error]')
-            raise typer.Exit(1)
-        # Note: when both this callback and the contest sub-app callback fire
-        # in one process, the sub-app's -C runs later and wins (local override).
-        _contest_state.selected_variant_id_var.set(contest_id)
+    # Note: when both this callback and the contest sub-app callback fire
+    # in one process, the sub-app's -C runs later and wins (local override).
+    contest_state.apply_cli_selection(contest_id)
 
     presets.check_active_preset_compatibility()
     if cd.is_problem_package() and not package.is_cache_valid():

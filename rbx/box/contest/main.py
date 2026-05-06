@@ -38,13 +38,9 @@ def contest_main(
         ),
     ] = None,
 ):
-    if contest_id is not None:
-        if not contest_state.is_valid_variant_id(contest_id):
-            console.console.print(f'[error]Invalid contest id: {contest_id!r}[/error]')
-            raise typer.Exit(1)
-        # When the root cli callback also set this, the sub-app's value wins
-        # (local override beats global), since this fires after the root.
-        contest_state.selected_variant_id_var.set(contest_id)
+    # When the root cli callback also set this, the sub-app's value wins
+    # (local override beats global), since this fires after the root.
+    contest_state.apply_cli_selection(contest_id)
 
 
 app.add_typer(

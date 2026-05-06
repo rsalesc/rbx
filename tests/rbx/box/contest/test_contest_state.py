@@ -44,6 +44,25 @@ def test_resolve_prefers_var_over_env(monkeypatch: pytest.MonkeyPatch):
         contest_state.selected_variant_id_var.reset(token)
 
 
+def test_apply_cli_selection_sets_var():
+    contest_state.apply_cli_selection('div1')
+    assert contest_state.get_selected_variant_id() == 'div1'
+
+
+def test_apply_cli_selection_rejects_invalid(capsys):
+    import typer
+
+    with pytest.raises(typer.Exit):
+        contest_state.apply_cli_selection('bad id')
+    out = capsys.readouterr().out
+    assert 'Invalid contest id' in out
+
+
+def test_apply_cli_selection_noop_on_none():
+    contest_state.apply_cli_selection(None)
+    assert contest_state.get_selected_variant_id() is None
+
+
 def test_root_callback_sets_contextvar_from_flag():
     """Smoke: invoking the root callback with -C sets the contextvar."""
     from typer.testing import CliRunner
