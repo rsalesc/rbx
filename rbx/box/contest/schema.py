@@ -1,4 +1,5 @@
 import pathlib
+import re
 from typing import Annotated, Dict, List, Optional, Set
 
 from pydantic import (
@@ -255,10 +256,28 @@ If not provided, will try to infer a color name from the color provided.
         return {self.short_name.lower()} | {a.lower() for a in self.aliases}
 
 
+_CONTEST_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$')
+_CONTEST_NAME_MIN_LENGTH = 3
+_CONTEST_NAME_MAX_LENGTH = 32
+
+
 class Contest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = NameField(description='Name of this contest.')
+    use_variants: bool = Field(
+        default=False,
+        description=(
+            'When true, this file is a sentinel marking the directory as a '
+            'multi-contest dispatcher. The actual contests live in sibling '
+            'files matching contest.<id>.rbx.yml. When set, no other Contest '
+            'fields may be specified.'
+        ),
+    )
+
+    name: str = Field(
+        default='',
+        description='Name of this contest.',
+    )
 
     titles: Dict[str, str] = Field(
         default={},
@@ -269,6 +288,36 @@ class Contest(BaseModel):
     problems: List[ContestProblem] = Field(
         default=[], description='List of problems in this contest.'
     )
+
+    @model_validator(mode='after')
+    def _validate_dispatcher_or_real(self):
+        if self.use_variants:
+            for field in ('name', 'titles', 'problems', 'statements', 'vars'):
+                value = getattr(self, field)
+                if value:
+                    raise ValueError(
+                        f'Field {field!r} cannot be set when use_variants is true.'
+                    )
+            return self
+        if not self.name:
+            raise ValueError('Field "name" is required for a contest.')
+        if (
+            len(self.name) < _CONTEST_NAME_MIN_LENGTH
+            or len(self.name) > _CONTEST_NAME_MAX_LENGTH
+        ):
+            raise ValueError(
+                f'Field "name" must be between {_CONTEST_NAME_MIN_LENGTH} and '
+                f'{_CONTEST_NAME_MAX_LENGTH} characters long.'
+            )
+        if not _CONTEST_NAME_PATTERN.match(self.name):
+            raise ValueError(
+                f'Field "name" must match pattern {_CONTEST_NAME_PATTERN.pattern!r}.'
+            )
+        return self
+
+    @property
+    def is_dispatcher(self) -> bool:
+        return self.use_variants
 
     @model_validator(mode='after')
     def check_problem_identifiers_unique(self):
