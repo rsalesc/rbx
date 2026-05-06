@@ -1,30 +1,91 @@
-from typing import Optional, Tuple
+import pathlib
+from typing import List, Optional, Tuple
 
 import typer
 
 from rbx.box import package
-from rbx.box.contest import contest_package
+from rbx.box.contest import contest_package, contest_state
+from rbx.box.contest.contest_package import discover_contest_variants
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.schema import Package
 from rbx.box.statements.schema import Statement
 from rbx.console import console
 
 
-def get_problem_entry_in_contest() -> Optional[Tuple[int, ContestProblem]]:
-    contest = contest_package.find_contest_package()
-    if contest is None:
-        return None
+def _entry_in_contest(
+    contest: Contest,
+    contest_root: pathlib.Path,
+) -> Optional[Tuple[int, ContestProblem]]:
     problem_path = package.find_problem()
-    contest_path = contest_package.find_contest()
-
     for i, problem in enumerate(contest.problems):
         if problem.path is None:
             continue
-        if (problem_path / 'problem.rbx.yml').samefile(
-            contest_path / problem.path / 'problem.rbx.yml'
-        ):
+        candidate = contest_root / problem.path / 'problem.rbx.yml'
+        if not candidate.is_file():
+            continue
+        if (problem_path / 'problem.rbx.yml').samefile(candidate):
             return i, problem
     return None
+
+
+def get_problem_entry_in_contest() -> Optional[Tuple[int, ContestProblem]]:
+    # Fast path: explicit selection or single-mode contest.
+    contest = contest_package.find_contest_package()
+    if contest is not None:
+        contest_path = contest_package.find_contest()
+        return _entry_in_contest(contest, contest_path)
+
+    # Past this point: find_contest_package returned None. Either there's
+    # no contest at all, or we're in dispatcher mode without a selection.
+    if contest_state.resolve_explicit_selection() is not None:
+        # Selection set but contest_package returned None -> upstream
+        # already errored or there is no matching variant.
+        return None
+
+    contest_root = contest_package.find_contest_root()
+    if contest_root is None:
+        return None
+
+    variants = discover_contest_variants(contest_root)
+    matches: List[Tuple[int, ContestProblem]] = []
+    for vid, _yaml_path in variants.items():
+        if vid is None:
+            continue
+        candidate_contest = contest_package.find_contest_package(
+            contest_root, contest_id=vid
+        )
+        if candidate_contest is None:
+            continue
+        entry = _entry_in_contest(candidate_contest, contest_root)
+        if entry is not None:
+            matches.append(entry)
+
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def require_problem_in_contest() -> Tuple[int, ContestProblem]:
+    """Like `get_problem_entry_in_contest` but errors if not uniquely resolvable."""
+    entry = get_problem_entry_in_contest()
+    if entry is not None:
+        return entry
+
+    contest_root = contest_package.find_contest_root()
+    if contest_root is None:
+        console.print('[error]No contest found for the current problem.[/error]')
+        raise typer.Exit(1)
+    variants = discover_contest_variants(contest_root)
+    available = sorted(v for v in variants if v is not None)
+    if len(available) > 1 and contest_state.resolve_explicit_selection() is None:
+        console.print(
+            f'[error]This problem is part of multiple contests. '
+            f'Pass -C <id> or set RBX_CONTEST=<id>. '
+            f'Available contests: {available}.[/error]'
+        )
+        raise typer.Exit(1)
+    console.print('[error]Problem is not registered in the active contest.[/error]')
+    raise typer.Exit(1)
 
 
 def get_problem_shortname() -> Optional[str]:

@@ -108,6 +108,21 @@ def validate_problem_folders_are_packages(
     raise typer.Exit(1)
 
 
+def find_contest_root(
+    root: pathlib.Path = pathlib.Path(),
+) -> Optional[pathlib.Path]:
+    """Walks up from `root` looking for a directory containing contest.rbx.yml.
+
+    Does NOT load the file. Returns the directory or None.
+    """
+    walker = utils.abspath(root)
+    while walker != pathlib.PosixPath('/') and not (walker / YAML_NAME).is_file():
+        walker = walker.parent
+    if not (walker / YAML_NAME).is_file():
+        return None
+    return walker
+
+
 # NOTE: `find_contest_yaml` is `@functools.cache`d. The contextvar fallback
 # (via `resolve_explicit_selection`) is consulted only when `contest_id` is
 # None, which means a cache hit may return a stale result if the contextvar
@@ -121,15 +136,10 @@ def find_contest_yaml(
 ) -> Optional[pathlib.Path]:
     from rbx.box.contest.contest_state import resolve_explicit_selection
 
-    root = utils.abspath(root)
-    contest_yaml_path = root / YAML_NAME
-    while root != pathlib.PosixPath('/') and not contest_yaml_path.is_file():
-        root = root.parent
-        contest_yaml_path = root / YAML_NAME
-    if not contest_yaml_path.is_file():
+    contest_root = find_contest_root(root)
+    if contest_root is None:
         return None
-
-    contest_root = contest_yaml_path.parent
+    contest_yaml_path = contest_root / YAML_NAME
     canonical_contest = load_yaml_model(contest_yaml_path, Contest)
 
     effective_id = (
@@ -181,21 +191,13 @@ def find_contest_package(
 
 
 def _die_no_contest(root: pathlib.Path) -> NoReturn:
-    """Errors with a contextual message when no contest is resolved.
-
-    Re-walks the tree to detect dispatcher mode. This duplicates the walk
-    in `find_contest_yaml`, but keeps the public signature minimal.
-    """
+    """Errors with a contextual message when no contest is resolved."""
     abs_root = utils.abspath(root)
-    walker = abs_root
-    contest_yaml_path = walker / YAML_NAME
-    while walker != pathlib.PosixPath('/') and not contest_yaml_path.is_file():
-        walker = walker.parent
-        contest_yaml_path = walker / YAML_NAME
-    if contest_yaml_path.is_file():
-        canonical = load_yaml_model(contest_yaml_path, Contest)
+    contest_root = find_contest_root(abs_root)
+    if contest_root is not None:
+        canonical = load_yaml_model(contest_root / YAML_NAME, Contest)
         if canonical.is_dispatcher:
-            variants = discover_contest_variants(contest_yaml_path.parent)
+            variants = discover_contest_variants(contest_root)
             # Dispatcher mode never produces a None key.
             available = sorted(variants)
             console.console.print(
