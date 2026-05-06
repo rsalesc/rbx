@@ -106,8 +106,12 @@ class GroupSkeleton(BaseModel):
 class SolutionSkeleton(Solution):
     runs_dir: pathlib.Path
 
-    def get_entry_prefix(self, entry: TestcaseEntry) -> pathlib.Path:
-        return self.runs_dir / entry.group / f'{entry.index:03d}'
+    def get_entry_prefix(
+        self, entry: TestcaseEntry, stem: Optional[str] = None
+    ) -> pathlib.Path:
+        if stem is None:
+            stem = f'{entry.index:03d}'
+        return self.runs_dir / entry.group / stem
 
     def runs_dir_href(self) -> str:
         relpath = self.runs_dir.relative_to(package.find_problem())
@@ -147,6 +151,23 @@ class SolutionReportSkeleton(BaseModel):
         return [
             entry for entry in self.entries if entry.group_entry.group == group_name
         ]
+
+    def get_entry_stem(self, entry: TestcaseEntry) -> str:
+        # The on-disk .eval/.out/.log filename stem comes from
+        # ``Testcase.inputPath.stem`` (see ``rbx/box/tasks.py``), which for
+        # subgroup-generated tests is e.g. ``1-gen-000`` rather than the
+        # zero-padded group index. Resolve the actual stem via the matching
+        # GenerationTestcaseEntry; fall back to ``{idx:03d}`` for legacy
+        # packages that emit flat numeric filenames.
+        for e in self.entries:
+            if e.group_entry == entry:
+                return e.metadata.copied_to.inputPath.stem
+        return f'{entry.index:03d}'
+
+    def get_solution_entry_prefix(
+        self, solution: 'SolutionSkeleton', entry: TestcaseEntry
+    ) -> pathlib.Path:
+        return solution.get_entry_prefix(entry, stem=self.get_entry_stem(entry))
 
     def find_solution_skeleton(self, solution: Solution) -> Optional[SolutionSkeleton]:
         for sol in self.solutions:

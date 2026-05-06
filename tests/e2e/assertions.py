@@ -22,6 +22,7 @@ from rbx.box.solutions import (
     SolutionSkeleton,
     get_worst_outcome,
 )
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation
 from tests.e2e.spec import SolutionMatcher, TestsMatcher, ZipMatcher
 
@@ -166,21 +167,9 @@ def _resolve_eval_path(
     group: str,
     idx: int,
 ) -> pathlib.Path:
-    """Compute the on-disk ``.eval`` path for a (solution, group, index) cell.
-
-    The eval filename stem is taken from ``Testcase.inputPath.stem``, which
-    for generated tests reflects the subgroup naming
-    (e.g. ``1-gen-000``), not a flat ``{idx:03d}``. We recover it by looking
-    up the matching ``GenerationTestcaseEntry`` in ``skeleton.entries``.
-    """
-    for entry in skeleton.entries:
-        ge = entry.group_entry
-        if ge.group == group and ge.index == idx:
-            stem = entry.metadata.copied_to.inputPath.stem
-            return sol.runs_dir / group / f'{stem}.eval'
-    # Fallback to the historical ``{idx:03d}`` convention so cleanly-laid-out
-    # packages still resolve even if entries metadata is sparse.
-    return sol.runs_dir / group / f'{idx:03d}.eval'
+    return skeleton.get_solution_entry_prefix(
+        sol, TestcaseEntry(group=group, index=idx)
+    ).with_suffix('.eval')
 
 
 def _read_eval(
