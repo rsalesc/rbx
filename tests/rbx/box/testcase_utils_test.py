@@ -217,7 +217,9 @@ class TestClearBuiltTestcases:
 
         assert not tests_path.exists()
 
-    def test_clear_built_testcases_nonexistent(self):
+    def test_clear_built_testcases_nonexistent(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
         """Test clearing when directory doesn't exist doesn't raise error."""
         # This should not raise an error
         clear_built_testcases()
