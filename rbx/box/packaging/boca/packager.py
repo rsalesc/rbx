@@ -82,9 +82,10 @@ class BocaPackager(BasePackager):
 
     def _get_problem_basename(self) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
-        shortname = naming.get_problem_shortname()
-        if extension.preferContestLetter and shortname is not None:
-            return shortname
+        if extension.preferContestLetter:
+            shortname = naming.get_problem_shortname_or_require()
+            if shortname is not None:
+                return shortname
         return self._get_problem_name()
 
     def _get_problem_info(self) -> str:

@@ -206,6 +206,57 @@ class TestRequireProblemInContest:
         assert 'div2' in out
 
 
+class TestGetProblemShortnameOrRequire:
+    @pytest.fixture(autouse=True)
+    def _clear_state(self):
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+        token = selected_variant_id_var.set(None)
+        try:
+            yield
+        finally:
+            selected_variant_id_var.reset(token)
+            cp_module.find_contest_yaml.cache_clear()
+            cp_module.find_contest_package.cache_clear()
+
+    def test_returns_none_when_no_contest_at_all(self, tmp_path: pathlib.Path):
+        _write_problem(tmp_path, 'lonely')
+        os.chdir(tmp_path)
+
+        assert naming.get_problem_shortname_or_require() is None
+
+    def test_returns_shortname_in_single_contest(self, tmp_path: pathlib.Path):
+        _write_single_contest(tmp_path, [('A', 'A')])
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        assert naming.get_problem_shortname_or_require() == 'A'
+
+    def test_errors_in_dispatcher_ambiguous_mode(
+        self,
+        tmp_path: pathlib.Path,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A')],
+                'div2': [('A', 'A')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        with pytest.raises(typer.Exit):
+            naming.get_problem_shortname_or_require()
+
+        out = capsys.readouterr().out
+        assert '-C' in out
+        assert 'div1' in out and 'div2' in out
+
+
 class TestGetTitle:
     def test_returns_pkg_title_for_lang_when_present(self):
         pkg = Package(
