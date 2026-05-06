@@ -75,16 +75,44 @@ def require_problem_in_contest() -> Tuple[int, ContestProblem]:
     if contest_root is None:
         console.print('[error]No contest found for the current problem.[/error]')
         raise typer.Exit(1)
+
     variants = discover_contest_variants(contest_root)
+    selection = contest_state.resolve_explicit_selection()
     available = sorted(v for v in variants if v is not None)
-    if len(available) > 1 and contest_state.resolve_explicit_selection() is None:
+
+    if len(available) > 1 and selection is None:
         console.print(
             f'[error]This problem is part of multiple contests. '
             f'Pass -C <id> or set RBX_CONTEST=<id>. '
             f'Available contests: {available}.[/error]'
         )
         raise typer.Exit(1)
-    console.print('[error]Problem is not registered in the active contest.[/error]')
+
+    # Single mode, OR dispatcher with explicit selection: the problem isn't in
+    # the active contest. Tell the user which variants DO contain it (if any).
+    containing: List[str] = []
+    for vid in variants:
+        if vid is None:
+            continue
+        candidate = contest_package.find_contest_package(contest_root, contest_id=vid)
+        if candidate is None:
+            continue
+        if _entry_in_contest(candidate, contest_root) is not None:
+            containing.append(vid)
+
+    if selection is not None:
+        msg = (
+            f'[error]This problem directory is not listed in the problems[] of '
+            f'contest variant {selection!r}.[/error]'
+        )
+        if containing:
+            msg += f' [info]It is listed in: {sorted(containing)}.[/info]'
+        console.print(msg)
+    else:
+        console.print(
+            "[error]This problem directory is not listed in the active contest's "
+            'problems[] field.[/error]'
+        )
     raise typer.Exit(1)
 
 
