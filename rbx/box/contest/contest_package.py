@@ -1,12 +1,13 @@
 import functools
 import pathlib
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ruyaml
 import typer
 
 from rbx import console, utils
 from rbx.box import cd
+from rbx.box.contest.contest_state import is_valid_variant_id
 from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die
 from rbx.box.sanitizers import issue_stack
@@ -15,6 +16,45 @@ from rbx.box.yaml_validation import load_yaml_model
 
 YAML_NAME = 'contest.rbx.yml'
 PROBLEM_YAML_NAME = 'problem.rbx.yml'
+VARIANT_GLOB = 'contest.*.rbx.yml'
+
+
+def discover_contest_variants(
+    contest_root: pathlib.Path,
+) -> Dict[Optional[str], pathlib.Path]:
+    """Returns variant_id -> yaml path. Single-contest mode uses key None.
+
+    Errors via typer.Exit if contest.rbx.yml is a real contest AND there are
+    sibling contest.<id>.rbx.yml files (ambiguous).
+    """
+    canonical = contest_root / YAML_NAME
+    if not canonical.is_file():
+        return {}
+
+    canonical_contest = load_yaml_model(canonical, Contest)
+    sibling_paths = sorted(contest_root.glob(VARIANT_GLOB))
+    siblings: Dict[str, pathlib.Path] = {}
+    for path in sibling_paths:
+        # path.name is e.g. 'contest.div1.rbx.yml' -> id 'div1'
+        # Strip leading 'contest.' and trailing '.rbx.yml'.
+        name = path.name[len('contest.') : -len('.rbx.yml')]
+        if not is_valid_variant_id(name):
+            continue
+        siblings[name] = path
+
+    if canonical_contest.is_dispatcher:
+        return {vid: p for vid, p in siblings.items()}
+
+    if siblings:
+        console.console.print(
+            f'[error]{canonical} is a real contest but sibling variant files '
+            f'exist: {[p.name for p in siblings.values()]}. Set '
+            f'use_variants: true on contest.rbx.yml to enable dispatcher '
+            f'mode.[/error]'
+        )
+        raise typer.Exit(1)
+
+    return {None: canonical}
 
 
 def validate_problem_folders_exist(

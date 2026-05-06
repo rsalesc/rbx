@@ -194,3 +194,34 @@ class TestFindContestPackageValidation:
         out = capsys.readouterr().out
         assert '- A:' in out
         assert 'problem.rbx.yml' in out
+
+
+class TestDiscoverVariants:
+    def test_single_mode_returns_default(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        assert variants == {None: tmp_path / 'contest.rbx.yml'}
+
+    def test_dispatcher_mode_lists_siblings(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        assert set(variants.keys()) == {'div1', 'div2'}
+        assert variants['div1'].name == 'contest.div1.rbx.yml'
+
+    def test_dispatcher_with_invalid_id_silently_skipped(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.bad name.rbx.yml').write_text('name: bad-id-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        # Files with invalid ids are silently skipped.
+        assert variants == {}
+
+    def test_no_yaml_returns_empty(self, tmp_path):
+        assert cp_module.discover_contest_variants(tmp_path) == {}
+
+    def test_real_contest_with_siblings_errors(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        with pytest.raises(typer.Exit):
+            cp_module.discover_contest_variants(tmp_path)
