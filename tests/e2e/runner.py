@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import os
 import pathlib
+import re
 import shlex
 import shutil
 import tempfile
@@ -44,6 +45,17 @@ from tests.e2e.assertions import (
     check_zip_not_contains,
 )
 from tests.e2e.spec import Expect, Scenario, Step
+
+# ANSI CSI/SGR/OSC sequences emitted by Rich when colors are enabled in the
+# capture stream (e.g. FORCE_COLOR=1, or TTY-detected runs). Stdout/stderr
+# assertions test user-visible content, so strip these before comparing —
+# otherwise styled segments break literal substring matches like 'div1 *'.
+_ANSI_RE = re.compile(r'\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\))')
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub('', text)
+
 
 # Patterns excluded when copying a fixture directory into the run tmpdir.
 # These are paths that ``rbx`` (or prior test runs) generates and that should
@@ -147,8 +159,8 @@ def run_step(
 
     ctx = AssertionContext(
         package_root=cwd,
-        stdout=result.stdout,
-        stderr=result.stderr,
+        stdout=_strip_ansi(result.stdout),
+        stderr=_strip_ansi(result.stderr),
     )
     try:
         _run_generic_assertions(ctx, step.expect)
