@@ -1,12 +1,13 @@
 import functools
 import pathlib
-from typing import List, Optional, Tuple
+from typing import Dict, List, NoReturn, Optional, Tuple
 
 import ruyaml
 import typer
 
 from rbx import console, utils
 from rbx.box import cd
+from rbx.box.contest.contest_state import is_valid_variant_id
 from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die
 from rbx.box.sanitizers import issue_stack
@@ -15,6 +16,42 @@ from rbx.box.yaml_validation import load_yaml_model
 
 YAML_NAME = 'contest.rbx.yml'
 PROBLEM_YAML_NAME = 'problem.rbx.yml'
+VARIANT_GLOB = 'contest.*.rbx.yml'
+
+
+def discover_contest_variants(
+    contest_root: pathlib.Path,
+) -> Dict[Optional[str], pathlib.Path]:
+    """Returns variant_id -> yaml path.
+
+    - No contest.rbx.yml -> {}.
+    - Dispatcher canonical (`use_variants: true`) -> {sibling ids only}.
+    - Real canonical -> {None: canonical, **siblings}; the canonical is the
+      default selection, siblings are additional selectable variants.
+    """
+    canonical = contest_root / YAML_NAME
+    if not canonical.is_file():
+        return {}
+
+    canonical_contest = load_yaml_model(canonical, Contest)
+    sibling_paths = sorted(contest_root.glob(VARIANT_GLOB))
+    siblings: Dict[str, pathlib.Path] = {}
+    for path in sibling_paths:
+        # path.name is e.g. 'contest.div1.rbx.yml' -> id 'div1'
+        # Strip leading 'contest.' and trailing '.rbx.yml'.
+        name = path.name[len('contest.') : -len('.rbx.yml')]
+        if not is_valid_variant_id(name):
+            console.console.print(
+                f'[warning]Skipping {path.name}: not a valid contest '
+                f'variant id.[/warning]'
+            )
+            continue
+        siblings[name] = path
+
+    if canonical_contest.is_dispatcher:
+        return dict(siblings)
+
+    return {None: canonical, **siblings}
 
 
 def validate_problem_folders_exist(
@@ -63,21 +100,66 @@ def validate_problem_folders_are_packages(
     raise typer.Exit(1)
 
 
-@functools.cache
-def find_contest_yaml(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
-    root = utils.abspath(root)
-    contest_yaml_path = root / YAML_NAME
-    while root != pathlib.PosixPath('/') and not contest_yaml_path.is_file():
-        root = root.parent
-        contest_yaml_path = root / YAML_NAME
-    if not contest_yaml_path.is_file():
+def find_contest_root(
+    root: pathlib.Path = pathlib.Path(),
+) -> Optional[pathlib.Path]:
+    """Walks up from `root` looking for a directory containing contest.rbx.yml.
+
+    Does NOT load the file. Returns the directory or None.
+    """
+    walker = utils.abspath(root)
+    while walker != pathlib.PosixPath('/') and not (walker / YAML_NAME).is_file():
+        walker = walker.parent
+    if not (walker / YAML_NAME).is_file():
         return None
-    return contest_yaml_path
+    return walker
+
+
+# NOTE: `find_contest_yaml` is `@functools.cache`d. The contextvar fallback
+# (via `resolve_explicit_selection`) is consulted only when `contest_id` is
+# None, which means a cache hit may return a stale result if the contextvar
+# changes between calls with the same `(root, None)` key. Production callers
+# resolve selection once at the CLI callback boundary; tests must
+# `cache_clear()` when manipulating the contextvar.
+@functools.cache
+def find_contest_yaml(
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
+) -> Optional[pathlib.Path]:
+    from rbx.box.contest.contest_state import resolve_explicit_selection
+
+    contest_root = find_contest_root(root)
+    if contest_root is None:
+        return None
+
+    effective_id = (
+        contest_id if contest_id is not None else resolve_explicit_selection()
+    )
+    variants = discover_contest_variants(contest_root)
+
+    if effective_id is None:
+        # Returns the canonical default if there is one, else None
+        # (dispatcher with no selection).
+        return variants.get(None)
+
+    if effective_id in variants and effective_id is not None:
+        return variants[effective_id]
+
+    available = sorted(k for k in variants if k is not None)
+    console.console.print(
+        f'[error]Contest variant {effective_id!r} not found. '
+        f'Pass -C <id> or set RBX_CONTEST=<id>. '
+        f'Available: {available}.[/error]'
+    )
+    raise typer.Exit(1)
 
 
 @functools.cache
-def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contest]:
-    contest_yaml_path = find_contest_yaml(root)
+def find_contest_package(
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
+) -> Optional[Contest]:
+    contest_yaml_path = find_contest_yaml(root, contest_id=contest_id)
     if not contest_yaml_path:
         return None
     contest = load_yaml_model(contest_yaml_path, Contest)
@@ -88,19 +170,42 @@ def find_contest_package(root: pathlib.Path = pathlib.Path()) -> Optional[Contes
     return contest
 
 
-def find_contest_package_or_die(root: pathlib.Path = pathlib.Path()) -> Contest:
-    package = find_contest_package(root)
+def _die_no_contest(root: pathlib.Path) -> NoReturn:
+    """Errors with a contextual message when no contest is resolved."""
+    abs_root = utils.abspath(root)
+    contest_root = find_contest_root(abs_root)
+    if contest_root is not None:
+        canonical = load_yaml_model(contest_root / YAML_NAME, Contest)
+        if canonical.is_dispatcher:
+            variants = discover_contest_variants(contest_root)
+            available = sorted(k for k in variants if k is not None)
+            console.console.print(
+                f'[error]Multiple contests are defined in this directory. '
+                f'Pass -C <id> or set RBX_CONTEST=<id>. '
+                f'Available contests: {available}.[/error]'
+            )
+            raise typer.Exit(1)
+    console.console.print(f'Contest not found in {abs_root}', style='error')
+    raise typer.Exit(1)
+
+
+def find_contest_package_or_die(
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
+) -> Contest:
+    package = find_contest_package(root, contest_id=contest_id)
     if package is None:
-        console.console.print(f'Contest not found in {root.absolute()}', style='error')
-        raise typer.Exit(1)
+        _die_no_contest(root)
     return package
 
 
-def find_contest(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    found = find_contest_yaml(root)
+def find_contest(
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
+) -> pathlib.Path:
+    found = find_contest_yaml(root, contest_id=contest_id)
     if found is None:
-        console.console.print(f'Contest not found in {root.absolute()}', style='error')
-        raise typer.Exit(1)
+        _die_no_contest(root)
     return found.parent
 
 
@@ -120,10 +225,12 @@ def within_contest(func):
 
 
 def save_contest(
-    package: Optional[Contest] = None, root: pathlib.Path = pathlib.Path()
+    package: Optional[Contest] = None,
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
 ) -> None:
-    package = package or find_contest_package_or_die(root)
-    contest_yaml_path = find_contest_yaml(root)
+    package = package or find_contest_package_or_die(root, contest_id=contest_id)
+    contest_yaml_path = find_contest_yaml(root, contest_id=contest_id)
     if not contest_yaml_path:
         console.console.print(f'Contest not found in {root.absolute()}', style='error')
         raise typer.Exit(1)
@@ -137,8 +244,11 @@ def get_problems(contest: Contest) -> List[Package]:
     return problems
 
 
-def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
-    contest_yaml_path = find_contest_yaml(root)
+def get_ruyaml(
+    root: pathlib.Path = pathlib.Path(),
+    contest_id: Optional[str] = None,
+) -> Tuple[ruyaml.YAML, ruyaml.Any]:
+    contest_yaml_path = find_contest_yaml(root, contest_id=contest_id)
     if contest_yaml_path is None:
         console.console.print(f'[error]Contest not found in {root.absolute()}[/error]')
         raise typer.Exit(1)

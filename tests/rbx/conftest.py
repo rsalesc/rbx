@@ -80,6 +80,7 @@ def mock_app_path(monkeysession, tmp_path_factory):
 def _isolate_global_state() -> Iterator[None]:
     from rbx import testing_utils
     from rbx.box import package as _package
+    from rbx.box.contest import contest_state as _contest_state
     from rbx.grading import grading_context as _gc
 
     original_cwd = os.getcwd()
@@ -90,6 +91,7 @@ def _isolate_global_state() -> Iterator[None]:
         _gc.use_compression_var,
         _gc.check_integrity_var,
         _gc.is_stress_var,
+        _contest_state.selected_variant_id_var,
     ]
     snapshots = [(v, v.get()) for v in context_vars]
     try:

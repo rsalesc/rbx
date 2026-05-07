@@ -168,6 +168,26 @@ class TestGetInheritanceOverrides:
 
         mock_get_overrides.assert_called_once_with(contest_stm, inherit=True)
 
+    def test_dispatcher_ambiguous_raises_picker_error(self, tmp_path, monkeypatch):
+        # Real-fs fixture: we're verifying dispatcher discovery + resolve_explicit_selection
+        # interplay, which mocks would short-circuit.
+        # Set up dispatcher mode with two variants in tmp_path.
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: Div1\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: Div2\n')
+        monkeypatch.chdir(tmp_path)
+
+        statement = Statement(name='problem', inheritFromContest=True)
+
+        with pytest.raises(StatementInheritanceError) as exc:
+            get_inheritance_overrides(statement)
+
+        rendered = str(exc.value)
+        assert '-C' in rendered
+        assert 'RBX_CONTEST' in rendered
+        assert 'div1' in rendered
+        assert 'div2' in rendered
+
     @patch('rbx.box.contest.statement_overriding.contest_package.find_contest_package')
     def test_no_match_due_to_missing_joiner(self, mock_find_pkg):
         contest_stm = ContestStatement(name='english', language='en')

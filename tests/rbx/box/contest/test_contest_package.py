@@ -194,3 +194,122 @@ class TestFindContestPackageValidation:
         out = capsys.readouterr().out
         assert '- A:' in out
         assert 'problem.rbx.yml' in out
+
+
+class TestDiscoverVariants:
+    def test_single_mode_returns_default(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        assert variants == {None: tmp_path / 'contest.rbx.yml'}
+
+    def test_dispatcher_mode_lists_siblings(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        assert set(variants.keys()) == {'div1', 'div2'}
+        assert variants['div1'].name == 'contest.div1.rbx.yml'
+
+    def test_dispatcher_with_invalid_id_skipped_with_warning(
+        self, tmp_path, capsys: pytest.CaptureFixture[str]
+    ):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.bad name.rbx.yml').write_text('name: bad-id-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        # Files with invalid ids are skipped, with a warning printed.
+        assert variants == {}
+        out = capsys.readouterr().out
+        assert 'Skipping contest.bad name.rbx.yml' in out
+        assert 'not a valid contest variant id' in out
+
+    def test_no_yaml_returns_empty(self, tmp_path):
+        assert cp_module.discover_contest_variants(tmp_path) == {}
+
+    def test_real_contest_with_siblings_returns_default_plus_variants(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        variants = cp_module.discover_contest_variants(tmp_path)
+        assert variants == {
+            None: tmp_path / 'contest.rbx.yml',
+            'div1': tmp_path / 'contest.div1.rbx.yml',
+        }
+
+
+class TestFindContestYamlVariantAware:
+    def test_single_mode_returns_canonical(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert cp_module.find_contest_yaml(tmp_path) == tmp_path / 'contest.rbx.yml'
+
+    def test_dispatcher_with_explicit_selection(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert (
+            cp_module.find_contest_yaml(tmp_path, contest_id='div1')
+            == tmp_path / 'contest.div1.rbx.yml'
+        )
+
+    def test_dispatcher_unknown_id_errors(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        cp_module.find_contest_yaml.cache_clear()
+        with pytest.raises(typer.Exit):
+            cp_module.find_contest_yaml(tmp_path, contest_id='ghost')
+
+    def test_dispatcher_no_selection_returns_none(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert cp_module.find_contest_yaml(tmp_path) is None
+
+    def test_single_mode_with_unknown_id_errors(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        cp_module.find_contest_yaml.cache_clear()
+        with pytest.raises(typer.Exit):
+            cp_module.find_contest_yaml(tmp_path, contest_id='ghost')
+
+    def test_single_mode_with_known_id_resolves_to_sibling(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert (
+            cp_module.find_contest_yaml(tmp_path, contest_id='div1')
+            == tmp_path / 'contest.div1.rbx.yml'
+        )
+
+    def test_real_canonical_with_siblings_no_id_returns_canonical(self, tmp_path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+        cp_module.find_contest_yaml.cache_clear()
+        assert cp_module.find_contest_yaml(tmp_path) == tmp_path / 'contest.rbx.yml'
+
+    def test_uses_contextvar_when_no_arg(self, tmp_path):
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-contest\n')
+        cp_module.find_contest_yaml.cache_clear()
+        token = selected_variant_id_var.set('div2')
+        try:
+            assert (
+                cp_module.find_contest_yaml(tmp_path)
+                == tmp_path / 'contest.div2.rbx.yml'
+            )
+        finally:
+            selected_variant_id_var.reset(token)
+            cp_module.find_contest_yaml.cache_clear()
+
+
+class TestFindContestPackageOrDieDispatcher:
+    def test_die_lists_available_variants(self, tmp_path, capsys):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-contest\n')
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+        with pytest.raises(typer.Exit):
+            cp_module.find_contest_package_or_die(tmp_path)
+        out = capsys.readouterr().out
+        assert 'div1' in out
+        assert 'div2' in out
+        assert '-C' in out  # picker hint

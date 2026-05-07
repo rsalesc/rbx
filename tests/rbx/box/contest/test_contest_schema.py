@@ -90,3 +90,36 @@ class TestContestProblemIdentifiersUnique:
         assert len(contest.problems) == 2
         assert contest.problems[0].all_identifiers() == {'a', 'apple'}
         assert contest.problems[1].all_identifiers() == {'b', 'banana'}
+
+
+def test_contest_default_is_not_dispatcher():
+    contest = Contest(name='abc')
+    assert contest.use_variants is False
+    assert contest.is_dispatcher is False
+
+
+def test_contest_dispatcher_skips_required_validation():
+    contest = Contest.model_validate({'use_variants': True})
+    assert contest.is_dispatcher is True
+    assert contest.problems == []
+    assert contest.statements == []
+
+
+def test_contest_dispatcher_rejects_problems_field():
+    with pytest.raises(ValidationError):
+        Contest.model_validate(
+            {
+                'use_variants': True,
+                'problems': [{'short_name': 'A'}],
+            }
+        )
+
+
+def test_contest_rejects_invalid_name():
+    with pytest.raises(ValidationError):
+        Contest(name='ab')  # below min_length=3
+
+
+def test_contest_rejects_name_with_bad_chars():
+    with pytest.raises(ValidationError):
+        Contest(name='has space')  # violates regex

@@ -382,25 +382,8 @@ class BocaScraper:
             problem_shortname = 'A'
             hex_color = None
         else:
-            problem_index = naming.get_problem_index()
-            if problem_index is None:
-                console.console.print(
-                    'It seems this problem is not part of a contest. Cannot upload it to BOCA.'
-                )
-                raise typer.Exit(1)
-
-            problem_shortname = naming.get_problem_shortname()
-            assert problem_shortname is not None
-            if problem_shortname is None:
-                console.console.print(
-                    'It seems this problem is not part of a contest. Cannot upload it to BOCA.'
-                )
-                raise typer.Exit(1)
-
-            entry = naming.get_problem_entry_in_contest()
-            assert entry is not None
-            _, problem_entry = entry
-
+            problem_index, problem_entry = naming.require_problem_in_contest()
+            problem_shortname = problem_entry.short_name
             hex_color = problem_entry.hex_color
 
         if hex_color is None:

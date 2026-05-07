@@ -1,11 +1,13 @@
 import pathlib
 from typing import Annotated, Dict, List, Optional, Set
 
+import pydantic
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     model_validator,
 )
 
@@ -255,10 +257,26 @@ If not provided, will try to infer a color name from the color provided.
         return {self.short_name.lower()} | {a.lower() for a in self.aliases}
 
 
+_CONTEST_NAME_VALIDATOR = TypeAdapter(Annotated[str, NameField()])
+
+
 class Contest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    name: str = NameField(description='Name of this contest.')
+    use_variants: bool = Field(
+        default=False,
+        description=(
+            'When true, this file is a sentinel marking the directory as a '
+            'multi-contest dispatcher. The actual contests live in sibling '
+            'files matching contest.<id>.rbx.yml. When set, no other Contest '
+            'fields may be specified.'
+        ),
+    )
+
+    name: str = Field(
+        default='',
+        description='Name of this contest.',
+    )
 
     titles: Dict[str, str] = Field(
         default={},
@@ -269,6 +287,28 @@ class Contest(BaseModel):
     problems: List[ContestProblem] = Field(
         default=[], description='List of problems in this contest.'
     )
+
+    @model_validator(mode='after')
+    def _validate_dispatcher_or_real(self):
+        # Maintenance contract: keep this tuple in sync with Contest's non-dispatcher
+        # fields. `use_variants` is the only field allowed alongside dispatcher mode.
+        if self.use_variants:
+            for field in ('name', 'titles', 'problems', 'statements', 'vars'):
+                value = getattr(self, field)
+                if value:
+                    raise ValueError(
+                        f'Field {field!r} cannot be set when use_variants is true.'
+                    )
+            return self
+        try:
+            _CONTEST_NAME_VALIDATOR.validate_python(self.name)
+        except pydantic.ValidationError as exc:
+            raise ValueError(f'Invalid contest name: {exc}') from exc
+        return self
+
+    @property
+    def is_dispatcher(self) -> bool:
+        return self.use_variants
 
     @model_validator(mode='after')
     def check_problem_identifiers_unique(self):

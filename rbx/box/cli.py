@@ -33,6 +33,7 @@ from rbx.box import (
     timing,
     validators,
 )
+from rbx.box.contest import contest_state
 from rbx.box.contest import main as contest
 from rbx.box.contest.contest_package import find_contest_yaml
 from rbx.box.environment import VerificationLevel, get_app_environment_path
@@ -161,12 +162,28 @@ def main(
         '--profiling',
         help='Whether to profile (capture performance statistics) of the execution.',
     ),
+    contest_id: Annotated[
+        Optional[str],
+        typer.Option(
+            '-C',
+            '--contest',
+            help=(
+                'Select a contest variant by id (when contest.rbx.yml has '
+                'use_variants: true). Defaults to the RBX_CONTEST env var.'
+            ),
+            envvar='RBX_CONTEST',
+        ),
+    ] = None,
     version: Annotated[
         bool, typer.Option('--version', '-v', callback=version_callback, is_eager=True)
     ] = False,
 ):
     # Load .env variables.
     utils.load_dotenv()
+
+    # Note: when both this callback and the contest sub-app callback fire
+    # in one process, the sub-app's -C runs later and wins (local override).
+    contest_state.apply_cli_selection(contest_id)
 
     presets.check_active_preset_compatibility()
     if cd.is_problem_package() and not package.is_cache_valid():

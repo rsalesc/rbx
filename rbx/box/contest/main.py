@@ -9,7 +9,7 @@ import typer
 
 from rbx import annotations, console, utils
 from rbx.box import cd, creation, presets, summary
-from rbx.box.contest import contest_package, contest_utils, statements
+from rbx.box.contest import contest_package, contest_state, contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
     find_contest_package_or_die,
@@ -24,6 +24,25 @@ from rbx.box.ui.command_app import CommandEntry, start_command_app
 from rbx.config import open_editor
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+
+
+@app.callback()
+def contest_main(
+    contest_id: Annotated[
+        Optional[str],
+        typer.Option(
+            '-C',
+            '--contest',
+            help='Select a contest variant by id.',
+            envvar='RBX_CONTEST',
+        ),
+    ] = None,
+):
+    # When the root cli callback also set this, the sub-app's value wins
+    # (local override beats global), since this fires after the root.
+    contest_state.apply_cli_selection(contest_id)
+
+
 app.add_typer(
     statements.app,
     name='statements, st',
@@ -295,3 +314,35 @@ def on(ctx: typer.Context, problems: str) -> None:
 async def summary_cmd():
     contest = find_contest_package_or_die()
     await summary.print_contest_summary(contest, get_problems(contest))
+
+
+@app.command('list, ls', help='List all contests in the current directory.')
+def list_contests():
+    contest_root = contest_package.find_contest_root()
+    if contest_root is None:
+        console.console.print('[warning]No contests found in this directory.[/warning]')
+        return
+
+    # discover_contest_variants always returns a non-empty dict here:
+    # find_contest_root returned a real path, so canonical contest.rbx.yml exists.
+    variants = contest_package.discover_contest_variants(contest_root)
+
+    if not variants:
+        console.console.print('[warning]No contests found in this directory.[/warning]')
+        return
+
+    if list(variants.keys()) == [None]:
+        console.console.print('[item]contest.rbx.yml[/item] (single contest)')
+        return
+
+    active = contest_state.resolve_explicit_selection()
+    default_path = variants.get(None)
+
+    if default_path is not None:
+        # When no explicit selection is set, the default is implicitly active.
+        marker = ' *' if active is None else ''
+        console.console.print(f'[item]contest.rbx.yml[/item] (default){marker}')
+
+    for vid in sorted(k for k in variants if k is not None):
+        marker = ' *' if vid == active else ''
+        console.console.print(f'[item]{vid}[/item]{marker}')

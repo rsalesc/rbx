@@ -16,6 +16,7 @@ runner instead just chdirs into the copied package and lets ``rbx`` discover
 """
 
 import asyncio
+import contextlib
 import os
 import pathlib
 import shlex
@@ -28,6 +29,7 @@ from typer.testing import CliRunner
 
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
+from rbx.box.contest import contest_state
 from tests.e2e.assertions import (
     AssertionContext,
     check_file_contains,
@@ -74,6 +76,22 @@ _GENERIC_CHECKS = (
 )
 
 
+@contextlib.contextmanager
+def _snapshot_e2e_contextvars():
+    """Snapshots and restores ContextVars that scenarios may mutate.
+
+    Keep the list of vars in sync with ``_isolate_global_state`` in
+    ``tests/rbx/conftest.py`` so unit and e2e suites have matching isolation.
+    """
+    context_vars = [contest_state.selected_variant_id_var]
+    snapshots = [(v, v.get()) for v in context_vars]
+    try:
+        yield
+    finally:
+        for var, value in snapshots:
+            var.set(value)
+
+
 def _run_generic_assertions(ctx: AssertionContext, expect: Expect) -> None:
     for name, fn in _GENERIC_CHECKS:
         value = getattr(expect, name)
@@ -96,8 +114,14 @@ def run_step(
     expected vs actual exit codes, and stdout/stderr if the exit code does
     not match.
     """
+    target_cwd = cwd / step.cwd if step.cwd else cwd
+    if not target_cwd.is_dir():
+        raise AssertionError(
+            f'[{scenario_path.parent.name}::{scenario_name}] '
+            f'step cwd {step.cwd!r} does not exist under {cwd}'
+        )
     old_cwd = pathlib.Path.cwd()
-    os.chdir(cwd)
+    os.chdir(target_cwd)
     try:
         result = CliRunner().invoke(rbx_app, shlex.split(step.cmd))
     finally:
@@ -159,10 +183,15 @@ class E2EScenarioItem(pytest.Item):
             # scenario.
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            # Snapshot contextvars that the CLI mutates, so a scenario that
+            # sets `-C <id>` does not leak its variant id into the next
+            # scenario run in the same process. Mirrors the autouse
+            # `_isolate_global_state` fixture in tests/rbx/conftest.py.
             try:
                 testing_utils.clear_all_functools_cache()
-                for step in self.scenario.steps:
-                    run_step(self.path, self.scenario.name, step, pkg_dir)
+                with _snapshot_e2e_contextvars():
+                    for step in self.scenario.steps:
+                        run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
                 testing_utils.clear_all_functools_cache()
                 try:

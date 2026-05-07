@@ -41,11 +41,13 @@ def submit_all_solutions(scraper: BocaScraper) -> Iterable[JudgedSolution]:
         console.console.print('[error]Failed to login to BOCA.[/error]')
         raise typer.Exit(1)
 
+    _, problem_entry = naming.require_problem_in_contest()
+    problem_shortname = problem_entry.short_name
     problem_indices = scraper.list_problems_as_judge()
-    problem_index = problem_indices.get(naming.get_problem_shortname() or '')
+    problem_index = problem_indices.get(problem_shortname)
     if problem_index is None:
         console.console.print(
-            f'[error]Problem [item]{naming.get_problem_shortname()}[/item] not found in BOCA.[/error]'
+            f'[error]Problem [item]{problem_shortname}[/item] not found in BOCA.[/error]'
         )
         raise typer.Exit(1)
 

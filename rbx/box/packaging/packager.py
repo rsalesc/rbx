@@ -78,7 +78,7 @@ class BasePackager(ABC):
 
     def package_basename(self):
         pkg = package.find_problem_package_or_die()
-        shortname = naming.get_problem_shortname()
+        shortname = naming.get_problem_shortname_or_require()
         if shortname is not None:
             return f'{shortname}-{pkg.name}'
         return pkg.name

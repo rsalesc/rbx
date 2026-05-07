@@ -1,11 +1,260 @@
+import os
+import pathlib
 from unittest.mock import patch
 
 import pytest
 import typer
 
 from rbx.box import naming
+from rbx.box.contest import contest_package as cp_module
+from rbx.box.contest.contest_state import selected_variant_id_var
 from rbx.box.schema import Package
 from rbx.box.statements.schema import Statement
+
+
+def _write_problem(folder: pathlib.Path, name: str) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / 'problem.rbx.yml').write_text(f'name: {name}\n')
+
+
+def _write_single_contest(root: pathlib.Path, problems: list[tuple[str, str]]) -> None:
+    body = '\n'.join(f'  - short_name: {sn}\n    path: {path}' for sn, path in problems)
+    (root / 'contest.rbx.yml').write_text(f'name: ctt\nproblems:\n{body}\n')
+
+
+def _write_dispatcher(
+    root: pathlib.Path, variants: dict[str, list[tuple[str, str]]]
+) -> None:
+    (root / 'contest.rbx.yml').write_text('use_variants: true\n')
+    for vid, problems in variants.items():
+        body = '\n'.join(
+            f'  - short_name: {sn}\n    path: {path}' for sn, path in problems
+        )
+        (root / f'contest.{vid}.rbx.yml').write_text(
+            f'name: {vid}-c\nproblems:\n{body}\n'
+        )
+
+
+class TestGetProblemEntryInContest:
+    @pytest.fixture(autouse=True)
+    def _clear_state(self):
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+        token = selected_variant_id_var.set(None)
+        try:
+            yield
+        finally:
+            selected_variant_id_var.reset(token)
+            cp_module.find_contest_yaml.cache_clear()
+            cp_module.find_contest_package.cache_clear()
+
+    def test_get_entry_in_single_contest_returns_entry(self, tmp_path: pathlib.Path):
+        _write_single_contest(tmp_path, [('A', 'A'), ('B', 'B')])
+        _write_problem(tmp_path / 'A', 'prob-a')
+        _write_problem(tmp_path / 'B', 'prob-b')
+
+        os.chdir(tmp_path / 'A')
+
+        entry = naming.get_problem_entry_in_contest()
+        assert entry is not None
+        idx, problem = entry
+        assert idx == 0
+        assert problem.short_name == 'A'
+
+    def test_get_entry_dispatcher_problem_in_one_variant_auto_picks(
+        self, tmp_path: pathlib.Path
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A'), ('B', 'B')],
+                'div2': [('B', 'B')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+        _write_problem(tmp_path / 'B', 'prob-b')
+
+        os.chdir(tmp_path / 'A')
+
+        entry = naming.get_problem_entry_in_contest()
+        assert entry is not None
+        idx, problem = entry
+        assert idx == 0
+        assert problem.short_name == 'A'
+
+    def test_get_entry_dispatcher_problem_in_two_variants_no_selection_returns_none(
+        self, tmp_path: pathlib.Path
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A')],
+                'div2': [('A', 'A')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        assert naming.get_problem_entry_in_contest() is None
+
+    def test_get_entry_dispatcher_problem_in_two_variants_with_selection_returns_selected(
+        self, tmp_path: pathlib.Path
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A')],
+                'div2': [('A', 'A')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        # Autouse fixture handles the contextvar reset.
+        selected_variant_id_var.set('div2')
+        entry = naming.get_problem_entry_in_contest()
+        assert entry is not None
+        idx, problem = entry
+        assert idx == 0
+        assert problem.short_name == 'A'
+
+
+class TestRequireProblemInContest:
+    @pytest.fixture(autouse=True)
+    def _clear_state(self):
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+        token = selected_variant_id_var.set(None)
+        try:
+            yield
+        finally:
+            selected_variant_id_var.reset(token)
+            cp_module.find_contest_yaml.cache_clear()
+            cp_module.find_contest_package.cache_clear()
+
+    def test_require_problem_in_contest_errors_when_ambiguous(
+        self,
+        tmp_path: pathlib.Path,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A')],
+                'div2': [('A', 'A')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        with pytest.raises(typer.Exit):
+            naming.require_problem_in_contest()
+
+        out = capsys.readouterr().out
+        assert '-C' in out
+        assert 'RBX_CONTEST' in out
+        assert 'div1' in out
+        assert 'div2' in out
+
+    def test_require_problem_in_contest_returns_entry_when_unique(
+        self, tmp_path: pathlib.Path
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A'), ('B', 'B')],
+                'div2': [('B', 'B')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+        _write_problem(tmp_path / 'B', 'prob-b')
+
+        os.chdir(tmp_path / 'A')
+
+        idx, problem = naming.require_problem_in_contest()
+        assert idx == 0
+        assert problem.short_name == 'A'
+
+    def test_require_problem_in_contest_errors_when_selection_does_not_contain_problem(
+        self,
+        tmp_path: pathlib.Path,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('B', 'B')],
+                'div2': [('A', 'A')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+        _write_problem(tmp_path / 'B', 'prob-b')
+
+        os.chdir(tmp_path / 'A')
+
+        # Autouse fixture handles the contextvar reset.
+        selected_variant_id_var.set('div1')
+
+        with pytest.raises(typer.Exit):
+            naming.require_problem_in_contest()
+
+        out = capsys.readouterr().out
+        assert 'div1' in out
+        assert 'div2' in out
+
+
+class TestGetProblemShortnameOrRequire:
+    @pytest.fixture(autouse=True)
+    def _clear_state(self):
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.find_contest_package.cache_clear()
+        token = selected_variant_id_var.set(None)
+        try:
+            yield
+        finally:
+            selected_variant_id_var.reset(token)
+            cp_module.find_contest_yaml.cache_clear()
+            cp_module.find_contest_package.cache_clear()
+
+    def test_returns_none_when_no_contest_at_all(self, tmp_path: pathlib.Path):
+        _write_problem(tmp_path, 'lonely')
+        os.chdir(tmp_path)
+
+        assert naming.get_problem_shortname_or_require() is None
+
+    def test_returns_shortname_in_single_contest(self, tmp_path: pathlib.Path):
+        _write_single_contest(tmp_path, [('A', 'A')])
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        assert naming.get_problem_shortname_or_require() == 'A'
+
+    def test_errors_in_dispatcher_ambiguous_mode(
+        self,
+        tmp_path: pathlib.Path,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        _write_dispatcher(
+            tmp_path,
+            {
+                'div1': [('A', 'A')],
+                'div2': [('A', 'A')],
+            },
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+
+        os.chdir(tmp_path / 'A')
+
+        with pytest.raises(typer.Exit):
+            naming.get_problem_shortname_or_require()
+
+        out = capsys.readouterr().out
+        assert '-C' in out
+        assert 'div1' in out and 'div2' in out
 
 
 class TestGetTitle:

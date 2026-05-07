@@ -26,7 +26,7 @@ class PkgPackager(BasePackager):
         return 'pkg'
 
     def _get_problem_basename(self) -> str:
-        shortname = naming.get_problem_shortname()
+        shortname = naming.get_problem_shortname_or_require()
         if shortname is not None:
             return shortname
         return self.package_basename()
