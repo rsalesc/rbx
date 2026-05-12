@@ -532,24 +532,54 @@ rbx download [OPTIONS]
 
 ### testlib
 
-Download testlib.h
+Download the latest testlib.h. Always re-fetches from upstream.
 
 **Usage:**
 ```bash
 rbx download testlib [OPTIONS]
 ```
 
+**Options:**
+
+| Name | Description |
+| :--- | :--- |
+| `--into PATH` | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. |
+
 
 ---
 
 ### jngen
 
-Download jngen.h
+Download the latest jngen.h. Always re-fetches from upstream.
 
 **Usage:**
 ```bash
 rbx download jngen [OPTIONS]
 ```
+
+**Options:**
+
+| Name | Description |
+| :--- | :--- |
+| `--into PATH` | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. |
+
+
+---
+
+### tgen
+
+Download the latest tgen.h. Always re-fetches from upstream.
+
+**Usage:**
+```bash
+rbx download tgen [OPTIONS]
+```
+
+**Options:**
+
+| Name | Description |
+| :--- | :--- |
+| `--into PATH` | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. |
 
 
 ---
