@@ -7,7 +7,11 @@ import typer
 from rbx import annotations, console
 from rbx.box import header, package, remote
 from rbx.box.schema import CodeItem
-from rbx.config import get_builtin_checker, get_jngen, get_testlib
+from rbx.config import (
+    get_builtin_checker,
+    get_jngen,
+    get_testlib,
+)
 from rbx.grading import steps
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -42,6 +46,15 @@ def maybe_add_testlib(code: CodeItem, artifacts: steps.GradingArtifacts):
 def maybe_add_jngen(code: CodeItem, artifacts: steps.GradingArtifacts):
     # Try to get from compilation files, then from package folder, then from tool.
     artifact = get_local_artifact('jngen.h') or steps.jngen_grading_input()
+    compilation_files = package.get_compilation_files(code)
+    if any(dest == artifact.dest for _, dest in compilation_files):
+        return
+    artifacts.inputs.append(artifact)
+
+
+def maybe_add_tgen(code: CodeItem, artifacts: steps.GradingArtifacts):
+    # Try to get from compilation files, then from package folder, then from tool.
+    artifact = get_local_artifact('tgen.h') or steps.tgen_grading_input()
     compilation_files = package.get_compilation_files(code)
     if any(dest == artifact.dest for _, dest in compilation_files):
         return
