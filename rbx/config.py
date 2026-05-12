@@ -222,6 +222,28 @@ def get_jngen() -> pathlib.Path:
     return app_file
 
 
+def download_testlib() -> pathlib.Path:
+    """Always re-fetch testlib.h from upstream and return the cached path."""
+    app_file = get_app_file(pathlib.Path('testlib.h'))
+    try:
+        _download_testlib(app_file)
+    except DownloadError:
+        if not app_file.exists():
+            raise
+    return app_file
+
+
+def download_jngen() -> pathlib.Path:
+    """Always re-fetch jngen.h from upstream and return the cached path."""
+    app_file = get_app_file(pathlib.Path('jngen.h'))
+    try:
+        _download_jngen(app_file)
+    except DownloadError:
+        if not app_file.exists():
+            raise
+    return app_file
+
+
 def get_bits_stdcpp() -> pathlib.Path:
     app_file = get_app_file(pathlib.Path('stdc++.h'))
     if not app_file.exists():
