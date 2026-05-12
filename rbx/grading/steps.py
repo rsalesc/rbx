@@ -17,7 +17,7 @@ from rich.text import Text
 from rbx import utils
 from rbx.box import safeeval
 from rbx.box.exception import RbxException
-from rbx.config import get_bits_stdcpp, get_jngen, get_testlib
+from rbx.config import get_bits_stdcpp, get_jngen, get_testlib, get_tgen
 from rbx.console import console
 from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
@@ -406,6 +406,10 @@ def jngen_grading_input() -> GradingFileInput:
     return GradingFileInput(src=get_jngen(), dest=pathlib.Path('jngen.h'))
 
 
+def tgen_grading_input() -> GradingFileInput:
+    return GradingFileInput(src=get_tgen(), dest=pathlib.Path('tgen.h'))
+
+
 def _expand_part(part: str, sandbox: SandboxBase) -> List[str]:
     part = part.strip()
     if part.startswith('@glob:'):
@@ -645,7 +649,7 @@ def _check_for_compilation_warnings_in_line(line: str) -> bool:
     if match is None:
         return False
     file = match.group(1).strip().lower()
-    if 'testlib' in file or 'jngen' in file or 'stresslib' in file:
+    if 'testlib' in file or 'jngen' in file or 'tgen' in file or 'stresslib' in file:
         return False
     if file.endswith('.h'):
         return False
