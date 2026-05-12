@@ -8,7 +8,7 @@ import rich.progress
 import typer
 
 from rbx import console, utils
-from rbx.box import download, header, naming, package
+from rbx.box import header, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.statement_block_utils import (
@@ -38,6 +38,7 @@ from rbx.box.testcase_utils import (
     get_alternate_interaction_texts,
     parse_interaction,
 )
+from rbx.config import get_jngen, get_tgen
 
 _API_URL = 'https://polygon.codeforces.com/api'
 
@@ -125,12 +126,23 @@ def _update_rbx_header(problem: api.Problem):
 
 
 def _update_jngen(problem: api.Problem):
-    jngen = download.get_jngen()
+    jngen = get_jngen()
     console.console.print('Uploading jngen.h...')
     problem.save_file(
         type=api.FileType.RESOURCE,
         name='jngen.h',
         file=jngen.read_bytes(),
+        source_type=None,
+    )
+
+
+def _update_tgen(problem: api.Problem):
+    tgen = get_tgen()
+    console.console.print('Uploading tgen.h...')
+    problem.save_file(
+        type=api.FileType.RESOURCE,
+        name='tgen.h',
+        file=tgen.read_bytes(),
         source_type=None,
     )
 
@@ -303,6 +315,7 @@ def _upload_testcases(problem: api.Problem):
 
     if generators:
         _update_jngen(problem)  # TODO: only upload if necessary
+        _update_tgen(problem)  # TODO: only upload if necessary
         console.console.print('Clearing existing script...')
         problem.save_script(testset='tests', source='<#-- empty placeholder script -->')
 

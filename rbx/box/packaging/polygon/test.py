@@ -47,6 +47,7 @@ if __name__ == '__main__':
       <file path="files/problem.tex"/>
       <file path="files/statements.ftl"/>
       <file path="files/testlib.h" type="h.g++"/>
+      <file path="files/tgen.h" type="h.g++"/>
     </resources>
   </files>
   <assets>
