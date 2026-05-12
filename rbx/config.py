@@ -175,6 +175,23 @@ def _download_jngen(save_at: pathlib.Path):
         raise DownloadError()
 
 
+def _download_tgen(save_at: pathlib.Path):
+    import requests
+
+    console.print('Downloading tgen.h...')
+    r = requests.get(
+        'https://raw.githubusercontent.com/brunomaletta/tgen/main/single_include/tgen.h'
+    )
+
+    if r.ok:
+        save_at.parent.mkdir(parents=True, exist_ok=True)
+        with save_at.open('wb') as f:
+            f.write(r.content)
+    else:
+        console.print('[error]Failed to download tgen.h.[/error]')
+        raise DownloadError()
+
+
 def _download_bits_stdcpp(save_at: pathlib.Path):
     import requests
 
@@ -238,6 +255,27 @@ def download_jngen() -> pathlib.Path:
     app_file = get_app_file(pathlib.Path('jngen.h'))
     try:
         _download_jngen(app_file)
+    except DownloadError:
+        if not app_file.exists():
+            raise
+    return app_file
+
+
+def get_tgen() -> pathlib.Path:
+    app_file = get_app_file(pathlib.Path('tgen.h'))
+    if not app_file.exists():
+        try:
+            _download_tgen(app_file)
+        except DownloadError:
+            app_file = get_app_file(pathlib.Path('tgen.h'), predownloaded=True)
+    return app_file
+
+
+def download_tgen() -> pathlib.Path:
+    """Always re-fetch tgen.h from upstream and return the cached path."""
+    app_file = get_app_file(pathlib.Path('tgen.h'))
+    try:
+        _download_tgen(app_file)
     except DownloadError:
         if not app_file.exists():
             raise
