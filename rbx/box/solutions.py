@@ -51,7 +51,7 @@ from rbx.box.generators import (
 )
 from rbx.box.parallel import live_tasks
 from rbx.box.rendering import CellSlot, Throttling
-from rbx.box.sanitizers import issue_stack
+from rbx.box.sanitizers import compilation_warnings, issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
@@ -305,6 +305,7 @@ async def compile_solutions(
             async def succeeded(self, key: SolutionCompilationTask, value: str) -> None:
                 compiled_solutions[key.solution.path] = value
                 key.status = live_tasks.CompilationStatus.SUCCESS
+                compilation_warnings.apply_warning_status(key)
 
             async def failed(
                 self, key: SolutionCompilationTask, exception: BaseException

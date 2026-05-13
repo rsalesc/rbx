@@ -21,6 +21,7 @@ from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.parallel import live_tasks
+from rbx.box.sanitizers import compilation_warnings
 from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
@@ -315,6 +316,7 @@ async def compile_generators(
             ) -> None:
                 generator_to_compiled_digest[key.generator_name] = value
                 key.status = live_tasks.CompilationStatus.SUCCESS
+                compilation_warnings.apply_warning_status(key)
 
             async def failed(
                 self, key: GeneratorCompilationTask, exception: BaseException

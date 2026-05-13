@@ -1,22 +1,26 @@
 import functools
 import pathlib
 import shutil
+from typing import Dict, List, Optional
 
 from rbx import console, utils
 from rbx.box.formatting import href
 from rbx.box.schema import CodeItem
 from rbx.grading.judge.cacher import FileCacher
-from rbx.grading.steps import GradingFileOutput
+from rbx.grading.steps import GradingFileOutput, PreprocessLog
 
 
 class WarningStack:
     def __init__(self, root: pathlib.Path):
         self.root = root
         self.warnings = set()
+        self.warning_logs: Dict[pathlib.Path, List[PreprocessLog]] = {}
         self.sanitizer_warnings = {}
 
-    def add_warning(self, code: CodeItem):
+    def add_warning(self, code: CodeItem, logs: Optional[List[PreprocessLog]] = None):
         self.warnings.add(code.path)
+        if logs:
+            self.warning_logs[code.path] = logs
 
     async def add_sanitizer_warning(
         self, cacher: FileCacher, code: CodeItem, reference: GradingFileOutput
@@ -37,6 +41,7 @@ class WarningStack:
 
     def clear(self):
         self.warnings.clear()
+        self.warning_logs.clear()
         self.sanitizer_warnings.clear()
 
 

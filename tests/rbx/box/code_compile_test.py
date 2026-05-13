@@ -603,3 +603,51 @@ int custom_function();
         assert len(result) > 0
         # Digest should be hex-like
         assert all(c in '0123456789abcdef' for c in result.lower())
+
+    async def test_compile_records_warning_logs_when_warnings_enabled(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """Warning-bearing compiler logs are forwarded to the warning stack."""
+        from rbx.box import setter_config
+        from rbx.box.sanitizers import warning_stack
+        from rbx.grading.steps import GradingLogsHolder, PreprocessLog
+
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        warning_log = PreprocessLog(
+            cmd=['g++', 'solution.cpp'],
+            log='solution.cpp:1:1: warning: unused variable',
+            warnings=True,
+        )
+        clean_log = PreprocessLog(
+            cmd=['jar', 'cvf', 'Main.jar'],
+            log='',
+            warnings=False,
+        )
+
+        async def compile_side_effect(
+            commands, params, artifacts, sandbox, dependency_cache
+        ):
+            for output in artifacts.outputs:
+                if output.digest is not None:
+                    cacher = package.get_file_cacher()
+                    output.digest.value = await cacher.put_file_content(
+                        b'mock file content'
+                    )
+            artifacts.logs = GradingLogsHolder(preprocess=[warning_log, clean_log])
+            return True
+
+        monkeypatch.setattr(
+            'rbx.box.code.steps_with_caching.compile',
+            mock.AsyncMock(side_effect=compile_side_effect),
+        )
+        cfg = setter_config.get_setter_config()
+        monkeypatch.setattr(cfg.warnings, 'enabled', True)
+
+        warning_stack.get_warning_stack().clear()
+        await code.compile_item(code_item)
+
+        stack = warning_stack.get_warning_stack()
+        assert code_item.path in stack.warnings
+        assert stack.warning_logs[code_item.path] == [warning_log]
