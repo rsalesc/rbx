@@ -259,6 +259,29 @@ class TestContestAddVariant:
         # contest.rbx.yml (the dispatcher sentinel) is untouched.
         assert (tmp_path / 'contest.rbx.yml').read_text() == 'use_variants: true\n'
 
+    def test_preset_flag_is_honored(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_dispatcher(tmp_path)
+        # No active preset in cwd; pass one explicitly as a local dir path. This
+        # exercises the `fetch_info is not None` branch of `add_variant`.
+        preset_dir = _make_minimal_preset(tmp_path / '_src_preset')
+
+        result = runner.invoke(
+            contest_main.app, ['add_variant', 'div3', '--preset', str(preset_dir)]
+        )
+
+        assert result.exit_code == 0, result.output
+        dest = tmp_path / 'contest.div3.rbx.yml'
+        assert dest.exists()
+        from rbx.box.contest.schema import Contest
+        from rbx.utils import model_from_yaml
+
+        contest = model_from_yaml(Contest, dest.read_text())
+        assert contest.name == 'div3-c'
+        assert contest.problems == []
+        # contest.rbx.yml (the dispatcher sentinel) is untouched.
+        assert (tmp_path / 'contest.rbx.yml').read_text() == 'use_variants: true\n'
+
     def test_invalid_scaffold_rolls_back(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         _write_dispatcher(tmp_path)
