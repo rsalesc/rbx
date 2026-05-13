@@ -156,6 +156,7 @@ class CompilationTask(LiveTask):
     item: CodeItem
     status: CompilationStatus
     exception: Optional[RbxException] = None
+    warning_summary: Optional[str] = None
 
     def __init__(self, item: CodeItem) -> None:
         self.item = item
@@ -164,12 +165,15 @@ class CompilationTask(LiveTask):
     def render(self) -> Optional[TaskRenderable]:
         if self.status in (CompilationStatus.PENDING, CompilationStatus.SUCCESS):
             return None
+        status_text = Text.from_markup(self.status.markup())
+        if self.status is CompilationStatus.WARNINGS and self.warning_summary:
+            status_text.append(f' ({self.warning_summary})', style='warning')
         return TaskRenderable(
             columns=[
                 Text.from_markup(
                     f'[info]Compiling {self.item.href()}...[/info]',
                 ),
-                Text.from_markup(self.status.markup()),
+                status_text,
             ],
             panel=self.exception.cropped(
                 max_lines=15,
