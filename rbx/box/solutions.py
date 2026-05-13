@@ -283,9 +283,10 @@ class SolutionCompilationTask(live_tasks.CompilationTask):
         if rendered is None:
             return None
         if self.status == live_tasks.CompilationStatus.SKIPPED:
-            rendered.columns[1] = rich.text.Text.from_markup(
-                '[error]FAILED, skipped[/error]'
-            )
+            status_text = rich.text.Text.from_markup('[error]FAILED, skipped[/error]')
+            if self.skip_reason:
+                status_text.append(f' ({self.skip_reason})', style='status')
+            rendered.columns[1] = status_text
 
         return rendered
 
@@ -330,6 +331,8 @@ async def compile_solutions(
                     key.status = live_tasks.CompilationStatus.FAILED
                     raise exception
                 key.exception = exception
+                if exception.not_found_executable:
+                    key.skip_reason = f"'{exception.not_found_executable}' not found"
                 issue_stack.add_issue(
                     FailedToCompileSolutionIssue(key.solution, exception=exception)
                 )
