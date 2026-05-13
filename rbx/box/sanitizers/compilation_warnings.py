@@ -22,8 +22,8 @@ _DEFAULT_SUMMARIZER = CompilationWarningSummarizer()
 
 # Per-language summarizers register here, keyed by the language name returned by
 # ``rbx.box.code.find_language_name``. A C++ summarizer that extracts concise
-# lines from GCC/clang output is deferred to a separate issue (see issue #397 /
-# the linked follow-up) and should be brainstormed before implementing.
+# lines from GCC/clang output is deferred to a separate issue (#446) and should
+# be brainstormed before implementing.
 _SUMMARIZERS: Dict[str, CompilationWarningSummarizer] = {}
 
 
