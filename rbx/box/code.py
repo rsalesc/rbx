@@ -716,9 +716,9 @@ async def compile_item(
             and artifacts.logs is not None
             and artifacts.logs.preprocess is not None
         ):
-            any_warning = any(log.warnings for log in artifacts.logs.preprocess)
-            if any_warning:
-                warning_stack.get_warning_stack().add_warning(code)
+            warning_logs = [log for log in artifacts.logs.preprocess if log.warnings]
+            if warning_logs:
+                warning_stack.get_warning_stack().add_warning(code, logs=warning_logs)
 
         # Create sentinel to indicate this executable is sanitized.
         cacher = package.get_file_cacher()
