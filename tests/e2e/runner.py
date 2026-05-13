@@ -60,6 +60,8 @@ def _strip_ansi(text: str) -> str:
 # Patterns excluded when copying a fixture directory into the run tmpdir.
 # These are paths that ``rbx`` (or prior test runs) generates and that should
 # regenerate freshly inside the tmpdir rather than leak in from source.
+# Note: ``.local.rbx`` is intentionally NOT excluded -- a fixture may commit a
+# minimal local preset there (e.g. so ``contest add_variant`` resolves offline).
 COPY_IGNORE_PATTERNS = (
     '.box',
     'build',
@@ -67,7 +69,6 @@ COPY_IGNORE_PATTERNS = (
     '__pycache__',
     '*.pyc',
     'rbx.h',
-    '.local.rbx',
     '.cache',
     '.testdata',
 )

@@ -1,0 +1,6 @@
+---
+name: "e2e-preset"
+uri: "test/e2e-preset"
+min_version: "0.14.0"
+contest: "contest"
+env: "env.rbx.yml"

@@ -136,3 +136,33 @@ scenarios:
         expect:
           files_exist:
             - B/build/B.zip
+
+  - name: add-variant-scaffolds-sibling
+    description: >-
+      `rbx contest add_variant div3` writes contest.div3.rbx.yml; it then
+      shows up in `contest list` and loads under `-C div3`.
+    steps:
+      - cmd: contest add_variant div3
+        expect:
+          files_exist:
+            - contest.div3.rbx.yml
+      - cmd: contest list
+        expect:
+          stdout_contains:
+            - div3
+      - cmd: -C div3 contest summary
+        expect:
+          stdout_contains:
+            - div3-c
+
+  - name: add-variant-existing-rejected
+    description: 'add_variant refuses to overwrite an existing variant file.'
+    steps:
+      - cmd: contest add_variant div1
+        expect_exit: 1
+
+  - name: add-variant-invalid-id-rejected
+    description: 'add_variant rejects an id failing the variant id regex.'
+    steps:
+      - cmd: contest add_variant "bad id"
+        expect_exit: 1
