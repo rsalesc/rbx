@@ -1,9 +1,11 @@
 import pathlib
 import shutil
 import subprocess
+import tempfile
 from typing import Annotated, Optional
 
 import rich.prompt
+import ruyaml
 import syncer
 import typer
 
@@ -170,8 +172,47 @@ def add_variant(
         )
         raise typer.Exit(1)
 
-    # (scaffolding implemented in Task 2)
-    raise NotImplementedError
+    from rbx.box.contest.schema import Contest
+    from rbx.box.yaml_validation import load_yaml_model
+
+    fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = pathlib.Path(tmp)
+        if fetch_info is None:
+            # `None` means: use the active preset in the cwd. Install it into
+            # the scratch dir so `install_contest` can resolve it there.
+            presets.install_preset_from_dir(
+                presets.get_active_preset_path(),
+                scratch / '.local.rbx',
+                ensure_contest=True,
+            )
+        presets.install_contest(scratch, fetch_info)
+        template_text = (scratch / 'contest.rbx.yml').read_text()
+
+    ru = ruyaml.YAML()
+    data = ru.load(template_text)
+    data['name'] = f'{variant_id}-c'
+    data['problems'] = []
+    utils.save_ruyaml(dest, ru, data)
+
+    # Make sure the result is a valid Contest before declaring success.
+    try:
+        load_yaml_model(dest, Contest)
+    except Exception as e:  # noqa: BLE001 - want to surface any validation error
+        dest.unlink(missing_ok=True)
+        console.console.print(
+            f'[error]Scaffolded variant did not validate against the contest '
+            f'schema: {e}[/error]'
+        )
+        raise typer.Exit(1) from e
+
+    find_contest_yaml.cache_clear()
+    contest_utils.clear_all_caches()
+    console.console.print(
+        f'Created contest variant at [item]{dest}[/item]. '
+        f'Select it with [item]-C {variant_id}[/item].'
+    )
 
 
 @app.command('edit, e', help='Open contest.rbx.yml in your default editor.')
