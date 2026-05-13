@@ -637,6 +637,8 @@ async def _generate_testcase_interactively(
         interactive_entry = extracted_entry.model_copy(deep=True)
         # Replace destination with the irun testcase we're using.
         interactive_entry.metadata.copied_to = testcase
+        # Validate against this test's own validators (group-level overrides,
+        # extra validators), not just the package-level ones.
         entry_for_validation = interactive_entry
     else:
         with utils.no_progress(progress):
