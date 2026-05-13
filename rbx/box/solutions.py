@@ -618,6 +618,7 @@ async def _generate_testcase_interactively(
     main_solution = package.get_main_solution()
     testcase = _get_interactive_testcase(check)
     interactive_entry = GenerationTestcaseEntry.make_interactive(copied_to=testcase)
+    entry_for_validation: Optional[GenerationTestcaseEntry] = None
 
     is_manual = False
     is_output_manual = False
@@ -636,6 +637,7 @@ async def _generate_testcase_interactively(
         interactive_entry = extracted_entry.model_copy(deep=True)
         # Replace destination with the irun testcase we're using.
         interactive_entry.metadata.copied_to = testcase
+        entry_for_validation = interactive_entry
     else:
         with utils.no_progress(progress):
             input = console.multiline_prompt('Testcase input')
@@ -660,6 +662,7 @@ async def _generate_testcase_interactively(
     if interactive_entry.metadata is not None:
         await generate_standalone(
             interactive_entry.metadata,
+            entry=entry_for_validation,
             progress=progress,
             validate=validate,
         )
