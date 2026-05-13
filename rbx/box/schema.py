@@ -285,12 +285,12 @@ class CodeItem(BaseModel):
         default=[],
         description="""
 Extra files that should be placed alongside the code file during its compilation,
-such as testlib.h, jngen.h, etc.
+such as testlib.h, jngen.h, tgen.h, etc.
 
 The paths should be given relative to the package directory, but will be included
 relative to the `path` directory.
 
-Testlib and jngen are already included by default.
+Testlib, jngen and tgen are already included by default.
 """,
     )
 

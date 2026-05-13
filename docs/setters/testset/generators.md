@@ -135,3 +135,25 @@ To implement a Jngen-based generator, it suffices to include the `jngen.h` heade
 
     This section is under development. If you want to contribute, please
     send a PR to [our repository](https://github.com/rsalesc/rbx).
+
+## Tgen, the modern alternative
+
+{{rbx}} also has a built-in integration with [tgen](https://github.com/brunomaletta/tgen),
+a C++ header for writing random testcase generators quickly and safely, by Bruno Maletta.
+
+To implement a Tgen-based generator, it suffices to include the `tgen.h` header — {{rbx}}
+makes it available to every C++ compilation, just like {{testlib}} and {{jngen}}.
+
+You can grab a local copy of the latest `tgen.h` with:
+
+```bash
+rbx download tgen
+```
+
+Or place it at an arbitrary path relative to the package root with `--into`:
+
+```bash
+rbx download tgen --into libs/tgen.h
+```
+
+The same `--into` flag is available for `rbx download testlib` and `rbx download jngen`.

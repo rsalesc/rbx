@@ -296,6 +296,23 @@ class TestCompileItem:
         )
         assert jngen_input is not None
 
+    async def test_compile_artifacts_with_tgen(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """Test that tgen.h is included in artifacts when available."""
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        await code.compile_item(code_item)
+
+        call_args = mock_steps_with_caching.call_args
+        artifacts = call_args.kwargs['artifacts']
+
+        tgen_input = next(
+            (inp for inp in artifacts.inputs if inp.dest.name == 'tgen.h'), None
+        )
+        assert tgen_input is not None
+
     async def test_compile_sandbox_params_basic(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
@@ -378,7 +395,7 @@ class TestCompileItem:
         artifacts = call_args.kwargs['artifacts']
 
         # For simple.cpp, exactly these header files should be present
-        expected_header_files = {'testlib.h', 'jngen.h', 'rbx.h', 'stdc++.h'}
+        expected_header_files = {'testlib.h', 'jngen.h', 'tgen.h', 'rbx.h', 'stdc++.h'}
 
         # Find all header files in artifacts
         actual_header_files = {
@@ -392,7 +409,7 @@ class TestCompileItem:
 
         # Only testlib.h, jngen.h, and rbx.h should be processed with warning pragmas
         # stdc++.h is a system header that doesn't get processed
-        processed_header_files = {'testlib.h', 'jngen.h', 'rbx.h'}
+        processed_header_files = {'testlib.h', 'jngen.h', 'tgen.h', 'rbx.h'}
 
         for inp in artifacts.inputs:
             if inp.dest.suffix in ['.h', '.hpp']:

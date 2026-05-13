@@ -618,6 +618,7 @@ async def compile_item(
 
         download.maybe_add_testlib(code, artifacts)
         download.maybe_add_jngen(code, artifacts)
+        download.maybe_add_tgen(code, artifacts)
         download.maybe_add_rbx_header(code, artifacts)
         compilable_path = await maybe_rename_java_class(compilable_path, file_mapping)
         artifacts.inputs.append(
@@ -657,7 +658,8 @@ async def compile_item(
                     if (
                         input.src is not None
                         and input.src.suffix == '.h'
-                        and input.dest.name in ['stdc++.h', 'jngen.h', 'testlib.h']
+                        and input.dest.name
+                        in ['stdc++.h', 'jngen.h', 'tgen.h', 'testlib.h']
                     ):
                         precompilation_inputs.append(
                             await _precompile_header(

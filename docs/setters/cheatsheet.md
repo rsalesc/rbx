@@ -32,6 +32,7 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Run unit tests for validator and checker           | `rbx unit`                                                     |
 | Download {{testlib}} to the current folder         | `rbx download testlib`                                         |
 | Download {{jngen}} to the current folder           | `rbx download jngen`                                           |
+| Download {{tgen}} to the current folder            | `rbx download tgen`                                            |
 | Download a built-in {{testlib}} checker            | `rbx download checker wcmp.cpp`                                |
 | Build all statements                               | `rbx statements build`                                         |
 | Build a specific statement                         | `rbx statements build <name>`                                  |
