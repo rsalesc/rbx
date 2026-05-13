@@ -10,8 +10,8 @@ import pytest
 from rbx.grading.judge.program import (
     Program,
     ProgramCode,
-    ProgramError,
     ProgramIO,
+    ProgramNotFoundError,
     ProgramParams,
     ProgramResult,
     get_cpu_time,
@@ -674,8 +674,11 @@ class TestEdgeCases:
         params = ProgramParams()
         command = ['/nonexistent/program']
 
-        with pytest.raises(ProgramError):
+        with pytest.raises(ProgramNotFoundError) as exc_info:
             Program(command, params)
+
+        assert exc_info.value.executable == '/nonexistent/program'
+        assert '/nonexistent/program' in str(exc_info.value)
 
     def test_empty_command(self):
         """Test execution with empty command."""
