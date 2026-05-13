@@ -160,9 +160,15 @@ scenarios:
     steps:
       - cmd: contest add_variant div1
         expect_exit: 1
+        expect:
+          stdout_contains:
+            - 'already exists'
 
   - name: add-variant-invalid-id-rejected
     description: 'add_variant rejects an id failing the variant id regex.'
     steps:
       - cmd: contest add_variant "bad id"
         expect_exit: 1
+        expect:
+          stdout_contains:
+            - 'Invalid variant id'
