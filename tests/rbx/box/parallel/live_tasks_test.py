@@ -33,3 +33,25 @@ def test_warning_summary_ignored_when_not_warnings_status():
     rendered = _task(live_tasks.CompilationStatus.FAILED, summary='x').render()
     assert rendered is not None
     assert rendered.columns[1].plain == 'FAILED'
+
+
+def test_skipped_without_reason_shows_plain_label():
+    rendered = _task(live_tasks.CompilationStatus.SKIPPED).render()
+    assert rendered is not None
+    assert rendered.columns[1].plain == 'SKIPPED'
+
+
+def test_skipped_with_reason_appends_it():
+    task = _task(live_tasks.CompilationStatus.SKIPPED)
+    task.skip_reason = "'python3' not found"
+    rendered = task.render()
+    assert rendered is not None
+    assert rendered.columns[1].plain == "SKIPPED ('python3' not found)"
+
+
+def test_skip_reason_ignored_when_not_skipped_status():
+    task = _task(live_tasks.CompilationStatus.FAILED)
+    task.skip_reason = "'python3' not found"
+    rendered = task.render()
+    assert rendered is not None
+    assert rendered.columns[1].plain == 'FAILED'

@@ -157,6 +157,7 @@ class CompilationTask(LiveTask):
     status: CompilationStatus
     exception: Optional[RbxException] = None
     warning_summary: Optional[str] = None
+    skip_reason: Optional[str] = None
 
     def __init__(self, item: CodeItem) -> None:
         self.item = item
@@ -168,6 +169,8 @@ class CompilationTask(LiveTask):
         status_text = Text.from_markup(self.status.markup())
         if self.status is CompilationStatus.WARNINGS and self.warning_summary:
             status_text.append(f' ({self.warning_summary})', style='warning')
+        if self.status is CompilationStatus.SKIPPED and self.skip_reason:
+            status_text.append(f' ({self.skip_reason})', style='status')
         return TaskRenderable(
             columns=[
                 Text.from_markup(
