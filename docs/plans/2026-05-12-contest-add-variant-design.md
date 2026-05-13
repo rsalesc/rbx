@@ -63,13 +63,18 @@ Aliased `add_variant, av`, registered in `rbx/box/contest/main.py` next to
   afterwards. Print a success message pointing at the new file and reminding the
   user to select it with `-C <id>`.
 
-### Refactor
+### Implementation note (as built)
 
-Factor a small helper in `rbx/box/presets/__init__.py` — e.g.
-`read_contest_template_yaml(preset, preset_path) -> (ruyaml.YAML, mapping)` —
-so `add_variant` reuses the preset-template lookup + expansion logic instead of
-duplicating `install_contest`'s internals. `install_contest` itself is unchanged
-(it installs the whole dir; `add_variant` only wants the yaml).
+The original design proposed factoring a `read_contest_template_yaml` helper in
+`rbx/box/presets/__init__.py`. In implementation we instead reuse
+`presets.install_contest` against a `tempfile.TemporaryDirectory()`: install the
+preset's contest template into the scratch dir (pre-installing the active
+preset's `.local.rbx` there first when no explicit `--preset` is given), read the
+produced `contest.rbx.yml`, override `name`/`problems`, and write it to the real
+`contest.<id>.rbx.yml`. This avoids duplicating `install_contest`'s
+expansion/lookup internals and keeps `presets/__init__.py` untouched. The scratch
+dir is discarded; statement assets are not re-copied (the documented limitation
+above still holds).
 
 ## Out of scope
 
