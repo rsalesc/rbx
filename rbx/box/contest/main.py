@@ -19,10 +19,15 @@ from rbx.box.contest.contest_package import (
     get_problems,
     within_contest,
 )
-from rbx.box.contest.schema import ContestProblem
+from rbx.box.contest.schema import Contest, ContestProblem
 from rbx.box.packaging import contest_main as packaging
 from rbx.box.schema import Package
 from rbx.box.ui.command_app import CommandEntry, start_command_app
+from rbx.box.yaml_validation import (
+    YamlSyntaxError,
+    YamlValidationError,
+    load_yaml_model,
+)
 from rbx.config import open_editor
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -172,9 +177,6 @@ def add_variant(
         )
         raise typer.Exit(1)
 
-    from rbx.box.contest.schema import Contest
-    from rbx.box.yaml_validation import load_yaml_model
-
     fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -199,7 +201,7 @@ def add_variant(
     # Make sure the result is a valid Contest before declaring success.
     try:
         load_yaml_model(dest, Contest)
-    except Exception as e:  # noqa: BLE001 - want to surface any validation error
+    except (YamlValidationError, YamlSyntaxError) as e:
         dest.unlink(missing_ok=True)
         console.console.print(
             f'[error]Scaffolded variant did not validate against the contest '

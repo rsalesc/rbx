@@ -23,12 +23,16 @@ def _write_dispatcher(root: pathlib.Path, *variant_ids: str) -> None:
         (root / f'contest.{vid}.rbx.yml').write_text(f'name: ctt-{vid}\nproblems: []\n')
 
 
-def _make_minimal_preset(dest: pathlib.Path) -> pathlib.Path:
-    """Create a minimal, valid preset directory tree at ``dest`` and return it.
+def _make_minimal_preset(dest: pathlib.Path, *, invalid: bool = False) -> pathlib.Path:
+    """Create a minimal preset directory tree at ``dest`` and return it.
 
     The bundled ``simple-preset`` has a ``contest/contest.rbx.yml`` with fields
     (``duration``, ``startTime``, ``problems[].label``) that do not validate
     against the ``Contest`` schema, so we build a tiny valid one here.
+
+    When ``invalid`` is set, the ``contest/contest.rbx.yml`` carries an unknown
+    ``duration`` field, which ``Contest`` (``extra='forbid'``) rejects -- useful
+    for exercising the post-scaffold validation rollback path.
     """
     dest.mkdir(parents=True, exist_ok=True)
     (dest / 'preset.rbx.yml').write_text(
@@ -49,9 +53,10 @@ def _make_minimal_preset(dest: pathlib.Path) -> pathlib.Path:
         '      command: ./{executable}\n'
     )
     (dest / 'contest').mkdir(parents=True, exist_ok=True)
-    (dest / 'contest' / 'contest.rbx.yml').write_text(
-        'name: "placeholder"\nproblems: []\n'
-    )
+    contest_yml = 'name: "placeholder"\nproblems: []\n'
+    if invalid:
+        contest_yml += 'duration: 180\n'
+    (dest / 'contest' / 'contest.rbx.yml').write_text(contest_yml)
     return dest
 
 
@@ -253,6 +258,25 @@ class TestContestAddVariant:
         assert contest.problems == []
         # contest.rbx.yml (the dispatcher sentinel) is untouched.
         assert (tmp_path / 'contest.rbx.yml').read_text() == 'use_variants: true\n'
+
+    def test_invalid_scaffold_rolls_back(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_dispatcher(tmp_path)
+        original = (tmp_path / 'contest.rbx.yml').read_text()
+        from rbx.box import presets
+
+        presets.install_preset_from_dir(
+            _make_minimal_preset(tmp_path / '_src_preset', invalid=True),
+            tmp_path / '.local.rbx',
+        )
+
+        result = runner.invoke(contest_main.app, ['add_variant', 'div3'])
+
+        assert result.exit_code != 0, result.output
+        # The scaffolded file was unlinked by the rollback.
+        assert not (tmp_path / 'contest.div3.rbx.yml').exists()
+        # The dispatcher sentinel is untouched.
+        assert (tmp_path / 'contest.rbx.yml').read_text() == original
 
     def test_scaffold_in_real_contest_mode(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
