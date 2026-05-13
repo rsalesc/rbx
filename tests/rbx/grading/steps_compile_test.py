@@ -1,4 +1,5 @@
 import pathlib
+import re
 from unittest.mock import patch
 
 import pytest
@@ -863,3 +864,24 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
 
         assert artifacts.logs.preprocess is not None
         assert len(artifacts.logs.preprocess) == 1
+
+    async def test_compile_missing_compiler_reports_not_found(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path
+    ):
+        """A missing compiler/interpreter yields a clear error and stashes the exe."""
+        artifacts = GradingArtifacts(root=cleandir)
+        params = SandboxParams()
+        with pytest.raises(steps.CompilationError) as exc_info:
+            await steps.compile(
+                ['definitely-not-a-real-compiler-xyz src.cpp -o exe'],
+                params,
+                sandbox,
+                artifacts,
+            )
+        assert (
+            exc_info.value.not_found_executable == 'definitely-not-a-real-compiler-xyz'
+        )
+        plain = re.sub(r'\x1b\[[0-9;]*m', '', str(exc_info.value))
+        message = ' '.join(plain.split()).lower()
+        assert 'definitely-not-a-real-compiler-xyz' in message
+        assert 'not found' in message

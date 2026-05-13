@@ -886,3 +886,22 @@ def test_process_checker_run_log_uses_last_line() -> None:
 
     assert result.outcome == Outcome.WRONG_ANSWER
     assert result.message == 'Actual error message'
+
+
+def test_process_checker_run_log_surfaces_sandbox_message() -> None:
+    run_log = RunLog(
+        exitcode=1,
+        exitstatus=SandboxBase.EXIT_SANDBOX_ERROR,
+        sandbox="Executable 'checker' was not found — is it installed and on your PATH?",
+    )
+    result = checkers.process_checker_run_log(run_log, message='')
+    assert result.outcome == Outcome.INTERNAL_ERROR
+    assert 'checker' in result.message
+    assert 'not found' in result.message.lower()
+
+
+def test_process_checker_run_log_falls_back_when_no_sandbox_message() -> None:
+    run_log = RunLog(exitcode=1, exitstatus=SandboxBase.EXIT_SANDBOX_ERROR, sandbox='')
+    result = checkers.process_checker_run_log(run_log, message='')
+    assert result.outcome == Outcome.INTERNAL_ERROR
+    assert result.message == 'sandbox failed to run checker'

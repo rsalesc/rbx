@@ -17,6 +17,7 @@ from rbx.box.schema import (
     Testcase,
 )
 from rbx.box.solutions import (
+    FailedToCompileSolutionIssue,
     GroupSkeleton,
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
@@ -31,6 +32,7 @@ from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     CheckerResult,
+    CompilationError,
     Evaluation,
     Outcome,
     TestcaseIO,
@@ -687,3 +689,27 @@ def test_solution_outcome_report_points_scoring_with_dependencies(
             solution, skeleton, evals_g3_fail, VerificationLevel.FULL
         )
     assert report.gotScore == 60
+
+
+def test_failed_to_compile_issue_includes_not_found_reason():
+    sol = Solution(
+        path=pathlib.Path('sols/wa.py'), outcome=ExpectedOutcome.WRONG_ANSWER
+    )
+    exc = CompilationError()
+    exc.not_found_executable = 'python3'
+    issue = FailedToCompileSolutionIssue(sol, exception=exc)
+
+    msg = issue.get_detailed_message()
+    assert 'python3' in msg
+    assert 'sols/wa.py' in msg
+
+
+def test_failed_to_compile_issue_generic_message_without_reason():
+    sol = Solution(
+        path=pathlib.Path('sols/wa.py'), outcome=ExpectedOutcome.WRONG_ANSWER
+    )
+    issue = FailedToCompileSolutionIssue(sol)
+
+    msg = issue.get_detailed_message()
+    assert 'could not be compiled and was skipped' in msg
+    assert 'sols/wa.py' in msg

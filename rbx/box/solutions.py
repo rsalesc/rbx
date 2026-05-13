@@ -246,13 +246,28 @@ def get_exact_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solu
 
 
 class FailedToCompileSolutionIssue(issue_stack.Issue):
-    def __init__(self, solution: Solution):
+    def __init__(self, solution: Solution, exception: Optional[BaseException] = None):
         self.solution = solution
+        self.exception = exception
 
     def get_detailed_section(self) -> Tuple[str, ...]:
         return ('solutions',)
 
+    def _reason(self) -> Optional[str]:
+        if (
+            isinstance(self.exception, steps.CompilationError)
+            and self.exception.not_found_executable
+        ):
+            return f"'{self.exception.not_found_executable}' was not found"
+        return None
+
     def get_detailed_message(self) -> str:
+        reason = self._reason()
+        if reason is not None:
+            return (
+                f'{self.solution.href()} could not be compiled ({reason}) '
+                'and was skipped.'
+            )
         return f'{self.solution.href()} could not be compiled and was skipped.'
 
 
@@ -315,7 +330,9 @@ async def compile_solutions(
                     key.status = live_tasks.CompilationStatus.FAILED
                     raise exception
                 key.exception = exception
-                issue_stack.add_issue(FailedToCompileSolutionIssue(key.solution))
+                issue_stack.add_issue(
+                    FailedToCompileSolutionIssue(key.solution, exception=exception)
+                )
 
         streamer = SolutionCompilationStreamer(
             setter_config.get_async_executor(detach=True)

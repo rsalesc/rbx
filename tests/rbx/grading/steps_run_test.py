@@ -958,3 +958,23 @@ class TestStepsRun:
         assert 'glob_test.py' in glob_output_content
         assert 'test1.py' in glob_output_content
         assert 'test2.py' in glob_output_content
+
+
+def test_run_log_summary_includes_sandbox_message_on_sandbox_error():
+    log = steps.RunLog(
+        exitcode=1,
+        exitstatus=SandboxBase.EXIT_SANDBOX_ERROR,
+        sandbox="Executable 'python3' was not found — is it installed and on your PATH?",
+    )
+    summary = log.get_summary()
+    assert 'python3' in summary
+    assert 'not found' in summary.lower()
+
+
+def test_run_log_summary_omits_sandbox_message_when_empty():
+    log = steps.RunLog(
+        exitcode=1, exitstatus=SandboxBase.EXIT_SANDBOX_ERROR, sandbox=''
+    )
+    summary = log.get_summary()
+    assert summary.startswith('FAILED')
+    assert 'Reason:' not in summary

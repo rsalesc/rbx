@@ -184,6 +184,20 @@ class ProgramError(Exception):
     pass
 
 
+class ProgramNotFoundError(ProgramError):
+    def __init__(self, executable: str, *, permission_denied: bool = False):
+        self.executable = executable
+        self.permission_denied = permission_denied
+        if permission_denied:
+            msg = f"Permission denied when running executable '{executable}'."
+        else:
+            msg = (
+                f"Executable '{executable}' was not found "
+                '— is it installed and on your PATH?'
+            )
+        super().__init__(msg)
+
+
 class Program:
     def __init__(self, command: List[str], params: ProgramParams):
         self.command = command
@@ -263,9 +277,9 @@ class Program:
                 pipesize=self.params.pipesize,
             )
         except FileNotFoundError as e:
-            raise ProgramError(f'Command {self.command[0]} not found') from e
+            raise ProgramNotFoundError(self.command[0]) from e
         except PermissionError as e:
-            raise ProgramError(f'Permission denied for command {self.command}') from e
+            raise ProgramNotFoundError(self.command[0], permission_denied=True) from e
         self.start_time = monotonic()
 
         threading.Thread(target=self._handle_wall, daemon=True).start()

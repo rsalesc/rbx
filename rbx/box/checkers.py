@@ -166,7 +166,9 @@ def _check_pre_output(run_log: Optional[RunLog]) -> CheckerResult:
     if run_log.exitstatus == SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED:
         return CheckerResult(outcome=Outcome.MEMORY_LIMIT_EXCEEDED)
     if run_log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR:
-        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
+        return CheckerResult(
+            outcome=Outcome.INTERNAL_ERROR, message=run_log.sandbox or ''
+        )
     if run_log.exitstatus == SandboxBase.EXIT_OUTPUT_LIMIT_EXCEEDED:
         return CheckerResult(outcome=Outcome.OUTPUT_LIMIT_EXCEEDED)
     return CheckerResult(outcome=Outcome.ACCEPTED)
@@ -227,7 +229,7 @@ def process_checker_run_log(
         # We don't know what happened.
         return CheckerResult(
             outcome=Outcome.INTERNAL_ERROR,
-            message='sandbox failed to run checker',
+            message=checker_run_log.sandbox or 'sandbox failed to run checker',
         )
 
     if checker_run_log is None:
