@@ -351,6 +351,7 @@ async def generate_standalone(
     spec: GenerationMetadata,
     validate: bool = True,
     group_entry: Optional[TestcaseEntry] = None,
+    entry: Optional[GenerationTestcaseEntry] = None,
     generator_digest: Optional[str] = None,
     validators_digests: Optional[Dict[str, str]] = None,
     progress: Optional[StatusProgress] = None,
@@ -370,6 +371,9 @@ async def generate_standalone(
             )
         else:
             console.print(f'[error]{prefix}{suffix}[/error]')
+
+    if group_entry is None and entry is not None:
+        group_entry = entry.group_entry
 
     if spec.generator_call is not None:
         call = spec.generator_call
@@ -411,7 +415,12 @@ async def generate_standalone(
     elif spec.copied_from is not None:
         _copy_testcase_over(spec.copied_from, spec.copied_to)
 
-    all_validators = package.get_all_validators()
+    if entry is not None:
+        all_validators = (
+            [entry.validator] if entry.validator is not None else []
+        ) + list(entry.extra_validators)
+    else:
+        all_validators = package.get_all_validators()
     # Run validator, if it is available.
     if validate and all_validators:
         validators_digests = validators_digests or {}

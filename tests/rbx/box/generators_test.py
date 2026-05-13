@@ -5,13 +5,17 @@ import typer
 
 from rbx import testing_utils
 from rbx.box import validators as validators_mod
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.generators import (
     ValidationError,
     generate_standalone,
     generate_testcases,
 )
 from rbx.box.schema import CodeItem, GeneratorCall, Testcase
-from rbx.box.testcase_extractors import GenerationMetadata
+from rbx.box.testcase_extractors import (
+    GenerationMetadata,
+    extract_generation_testcases_from_groups,
+)
 from rbx.box.testing import testing_package
 from rbx.grading import steps
 
@@ -430,6 +434,71 @@ async def test_generate_standalone_package_extra_validator_fails(
 
     with pytest.raises(ValidationError):
         await generate_standalone(spec)
+
+
+async def test_generate_standalone_entry_validator_overrides_package(
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Package validator: any single integer is fine.
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+    # Group "strict" replaces the package validator with an "odd integer" validator.
+    testing_pkg.add_from_testdata(
+        'extra-validator-odd.cpp', src='validators/extra-validator-odd.cpp'
+    )
+    even_in = testing_pkg.add_file('tests/strict/000.in')
+    even_in.write_text('100\n')
+    testing_pkg.add_testgroup_from_glob(
+        'strict', 'tests/strict/*.in', validator='extra-validator-odd.cpp'
+    )
+
+    [entry] = await extract_generation_testcases_from_groups({'strict'})
+
+    # Sanity: the extracted entry carries the group-level validator.
+    assert entry.validator is not None
+    assert entry.validator.path == pathlib.Path('extra-validator-odd.cpp')
+
+    with pytest.raises(ValidationError):
+        await generate_standalone(entry.metadata, entry=entry)
+
+
+async def test_generate_standalone_entry_validator_inherits_package(
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Package validator: any single integer is fine.
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+    # Group with no validator of its own -> inherits the package validator.
+    loose_in = testing_pkg.add_file('tests/loose/000.in')
+    loose_in.write_text('100\n')
+    testing_pkg.add_testgroup_from_glob('loose', 'tests/loose/*.in')
+
+    [entry] = await extract_generation_testcases_from_groups({'loose'})
+
+    # '100\n' is a valid single integer -> no ValidationError.
+    await generate_standalone(entry.metadata, entry=entry)
+
+
+async def test_generate_standalone_entry_with_no_validators_skips_validation(
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Package has a validator that would reject this input...
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+    input_file = testing_pkg.add_file('manual_tests/000.in')
+    input_file.write_text('not an int\n')
+
+    tmpd = testing_pkg.mkdtemp()
+    entry = GenerationTestcaseEntry.make_interactive(
+        copied_to=Testcase(inputPath=tmpd / '000.in')
+    )
+    entry.metadata.copied_from = Testcase(inputPath=input_file)
+    assert entry.validator is None and entry.extra_validators == []
+
+    # ...but the entry declares no validators, so generate_standalone runs none.
+    await generate_standalone(entry.metadata, entry=entry)
+
+    # Whereas without an entry it falls back to the package validator and fails.
+    with pytest.raises(ValidationError):
+        await generate_standalone(entry.metadata)
 
 
 async def test_generate_standalone_reuses_validators_digests_cache(
