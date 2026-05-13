@@ -130,6 +130,50 @@ def init(
     presets.generate_lock()
 
 
+@app.command('add_variant, av', help='Scaffold a new contest variant file.')
+def add_variant(
+    variant_id: Annotated[
+        str,
+        typer.Argument(
+            help='Id of the new variant. Must match ^[A-Za-z][A-Za-z0-9_-]*$.',
+        ),
+    ],
+    preset: Annotated[
+        Optional[str],
+        typer.Option(
+            '--preset',
+            '-p',
+            help='Preset to scaffold the variant from. Defaults to the active '
+            'preset in the current directory, then the default preset.',
+        ),
+    ] = None,
+):
+    if not contest_state.is_valid_variant_id(variant_id):
+        console.console.print(
+            f'[error]Invalid variant id [item]{variant_id}[/item]. '
+            r'Must match ^[A-Za-z][A-Za-z0-9_-]*$.[/error]'
+        )
+        raise typer.Exit(1)
+
+    contest_root = contest_package.find_contest_root(pathlib.Path())
+    if contest_root is None:
+        console.console.print(
+            '[error]Not inside a contest directory '
+            '(no [item]contest.rbx.yml[/item] found).[/error]'
+        )
+        raise typer.Exit(1)
+
+    dest = contest_root / f'contest.{variant_id}.rbx.yml'
+    if dest.exists():
+        console.console.print(
+            f'[error]Variant file [item]{dest.name}[/item] already exists.[/error]'
+        )
+        raise typer.Exit(1)
+
+    # (scaffolding implemented in Task 2)
+    raise NotImplementedError
+
+
 @app.command('edit, e', help='Open contest.rbx.yml in your default editor.')
 @within_contest
 def edit():

@@ -162,3 +162,39 @@ class TestContestList:
         div1_line = next(line for line in result.output.splitlines() if 'div1' in line)
         assert '*' not in default_line
         assert '*' in div1_line
+
+
+class TestContestAddVariant:
+    def test_invalid_id_rejected(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_dispatcher(tmp_path)
+
+        result = runner.invoke(contest_main.app, ['add_variant', 'bad id'])
+
+        assert result.exit_code != 0, result.output
+        assert not (tmp_path / 'contest.bad id.rbx.yml').exists()
+
+    def test_invalid_id_leading_digit_rejected(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_dispatcher(tmp_path)
+
+        result = runner.invoke(contest_main.app, ['add_variant', '1abc'])
+
+        assert result.exit_code != 0, result.output
+
+    def test_not_in_contest_dir_rejected(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(contest_main.app, ['add_variant', 'div3'])
+
+        assert result.exit_code != 0, result.output
+
+    def test_existing_variant_rejected(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _write_dispatcher(tmp_path, 'div1')
+        original = (tmp_path / 'contest.div1.rbx.yml').read_text()
+
+        result = runner.invoke(contest_main.app, ['add_variant', 'div1'])
+
+        assert result.exit_code != 0, result.output
+        assert (tmp_path / 'contest.div1.rbx.yml').read_text() == original
