@@ -268,7 +268,13 @@ class RunLog(BaseModel):
             return 'OK'
         time = self.time or 0.0
         memory = self.memory or 0
-        return f'FAILED with exit code {self.exitcode} and sandbox status {self.exitstatus} (time: {time}s, memory: {memory // (1024 * 1024)}MB)'
+        summary = (
+            f'FAILED with exit code {self.exitcode} and sandbox status '
+            f'{self.exitstatus} (time: {time}s, memory: {memory // (1024 * 1024)}MB)'
+        )
+        if self.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR and self.sandbox:
+            summary += f'\nReason: {self.sandbox}'
+        return summary
 
 
 class PreprocessLog(RunLog):
