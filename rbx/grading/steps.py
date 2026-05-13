@@ -21,7 +21,7 @@ from rbx.config import get_bits_stdcpp, get_jngen, get_testlib, get_tgen
 from rbx.console import console
 from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
-from rbx.grading.judge.program import ProgramError
+from rbx.grading.judge.program import ProgramError, ProgramNotFoundError
 from rbx.grading.judge.sandbox import (
     CommunicationParams,
     SandboxBase,
@@ -716,7 +716,7 @@ def _build_run_log(
 
 
 class CompilationError(RbxException):
-    pass
+    not_found_executable: Optional[str] = None
 
 
 async def compile(
@@ -752,11 +752,20 @@ async def compile(
             sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
         except ProgramError as e:
             with CompilationError() as err:
-                err.print(
-                    '[error]FAILED[/error] Preprocessing failed with command',
-                    utils.highlight_json_obj(cmd),
-                )
-                err.print(e)
+                if isinstance(e, ProgramNotFoundError):
+                    err.not_found_executable = e.executable
+                    err.print(
+                        '[error]FAILED[/error] The compiler/interpreter '
+                        f"'[item]{e.executable}[/item]' was not found while running",
+                        utils.highlight_json_obj(cmd),
+                    )
+                    err.print('[warning]Is it installed and on your PATH?[/warning]')
+                else:
+                    err.print(
+                        '[error]FAILED[/error] Preprocessing failed with command',
+                        utils.highlight_json_obj(cmd),
+                    )
+                    err.print(e)
 
         std_outputs = [
             sandbox.get_file_to_string(stderr_file, maxlen=None)
