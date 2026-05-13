@@ -258,7 +258,7 @@ class FailedToCompileSolutionIssue(issue_stack.Issue):
             isinstance(self.exception, steps.CompilationError)
             and self.exception.not_found_executable
         ):
-            return f"'{self.exception.not_found_executable}' not found"
+            return f"'{self.exception.not_found_executable}' was not found"
         return None
 
     def get_detailed_message(self) -> str:
