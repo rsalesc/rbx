@@ -78,3 +78,13 @@ def test_registered_for_cxx_commands():
     assert isinstance(s_clangpp, CppCompilationWarningSummarizer)
     assert isinstance(s_gcc, CppCompilationWarningSummarizer)
     assert not isinstance(s_py, CppCompilationWarningSummarizer)
+
+
+def test_dedup_keeps_distinct_messages_at_same_location():
+    # Same (file, line, flag) but different messages — must NOT collapse.
+    s = CppCompilationWarningSummarizer()
+    stderr = (
+        "sol.cpp:1:1: warning: unused variable 'x' [-Wunused-variable]\n"
+        "sol.cpp:1:1: warning: unused variable 'y' [-Wunused-variable]\n"
+    )
+    assert s.summarize([_log(stderr)]) == '2× -Wunused-variable'
