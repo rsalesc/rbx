@@ -300,7 +300,7 @@ async def compile_generators(
         title='Generators',
         progress_message='[info]Compiling [item]{processed}[/item] / [item]{total}[/item] generators...[/info]',
         final_message='[info]Compiled [item]{total}[/item] generators...[/info]',
-        flexible_columns={2},
+        flexible_columns=GeneratorCompilationTask.FLEXIBLE_COLUMN_INDICES,
     ) as live:
 
         class GeneratorCompilationStreamer(

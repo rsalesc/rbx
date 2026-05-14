@@ -309,7 +309,7 @@ async def compile_solutions(
         title='Solutions',
         progress_message='[info]Compiled [item]{processed}[/item] / [item]{total}[/item] solutions...[/info]',
         final_message='[info]Compiled [item]{total}[/item] solutions...[/info]',
-        flexible_columns={2},
+        flexible_columns=SolutionCompilationTask.FLEXIBLE_COLUMN_INDICES,
     ) as live:
 
         class SolutionCompilationStreamer(AsyncStreamer[SolutionCompilationTask, str]):

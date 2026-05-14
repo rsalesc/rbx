@@ -1,7 +1,7 @@
 import abc
 import dataclasses
 import enum
-from typing import Generic, List, Optional, Set, TypeVar
+from typing import ClassVar, FrozenSet, Generic, Iterable, List, Optional, TypeVar
 
 from rich.align import AlignMethod
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
@@ -46,7 +46,7 @@ class TaskGrid:
         rule_title: bool = True,
         title_style: StyleType = 'status',
         skip_empty: bool = True,
-        flexible_columns: Optional[Set[int]] = None,
+        flexible_columns: Optional[Iterable[int]] = None,
     ) -> None:
         self.renderables = list(renderables or [])
         self.padding = padding
@@ -60,8 +60,6 @@ class TaskGrid:
 
     def _make_table(self, col_widths: List[int]) -> Table:
         table = Table.grid(padding=self.padding, collapse_padding=True, pad_edge=False)
-        # Pin non-flexible columns (min_width + width + no_wrap) so Rich routes
-        # all width shrinkage through the flexible columns' overflow='ellipsis'.
         for i, w in enumerate(col_widths):
             if i in self.flexible_columns:
                 table.add_column(
@@ -167,6 +165,10 @@ class CompilationStatus(enum.Enum):
 
 
 class CompilationTask(LiveTask):
+    # Index of the warning-summary cell in render()'s TaskRenderable; passed
+    # as flexible_columns by the compilation LiveTasks callers.
+    FLEXIBLE_COLUMN_INDICES: ClassVar[FrozenSet[int]] = frozenset({2})
+
     item: CodeItem
     status: CompilationStatus
     exception: Optional[RbxException] = None
@@ -240,7 +242,7 @@ class LiveTasks(Generic[TypeVarTask]):
         progress_spinner: Optional[str] = 'simpleDots',
         progress_spinner_style: StyleType = 'green',
         final_message: Optional[str] = None,
-        flexible_columns: Optional[Set[int]] = None,
+        flexible_columns: Optional[Iterable[int]] = None,
     ) -> None:
         self.tasks = []
         self._panel_indent = panel_indent
