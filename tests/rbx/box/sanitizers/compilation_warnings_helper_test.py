@@ -25,7 +25,8 @@ def test_apply_warning_status_flips_to_warnings_when_in_stack():
     compilation_warnings.apply_warning_status(task)
 
     assert task.status is live_tasks.CompilationStatus.WARNINGS
-    assert task.warning_summary is None  # empty registry -> base summarizer
+    # g++ matches the registered C++ summarizer, which produces a real summary.
+    assert task.warning_summary == '1 warning'
     stack.clear()
 
 

@@ -1,5 +1,6 @@
 import dataclasses
 import re
+from collections import Counter
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 from rbx import utils
@@ -7,6 +8,7 @@ from rbx.grading.steps import (
     PreprocessLog,
     _is_first_party_warning_file,
     get_exe_from_command,
+    is_cxx_command,
 )
 
 if TYPE_CHECKING:
@@ -89,6 +91,42 @@ def get_compilation_warning_summarizer_for(
     return _DEFAULT_SUMMARIZER
 
 
+class CppCompilationWarningSummarizer(CompilationWarningSummarizer):
+    _UNFLAGGED = '<unflagged>'
+
+    def summarize(self, logs: List[PreprocessLog]) -> Optional[str]:
+        seen = set()
+        parsed: List[_ParsedWarning] = []
+        for log in logs:
+            for w in _parse_cpp_warnings(log.log):
+                key = (w.file, w.line, w.flag, w.msg)
+                if key in seen:
+                    continue
+                seen.add(key)
+                parsed.append(w)
+
+        if not parsed:
+            return None
+
+        counts = Counter(w.flag or self._UNFLAGGED for w in parsed)
+        ordered = sorted(
+            counts.items(),
+            key=lambda kv: (-kv[1], kv[0] == self._UNFLAGGED, kv[0]),
+        )
+
+        def _render(flag: str, count: int) -> str:
+            if flag == self._UNFLAGGED:
+                return f'{count} warnings' if count != 1 else '1 warning'
+            return f'{count}× {flag}'
+
+        head = ordered[:2]
+        rendered = ', '.join(_render(f, c) for f, c in head)
+        remaining = len(ordered) - len(head)
+        if remaining > 0:
+            rendered += f' (+{remaining} more)'
+        return rendered
+
+
 def apply_warning_status(task: 'CompilationTask') -> None:
     """If ``task.item`` compiled with warnings (per the warning stack), flip the
     task to ``WARNINGS`` and attach a compiler-specific summary line.
@@ -111,3 +149,6 @@ def apply_warning_status(task: 'CompilationTask') -> None:
     task.status = CompilationStatus.WARNINGS
     summarizer = get_compilation_warning_summarizer_for(warning_logs[0].cmd)
     task.warning_summary = summarizer.summarize(warning_logs)
+
+
+register(is_cxx_command, CppCompilationWarningSummarizer())
