@@ -49,17 +49,21 @@ def apply_warning_status(task: 'CompilationTask') -> None:
     """If ``task.item`` compiled with warnings (per the warning stack), flip the
     task to ``WARNINGS`` and attach a compiler-specific summary line.
     """
+    # Lazy imports avoid an import cycle: ``live_tasks`` and ``warning_stack``
+    # both transitively depend on this module, so they cannot be hoisted to
+    # module scope.
     from rbx.box.parallel.live_tasks import CompilationStatus
     from rbx.box.sanitizers import warning_stack
 
     stack = warning_stack.get_warning_stack()
     if task.item.path not in stack.warnings:
         return
-    task.status = CompilationStatus.WARNINGS
 
     logs = stack.warning_logs.get(task.item.path, [])
     warning_logs = [log for log in logs if log.warnings]
     if not warning_logs:
         return
+
+    task.status = CompilationStatus.WARNINGS
     summarizer = get_compilation_warning_summarizer_for(warning_logs[0].cmd)
     task.warning_summary = summarizer.summarize(warning_logs)
