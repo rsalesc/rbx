@@ -1,7 +1,7 @@
 import abc
 import dataclasses
 import enum
-from typing import Generic, List, Optional, TypeVar
+from typing import Generic, List, Optional, Set, TypeVar
 
 from rich.align import AlignMethod
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
@@ -46,6 +46,7 @@ class TaskGrid:
         rule_title: bool = True,
         title_style: StyleType = 'status',
         skip_empty: bool = True,
+        flexible_columns: Optional[Set[int]] = None,
     ) -> None:
         self.renderables = list(renderables or [])
         self.padding = padding
@@ -55,14 +56,25 @@ class TaskGrid:
         self.rule_title = rule_title
         self.title_style = title_style
         self.skip_empty = skip_empty
+        self.flexible_columns = set(flexible_columns or ())
 
     def _make_table(self, col_widths: List[int]) -> Table:
         table = Table.grid(padding=self.padding, collapse_padding=True, pad_edge=False)
-        for w in col_widths:
-            table.add_column(
-                width=w,
-                justify=self.align or 'left',
-            )
+        for i, w in enumerate(col_widths):
+            if i in self.flexible_columns:
+                table.add_column(
+                    max_width=w,
+                    overflow='ellipsis',
+                    no_wrap=True,
+                    justify=self.align or 'left',
+                )
+            else:
+                table.add_column(
+                    min_width=w,
+                    width=w,
+                    no_wrap=True,
+                    justify=self.align or 'left',
+                )
         return table
 
     def __rich_console__(
@@ -167,16 +179,19 @@ class CompilationTask(LiveTask):
         if self.status in (CompilationStatus.PENDING, CompilationStatus.SUCCESS):
             return None
         status_text = Text.from_markup(self.status.markup())
-        if self.status is CompilationStatus.WARNINGS and self.warning_summary:
-            status_text.append(f' ({self.warning_summary})', style='warning')
         if self.status is CompilationStatus.SKIPPED and self.skip_reason:
             status_text.append(f' ({self.skip_reason})', style='status')
+        if self.status is CompilationStatus.WARNINGS and self.warning_summary:
+            summary_text = Text(f' ({self.warning_summary})', style='warning')
+        else:
+            summary_text = Text('')
         return TaskRenderable(
             columns=[
                 Text.from_markup(
                     f'[info]Compiling {self.item.href()}...[/info]',
                 ),
                 status_text,
+                summary_text,
             ],
             panel=self.exception.cropped(
                 max_lines=15,
@@ -223,6 +238,7 @@ class LiveTasks(Generic[TypeVarTask]):
         progress_spinner: Optional[str] = 'simpleDots',
         progress_spinner_style: StyleType = 'green',
         final_message: Optional[str] = None,
+        flexible_columns: Optional[Set[int]] = None,
     ) -> None:
         self.tasks = []
         self._panel_indent = panel_indent
@@ -235,6 +251,7 @@ class LiveTasks(Generic[TypeVarTask]):
         self._progress_message = progress_message
         self._spinner = self._make_spinner(progress_spinner, progress_spinner_style)
         self._final_message = final_message
+        self._flexible_columns = set(flexible_columns or ())
 
     def __enter__(self) -> 'LiveTasks':
         if self._suspend_lives:
@@ -289,6 +306,7 @@ class LiveTasks(Generic[TypeVarTask]):
                 title=self._title,
                 rule_title=self._rule_title,
                 skip_empty=self._skip_empty,
+                flexible_columns=self._flexible_columns,
             )
         ]
         finished_tasks = sum(1 for task in self.tasks if task.is_finished())
