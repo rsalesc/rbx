@@ -40,15 +40,15 @@ def test_apply_warning_status_leaves_status_when_not_in_stack():
     assert task.warning_summary is None
 
 
-def test_apply_warning_status_uses_language_summarizer(monkeypatch):
+def test_apply_warning_status_uses_compiler_summarizer(monkeypatch):
     class FakeSummarizer(compilation_warnings.CompilationWarningSummarizer):
         def summarize(self, logs):
             return f'{len(logs)} warnings'
 
-    monkeypatch.setitem(
-        compilation_warnings._SUMMARIZERS,  # noqa: SLF001
-        'cpp',
-        FakeSummarizer(),
+    monkeypatch.setattr(
+        compilation_warnings,
+        '_SUMMARIZERS',
+        [(lambda exe: 'g++' in exe, FakeSummarizer())],
     )
 
     stack = warning_stack.get_warning_stack()
