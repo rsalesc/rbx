@@ -1,9 +1,53 @@
+import dataclasses
+import re
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
-from rbx.grading.steps import PreprocessLog, get_exe_from_command
+from rbx import utils
+from rbx.grading.steps import (
+    PreprocessLog,
+    _is_first_party_warning_file,
+    get_exe_from_command,
+)
 
 if TYPE_CHECKING:
     from rbx.box.parallel.live_tasks import CompilationTask
+
+
+@dataclasses.dataclass(frozen=True)
+class _ParsedWarning:
+    file: str
+    line: int
+    flag: Optional[str]
+    msg: str
+
+
+_CPP_WARNING_RE = re.compile(
+    r'^(?P<file>[^:\n]+):(?P<line>\d+):(?:\d+:)?\s+warning:\s+'
+    r'(?P<msg>.*?)(?:\s+\[(?P<flag>-W[^\]]+)\])?\s*$'
+)
+
+
+def _parse_cpp_warnings(log: str) -> List[_ParsedWarning]:
+    results: List[_ParsedWarning] = []
+    for raw_line in log.splitlines():
+        line = utils.strip_ansi_codes(raw_line).rstrip()
+        if not line or line.startswith('./'):
+            continue
+        match = _CPP_WARNING_RE.match(line)
+        if match is None:
+            continue
+        file = match.group('file').strip()
+        if not _is_first_party_warning_file(file):
+            continue
+        results.append(
+            _ParsedWarning(
+                file=file,
+                line=int(match.group('line')),
+                flag=match.group('flag'),
+                msg=match.group('msg').strip(),
+            )
+        )
+    return results
 
 
 class CompilationWarningSummarizer:

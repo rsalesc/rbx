@@ -1,0 +1,10 @@
+sol.cpp:5:9: warning: unused variable 'x' [-Wunused-variable]
+    int x = 0;
+        ^
+sol.cpp:7:14: warning: comparison of integers of different signedness: 'int' and 'unsigned int' [-Wsign-compare]
+    if (a < b)
+        ~ ^ ~
+sol.cpp:12:5: warning: unused variable 'y' [-Wunused-variable]
+    int y = 1;
+        ^
+3 warnings generated.
