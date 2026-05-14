@@ -60,6 +60,8 @@ class TaskGrid:
 
     def _make_table(self, col_widths: List[int]) -> Table:
         table = Table.grid(padding=self.padding, collapse_padding=True, pad_edge=False)
+        # Pin non-flexible columns (min_width + width + no_wrap) so Rich routes
+        # all width shrinkage through the flexible columns' overflow='ellipsis'.
         for i, w in enumerate(col_widths):
             if i in self.flexible_columns:
                 table.add_column(
