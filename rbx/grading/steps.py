@@ -647,6 +647,15 @@ def _check_for_sanitizer_warnings(
 _WARNING_RE = re.compile(r'([^:]+):\d+:\d+:[ ]+warning:.*')
 
 
+def _is_first_party_warning_file(file: str) -> bool:
+    file = file.strip().lower()
+    if 'testlib' in file or 'jngen' in file or 'tgen' in file or 'stresslib' in file:
+        return False
+    if file.endswith('.h'):
+        return False
+    return True
+
+
 def _check_for_compilation_warnings_in_line(line: str) -> bool:
     if line.startswith('./'):
         return False
@@ -654,12 +663,7 @@ def _check_for_compilation_warnings_in_line(line: str) -> bool:
     match = _WARNING_RE.match(line)
     if match is None:
         return False
-    file = match.group(1).strip().lower()
-    if 'testlib' in file or 'jngen' in file or 'tgen' in file or 'stresslib' in file:
-        return False
-    if file.endswith('.h'):
-        return False
-    return True
+    return _is_first_party_warning_file(match.group(1))
 
 
 def _check_for_compilation_warnings(
