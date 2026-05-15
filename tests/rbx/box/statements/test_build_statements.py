@@ -1,3 +1,4 @@
+import asyncio
 import os
 import pathlib
 from typing import List, cast
@@ -6,12 +7,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 import typer
 
+from rbx.box import limits_info
 from rbx.box.contest.schema import ContestStatement
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.schema import Package, Statement, Testcase
 from rbx.box.statements.build_statements import (
     build_statement,
     build_statement_bytes,
+    execute_build,
     get_builder,
     get_builders,
     get_environment_languages_for_statement,
@@ -1005,3 +1008,53 @@ class TestNeedsSamples:
             return_value=mock_overrides,
         ):
             assert needs_samples(statement) is False
+
+
+class TestExecuteBuildStrictProfile:
+    """Tests for strict --profile validation in execute_build."""
+
+    @pytest.mark.test_pkg('problems/box1')
+    def test_execute_build_strict_profile_missing_exits(self, pkg_from_testdata):
+        with pytest.raises(typer.Exit) as exc_info:
+            asyncio.run(
+                execute_build(
+                    verification=0,
+                    names=None,
+                    languages=None,
+                    output=StatementType.PDF,
+                    samples=False,
+                    vars=None,
+                    validate=False,
+                    profile='does-not-exist',
+                )
+            )
+        assert exc_info.value.exit_code == 1
+
+    @pytest.mark.test_pkg('problems/box1')
+    def test_execute_build_strict_profile_applies(self, pkg_from_testdata, monkeypatch):
+        pathlib.Path('.limits').mkdir(exist_ok=True)
+        pathlib.Path('.limits/icpc.yml').write_text('timeLimit: 5000\n')
+
+        seen = {}
+
+        async def fake_execute_build_on_statements(statements, *args, **kwargs):
+            seen['profile'] = limits_info.get_active_profile()
+            return []
+
+        monkeypatch.setattr(
+            'rbx.box.statements.build_statements.execute_build_on_statements',
+            fake_execute_build_on_statements,
+        )
+        asyncio.run(
+            execute_build(
+                verification=0,
+                names=None,
+                languages=None,
+                output=StatementType.PDF,
+                samples=False,
+                vars=None,
+                validate=False,
+                profile='icpc',
+            )
+        )
+        assert seen['profile'] == 'icpc'
