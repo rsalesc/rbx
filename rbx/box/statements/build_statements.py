@@ -445,7 +445,7 @@ async def execute_build(
     if profile is not None:
         limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
 
-    with limits_info.use_profile(profile):
+    with limits_info.use_profile(profile, when=lambda: profile is not None):
         pkg = package.find_problem_package_or_die()
         candidate_languages = set(languages or [])
         candidate_names = set(names or [])

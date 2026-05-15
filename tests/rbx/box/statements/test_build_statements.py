@@ -1055,3 +1055,39 @@ class TestExecuteBuildStrictProfile:
             profile='icpc',
         )
         assert seen['profile'] == 'icpc'
+
+    @pytest.mark.test_pkg('problems/box1')
+    async def test_execute_build_respects_global_profile_when_local_none(
+        self, pkg_from_testdata, monkeypatch
+    ):
+        # Simulate the global `rbx -p icpc st b` callback by setting the contextvar
+        # before invoking execute_build with profile=None (no local override).
+        pathlib.Path('.limits').mkdir(exist_ok=True)
+        pathlib.Path('.limits/icpc.yml').write_text('timeLimit: 5000\n')
+
+        token = limits_info.profile_var.set('icpc')
+        try:
+            seen = {}
+
+            async def fake_execute_build_on_statements(statements, *args, **kwargs):
+                seen['profile'] = limits_info.get_active_profile()
+                return
+
+            monkeypatch.setattr(
+                'rbx.box.statements.build_statements.execute_build_on_statements',
+                fake_execute_build_on_statements,
+            )
+
+            await execute_build(
+                verification=0,
+                names=None,
+                languages=None,
+                output=StatementType.PDF,
+                samples=False,
+                vars=None,
+                validate=False,
+                profile=None,
+            )
+            assert seen['profile'] == 'icpc'
+        finally:
+            limits_info.profile_var.reset(token)

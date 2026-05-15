@@ -142,7 +142,7 @@ async def build(
 
     built_statements = []
 
-    with limits_info.use_profile(profile):
+    with limits_info.use_profile(profile, when=lambda: profile is not None):
         for statement in valid_statements:
             built_statements.append(
                 await build_statement(

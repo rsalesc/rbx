@@ -58,6 +58,48 @@ async def test_contest_build_skips_problems_missing_profile(
 
 
 @pytest.mark.test_pkg('contests/two_problems')
+async def test_contest_build_respects_global_profile_when_local_none(
+    cleandir_with_testdata, monkeypatch, capsys
+):
+    pathlib.Path('A/.limits').mkdir(parents=True, exist_ok=True)
+    pathlib.Path('A/.limits/icpc.yml').write_text('timeLimit: 5000\n')
+    pathlib.Path('B/.limits').mkdir(parents=True, exist_ok=True)
+    pathlib.Path('B/.limits/icpc.yml').write_text('timeLimit: 5000\n')
+
+    token = limits_info.profile_var.set('icpc')
+    try:
+        seen_profiles = []
+
+        async def fake_build_statement(
+            statement, contest, *, problems_of_interest=None, **kwargs
+        ):
+            seen_profiles.append(limits_info.get_active_profile())
+            return pathlib.Path('fake.pdf')
+
+        monkeypatch.setattr(
+            'rbx.box.contest.statements.build_statement',
+            fake_build_statement,
+        )
+
+        await _build_async(
+            verification=0,
+            names=None,
+            languages=None,
+            validate=False,
+            output=StatementType.PDF,
+            samples=False,
+            vars=None,
+            install_tex=False,
+            profile=None,
+        )
+
+        assert seen_profiles, 'expected at least one statement build call'
+        assert all(p == 'icpc' for p in seen_profiles), seen_profiles
+    finally:
+        limits_info.profile_var.reset(token)
+
+
+@pytest.mark.test_pkg('contests/two_problems')
 async def test_contest_build_all_missing_profile_exits(cleandir_with_testdata):
     with pytest.raises(typer.Exit) as exc_info:
         await _build_async(
