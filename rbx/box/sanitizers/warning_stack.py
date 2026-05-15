@@ -70,7 +70,22 @@ def get_warning_stack() -> WarningStack:
     return _get_warning_stack(current_root)
 
 
+def _summarize_warnings_for(path, stack, compilation_warnings) -> Optional[str]:
+    logs = stack.warning_logs.get(path, [])
+    warning_logs = [log for log in logs if log.warnings]
+    if not warning_logs:
+        return None
+    summarizer = compilation_warnings.get_compilation_warning_summarizer_for(
+        warning_logs[0].cmd
+    )
+    return summarizer.summarize(warning_logs)
+
+
 def print_warning_stack_report():
+    # Lazy import avoids a potential cycle between this module and
+    # ``compilation_warnings`` (which already lazy-imports back into here).
+    from rbx.box.sanitizers import compilation_warnings
+
     stack = get_warning_stack()
     if not stack.warnings and not stack.sanitizer_warnings:
         return
@@ -84,7 +99,9 @@ def print_warning_stack_report():
             'You can use [item]rbx compile[/item] to reproduce the issues with the files below.'
         )
         for path in sorted(stack.warnings):
-            console.console.print(f'- {href(path)}')
+            summary = _summarize_warnings_for(path, stack, compilation_warnings)
+            suffix = f' [warning]({summary})[/warning]' if summary else ''
+            console.console.print(f'- {href(path)}{suffix}')
         console.console.print()
 
     if stack.sanitizer_warnings:
