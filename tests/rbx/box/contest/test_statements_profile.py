@@ -1,3 +1,4 @@
+import inspect
 import pathlib
 
 import pytest
@@ -7,16 +8,12 @@ from rbx.box import limits_info
 from rbx.box.contest import statements as contest_statements_cli
 from rbx.box.statements.schema import StatementType
 
-
-def _async_build():
-    # `build` is decorated with @within_contest (sync wrapper) and @syncer.sync.
-    # Peel both layers to reach the underlying async coroutine function.
-    return contest_statements_cli.build.__wrapped__.__wrapped__
+_build_async = inspect.unwrap(contest_statements_cli.build)
 
 
 @pytest.mark.test_pkg('contests/two_problems')
 async def test_contest_build_skips_problems_missing_profile(
-    cleandir_with_testdata, monkeypatch
+    cleandir_with_testdata, monkeypatch, capsys
 ):
     pathlib.Path('A/.limits').mkdir(parents=True, exist_ok=True)
     pathlib.Path('A/.limits/icpc.yml').write_text('timeLimit: 5000\n')
@@ -36,7 +33,7 @@ async def test_contest_build_skips_problems_missing_profile(
         fake_build_statement,
     )
 
-    await _async_build()(
+    await _build_async(
         verification=0,
         names=None,
         languages=None,
@@ -54,11 +51,16 @@ async def test_contest_build_skips_problems_missing_profile(
         assert 'B' not in problems
     assert seen_profiles == ['icpc']
 
+    out = capsys.readouterr().out
+    assert 'B' in out
+    assert 'icpc' in out
+    assert 'Skipping' in out or 'skipping' in out
+
 
 @pytest.mark.test_pkg('contests/two_problems')
 async def test_contest_build_all_missing_profile_exits(cleandir_with_testdata):
     with pytest.raises(typer.Exit) as exc_info:
-        await _async_build()(
+        await _build_async(
             verification=0,
             names=None,
             languages=None,
