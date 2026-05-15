@@ -1,0 +1,8 @@
+---
+name: 'two-problems'
+problems:
+  - short_name: 'A'
+  - short_name: 'B'
+statements:
+  - name: 'english'
+    language: 'en'

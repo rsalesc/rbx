@@ -4,7 +4,7 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import cd, environment, package_utils
+from rbx.box import cd, environment, limits_info, package_utils
 from rbx.box.contest.build_contest_statements import (
     StatementBuildIssue,
     build_statement,
@@ -65,8 +65,35 @@ async def build(
         bool,
         typer.Option(help='Whether to install missing LaTeX packages.'),
     ] = False,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            '-p',
+            '--profile',
+            help='Timing profile to render statements against. Problems missing this profile are skipped with a warning.',
+        ),
+    ] = None,
 ):
     contest = find_contest_package_or_die()
+
+    eligible_problems: List[ContestProblem] = list(contest.problems)
+    if profile is not None:
+        eligible_problems = []
+        for problem in contest.problems:
+            saved = limits_info.get_saved_limits_profile(
+                profile, root=problem.get_path()
+            )
+            if saved is None:
+                console.console.print(
+                    f'[warning]Skipping problem [item]{problem.short_name}[/item]: timing profile [item]{profile}[/item] is not defined for it.[/warning]'
+                )
+                continue
+            eligible_problems.append(problem)
+        if not eligible_problems:
+            console.console.print(
+                f'[error]No problems in this contest define the timing profile [item]{profile}[/item].[/error]'
+            )
+            raise typer.Exit(1)
 
     candidate_languages = set(languages or [])
     candidate_names = set(names or [])
@@ -95,7 +122,7 @@ async def build(
         from rbx.box.testcase_sample_utils import build_samples
 
         problems_of_interest = []
-        for problem in contest.problems:
+        for problem in eligible_problems:
             console.console.print(
                 f'Processing problem [item]{problem.short_name}[/item]...'
             )
@@ -110,20 +137,26 @@ async def build(
                 except Exception:
                     issue_stack.add_issue(StatementBuildIssue(problem))
 
+    if profile is not None and problems_of_interest is None:
+        problems_of_interest = eligible_problems
+
     built_statements = []
 
-    for statement in valid_statements:
-        built_statements.append(
-            await build_statement(
-                statement,
-                contest,
-                problems_of_interest=problems_of_interest,
-                output_type=output,
-                use_samples=samples,
-                install_tex=install_tex,
-                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
+    with limits_info.use_profile(profile):
+        for statement in valid_statements:
+            built_statements.append(
+                await build_statement(
+                    statement,
+                    contest,
+                    problems_of_interest=problems_of_interest,
+                    output_type=output,
+                    use_samples=samples,
+                    install_tex=install_tex,
+                    custom_vars=expand_any_vars(
+                        annotations.parse_dictionary_items(vars)
+                    ),
+                )
             )
-        )
 
     console.console.rule(title='Built statements')
     for statement, built_path in zip(valid_statements, built_statements):
