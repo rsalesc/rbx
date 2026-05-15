@@ -1,0 +1,2 @@
+testlib.h:1234:5: warning: unused parameter 'n' [-Wunused-parameter]
+sol.cpp:3:9: warning: unused variable 'q' [-Wunused-variable]

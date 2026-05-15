@@ -1,0 +1,4 @@
+sol.cpp: In function 'int main()':
+sol.cpp:5:9: warning: unused variable 'x' [-Wunused-variable]
+    5 |     int x = 0;
+      |         ^

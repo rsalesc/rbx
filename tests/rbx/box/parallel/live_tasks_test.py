@@ -26,13 +26,15 @@ def test_warnings_with_summary_appends_it():
         live_tasks.CompilationStatus.WARNINGS, summary='3 warnings'
     ).render()
     assert rendered is not None
-    assert rendered.columns[1].plain == 'WARNINGS (3 warnings)'
+    assert rendered.columns[1].plain == 'WARNINGS'
+    assert rendered.columns[2].plain == ' (3 warnings)'
 
 
 def test_warning_summary_ignored_when_not_warnings_status():
     rendered = _task(live_tasks.CompilationStatus.FAILED, summary='x').render()
     assert rendered is not None
     assert rendered.columns[1].plain == 'FAILED'
+    assert rendered.columns[2].plain == ''
 
 
 def test_skipped_without_reason_shows_plain_label():

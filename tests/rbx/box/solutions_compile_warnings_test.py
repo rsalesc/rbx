@@ -69,5 +69,7 @@ async def test_compile_solutions_records_warnings_in_stack(
     assert pathlib.Path('sol.cpp') in warning_stack.get_warning_stack().warnings
     assert len(created_tasks) == 1
     assert created_tasks[0].status is live_tasks.CompilationStatus.WARNINGS
-    assert created_tasks[0].warning_summary is None  # empty summarizer registry
+    assert (
+        created_tasks[0].warning_summary == '1 warning'
+    )  # C/C++ summarizer counts the unused-variable warning
     warning_stack.get_warning_stack().clear()
