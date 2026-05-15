@@ -81,6 +81,29 @@ rbx statements build statement-en
 
 # Build for specific languages
 rbx statements build --languages en pt
+
+# Render the statement against a specific timing profile
+rbx statements build -p icpc
 ```
 
 The built statements will be placed in the `build/` directory of your package.
+
+### Rendering against a timing profile
+
+The `-p` / `--profile` flag tells {{rbx}} to render the statement using the time
+limits from a specific [limits profile](../profiling/index.md) instead of the
+package defaults. The flag fails loudly if the named profile doesn't exist for
+the current problem (i.e. there is no `.limits/<profile>.yml`), so you never
+ship a PDF with the wrong time limits.
+
+The contest-level command (`rbx contest statements build -p <profile>`) is
+more lenient: problems that don't define the profile are **skipped with a
+warning** and excluded from the contest statement. If no problem defines the
+profile, the command fails. This makes it easy to assemble a contest book for
+a specific venue (e.g. `-p icpc`) when only a subset of the problems has been
+profiled for it.
+
+!!! note
+    `rbx statements build -p <profile>` is equivalent to the global
+    `rbx -p <profile> statements build`. The subcommand-level flag wins when
+    both are passed.
