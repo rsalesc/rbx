@@ -1,3 +1,66 @@
+## 0.33.0 (2026-05-16)
+
+### Feat
+
+- **sanitizers**: show per-file warning summary in stack report (#446) (#457)
+- show skip reason in compilation LiveTasks (#448) (#452)
+- clearer 'executable not found' errors (#374) (#451)
+- show WARNINGS in compilation LiveTasks (#397) (#447)
+- add tgen as a default include (#445)
+- **contest**: multi-contest dispatcher mode (#433)
+- **tests**: YAML-driven e2e test framework (#421)
+- **generators**: detect non-deterministic generators by re-running (#417)
+- **packaging**: add --upload-tests-raw flag to polygon upload
+- **packaging**: dispatch raw testcase upload from upload_problem
+- **packaging**: add raw testcase upload path
+- **packaging**: add raw test pre-flight validator
+- **packaging**: add raw-test path resolver and size limit
+- **yaml**: wrap pydantic validation errors with caret diagnostics
+- **yaml**: wrap YAML syntax errors with caret diagnostic
+- **yaml**: render caret diagnostic blocks for validation errors
+- **yaml**: dedupe and fold union noise in pydantic errors
+- **yaml**: format loc tuples as readable dotted paths
+- **yaml**: widen caret span to scalar values in locate
+- **yaml**: anchor locate caret on first map key when walk fails
+- **yaml**: locate top-level scalar fields in source
+- **yaml**: bootstrap yaml_validation module skeleton
+- **schema**: require unique testcase subgroup names per parent
+- **schema**: require unique testcase group names
+- **statements**: expose groups accessor in problem jinja kwargs
+- **statements**: add JinjaGroupsGetter for name-keyed group access
+- **contest**: wire problem folder validation into find_contest_package
+- **contest**: validate problem folders contain problem.rbx.yml
+- **contest**: validate that problem folders exist on contest load
+- **presets**: wire variable expansion into preset installation
+- **presets**: add _collect_expansions for user-prompted replacements
+- **presets**: add _expand_content for needle replacement in preset files
+- **presets**: add _should_expand_file for expansion safety checks
+- **presets**: add validation for VariableExpansion prompt requirement
+- bump python to 3.14
+
+### Fix
+
+- **statements**: strip \titleformat/\titlespacing before TexSoup parse (#458)
+- **irun**: honor testcase entry validators in irun -t (#405) (#450)
+- add a gitignore to claude worktrees
+- **ui**: resolve .eval paths via the actual on-disk stem (#418) (#429)
+- **grading**: make AsyncFileLock acquire/release atomic on the event loop (#428)
+- **grading**: migrate FileLock to AsyncFileLock for asyncio safety (#394) (#420)
+- **grading**: pin alarm-thread monitoring to (pid, create_time) (#427)
+- **yaml**: use except Exception in defensive locate fallbacks
+- fix typo
+- **presets**: guard against None from questionary in _collect_expansions
+- update classifier version
+- stick to py3.14
+
+### Refactor
+
+- **presets**: use load_yaml_model for preset configs
+- **limits**: use load_yaml_model for limits profiles
+- **env**: use load_yaml_model for env.rbx.yml
+- **contest**: use load_yaml_model for contest.rbx.yml
+- **package**: use load_yaml_model for problem.rbx.yml
+
 ## 0.32.0 (2026-03-18)
 
 ### Fix
