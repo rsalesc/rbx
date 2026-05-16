@@ -516,3 +516,54 @@ def test_macro_definitions_json_empty(tmp_path: pathlib.Path):
 
     loaded = MacroDefinitions.from_json_file(path)
     assert len(loaded) == 0
+
+
+def test_extract_definitions_with_titleformat_does_not_crash():
+    # TexSoup chokes on \titleformat{\section}{...} (issue #419).
+    tex = (
+        r'\titleformat{\section}{\LARGE\bfseries}{\thesection}{1em}{}'
+        '\n'
+        r'\newcommand{\afterTitleFormat}{ok}'
+    )
+    defs = extract_definitions(tex)
+    assert 'afterTitleFormat' in defs
+    assert defs.get('afterTitleFormat').body == 'ok'
+
+
+def test_extract_definitions_with_titlespacing_bare_command_arg():
+    # \titlespacing\section{...}{...}{...} — first arg is a bare command.
+    tex = (
+        r'\titlespacing\section{0pt}{12pt plus 0pt}{10pt plus 0pt}'
+        '\n'
+        r'\newcommand{\afterSpacing}{ok}'
+    )
+    defs = extract_definitions(tex)
+    assert 'afterSpacing' in defs
+
+
+def test_extract_definitions_with_starred_titleformat():
+    tex = (
+        r'\titleformat*{\section}{\bfseries}'
+        '\n'
+        r'\newcommand{\afterStar}{ok}'
+    )
+    defs = extract_definitions(tex)
+    assert 'afterStar' in defs
+
+
+def test_collect_from_default_icpc_preset_does_not_crash():
+    # The shipped default preset's icpc.sty has three \titleformat lines and
+    # three \titlespacing lines (issue #419). It must parse cleanly.
+    import rbx
+
+    sty = (
+        pathlib.Path(rbx.__file__).parent
+        / 'resources'
+        / 'presets'
+        / 'default'
+        / 'shared'
+        / 'icpc.sty'
+    )
+    defs = collect_macro_definitions(sty)
+    # icpc.sty defines several macros via \newcommand; make sure we still see them.
+    assert 'insereArquivo' in defs
