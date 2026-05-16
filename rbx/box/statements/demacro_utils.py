@@ -1,11 +1,80 @@
 import dataclasses
 import json
 import pathlib
+import re
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 from TexSoup.data import BraceGroup, BracketGroup, TexCmd, TexNode
 
 from rbx.box.statements.texsoup_utils import parse_latex
+
+# Commands whose argument shape (a bare ``\command`` as a mandatory argument,
+# e.g. ``\titleformat{\section}{...}``) makes TexSoup's argument parser throw.
+# They never define macros we care about, so we strip them before parsing.
+# See https://github.com/rsalesc/rbx/issues/419.
+_PROBLEMATIC_COMMANDS_RE = re.compile(r'\\(?:titleformat|titlespacing)(?![a-zA-Z])\*?')
+
+
+def _skip_balanced(text: str, idx: int, open_ch: str, close_ch: str) -> int:
+    """Return the index just past a balanced *open_ch*...*close_ch* group."""
+    depth = 0
+    while idx < len(text):
+        ch = text[idx]
+        if ch == '\\' and idx + 1 < len(text):
+            idx += 2  # Skip escaped char (e.g. \{).
+            continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return idx + 1
+        idx += 1
+    return idx
+
+
+def _strip_problematic_commands(content: str) -> str:
+    r"""Remove ``\titleformat``/``\titlespacing`` invocations (with their
+    arguments) so TexSoup can parse the rest of the file.
+
+    These commands take a bare control sequence as an argument
+    (``\titleformat{\section}{...}`` or ``\titlespacing\section{...}``), which
+    TexSoup's argument parser rejects. They are irrelevant to macro collection.
+    """
+    result: List[str] = []
+    pos = 0
+    for match in _PROBLEMATIC_COMMANDS_RE.finditer(content):
+        if match.start() < pos:
+            continue
+        result.append(content[pos : match.start()])
+        idx = match.end()
+        # Consume the trailing argument groups: bare control sequences,
+        # mandatory {...} groups and optional [...] groups, separated only by
+        # spaces/tabs (a newline ends the invocation).
+        while idx < len(content):
+            while idx < len(content) and content[idx] in ' \t':
+                idx += 1
+            if idx >= len(content):
+                break
+            ch = content[idx]
+            if ch == '\\' and idx + 1 < len(content):
+                idx += 2
+                while idx < len(content) and content[idx].isalpha():
+                    idx += 1
+            elif ch == '{':
+                idx = _skip_balanced(content, idx, '{', '}')
+            elif ch == '[':
+                idx = _skip_balanced(content, idx, '[', ']')
+            else:
+                break
+        pos = idx
+    result.append(content[pos:])
+    return ''.join(result)
+
+
+def _safe_parse_latex(content: str) -> TexNode:
+    """Parse LaTeX after stripping commands TexSoup cannot handle."""
+    return parse_latex(_strip_problematic_commands(content))
 
 
 @dataclasses.dataclass
@@ -166,7 +235,7 @@ def extract_definitions(
     source_file: Optional[str] = None,
 ) -> MacroDefinitions:
     """Extract all macro definitions from a TeX string."""
-    soup = parse_latex(tex_content)
+    soup = _safe_parse_latex(tex_content)
     defs = MacroDefinitions()
 
     # Iterate descendants in document order so that later definitions
@@ -226,7 +295,7 @@ def _collect_recursive(
 
     defs = extract_definitions(content, source_file=str(resolved))
 
-    soup = parse_latex(content)
+    soup = _safe_parse_latex(content)
 
     for cmd_name in ('input', 'include'):
         for node in soup.find_all(cmd_name):
