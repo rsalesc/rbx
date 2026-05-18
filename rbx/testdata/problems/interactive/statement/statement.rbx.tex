@@ -1,0 +1,46 @@
+%- block legend
+This is an interactive problem.
+
+The jury has secretly chosen a hidden integer $x$ such that $1 \le x \le n$.
+Your task is to determine the value of $x$ by asking at most $25$ queries.
+
+In a single query, you pick an integer $q$ ($1 \le q \le n$) and ask the jury how
+$x$ compares to it.
+%- endblock
+
+%- block interaction
+First, read a single integer $n$ ($\VAR{N.min} \le n \le \VAR{N.max | sci}$),
+the size of the search range.
+
+Then, you may make at most $25$ queries. To make a query, print a single
+integer $q$ ($1 \le q \le n$) on its own line. After each query, read the jury's
+response, which is one of the following two strings:
+
+\begin{itemize}
+	\item \texttt{<} --- meaning $x < q$;
+	\item \texttt{>=} --- meaning $x \ge q$.
+\end{itemize}
+
+When you are sure about the value of $x$, print \texttt{! x} on its own line and
+terminate your program. The answer line does not count towards the query limit.
+
+After printing each query (or the final answer), do not forget to print a newline
+and flush the output buffer. Otherwise, you may receive a verdict of
+\textit{Idleness limit exceeded}.
+%- endblock
+
+%- block notes
+In the first sample, the hidden number is $x = 2$ within the range $[1, 10]$.
+The solution narrows the range down with three queries before answering.
+
+In the last sample, the range contains a single value, so the answer can be
+given immediately without any query.
+%- endblock
+
+%- block editorial
+Maintain a candidate interval $[lo, hi]$, initially $[1, n]$. While $lo < hi$,
+query the midpoint $q = \lfloor (lo + hi + 1) / 2 \rfloor$. If the response is
+\texttt{<}, then $x < q$, so set $hi = q - 1$; otherwise $x \ge q$, so set
+$lo = q$. After at most $\lceil \log_2 n \rceil \le 25$ queries the interval
+collapses to a single value, which is the answer.
+%- endblock

@@ -15,6 +15,8 @@ generators:
 validator:
   path: "validator.cpp"
 testcases:
+  - name: "samples"
+    testcaseGlob: "manual_tests/samples/*.in"
   - name: "tests"
     generatorScript:
       path: "testplan.txt"
@@ -71,7 +73,23 @@ solutions:
     outcome: AC
 statements:
   - name: "statement-en"
+    title: "Guess The Number"
+    path: "statement/statement.rbx.tex"
+    type: "rbxTeX"
+    language: "en"
+    assets:
+      - "statement/icpc.sty"
+    configure:
+      - type: "rbx-tex"
+        template: "statement/template.rbx.tex"
+    vars:
+      show_limits: true
+  - name: "statement-pdf-en"
     title: "New Problem"
     path: "dummy.pdf"
     type: "PDF"
     language: "en"
+vars:
+  N:
+    min: 1
+    max: 1000000
