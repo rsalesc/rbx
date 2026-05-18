@@ -89,8 +89,14 @@ def get_entries_options(
         renderable: Union[VisualType, Option, None],
         entry: Optional[GenerationTestcaseEntry] = None,
     ):
-        expanded_entries.append(entry)
         options.append(renderable)
+        # A ``None`` renderable is a divider: Textual's OptionList does not
+        # allocate an index for it (it only flags the preceding option as a
+        # divider), so it must NOT get a slot in ``expanded_entries`` or the
+        # parallel list drifts out of sync with ``OptionList.highlighted``
+        # once a divider is crossed (#464).
+        if renderable is not None:
+            expanded_entries.append(entry)
 
     total_got_score = 0
     max_score = 0
