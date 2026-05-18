@@ -12,7 +12,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import dotenv
 import rich
@@ -32,6 +42,43 @@ from rbx import __version__
 from rbx.console import console
 
 T = TypeVar('T', bound=BaseModel)
+_R = TypeVar('_R')
+
+
+def loop_agnostic_async_cache(
+    fn: Callable[..., Awaitable[_R]],
+) -> Callable[..., Awaitable[_R]]:
+    """Memoize a coroutine function with a plain, loop-agnostic dict.
+
+    Unlike ``async_lru.alru_cache``, this does not bind the cache (nor any
+    in-flight ``asyncio.Task``) to the event loop that first awaited it. That
+    makes it safe to reach the same cached coroutine from multiple event loops
+    -- e.g. the main loop during ``rbx build`` and the detached
+    ``AsyncExecutor`` loop during ``rbx run``'s checker phase (see #462).
+
+    Only completed results are cached, so concurrent callers may recompute the
+    value; this is fine for idempotent, content-addressed lookups.
+
+    Exposes ``cache_clear()`` so it stays compatible with the test-isolation
+    sweep in ``rbx.testing_utils.clear_all_functools_cache``.
+    """
+    cache: Dict[Any, _R] = {}
+
+    @functools.wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> _R:
+        key = (args, tuple(sorted(kwargs.items())))
+        try:
+            return cache[key]
+        except KeyError:
+            pass
+        result = await fn(*args, **kwargs)
+        cache[key] = result
+        return result
+
+    wrapper.cache_clear = cache.clear  # type: ignore[attr-defined]
+    return wrapper
+
+
 APP_NAME = 'rbx'
 PIP_NAME = 'rbx.cp'
 DOTENV_FILES = ['.env', '.env.local']
