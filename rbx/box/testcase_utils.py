@@ -80,14 +80,41 @@ class TestcaseData(BaseModel):
 
 
 class TestcaseInteractionEntry(BaseModel):
+    """A single line of dialogue exchanged in an interactive testcase.
+
+    An *entry* is the finest-grained unit of an interaction: exactly one line
+    as it was parsed from the ``.interaction``/``.pio`` file, with its origin
+    recorded in ``pipe``.
+
+    This contrasts with an interaction *chunk* (see
+    :class:`rbx.box.testcase_sample_utils.SampleInteractionChunk`): a chunk
+    merges consecutive entries from the *same* participant into a single block,
+    so a chunk represents one uninterrupted "turn" rather than one line. Chunks
+    are derived from entries via :func:`merge_interaction_entries`.
+    """
+
     __test__ = False
+
+    # The text exchanged on this line (participant prefix already stripped).
     data: str
+    # Which participant produced this line: 0 = interactor, 1 = solution.
     pipe: int
 
 
 class TestcaseInteraction(BaseModel):
+    """The full, unmerged dialogue of an interactive testcase.
+
+    Holds every :class:`TestcaseInteractionEntry` in chronological order. This
+    is the line-by-line source of truth; the merged, "chunked" view used for
+    statement rendering is derived from ``entries`` via
+    :func:`merge_interaction_entries`.
+    """
+
     __test__ = False
+
+    # All dialogue lines, in chronological order, one per exchanged line.
     entries: List[TestcaseInteractionEntry]
+    # (interactor_prefix, solution_prefix) used when parsing the source file.
     prefixes: Tuple[str, str]
 
 
@@ -113,6 +140,17 @@ class TestcaseInteractionParsingError(Exception):
 def merge_interaction_entries(
     entries: List[TestcaseInteractionEntry],
 ) -> List[TestcaseInteractionEntry]:
+    """Collapse a list of entries into "chunks".
+
+    Consecutive entries produced by the same participant (same ``pipe``) are
+    merged into a single entry, joining their ``data`` with newlines. The
+    result is the chunked view of the dialogue: one entry per uninterrupted
+    turn instead of one entry per line. Used to build
+    :class:`rbx.box.testcase_sample_utils.SampleInteractionChunk` for statement
+    rendering.
+
+    The input list is not mutated; merged entries are copied.
+    """
     merged_entries: List[TestcaseInteractionEntry] = []
     for entry in entries:
         if len(merged_entries) > 0 and merged_entries[-1].pipe == entry.pipe:
@@ -123,6 +161,14 @@ def merge_interaction_entries(
 
 
 def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
+    """Parse an interaction file into its unmerged :class:`TestcaseInteraction`.
+
+    ``.interaction`` files use the predetermined prefixes ``<`` (interactor)
+    and ``>`` (solution); any other suffix (e.g. ``.pio``) reads the two
+    prefixes from the first two lines of the file. Each remaining non-empty
+    line becomes one :class:`TestcaseInteractionEntry` (no merging is done
+    here -- see :func:`merge_interaction_entries` for the chunked view).
+    """
     entries = []
     with file.open('r') as f:
         if file.suffix == '.interaction':

@@ -48,8 +48,8 @@
 		%- for sample in problem.samples
 			%- if sample.interaction is not none
 				\exampleInteractive
-				%- for entry in sample.interaction.entries
-					\interaction{\VAR{entry.data}}{\VAR{entry.pipe}}
+				%- for chunk in sample.interaction.chunks
+					\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
 				%- endfor
 			%- else
 				\example{\VAR{sample.inputPath}}
