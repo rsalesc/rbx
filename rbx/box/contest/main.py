@@ -8,7 +8,7 @@ import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import cd, creation, presets, summary
+from rbx.box import cd, creation, naming, presets, summary
 from rbx.box.contest import contest_package, contest_state, contest_utils, statements
 from rbx.box.contest.contest_package import (
     find_contest,
@@ -261,7 +261,7 @@ def each(ctx: typer.Context) -> None:
         CommandEntry(
             argv=argv,
             placeholder_prefix=placeholder_prefix,
-            name=f'{problem.short_name}',
+            name=naming.get_contest_problem_label(problem),
             cwd=str(problem.get_path()),
         )
         for problem in contest.problems
@@ -287,7 +287,7 @@ def on(ctx: typer.Context, problems: str) -> None:
     if len(problems_of_interest) == 1:
         command = ' '.join(['rbx'] + ctx.args)
         console.console.print(
-            f'[status]Running [item]{command}[/item] for [item]{problems_of_interest[0].short_name}[/item]...[/status]'
+            f'[status]Running [item]{command}[/item] for [item]{naming.get_contest_problem_label(problems_of_interest[0])}[/item]...[/status]'
         )
         subprocess.call(command, cwd=problems_of_interest[0].get_path(), shell=True)
         return
@@ -297,7 +297,7 @@ def on(ctx: typer.Context, problems: str) -> None:
         CommandEntry(
             argv=argv,
             placeholder_prefix=placeholder_prefix,
-            name=f'{p.short_name}',
+            name=naming.get_contest_problem_label(p),
             cwd=str(p.get_path()),
         )
         for p in problems_of_interest

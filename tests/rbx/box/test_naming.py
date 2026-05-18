@@ -1,6 +1,6 @@
 import os
 import pathlib
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 import typer
@@ -8,6 +8,7 @@ import typer
 from rbx.box import naming
 from rbx.box.contest import contest_package as cp_module
 from rbx.box.contest.contest_state import selected_variant_id_var
+from rbx.box.contest.schema import ContestProblem
 from rbx.box.schema import Package
 from rbx.box.statements.schema import Statement
 
@@ -255,6 +256,30 @@ class TestGetProblemShortnameOrRequire:
         out = capsys.readouterr().out
         assert '-C' in out
         assert 'div1' in out and 'div2' in out
+
+
+class TestGetContestProblemLabel:
+    def test_includes_problem_name_when_package_loads(self):
+        problem = ContestProblem(short_name='A')
+        pkg = Mock()
+        pkg.name = 'Two Sum'
+
+        with patch('rbx.box.naming.package.find_problem_package', return_value=pkg):
+            assert naming.get_contest_problem_label(problem) == 'A. Two Sum'
+
+    def test_falls_back_to_short_name_when_package_missing(self):
+        problem = ContestProblem(short_name='B')
+
+        with patch('rbx.box.naming.package.find_problem_package', return_value=None):
+            assert naming.get_contest_problem_label(problem) == 'B'
+
+    def test_falls_back_to_short_name_when_name_empty(self):
+        problem = ContestProblem(short_name='C')
+        pkg = Mock()
+        pkg.name = ''
+
+        with patch('rbx.box.naming.package.find_problem_package', return_value=pkg):
+            assert naming.get_contest_problem_label(problem) == 'C'
 
 
 class TestGetTitle:

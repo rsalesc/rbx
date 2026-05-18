@@ -174,6 +174,19 @@ def get_problem_name_with_contest_info() -> str:
     return f'{contest.name}-{short_name}-{problem.name}'
 
 
+def get_contest_problem_label(problem: ContestProblem) -> str:
+    """Human-readable label for a contest problem: '<short_name>. <name>'.
+
+    Falls back to just the short name when the problem package cannot be
+    loaded (e.g. missing or broken problem.rbx.yml) or has no name, so
+    callers keep working on a partially set-up contest.
+    """
+    pkg = package.find_problem_package(problem.get_path())
+    if pkg is not None and pkg.name:
+        return f'{problem.short_name}. {pkg.name}'
+    return problem.short_name
+
+
 def get_problem_title(
     lang: Optional[str] = None,
     statement: Optional[Statement] = None,
