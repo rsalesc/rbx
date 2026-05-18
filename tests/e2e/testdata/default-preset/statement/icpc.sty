@@ -288,6 +288,43 @@
 	}
 } % interaction
 
+% Like \interaction, but renders a merged interaction *chunk* read verbatim
+% from a file (#1 = chunk file path, #2 = pipe: 0 = interactor, 1 = solution).
+% A chunk groups consecutive lines from the same participant, so this draws
+% one box per turn instead of one box per line, preserving multi-line content.
+\newcommand{\interactionchunk}[2]{
+	{\small
+
+		\ifthenelse{\equal{#2}{\string 0}}{
+			\vspace{-0.3cm}
+			\begin{tabular}{|l|}
+				\hline
+				\begin{minipage}[t]{0.55\textwidth}
+					\vspace{0.01cm}
+					\insereArquivo{#1}
+					\vspace{0.28cm}
+				\end{minipage}
+				\\
+				\hline
+			\end{tabular}
+		}{
+			\vspace{-0.3cm}
+			\hfill
+			\begin{tabular}{|l|}
+				\hline
+				\begin{minipage}[t]{0.55\textwidth}
+					\vspace{0.01cm}
+					\insereArquivo{#1}
+					\vspace{0.28cm}
+				\end{minipage}
+				\\
+				\hline
+			\end{tabular}
+		}
+
+	}
+} % interactionchunk
+
 \newcommand{\explanation}[1]{
 	\textbf{\strExplanation\theexemplocounter}
 
