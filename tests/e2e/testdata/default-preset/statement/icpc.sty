@@ -89,6 +89,14 @@
 	\fi
 }
 
+% Like \insereArquivo but without the trailing vertical space, so an
+% interaction chunk box does not gain an extra empty line at the bottom.
+\newcommand{\insereChunk}[1]{
+	\ifnum0\pdffilesize{#1}>0
+		\VerbatimInput[xleftmargin=0mm,numbers=none,obeytabs=true]{#1}%
+	\fi
+}
+
 \newcommand{\insereTexto}[1]{
 \texttt{#1}
 }
@@ -301,7 +309,7 @@
 				\hline
 				\begin{minipage}[t]{0.55\textwidth}
 					\vspace{0.01cm}
-					\insereArquivo{#1}
+					\insereChunk{#1}
 					\vspace{0.28cm}
 				\end{minipage}
 				\\
@@ -314,7 +322,7 @@
 				\hline
 				\begin{minipage}[t]{0.55\textwidth}
 					\vspace{0.01cm}
-					\insereArquivo{#1}
+					\insereChunk{#1}
 					\vspace{0.28cm}
 				\end{minipage}
 				\\
