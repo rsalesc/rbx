@@ -1,3 +1,9 @@
+## 0.34.1 (2026-05-18)
+
+### Fix
+
+- **ui**: keep entry list aligned with OptionList after dividers (#465)
+
 ## 0.34.0 (2026-05-18)
 
 ### Feat

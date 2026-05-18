@@ -1760,7 +1760,7 @@ wheels = [
 
 [[package]]
 name = "rbx-cp"
-version = "0.34.0"
+version = "0.34.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -1889,10 +1889,10 @@ dev = [
     { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
     { name = "mkdocs-macros-plugin", specifier = ">=1.0.5" },
     { name = "mkdocs-material", specifier = ">=9.5.28" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.34.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.34.1" },
     { name = "pre-commit", specifier = ">=3.7.1" },
     { name = "pytest", specifier = ">=8.2.2" },
-    { name = "pytest-asyncio", specifier = ">=0.34.0" },
+    { name = "pytest-asyncio", specifier = ">=0.34.1" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-randomly", specifier = ">=3.15.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
