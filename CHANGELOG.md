@@ -1,3 +1,16 @@
+## 0.34.0 (2026-05-18)
+
+### Feat
+
+- **statements**: render interaction chunks in default preset (#461)
+
+### Fix
+
+- **package**: make get_digest_as_string cache loop-agnostic (#463)
+- **statements**: tighten vspace below interaction chunk content
+- **statements**: remove extra gap below interaction chunk boxes
+- **statements**: stop merge_interaction_entries from mutating input (#459) (#460)
+
 ## 0.33.0 (2026-05-16)
 
 ### Feat
