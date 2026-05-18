@@ -17,7 +17,11 @@ from rbx.box.solutions import (
     SolutionSkeleton,
 )
 from rbx.box.testcase_schema import TestcaseEntry
-from rbx.box.ui.utils.run_ui import get_solution_eval, get_solution_evals
+from rbx.box.ui.utils.run_ui import (
+    get_entries_options,
+    get_solution_eval,
+    get_solution_evals,
+)
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
     CheckerResult,
@@ -115,6 +119,52 @@ def test_get_solution_eval_reads_legacy_numeric_stem(tmp_path):
     eval = get_solution_eval(skeleton, sol, TestcaseEntry(group='main', index=1))
     assert eval is not None
     assert eval.result.outcome == Outcome.ACCEPTED
+
+
+def _entry(group: str, index: int) -> GenerationTestcaseEntry:
+    te = TestcaseEntry(group=group, index=index)
+    return GenerationTestcaseEntry(
+        group_entry=te,
+        subgroup_entry=te,
+        metadata=GenerationMetadata(
+            copied_to=Testcase(inputPath=pathlib.Path(f'{group}-{index}.in'))
+        ),
+    )
+
+
+def test_entries_options_align_with_optionlist_indices():
+    """Regression for #464.
+
+    ``OptionList.highlighted`` indexes into the *options-only* list that
+    Textual builds: a ``None`` separator does not occupy an index, it just
+    turns the preceding option into a divider. The parallel ``expanded_entries``
+    list returned by ``get_entries_options`` must therefore align 1:1 with the
+    real ``OptionList._options`` so highlighting maps to the right testcase.
+    """
+    from textual.widgets import OptionList
+
+    entries = [
+        _entry('group-a', 0),
+        _entry('group-a', 1),
+        _entry('group-b', 0),
+        _entry('group-b', 1),
+    ]
+
+    options, expanded_entries = get_entries_options(entries)
+
+    option_list = OptionList(*options)
+
+    # One expanded-entry slot per real option Textual tracks.
+    assert len(expanded_entries) == option_list.option_count
+
+    # Every selectable (non-disabled) option must map to a real entry, and
+    # those entries must appear in the original order.
+    selectable_entries = [
+        expanded_entries[i]
+        for i in range(option_list.option_count)
+        if not option_list.get_option_at_index(i).disabled
+    ]
+    assert selectable_entries == entries
 
 
 def test_get_solution_evals_finds_all_for_subgroup_stems(tmp_path):
