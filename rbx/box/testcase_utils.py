@@ -118,7 +118,7 @@ def merge_interaction_entries(
         if len(merged_entries) > 0 and merged_entries[-1].pipe == entry.pipe:
             merged_entries[-1].data += '\n' + entry.data
         else:
-            merged_entries.append(entry)
+            merged_entries.append(entry.model_copy())
     return merged_entries
 
 

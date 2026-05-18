@@ -452,16 +452,19 @@ class TestMergeInteractionEntries:
         assert result[1].data == 'c\nd'
         assert result[1].pipe == 1
 
-    def test_mutates_first_entry_of_consecutive_group(self):
-        """The first entry of a consecutive group is mutated in-place."""
+    def test_does_not_mutate_input_entries(self):
+        """merge_interaction_entries must not mutate its input list (#459)."""
         entries = [
             TestcaseInteractionEntry(data='a', pipe=0),
             TestcaseInteractionEntry(data='b', pipe=0),
         ]
         result = merge_interaction_entries(entries)
-        # Result shares the same object as the first input entry
-        assert result[0] is entries[0]
-        assert entries[0].data == 'a\nb'
+        # The original entries are left pristine.
+        assert entries[0].data == 'a'
+        assert entries[1].data == 'b'
+        # The merged result is a distinct object from the input.
+        assert result[0] is not entries[0]
+        assert result[0].data == 'a\nb'
 
 
 class TestGetAlternateInteractionTexts:
