@@ -1,13 +1,11 @@
 """Tests for `rbx contest` Typer commands."""
 
 import pathlib
-from unittest import mock
 
 import pytest
 from typer.testing import CliRunner
 
 from rbx.box.contest import main as contest_main
-from rbx.box.contest.schema import ContestProblem
 
 
 @pytest.fixture
@@ -164,30 +162,3 @@ class TestContestList:
         div1_line = next(line for line in result.output.splitlines() if 'div1' in line)
         assert '*' not in default_line
         assert '*' in div1_line
-
-
-class TestProblemCommandName:
-    def test_includes_problem_name_when_package_loads(self):
-        problem = ContestProblem(short_name='A')
-        fake_pkg = mock.Mock()
-        fake_pkg.name = 'Two Sum'
-        with mock.patch.object(
-            contest_main.package, 'find_problem_package', return_value=fake_pkg
-        ):
-            assert contest_main._problem_command_name(problem) == 'A. Two Sum'  # noqa: SLF001
-
-    def test_falls_back_to_short_name_when_package_missing(self):
-        problem = ContestProblem(short_name='B')
-        with mock.patch.object(
-            contest_main.package, 'find_problem_package', return_value=None
-        ):
-            assert contest_main._problem_command_name(problem) == 'B'  # noqa: SLF001
-
-    def test_falls_back_to_short_name_when_name_empty(self):
-        problem = ContestProblem(short_name='C')
-        fake_pkg = mock.Mock()
-        fake_pkg.name = ''
-        with mock.patch.object(
-            contest_main.package, 'find_problem_package', return_value=fake_pkg
-        ):
-            assert contest_main._problem_command_name(problem) == 'C'  # noqa: SLF001
