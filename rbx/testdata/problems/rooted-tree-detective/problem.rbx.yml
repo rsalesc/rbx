@@ -1,0 +1,59 @@
+---
+name: "rooted-tree-detective"
+type: communication
+timeLimit: 1000
+memoryLimit: 256
+outputLimit: 100 # 100 kb
+checker:
+  path: "checker.cpp"
+interactor:
+  path: "interactor.cpp"
+  legacy: true
+generators:
+  - name: "gen"
+    path: "gen.cpp"
+validator:
+  path: "validator.cpp"
+testcases:
+  - name: "samples"
+    subgroups:
+      - name: "manual"
+        testcases:
+          - inputPath: "manual_tests/samples/000.in"
+          - inputPath: "manual_tests/samples/001.in"
+          - inputPath: "manual_tests/samples/002.in"
+      - name: "generated"
+        generators:
+          - name: "gen"
+            args: "11"
+          - name: "gen"
+            args: "12"
+          - name: "gen"
+            args: "13"
+  - name: "tests"
+    generatorScript:
+      path: "testplan.txt"
+solutions:
+  - path: "sols/main.cpp"
+    outcome: AC
+  - path: "sols/wa_guess_one.cpp"
+    outcome: WA
+  - path: "sols/wa_over_query.cpp"
+    outcome: WA
+statements:
+  - name: "statement-en"
+    title: "Rooted Tree Detective"
+    path: "statement/statement.rbx.tex"
+    type: "rbxTeX"
+    language: "en"
+    assets:
+      - "statement/icpc.sty"
+    configure:
+      - type: "rbx-tex"
+        template: "statement/template.rbx.tex"
+    vars:
+      show_limits: true
+vars:
+  N:
+    min: 2
+    max: 1000

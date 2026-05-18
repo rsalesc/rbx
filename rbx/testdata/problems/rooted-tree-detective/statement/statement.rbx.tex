@@ -1,0 +1,57 @@
+%- block legend
+This is an interactive problem.
+
+There is a tree with $n$ vertices numbered from $1$ to $n$. The shape of the
+tree (its list of edges) is known to you. However, the jury has secretly rooted
+the tree at one hidden vertex $r$, and your task is to determine $r$.
+
+You may interact with the jury by asking about vertices of the rooted tree.
+%- endblock
+
+%- block interaction
+The interaction begins with the jury sending you the full description of the
+tree, spanning several lines:
+
+\begin{itemize}
+	\item the first line contains a single integer $n$
+	      ($2 \le n \le \VAR{N.max}$), the number of vertices;
+	\item each of the next $n - 1$ lines contains two integers $u$ and $v$,
+	      describing an edge of the tree;
+	\item the last line of this preamble contains a single integer, the
+	      maximum number of queries you are allowed to make.
+\end{itemize}
+
+After reading the preamble, you may start asking queries. To ask a query,
+print \texttt{? v} on its own line, where $1 \le v \le n$. The jury answers
+each query with \emph{two} lines:
+
+\begin{itemize}
+	\item the first line contains the number of vertices in the subtree of
+	      $v$ with respect to the hidden root $r$;
+	\item the second line contains the depth of $v$, i.e. its distance from
+	      the hidden root $r$ (the root itself has depth $0$).
+\end{itemize}
+
+When you have determined the hidden root, print \texttt{! r} on its own line
+and terminate. The final answer line does not count towards the query limit.
+
+After printing each query (or the final answer) do not forget to print a
+newline and flush the output buffer, otherwise you may receive an
+\textit{Idleness limit exceeded} verdict.
+%- endblock
+
+%- block notes
+In the first sample the tree is the path $1 - 2 - 3$ rooted at vertex $2$.
+Querying vertex $2$ reveals a subtree of size $3$ (the whole tree) at depth
+$0$, which uniquely identifies it as the root.
+
+The third sample is a star centered at vertex $1$, rooted at one of its
+leaves; the leaf is the only vertex whose subtree covers all $5$ vertices.
+%- endblock
+
+%- block editorial
+The root is the unique vertex whose subtree contains every vertex of the tree,
+equivalently the only vertex with subtree size equal to $n$ (and depth $0$).
+Querying the vertices one by one and stopping at the first whose reported
+subtree size equals $n$ uses at most $n$ queries, well within the budget.
+%- endblock

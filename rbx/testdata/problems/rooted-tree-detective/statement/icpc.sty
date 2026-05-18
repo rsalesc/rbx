@@ -1,0 +1,385 @@
+\usepackage{caption}
+\usepackage{epsfig}
+\usepackage{moreverb}
+\usepackage{float}
+\usepackage{fancyvrb}
+\usepackage{multicol}
+\usepackage{hyperref}
+\usepackage{ifthen}
+\usepackage{titlesec}
+\usepackage{pmboxdraw}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{tikz}
+\usepackage{subcaption}
+\usetikzlibrary{matrix,positioning,fit,scopes,chains}
+\let\mytitleformat\titleformat
+\let\titleformat\relax
+\usepackage{logicpuzzle}
+\let\titleformat\mytitleformat
+\usepackage{enumitem}
+\usepackage{amsfonts}
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{indentfirst}
+\usepackage{pdftexcmds}
+\usepackage{amsmath}
+
+% Additional pandoc packages
+\usepackage{lmodern}  % or 'libertine' / 'times' for different fonts
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage{parskip}
+
+% Links
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue,
+  pdfborder={0 0 0}
+}
+
+% Pandoc shenanigans
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%Add commentMore actions
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+
+\captionsetup[figure]{labelformat=empty}
+\setlist[itemize]{noitemsep, nolistsep}
+
+\setlength{\marginparwidth}{0pt}
+\setlength{\oddsidemargin}{-0.25cm}
+\setlength{\evensidemargin}{-0.25cm}
+\setlength{\marginparsep}{0pt}
+
+\setlength{\parindent}{0cm}
+\setlength{\parskip}{5pt}
+
+\setlength{\textwidth}{16.5cm}
+\setlength{\textheight}{25.5cm}
+
+\setlength{\voffset}{-1in}
+
+% Increase section text sizes
+\titleformat{\section}{\LARGE\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\Large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+\newcommand{\insereArquivo}[1]{
+	\ifnum0\pdffilesize{#1}>0
+		\VerbatimInput[xleftmargin=0mm,numbers=none,obeytabs=true]{#1}\vspace{.5em}
+	\fi
+}
+
+\newcommand{\insereTexto}[1]{
+\texttt{#1}
+}
+
+\def\portuguese{pt}
+\ifx\lang\portuguese
+	\def\strTaskSheet{Caderno de Problemas}
+	\def\strSolutionSheet{Caderno de Soluções}
+	\def\strSponsored{Patrocínio}
+	\def\strHosted{Realização}
+	\def\strOrganized{Organização}
+	\def\strProblem{Problema }
+	\def\strAuthor{Autor}
+	\def\strExplanation{Explicação do exemplo }
+	\def\strInput{Entrada}
+	\def\strOutput{Saída}
+	\def\strInteraction{Interação}
+	\def\strSampleinput{Exemplo de entrada }
+	\def\strSampleoutput{Exemplo de saída }
+	\def\strSampleinteraction{Exemplo de interação }
+	\def\strInteractionread{Leitura}
+	\def\strInteractionwrite{Escrita}
+	\def\strExamples{Exemplos}
+	\def\strSolution{Solução}
+	\def\strNotes{Observações}
+	\def\strInfoSheet{Folha de Informações}
+	\def\strLimits{Limites}
+	\def\strTimeLimit{Tempo limite}
+	\def\strMemoryLimit{Memória limite}
+\else
+	\def\strTaskSheet{Task Sheet}
+	\def\strSolutionSheet{Solution Sheet}
+	\def\strSponsored{Sponsored by}
+	\def\strHosted{Hosted by}
+	\def\strOrganized{Organized by}
+	\def\strProblem{Problem }
+	\def\strAuthor{Author}
+	\def\strExplanation{Explanation of sample }
+	\def\strInput{Input}
+	\def\strOutput{Output}
+	\def\strInteraction{Interaction}
+	\def\strSampleinput{Sample input }
+	\def\strSampleoutput{Sample output }
+	\def\strSampleinteraction{Sample interaction }
+	\def\strInteractionread{Read}
+	\def\strInteractionwrite{Write}
+	\def\strExamples{Examples}
+	\def\strSolution{Solution}
+	\def\strNotes{Notes}
+	\def\strInfoSheet{Information Sheet}
+	\def\strLimits{Limits}
+	\def\strTimeLimit{Time limit}
+	\def\strMemoryLimit{Memory limit}
+\fi
+
+\newcommand{\includeProblem}[3][]
+{
+	\newpage
+	\def\ProblemLetter{#1}
+	\ifx\ProblemLetter\empty
+		{\huge{\bf #2}}
+	\else
+		{\huge{\bf \strProblem #1. #2}}
+	\fi
+	#3
+}
+
+\newcommand{\includeLimits}[3]{
+	\vspace{0.2cm}
+	\begin{center}
+		\textit{\strTimeLimit: #1}\\
+		\textit{\strMemoryLimit: #2}
+		\ifx#3\empty
+		\else
+			\\
+			\textit{\strAuthor: #3}
+		\fi
+	\end{center}
+	\vspace{0.25cm}
+}
+
+\newcommand{\inputdesc}[1]{
+	\subsection*{\strInput}
+	{#1} }
+
+\newcommand{\inputdescline}[1]{
+	\subsection*{\strInput}
+	\strInputdescline {#1} }
+
+\newcommand{\outputdesc}[1]{
+	\subsection*{\strOutput}
+	{#1}}
+
+\newcommand{\interactiondesc}[1]{
+	\subsection*{\strInteraction}
+	{#1}}
+
+\newcommand{\sampledesc}[2]{
+	\subsection*{\strExplanation #1}
+	{#2}}
+
+
+\newcommand{\incat}[1]{sample-#1.in}
+\newcommand{\solcat}[1]{sample-#1.sol}
+\newcounter{problemcounter}
+\setcounter{problemcounter}{0}
+\newcounter{exemplocounter}[problemcounter]
+\setcounter{exemplocounter}{0}
+
+\newcommand\mc[1]{\multicolumn{1}{l}{#1}}
+\newcommand{\example}[2]{
+	{\small
+
+		\stepcounter{exemplocounter}
+
+		\begin{minipage}[c]{0.945\textwidth}
+			\begin{center}
+				\begin{tabular}{|l|l|}
+					\mc{\bf{\strSampleinput \arabic{exemplocounter}}}
+					&
+					\mc{\bf{\strSampleoutput \arabic{exemplocounter}}} \\
+
+					\hline
+					\begin{minipage}[t]{0.5\textwidth}
+						\vspace{0.01cm}
+						\insereArquivo{#1}
+						\vspace{-0.2cm}
+					\end{minipage}
+					&
+					\begin{minipage}[t]{0.5\textwidth}
+						\vspace{0.01cm}
+						\insereArquivo{#2}
+						\vspace{-0.2cm}
+					\end{minipage} \\
+					\hline
+				\end{tabular}
+			\end{center}
+		\end{minipage} % leave next line empty
+
+	}
+} % example
+
+\newcommand{\exampleInteractive}{
+	{\small
+
+		\stepcounter{exemplocounter}
+
+		\begin{center}
+			\begin{tabular}{lcr}
+				\begin{minipage}[t]{0.3\textwidth}
+					\hspace{-0.19cm}\bf{\strInteractionread}
+				\end{minipage}
+				&
+				\begin{minipage}[t]{0.3\textwidth}
+					\bf{\strSampleinteraction \arabic{exemplocounter}}
+				\end{minipage}
+				&
+				\begin{minipage}[t]{0.3\textwidth}
+					\hfill \bf{\strInteractionwrite}
+				\end{minipage}
+			\end{tabular}
+		\end{center}
+		\vspace{-0.1cm}
+	}
+} % exampleInteractive
+
+\newcommand{\interaction}[2]{
+	{\small
+
+		\ifthenelse{\equal{#2}{\string 0}}{
+			\vspace{-0.3cm}
+			\begin{tabular}{|l|}
+				\hline
+				\begin{minipage}[t]{0.55\textwidth}
+					\vspace{0.01cm}
+					\insereTexto{#1}
+					\vspace{0.28cm}
+				\end{minipage}
+				\\
+				\hline
+			\end{tabular}
+		}{
+			\vspace{-0.3cm}
+			\hfill
+			\begin{tabular}{|l|}
+				\hline
+				\begin{minipage}[t]{0.55\textwidth}
+					\vspace{0.01cm}
+					\insereTexto{#1}
+					\vspace{0.28cm}
+				\end{minipage}
+				\\
+				\hline
+			\end{tabular}
+		}
+
+	}
+} % interaction
+
+\newcommand{\explanation}[1]{
+	\textbf{\strExplanation\theexemplocounter}
+
+	{#1} % leave empty line
+
+} % explanation
+
+\addtolength{\parskip}{0.4\baselineskip}
+
+\pagestyle{myheadings}
+
+\newcounter{pcounter}\setcounter{pcounter}{0}
+\newcounter{qcounter}\setcounter{qcounter}{0}
+
+\titlespacing\section{0pt}{12pt plus 0pt minus 2pt}{10pt plus 0pt minus 2pt}
+\titlespacing\subsection{0pt}{12pt plus 0pt minus 2pt}{10pt plus 0pt minus 2pt}
+\titlespacing\subsubsection{0pt}{12pt plus 0pt minus 2pt}{10pt plus 0pt minus 2pt}
+
+\newcommand{\InsertTitlePage}
+{
+	\pagestyle{myheadings}
+	\markright{{\Title} -- \Year}
+
+	%%% Title Page
+	\begin{titlepage}
+		\vspace*{\fill}
+		\begin{center}
+
+			\includegraphics[width=8cm]{logo.png}
+
+			\vspace{0.8cm}
+      {\huge\bf \Title}\\[12pt]
+			{\large{\bf \strTaskSheet}}\\[12pt]
+      \vspace{1.5cm}
+      {\huge{\bf \Year}}
+
+			% \vspace{1cm}
+			% {\small \bf \strSponsored}\\[8pt]
+
+			% \includegraphics[width=16cm]{sponsors.png}
+
+			% \vspace{2cm}
+			% \begin{center}
+			% 	\setlength{\tabcolsep}{0.1\textwidth}
+			% 	\begin{tabular}{cc}
+			% 		{\small\bf \strHosted} & {\small\bf \strOrganized} \\
+			% 		\includegraphics[width=3cm]{host.png} & \includegraphics[width=4cm]{organizers.png}  \\
+			% 	\end{tabular}
+			% \end{center}
+
+		\end{center}
+    \vspace*{\fill}
+	\end{titlepage}
+
+	\clearpage
+}
+
+\newcommand{\InsertEditorialTitlePage}
+{
+	\pagestyle{myheadings}
+	\markright{{\Title} -- \Year}
+
+	%%% Title Page
+	\begin{titlepage}
+    \vspace*{\fill}
+		\begin{center}
+
+			\includegraphics[width=8cm]{logo.png}
+
+			\vspace{0.8cm}
+      {\huge\bf \Title}\\[12pt]
+			{\large{\bf \strSolutionSheet}}\\[12pt]
+      \vspace{1.5cm}
+      {\huge{\bf \Year}}
+
+			% \vspace{1cm}
+			% {\small \bf \strSponsored}\\[8pt]
+
+			% \includegraphics[width=16cm]{sponsors.png}
+
+			% \vspace{2cm}
+			% \begin{center}
+			% 	\setlength{\tabcolsep}{0.1\textwidth}
+			% 	\begin{tabular}{cc}
+			% 		{\small\bf \strHosted} & {\small\bf \strOrganized} \\
+			% 		\includegraphics[width=3cm]{host.png} & \includegraphics[width=4cm]{organizers.png}  \\
+			% 	\end{tabular}
+			% \end{center}
+
+		\end{center}
+    \vspace*{\fill}
+	\end{titlepage}
+
+	\clearpage
+}
+
