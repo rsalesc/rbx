@@ -1,6 +1,6 @@
 import typing
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 BocaLanguage = typing.Literal['c', 'cpp', 'cc', 'kt', 'java', 'py2', 'py3']
 
@@ -25,5 +25,33 @@ class BocaExtension(BaseModel):
 
 
 class BocaLanguageExtension(BaseModel):
-    # BocaLanguage this rbx language matches with.
-    bocaLanguage: typing.Optional[str] = None
+    # Deprecated: use `bocaLanguages` instead. Kept for back-compat (see issue #471).
+    bocaLanguage: typing.Optional[str] = Field(
+        default=None,
+        deprecated='Use `bocaLanguages` instead.',
+    )
+    # BOCA languages this rbx language maps to. First entry is the canonical/primary,
+    # used as the forward (rbx -> BOCA) mapping. All entries are emitted as separate
+    # per-language script dirs in the BOCA package (e.g. ['cc', 'cpp'] emits both).
+    bocaLanguages: typing.Optional[typing.List[str]] = None
+    # On-disk BOCA template dir (under rbx/resources/packagers/boca/{compile,run,
+    # interactive}/) to source per-language scripts from. Falls back to
+    # primary_boca_language for back-compat (see issue #471).
+    bocaTemplate: typing.Optional[str] = None
+
+    @property
+    def resolved_boca_languages(self) -> typing.List[str]:
+        if self.bocaLanguages:
+            return self.bocaLanguages
+        if self.bocaLanguage:
+            return [self.bocaLanguage]
+        return []
+
+    @property
+    def primary_boca_language(self) -> typing.Optional[str]:
+        langs = self.resolved_boca_languages
+        return langs[0] if langs else None
+
+    @property
+    def resolved_boca_template(self) -> typing.Optional[str]:
+        return self.bocaTemplate or self.primary_boca_language
