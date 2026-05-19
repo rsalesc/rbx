@@ -1,3 +1,15 @@
+## 0.35.0 (2026-05-18)
+
+### Feat
+
+- **contest**: show problem name in `rbx on` and `rbx each` (#467)
+
+### Fix
+
+- **build**: loosen requires-python to >=3.10 (#468)
+- add pypy option to default env
+- add c++20 as default for cpp
+
 ## 0.34.1 (2026-05-18)
 
 ### Fix
