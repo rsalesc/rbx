@@ -42,3 +42,34 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
     if rbx_language.lower() in typing.get_args(BocaLanguage):
         return typing.cast(BocaLanguage, rbx_language.lower())
     raise ValueError(f'No Boca language found for Rbx language {rbx_language}')
+
+
+def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
+    """Return the ordered, deduplicated set of BOCA languages to emit per-language
+    script dirs for. Union of:
+      1. Resolved bocaLanguages across every enabled rbx language.
+      2. Env-level extensions.boca.languages (back-compat).
+      3. Name fallback: rbx language whose name is itself a valid BocaLanguage and
+         which declared no explicit boca extension.
+    """
+    seen: typing.Dict[str, None] = {}
+    env = get_environment()
+    boca_literals = set(typing.get_args(BocaLanguage))
+
+    for language in env.languages:
+        language_extension = language.get_extension_or_default(
+            'boca', BocaLanguageExtension
+        )
+        resolved = language_extension.resolved_boca_languages
+        if resolved:
+            for boca_lang in resolved:
+                seen.setdefault(boca_lang, None)
+        elif language.name in boca_literals:
+            # Name-fallback safety net for zero-config users.
+            seen.setdefault(language.name, None)
+
+    if env.extensions is not None and env.extensions.boca is not None:
+        for boca_lang in env.extensions.boca.languages:
+            seen.setdefault(boca_lang, None)
+
+    return typing.cast(typing.List[BocaLanguage], list(seen.keys()))
