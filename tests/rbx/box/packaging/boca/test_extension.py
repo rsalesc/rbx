@@ -1,4 +1,4 @@
-from rbx.box.packaging.boca.extension import BocaLanguageExtension
+from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtension
 
 
 def test_resolved_boca_languages_uses_plural_when_set():
@@ -37,3 +37,7 @@ def test_resolved_boca_template_falls_back_through_singular():
 def test_resolved_boca_template_none_when_unset():
     ext = BocaLanguageExtension()
     assert ext.resolved_boca_template is None
+
+
+def test_boca_extension_languages_defaults_to_empty():
+    assert BocaExtension().languages == []

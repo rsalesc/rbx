@@ -8,7 +8,7 @@ _MAX_REP_ERROR = 0.2  # 20% error allowed in time limit when adding reps
 
 
 class BocaExtension(BaseModel):
-    languages: typing.List[BocaLanguage] = list(typing.get_args(BocaLanguage))
+    languages: typing.List[BocaLanguage] = []
     flags: typing.Dict[BocaLanguage, str] = {}
     maximumTimeError: float = _MAX_REP_ERROR
     preferContestLetter: bool = False
