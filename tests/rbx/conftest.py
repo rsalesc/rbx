@@ -99,7 +99,7 @@ def _isolate_global_state() -> Iterator[None]:
     finally:
         try:
             os.chdir(original_cwd)
-        except FileNotFoundError, OSError:
+        except (FileNotFoundError, OSError):
             pass
         _package.TEMP_DIR = original_temp_dir
         for var, value in snapshots:
