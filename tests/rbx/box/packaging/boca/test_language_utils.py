@@ -98,3 +98,36 @@ def test_emitted_set_deduplicates_and_preserves_order(monkeypatch):
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
 
     assert boca_language_utils.get_emitted_boca_languages() == ['cc', 'cpp']
+
+
+def test_emitted_set_name_fallback_skipped_when_resolved_non_empty(monkeypatch):
+    # When an rbx language declares bocaLanguages, name-fallback must NOT also
+    # contribute the language's name. cpp -> ['cc'] should emit only ['cc'],
+    # never ['cc', 'cpp'].
+    env = _mk_env([_mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc']))])
+    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
+
+    assert boca_language_utils.get_emitted_boca_languages() == ['cc']
+
+
+def test_emitted_set_non_literal_name_with_no_boca_config_contributes_nothing(
+    monkeypatch,
+):
+    # rbx language named 'python' (NOT a BocaLanguage literal) with no boca ext
+    # must not be contributed by the name-fallback branch.
+    env = _mk_env([_mk_language('python', BocaLanguageExtension())])
+    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
+
+    assert boca_language_utils.get_emitted_boca_languages() == []
+
+
+def test_emitted_set_dedupes_resolved_with_env_level_overlap(monkeypatch):
+    # cpp resolves to ['cc']; env-level lists ['cc', 'java'].
+    # Expect ['cc', 'java'] — 'cc' appears once, in resolved-first order.
+    env = _mk_env(
+        [_mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc']))],
+        boca_ext_languages=['cc', 'java'],
+    )
+    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
+
+    assert boca_language_utils.get_emitted_boca_languages() == ['cc', 'java']
