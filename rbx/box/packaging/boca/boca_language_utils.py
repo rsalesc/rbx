@@ -9,12 +9,12 @@ from rbx.box.packaging.boca.extension import BocaLanguage, BocaLanguageExtension
 
 
 def get_rbx_language_from_boca_language(boca_language: BocaLanguage) -> str:
-    # First by BOCA language name.
+    # First by BOCA language membership in the rbx language's resolved targets.
     for language in get_environment().languages:
         language_extension = language.get_extension_or_default(
             'boca', BocaLanguageExtension
         )
-        if language_extension.bocaLanguage == boca_language:
+        if boca_language in language_extension.resolved_boca_languages:
             return language.name
     # Then by rbx language extension.
     language_by_extension = get_language_by_extension_or_nil(boca_language)
