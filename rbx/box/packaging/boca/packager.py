@@ -7,16 +7,15 @@ import typer
 
 from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
-from rbx.box.environment import get_extension_or_default, get_language
+from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.boca.boca_language_utils import (
+    get_boca_template_name,
     get_emitted_boca_languages,
-    get_rbx_language_from_boca_language,
 )
 from rbx.box.packaging.boca.extension import (
     BocaExtension,
     BocaLanguage,
-    BocaLanguageExtension,
 )
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import TaskType
@@ -275,14 +274,7 @@ class BocaPackager(BasePackager):
     def _get_compile(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
 
-        rbx_language_name = get_rbx_language_from_boca_language(language)
-        rbx_language = get_language(rbx_language_name)
-        template_name = (
-            rbx_language.get_extension_or_default(
-                'boca', BocaLanguageExtension
-            ).resolved_boca_template
-            or language
-        )
+        template_name = get_boca_template_name(language)
         compile_path = (
             get_default_app_path() / 'packagers' / 'boca' / 'compile' / template_name
         )
@@ -388,14 +380,7 @@ class BocaPackager(BasePackager):
         run_path = into_path / 'run'
         run_path.mkdir(parents=True, exist_ok=True)
         for language in emitted_languages:
-            rbx_language_name = get_rbx_language_from_boca_language(language)
-            rbx_language = get_language(rbx_language_name)
-            template_name = (
-                rbx_language.get_extension_or_default(
-                    'boca', BocaLanguageExtension
-                ).resolved_boca_template
-                or language
-            )
+            template_name = get_boca_template_name(language)
             sub = 'interactive' if pkg.type == TaskType.COMMUNICATION else 'run'
             run_orig_path = (
                 get_default_app_path() / 'packagers' / 'boca' / sub / template_name

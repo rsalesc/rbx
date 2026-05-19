@@ -44,6 +44,28 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
     raise ValueError(f'No Boca language found for Rbx language {rbx_language}')
 
 
+def get_boca_template_name(boca_language: BocaLanguage) -> str:
+    """Return the on-disk BOCA template dir name (under rbx/resources/packagers/boca/)
+    to source per-language scripts from when emitting `boca_language`. Falls back to
+    `boca_language` itself when no rbx language declares it (zero-config / env-level
+    path)."""
+    rbx_language_name = get_rbx_language_from_boca_language(boca_language)
+    rbx_language = next(
+        (
+            lang
+            for lang in get_environment().languages
+            if lang.name == rbx_language_name
+        ),
+        None,
+    )
+    if rbx_language is None:
+        return boca_language
+    template = rbx_language.get_extension_or_default(
+        'boca', BocaLanguageExtension
+    ).resolved_boca_template
+    return template or boca_language
+
+
 def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
     """Return the ordered, deduplicated set of BOCA languages to emit per-language
     script dirs for. Computed as a union across two passes:
