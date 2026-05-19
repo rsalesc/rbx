@@ -1,3 +1,9 @@
+## 0.35.1 (2026-05-18)
+
+### Fix
+
+- parenthesize multi-exception handlers for py3.10 compat (#469)
+
 ## 0.35.0 (2026-05-18)
 
 ### Feat
