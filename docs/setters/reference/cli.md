@@ -514,6 +514,7 @@ rbx statements build <NAMES> [OPTIONS]
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
+| `-p`, `--profile` | TEXT | Timing profile to render the statement against. Must exist in this problem. | - |
 
 
 ---
@@ -954,6 +955,7 @@ rbx contest statements build <NAMES> [OPTIONS]
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
+| `-p`, `--profile` | TEXT | Timing profile to render statements against. Problems missing this profile are skipped with a warning. | - |
 
 
 ---

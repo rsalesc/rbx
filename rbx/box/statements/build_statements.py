@@ -440,34 +440,39 @@ async def execute_build(
     samples: bool = True,
     vars: Optional[List[str]] = None,
     validate: bool = True,
+    profile: Optional[str] = None,
 ) -> None:
-    pkg = package.find_problem_package_or_die()
-    candidate_languages = set(languages or [])
-    candidate_names = set(names or [])
+    if profile is not None:
+        limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
 
-    def should_process(st: Statement) -> bool:
-        if candidate_languages and st.language not in candidate_languages:
-            return False
-        if candidate_names and st.name not in candidate_names:
-            return False
-        return True
+    with limits_info.use_profile(profile, when=lambda: profile is not None):
+        pkg = package.find_problem_package_or_die()
+        candidate_languages = set(languages or [])
+        candidate_names = set(names or [])
 
-    valid_statements = [st for st in pkg.expanded_statements if should_process(st)]
+        def should_process(st: Statement) -> bool:
+            if candidate_languages and st.language not in candidate_languages:
+                return False
+            if candidate_names and st.name not in candidate_names:
+                return False
+            return True
 
-    if not valid_statements:
-        console.console.print(
-            '[error]No statement found according to the specified criteria.[/error]',
+        valid_statements = [st for st in pkg.expanded_statements if should_process(st)]
+
+        if not valid_statements:
+            console.console.print(
+                '[error]No statement found according to the specified criteria.[/error]',
+            )
+            raise typer.Exit(1)
+
+        await execute_build_on_statements(
+            valid_statements,
+            verification,
+            output=output,
+            samples=samples,
+            vars=vars,
+            validate=validate,
         )
-        raise typer.Exit(1)
-
-    await execute_build_on_statements(
-        valid_statements,
-        verification,
-        output=output,
-        samples=samples,
-        vars=vars,
-        validate=validate,
-    )
 
 
 @app.command('build, b', help='Build statements.')
@@ -509,8 +514,25 @@ async def build(
         bool,
         typer.Option(help='Whether to validate outputs for testcases or not.'),
     ] = True,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            '-p',
+            '--profile',
+            help='Timing profile to render the statement against. Must exist in this problem.',
+        ),
+    ] = None,
 ):
-    await execute_build(verification, names, languages, output, samples, vars, validate)
+    await execute_build(
+        verification,
+        names,
+        languages,
+        output,
+        samples,
+        vars,
+        validate,
+        profile=profile,
+    )
 
 
 @app.callback()

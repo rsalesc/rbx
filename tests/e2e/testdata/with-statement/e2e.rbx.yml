@@ -11,3 +11,14 @@ scenarios:
         expect:
           files_exist:
             - "build/main.pdf"
+
+  - name: build-statement-missing-profile
+    description: >
+      Building with a non-existent timing profile must fail loudly so the
+      user does not silently ship a statement rendered against the package
+      defaults.
+    steps:
+      - cmd: st b -p does-not-exist
+        expect_exit: 1
+        expect:
+          stdout_contains: "Limits profile"

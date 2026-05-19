@@ -254,6 +254,21 @@ rbx -p polygon run
 
 This applies the limits from the specified profile instead of the package defaults.
 
+### Using profiles when building statements
+
+The statement build commands accept a `-p` / `--profile` flag so the time limits
+printed in the statement reflect a specific profile:
+
+```bash
+rbx statements build -p icpc
+rbx contest statements build -p icpc
+```
+
+At the problem level the command fails if the profile doesn't exist; at the
+contest level problems missing the profile are skipped with a warning. See
+[Building statements](../statements/index.md#rendering-against-a-timing-profile)
+for details.
+
 ### Profiles and packaging
 
 When you package a problem, {{rbx}} automatically uses the profile that matches the packager name.

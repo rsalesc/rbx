@@ -37,6 +37,7 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Build all statements                               | `rbx statements build`                                         |
 | Build a specific statement                         | `rbx statements build <name>`                                  |
 | Build statements for English                       | `rbx statements build -l en`                                   |
+| Build statements against a timing profile          | `rbx statements build -p icpc`                                 |
 | Package problem for {{polygon}}                    | `rbx package polygon`                                          |
 | Package problem for {{boca}}                       | `rbx package boca`                                             |
 | Package problem for {{boca}} but only validate     | `rbx package boca -v1`                                         |
@@ -57,6 +58,7 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Build all statements                            | `rbx contest statements build`        |
 | Build a specific statement                      | `rbx contest statements build <name>` |
 | Build statements for English                    | `rbx contest statements build en`     |
+| Build statements against a timing profile       | `rbx contest statements build -p icpc` |
 | Package contest for {{polygon}}                 | `rbx contest package polygon`         |
 | Build each problem in the contest               | `rbx contest each build`              |
 | Package each problem in the contest             | `rbx contest each package boca`       |
