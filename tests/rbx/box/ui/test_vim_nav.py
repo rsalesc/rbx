@@ -123,3 +123,14 @@ async def test_j_and_l_scroll_a_scroll_container():
             await pilot.press('l')
         await pilot.pause()
         assert container.scroll_offset.x > 0
+
+
+async def test_main_menu_app_supports_vim_nav():
+    from rbx.box.ui.main import rbxApp
+
+    async with rbxApp().run_test() as pilot:
+        option_list = pilot.app.query_one(OptionList)
+        start = option_list.highlighted or 0
+
+        await pilot.press('j')
+        assert option_list.highlighted == start + 1
