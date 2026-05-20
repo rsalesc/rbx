@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import typer
 from pydantic import BaseModel
@@ -39,6 +39,7 @@ class StatementSample(BaseModel):
     outputPath: pathlib.Path
     answerPath: Optional[pathlib.Path] = None
     explanationPath: Optional[pathlib.Path] = None
+    explanationFromBlocks: bool = False
     hasOutput: bool = True
     checkOutput: bool = False
     interaction: Optional[SampleTestcaseInteraction] = None
@@ -65,6 +66,39 @@ def _build_sample_interaction(
     return SampleTestcaseInteraction(entries=interaction.entries, chunks=chunks)
 
 
+def _resolve_explanation_path(
+    input_path: pathlib.Path, explanation_suffix: Optional[str]
+) -> Tuple[Optional[pathlib.Path], bool]:
+    """Resolve the explanation file for a sample input.
+
+    Prefers a language-block ``.rbx<suffix>`` file over the plain ``<suffix>``
+    file, returning whether the resolved file is a blocks file. Errors if both
+    exist for the same sample.
+    """
+    if explanation_suffix is None:
+        return None, False
+    plain_path = input_path.with_suffix(explanation_suffix)
+    blocks_path = input_path.with_suffix('.rbx' + explanation_suffix)
+    plain_exists = plain_path.is_file()
+    blocks_exists = blocks_path.is_file()
+    if plain_exists and blocks_exists:
+        console.console.print(
+            f'[error]Both [item]{utils.abspath(blocks_path)}[/item] and '
+            f'[item]{utils.abspath(plain_path)}[/item] exist for the same sample.[/error]'
+        )
+        console.console.print(
+            f'[error]Use either the language-specific [item].rbx{explanation_suffix}[/item] '
+            f'explanation or the language-agnostic [item]{explanation_suffix}[/item] '
+            'explanation, but not both.[/error]'
+        )
+        raise typer.Exit(1)
+    if blocks_exists:
+        return blocks_path, True
+    if plain_exists:
+        return plain_path, False
+    return None, False
+
+
 def _get_statement_sample_from_entry(
     entry: GenerationTestcaseEntry, explanation_suffix: Optional[str] = None
 ) -> StatementSample:
@@ -72,6 +106,7 @@ def _get_statement_sample_from_entry(
     output_path: pathlib.Path = utils.get_empty_sentinel_path()
     answer_path: Optional[pathlib.Path] = None
     explanation_path: Optional[pathlib.Path] = None
+    explanation_from_blocks: bool = False
     interaction: Optional[TestcaseInteraction] = None
 
     # Process manually provided files.
@@ -93,11 +128,11 @@ def _get_statement_sample_from_entry(
         answer_path = testcase.outputPath
 
     def process_additional_files(testcase: Testcase):
-        nonlocal input_path, output_path, explanation_path, interaction
-        if explanation_suffix is not None:
-            explanation_path = testcase.inputPath.with_suffix(explanation_suffix)
-            if explanation_path.is_file():
-                explanation_path = explanation_path
+        nonlocal input_path, output_path, explanation_path
+        nonlocal explanation_from_blocks, interaction
+        explanation_path, explanation_from_blocks = _resolve_explanation_path(
+            testcase.inputPath, explanation_suffix
+        )
 
         pin_path = testcase.inputPath.with_suffix('.pin')
         pout_path = testcase.inputPath.with_suffix('.pout')
@@ -161,6 +196,7 @@ def _get_statement_sample_from_entry(
         if interaction is not None
         else None,
         explanationPath=explanation_path,
+        explanationFromBlocks=explanation_from_blocks,
     )
 
 
