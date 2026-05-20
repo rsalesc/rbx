@@ -41,6 +41,10 @@ class TooMuchStderrIssue(Issue):
 
 
 def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):
+    # The stderr file is absent when the program failed to even start (e.g. a
+    # missing interpreter/runtime), in which case there is no stderr to inspect.
+    if not stderr_path.is_file():
+        return
     if stderr_path.stat().st_size > STDERR_THRESHOLD_IN_BYTES:
         add_issue(TooMuchStderrIssue(solution))
 
