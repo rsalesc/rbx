@@ -122,6 +122,45 @@ These can be specified in the main file, and will be rendered in the default tem
 It is a good practice to reuse these commonly defined blocks in your own templates as well, since they're
 semantically meaningful, and have a special treatment for {{polygon}} packages.
 
+## Sample explanations
+
+There are three ways to attach an explanation to a sample, listed here in
+descending priority (a higher-priority source overrides the ones below it for
+the same sample):
+
+1. **An `explanation_N` block in the statement file** — language-specific (the
+   statement file is already built per language), as described in the table
+   above.
+
+2. **A `<sample>.rbx.tex` file next to the sample input** *(recommended)* — a
+   per-sample file living alongside the `.in` file (e.g. `000.rbx.tex` next to
+   `000.in`). It holds one block per language, keyed by the language code:
+
+    ```latex
+    %- block en
+    In the first sample, the answer is $A + B = 10$.
+    %- endblock
+
+    %- block pt
+    No primeiro exemplo, a resposta é $A + B = 10$.
+    %- endblock
+    ```
+
+    Only the block matching the statement's language is rendered; any content
+    outside a block is ignored. The file receives the same Jinja variables as
+    the rest of the statement. For Markdown statements, use `<sample>.rbx.md`
+    instead.
+
+3. **A `<sample>.tex` file next to the sample input** — a per-sample file that
+   is *language-agnostic*: the same text is used for every language. (For
+   Markdown statements, `<sample>.md`.)
+
+!!! warning
+    A single sample may not have **both** a `<sample>.rbx.tex` and a
+    `<sample>.tex` file — that is an error. Choose one. If a `<sample>.rbx.tex`
+    file has no block for the statement's language, no explanation is shown for
+    that sample in that language (and {{rbx}} warns you).
+
 ## Example
 
 Here is a barebones example of a problem statement written in rbxTeX.
