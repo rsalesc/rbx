@@ -26,7 +26,7 @@ def test_default_preset_emits_cc_and_cpp(monkeypatch):
     # The default preset must emit both 'cc' (legacy BOCA) and 'cpp' (new BOCA
     # default), plus the rest of the configured languages.
     assert set(emitted) == {'cc', 'cpp', 'c', 'py3', 'java', 'kt'}
-    # cpp is declared first in env.languages with bocaLanguages=['cc', 'cpp'],
+    # cpp is declared first in env.languages with languages=['cc', 'cpp'],
     # so 'cc' comes first, 'cpp' second — order pins the aliasing intent.
     assert emitted[:2] == ['cc', 'cpp']
 

@@ -11,8 +11,8 @@ def _mk_language(name: str, ext: BocaLanguageExtension | None = None):
     return lang
 
 
-def test_forward_map_uses_primary_from_bocaLanguages(monkeypatch):
-    cpp_lang = _mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp']))
+def test_forward_map_uses_primary_from_languages(monkeypatch):
+    cpp_lang = _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp']))
     monkeypatch.setattr(boca_language_utils, 'get_language', lambda n: cpp_lang)
     env = mock.MagicMock()
     env.extensions = None
@@ -22,7 +22,7 @@ def test_forward_map_uses_primary_from_bocaLanguages(monkeypatch):
 
 
 def test_reverse_map_resolves_alias_via_membership(monkeypatch):
-    cpp_lang = _mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp']))
+    cpp_lang = _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp']))
     env = mock.MagicMock()
     env.languages = [cpp_lang]
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -57,10 +57,10 @@ def _mk_env(languages, boca_ext_languages=None):
     return env
 
 
-def test_emitted_set_union_from_bocaLanguages(monkeypatch):
+def test_emitted_set_union_from_languages(monkeypatch):
     env = _mk_env(
         [
-            _mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])),
+            _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp'])),
             _mk_language('py', BocaLanguageExtension(bocaLanguage='py3')),
         ]
     )
@@ -71,7 +71,7 @@ def test_emitted_set_union_from_bocaLanguages(monkeypatch):
 
 def test_emitted_set_includes_env_level_languages(monkeypatch):
     env = _mk_env(
-        [_mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc']))],
+        [_mk_language('cpp', BocaLanguageExtension(languages=['cc']))],
         boca_ext_languages=['java'],
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -91,8 +91,8 @@ def test_emitted_set_name_fallback_for_zero_config(monkeypatch):
 def test_emitted_set_deduplicates_and_preserves_order(monkeypatch):
     env = _mk_env(
         [
-            _mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])),
-            _mk_language('cc', BocaLanguageExtension(bocaLanguages=['cc'])),
+            _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp'])),
+            _mk_language('cc', BocaLanguageExtension(languages=['cc'])),
         ]
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -101,10 +101,10 @@ def test_emitted_set_deduplicates_and_preserves_order(monkeypatch):
 
 
 def test_emitted_set_name_fallback_skipped_when_resolved_non_empty(monkeypatch):
-    # When an rbx language declares bocaLanguages, name-fallback must NOT also
+    # When an rbx language declares languages, name-fallback must NOT also
     # contribute the language's name. cpp -> ['cc'] should emit only ['cc'],
     # never ['cc', 'cpp'].
-    env = _mk_env([_mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc']))])
+    env = _mk_env([_mk_language('cpp', BocaLanguageExtension(languages=['cc']))])
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
 
     assert boca_language_utils.get_emitted_boca_languages() == ['cc']
@@ -125,7 +125,7 @@ def test_emitted_set_dedupes_resolved_with_env_level_overlap(monkeypatch):
     # cpp resolves to ['cc']; env-level lists ['cc', 'java'].
     # Expect ['cc', 'java'] — 'cc' appears once, in resolved-first order.
     env = _mk_env(
-        [_mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc']))],
+        [_mk_language('cpp', BocaLanguageExtension(languages=['cc']))],
         boca_ext_languages=['cc', 'java'],
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -134,11 +134,11 @@ def test_emitted_set_dedupes_resolved_with_env_level_overlap(monkeypatch):
 
 
 def test_get_boca_template_name_uses_resolved_template(monkeypatch):
-    # cpp declares bocaLanguages=['cc','cpp'] with explicit bocaTemplate='cc'.
+    # cpp declares languages=['cc','cpp'] with explicit template='cc'.
     # Both emitted BOCA names must source from the 'cc' template (true aliasing).
     cpp_lang = _mk_language(
         'cpp',
-        BocaLanguageExtension(bocaLanguages=['cc', 'cpp'], bocaTemplate='cc'),
+        BocaLanguageExtension(languages=['cc', 'cpp'], template='cc'),
     )
     env = mock.MagicMock()
     env.languages = [cpp_lang]

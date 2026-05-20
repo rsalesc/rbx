@@ -14,7 +14,7 @@ def get_rbx_language_from_boca_language(boca_language: BocaLanguage) -> str:
         language_extension = language.get_extension_or_default(
             'boca', BocaLanguageExtension
         )
-        if boca_language in language_extension.resolved_boca_languages:
+        if boca_language in language_extension.resolved_languages:
             return language.name
     # Then by rbx language extension.
     language_by_extension = get_language_by_extension_or_nil(boca_language)
@@ -29,7 +29,7 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
     language_extension = language.get_extension_or_default(
         'boca', BocaLanguageExtension
     )
-    primary = language_extension.primary_boca_language
+    primary = language_extension.primary_language
     if primary:
         return typing.cast(BocaLanguage, primary)
     env = get_environment()
@@ -62,7 +62,7 @@ def get_boca_template_name(boca_language: BocaLanguage) -> str:
         return boca_language
     template = rbx_language.get_extension_or_default(
         'boca', BocaLanguageExtension
-    ).resolved_boca_template
+    ).resolved_template
     return template or boca_language
 
 
@@ -71,7 +71,8 @@ def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
     script dirs for. Computed as a union across two passes:
 
     1. Per-rbx-language pass — for each language in env.languages:
-       - If resolved_boca_languages is non-empty, contribute every entry.
+       - If the boca extension's resolved_languages is non-empty, contribute
+         every entry.
        - Otherwise (zero-config name fallback): if the rbx language name is itself
          a BocaLanguage literal, contribute it.
     2. Env-level pass — append every entry from extensions.boca.languages
@@ -87,7 +88,7 @@ def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
         language_extension = language.get_extension_or_default(
             'boca', BocaLanguageExtension
         )
-        resolved = language_extension.resolved_boca_languages
+        resolved = language_extension.resolved_languages
         if resolved:
             for boca_lang in resolved:
                 seen.setdefault(boca_lang, None)

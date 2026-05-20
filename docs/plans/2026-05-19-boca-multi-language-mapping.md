@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Let one rbx language target multiple BOCA languages (forward `cc`+`cpp` from rbx `cpp`) via new `bocaLanguages` + `bocaTemplate` fields, and migrate the default preset to the future shape. Legacy fields (`bocaLanguage`, env-level `languages`, `bocaTemplate` fallback) remain working for back-compat; their removal is tracked in issue #471.
+**Goal:** Let one rbx language target multiple BOCA languages (forward `cc`+`cpp` from rbx `cpp`) via new `languages` + `template` fields, and migrate the default preset to the future shape. Legacy fields (`bocaLanguage`, env-level `languages`, `template` fallback) remain working for back-compat; their removal is tracked in issue #471.
 
-**Architecture:** Add a plural `bocaLanguages: List[str]` and a `bocaTemplate: Optional[str]` to `BocaLanguageExtension`, with computed accessors that fall back to the singular `bocaLanguage`. The forward map uses the first (primary) resolved BOCA language; the reverse map matches by membership. The packager iterates a **union** of `BocaExtension.languages` (default now `[]`) + resolved `bocaLanguages` across every rbx language + a name-fallback safety net for zero-config users, and sources per-language compile/run/interactive templates from `resolved_boca_template` rather than from the emitted BOCA name. The default preset declares `bocaLanguages` + `bocaTemplate` on every language and drops the env-level `languages` list.
+**Architecture:** Add a plural `languages: List[str]` and a `template: Optional[str]` to `BocaLanguageExtension`, with computed accessors that fall back to the singular `bocaLanguage`. The forward map uses the first (primary) resolved BOCA language; the reverse map matches by membership. The packager iterates a **union** of `BocaExtension.languages` (default now `[]`) + resolved `languages` across every rbx language + a name-fallback safety net for zero-config users, and sources per-language compile/run/interactive templates from `resolved_template` rather than from the emitted BOCA name. The default preset declares `languages` + `template` on every language and drops the env-level `languages` list.
 
 **Tech Stack:** Python 3.10+, Pydantic v2, Typer, pytest. Code lives under `rbx/box/packaging/boca/`; preset under `rbx/resources/presets/default/`.
 
@@ -17,7 +17,7 @@
 
 ---
 
-### Task 1: Add `bocaLanguages` + `bocaTemplate` to `BocaLanguageExtension`
+### Task 1: Add `languages` + `template` to `BocaLanguageExtension`
 
 **Files:**
 - Modify: `rbx/box/packaging/boca/extension.py:27-29`
@@ -31,42 +31,42 @@
 from rbx.box.packaging.boca.extension import BocaLanguageExtension
 
 
-def test_resolved_boca_languages_uses_plural_when_set():
-    ext = BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])
-    assert ext.resolved_boca_languages == ['cc', 'cpp']
-    assert ext.primary_boca_language == 'cc'
+def test_resolved_languages_uses_plural_when_set():
+    ext = BocaLanguageExtension(languages=['cc', 'cpp'])
+    assert ext.resolved_languages == ['cc', 'cpp']
+    assert ext.primary_language == 'cc'
 
 
-def test_resolved_boca_languages_falls_back_to_singular():
+def test_resolved_languages_falls_back_to_singular():
     ext = BocaLanguageExtension(bocaLanguage='cc')
-    assert ext.resolved_boca_languages == ['cc']
-    assert ext.primary_boca_language == 'cc'
+    assert ext.resolved_languages == ['cc']
+    assert ext.primary_language == 'cc'
 
 
-def test_resolved_boca_languages_empty_when_unset():
+def test_resolved_languages_empty_when_unset():
     ext = BocaLanguageExtension()
-    assert ext.resolved_boca_languages == []
-    assert ext.primary_boca_language is None
+    assert ext.resolved_languages == []
+    assert ext.primary_language is None
 
 
-def test_resolved_boca_template_uses_explicit_when_set():
-    ext = BocaLanguageExtension(bocaLanguages=['cc', 'cpp'], bocaTemplate='cc')
-    assert ext.resolved_boca_template == 'cc'
+def test_resolved_template_uses_explicit_when_set():
+    ext = BocaLanguageExtension(languages=['cc', 'cpp'], template='cc')
+    assert ext.resolved_template == 'cc'
 
 
-def test_resolved_boca_template_falls_back_to_primary():
-    ext = BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])
-    assert ext.resolved_boca_template == 'cc'
+def test_resolved_template_falls_back_to_primary():
+    ext = BocaLanguageExtension(languages=['cc', 'cpp'])
+    assert ext.resolved_template == 'cc'
 
 
-def test_resolved_boca_template_falls_back_through_singular():
+def test_resolved_template_falls_back_through_singular():
     ext = BocaLanguageExtension(bocaLanguage='py3')
-    assert ext.resolved_boca_template == 'py3'
+    assert ext.resolved_template == 'py3'
 
 
-def test_resolved_boca_template_none_when_unset():
+def test_resolved_template_none_when_unset():
     ext = BocaLanguageExtension()
-    assert ext.resolved_boca_template is None
+    assert ext.resolved_template is None
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -80,36 +80,36 @@ Replace lines 27-29 of `rbx/box/packaging/boca/extension.py` with:
 
 ```python
 class BocaLanguageExtension(BaseModel):
-    # Deprecated: use `bocaLanguages` instead. Kept for back-compat (see issue #471).
+    # Deprecated: use `languages` instead. Kept for back-compat (see issue #471).
     bocaLanguage: typing.Optional[str] = Field(
         default=None,
-        deprecated='Use `bocaLanguages` instead.',
+        deprecated='Use `languages` instead.',
     )
     # BOCA languages this rbx language maps to. First entry is the canonical/primary,
     # used as the forward (rbx -> BOCA) mapping. All entries are emitted as separate
     # per-language script dirs in the BOCA package (e.g. ['cc', 'cpp'] emits both).
-    bocaLanguages: typing.Optional[typing.List[str]] = None
+    languages: typing.Optional[typing.List[str]] = None
     # On-disk BOCA template dir (under rbx/resources/packagers/boca/{compile,run,
     # interactive}/) to source per-language scripts from. Falls back to
-    # primary_boca_language for back-compat (see issue #471).
-    bocaTemplate: typing.Optional[str] = None
+    # primary_language for back-compat (see issue #471).
+    template: typing.Optional[str] = None
 
     @property
-    def resolved_boca_languages(self) -> typing.List[str]:
-        if self.bocaLanguages:
-            return self.bocaLanguages
+    def resolved_languages(self) -> typing.List[str]:
+        if self.languages:
+            return self.languages
         if self.bocaLanguage:
             return [self.bocaLanguage]
         return []
 
     @property
-    def primary_boca_language(self) -> typing.Optional[str]:
-        langs = self.resolved_boca_languages
+    def primary_language(self) -> typing.Optional[str]:
+        langs = self.resolved_languages
         return langs[0] if langs else None
 
     @property
-    def resolved_boca_template(self) -> typing.Optional[str]:
-        return self.bocaTemplate or self.primary_boca_language
+    def resolved_template(self) -> typing.Optional[str]:
+        return self.template or self.primary_language
 ```
 
 Add `Field` to the pydantic import at the top: `from pydantic import BaseModel, Field`.
@@ -123,12 +123,12 @@ Expected: 7 PASSED.
 
 ```bash
 git add rbx/box/packaging/boca/extension.py tests/rbx/box/packaging/boca/
-git commit -m "feat(boca): add bocaLanguages and bocaTemplate to language extension"
+git commit -m "feat(boca): add languages and template to language extension"
 ```
 
 ---
 
-### Task 2: Update forward map to use `primary_boca_language`
+### Task 2: Update forward map to use `primary_language`
 
 **Files:**
 - Modify: `rbx/box/packaging/boca/boca_language_utils.py:27-43`
@@ -155,9 +155,9 @@ def _mk_language(name: str, ext: BocaLanguageExtension | None = None):
     return lang
 
 
-def test_forward_map_uses_primary_from_bocaLanguages(monkeypatch):
+def test_forward_map_uses_primary_from_languages(monkeypatch):
     cpp_lang = _mk_language(
-        'cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])
+        'cpp', BocaLanguageExtension(languages=['cc', 'cpp'])
     )
     monkeypatch.setattr(boca_language_utils, 'get_language', lambda n: cpp_lang)
     env = mock.MagicMock()
@@ -169,7 +169,7 @@ def test_forward_map_uses_primary_from_bocaLanguages(monkeypatch):
 
 **Step 2: Run test, expect failure**
 
-Run: `uv run pytest tests/rbx/box/packaging/boca/test_language_utils.py::test_forward_map_uses_primary_from_bocaLanguages -v`
+Run: `uv run pytest tests/rbx/box/packaging/boca/test_language_utils.py::test_forward_map_uses_primary_from_languages -v`
 Expected: FAIL (current code reads `bocaLanguage`, which is None, so it falls through and raises `ValueError`).
 
 **Step 3: Implement**
@@ -182,7 +182,7 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
     language_extension = language.get_extension_or_default(
         'boca', BocaLanguageExtension
     )
-    primary = language_extension.primary_boca_language
+    primary = language_extension.primary_language
     if primary:
         return typing.cast(BocaLanguage, primary)
     env = get_environment()
@@ -206,12 +206,12 @@ Expected: PASS.
 
 ```bash
 git add rbx/box/packaging/boca/boca_language_utils.py tests/rbx/box/packaging/boca/test_language_utils.py
-git commit -m "feat(boca): forward map reads primary_boca_language"
+git commit -m "feat(boca): forward map reads primary_language"
 ```
 
 ---
 
-### Task 3: Update reverse map to membership in `resolved_boca_languages`
+### Task 3: Update reverse map to membership in `resolved_languages`
 
 **Files:**
 - Modify: `rbx/box/packaging/boca/boca_language_utils.py:11-24`
@@ -224,7 +224,7 @@ Append to `tests/rbx/box/packaging/boca/test_language_utils.py`:
 ```python
 def test_reverse_map_resolves_alias_via_membership(monkeypatch):
     cpp_lang = _mk_language(
-        'cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])
+        'cpp', BocaLanguageExtension(languages=['cc', 'cpp'])
     )
     env = mock.MagicMock()
     env.languages = [cpp_lang]
@@ -265,7 +265,7 @@ def get_rbx_language_from_boca_language(boca_language: BocaLanguage) -> str:
         language_extension = language.get_extension_or_default(
             'boca', BocaLanguageExtension
         )
-        if boca_language in language_extension.resolved_boca_languages:
+        if boca_language in language_extension.resolved_languages:
             return language.name
     # Then by rbx language extension.
     language_by_extension = get_language_by_extension_or_nil(boca_language)
@@ -284,7 +284,7 @@ Expected: ALL PASS.
 
 ```bash
 git add rbx/box/packaging/boca/boca_language_utils.py tests/rbx/box/packaging/boca/test_language_utils.py
-git commit -m "feat(boca): reverse map matches by membership in resolved_boca_languages"
+git commit -m "feat(boca): reverse map matches by membership in resolved_languages"
 ```
 
 ---
@@ -367,10 +367,10 @@ def _mk_env(languages, boca_ext_languages=None):
     return env
 
 
-def test_emitted_set_union_from_bocaLanguages(monkeypatch):
+def test_emitted_set_union_from_languages(monkeypatch):
     env = _mk_env(
         [
-            _mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])),
+            _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp'])),
             _mk_language('py', BocaLanguageExtension(bocaLanguage='py3')),
         ]
     )
@@ -381,7 +381,7 @@ def test_emitted_set_union_from_bocaLanguages(monkeypatch):
 
 def test_emitted_set_includes_env_level_languages(monkeypatch):
     env = _mk_env(
-        [_mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc']))],
+        [_mk_language('cpp', BocaLanguageExtension(languages=['cc']))],
         boca_ext_languages=['java'],
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -401,8 +401,8 @@ def test_emitted_set_name_fallback_for_zero_config(monkeypatch):
 def test_emitted_set_deduplicates_and_preserves_order(monkeypatch):
     env = _mk_env(
         [
-            _mk_language('cpp', BocaLanguageExtension(bocaLanguages=['cc', 'cpp'])),
-            _mk_language('cc', BocaLanguageExtension(bocaLanguages=['cc'])),
+            _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp'])),
+            _mk_language('cc', BocaLanguageExtension(languages=['cc'])),
         ]
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -423,7 +423,7 @@ Append to `rbx/box/packaging/boca/boca_language_utils.py`:
 def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
     """Return the ordered, deduplicated set of BOCA languages to emit per-language
     script dirs for. Union of:
-      1. Resolved bocaLanguages across every enabled rbx language.
+      1. Resolved languages across every enabled rbx language.
       2. Env-level extensions.boca.languages (back-compat).
       3. Name fallback: rbx language whose name is itself a valid BocaLanguage and
          which declared no explicit boca extension.
@@ -436,7 +436,7 @@ def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
         language_extension = language.get_extension_or_default(
             'boca', BocaLanguageExtension
         )
-        resolved = language_extension.resolved_boca_languages
+        resolved = language_extension.resolved_languages
         if resolved:
             for boca_lang in resolved:
                 seen.setdefault(boca_lang, None)
@@ -465,18 +465,18 @@ git commit -m "feat(boca): add get_emitted_boca_languages helper (union + name f
 
 ---
 
-### Task 6: Packager uses emitted-set helper and `resolved_boca_template`
+### Task 6: Packager uses emitted-set helper and `resolved_template`
 
 **Files:**
 - Modify: `rbx/box/packaging/boca/packager.py:262-405`
 
 **Step 1: Audit current usage**
 
-Read `rbx/box/packaging/boca/packager.py:340-410`. The five emission loops (`limits`, `compare`, `run`, `compile`, `tests`) all iterate `extension.languages`. The `run` loop sources its template from `… / 'run' / language` or `… / 'interactive' / language` — i.e. by emitted BOCA name. `_get_compile(language)` (line 271) does the same for the compile template. These two are the ones that must be redirected through `resolved_boca_template`.
+Read `rbx/box/packaging/boca/packager.py:340-410`. The five emission loops (`limits`, `compare`, `run`, `compile`, `tests`) all iterate `extension.languages`. The `run` loop sources its template from `… / 'run' / language` or `… / 'interactive' / language` — i.e. by emitted BOCA name. `_get_compile(language)` (line 271) does the same for the compile template. These two are the ones that must be redirected through `resolved_template`.
 
 **Step 2: Write a regression-pinning test first**
 
-Create `tests/rbx/box/packaging/boca/test_packager_emitted_set.py`. This test pins the wiring: the packager imports and uses `get_emitted_boca_languages` and `resolved_boca_template`. Because the full packager is heavy to spin up end-to-end, these are import-level pins; Task 8 is the behavioral integration test.
+Create `tests/rbx/box/packaging/boca/test_packager_emitted_set.py`. This test pins the wiring: the packager imports and uses `get_emitted_boca_languages` and `resolved_template`. Because the full packager is heavy to spin up end-to-end, these are import-level pins; Task 8 is the behavioral integration test.
 
 ```python
 # tests/rbx/box/packaging/boca/test_packager_emitted_set.py
@@ -485,7 +485,7 @@ import inspect
 
 def test_packager_iterates_emitted_set():
     """The BOCA packager must use get_emitted_boca_languages() rather than reading
-    BocaExtension.languages directly, so that bocaLanguages aliases are honored."""
+    BocaExtension.languages directly, so that languages aliases are honored."""
     from rbx.box.packaging.boca import packager as pkgr
 
     src = inspect.getsource(pkgr)
@@ -494,14 +494,14 @@ def test_packager_iterates_emitted_set():
     )
 
 
-def test_packager_sources_compile_template_via_resolved_boca_template():
-    """The compile/run template source dir must come from resolved_boca_template,
+def test_packager_sources_compile_template_via_resolved_template():
+    """The compile/run template source dir must come from resolved_template,
     not from the emitted BOCA language name directly."""
     from rbx.box.packaging.boca import packager as pkgr
 
     src = inspect.getsource(pkgr)
-    assert 'resolved_boca_template' in src, (
-        'packager.py must use resolved_boca_template for compile/run template sourcing'
+    assert 'resolved_template' in src, (
+        'packager.py must use resolved_template for compile/run template sourcing'
     )
 ```
 
@@ -530,7 +530,7 @@ In `rbx/box/packaging/boca/packager.py`:
    emitted_languages = get_emitted_boca_languages()
    ```
 
-3. In the `run`-emission loop (lines 374-392), source the template from the rbx language's `resolved_boca_template` instead of the emitted BOCA name:
+3. In the `run`-emission loop (lines 374-392), source the template from the rbx language's `resolved_template` instead of the emitted BOCA name:
 
    ```python
    for language in emitted_languages:
@@ -538,7 +538,7 @@ In `rbx/box/packaging/boca/packager.py`:
        rbx_language = get_language(rbx_language_name)
        template_name = (
            rbx_language.get_extension_or_default('boca', BocaLanguageExtension)
-           .resolved_boca_template
+           .resolved_template
            or language
        )
        sub = 'interactive' if pkg.type == TaskType.COMMUNICATION else 'run'
@@ -554,7 +554,7 @@ In `rbx/box/packaging/boca/packager.py`:
        self._expand_run_script(run_path / language, language)
    ```
 
-4. In `_get_compile(self, language)` (lines 267-297), source the template from `resolved_boca_template`:
+4. In `_get_compile(self, language)` (lines 267-297), source the template from `resolved_template`:
 
    ```python
    def _get_compile(self, language: BocaLanguage) -> str:
@@ -564,7 +564,7 @@ In `rbx/box/packaging/boca/packager.py`:
        rbx_language = get_language(rbx_language_name)
        template_name = (
            rbx_language.get_extension_or_default('boca', BocaLanguageExtension)
-           .resolved_boca_template
+           .resolved_template
            or language
        )
        compile_path = (
@@ -597,7 +597,7 @@ Expected: PASS. (e2e tests are docker-bound and intentionally skipped here.)
 
 ```bash
 git add rbx/box/packaging/boca/packager.py tests/rbx/box/packaging/boca/test_packager_emitted_set.py
-git commit -m "feat(boca): packager iterates emitted set and sources templates via resolved_boca_template"
+git commit -m "feat(boca): packager iterates emitted set and sources templates via resolved_template"
 ```
 
 ---
@@ -615,8 +615,8 @@ In `rbx/resources/presets/default/env.rbx.yml`:
   ```yaml
       extensions:
         boca:
-          bocaLanguages: ["cc", "cpp"]
-          bocaTemplate: "cc"
+          languages: ["cc", "cpp"]
+          template: "cc"
         polygon:
           polygonLanguage: "cpp.gcc13-64-winlibs-g++20"
   ```
@@ -625,24 +625,24 @@ In `rbx/resources/presets/default/env.rbx.yml`:
   ```yaml
       extensions:
         boca:
-          bocaLanguages: ["c"]
-          bocaTemplate: "c"
+          languages: ["c"]
+          template: "c"
   ```
 
 - Lines 35-44 (`py`): replace the `extensions.boca` block with:
   ```yaml
       extensions:
         boca:
-          bocaLanguages: ["py3"]
-          bocaTemplate: "py3"
+          languages: ["py3"]
+          template: "py3"
   ```
 
 - Lines 45-59 (`java`): add a boca sub-block under existing `extensions`:
   ```yaml
       extensions:
         boca:
-          bocaLanguages: ["java"]
-          bocaTemplate: "java"
+          languages: ["java"]
+          template: "java"
         polygon:
           polygonLanguage: "java21"
   ```
@@ -651,8 +651,8 @@ In `rbx/resources/presets/default/env.rbx.yml`:
   ```yaml
       extensions:
         boca:
-          bocaLanguages: ["kt"]
-          bocaTemplate: "kt"
+          languages: ["kt"]
+          template: "kt"
   ```
 
 - Lines 74-82 (env-level `extensions.boca`): **remove the `languages:` line**; keep `flags`, `preferContestLetter`, `usePypy` as-is.
@@ -676,7 +676,7 @@ Expected: PASS.
 
 ```bash
 git add rbx/resources/presets/default/env.rbx.yml
-git commit -m "feat(boca): migrate default preset to bocaLanguages and bocaTemplate"
+git commit -m "feat(boca): migrate default preset to languages and template"
 ```
 
 ---
@@ -785,6 +785,6 @@ Expected: a small linear series of focused commits matching tasks 1-8 (plus opti
 
 ## Out of scope (tracked in #471)
 
-- Removing `bocaLanguage`, env-level `languages`, and the `bocaTemplate` fallback.
+- Removing `bocaLanguage`, env-level `languages`, and the `template` fallback.
 - Adding load-time deprecation warnings for those fields.
 - Migrating non-default presets/fixtures/docs to the new shape.

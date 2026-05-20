@@ -13,7 +13,7 @@ fields along the way.
 - The default preset produces a BOCA package that works on both old and new BOCA out of
   the box.
 - New mapping is the forward-looking shape; legacy fields (`bocaLanguage`,
-  `BocaExtension.languages`, `bocaTemplate` fallback) keep working for back-compat but
+  `BocaExtension.languages`, `template` fallback) keep working for back-compat but
   are scheduled for removal in a follow-up issue.
 
 ## Non-goals
@@ -36,7 +36,7 @@ fields along the way.
 
 ## Design
 
-### Schema: `bocaLanguages` and `bocaTemplate`
+### Schema: `languages` and `template`
 
 `BocaLanguageExtension` (`rbx/box/packaging/boca/extension.py`) becomes:
 
@@ -44,41 +44,41 @@ fields along the way.
 class BocaLanguageExtension(BaseModel):
     bocaLanguage: Optional[str] = Field(
         default=None,
-        deprecated='Use `bocaLanguages` instead.',
+        deprecated='Use `languages` instead.',
     )
-    bocaLanguages: Optional[List[str]] = None
-    bocaTemplate: Optional[str] = None
+    languages: Optional[List[str]] = None
+    template: Optional[str] = None
 
     @property
-    def resolved_boca_languages(self) -> List[str]:
-        if self.bocaLanguages:
-            return self.bocaLanguages
+    def resolved_languages(self) -> List[str]:
+        if self.languages:
+            return self.languages
         if self.bocaLanguage:
             return [self.bocaLanguage]
         return []
 
     @property
-    def primary_boca_language(self) -> Optional[str]:
-        langs = self.resolved_boca_languages
+    def primary_language(self) -> Optional[str]:
+        langs = self.resolved_languages
         return langs[0] if langs else None
 
     @property
-    def resolved_boca_template(self) -> Optional[str]:
-        # Deprecated fallback: primary bocaLanguages entry. To be removed
+    def resolved_template(self) -> Optional[str]:
+        # Deprecated fallback: primary languages entry. To be removed
         # alongside the other legacy fields; see follow-up issue.
-        return self.bocaTemplate or self.primary_boca_language
+        return self.template or self.primary_language
 ```
 
-The first entry of `resolved_boca_languages` is canonical/primary, used for the rbx→BOCA
+The first entry of `resolved_languages` is canonical/primary, used for the rbx→BOCA
 forward map. `bocaLanguage` continues to work; the Pydantic `deprecated=` flag surfaces
 in schema/docs.
 
 ### Mapping logic (`boca_language_utils.py`)
 
-- `get_boca_language_from_rbx_language` reads `primary_boca_language` (then the existing
+- `get_boca_language_from_rbx_language` reads `primary_language` (then the existing
   env-level fallback and rbx-name fallback).
 - `get_rbx_language_from_boca_language` matches by **membership** in
-  `resolved_boca_languages`, so both `cc` and `cpp` resolve back to rbx `cpp`.
+  `resolved_languages`, so both `cc` and `cpp` resolve back to rbx `cpp`.
 
 ### Emitted set: union with name-fallback
 
@@ -86,7 +86,7 @@ in schema/docs.
 `[]`. The packager computes the emitted BOCA-language set as the union of:
 
 1. Explicit `extensions.boca.languages` (back-compat for users who set it).
-2. `resolved_boca_languages` across every enabled rbx language.
+2. `resolved_languages` across every enabled rbx language.
 3. Name-fallback: every enabled rbx language whose `name` is itself a valid
    `BocaLanguage` literal and which declared no explicit boca extension is treated as
    contributing `[name]`. Preserves the previous "no boca config" behavior for users
@@ -95,12 +95,12 @@ in schema/docs.
 ### Template sourcing
 
 Today the packager sources `compile/<L>`, `run/<L>`, `interactive/<L>` from the template
-dir whose name equals the emitted BOCA language `L`. With multiple `bocaLanguages` per
+dir whose name equals the emitted BOCA language `L`. With multiple `languages` per
 rbx language, the per-emit content would silently diverge (e.g. `compile/cpp` would pull
 the `cpp` template rather than the `cc` one), defeating the aliasing intent.
 
 Change: when emitting BOCA language `L` for rbx language `R`, source the per-language
-template scripts from `resolved_boca_template(R)` rather than from `L`. `limits`,
+template scripts from `resolved_template(R)` rather than from `L`. `limits`,
 `compare`, `tests` are generated or shared and remain unaffected. Per-language time
 limit lookups continue to resolve via the reverse map from `L` to `R`.
 
@@ -109,7 +109,7 @@ limit lookups continue to resolve via the reverse map from `L` to `R`.
 Each language declares its own BOCA targets and template explicitly; the env-level
 `languages` list is removed. `flags`, `preferContestLetter`, `usePypy` are kept.
 
-| rbx lang | `bocaLanguages`    | `bocaTemplate` |
+| rbx lang | `languages`    | `template` |
 | -------- | ------------------ | -------------- |
 | `cpp`    | `["cc", "cpp"]`    | `cc`           |
 | `c`      | `["c"]`            | `c`            |
@@ -124,21 +124,21 @@ Emitted set becomes `{cc, cpp, c, py3, java, kt}` (the old set plus `cpp`). Both
 
 This change is additive at the schema/runtime level:
 
-- `bocaLanguage` still works (read into `resolved_boca_languages`).
+- `bocaLanguage` still works (read into `resolved_languages`).
 - `BocaExtension.languages`, if set, still contributes to the emitted set.
-- `bocaTemplate`, if unset, falls back to `primary_boca_language`.
+- `template`, if unset, falls back to `primary_language`.
 - Name-fallback safety net covers zero-config users.
 
 Three deprecations are tracked as a single follow-up issue (see below):
 
-1. `BocaLanguageExtension.bocaLanguage` → use `bocaLanguages`.
-2. `BocaExtension.languages` → declare `bocaLanguages` per language.
-3. `bocaTemplate` fallback → require explicit `bocaTemplate` whenever an rbx language
-   declares `bocaLanguages`.
+1. `BocaLanguageExtension.bocaLanguage` → use `languages`.
+2. `BocaExtension.languages` → declare `languages` per language.
+3. `template` fallback → require explicit `template` whenever an rbx language
+   declares `languages`.
 
 ## Testing
 
-- Unit: `resolved_boca_languages`, `primary_boca_language`, `resolved_boca_template`
+- Unit: `resolved_languages`, `primary_language`, `resolved_template`
   across all three input states (plural set, only singular, neither; with/without
   explicit template).
 - Mapping: reverse map resolves both `cc` and `cpp` → rbx `cpp`; forward map returns
@@ -155,6 +155,6 @@ Three deprecations are tracked as a single follow-up issue (see below):
 A single GitHub issue tracks removing all three legacy behaviors after a deprecation
 window. Plan: warn (release N) → migrate bundled fixtures/docs (release N) → remove
 (release N+1 or N+2). At removal, `BocaExtension.languages` is dropped, the
-`bocaTemplate` fallback is removed (validation requires `bocaTemplate` whenever
-`bocaLanguages` is set), and the union logic collapses to `resolved_boca_languages` plus
+`template` fallback is removed (validation requires `template` whenever
+`languages` is set), and the union logic collapses to `resolved_languages` plus
 the name-fallback safety net.
