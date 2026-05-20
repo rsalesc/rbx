@@ -3,6 +3,7 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import typer
 
 from rbx.box import testcase_sample_utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -252,6 +253,71 @@ async def test_get_statement_samples_explanation_priority(
         explanation_suffix='.desc'
     )
     assert list(samples)[0].explanationPath.resolve() == src_expl.resolve()
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_explanation_prefers_blocks(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """A .rbx.<suffix> blocks file is preferred and flagged as from-blocks."""
+    dest_input = tmp_path / 'dest.in'
+    blocks_expl = tmp_path / 'dest.rbx.desc'
+    blocks_expl.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples(
+        explanation_suffix='.desc'
+    )
+    sample = list(samples)[0]
+    assert sample.explanationPath.resolve() == blocks_expl.resolve()
+    assert sample.explanationFromBlocks is True
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_explanation_plain_fallback(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """With only the plain file, it is used and not flagged as from-blocks."""
+    dest_input = tmp_path / 'dest.in'
+    plain_expl = tmp_path / 'dest.desc'
+    plain_expl.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples(
+        explanation_suffix='.desc'
+    )
+    sample = list(samples)[0]
+    assert sample.explanationPath.resolve() == plain_expl.resolve()
+    assert sample.explanationFromBlocks is False
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_explanation_conflict_errors(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """Both a blocks and a plain explanation file is an error."""
+    dest_input = tmp_path / 'dest.in'
+    (tmp_path / 'dest.desc').touch()
+    (tmp_path / 'dest.rbx.desc').touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    with pytest.raises(typer.Exit):
+        await testcase_sample_utils.get_statement_samples(explanation_suffix='.desc')
 
 
 @pytest.mark.asyncio
