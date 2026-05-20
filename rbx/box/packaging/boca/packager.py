@@ -9,7 +9,14 @@ from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
+from rbx.box.packaging.boca.boca_language_utils import (
+    get_boca_template_name,
+    get_emitted_boca_languages,
+)
+from rbx.box.packaging.boca.extension import (
+    BocaExtension,
+    BocaLanguage,
+)
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import TaskType
 from rbx.box.statements.schema import Statement
@@ -267,12 +274,13 @@ class BocaPackager(BasePackager):
     def _get_compile(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
 
+        template_name = get_boca_template_name(language)
         compile_path = (
-            get_default_app_path() / 'packagers' / 'boca' / 'compile' / language
+            get_default_app_path() / 'packagers' / 'boca' / 'compile' / template_name
         )
         if not compile_path.is_file():
             console.console.print(
-                f'[error]Compile script for language [item]{language}[/item] not found.[/error]'
+                f'[error]Compile script for template [item]{template_name}[/item] not found.[/error]'
             )
             raise typer.Exit(1)
 
@@ -346,7 +354,6 @@ class BocaPackager(BasePackager):
         into_path: pathlib.Path,
         built_statements: List[BuiltStatement],
     ) -> pathlib.Path:
-        extension = get_extension_or_default('boca', BocaExtension)
         pkg = package.find_problem_package_or_die()
         # Prepare limits
         if 'boca' not in limits_info.get_available_profile_names():
@@ -357,35 +364,30 @@ class BocaPackager(BasePackager):
                 '[error]Make sure to run [item]rbx time -p boca[/item] to create the limits profile.[/error]'
             )
             raise typer.Exit(1)
+        emitted_languages = get_emitted_boca_languages()
         limits_path = into_path / 'limits'
         limits_path.mkdir(parents=True, exist_ok=True)
-        for language in extension.languages:
+        for language in emitted_languages:
             (limits_path / language).write_text(self._get_limits(language))
 
         # Prepare compare
         compare_path = into_path / 'compare'
         compare_path.mkdir(parents=True, exist_ok=True)
-        for language in extension.languages:
+        for language in emitted_languages:
             (compare_path / language).write_text(self._get_compare())
 
         # Prepare run
         run_path = into_path / 'run'
         run_path.mkdir(parents=True, exist_ok=True)
-        for language in extension.languages:
+        for language in emitted_languages:
+            template_name = get_boca_template_name(language)
+            sub = 'interactive' if pkg.type == TaskType.COMMUNICATION else 'run'
             run_orig_path = (
-                get_default_app_path() / 'packagers' / 'boca' / 'run' / language
+                get_default_app_path() / 'packagers' / 'boca' / sub / template_name
             )
-            if pkg.type == TaskType.COMMUNICATION:
-                run_orig_path = (
-                    get_default_app_path()
-                    / 'packagers'
-                    / 'boca'
-                    / 'interactive'
-                    / language
-                )
             if not run_orig_path.is_file():
                 console.console.print(
-                    f'[error]Run script for language [item]{language}[/item] not found for task of type [item]{pkg.type}[/item].[/error]'
+                    f'[error]Run script for template [item]{template_name}[/item] not found for task of type [item]{pkg.type}[/item].[/error]'
                 )
                 raise typer.Exit(1)
             shutil.copyfile(run_orig_path, run_path / language)
@@ -394,13 +396,13 @@ class BocaPackager(BasePackager):
         # Prepare compile.
         compile_path = into_path / 'compile'
         compile_path.mkdir(parents=True, exist_ok=True)
-        for language in extension.languages:
+        for language in emitted_languages:
             (compile_path / language).write_text(self._get_compile(language))
 
         # Prepare tests
         tests_path = into_path / 'tests'
         tests_path.mkdir(parents=True, exist_ok=True)
-        for language in extension.languages:
+        for language in emitted_languages:
             (tests_path / language).write_text('exit 0\n')
 
         # Problem statement

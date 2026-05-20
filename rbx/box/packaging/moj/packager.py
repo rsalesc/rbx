@@ -8,6 +8,7 @@ from rbx import console
 from rbx.box import header, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.packaging.boca.boca_language_utils import get_emitted_boca_languages
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.boca.packager import BocaPackager
 from rbx.box.packaging.packager import BuiltStatement
@@ -28,11 +29,9 @@ class MojPackager(BocaPackager):
         return [TaskType.COMMUNICATION, TaskType.BATCH]
 
     def _get_tl(self) -> str:
-        extension = get_extension_or_default('boca', BocaExtension)
-
         pkg = package.find_problem_package_or_die()
         res = f'TL[default]={pkg.timeLimit / 1000}\n'
-        for language in extension.languages:
+        for language in get_emitted_boca_languages():
             res += f'TL[{language}]={self._get_pkg_timelimit(language) / 1000}\n'
         return res
 
@@ -196,9 +195,10 @@ class MojPackager(BocaPackager):
             )
             interactor_run_path.chmod(0o755)
 
-        # Prepare language scripts
-        extension = get_extension_or_default('boca', BocaExtension)
-        for language in extension.languages:
+        # Prepare language scripts. Iterate the unioned emitted set so aliased
+        # BOCA languages (e.g. ['cc', 'cpp']) both get a chance at a scripts/<L>
+        # template — missing templates are silently skipped, as before.
+        for language in get_emitted_boca_languages():
             language_path = into_path / 'scripts' / language
             language_path.parent.mkdir(parents=True, exist_ok=True)
             src_path = (
