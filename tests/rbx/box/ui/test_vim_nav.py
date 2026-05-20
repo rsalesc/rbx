@@ -2,7 +2,7 @@
 
 from textual.app import App, ComposeResult
 from textual.containers import ScrollableContainer
-from textual.widgets import DataTable, Input, OptionList, Static
+from textual.widgets import DataTable, Input, OptionList, Select, Static
 
 from rbx.box.ui.vim_nav import VimNavMixin
 
@@ -134,3 +134,26 @@ async def test_main_menu_app_supports_vim_nav():
 
         await pilot.press('j')
         assert option_list.highlighted == start + 1
+
+
+class _SelectApp(VimNavMixin, App):
+    def compose(self) -> ComposeResult:
+        yield Select([('one', 1), ('two', 2), ('three', 3)])
+
+    def on_mount(self) -> None:
+        self.query_one(Select).focus()
+
+
+async def test_jk_on_collapsed_select_does_not_change_value():
+    app = _SelectApp()
+    async with app.run_test() as pilot:
+        select = app.query_one(Select)
+        before = select.value  # collapsed; no selection by default
+
+        await pilot.press('j')
+        await pilot.press('k')
+
+        # Collapsed Select must not change its value from hjkl navigation.
+        assert select.value == before
+        # And it should still be collapsed (j/k did not open the overlay).
+        assert select.expanded is False
