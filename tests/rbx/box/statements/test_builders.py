@@ -522,6 +522,68 @@ Explanation from block.
         # kwargs samples should also use the block-based explanation
         assert 'Explanation from block.' in kwargs['problem']['samples'][0].explanation
 
+    def test_get_rbxtex_blocks_selects_language_block(self, context, tmp_path):
+        """A from-blocks explanation selects the block for context.lang."""
+        package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
+        statement = Statement(
+            name='statement', path=pathlib.Path('stmt.tex'), type=StatementType.JinjaTeX
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+
+        explanation_file = tmp_path / '1.rbx.tex'
+        explanation_file.write_text(
+            'Ignored preamble.\n'
+            '%- block en\nEnglish explanation.\n%- endblock\n'
+            '%- block pt\nPortuguese explanation.\n%- endblock\n'
+        )
+
+        samples = [
+            StatementSample(
+                entry=create_dummy_entry(),
+                inputPath=tmp_path / '1.in',
+                outputPath=tmp_path / '1.out',
+                explanationPath=explanation_file,
+                explanationFromBlocks=True,
+            )
+        ]
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits, samples=samples
+        )
+
+        _, kwargs = get_rbxtex_blocks(b'', context, problem)
+        explanation = kwargs['problem']['samples'][0].explanation
+        assert 'English explanation.' in explanation
+        assert 'Portuguese' not in explanation
+        assert 'Ignored preamble' not in explanation
+
+    def test_get_rbxtex_blocks_missing_language_block_warns(self, context, tmp_path):
+        """A from-blocks explanation without the language block yields no explanation."""
+        package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)
+        statement = Statement(
+            name='statement', path=pathlib.Path('stmt.tex'), type=StatementType.JinjaTeX
+        )
+        limits = LimitsProfile(timeLimit=1000, memoryLimit=256)
+
+        explanation_file = tmp_path / '1.rbx.tex'
+        explanation_file.write_text('%- block pt\nSo portugues.\n%- endblock\n')
+
+        samples = [
+            StatementSample(
+                entry=create_dummy_entry(),
+                inputPath=tmp_path / '1.in',
+                outputPath=tmp_path / '1.out',
+                explanationPath=explanation_file,
+                explanationFromBlocks=True,
+            )
+        ]
+        problem = StatementBuilderProblem(
+            package=package, statement=statement, limits=limits, samples=samples
+        )
+
+        # context.lang == 'en', file only has 'pt'
+        _, kwargs = get_rbxtex_blocks(b'', context, problem)
+        assert kwargs['problem']['samples'][0].explanation is None
+
     def test_get_rbxtex_blocks_externalize(self, context, tmp_path):
         """Test get_rbxtex_blocks with externalize=True."""
         package = Package(name='test-problem', timeLimit=1000, memoryLimit=256)

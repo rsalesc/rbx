@@ -302,6 +302,26 @@ def get_rbxtex_blocks(
             if sample.explanation is None:
                 # No explanation provided.
                 continue
+            if sample.explanationFromBlocks:
+                # Language-specific explanation: render the language blocks and
+                # pick the one matching the statement language. Content outside
+                # blocks is ignored. Receives the same Jinja kwargs as a plain
+                # per-sample explanation.
+                sample_blocks = render_jinja_blocks(
+                    context.root,
+                    sample.explanation.encode(),
+                    mode=mode,
+                    **item.build_inner_jinja_kwargs(),
+                )
+                selected = sample_blocks.blocks.get(context.lang)
+                if selected is None:
+                    console.console.print(
+                        f'[warning]Sample explanation for testcase [item]{i}[/item] '
+                        f'has no block for language [item]{context.lang}[/item]; '
+                        'no explanation will be shown for this sample.[/warning]'
+                    )
+                sample.explanation = selected
+                continue
             # Render samples.
             sample.explanation = render_jinja(
                 context.root,
