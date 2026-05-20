@@ -36,7 +36,9 @@ class VimNavMixin(DOMNode):
         Binding('l', 'vim_move("right")', 'Right', show=False),
     ]
 
-    def check_action(self, action: str, parameters: tuple) -> Optional[bool]:
+    def check_action(
+        self, action: str, parameters: tuple[object, ...]
+    ) -> Optional[bool]:
         if action == 'vim_move':
             focused = self.focused
             if focused is None or isinstance(focused, (Input, TextArea)):
@@ -47,6 +49,7 @@ class VimNavMixin(DOMNode):
 
     async def action_vim_move(self, direction: str) -> None:
         focused = self.focused
+        # Defensive: check_action normally gates this, but guard direct/edge invocations.
         if focused is None:
             return
         cursor_action, scroll_action = _DIRECTION_ACTIONS[direction]
