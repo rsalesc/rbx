@@ -29,6 +29,7 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
+from rbx.box.testcase_sample_utils import StatementSample
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 
@@ -515,6 +516,77 @@ class TestBuildStatementBytesExtended:
             assert output_type == StatementType.TeX
             # get_samples should NOT be called when use_samples=False based on the conditional logic
             mock_get_samples.assert_not_called()
+
+    async def test_build_rbxtex_with_language_block_explanation(
+        self, sample_package, chdir_tmp_path, mock_limits
+    ):
+        """End-to-end: an rbxTeX statement renders the .rbx.tex sample explanation
+        block matching the statement language and drops the others."""
+        statement_file = chdir_tmp_path / 'statement.rbx.tex'
+        statement_file.write_text('%- block legend\nLegend.\n%- endblock\n')
+
+        template_file = chdir_tmp_path / 'template.rbx.tex'
+        template_file.write_text(
+            '\\documentclass{article}\n'
+            '\\begin{document}\n'
+            '\\VAR{problem.blocks.legend}\n'
+            '%- for sample in problem.samples\n'
+            '%- if sample.explanation\n'
+            'EXPLANATION: \\VAR{sample.explanation}\n'
+            '%- endif\n'
+            '%- endfor\n'
+            '\\end{document}\n'
+        )
+
+        explanation_file = chdir_tmp_path / '000.rbx.tex'
+        explanation_file.write_text(
+            '%- block en\nEnglish explanation.\n%- endblock\n'
+            '%- block pt\nPortuguese explanation.\n%- endblock\n'
+        )
+
+        sample = StatementSample(
+            entry=GenerationTestcaseEntry(
+                group_entry=TestcaseEntry(group='samples', index=0),
+                subgroup_entry=TestcaseEntry(group='samples', index=0),
+                metadata=GenerationMetadata(
+                    copied_to=Testcase(inputPath=chdir_tmp_path / '000.in')
+                ),
+            ),
+            inputPath=chdir_tmp_path / '000.in',
+            outputPath=chdir_tmp_path / '000.out',
+            explanationPath=explanation_file,
+            explanationFromBlocks=True,
+        )
+
+        statement = Statement(
+            name='test-statement',
+            language='en',
+            title='Test Problem',
+            path=statement_file,
+            type=StatementType.rbxTeX,
+            configure=[
+                rbxToTeX(
+                    type=ConversionType.rbxToTex,
+                    template=pathlib.Path('template.rbx.tex'),
+                )
+            ],
+            assets=[],
+        )
+
+        with patch(
+            'rbx.box.statements.build_statements.get_statement_samples'
+        ) as mock_get_samples:
+            mock_get_samples.return_value = [sample]
+
+            content, output_type = await build_statement_bytes(
+                statement=statement,
+                pkg=sample_package,
+                output_type=StatementType.TeX,
+            )
+
+        assert output_type == StatementType.TeX
+        assert b'English explanation.' in content
+        assert b'Portuguese explanation.' not in content
 
     async def test_build_with_combined_overrides(
         self, sample_package, sample_statement, mock_samples, tmp_path, mock_limits
