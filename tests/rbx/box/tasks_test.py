@@ -1,8 +1,36 @@
+import textwrap
+
+from rbx import testing_utils
 from rbx.box import code, tasks
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import CodeItem, Testcase
 from rbx.box.testing import testing_package
 from rbx.grading.judge.sandbox import SandboxBase
+from rbx.grading.steps import Outcome
+
+_ENV_WITH_MISSING_PY_INTERPRETER = textwrap.dedent("""\
+    ---
+    sandbox: "stupid"
+    defaultCompilation:
+      sandbox:
+        maxProcesses: 1000
+        timeLimit: 50000
+        wallTimeLimit: 50000
+        memoryLimit: 1024
+    defaultExecution:
+      sandbox:
+        timeLimit: 50000
+        wallTimeLimit: 50000
+        memoryLimit: 1024
+    languages:
+      - name: "py"
+        readableName: "Python3"
+        extension: "py"
+        execution:
+          command: "rbx-not-a-real-interpreter {executable}"
+        fileMapping:
+          executable: "{compilable}"
+""")
 
 
 class TestRunSolutionOnTestcase:
@@ -169,6 +197,48 @@ class TestRunSolutionOnTestcase:
         assert evaluation.log is not None
         assert evaluation.log.exitcode == 0
         assert evaluation.log.exitstatus == SandboxBase.EXIT_OK
+
+    async def test_run_solution_with_missing_interpreter_reports_clear_error(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A solution whose execution command points at a non-existent binary
+        should yield an informative INTERNAL_ERROR verdict instead of crashing
+        with a cryptic FileNotFoundError (regression test for issue #454)."""
+        # Point the python execution command at a non-existent interpreter.
+        env_path = testing_pkg.preset.path('env.rbx.yml')
+        env_path.write_text(_ENV_WITH_MISSING_PY_INTERPRETER)
+        testing_utils.clear_all_functools_cache()
+
+        py_file = testing_pkg.add_file(
+            'solution.py', src='program_test/simple_hello.py'
+        )
+        solution = CodeItem(path=py_file, language='py')
+        compiled_digest = await code.compile_item(solution)
+
+        input_file = testing_pkg.add_file('test.in')
+        input_file.write_text('')
+        output_file = testing_pkg.path('test.ans')
+        output_file.write_text('Hello, World!\n')
+        testcase = Testcase(inputPath=input_file, outputPath=output_file)
+
+        output_dir = testing_pkg.path('outputs')
+        output_dir.mkdir(exist_ok=True)
+
+        # Should not raise; the missing interpreter must be surfaced as a verdict.
+        evaluation = await tasks.run_solution_on_testcase(
+            solution=solution,
+            compiled_digest=compiled_digest,
+            checker_digest=None,
+            testcase=testcase,
+            output_dir=output_dir,
+            verification=VerificationLevel.NONE,
+            use_retries=False,
+        )
+
+        assert evaluation is not None
+        assert evaluation.result.outcome == Outcome.INTERNAL_ERROR
+        assert 'not found' in evaluation.result.message.lower()
+        assert 'rbx-not-a-real-interpreter' in evaluation.result.message
 
 
 class TestRunCommunicationSolutionOnTestcase:
