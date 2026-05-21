@@ -3,11 +3,17 @@
 # activate-venv.sh — activate the Python venv of a worktree or branch.
 #
 # Usage:
-#   source ./activate-venv.sh [-b] <name>
-#   ./activate-venv.sh [-b] <name>
+#   source ./activate-venv.sh [-b] [<name>]
+#   ./activate-venv.sh [-b] [<name>]
 #
-# By default <name> is a worktree directory name; it is looked up under
+# With no argument, the venv of the root repository (the one this script
+# lives in) is used.
+#
+# A bare <name> is a worktree directory name; it is looked up under
 # .worktrees/<name> and then .claude/worktrees/<name> (first match wins).
+#
+# A <name> that contains a slash is treated as a path to a worktree,
+# relative to the root repo (e.g. .claude/worktrees/foo) or absolute.
 #
 # With -b, <name> is a git branch; the worktree that currently has that
 # branch checked out is used instead.
@@ -34,11 +40,14 @@ fi
 # --- argument parsing -------------------------------------------------------
 _av_usage() {
   cat >&2 <<'EOF'
-Usage: source ./activate-venv.sh [-b] <name>
-       ./activate-venv.sh [-b] <name>
+Usage: source ./activate-venv.sh [-b] [<name>]
+       ./activate-venv.sh [-b] [<name>]
 
-  <name>   worktree directory name (under .worktrees or .claude/worktrees)
-  -b       treat <name> as a git branch and use its checked-out worktree
+  (no name)   use the root repository's venv
+  <name>      worktree directory name (under .worktrees or .claude/worktrees),
+              or a path to a worktree relative to the root repo (e.g.
+              .claude/worktrees/foo) or absolute
+  -b <name>   treat <name> as a git branch and use its checked-out worktree
 EOF
 }
 
@@ -56,8 +65,8 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-if [ -z "$_av_name" ]; then
-  echo "activate-venv: missing <name>" >&2
+if [ -z "$_av_name" ] && [ "$_av_by_branch" -eq 1 ]; then
+  echo "activate-venv: -b requires a branch name" >&2
   _av_usage
   return 1 2>/dev/null || exit 1
 fi
@@ -77,17 +86,36 @@ if [ "$_av_by_branch" -eq 1 ]; then
     echo "activate-venv: no worktree found with branch '$_av_name'" >&2
     return 1 2>/dev/null || exit 1
   fi
+elif [ -z "$_av_name" ]; then
+  # No name: use the root repository this script lives in.
+  _av_wt="$_av_root"
 else
-  for _av_base in "$_av_root/.worktrees" "$_av_root/.claude/worktrees"; do
-    if [ -d "$_av_base/$_av_name" ]; then
-      _av_wt="$_av_base/$_av_name"
-      break
-    fi
-  done
-  if [ -z "$_av_wt" ]; then
-    echo "activate-venv: no worktree named '$_av_name' under .worktrees or .claude/worktrees" >&2
-    return 1 2>/dev/null || exit 1
-  fi
+  case "$_av_name" in
+    */*)
+      # A path to a worktree: relative to the root repo, or absolute.
+      case "$_av_name" in
+        /*) _av_wt="$_av_name" ;;
+        *)  _av_wt="$_av_root/$_av_name" ;;
+      esac
+      if [ ! -d "$_av_wt" ]; then
+        echo "activate-venv: no such directory: $_av_wt" >&2
+        return 1 2>/dev/null || exit 1
+      fi
+      ;;
+    *)
+      # A bare worktree directory name.
+      for _av_base in "$_av_root/.worktrees" "$_av_root/.claude/worktrees"; do
+        if [ -d "$_av_base/$_av_name" ]; then
+          _av_wt="$_av_base/$_av_name"
+          break
+        fi
+      done
+      if [ -z "$_av_wt" ]; then
+        echo "activate-venv: no worktree named '$_av_name' under .worktrees or .claude/worktrees" >&2
+        return 1 2>/dev/null || exit 1
+      fi
+      ;;
+  esac
 fi
 
 # --- locate and run the activation script -----------------------------------
