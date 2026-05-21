@@ -14,6 +14,7 @@ from rbx.box.ui.screens.differ import DifferScreen
 from rbx.box.ui.screens.limits_editor import LimitsEditorScreen
 from rbx.box.ui.screens.run_explorer import RunExplorerScreen
 from rbx.box.ui.screens.test_explorer import TestExplorerScreen
+from rbx.box.ui.vim_nav import VimNavMixin
 
 SCREEN_OPTIONS = [
     ('Explore tests built by `rbx build`', TestExplorerScreen),
@@ -22,7 +23,7 @@ SCREEN_OPTIONS = [
 ]
 
 
-class rbxBaseApp(App):
+class rbxBaseApp(VimNavMixin, App):
     def run(self, *args, **kwargs):
         console.console.begin_capture()
         super().run(*args, **kwargs)

@@ -81,6 +81,10 @@ Helper functions that load run results from disk:
 - **`self.watch(widget, 'index', callback)`** -- Test explorer screens watch `ListView.index` to react to selection changes.
 - **CSS** in `css/app.tcss` uses Textual's TCSS syntax with `$`-prefixed theme variables.
 
+## Keybindings
+
+Vim navigation lives in `vim_nav.py` (`VimNavMixin`, mixed into `rbxBaseApp` in `main.py`, ahead of `App` in the MRO). It registers app-level `h/j/k/l` bindings that dispatch to the focused widget's existing `cursor_*` action, falling back to `scroll_*`: `j`/`k` move down/up everywhere; `h`/`l` move left/right only where horizontal movement exists (e.g. `DataTable` cells, scroll viewers). `check_action` disables the keys while an `Input`/`TextArea` is focused, so typing is never hijacked. The mixin subclasses `DOMNode` so Textual merges its `BINDINGS`.
+
 ## Core Dependencies
 
 - `rbx.box.solutions` -- `SolutionReportSkeleton`, `SolutionSkeleton`, verdict formatting
