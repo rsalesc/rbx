@@ -1,3 +1,20 @@
+## 0.36.0 (2026-05-23)
+
+### Feat
+
+- support root repo and path args in activate-venv
+- **ui**: Vim-style hjkl navigation in rbx ui (#475)
+- **statements**: multi-language sample explanations via .rbx.tex blocks (#473)
+- **boca**: multi-language mapping for cc/cpp aliasing (#453) (#472)
+- **contest**: add 'rbx contest add_variant <id>' scaffolding command (#449)
+- -p/--profile for statement builds (#456) (#470)
+
+### Fix
+
+- add to interactive boca scripts too
+- add chown -R to every boca script
+- **box**: avoid crash when a solution's run command is missing (#474)
+
 ## 0.35.1 (2026-05-18)
 
 ### Fix
