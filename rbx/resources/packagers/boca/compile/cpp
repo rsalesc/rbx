@@ -65,11 +65,11 @@ id -u bocajail >/dev/null 2>/dev/null
 if [ $? == 0 ]; then
   bocau=$(id -u bocajail)
   bocag=$(id -g bocajail)
-  chown bocajail.nogroup .
+  chown -R bocajail.nogroup .
 else
   bocau=$(id -u nobody)
   bocag=$(id -g nobody)
-  chown nobody.nogroup .
+  chown -R nobody.nogroup .
 fi
 if [ "$bocau" == "" -o "$bocag" == "" ]; then
   echo "error finding user to run script"
