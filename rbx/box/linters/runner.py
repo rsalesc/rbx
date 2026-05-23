@@ -10,13 +10,21 @@ from rbx.box.schema import CodeItem
 
 
 def _in_scope(linter: Linter, config: LinterConfig, kind: Optional[AssetKind]) -> bool:
-    interface = linter.applies_to  # empty == all
+    # An empty `applies_to` (interface or config) means "no restriction".
+    interface = linter.applies_to or None
     config_scope = set(config.applies_to) if config.applies_to else None
-    effective = interface
-    if config_scope is not None:
-        effective = (interface & config_scope) if interface else config_scope
+    if interface is None and config_scope is None:
+        return True  # unrestricted on both sides -> applies to all kinds
+    if interface is None:
+        effective = config_scope
+    elif config_scope is None:
+        effective = interface
+    else:
+        # Both restrict: the linter only applies to the intersection, which may
+        # be empty (disjoint scopes) -> the linter never applies.
+        effective = interface & config_scope
     if not effective:
-        return True  # applies to all kinds
+        return False
     if kind is None:
         return False  # restricted, but kind unknown -> skip
     return kind in effective
@@ -25,19 +33,12 @@ def _in_scope(linter: Linter, config: LinterConfig, kind: Optional[AssetKind]) -
 def run_linters_for_messages(
     configs: List[LinterConfig],
     linters: List[Linter],
-    language_name: str,
     kind: Optional[AssetKind],
     code,
     source: str,
 ) -> List[LinterMessage]:
     out: List[LinterMessage] = []
     for config, linter in zip(configs, linters):
-        if language_name not in linter.languages:
-            with RbxException() as e:
-                e.print(
-                    f'[error]Linter [item]{linter.name}[/item] does not support '
-                    f'language [item]{language_name}[/item][/error]'
-                )
         if not _in_scope(linter, config, kind):
             continue
         out.extend(linter.lint(code, source))
@@ -60,7 +61,6 @@ async def run_linters(code: CodeItem, kind: Optional[AssetKind]) -> None:
     messages = run_linters_for_messages(
         configs=configs,
         linters=linters,
-        language_name=language.name,
         kind=kind,
         code=code,
         source=source,

@@ -8,7 +8,6 @@ from rbx.box.linters.linter import Linter
 @registry.register
 class _RegLinter(Linter):
     name = 'reg_test'
-    languages = {'cpp'}
 
     def lint(self, code, source):
         return []

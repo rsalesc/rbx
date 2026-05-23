@@ -5,7 +5,6 @@ from rbx.box.schema import CodeItem
 
 class _DummyLinter(Linter):
     name = 'dummy'
-    languages = {'cpp'}
     applies_to = {AssetKind.GENERATOR}
 
     def lint(self, code, source):
@@ -15,7 +14,6 @@ class _DummyLinter(Linter):
 def test_linter_metadata_and_lint():
     linter = _DummyLinter()
     assert linter.name == 'dummy'
-    assert linter.languages == {'cpp'}
     assert linter.applies_to == {AssetKind.GENERATOR}
     msgs = linter.lint(CodeItem(path='g.cpp'), 'source')
     assert msgs == [

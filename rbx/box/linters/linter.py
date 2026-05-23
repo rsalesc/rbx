@@ -21,10 +21,10 @@ class LinterMessage(BaseModel):
 
 
 class Linter(abc.ABC):
-    # Lowercase identifier referenced in env.rbx.yml.
+    # Lowercase identifier referenced in env.rbx.yml. A linter runs for whatever
+    # language entry it is configured under in env.rbx.yml; it is the user's
+    # responsibility to add it under languages where it makes sense.
     name: ClassVar[str]
-    # Env language names this linter supports (e.g. {'cpp'}).
-    languages: ClassVar[Set[str]]
     # Interface-level restriction; empty set means "all asset kinds".
     applies_to: ClassVar[Set[AssetKind]] = set()
 
