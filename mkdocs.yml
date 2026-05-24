@@ -12,6 +12,7 @@ nav:
       - "Authoring a problem":
           - "First steps": "setters/first-steps.md"
           - "Adding a custom checker": "setters/custom-checker-walkthrough.md"
+          - "Stress-testing your solutions": "setters/stress-testing-walkthrough.md"
       - "Delivering a contest":
           - "Packaging a problem": "setters/packaging-walkthrough.md"
   - "Feature Guide":
