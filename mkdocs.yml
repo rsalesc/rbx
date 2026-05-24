@@ -11,6 +11,7 @@ nav:
   - "Walkthrough":
       - "Authoring a problem":
           - "First steps": "setters/first-steps.md"
+          - "Adding a custom checker": "setters/custom-checker-walkthrough.md"
       - "Delivering a contest":
           - "Packaging a problem": "setters/packaging-walkthrough.md"
   - "Feature Guide":
