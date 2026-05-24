@@ -3,10 +3,10 @@
 from unittest import mock
 
 from textual.app import App, ComposeResult
-from textual.widgets import HelpPanel, Input, OptionList
+from textual.widgets import Input, OptionList
 
 from rbx.box.schema import TaskType
-from rbx.box.ui.help_panel import HelpPanelMixin
+from rbx.box.ui.help_panel import HelpPanelMixin, RbxHelpPanel
 
 
 def _footer_visible_keys(app) -> set[str]:
@@ -29,15 +29,15 @@ class _PanelApp(HelpPanelMixin, App):
 async def test_question_mark_toggles_help_panel():
     app = _PanelApp()
     async with app.run_test() as pilot:
-        assert not app.screen.query(HelpPanel)
+        assert not app.screen.query(RbxHelpPanel)
 
         await pilot.press('question_mark')
         await pilot.pause()
-        assert app.screen.query(HelpPanel)
+        assert app.screen.query(RbxHelpPanel)
 
         await pilot.press('question_mark')
         await pilot.pause()
-        assert not app.screen.query(HelpPanel)
+        assert not app.screen.query(RbxHelpPanel)
 
 
 class _InputApp(HelpPanelMixin, App):
@@ -53,17 +53,55 @@ async def test_question_mark_types_into_focused_input():
     async with app.run_test() as pilot:
         await pilot.press('question_mark')
         assert app.query_one(Input).value == '?'
-        assert not app.screen.query(HelpPanel)
+        assert not app.screen.query(RbxHelpPanel)
 
 
 async def test_real_rbx_app_toggles_help_panel():
     from rbx.box.ui.main import rbxApp
 
     async with rbxApp().run_test() as pilot:
-        assert not pilot.app.screen.query(HelpPanel)
+        assert not pilot.app.screen.query(RbxHelpPanel)
 
         await pilot.press('question_mark')
-        assert pilot.app.screen.query(HelpPanel)
+        assert pilot.app.screen.query(RbxHelpPanel)
+
+
+async def test_help_panel_hides_untitled_binding_groups():
+    """The panel renders only namespaces with a BINDING_GROUP_TITLE.
+
+    Built-in navigation contributed by the focused widget / screen (arrow keys,
+    tab, copy, ...) lives in untitled namespaces and must not clutter the panel,
+    while our titled 'Global' app section stays.
+    """
+    from rich.console import Console
+
+    from rbx.box.ui.help_panel import _TitledBindingsTable
+    from rbx.box.ui.main import rbxApp
+
+    async with rbxApp().run_test() as pilot:
+        # Sanity: the menu screen really does carry untitled built-in bindings
+        # (e.g. the Screen-level 'Focus Next' on tab) alongside our 'Global' app
+        # section -- so the filtering below is actually exercising something.
+        titles = {
+            ab[0].BINDING_GROUP_TITLE
+            for ab in pilot.app.screen.active_bindings.values()
+        }
+        assert None in titles
+        assert 'Global' in titles
+
+        await pilot.press('question_mark')
+        await pilot.pause()
+        table = pilot.app.screen.query_one(_TitledBindingsTable).render_bindings_table()
+        console = Console(width=80)
+        with console.capture() as capture:
+            console.print(table)
+        rendered = capture.get()
+
+        assert 'Global' in rendered  # titled section shown
+        assert 'Help' in rendered  # our '?' binding shown
+        # 'Focus Next' is the untitled Screen-level tab binding; it appears in
+        # Textual's stock panel but must be filtered out of ours.
+        assert 'Focus Next' not in rendered
 
 
 def _mounted_test_explorer():
