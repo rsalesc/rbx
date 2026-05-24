@@ -122,6 +122,19 @@ linter's own supported kinds and the `applies_to` you configure.
   leaves argument evaluation order unspecified, so such calls can produce
   different results across compilers.
 
+### Suppressing a linter in a file
+
+If a linter flags something you intend to keep, you can disable it for an entire
+file with a comment directive of the form `<linter-name>-linter: disable`. For
+the `testlib` linter:
+
+```cpp
+// testlib-linter: disable
+```
+
+The directive must appear in a comment (a `//` or `#` comment marker). It
+disables only that linter; other linters configured for the language still run.
+
 ## File mapping
 
 The `fileMapping` field is a [`FileMapping`][rbx.box.environment.FileMapping] object where

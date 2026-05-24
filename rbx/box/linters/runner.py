@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional
 
 from rbx.box.environment import LinterConfig
@@ -30,6 +31,21 @@ def _in_scope(linter: Linter, config: LinterConfig, kind: Optional[AssetKind]) -
     return kind in effective
 
 
+def is_linter_suppressed(name: str, source: str) -> bool:
+    """Whether `source` disables the linter `name` for the whole file.
+
+    A line comment of the form ``<name>-linter: disable`` (using either the
+    ``//`` or ``#`` comment marker, with flexible spacing) suppresses that
+    linter across the entire file. The marker is required so the directive is
+    not matched inside string literals or other code.
+    """
+    pattern = re.compile(
+        rf'(?://|#)\s*{re.escape(name)}-linter:\s*disable\b',
+        re.IGNORECASE,
+    )
+    return pattern.search(source) is not None
+
+
 def run_linters_for_messages(
     configs: List[LinterConfig],
     linters: List[Linter],
@@ -40,6 +56,8 @@ def run_linters_for_messages(
     out: List[LinterMessage] = []
     for config, linter in zip(configs, linters):
         if not _in_scope(linter, config, kind):
+            continue
+        if is_linter_suppressed(linter.name, source):
             continue
         out.extend(linter.lint(code, source))
     return out
