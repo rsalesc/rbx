@@ -118,10 +118,14 @@ def test_run_explorer_feature_bindings_hidden():
 
 
 def test_limits_editor_feature_bindings_hidden():
+    from textual.binding import Binding
+
     from rbx.box.ui.screens.limits_editor import LimitsEditorScreen
 
-    # All entries are Binding(...) objects; only 'q' stays visible.
-    shown = {b.key for b in LimitsEditorScreen.BINDINGS if b.show}
+    # Only 'q' stays visible; save/delete move to the panel.
+    shown = {
+        b.key for b in LimitsEditorScreen.BINDINGS if isinstance(b, Binding) and b.show
+    }
     assert shown == {'q'}
 
 
@@ -130,5 +134,7 @@ def test_primary_screens_have_group_titles():
     from rbx.box.ui.screens.differ import DifferScreen
     from rbx.box.ui.screens.run import RunScreen, SolutionReportScreen
 
-    for screen_cls in (CommandScreen, DifferScreen, RunScreen, SolutionReportScreen):
-        assert getattr(screen_cls, 'BINDING_GROUP_TITLE', None)
+    assert CommandScreen.BINDING_GROUP_TITLE == 'Command'
+    assert DifferScreen.BINDING_GROUP_TITLE == 'Diff'
+    assert RunScreen.BINDING_GROUP_TITLE == 'Run'
+    assert SolutionReportScreen.BINDING_GROUP_TITLE == 'Solution Report'
