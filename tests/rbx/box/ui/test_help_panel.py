@@ -69,10 +69,16 @@ async def test_test_explorer_footer_shows_only_help_and_quit():
     from rbx.box.ui.screens.test_explorer import TestExplorerScreen
 
     async with rbxApp().run_test() as pilot:
-        await pilot.app.push_screen(TestExplorerScreen())
-        # The screen's on_mount needs a built problem package; outside one it
-        # exits early, so we let the binding registration tick through instead
-        # of pilot.pause() (which would wait on the unsettled mount). The footer
-        # binding visibility we assert on is independent of on_mount completing.
-        await asyncio.sleep(0.05)
+        screen = TestExplorerScreen()
+        await pilot.app.push_screen(screen)
+        # TestExplorerScreen.on_mount calls find_problem_package_or_die(),
+        # which raises typer.Exit outside a built package, so pilot.pause()
+        # would hang on the unsettled mount. Poll until the screen is active
+        # instead -- binding visibility is registered at mount, independent
+        # of on_mount completing.
+        for _ in range(100):
+            if pilot.app.screen is screen:
+                break
+            await asyncio.sleep(0.005)
+        assert pilot.app.screen is screen
         assert _footer_visible_keys(pilot.app) == {'question_mark', 'q'}
