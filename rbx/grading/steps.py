@@ -770,6 +770,17 @@ async def compile(
                         utils.highlight_json_obj(cmd),
                     )
                     err.print('[warning]Is it installed and on your PATH?[/warning]')
+                    if is_cxx_command(e.executable) and sys.platform == 'darwin':
+                        err.print(
+                            '[warning]On macOS the GNU compiler is not bundled — '
+                            "install it with '[item]brew install gcc[/item]', then "
+                            "point rbx at the exact version via '[item]rbx config "
+                            "edit[/item]' (command_substitutions).[/warning]"
+                        )
+                        err.print(
+                            '[warning]See [item]https://rbx.rsalesc.dev/cpp-on-macos/[/item] '
+                            'for the full guide.[/warning]'
+                        )
                 else:
                     err.print(
                         '[error]FAILED[/error] Preprocessing failed with command',

@@ -885,3 +885,59 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         message = ' '.join(plain.split()).lower()
         assert 'definitely-not-a-real-compiler-xyz' in message
         assert 'not found' in message
+
+    async def test_compile_missing_cxx_on_macos_links_doc(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path
+    ):
+        """On macOS, a missing C/C++ compiler points the user at the macOS guide."""
+        artifacts = GradingArtifacts(root=cleandir)
+        params = SandboxParams()
+        with patch('rbx.grading.steps.sys.platform', 'darwin'):
+            with pytest.raises(steps.CompilationError) as exc_info:
+                await steps.compile(
+                    ['g++-14 src.cpp -o exe'],
+                    params,
+                    sandbox,
+                    artifacts,
+                )
+        plain = re.sub(r'\x1b\[[0-9;]*m', '', str(exc_info.value))
+        message = ' '.join(plain.split())
+        assert 'https://rbx.rsalesc.dev/cpp-on-macos/' in message
+        assert 'brew install gcc' in message
+
+    async def test_compile_missing_cxx_off_macos_is_generic(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path
+    ):
+        """Off macOS, a missing C/C++ compiler keeps the generic message only."""
+        artifacts = GradingArtifacts(root=cleandir)
+        params = SandboxParams()
+        with patch('rbx.grading.steps.sys.platform', 'linux'):
+            with pytest.raises(steps.CompilationError) as exc_info:
+                await steps.compile(
+                    ['g++-14 src.cpp -o exe'],
+                    params,
+                    sandbox,
+                    artifacts,
+                )
+        plain = re.sub(r'\x1b\[[0-9;]*m', '', str(exc_info.value))
+        message = ' '.join(plain.split())
+        assert 'cpp-on-macos' not in message
+        assert 'not found' in message.lower()
+
+    async def test_compile_missing_non_cxx_on_macos_is_generic(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path
+    ):
+        """A missing non-C/C++ tool on macOS gets no C/C++ guidance."""
+        artifacts = GradingArtifacts(root=cleandir)
+        params = SandboxParams()
+        with patch('rbx.grading.steps.sys.platform', 'darwin'):
+            with pytest.raises(steps.CompilationError) as exc_info:
+                await steps.compile(
+                    ['definitely-not-a-real-compiler-xyz src.py'],
+                    params,
+                    sandbox,
+                    artifacts,
+                )
+        plain = re.sub(r'\x1b\[[0-9;]*m', '', str(exc_info.value))
+        message = ' '.join(plain.split())
+        assert 'cpp-on-macos' not in message
