@@ -82,3 +82,19 @@ async def test_test_explorer_footer_shows_only_help_and_quit():
             await asyncio.sleep(0.005)
         assert pilot.app.screen is screen
         assert _footer_visible_keys(pilot.app) == {'question_mark', 'q'}
+
+
+def test_run_test_explorer_feature_bindings_hidden():
+    from textual.binding import Binding
+
+    from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
+
+    shown = {
+        b.key
+        for b in RunTestExplorerScreen.BINDINGS
+        if isinstance(b, Binding) and b.show
+    }
+    tuple_keys = {b[0] for b in RunTestExplorerScreen.BINDINGS if isinstance(b, tuple)}
+    # Only 'q' (a plain tuple) stays visible; all Binding() entries are hidden.
+    assert shown == set()
+    assert tuple_keys == {'q'}
