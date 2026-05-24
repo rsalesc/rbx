@@ -41,3 +41,13 @@ async def test_question_mark_types_into_focused_input():
         await pilot.press('question_mark')
         assert app.query_one(Input).value == '?'
         assert not app.screen.query(HelpPanel)
+
+
+async def test_real_rbx_app_toggles_help_panel():
+    from rbx.box.ui.main import rbxApp
+
+    async with rbxApp().run_test() as pilot:
+        assert not pilot.app.screen.query(HelpPanel)
+
+        await pilot.press('question_mark')
+        assert pilot.app.screen.query(HelpPanel)
