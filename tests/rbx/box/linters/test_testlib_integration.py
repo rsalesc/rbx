@@ -52,6 +52,23 @@ async def test_testlib_warning_lands_on_generator(
     assert 'side-effecting' in messages[0].message
 
 
+async def test_testlib_suppressed_by_disable_directive(
+    testing_pkg: testing_package.TestingPackage, monkeypatch
+):
+    cpp_file = testing_pkg.add_file('gen.cpp')
+    cpp_file.write_text('// testlib-linter: disable\n' + _OFFENDING_GENERATOR)
+    code_item = CodeItem(path=cpp_file, language='cpp')
+
+    language = _cpp_language_with_linters([LinterConfig(name='testlib')])
+    monkeypatch.setattr('rbx.box.code.find_language', lambda _: language)
+
+    warning_stack.get_warning_stack().clear()
+    await _compile_lenient(code_item, kind=AssetKind.GENERATOR)
+
+    stack = warning_stack.get_warning_stack()
+    assert code_item.path not in stack.linter_warnings
+
+
 async def test_testlib_not_flagged_when_scoped_to_solutions(
     testing_pkg: testing_package.TestingPackage, monkeypatch
 ):
