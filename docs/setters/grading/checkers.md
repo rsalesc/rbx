@@ -26,7 +26,7 @@ You can use them by specifying the `checker` field in your `problem.rbx.yml` fil
 ```yaml title="problem.rbx.yml"
 # ... rest of the problem.rbx.yml ...
 checker:
-  - path: "wcmp.cpp"
+  path: "wcmp.cpp"
 ```
 
 {{rbx}} will automatically detect it is a built-in checker and will download it from the {{testlib}} repository.
@@ -169,7 +169,7 @@ We can write a checker that does exactly that.
     ```yaml
     # ... rest of the problem.rbx.yml ...
     checker:
-      - path: "checker.cpp"
+      path: "checker.cpp"
     ```
 
 Notice checking only the participant's output here was more than enough. We don't need to consume the `<answer_file>`
@@ -288,7 +288,7 @@ a special outcome called `JUDGE_FAILED`, which is used to convey a checking fail
     ```yaml
     # ... rest of the problem.rbx.yml ...
     checker:
-      - path: "checker.cpp"
+      path: "checker.cpp"
     ```
 
 Notice how we read from both outputs, validating each of them individually, and compare their sizes at the end, giving
