@@ -115,3 +115,20 @@ def test_run_explorer_feature_bindings_hidden():
     # 's' (compare) is hidden; no screen-level bindings stay visible.
     assert shown == set()
     assert RunExplorerScreen.BINDING_GROUP_TITLE == 'Run Explorer'
+
+
+def test_limits_editor_feature_bindings_hidden():
+    from rbx.box.ui.screens.limits_editor import LimitsEditorScreen
+
+    # All entries are Binding(...) objects; only 'q' stays visible.
+    shown = {b.key for b in LimitsEditorScreen.BINDINGS if b.show}
+    assert shown == {'q'}
+
+
+def test_primary_screens_have_group_titles():
+    from rbx.box.ui.screens.command import CommandScreen
+    from rbx.box.ui.screens.differ import DifferScreen
+    from rbx.box.ui.screens.run import RunScreen, SolutionReportScreen
+
+    for screen_cls in (CommandScreen, DifferScreen, RunScreen, SolutionReportScreen):
+        assert getattr(screen_cls, 'BINDING_GROUP_TITLE', None)

@@ -37,6 +37,7 @@ def _build_solution_selection_label(sol: Solution) -> Text:
 class SolutionReportScreen(Screen):
     skeleton: SolutionReportSkeleton
 
+    BINDING_GROUP_TITLE = 'Solution Report'
     BINDINGS = [('q', 'app.pop_screen', 'Back')]
 
     def __init__(
@@ -105,6 +106,7 @@ class SolutionReportScreen(Screen):
 
 
 class RunScreen(Screen):
+    BINDING_GROUP_TITLE = 'Run'
     BINDINGS = [('q', 'app.pop_screen', 'Back')]
 
     def compose(self) -> ComposeResult:
