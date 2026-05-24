@@ -1,9 +1,20 @@
 """Tests for the ?-toggled help panel (rbx.box.ui.help_panel)."""
 
+import asyncio
+
 from textual.app import App, ComposeResult
 from textual.widgets import HelpPanel, Input, OptionList
 
 from rbx.box.ui.help_panel import HelpPanelMixin
+
+
+def _footer_visible_keys(app) -> set[str]:
+    """Keys whose bindings are marked show=True on the active screen."""
+    return {
+        active.binding.key
+        for active in app.screen.active_bindings.values()
+        if active.binding.show
+    }
 
 
 class _PanelApp(HelpPanelMixin, App):
@@ -51,3 +62,17 @@ async def test_real_rbx_app_toggles_help_panel():
 
         await pilot.press('question_mark')
         assert pilot.app.screen.query(HelpPanel)
+
+
+async def test_test_explorer_footer_shows_only_help_and_quit():
+    from rbx.box.ui.main import rbxApp
+    from rbx.box.ui.screens.test_explorer import TestExplorerScreen
+
+    async with rbxApp().run_test() as pilot:
+        await pilot.app.push_screen(TestExplorerScreen())
+        # The screen's on_mount needs a built problem package; outside one it
+        # exits early, so we let the binding registration tick through instead
+        # of pilot.pause() (which would wait on the unsettled mount). The footer
+        # binding visibility we assert on is independent of on_mount completing.
+        await asyncio.sleep(0.05)
+        assert _footer_visible_keys(pilot.app) == {'question_mark', 'q'}
