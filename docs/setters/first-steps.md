@@ -424,9 +424,9 @@ section on the sidebar.
 
     ---
 
-    Want to generate stronger testcases? Check out our guide on how to stress test your solutions.
+    Walk through finding a tiny counterexample for a buggy solution and locking it into your testset.
 
-    [:octicons-arrow-right-24: Stress testing](/setters/stress-testing)
+    [:octicons-arrow-right-24: Stress-testing your solutions](/setters/stress-testing-walkthrough)
 
 -   :fontawesome-solid-gear: **Configure further**
 
