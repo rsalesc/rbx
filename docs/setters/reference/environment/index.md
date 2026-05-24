@@ -96,9 +96,9 @@ languages:
     execution:
       command: "./{executable}"
     linters:
-      - side_effect                                   # shorthand form
-      - name: side_effect                             # full form
-        applies_to: [generators, solutions]           # restrict to asset kinds
+      - testlib                                       # shorthand form
+      - name: testlib                                 # full form
+        applies_to: [generators]                      # restrict to asset kinds
 ```
 
 - The **shorthand form** is just the linter name; it applies to every asset
@@ -116,9 +116,10 @@ linter's own supported kinds and the `applies_to` you configure.
 
 ### Available linters
 
-- `side_effect` (C++): warns when a function call passes two or more arguments
-  that each contain a side-effecting call (e.g. `f(rnd.next(), rnd.next())`).
-  C++ leaves argument evaluation order unspecified, so such calls can produce
+- `testlib` (C++, generators): lints testlib/tgen/jngen-based generators. Its
+  current check warns when a function call passes two or more arguments that
+  each contain a side-effecting call (e.g. `f(rnd.next(), rnd.next())`). C++
+  leaves argument evaluation order unspecified, so such calls can produce
   different results across compilers.
 
 ## File mapping

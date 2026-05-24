@@ -4,6 +4,7 @@ import tree_sitter_cpp
 from tree_sitter import Language, Node, Parser
 
 from rbx.box.linters import registry
+from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.linters.linter import Linter, LinterMessage, LinterSeverity
 from rbx.box.schema import CodeItem
 
@@ -54,10 +55,15 @@ def _argument_nodes(call: Node) -> List[Node]:
     return list(args.named_children)
 
 
-class SideEffectLinter(Linter):
-    name = 'side_effect'
-    languages = {'cpp'}
-    applies_to = set()  # all kinds; restrictable via env config
+class TestlibLinter(Linter):
+    """Lints testlib/tgen/jngen-based C++ code.
+
+    Its first check flags side-effecting `rnd.next()` calls passed as multiple
+    arguments to the same call; more testlib-specific checks may be added later.
+    """
+
+    name = 'testlib'
+    applies_to = {AssetKind.GENERATOR}
 
     def lint(self, code: CodeItem, source: str) -> List[LinterMessage]:
         tree = _parser().parse(bytes(source, 'utf8'))
@@ -89,4 +95,4 @@ class SideEffectLinter(Linter):
             self._visit(child, messages)
 
 
-registry.register(SideEffectLinter)
+registry.register(TestlibLinter)

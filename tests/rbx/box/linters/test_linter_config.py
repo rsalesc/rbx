@@ -13,16 +13,16 @@ def test_linters_default_empty():
 
 
 def test_shorthand_string_coerced_to_config():
-    lang = _lang(linters=['side_effect'])
-    assert lang.linters == [LinterConfig(name='side_effect', applies_to=None)]
+    lang = _lang(linters=['testlib'])
+    assert lang.linters == [LinterConfig(name='testlib', applies_to=None)]
 
 
 def test_full_form_with_applies_to():
-    lang = _lang(linters=[{'name': 'side_effect', 'applies_to': ['generators']}])
-    assert lang.linters[0].name == 'side_effect'
+    lang = _lang(linters=[{'name': 'testlib', 'applies_to': ['generators']}])
+    assert lang.linters[0].name == 'testlib'
     assert lang.linters[0].applies_to == [AssetKind.GENERATOR]
 
 
 def test_singular_applies_to_token_accepted():
-    lang = _lang(linters=[{'name': 'side_effect', 'applies_to': ['generator']}])
+    lang = _lang(linters=[{'name': 'testlib', 'applies_to': ['generator']}])
     assert lang.linters[0].applies_to == [AssetKind.GENERATOR]

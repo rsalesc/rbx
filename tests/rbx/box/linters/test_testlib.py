@@ -1,10 +1,10 @@
-from rbx.box.linters.cpp.side_effect import SideEffectLinter
+from rbx.box.linters.cpp.testlib import TestlibLinter
 from rbx.box.linters.linter import LinterSeverity
 from rbx.box.schema import CodeItem
 
 
 def _lint(src: str):
-    return SideEffectLinter().lint(CodeItem(path='gen.cpp'), src)
+    return TestlibLinter().lint(CodeItem(path='gen.cpp'), src)
 
 
 def _wrap(body: str) -> str:

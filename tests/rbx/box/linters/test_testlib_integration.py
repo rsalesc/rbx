@@ -32,14 +32,14 @@ async def _compile_lenient(code_item, **kwargs):
         pass
 
 
-async def test_side_effect_warning_lands_on_generator(
+async def test_testlib_warning_lands_on_generator(
     testing_pkg: testing_package.TestingPackage, monkeypatch
 ):
     cpp_file = testing_pkg.add_file('gen.cpp')
     cpp_file.write_text(_OFFENDING_GENERATOR)
     code_item = CodeItem(path=cpp_file, language='cpp')
 
-    language = _cpp_language_with_linters([LinterConfig(name='side_effect')])
+    language = _cpp_language_with_linters([LinterConfig(name='testlib')])
     monkeypatch.setattr('rbx.box.code.find_language', lambda _: language)
 
     warning_stack.get_warning_stack().clear()
@@ -52,15 +52,17 @@ async def test_side_effect_warning_lands_on_generator(
     assert 'side-effecting' in messages[0].message
 
 
-async def test_side_effect_not_flagged_when_scoped_to_solutions(
+async def test_testlib_not_flagged_when_scoped_to_solutions(
     testing_pkg: testing_package.TestingPackage, monkeypatch
 ):
     cpp_file = testing_pkg.add_file('gen.cpp')
     cpp_file.write_text(_OFFENDING_GENERATOR)
     code_item = CodeItem(path=cpp_file, language='cpp')
 
+    # Interface restricts to generators; config restricts to solutions. The
+    # disjoint intersection means the linter must not run on this generator.
     language = _cpp_language_with_linters(
-        [LinterConfig(name='side_effect', applies_to=[AssetKind.SOLUTION])]
+        [LinterConfig(name='testlib', applies_to=[AssetKind.SOLUTION])]
     )
     monkeypatch.setattr('rbx.box.code.find_language', lambda _: language)
 

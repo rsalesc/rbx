@@ -1,1 +1,1 @@
-from rbx.box.linters.cpp import side_effect  # noqa: F401  (registers SideEffectLinter)
+from rbx.box.linters.cpp import testlib  # noqa: F401  (registers TestlibLinter)

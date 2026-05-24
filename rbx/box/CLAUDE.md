@@ -155,13 +155,13 @@ Bridge between box-level code items and the grading engine:
 ## Linters (`linters/`)
 
 Per-language built-in linters, configured under `EnvironmentLanguage.linters` in `env.rbx.yml` and run during `compile_item()`. Structure:
-- `linter.py` -- `Linter` ABC (with `name`, `languages`, `applies_to`), `LinterMessage`, `LinterSeverity`.
+- `linter.py` -- `Linter` ABC (with `name`, `applies_to`), `LinterMessage`, `LinterSeverity`. Linters run for whatever language entry they're configured under in `env.rbx.yml`.
 - `registry.py` -- name→instance registry (`@register` decorator, `get_linter`).
 - `asset_kind.py` -- `AssetKind` enum + `infer_asset_kind(code)`.
 - `runner.py` -- `run_linters()` (routes WARNINGs to the warning stack, ERRORs to a `RbxException`) and the pure `run_linters_for_messages()`.
-- `cpp/side_effect.py` -- first linter (tree-sitter-cpp); flags calls passing 2+ side-effecting arguments (e.g. `f(rnd.next(), rnd.next())`).
+- `cpp/testlib.py` -- first linter (tree-sitter-cpp); `TestlibLinter` (`name='testlib'`, generators only) flags calls passing 2+ side-effecting arguments (e.g. `f(rnd.next(), rnd.next())`).
 
-Lazy imports break the `code` ↔ `linters.runner` cycle; `__init__.py` imports `cpp.side_effect` so it self-registers.
+Lazy imports break the `code` ↔ `linters.runner` cycle; `__init__.py` imports `cpp.testlib` so it self-registers.
 
 ## Global State (`global_package.py`)
 
