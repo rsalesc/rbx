@@ -2,6 +2,7 @@ import pathlib
 from typing import List, Optional
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import Screen
@@ -28,16 +29,17 @@ from rbx.box.ui.widgets.two_sided_test_output_box import TwoSidedTestBoxWidget
 
 
 class RunTestExplorerScreen(Screen):
+    BINDING_GROUP_TITLE = 'Run Test Explorer'
     BINDINGS = [
         ('q', 'app.pop_screen', 'Quit'),
-        ('1', 'show_output', 'Show output'),
-        ('2', 'show_stderr', 'Show stderr'),
-        ('3', 'show_log', 'Show log'),
-        ('m', 'toggle_metadata', 'Toggle metadata'),
-        ('s', 'toggle_side_by_side', 'Toggle sxs'),
-        ('g', 'toggle_test_metadata', 'Toggle test metadata'),
-        ('v', 'open_visualizer', 'Open visualization'),
-        ('V', 'open_output_visualizer', 'Open output visualization'),
+        Binding('1', 'show_output', 'Show output', show=False),
+        Binding('2', 'show_stderr', 'Show stderr', show=False),
+        Binding('3', 'show_log', 'Show log', show=False),
+        Binding('m', 'toggle_metadata', 'Toggle metadata', show=False),
+        Binding('s', 'toggle_side_by_side', 'Toggle sxs', show=False),
+        Binding('g', 'toggle_test_metadata', 'Toggle test metadata', show=False),
+        Binding('v', 'open_visualizer', 'Open visualization', show=False),
+        Binding('V', 'open_output_visualizer', 'Open output visualization', show=False),
     ]
 
     side_by_side: reactive[bool] = reactive(False)

@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList, RichLog
@@ -21,13 +22,14 @@ from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingD
 
 
 class TestExplorerScreen(Screen):
+    BINDING_GROUP_TITLE = 'Test Explorer'
     BINDINGS = [
         ('q', 'app.pop_screen', 'Quit'),
-        ('m', 'toggle_metadata', 'Toggle metadata'),
-        ('1', 'show_output', 'Show output'),
-        ('2', 'show_stderr', 'Show stderr'),
-        ('3', 'show_log', 'Show log'),
-        ('v', 'open_visualizer', 'Open visualization'),
+        Binding('m', 'toggle_metadata', 'Toggle metadata', show=False),
+        Binding('1', 'show_output', 'Show output', show=False),
+        Binding('2', 'show_stderr', 'Show stderr', show=False),
+        Binding('3', 'show_log', 'Show log', show=False),
+        Binding('v', 'open_visualizer', 'Open visualization', show=False),
     ]
 
     _option_entries: List[Optional[GenerationTestcaseEntry]]

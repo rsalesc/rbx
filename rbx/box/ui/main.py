@@ -10,6 +10,7 @@ from textual.widgets import Footer, Header, OptionList
 
 from rbx import console
 from rbx.box import remote
+from rbx.box.ui.help_panel import HelpPanelMixin
 from rbx.box.ui.screens.differ import DifferScreen
 from rbx.box.ui.screens.limits_editor import LimitsEditorScreen
 from rbx.box.ui.screens.run_explorer import RunExplorerScreen
@@ -23,7 +24,9 @@ SCREEN_OPTIONS = [
 ]
 
 
-class rbxBaseApp(VimNavMixin, App):
+class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
+    BINDING_GROUP_TITLE = 'Global'
+
     def run(self, *args, **kwargs):
         console.console.begin_capture()
         super().run(*args, **kwargs)

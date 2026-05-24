@@ -1,6 +1,7 @@
 from typing import Optional
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
@@ -14,7 +15,8 @@ from rbx.box.ui.widgets.rich_log_box import RichLogBox
 
 
 class RunExplorerScreen(Screen):
-    BINDINGS = [('s', 'compare_with', 'Compare with')]
+    BINDING_GROUP_TITLE = 'Run Explorer'
+    BINDINGS = [Binding('s', 'compare_with', 'Compare with', show=False)]
 
     def __init__(self):
         super().__init__()
