@@ -25,6 +25,8 @@ SCREEN_OPTIONS = [
 
 
 class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
+    BINDING_GROUP_TITLE = 'Global'
+
     def run(self, *args, **kwargs):
         console.console.begin_capture()
         super().run(*args, **kwargs)
