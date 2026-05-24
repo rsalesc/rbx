@@ -85,6 +85,9 @@ async def test_test_explorer_footer_shows_only_help_and_quit():
 
 
 def test_run_test_explorer_feature_bindings_hidden():
+    # Static inspection: these screens' on_mount loads run results from disk and
+    # can't mount bare outside a built package, so we assert on BINDINGS directly.
+    # (The app-level ?/q footer merge is covered by the test_explorer test above.)
     from textual.binding import Binding
 
     from rbx.box.ui.screens.run_test_explorer import RunTestExplorerScreen
@@ -98,3 +101,17 @@ def test_run_test_explorer_feature_bindings_hidden():
     # Only 'q' (a plain tuple) stays visible; all Binding() entries are hidden.
     assert shown == set()
     assert tuple_keys == {'q'}
+
+
+def test_run_explorer_feature_bindings_hidden():
+    # Same static-inspection rationale as above.
+    from textual.binding import Binding
+
+    from rbx.box.ui.screens.run_explorer import RunExplorerScreen
+
+    shown = {
+        b.key for b in RunExplorerScreen.BINDINGS if isinstance(b, Binding) and b.show
+    }
+    # 's' (compare) is hidden; no screen-level bindings stay visible.
+    assert shown == set()
+    assert RunExplorerScreen.BINDING_GROUP_TITLE == 'Run Explorer'
