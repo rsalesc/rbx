@@ -1,7 +1,7 @@
 import functools
 import pathlib
 import shutil
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from rbx import console, utils
 from rbx.box.formatting import href
@@ -83,6 +83,32 @@ def get_warning_stack() -> WarningStack:
     return _get_warning_stack(current_root)
 
 
+def _format_linter_location(message: 'LinterMessage') -> str:
+    if message.line is None:
+        return ''
+    if message.col:
+        return f'{message.line}:{message.col}'
+    return str(message.line)
+
+
+def group_linter_messages(
+    messages: List['LinterMessage'],
+) -> List[Tuple[str, List[str]]]:
+    """Group linter messages by identical text, collecting their locations.
+
+    Returns a list of ``(message, locations)`` pairs in first-seen order.
+    Locations are formatted as ``line:col`` (or ``line``) strings, deduped
+    while preserving order; messages with no location yield an empty list.
+    """
+    grouped: Dict[str, List[str]] = {}
+    for message in messages:
+        locations = grouped.setdefault(message.message, [])
+        loc = _format_linter_location(message)
+        if loc and loc not in locations:
+            locations.append(loc)
+    return list(grouped.items())
+
+
 def _summarize_warnings_for(path, stack, compilation_warnings) -> Optional[str]:
     logs = stack.warning_logs.get(path, [])
     warning_logs = [log for log in logs if log.warnings]
@@ -115,15 +141,16 @@ def print_warning_stack_report():
             summary = _summarize_warnings_for(path, stack, compilation_warnings)
             suffix = f' [warning]({summary})[/warning]' if summary else ''
             console.console.print(f'- {href(path)}{suffix}')
-            for message in stack.linter_warnings.get(path, []):
-                loc = ''
-                if message.line is not None:
-                    loc = (
-                        f'{message.line}:{message.col} '
-                        if message.col
-                        else (f'{message.line} ')
-                    )
-                console.console.print(f'    [warning]{loc}{message.message}[/warning]')
+            for message, locations in group_linter_messages(
+                stack.linter_warnings.get(path, [])
+            ):
+                if not locations:
+                    prefix = ''
+                elif len(locations) == 1:
+                    prefix = f'{locations[0]} '
+                else:
+                    prefix = f'lines {", ".join(locations)}: '
+                console.console.print(f'    [warning]{prefix}{message}[/warning]')
         console.console.print()
 
     if stack.sanitizer_warnings:
