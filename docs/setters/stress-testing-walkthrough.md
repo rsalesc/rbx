@@ -61,11 +61,9 @@ match. You can tune both the number of findings and the timeout with `-n` and `-
 When a match is found, `rbx stress` prints a report and shows the exact generator call
 that produced the failing testcase, along with the input itself.
 
-Reading the input is illuminating: it's just a few large numbers whose true sum exceeds
-the `int32_t` range. `sols/main.cpp`, which accumulates into an `int64_t`, reports the
-correct sum. `sols/wa-overflow.cpp` wraps around and prints a wrong value — often a
-negative one, since the high bit flips. That divergence is what {{rbx}} flagged as
-`INCORRECT`.
+It's a small input — just a few large numbers whose sum overflows `int32_t`, so
+`sols/wa-overflow.cpp` prints the wrong value while `sols/main.cpp` gets it right. That's
+the divergence {{rbx}} flagged as `INCORRECT`.
 
 ## Making it stick
 
