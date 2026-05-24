@@ -85,6 +85,8 @@ Helper functions that load run results from disk:
 
 Vim navigation lives in `vim_nav.py` (`VimNavMixin`, mixed into `rbxBaseApp` in `main.py`, ahead of `App` in the MRO). It registers app-level `h/j/k/l` bindings that dispatch to the focused widget's existing `cursor_*` action, falling back to `scroll_*`: `j`/`k` move down/up everywhere; `h`/`l` move left/right only where horizontal movement exists (e.g. `DataTable` cells, scroll viewers). `check_action` disables the keys while an `Input`/`TextArea` is focused, so typing is never hijacked. The mixin subclasses `DOMNode` so Textual merges its `BINDINGS`.
 
+The help panel lives in `help_panel.py` (`HelpPanelMixin`, also a `DOMNode` subclass, mixed into `rbxBaseApp` in `main.py` alongside `VimNavMixin`). `?` (`question_mark`) toggles Textual's built-in `HelpPanel` via `action_toggle_help_panel`, which shows or hides it based on whether a `HelpPanel` is already mounted on the screen. `check_action` disables `?` while an `Input`/`TextArea` is focused, so it types literally. Primary screens keep `q` visible (a plain tuple) but set their other feature bindings to `Binding(..., show=False)`, so the footer stays slim (`? Help` + `q`) while the `?` panel lists every active binding (including the hidden vim `h/j/k/l`). Screens set `BINDING_GROUP_TITLE` to give the panel readable section headers. Transient modals are intentionally left untouched.
+
 ## Core Dependencies
 
 - `rbx.box.solutions` -- `SolutionReportSkeleton`, `SolutionSkeleton`, verdict formatting
