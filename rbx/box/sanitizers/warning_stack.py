@@ -1,13 +1,16 @@
 import functools
 import pathlib
 import shutil
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from rbx import console, utils
 from rbx.box.formatting import href
 from rbx.box.schema import CodeItem
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.steps import GradingFileOutput, PreprocessLog
+
+if TYPE_CHECKING:
+    from rbx.box.linters.linter import LinterMessage
 
 
 class WarningStack:
@@ -16,6 +19,7 @@ class WarningStack:
         self.warnings = set()
         self.warning_logs: Dict[pathlib.Path, List[PreprocessLog]] = {}
         self.sanitizer_warnings = {}
+        self.linter_warnings: Dict[pathlib.Path, List['LinterMessage']] = {}
 
     def add_warning(self, code: CodeItem, logs: Optional[List[PreprocessLog]] = None):
         self.warnings.add(code.path)
@@ -39,10 +43,19 @@ class WarningStack:
                 shutil.copyfileobj(f, fout)
         self.sanitizer_warnings[code.path] = dest_path
 
+    def add_linter_warning(
+        self, code: CodeItem, messages: List['LinterMessage']
+    ) -> None:
+        if not messages:
+            return
+        self.warnings.add(code.path)
+        self.linter_warnings.setdefault(code.path, []).extend(messages)
+
     def clear(self):
         self.warnings.clear()
         self.warning_logs.clear()
         self.sanitizer_warnings.clear()
+        self.linter_warnings.clear()
 
 
 @functools.cache
@@ -102,6 +115,15 @@ def print_warning_stack_report():
             summary = _summarize_warnings_for(path, stack, compilation_warnings)
             suffix = f' [warning]({summary})[/warning]' if summary else ''
             console.console.print(f'- {href(path)}{suffix}')
+            for message in stack.linter_warnings.get(path, []):
+                loc = ''
+                if message.line is not None:
+                    loc = (
+                        f'{message.line}:{message.col} '
+                        if message.col
+                        else (f'{message.line} ')
+                    )
+                console.console.print(f'    [warning]{loc}{message.message}[/warning]')
         console.console.print()
 
     if stack.sanitizer_warnings:

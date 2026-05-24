@@ -80,6 +80,48 @@ languages:
    you can specify how files should be named when copied into the sandbox. Notice you can refer to these
    files by using the `{file}` placeholder in the `compilation` and `execution` fields.
 
+## Linters
+
+Each language can configure built-in linters that {{rbx}} runs during the
+compilation phase. Linters analyze the raw source of your code items
+(generators, validators, solutions, checkers, etc.) and surface warnings or
+errors. Warnings are routed to the warning stack; errors abort the build.
+
+Add linters to a language with the `linters` field. There are two forms:
+
+```yaml
+languages:
+  - name: "cpp"
+    extension: "cpp"
+    execution:
+      command: "./{executable}"
+    linters:
+      - testlib                                       # shorthand form
+      - name: testlib                                 # full form
+        applies_to: [generators]                      # restrict to asset kinds
+```
+
+- The **shorthand form** is just the linter name; it applies to every asset
+  kind the linter supports.
+- The **full form** is an object with `name` and an optional `applies_to`
+  list. `applies_to` restricts the linter to specific asset kinds. When it is
+  omitted (or `null`), the linter applies to all kinds.
+
+The valid `applies_to` tokens are the asset kinds: `generator`, `validator`,
+`solution`, `checker`, `interactor`, and `visualizer`. Plural spellings
+(`generators`, `solutions`, ...) are also accepted.
+
+The effective scope for a linter on a given asset is the intersection of the
+linter's own supported kinds and the `applies_to` you configure.
+
+### Available linters
+
+- `testlib` (C++, generators): lints testlib/tgen/jngen-based generators. Its
+  current check warns when a function call passes two or more arguments that
+  each contain a side-effecting call (e.g. `f(rnd.next(), rnd.next())`). C++
+  leaves argument evaluation order unspecified, so such calls can produce
+  different results across compilers.
+
 ## File mapping
 
 The `fileMapping` field is a [`FileMapping`][rbx.box.environment.FileMapping] object where

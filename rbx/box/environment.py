@@ -4,11 +4,12 @@ from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar, Union
 
 import typer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rbx import config, console
 from rbx.box import presets, safeeval
 from rbx.box.extensions import Extensions, LanguageExtensions
+from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
@@ -181,6 +182,30 @@ class ExecutionConfig(BaseExecutionConfig):
     )
 
 
+class LinterConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = Field(description='Name of the linter to run (see registry).')
+    applies_to: Optional[List[AssetKind]] = Field(
+        default=None,
+        description='Asset kinds this linter applies to. None means all kinds.',
+    )
+
+    @field_validator('applies_to', mode='before')
+    @classmethod
+    def _normalize_applies_to(cls, v):
+        if v is None:
+            return None
+        out = []
+        for item in v:
+            if isinstance(item, AssetKind):
+                out.append(item)
+                continue
+            token = str(item).rstrip('s')  # 'generators' -> 'generator'
+            out.append(AssetKind(token))
+        return out
+
+
 class EnvironmentLanguage(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -224,6 +249,18 @@ for the environment will be used.""",
         default=None,
         description="""Extensions to apply for this language.""",
     )
+
+    linters: List[LinterConfig] = Field(
+        default_factory=list,
+        description="""Linters to run for this language during compilation.""",
+    )
+
+    @field_validator('linters', mode='before')
+    @classmethod
+    def _coerce_linter_shorthand(cls, v):
+        if v is None:
+            return []
+        return [{'name': item} if isinstance(item, str) else item for item in v]
 
     def get_extension(self, name: str, _: Type[T]) -> Optional[T]:
         if self.extensions is None:

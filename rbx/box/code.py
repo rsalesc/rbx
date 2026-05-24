@@ -6,7 +6,7 @@ import shlex
 import sys
 from enum import Enum
 from pathlib import PosixPath
-from typing import Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import rich
 import rich.text
@@ -52,6 +52,9 @@ from rbx.grading.steps import (
     maybe_get_bits_stdcpp_for_commands,
 )
 from rbx.utils import is_arm
+
+if TYPE_CHECKING:
+    from rbx.box.linters.asset_kind import AssetKind
 
 MERGED_CAPTURE_FILENAME = 'merged_capture.pio'
 
@@ -562,6 +565,7 @@ async def compile_item(
     force_warnings: bool = False,
     verbose: bool = False,
     precompile: bool = True,
+    kind: Optional['AssetKind'] = None,
 ) -> str:
     with package.get_new_sandbox() as sandbox:
         _check_stack_limit()
@@ -573,6 +577,11 @@ async def compile_item(
                 f'[error]Compilation file not found: [item]{compilable_path}[/item][/error]'
             )
             raise typer.Exit(1)
+
+        from rbx.box.linters.asset_kind import infer_asset_kind
+        from rbx.box.linters.runner import run_linters
+
+        await run_linters(code, kind if kind is not None else infer_asset_kind(code))
 
         language = find_language_name(code)
         compilation_options = get_compilation_config(

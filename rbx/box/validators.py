@@ -10,6 +10,7 @@ from rbx import console
 from rbx.box import checkers, package, setter_config
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.fields import Primitive
+from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import CodeItem
 from rbx.box.testcase_extractors import (
     GenerationMetadata,
@@ -46,7 +47,9 @@ class TestcaseValidationInfo(BaseModel):
 
 async def _compile_validator(validator: CodeItem) -> str:
     try:
-        digest = await compile_item(validator, sanitized=SanitizationLevel.PREFER)
+        digest = await compile_item(
+            validator, sanitized=SanitizationLevel.PREFER, kind=AssetKind.VALIDATOR
+        )
     except Exception:
         console.console.print(
             f'[error]Failed compiling validator {validator.href()}.[/error]'

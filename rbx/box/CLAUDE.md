@@ -148,9 +148,20 @@ Manages language configurations from `env.rbx.yml`:
 ## Code Compilation (`code.py`)
 
 Bridge between box-level code items and the grading engine:
-- `compile_item()` -- Resolves language, builds compilation command, calls `grading/steps.compile_item()`
+- `compile_item()` -- Resolves language, builds compilation command, calls `grading/steps.compile_item()`. Takes an optional `kind: AssetKind` param; when omitted it is inferred from the `CodeItem` subclass (validators are bare `CodeItem`s, so their kind is passed explicitly by `validators.py`). Runs configured linters (see below) on the raw source before compiling, on every build.
 - `run_item()` -- Resolves limits, calls `grading/steps.run_item()`
 - Language detection from file extension or explicit configuration
+
+## Linters (`linters/`)
+
+Per-language built-in linters, configured under `EnvironmentLanguage.linters` in `env.rbx.yml` and run during `compile_item()`. Structure:
+- `linter.py` -- `Linter` ABC (with `name`, `applies_to`), `LinterMessage`, `LinterSeverity`. Linters run for whatever language entry they're configured under in `env.rbx.yml`.
+- `registry.py` -- name→instance registry (`@register` decorator, `get_linter`).
+- `asset_kind.py` -- `AssetKind` enum + `infer_asset_kind(code)`.
+- `runner.py` -- `run_linters()` (routes WARNINGs to the warning stack, ERRORs to a `RbxException`) and the pure `run_linters_for_messages()`.
+- `cpp/testlib.py` -- first linter (tree-sitter-cpp); `TestlibLinter` (`name='testlib'`, generators only) flags calls passing 2+ side-effecting arguments (e.g. `f(rnd.next(), rnd.next())`).
+
+Lazy imports break the `code` ↔ `linters.runner` cycle; `__init__.py` imports `cpp.testlib` so it self-registers.
 
 ## Global State (`global_package.py`)
 
