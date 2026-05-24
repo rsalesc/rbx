@@ -9,6 +9,7 @@ from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 
 
 class CommandScreen(Screen):
+    BINDING_GROUP_TITLE = 'Command'
     BINDINGS = [('q', 'app.pop_screen', 'Back')]
 
     def __init__(self, command: List[str]):

@@ -9,6 +9,7 @@ from rbx.box.ui.widgets.diff_box import DiffBox
 
 
 class DifferScreen(Screen):
+    BINDING_GROUP_TITLE = 'Diff'
     BINDINGS = [
         ('q', 'quit', 'Quit'),
     ]

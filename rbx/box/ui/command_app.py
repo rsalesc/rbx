@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 
 from textual import events, on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
@@ -345,6 +346,10 @@ class rbxCommandApp(rbxBaseApp):
     }
     """
     BINDINGS = [
+        # rbxCommandApp intercepts '?' in on_key to open the legacy HelpModal
+        # instead of the inherited side panel, so hide the inherited footer
+        # entry (unification tracked in issue #483).
+        Binding('question_mark', 'toggle_help_panel', 'Help', show=False),
         ('q', 'quit', 'Quit'),
     ]
 

@@ -43,10 +43,11 @@ class ConfirmDiscardScreen(ModalScreen[bool]):
 
 
 class LimitsEditorScreen(Screen):
+    BINDING_GROUP_TITLE = 'Limits Editor'
     BINDINGS = [
         Binding('q', 'quit_screen', 'Quit'),
-        Binding('ctrl+s', 'save', 'Save'),
-        Binding('d', 'delete_profile', 'Delete profile'),
+        Binding('ctrl+s', 'save', 'Save', show=False),
+        Binding('d', 'delete_profile', 'Delete profile', show=False),
     ]
 
     def __init__(self):
