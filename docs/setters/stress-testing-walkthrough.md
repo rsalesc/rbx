@@ -94,14 +94,15 @@ new `corner` test group to `problem.rbx.yml`:
             path: 'random.txt'
     - name: 'corner'  # (1)!
         generatorScript:
-            path: 'corner.txt'
+            path: 'corner.txt'  # (2)!
     ```
 
     1.  The new group `corner` is backed by the freshly created `testplan/corner.txt`.
+    2.  The `path` is relative to the testplan root, so bare `corner.txt` here and the `testplan/corner.txt` you typed are the same file.
 
 === "testplan/corner.txt"
     ```
-    # Obtained by running `rbx stress -g "gens/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"`
+    # Obtained by running `rbx stress -g 'gens/gen [1..5] <A.max> @' -f sols/wa-overflow.cpp`
     gens/gen 3 1000000000 a1b2c3d4
     ```
 
