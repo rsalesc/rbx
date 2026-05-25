@@ -31,6 +31,12 @@
 </details>
 <hr>
 
+## 	AI Disclaimer
+
+This repo was written until 2026 (~1400 commits) without the use of AI. Thus, the meaty part of the tool was written by a human that (hopefully) know what they're doing. Using AI, though, was proved to be much more efficient and less error prone if a human was kept in the loop. All AI features developed in this tool pass through a PR review and are carefully reviewed by the owner. This helps the owner maintain the project with less time, and implement more useful features in an efficient way (UI features, nice-to-have features, etc).
+
+The owner plans to NOT USE AI for the execution engine of the tool: running solutions, generating tests, etc. These are critical parts of the tool that don't need to change that much, and should be kept stable.
+
 ##  Overview
 
 <!--[![Usage video]](https://github.com/rsalesc/rbx/assets/4999965/111de01e-6cbd-495e-b8c2-4293921e49b3)-->
