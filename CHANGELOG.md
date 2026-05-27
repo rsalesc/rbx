@@ -1,3 +1,18 @@
+## 0.37.0 (2026-05-27)
+
+### Feat
+
+- **grading**: guide macOS users when C/C++ compiler is not found (#408) (#487)
+- **ui**: replace footer keybinding bar with '?' help panel (#482) (#484)
+- **linters**: add per-file linter suppression directive (#481)
+- **linters**: group repeated linter warnings by message (#480)
+- **linters**: built-in linter framework + side_effect C++ linter (#477)
+
+### Fix
+
+- remove timeout from latex command
+- add testlib to default preset (linting)
+
 ## 0.36.0 (2026-05-23)
 
 ### Feat
