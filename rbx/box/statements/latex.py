@@ -57,7 +57,7 @@ class Latex:
 
         (temp_dir / temp_path).write_text(self.latex)
 
-        completed = subprocess.run(args, timeout=15, capture_output=True, cwd=temp_dir)
+        completed = subprocess.run(args, capture_output=True, cwd=temp_dir)
         if completed.returncode != 0 or not (temp_dir / output_path).exists():
             return LatexResult(result=completed, pdf=None)
 
