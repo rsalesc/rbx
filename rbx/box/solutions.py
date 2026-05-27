@@ -1376,9 +1376,12 @@ class VerdictReport(BaseModel):
         return not bool(self.bad_verdicts)
 
     def has_unmatched_slow_verdict(self):
-        has_slow_expectation = self.expected_outcome.is_slow()
+        matches_slow_expectation = self.expected_outcome.matches_tle_and_is_incorrect()
+        is_slow_expectation = self.expected_outcome.is_slow()
         has_slow_verdict = any(v.is_slow() for v in self.bad_verdicts)
-        return has_slow_verdict != has_slow_expectation
+        if matches_slow_expectation and has_slow_verdict and not is_slow_expectation:
+            return False
+        return has_slow_verdict != matches_slow_expectation
 
 
 def _get_verdict_report(
