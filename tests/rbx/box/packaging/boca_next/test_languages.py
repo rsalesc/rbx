@@ -115,3 +115,74 @@ def test_interpreted_run_argv():
         spec, exe='run.exe', memory_mb=256, interp='python3', src='sol.py'
     )
     assert out == ['python3', 'sol.py']
+
+
+def test_compile_plan_compiled_static():
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    object.__setattr__(spec, 'flags', '-O2 -static')
+    plan = languages.build_compile_plan(
+        spec, src='sol.cpp', exe='run.exe', basename='run'
+    )
+    assert plan.steps[0] == ['cc', 'sol.cpp']
+    assert plan.static_link_check is True
+    assert plan.artifact == 'exe'
+    assert plan.shebang is None
+    assert plan.write_script is None
+
+
+def test_compile_plan_interpreted_writes_shebang_script():
+    spec = _spec('py3', 'interpreted', run_argv=['{interp}', '{src}'])
+    object.__setattr__(spec, 'syntax_check', True)
+    plan = languages.build_compile_plan(
+        spec, src='sol.py', exe='run.exe', basename='run', interp='python3'
+    )
+    assert plan.shebang == '#!python3'
+    assert plan.write_script == ('sol.py', 'run.exe')
+    assert plan.static_link_check is False
+    assert plan.artifact == 'script'
+    assert plan.syntax_check_argv == ['python3', '-m', 'py_compile', 'sol.py']
+    assert plan.steps == []
+
+
+def test_compile_plan_interpreted_no_syntax_check():
+    spec = _spec('py2', 'interpreted', run_argv=['{interp}', '{src}'])
+    plan = languages.build_compile_plan(
+        spec, src='sol.py', exe='run.exe', basename='run', interp='python2'
+    )
+    assert plan.shebang == '#!python2'
+    assert plan.syntax_check_argv is None
+
+
+def test_compile_plan_jvm_javac_then_jar():
+    spec = _spec(
+        'java',
+        'jvm_jar',
+        run_argv=['java', '-jar', '{jar}'],
+        build='javac_then_jar',
+    )
+    object.__setattr__(spec, 'compiler_argv', ['javac', '{src}'])
+    plan = languages.build_compile_plan(
+        spec, src='Main.java', exe='run.jar', basename='Main'
+    )
+    assert ['javac', 'Main.java'] in plan.steps
+    assert ['jar', 'cfm', 'run.jar', 'Manifest.txt', '.'] in plan.steps
+    assert plan.manifest_class == 'Main'
+    assert plan.artifact == 'jar'
+    assert plan.static_link_check is False
+
+
+def test_compile_plan_kotlin_include_runtime():
+    spec = _spec(
+        'kt',
+        'jvm_jar',
+        run_argv=['java', '-cp', '{jar}', 'MainKt'],
+        build='kotlinc_include_runtime',
+    )
+    object.__setattr__(spec, 'compiler_argv', ['kotlinc', '{src}'])
+    plan = languages.build_compile_plan(
+        spec, src='sol.kt', exe='run.jar', basename='run'
+    )
+    assert plan.rename == ('sol.kt', 'Main.kt')
+    assert ['kotlinc', '-d', 'run.jar', '-include-runtime', 'Main.kt'] in plan.steps
+    assert plan.artifact == 'jar'
+    assert plan.manifest_class is None
