@@ -216,6 +216,8 @@ def test_interactive_run_parses_pipelog_and_emits_testlib(tmp_path):
         return 0
 
     spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    input_path = tmp_path / 'in.txt'
+    input_path.write_text('7 11\n')
     ctx = _ctx(
         tmp_path,
         runner=runner,
@@ -225,10 +227,12 @@ def test_interactive_run_parses_pipelog_and_emits_testlib(tmp_path):
         make_fifos=lambda: None,
     )
     rc = tasks.InteractiveTask().run(
-        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+        ctx, ['run.exe', str(input_path), '3', '1', '256', '65536']
     )
     assert rc == 0  # interactive_run_decision(2,0,1) -> run_exit 0, testlib 1
     assert (tmp_path / 'stdout0').read_text().strip() == 'testlib exitcode 1'
+    # The test input was copied into stdin0 so the interactor reads real data.
+    assert (tmp_path / 'stdin0').read_text() == '7 11\n'
 
 
 def test_interactive_run_pipe_failure_returns_judge_error(tmp_path):
@@ -237,6 +241,7 @@ def test_interactive_run_pipe_failure_returns_judge_error(tmp_path):
         return 1
 
     spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    (tmp_path / 'in.txt').write_text('x\n')
     ctx = _ctx(
         tmp_path,
         runner=runner,
@@ -258,6 +263,7 @@ def test_interactive_run_malformed_log_returns_judge_error(tmp_path):
         return 0
 
     spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    (tmp_path / 'in.txt').write_text('x\n')
     ctx = _ctx(
         tmp_path,
         runner=runner,

@@ -323,6 +323,14 @@ class InteractiveTask(BaseTask):
         return pipe_argv
 
     def run(self, ctx: RunContext, args: List[str]) -> int:
+        # Copy the test input into stdin0 so the interactor (which is invoked
+        # with `stdin0 stdout0`) reads the actual test data. Mirrors the batch
+        # path's stdin0 population; the interactor argv passes the literal
+        # 'stdin0' filename (matching bash interactor_run.sh), so the file must
+        # exist with the real input contents.
+        inputfile = args[1]
+        (ctx.cwd / _STDIN).write_text(Path(inputfile).read_text())
+
         # Make the bidirectional fifos (stubbable for unit tests).
         make_fifos = (
             ctx.make_fifos
