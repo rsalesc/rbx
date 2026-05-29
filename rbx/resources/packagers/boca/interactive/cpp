@@ -86,10 +86,10 @@ fi
 time=$3
 rtime=$(awk "BEGIN {print int($time+0.9999999)}")
 if [ "$rtime" -gt "0" ]; then
-  let "ttime = $rtime * 4"
+  let "ttime = $rtime + 30"
 else
   time=1
-  ttime=4
+  ttime=30
 fi
 
 nruns=1
