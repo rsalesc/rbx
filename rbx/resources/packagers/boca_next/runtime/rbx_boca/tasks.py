@@ -26,6 +26,10 @@ from rbx_boca.manifest import LanguageManifest, TaskConfig
 # is not statically linked (exit 47).
 _OTHER_ERROR = 47
 
+# BOCA run-phase judge-error exit code (JUDGE_ERROR=4 in interactor_run.sh).
+# Used when pipe.exe fails or pipe.log is missing/malformed.
+_JUDGE_ERROR = 4
+
 # Local filenames inside the sandbox cwd.
 _STDIN = 'stdin0'
 _STDOUT = 'stdout0'
@@ -154,6 +158,14 @@ class BatchTask:
             if rc != 0:
                 return rc
 
+        # jvm jar: write the Main-Class manifest BEFORE the `jar cfm` step that
+        # references it. Mirrors BOCA run/java writing Manifest.txt with
+        # `Main-Class: <klass>` prior to invoking jar.
+        if plan.manifest_class is not None:
+            (ctx.cwd / 'Manifest.txt').write_text(
+                'Main-Class: {}\n'.format(plan.manifest_class)
+            )
+
         # Compiled / jvm: optional source rename, then each compiler step.
         if plan.rename is not None:
             src_from, src_to = plan.rename
@@ -281,10 +293,19 @@ class InteractiveTask:
             list(ctx.interactor_launch_argv), input=inputfile
         )
 
-        ctx.runner(pipe_argv)
+        # If pipe.exe itself fails, treat it as a judge error (mirrors BOCA's
+        # interactor_run.sh returning JUDGE_ERROR=4 on pipe.exe failure).
+        pipe_rc = ctx.runner(pipe_argv)
+        if pipe_rc != 0:
+            return _JUDGE_ERROR
 
-        # Parse pipe.log and apply the ordered interactive decision logic.
-        log = verdicts.PipeLog.parse((ctx.cwd / _PIPE_LOG).read_text())
+        # Parse pipe.log and apply the ordered interactive decision logic. A
+        # missing, short, or garbage log (which would crash PipeLog.parse) is
+        # also a judge error, matching interactor_run.sh's invalid-tag handling.
+        try:
+            log = verdicts.PipeLog.parse((ctx.cwd / _PIPE_LOG).read_text())
+        except (ValueError, OSError):
+            return _JUDGE_ERROR
         decision = verdicts.interactive_run_decision(
             log.first_tag, log.solution_status, log.interactor_status
         )
