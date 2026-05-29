@@ -1,3 +1,11 @@
+## 0.37.1 (2026-05-29)
+
+### Fix
+
+- hack around wall time for maratona mineira
+- fix unmatch slow verdict check
+- ensure too slow/too fast message do not appear when solution TLs but is INCORRECT os similar
+
 ## 0.37.0 (2026-05-27)
 
 ### Feat
