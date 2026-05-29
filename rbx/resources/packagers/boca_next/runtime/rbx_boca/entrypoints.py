@@ -14,8 +14,8 @@ effect lives behind ``load_context`` so the dispatcher itself is unit-testable
 with an injected ``context_factory``.
 """
 
-import importlib.resources
 import os
+import pkgutil
 import shutil
 import subprocess
 import sys
@@ -44,11 +44,19 @@ def _read_bundle_file(name: str) -> str:
     when the manifests sit beside the runtime). Otherwise falls back to the
     manifests bundled inside the ``rbx_boca`` package (Layer 1 places them
     there).
+
+    Uses ``pkgutil.get_data`` for the package read: it is zip-safe (works when
+    ``rbx_boca`` is imported from a zipapp ``.pyz``) and, unlike
+    ``importlib.resources.read_text``, is not deprecated. Phase 9 verifies this
+    reads correctly from a real zipapp archive.
     """
     override = os.environ.get('RBX_BOCA_BUNDLE_DIR')
     if override:
         return (Path(override) / name).read_text()
-    return importlib.resources.read_text('rbx_boca', name)
+    data = pkgutil.get_data('rbx_boca', name)
+    if data is None:
+        raise FileNotFoundError('bundled manifest not found: {!r}'.format(name))
+    return data.decode('utf-8')
 
 
 def _default_runner(argv: List[str], **kwargs) -> int:
@@ -78,7 +86,23 @@ def load_context() -> RunContext:
         cwd=Path.cwd(),
         runner=_default_runner,
         safeexec=safeexec,
+        # Re-invoke THIS bundle for the interactor side. pipe.exe execs this
+        # prefix + ['__interactor_launcher__', ittime, __FD__, '--', interactor].
+        interactor_launch_argv=_interactor_launch_argv(),
     )
+
+
+def _interactor_launch_argv() -> List[str]:
+    """Prefix that re-invokes this runtime to reach the interactor launcher.
+
+    When packaged as a zipapp the launcher must be re-entered through the same
+    archive, so prefer ``RBX_BOCA_SELF`` (set by the packaged ``run`` wrapper to
+    the .pyz path). Otherwise fall back to ``python -m rbx_boca``.
+    """
+    self_path = os.environ.get('RBX_BOCA_SELF')
+    if self_path:
+        return [self_path]
+    return [sys.executable, '-m', 'rbx_boca']
 
 
 def _dispatch_interactor_launcher(rest: List[str]) -> int:
