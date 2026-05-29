@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from rbx_boca import manifest, sandbox, tasks
@@ -200,3 +201,125 @@ def test_interactive_run_parses_pipelog_and_emits_testlib(tmp_path):
     )
     assert rc == 0  # interactive_run_decision(2,0,1) -> run_exit 0, testlib 1
     assert (tmp_path / 'stdout0').read_text().strip() == 'testlib exitcode 1'
+
+
+def test_interactive_run_pipe_failure_returns_judge_error(tmp_path):
+    def runner(argv, **kw):
+        # pipe.exe failed: nonzero, no pipe.log written.
+        return 1
+
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    ctx = _ctx(
+        tmp_path,
+        runner=runner,
+        lang_spec=spec,
+        task_type='interactive',
+        pipe_path='/bin/pipe.exe',
+        make_fifos=lambda: None,
+    )
+    rc = tasks.InteractiveTask().run(
+        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+    )
+    assert rc == 4  # judge error
+
+
+def test_interactive_run_malformed_log_returns_judge_error(tmp_path):
+    def runner(argv, **kw):
+        # pipe.exe succeeds but writes a garbage/short log.
+        (tmp_path / 'pipe.log').write_text('garbage\n')
+        return 0
+
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    ctx = _ctx(
+        tmp_path,
+        runner=runner,
+        lang_spec=spec,
+        task_type='interactive',
+        pipe_path='/bin/pipe.exe',
+        make_fifos=lambda: None,
+    )
+    rc = tasks.InteractiveTask().run(
+        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+    )
+    assert rc == 4  # judge error
+
+
+# --- Task 6.5: compile paths (jvm manifest, interpreted, kotlin) ---
+
+
+def test_jvm_compile_writes_manifest(tmp_path):
+    seen = []
+
+    def runner(argv, **kw):
+        seen.append(argv)
+        return 0
+
+    spec = _spec(
+        'java',
+        'jvm_jar',
+        compiler_argv=['javac', '{flags}', '-d', '.', '{src}'],
+        build='javac_then_jar',
+        run_argv=['java', '-jar', '{exe}'],
+    )
+    ctx = _ctx(tmp_path, runner=runner, lang_spec=spec)
+    rc = tasks.BatchTask().compile(ctx, src='Main.java', exe='run.jar', basename='run')
+    assert rc == 0
+    manifest_path = ctx.cwd / 'Manifest.txt'
+    assert manifest_path.exists()
+    assert manifest_path.read_text() == 'Main-Class: run\n'
+    cmds = [argv[0] for argv in seen]
+    assert 'javac' in cmds
+    assert 'jar' in cmds
+
+
+def test_interpreted_compile_writes_shebang_script(tmp_path):
+    seen = []
+
+    def runner(argv, **kw):
+        seen.append(argv)
+        return 0
+
+    spec = _spec(
+        'py3',
+        'interpreted',
+        compiler_argv=['python3'],
+        run_argv=['python3', '{exe}'],
+        syntax_check=True,
+    )
+    from rbx_boca import languages
+
+    (tmp_path / 'sol.py').write_text('print(42)\n')
+    ctx = _ctx(tmp_path, runner=runner, lang_spec=spec)
+    interp = languages.resolve_compiler(spec)
+    rc = tasks.BatchTask().compile(ctx, src='sol.py', exe='run', basename='run')
+    assert rc == 0
+    exe_path = ctx.cwd / 'run'
+    contents = exe_path.read_text()
+    assert contents.startswith('#!' + interp)
+    assert 'print(42)' in contents
+    assert os.stat(str(exe_path)).st_mode & 0o777 == 0o755
+    # syntax_check argv was run.
+    assert any('py_compile' in argv for argv in seen)
+
+
+def test_kotlin_compile_renames_source(tmp_path):
+    seen = []
+
+    def runner(argv, **kw):
+        seen.append(argv)
+        return 0
+
+    spec = _spec(
+        'kt',
+        'jvm_jar',
+        compiler_argv=['kotlinc'],
+        build='kotlinc_include_runtime',
+        run_argv=['java', '-jar', '{exe}'],
+    )
+    (tmp_path / 'sol.kt').write_text('fun main() {}\n')
+    ctx = _ctx(tmp_path, runner=runner, lang_spec=spec)
+    rc = tasks.BatchTask().compile(ctx, src='sol.kt', exe='run.jar', basename='run')
+    assert rc == 0
+    assert (ctx.cwd / 'Main.kt').exists()
+    assert not (ctx.cwd / 'sol.kt').exists()
+    assert any(argv[0] == 'kotlinc' for argv in seen)
