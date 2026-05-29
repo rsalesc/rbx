@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List
 
 from rbx_boca.manifest import LanguageSpec
 
@@ -45,3 +45,30 @@ def resolve_compiler(spec: LanguageSpec) -> str:
         if p.is_file() and os.access(cand, os.X_OK):
             return cand
     raise FileNotFoundError(f'compiler not found for {spec.id}: {primary}')
+
+
+KINDS = ('compiled_static', 'jvm_jar', 'interpreted')
+
+
+def jvm_flags(memory_mb: int) -> List[str]:
+    """JVM memory flags from run/java, run/kt: heap=memory, stack=heap/10."""
+    heap_kb = memory_mb * 1000
+    stack_kb = heap_kb // 10
+    return [
+        '-XX:+UseSerialGC',
+        f'-Xmx{heap_kb}K',
+        f'-Xss{stack_kb}K',
+        f'-Xms{heap_kb}K',
+    ]
+
+
+def build_run_argv(
+    spec: LanguageSpec, *, exe: str, memory_mb: int, **extra: Any
+) -> List[str]:
+    if spec.kind not in KINDS:
+        raise ValueError(f'unknown kind: {spec.kind}')
+    subst: Dict[str, Any] = {'exe': exe, 'jar': exe}
+    subst.update(extra)
+    if spec.kind == 'jvm_jar':
+        subst['jvm_flags'] = jvm_flags(memory_mb)
+    return render_argv(spec.run_argv, **subst)

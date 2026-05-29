@@ -57,3 +57,61 @@ def test_resolve_compiler_uses_fallback(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(languages.shutil, 'which', lambda name: None)
     assert languages.resolve_compiler(spec) == str(fallback)
+
+
+def _spec(id, kind, run_argv, build=None):
+    return languages.LanguageSpec.from_dict(
+        {
+            'id': id,
+            'kind': kind,
+            'compiler_argv': ['cc', '{src}'],
+            'compiler_fallbacks': [],
+            'flags': '',
+            'run_argv': run_argv,
+            'build': build,
+        }
+    )
+
+
+def test_compiled_static_run_argv():
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    assert languages.build_run_argv(spec, exe='run.exe', memory_mb=256) == ['run.exe']
+
+
+def test_jvm_run_argv_injects_jvm_flags():
+    spec = _spec(
+        'java',
+        'jvm_jar',
+        run_argv=['java', '-jar', '{jar}', '{jvm_flags}'],
+        build='javac_then_jar',
+    )
+    out = languages.build_run_argv(spec, exe='run.jar', memory_mb=256)
+    assert out == [
+        'java',
+        '-jar',
+        'run.jar',
+        '-XX:+UseSerialGC',
+        '-Xmx256000K',
+        '-Xss25600K',
+        '-Xms256000K',
+    ]
+
+
+def test_kotlin_run_argv_uses_classpath_mainkt():
+    spec = _spec(
+        'kt',
+        'jvm_jar',
+        run_argv=['java', '-cp', '{jar}', '{jvm_flags}', 'MainKt'],
+        build='kotlinc_include_runtime',
+    )
+    out = languages.build_run_argv(spec, exe='run.jar', memory_mb=256)
+    assert out[:4] == ['java', '-cp', 'run.jar', '-XX:+UseSerialGC']
+    assert out[-1] == 'MainKt'
+
+
+def test_interpreted_run_argv():
+    spec = _spec('py3', 'interpreted', run_argv=['{interp}', '{src}'])
+    out = languages.build_run_argv(
+        spec, exe='run.exe', memory_mb=256, interp='python3', src='sol.py'
+    )
+    assert out == ['python3', 'sol.py']
