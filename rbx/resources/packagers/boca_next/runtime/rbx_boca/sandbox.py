@@ -97,7 +97,7 @@ def profile_for(
             )
         elif kind == 'jvm_jar':
             spec = SafeExecSpec(
-                runs=1,
+                runs=nruns,
                 cpu_sec=cpu_sec,
                 wall_sec=wall_sec,
                 mem_kb=_JVM_MEM_KB,
@@ -115,7 +115,7 @@ def profile_for(
             )
         else:  # interpreted
             spec = SafeExecSpec(
-                runs=1,
+                runs=nruns,
                 cpu_sec=cpu_sec,
                 wall_sec=wall_sec,
                 mem_kb=mem_kb,

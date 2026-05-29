@@ -80,7 +80,7 @@ def test_profile_for_compiled_static_run():
     assert spec.stdin == 'stdin0'
 
 
-def test_profile_for_jvm_jar_run_forces_nruns_and_hardcodes():
+def test_profile_for_jvm_jar_run_honors_nruns_and_hardcodes():
     spec = sandbox.profile_for(
         'jvm_jar',
         'run',
@@ -96,7 +96,7 @@ def test_profile_for_jvm_jar_run_forces_nruns_and_hardcodes():
     assert spec.n == 0
     assert spec.mem_kb == 20000000
     assert spec.out_kb == 20000
-    assert spec.runs == 1
+    assert spec.runs == 5
     assert spec.wall_sec == 8
     assert spec.stdin == 'stdin0'
 
@@ -117,7 +117,7 @@ def test_profile_for_interpreted_run():
     assert spec.n == 0
     assert spec.mem_kb == 256000
     assert spec.out_kb == 4096
-    assert spec.runs == 1
+    assert spec.runs == 5
     assert spec.wall_sec == 8
 
 
