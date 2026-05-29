@@ -48,3 +48,29 @@ def test_compare_verdict_testlib(testlib, expected):
 )
 def test_compare_verdict_checker(checker, expected):
     assert verdicts.compare_verdict(testlib_code=None, checker_exit=checker) == expected
+
+
+D = verdicts.RunDecision
+
+
+@pytest.mark.parametrize(
+    'first_tag,ecsf,ecint,expected',
+    [
+        (2, 0, 139, D(run_exit=4, testlib_code=None)),
+        (2, 0, 5, D(run_exit=4, testlib_code=None)),
+        (1, 3, 0, D(run_exit=3, testlib_code=None)),
+        (1, 7, 0, D(run_exit=7, testlib_code=None)),
+        (2, 3, 1, D(run_exit=3, testlib_code=None)),
+        (2, 0, 1, D(run_exit=0, testlib_code=1)),
+        (2, 0, 2, D(run_exit=0, testlib_code=2)),
+        (2, 0, 3, D(run_exit=0, testlib_code=3)),
+        (2, 0, 4, D(run_exit=0, testlib_code=4)),
+        (2, 0, 0, D(run_exit=0, testlib_code=None)),
+        (1, 11, 0, D(run_exit=11, testlib_code=None)),
+        (1, 0, 1, D(run_exit=0, testlib_code=1)),
+        (1, 0, 5, D(run_exit=4, testlib_code=None)),
+        (1, 0, 0, D(run_exit=0, testlib_code=None)),
+    ],
+)
+def test_interactive_run_decision(first_tag, ecsf, ecint, expected):
+    assert verdicts.interactive_run_decision(first_tag, ecsf, ecint) == expected

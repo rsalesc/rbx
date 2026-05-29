@@ -45,3 +45,55 @@ def compare_verdict(testlib_code: Optional[int], checker_exit: Optional[int]) ->
     if checker_exit == 3:
         return 43
     return 47
+
+
+@dataclass(frozen=True)
+class RunDecision:
+    run_exit: int
+    testlib_code: Optional[int]
+
+
+def _check_interactor(ecint: int) -> Optional['RunDecision']:
+    """interactor_run.sh check_interactor: 0->pass(None); 1..4->emit code, exit 0;
+    else->judge error (exit 4)."""
+    if ecint == 0:
+        return None
+    if 1 <= ecint <= 4:
+        return RunDecision(run_exit=0, testlib_code=ecint)
+    return RunDecision(run_exit=4, testlib_code=None)
+
+
+def interactive_run_decision(first_tag: int, ecsf: int, ecint: int) -> RunDecision:
+    """Ordered priority logic from interactor_run.sh:133-157.
+
+    Ordering IS the spec: resource limits (TLE/MLE) beat the interactor verdict,
+    which beats a solution RTE.
+    """
+    interactor_first = first_tag == 2
+    is_testlib = 0 <= ecint <= 4
+
+    # 1. interactor crashed before solution
+    if interactor_first and not is_testlib:
+        return _check_interactor(ecint)  # -> run_exit 4
+
+    # 2. solution TLE (3) / MLE (7)
+    if ecsf in (3, 7):
+        return RunDecision(run_exit=ecsf, testlib_code=None)
+
+    # 3. interactor finished first -> its verdict
+    if interactor_first:
+        decided = _check_interactor(ecint)
+        if decided is not None:
+            return decided  # ecint==0 falls through
+
+    # 4. solution error
+    if ecsf != 0:
+        return RunDecision(run_exit=ecsf, testlib_code=None)
+
+    # 5. interactor error regardless of order
+    decided = _check_interactor(ecint)
+    if decided is not None:
+        return decided
+
+    # 6. success -> compare decides
+    return RunDecision(run_exit=0, testlib_code=None)
