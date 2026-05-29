@@ -10,11 +10,14 @@ language.json from inside a real archive with NO env override.
 """
 
 import os
+import select
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
-from rbx_boca import entrypoints, manifest, sandbox, tasks
+import pytest
+from rbx_boca import entrypoints, interactor_launcher, manifest, sandbox, tasks
 
 from tests.rbx.box.packaging.boca_next import _bundle
 
@@ -220,3 +223,100 @@ def test_compare_end_to_end_via_entrypoint(tmp_path):
         context_factory=_factory,
     )
     assert wa == 6  # WA: team != expected
+
+
+# --- Task 9.3: interactor launcher fd-inheritance + watchdog ------------------
+
+
+def _fork_launch(interactor_argv, ittime, notify_fd):
+    """Fork; in the child run launch() (which execv's, never returns). Returns
+    the child pid in the parent."""
+    pid = os.fork()
+    if pid == 0:  # child
+        try:
+            interactor_launcher.launch(
+                interactor_argv, ittime=ittime, notify_fd=notify_fd
+            )
+        except BaseException:
+            os._exit(127)
+        os._exit(0)  # unreachable if execv succeeds
+    return pid
+
+
+@pytest.mark.slow
+def test_interactor_launcher_fd_closes_when_interactor_exits(tmp_path):
+    """The notify pipe must reach EOF PROMPTLY after the interactor exits.
+
+    Proves: launch() cleared CLOEXEC so the interactor inherited the fd AND the
+    watchdog child closed its own copy. If the watchdog leaked the fd, read()
+    would block until SIGKILL (ittime+5s); we assert EOF arrives well before.
+    """
+    read_fd, write_fd = os.pipe()
+    # Stub interactor: sleep briefly then exit 0 (holds notify fd while alive).
+    interactor = [sys.executable, '-c', 'import time; time.sleep(0.2)']
+    pid = None
+    try:
+        pid = _fork_launch(interactor, ittime=2, notify_fd=write_fd)
+        os.close(write_fd)  # drop the parent's copy; only the interactor holds it
+        write_fd = -1
+
+        # EOF must arrive once the interactor (the sole remaining holder) exits,
+        # i.e. ~0.2s -- well before the watchdog kill grace (ittime+5 = 7s).
+        ready, _, _ = select.select([read_fd], [], [], 4.0)
+        assert ready, 'notify fd did not close (leaked into watchdog?)'
+        assert os.read(read_fd, 64) == b''  # EOF
+    finally:
+        if write_fd != -1:
+            os.close(write_fd)
+        os.close(read_fd)
+        if pid is not None:
+            os.waitpid(pid, 0)
+
+
+@pytest.mark.slow
+def test_interactor_launcher_watchdog_kills_hanging_interactor(tmp_path):
+    """The watchdog must kill a hung interactor at ~ittime (+kill grace), not
+    let it run for its full sleep."""
+    import time
+
+    read_fd, write_fd = os.pipe()
+    # Stub interactor that would hang for 60s if not killed.
+    interactor = [sys.executable, '-c', 'import time; time.sleep(60)']
+    pid = None
+    try:
+        start = time.monotonic()
+        pid = _fork_launch(interactor, ittime=1, notify_fd=write_fd)
+        os.close(write_fd)
+        write_fd = -1
+
+        # Reap the interactor; it must die within ittime + kill_grace + slack.
+        deadline = start + 9.0
+        reaped = False
+        status = 0
+        while time.monotonic() < deadline:
+            wpid, status = os.waitpid(pid, os.WNOHANG)
+            if wpid == pid:
+                reaped = True
+                break
+            time.sleep(0.05)
+        elapsed = time.monotonic() - start
+        if not reaped:
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+            pytest.fail('watchdog did not kill the interactor within 9s')
+        assert elapsed < 9.0
+        # Killed by signal (SIGTERM at ittime, or SIGKILL at ittime+grace).
+        assert os.WIFSIGNALED(status) or (
+            os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0
+        )
+        pid = None
+    finally:
+        if write_fd != -1:
+            os.close(write_fd)
+        os.close(read_fd)
+        if pid is not None:
+            try:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            except OSError:
+                pass
