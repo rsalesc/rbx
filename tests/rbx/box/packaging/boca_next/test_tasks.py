@@ -133,3 +133,45 @@ def test_batch_run_maps_safeexec_exit(tmp_path):
         ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '2', '256', '65536']
     )
     assert rc == 9  # batch_run_exit(11)
+
+
+# --- Task 6.3: compare (batch + interactive) ---
+
+
+def test_batch_compare_runs_checker(tmp_path):
+    (tmp_path / 'team.out').write_text('42\n')
+    (tmp_path / 'exp.out').write_text('42\n')
+    (tmp_path / 'in.txt').write_text('x\n')
+    ctx = _ctx(tmp_path, runner=lambda argv, **kw: 1, checker_path='/bin/checker')
+    rc = tasks.BatchTask().compare(
+        ctx,
+        [
+            str(tmp_path / 'team.out'),
+            str(tmp_path / 'exp.out'),
+            str(tmp_path / 'in.txt'),
+        ],
+    )
+    assert rc == 6  # compare_verdict(None, 1)
+
+
+def test_interactive_compare_uses_testlib_line_without_checker(tmp_path):
+    (tmp_path / 'team.out').write_text('testlib exitcode 3\n')
+    (tmp_path / 'exp.out').write_text('\n')
+    (tmp_path / 'in.txt').write_text('x\n')
+    called = []
+    ctx = _ctx(
+        tmp_path,
+        runner=lambda argv, **kw: called.append(argv) or 0,
+        checker_path='/bin/checker',
+        task_type='interactive',
+    )
+    rc = tasks.InteractiveTask().compare(
+        ctx,
+        [
+            str(tmp_path / 'team.out'),
+            str(tmp_path / 'exp.out'),
+            str(tmp_path / 'in.txt'),
+        ],
+    )
+    assert rc == 43  # compare_verdict(3, None)
+    assert called == []  # checker NOT invoked

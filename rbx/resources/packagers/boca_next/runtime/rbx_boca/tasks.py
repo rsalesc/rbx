@@ -13,6 +13,7 @@ stdlib-only, Python 3.8 compatible.
 """
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,9 @@ _OTHER_ERROR = 47
 
 # Local filenames inside the sandbox cwd.
 _STDIN = 'stdin0'
+
+# First line of team output that carries an interactor (testlib) verdict.
+_TESTLIB_RE = re.compile(r'^testlib exitcode\s+(-?\d+)\s*$')
 
 
 def _default_static_link_ok(exe: Path) -> bool:
@@ -79,6 +83,41 @@ class RunContext:
     @property
     def spec(self):
         return self.lang.language
+
+
+def _read_testlib_code(path: Path) -> Optional[int]:
+    """Return the integer from the first `testlib exitcode N` line, or None."""
+    try:
+        text = path.read_text()
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = _TESTLIB_RE.match(line.strip())
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _compare(ctx: 'RunContext', args: List[str]) -> int:
+    """Shared compare logic for batch and interactive tasks.
+
+    args = [team_output, expected_output, input_file].
+
+    If the team output carries a `testlib exitcode N` marker (written by
+    InteractiveTask.run), trust it directly and skip the checker. Otherwise
+    invoke the checker as `checker input team_output expected_output` and map
+    its exit. BatchTask never writes that marker, so it always runs the checker.
+    """
+    team_output, expected_output, input_file = args[0], args[1], args[2]
+
+    testlib_code = _read_testlib_code(Path(team_output))
+    if testlib_code is not None:
+        return verdicts.compare_verdict(testlib_code=testlib_code, checker_exit=None)
+
+    checker_exit = ctx.runner(
+        [str(ctx.checker_path), input_file, team_output, expected_output]
+    )
+    return verdicts.compare_verdict(testlib_code=None, checker_exit=checker_exit)
 
 
 class BatchTask:
@@ -163,3 +202,15 @@ class BatchTask:
         )
         raw = ctx.safeexec.run(spec_se, program)
         return verdicts.batch_run_exit(raw)
+
+    def compare(self, ctx: RunContext, args: List[str]) -> int:
+        return _compare(ctx, args)
+
+
+class InteractiveTask:
+    """Interactive task: solution and interactor talk over a pair of fifos,
+    bridged by pipe.exe. The interactor's verdict (testlib code) is recorded
+    into stdout0 so the (shared) compare step can read it without a checker."""
+
+    def compare(self, ctx: RunContext, args: List[str]) -> int:
+        return _compare(ctx, args)
