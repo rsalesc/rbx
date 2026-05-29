@@ -128,9 +128,13 @@ def _compare(ctx: 'RunContext', args: List[str]) -> int:
     return verdicts.compare_verdict(testlib_code=None, checker_exit=checker_exit)
 
 
-class BatchTask:
-    """Standard batch task: compile a submission, run it once per test under
-    safeexec, compare its stdout against the expected output via a checker."""
+class BaseTask:
+    """Shared lifecycle hooks for every task type.
+
+    ``compile`` (build the submission) and ``compare`` (map a verdict) are
+    identical for batch and interactive problems, so they live here. Only
+    ``run`` differs, and each subclass provides its own implementation.
+    """
 
     def compile(self, ctx: RunContext, *, src: str, exe: str, basename: str) -> int:
         spec = ctx.spec
@@ -182,6 +186,14 @@ class BatchTask:
 
         return 0
 
+    def compare(self, ctx: RunContext, args: List[str]) -> int:
+        return _compare(ctx, args)
+
+
+class BatchTask(BaseTask):
+    """Standard batch task: compile a submission, run it once per test under
+    safeexec, compare its stdout against the expected output via a checker."""
+
     def run(self, ctx: RunContext, args: List[str]) -> int:
         # BOCA run argv: basename inputfile timelimit repetitions memory out_kb
         basename, inputfile, timelimit, repetitions, memory, outputsize_kb = (
@@ -219,11 +231,8 @@ class BatchTask:
         raw = ctx.safeexec.run(spec_se, program)
         return verdicts.batch_run_exit(raw)
 
-    def compare(self, ctx: RunContext, args: List[str]) -> int:
-        return _compare(ctx, args)
 
-
-class InteractiveTask:
+class InteractiveTask(BaseTask):
     """Interactive task: solution and interactor talk over a pair of fifos,
     bridged by pipe.exe. The interactor's verdict (testlib code) is recorded
     into stdout0 so the (shared) compare step can read it without a checker."""
@@ -324,6 +333,3 @@ class InteractiveTask:
             if path.exists():
                 path.unlink()
             os.mkfifo(str(path))
-
-    def compare(self, ctx: RunContext, args: List[str]) -> int:
-        return _compare(ctx, args)

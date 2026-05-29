@@ -82,10 +82,10 @@ def load_context() -> RunContext:
 
 
 def _dispatch_interactor_launcher(rest: List[str]) -> int:
-    ittime = int(rest[0])
-    notify_fd = int(rest[1])
     if len(rest) < 3 or rest[2] != '--':
         raise ValueError("expected '--' separator before interactor argv")
+    ittime = int(rest[0])
+    notify_fd = int(rest[1])
     interactor_argv = rest[3:]
     # launch() replaces this process via execv, so it never returns; the 0 below
     # is only reached in tests that stub launch out.

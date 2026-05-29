@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List
 
+import pytest
 from rbx_boca import entrypoints
 
 _RUNTIME = (
@@ -175,6 +176,13 @@ def test_interactor_launcher_does_not_require_context_factory(monkeypatch):
     )
     rc = entrypoints.main(['__interactor_launcher__', '1', '2', '--', './i.exe'])
     assert rc == 0
+
+
+def test_interactor_launcher_too_few_args_raises_value_error():
+    # Length/`--` validation runs BEFORE indexing, so a clear ValueError is
+    # raised instead of a bare IndexError.
+    with pytest.raises(ValueError):
+        entrypoints.main(['__interactor_launcher__', '7'])
 
 
 # --- Task 8.2: python -m rbx_boca entry ---

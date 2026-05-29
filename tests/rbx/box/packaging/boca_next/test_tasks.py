@@ -122,6 +122,34 @@ def test_batch_compile_fails_when_not_static(tmp_path):
     assert rc == 47
 
 
+def test_interactive_task_compile_works(tmp_path):
+    """InteractiveTask inherits compile from BaseTask: same behavior as batch."""
+    seen = []
+
+    def runner(argv, **kw):
+        seen.append(argv)
+        return 0
+
+    spec = _spec(
+        'cpp',
+        'compiled_static',
+        compiler_argv=['g++', '{flags}', '-o', '{exe}', '{src}'],
+        flags='-O2 -static',
+        run_argv=['{exe}'],
+    )
+    ctx = _ctx(
+        tmp_path,
+        runner=runner,
+        lang_spec=spec,
+        static_link_ok=lambda exe: True,
+        task_type='interactive',
+    )
+    rc = tasks.InteractiveTask().compile(ctx, src='sol.cpp', exe='run', basename='run')
+    assert rc == 0
+    flat = [tok for argv in seen for tok in argv]
+    assert 'g++' in flat and '-o' in flat and 'run' in flat and 'sol.cpp' in flat
+
+
 # --- Task 6.2: BatchTask.run ---
 
 
