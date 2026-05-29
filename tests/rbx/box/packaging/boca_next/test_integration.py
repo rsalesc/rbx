@@ -14,6 +14,7 @@ import select
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -233,6 +234,16 @@ def _fork_launch(interactor_argv, ittime, notify_fd):
     the child pid in the parent."""
     pid = os.fork()
     if pid == 0:  # child
+        # Become a new session/group leader BEFORE launch(). The watchdog uses
+        # killpg(0, ...), which in production targets the BOCA job's group; in
+        # the test it would otherwise target pytest's own group and could
+        # SIGTERM/SIGKILL the test runner. setsid() contains killpg(0) to this
+        # child's group. (launch() itself is unchanged to match bash production
+        # behavior.)
+        try:
+            os.setsid()
+        except OSError:
+            pass
         try:
             interactor_launcher.launch(
                 interactor_argv, ittime=ittime, notify_fd=notify_fd
@@ -250,10 +261,21 @@ def test_interactor_launcher_fd_closes_when_interactor_exits(tmp_path):
     Proves: launch() cleared CLOEXEC so the interactor inherited the fd AND the
     watchdog child closed its own copy. If the watchdog leaked the fd, read()
     would block until SIGKILL (ittime+5s); we assert EOF arrives well before.
+
+    Non-vacuity: the stub interactor writes a sentinel file before exiting, so we
+    can assert exec() actually happened (rather than the launcher crashing before
+    exec, which would make the EOF assertion pass trivially).
     """
     read_fd, write_fd = os.pipe()
-    # Stub interactor: sleep briefly then exit 0 (holds notify fd while alive).
-    interactor = [sys.executable, '-c', 'import time; time.sleep(0.2)']
+    sentinel = tmp_path / 'exec_happened'
+    # Stub interactor: write a sentinel proving exec, sleep briefly, exit 0
+    # (holds notify fd while alive).
+    interactor = [
+        sys.executable,
+        '-c',
+        'import time, pathlib; pathlib.Path({!r}).write_text("1"); '
+        'time.sleep(0.2)'.format(str(sentinel)),
+    ]
     pid = None
     try:
         pid = _fork_launch(interactor, ittime=2, notify_fd=write_fd)
@@ -265,6 +287,10 @@ def test_interactor_launcher_fd_closes_when_interactor_exits(tmp_path):
         ready, _, _ = select.select([read_fd], [], [], 4.0)
         assert ready, 'notify fd did not close (leaked into watchdog?)'
         assert os.read(read_fd, 64) == b''  # EOF
+        # The interactor really reached exec (not an early launcher crash).
+        assert sentinel.exists(), (
+            'stub interactor never ran -> launch() crashed pre-exec'
+        )
     finally:
         if write_fd != -1:
             os.close(write_fd)
@@ -276,12 +302,22 @@ def test_interactor_launcher_fd_closes_when_interactor_exits(tmp_path):
 @pytest.mark.slow
 def test_interactor_launcher_watchdog_kills_hanging_interactor(tmp_path):
     """The watchdog must kill a hung interactor at ~ittime (+kill grace), not
-    let it run for its full sleep."""
-    import time
+    let it run for its full sleep.
 
+    Non-vacuity: the stub interactor writes a sentinel before hanging, so we
+    assert exec() actually happened and the watchdog killed a *running*
+    interactor (not a launcher that crashed before exec).
+    """
     read_fd, write_fd = os.pipe()
-    # Stub interactor that would hang for 60s if not killed.
-    interactor = [sys.executable, '-c', 'import time; time.sleep(60)']
+    sentinel = tmp_path / 'exec_happened'
+    # Stub interactor that writes a sentinel proving exec, then hangs for 60s if
+    # not killed.
+    interactor = [
+        sys.executable,
+        '-c',
+        'import time, pathlib; pathlib.Path({!r}).write_text("1"); '
+        'time.sleep(60)'.format(str(sentinel)),
+    ]
     pid = None
     try:
         start = time.monotonic()
@@ -305,6 +341,11 @@ def test_interactor_launcher_watchdog_kills_hanging_interactor(tmp_path):
             os.waitpid(pid, 0)
             pytest.fail('watchdog did not kill the interactor within 9s')
         assert elapsed < 9.0
+        # The interactor really reached exec (so the watchdog killed a running
+        # interactor, not a launcher that crashed before exec).
+        assert sentinel.exists(), (
+            'stub interactor never ran -> launch() crashed pre-exec'
+        )
         # Killed by signal (SIGTERM at ittime, or SIGKILL at ittime+grace).
         assert os.WIFSIGNALED(status) or (
             os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0
@@ -430,6 +471,7 @@ def test_interactive_run_still_parses_pipelog(tmp_path):
         interactor_launch_argv=[sys.executable, '-m', 'rbx_boca'],
         make_fifos=lambda: None,
     )
+    (tmp_path / 'in.txt').write_text('21\n')
     rc = tasks.InteractiveTask().run(
         ctx, ['run', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
     )

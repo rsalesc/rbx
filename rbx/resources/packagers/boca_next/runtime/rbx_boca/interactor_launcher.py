@@ -35,7 +35,13 @@ def launch(interactor_argv: Sequence[str], *, ittime: int, notify_fd: int) -> No
     pure syscall behavior, not unit-testable).
     """
     limit = address_space_limit()
-    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    if hard != resource.RLIM_INFINITY:
+        limit = min(limit, hard)
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
+    except (ValueError, OSError):
+        pass  # address-space cap is best-effort hardening, not correctness-critical
 
     # Ensure notify_fd survives execv into the interactor: the interactor must
     # inherit it and hold the pipe open until it exits, so pipe.exe's epoll sees
