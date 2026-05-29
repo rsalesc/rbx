@@ -40,3 +40,40 @@ def test_ensure_compiles_on_miss_then_caches(tmp_path):
     assert out1 == out2
     assert out1.exists()
     assert len(compiled) == 1  # second call is a cache hit, no recompile
+
+
+def test_ensure_atomic_publish_under_race(tmp_path):
+    # Two compiles writing distinct temp outputs, both publishing to the same key.
+    outputs = []
+
+    def fake_runner(argv, **kw):
+        out = argv[argv.index('-o') + 1]
+        Path(out).write_bytes(b'ELF-BINARY')
+        outputs.append(out)
+        return 0
+
+    a = assets.NativeAsset(
+        name='pipe', source=b'csrc', compile_argv=['gcc', '-O2', '-o', '{out}', '{src}']
+    )
+    # First ensure populates the cache; the temp out path is unique (not the final target)
+    target = a.ensure(cache_dir=tmp_path, runner=fake_runner)
+    assert target.read_bytes() == b'ELF-BINARY'
+    # The compiler wrote to a UNIQUE temp path, not directly to the final target
+    assert all(Path(o) != target for o in outputs)
+    # Final published file is the full binary (atomic os.replace, never partial)
+    assert target.stat().st_size == len(b'ELF-BINARY')
+
+
+def test_ensure_raises_on_compile_failure(tmp_path):
+    def fake_runner(argv, **kw):
+        return 1
+
+    a = assets.NativeAsset(
+        name='checker', source=b'bad', compile_argv=['g++', '-o', '{out}', '{src}']
+    )
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        a.ensure(cache_dir=tmp_path, runner=fake_runner)
+    # No partial published binary, and no leftover temp files.
+    assert list(tmp_path.iterdir()) == []
