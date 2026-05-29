@@ -119,3 +119,17 @@ def test_batch_compile_fails_when_not_static(tmp_path):
     )
     rc = tasks.BatchTask().compile(ctx, src='sol.cpp', exe='run.exe', basename='run')
     assert rc == 47
+
+
+# --- Task 6.2: BatchTask.run ---
+
+
+def test_batch_run_maps_safeexec_exit(tmp_path):
+    fake = sandbox.SafeExec(path='/usr/bin/safeexec', runner=lambda argv, **kw: 11)
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    (tmp_path / 'in.txt').write_text('5\n')
+    ctx = _ctx(tmp_path, safeexec=fake, lang_spec=spec)
+    rc = tasks.BatchTask().run(
+        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '2', '256', '65536']
+    )
+    assert rc == 9  # batch_run_exit(11)

@@ -18,12 +18,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from rbx_boca import languages, sandbox
+from rbx_boca import languages, sandbox, verdicts
 from rbx_boca.manifest import LanguageManifest, TaskConfig
 
 # BOCA compile/other-error exit code, mirrors run/cpp aborting when a submission
 # is not statically linked (exit 47).
 _OTHER_ERROR = 47
+
+# Local filenames inside the sandbox cwd.
+_STDIN = 'stdin0'
 
 
 def _default_static_link_ok(exe: Path) -> bool:
@@ -123,3 +126,40 @@ class BatchTask:
             return _OTHER_ERROR
 
         return 0
+
+    def run(self, ctx: RunContext, args: List[str]) -> int:
+        # BOCA run argv: basename inputfile timelimit repetitions memory out_kb
+        basename, inputfile, timelimit, repetitions, memory, outputsize_kb = (
+            args[0],
+            args[1],
+            int(args[2]),
+            int(args[3]),
+            int(args[4]),
+            int(args[5]),
+        )
+        spec = ctx.spec
+
+        # Point the sandbox stdin at the test input by copying it to stdin0.
+        (ctx.cwd / _STDIN).write_text(Path(inputfile).read_text())
+
+        run_extra = {}
+        if spec.kind == 'interpreted':
+            run_extra['interp'] = languages.resolve_compiler(spec)
+        program = languages.build_run_argv(
+            spec, exe=basename, memory_mb=memory, **run_extra
+        )
+
+        spec_se = sandbox.profile_for(
+            spec.kind,
+            'run',
+            cpu_sec=timelimit,
+            memory_mb=memory,
+            nruns=repetitions,
+            out_kb=outputsize_kb,
+            uid=ctx.uid,
+            gid=ctx.gid,
+            chroot=ctx.chroot,
+            overrides=spec.sandbox_overrides,
+        )
+        raw = ctx.safeexec.run(spec_se, program)
+        return verdicts.batch_run_exit(raw)
