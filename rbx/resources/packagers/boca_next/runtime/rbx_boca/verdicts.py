@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -24,3 +25,23 @@ def batch_run_exit(safeexec_exit: int) -> int:
     nonzero N, reported as N+10) collapse to 9 (runtime error).
     """
     return 9 if safeexec_exit > 10 else safeexec_exit
+
+
+def compare_verdict(testlib_code: Optional[int], checker_exit: Optional[int]) -> int:
+    """BOCA compare exit code. See rbx/resources/packagers/boca/compare.sh.
+
+    AC=4, WA=6, JUDGE_ERROR=43, OTHER_ERROR=47.
+    """
+    if testlib_code is not None:
+        if testlib_code in (1, 2):
+            return 6
+        if testlib_code == 3:
+            return 43
+        return 47
+    if checker_exit == 0:
+        return 4
+    if checker_exit in (1, 2):
+        return 6
+    if checker_exit == 3:
+        return 43
+    return 47

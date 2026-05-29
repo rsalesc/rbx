@@ -34,3 +34,17 @@ def test_pipelog_rejects_short_log():
 )
 def test_batch_run_exit(safeexec_exit, expected):
     assert verdicts.batch_run_exit(safeexec_exit) == expected
+
+
+@pytest.mark.parametrize(
+    'testlib,expected', [(1, 6), (2, 6), (3, 43), (4, 47), (5, 47)]
+)
+def test_compare_verdict_testlib(testlib, expected):
+    assert verdicts.compare_verdict(testlib_code=testlib, checker_exit=None) == expected
+
+
+@pytest.mark.parametrize(
+    'checker,expected', [(0, 4), (1, 6), (2, 6), (3, 43), (4, 47), (9, 47)]
+)
+def test_compare_verdict_checker(checker, expected):
+    assert verdicts.compare_verdict(testlib_code=None, checker_exit=checker) == expected
