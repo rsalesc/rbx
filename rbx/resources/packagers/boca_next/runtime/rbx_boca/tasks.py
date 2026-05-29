@@ -237,9 +237,24 @@ class InteractiveTask(BaseTask):
     bridged by pipe.exe. The interactor's verdict (testlib code) is recorded
     into stdout0 so the (shared) compare step can read it without a checker."""
 
-    def run(self, ctx: RunContext, args: List[str]) -> int:
+    # Notify-fd token pipe.exe substitutes with a real fd at runtime
+    # (interactor_run.sh:45/47 `__FD__`). Emitted literally; never substituted.
+    _FD_TOKEN = '__FD__'
+
+    def build_pipe_argv(self, ctx: RunContext, args: List[str]) -> List[str]:
+        """Construct the pipe.exe argv for an interactive run.
+
+        Structurally mirrors rbx/resources/packagers/boca/interactor_run.sh:44-47:
+
+            pipe.exe -i fifo.in -o fifo.out -e <sol stderr> -E interactor.stderr --
+                <safeexec solution -ofifo.out -ififo.in -D__FD__ ...>
+                = <launch> __interactor_launcher__ <ittime> __FD__ -- <interactor> stdin0 stdout0
+
+        ``ittime = timelimit + 1`` (interactor_run.sh:13 adds 1s of wall slack).
+        pipe.exe substitutes the literal ``__FD__`` tokens with real fds.
+        """
         # BOCA run argv: basename inputfile timelimit repetitions memory out_kb
-        basename, inputfile, timelimit, repetitions, memory, outputsize_kb = (
+        basename, _inputfile, timelimit, repetitions, memory, outputsize_kb = (
             args[0],
             args[1],
             int(args[2]),
@@ -249,15 +264,7 @@ class InteractiveTask(BaseTask):
         )
         spec = ctx.spec
 
-        # Make the bidirectional fifos (stubbable for unit tests).
-        make_fifos = (
-            ctx.make_fifos
-            if ctx.make_fifos is not None
-            else (lambda: self._default_make_fifos(ctx))
-        )
-        make_fifos()
-
-        # Build the safeexec-wrapped solution command.
+        # Solution program, run under safeexec with fifo redirection + notify fd.
         run_extra = {}
         if spec.kind == 'interpreted':
             run_extra['interp'] = languages.resolve_compiler(spec)
@@ -274,14 +281,30 @@ class InteractiveTask(BaseTask):
             uid=ctx.uid,
             gid=ctx.gid,
             chroot=ctx.chroot,
+            stdin=_FIFO_IN,
+            stdout=_FIFO_OUT,
             overrides=spec.sandbox_overrides,
         )
         solution_cmd = sandbox.build_safeexec_argv(
-            spec_se, program, safeexec=ctx.safeexec.path
+            spec_se,
+            program,
+            safeexec=ctx.safeexec.path,
+            notify=self._FD_TOKEN,
         )
 
-        # pipe.exe -i fifo.in -o fifo.out -e <sol stderr> -E <int stderr>
-        #          -- <solution cmd> = <interactor launcher cmd>
+        # Interactor side: re-enter this bundle under the watchdog/RLIMIT_AS cap.
+        # ittime = wall TL + 1 (interactor_run.sh:13).
+        ittime = timelimit + 1
+        interactor_cmd = list(ctx.interactor_launch_argv) + [
+            '__interactor_launcher__',
+            str(ittime),
+            self._FD_TOKEN,
+            '--',
+            str(ctx.interactor_path),
+            _STDIN,
+            _STDOUT,
+        ]
+
         pipe_argv = [
             str(ctx.pipe_path),
             '-i',
@@ -296,11 +319,19 @@ class InteractiveTask(BaseTask):
         ]
         pipe_argv += solution_cmd
         pipe_argv += ['=']
-        # The interactor launcher receives the test input path ({input} token);
-        # testlib interactors read the input file from their argv.
-        pipe_argv += languages.render_argv(
-            list(ctx.interactor_launch_argv), input=inputfile
+        pipe_argv += interactor_cmd
+        return pipe_argv
+
+    def run(self, ctx: RunContext, args: List[str]) -> int:
+        # Make the bidirectional fifos (stubbable for unit tests).
+        make_fifos = (
+            ctx.make_fifos
+            if ctx.make_fifos is not None
+            else (lambda: self._default_make_fifos(ctx))
         )
+        make_fifos()
+
+        pipe_argv = self.build_pipe_argv(ctx, args)
 
         # If pipe.exe itself fails, treat it as a judge error (mirrors BOCA's
         # interactor_run.sh returning JUDGE_ERROR=4 on pipe.exe failure).

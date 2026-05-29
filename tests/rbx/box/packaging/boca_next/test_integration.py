@@ -320,3 +320,118 @@ def test_interactor_launcher_watchdog_kills_hanging_interactor(tmp_path):
                 os.waitpid(pid, 0)
             except OSError:
                 pass
+
+
+# --- Task 9.4: pipe.exe argv shape -------------------------------------------
+
+
+def _interactive_ctx(tmp_path):
+    spec = manifest.LanguageSpec.from_dict(
+        {
+            'id': 'cpp',
+            'kind': 'compiled_static',
+            'compiler_argv': ['g++', '-o', '{exe}', '{src}'],
+            'run_argv': ['{exe}'],
+        }
+    )
+    lang = manifest.LanguageManifest(
+        language=spec,
+        limits=manifest.LimitsConfig(time_sec=3, runs=1, memory_mb=256),
+    )
+    return tasks.RunContext(
+        task=manifest.TaskConfig(task_type='interactive', output_kb=65536),
+        lang=lang,
+        cwd=tmp_path,
+        runner=lambda argv, **kw: 0,
+        safeexec=sandbox.SafeExec(path='/usr/bin/safeexec'),
+        checker_path=Path('/bin/checker'),
+        interactor_path=Path('/box/interactor.exe'),
+        pipe_path=Path('/box/pipe.exe'),
+        interactor_launch_argv=[sys.executable, '-m', 'rbx_boca'],
+    )
+
+
+def test_build_pipe_argv_shape(tmp_path):
+    ctx = _interactive_ctx(tmp_path)
+    argv = tasks.InteractiveTask().build_pipe_argv(
+        ctx, ['run', 'in.txt', '3', '1', '256', '65536']
+    )
+
+    # pipe.exe prefix mirrors interactor_run.sh:44.
+    assert argv[:10] == [
+        '/box/pipe.exe',
+        '-i',
+        'fifo.in',
+        '-o',
+        'fifo.out',
+        '-e',
+        'stderr0',  # solution safeexec spec.stderr
+        '-E',
+        'interactor.stderr',
+        '--',
+    ]
+
+    # Exactly one `=` separator splitting solution side / interactor side.
+    assert argv.count('=') == 1
+    sep = argv.index('=')
+    solution_seg = argv[10:sep]
+    interactor_seg = argv[sep + 1 :]
+
+    # Solution side: safeexec with fifo redirection + notify fd (literal __FD__).
+    assert solution_seg[0] == '/usr/bin/safeexec'
+    assert '-ififo.in' in solution_seg
+    assert '-ofifo.out' in solution_seg
+    assert '-D__FD__' in solution_seg
+    # __FD__ must appear ONLY in the literal -D__FD__ token (never substituted).
+    assert [t for t in solution_seg if '__FD__' in t] == ['-D__FD__']
+
+    # Interactor side: re-enter the bundle under the launcher, ittime = wall+1.
+    assert interactor_seg == [
+        sys.executable,
+        '-m',
+        'rbx_boca',
+        '__interactor_launcher__',
+        '4',  # ittime = timelimit(3) + 1
+        '__FD__',
+        '--',
+        '/box/interactor.exe',
+        'stdin0',
+        'stdout0',
+    ]
+
+
+def test_interactive_run_still_parses_pipelog(tmp_path):
+    """The refactor preserves the Phase 6 flow: run() builds argv, runs the
+    (fake) pipe.exe, parses pipe.log, decides, emits testlib, returns."""
+
+    def runner(argv, **kw):
+        # emulate pipe.exe: interactor-first(2), sol ok(0), WA(1).
+        (tmp_path / 'pipe.log').write_text('2\n0\n1\n')
+        return 0
+
+    ctx = tasks.RunContext(
+        task=manifest.TaskConfig(task_type='interactive', output_kb=65536),
+        lang=manifest.LanguageManifest(
+            language=manifest.LanguageSpec.from_dict(
+                {
+                    'id': 'cpp',
+                    'kind': 'compiled_static',
+                    'compiler_argv': ['g++'],
+                    'run_argv': ['{exe}'],
+                }
+            ),
+            limits=manifest.LimitsConfig(time_sec=3, runs=1, memory_mb=256),
+        ),
+        cwd=tmp_path,
+        runner=runner,
+        safeexec=sandbox.SafeExec(path='/usr/bin/safeexec'),
+        interactor_path=Path('/box/interactor.exe'),
+        pipe_path=Path('/box/pipe.exe'),
+        interactor_launch_argv=[sys.executable, '-m', 'rbx_boca'],
+        make_fifos=lambda: None,
+    )
+    rc = tasks.InteractiveTask().run(
+        ctx, ['run', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+    )
+    assert rc == 0
+    assert (tmp_path / 'stdout0').read_text().strip() == 'testlib exitcode 1'

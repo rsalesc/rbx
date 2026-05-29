@@ -24,8 +24,19 @@ class SafeExecSpec:
 
 
 def build_safeexec_argv(
-    spec: SafeExecSpec, program: List[str], *, safeexec: str = 'safeexec'
+    spec: SafeExecSpec,
+    program: List[str],
+    *,
+    safeexec: str = 'safeexec',
+    notify: Optional[str] = None,
 ) -> List[str]:
+    """Build the safeexec argv for ``program``.
+
+    ``notify`` (interactive only) emits ``-D<notify>``: safeexec's notify-fd
+    option. The interactive runner passes the literal ``__FD__`` token here,
+    which pipe.exe substitutes with a real fd number at runtime (mirrors
+    interactor_run.sh:45 ``-D__FD__``). Do NOT substitute it yourself.
+    """
     argv = [safeexec, f'-r{spec.runs}', f'-t{spec.cpu_sec}', f'-T{spec.wall_sec}']
     argv += [f'-d{spec.mem_kb}', f'-m{spec.mem_kb}', f'-f{spec.out_kb}']
     argv += [f'-F{spec.fds}', f'-n{spec.n}']
@@ -37,6 +48,8 @@ def build_safeexec_argv(
     if spec.stdin is not None:
         argv.append(f'-i{spec.stdin}')
     argv += [f'-o{spec.stdout}', f'-e{spec.stderr}']
+    if notify is not None:
+        argv.append(f'-D{notify}')
     argv.append('--')
     argv += list(program)
     return argv
