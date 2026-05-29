@@ -1,0 +1,121 @@
+from pathlib import Path
+
+from rbx_boca import manifest, sandbox, tasks
+
+
+def _spec(
+    id,
+    kind,
+    compiler_argv=None,
+    compiler_fallbacks=None,
+    flags='',
+    run_argv=None,
+    build=None,
+    syntax_check=False,
+    sandbox_overrides=None,
+):
+    return manifest.LanguageSpec.from_dict(
+        {
+            'id': id,
+            'kind': kind,
+            'compiler_argv': compiler_argv if compiler_argv is not None else [],
+            'compiler_fallbacks': compiler_fallbacks or [],
+            'flags': flags,
+            'run_argv': run_argv if run_argv is not None else ['{exe}'],
+            'build': build,
+            'syntax_check': syntax_check,
+            'sandbox_overrides': sandbox_overrides or {},
+        }
+    )
+
+
+def _ctx(
+    tmp_path,
+    runner=None,
+    lang_spec=None,
+    static_link_ok=None,
+    task_type='batch',
+    output_kb=65536,
+    safeexec=None,
+    checker_path='/bin/checker',
+    interactor_path='/bin/interactor.exe',
+    pipe_path='/bin/pipe.exe',
+    interactor_launch_argv=None,
+    make_fifos=None,
+):
+    if runner is None:
+
+        def runner(argv, **kw):
+            return 0
+
+    spec = lang_spec if lang_spec is not None else _spec('cpp', 'compiled_static')
+    lang = manifest.LanguageManifest(
+        language=spec,
+        limits=manifest.LimitsConfig(time_sec=1, runs=1, memory_mb=256),
+    )
+    task = manifest.TaskConfig(task_type=task_type, output_kb=output_kb)
+    if safeexec is None:
+        safeexec = sandbox.SafeExec(path='/usr/bin/safeexec', runner=runner)
+    return tasks.RunContext(
+        task=task,
+        lang=lang,
+        cwd=Path(tmp_path),
+        runner=runner,
+        safeexec=safeexec,
+        uid=65534,
+        gid=65534,
+        chroot=None,
+        cache_dir=Path(tmp_path) / 'cache',
+        checker_path=Path(checker_path),
+        interactor_path=Path(interactor_path),
+        pipe_path=Path(pipe_path),
+        static_link_ok=static_link_ok
+        if static_link_ok is not None
+        else (lambda exe: True),
+        interactor_launch_argv=interactor_launch_argv
+        if interactor_launch_argv is not None
+        else ['interactor-launch'],
+        make_fifos=make_fifos,
+    )
+
+
+# --- Task 6.1: BatchTask.compile ---
+
+
+def test_batch_compile_runs_compiler_and_checks_static_link(tmp_path):
+    seen = []
+
+    def runner(argv, **kw):
+        seen.append(argv)
+        return 0
+
+    spec = _spec(
+        'cpp',
+        'compiled_static',
+        compiler_argv=['g++', '{flags}', '-o', '{exe}', '{src}'],
+        flags='-O2 -static',
+        run_argv=['{exe}'],
+    )
+    ctx = _ctx(tmp_path, runner=runner, lang_spec=spec, static_link_ok=lambda exe: True)
+    rc = tasks.BatchTask().compile(ctx, src='sol.cpp', exe='run.exe', basename='run')
+    assert rc == 0
+    flat = [tok for argv in seen for tok in argv]
+    assert 'g++' in flat and '-o' in flat and 'run.exe' in flat and 'sol.cpp' in flat
+
+
+def test_batch_compile_fails_when_not_static(tmp_path):
+    spec = _spec(
+        'cpp',
+        'compiled_static',
+        compiler_argv=['g++', '{flags}', '-o', '{exe}', '{src}'],
+        flags='-static',
+        run_argv=['{exe}'],
+    )
+    ctx = _ctx(
+        tmp_path,
+        runner=lambda argv, **kw: 0,
+        lang_spec=spec,
+        static_link_ok=lambda exe: False,
+    )
+    rc = tasks.BatchTask().compile(ctx, src='sol.cpp', exe='run.exe', basename='run')
+    assert rc == 47
