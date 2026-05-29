@@ -60,6 +60,7 @@ run/cpp  (a .pyz)
  │   ├─ languages.py     # generic LanguageSpec engine + kind handlers
  │   ├─ tasks.py         # BatchTask / InteractiveTask orchestration
  │   ├─ verdicts.py      # exit-code -> BOCA-code pure mappers
+ │   ├─ interactor_launcher.py  # re-entrant mode: setrlimit + watchdog + execv
  │   └─ entrypoints.py   # compile/run/compare/limits/tests glue
  ├─ task.json            # language-agnostic config (task_type, output_kb)
  ├─ language.json        # this bundle's LanguageSpec + per-language limits
@@ -225,9 +226,67 @@ A future execution method is a new `Task` subclass — nothing else changes.
 
 ### 6. `verdicts.py` (pure)
 
-`safeexec_outcome(code)`, `checker_outcome(code)`, and the interactive
-**6-level priority logic** rewritten as a pure function over a parsed `pipe.log`
-structure -> BOCA exit code. Fully tested, no IO.
+The exit-code translations, rewritten as pure functions over parsed data — the
+surface that is impossible to test in today's bash. There are **two BOCA code
+spaces** (the run script's exit code, interpreted by the autojudge, and the
+compare script's `4/6/43/47`), so three mappers:
+
+- `batch_run_exit(safeexec_exit) -> run_exit` — incl. the `>10 -> 9` RTE remap.
+- `interactive_run_decision(first_tag, ecsf, ecint) -> (run_exit, testlib_code?)`
+  — the 6-level priority logic, de-duplicated into ordered rules (table below).
+- `compare_verdict(testlib_code?, checker_exit?) -> boca_code` — shared by both
+  task types.
+
+All three are pure, with table-driven tests over every code combination.
+
+See **Interactive execution** below for the priority table.
+
+### Interactive execution
+
+Coordination is split native-vs-Python at clean seams:
+
+- **`pipe.exe` (`pipe.c`) and `safeexec` stay `NativeAsset`s.** `pipe.exe`
+  launches the two children, wires their stdin/stdout over `fifo.in`/`fifo.out`,
+  uses `epoll` on per-child notify pipes to detect which exits first, and writes
+  a **3-line `pipe.log`**: `first_tag` (1=solution, 2=interactor),
+  `solution_status`, `interactor_status` (bash-like: `0-255`, or `128+signal`).
+  Kept *as-is* — it is a clean contract with no bug to fix.
+- **`InteractiveTask` (Python) replaces `interactor_run.sh`**: create the fifos,
+  build the `pipe.exe` argv (solution-under-safeexec `=` interactor-under-
+  launcher), invoke it, parse `pipe.log`, then apply
+  `interactive_run_decision`.
+
+**Interactor launcher (Python).** The interactor runs *unsandboxed* (trusted
+judge code that needs the fifos + notify fd), so it goes through a thin launcher
+instead of safeexec. `pipe.exe` execs the **same `.pyz` re-entrantly** with a
+sentinel argv (`<pyz> __interactor_launcher__ <ittime> ./interactor.exe ...`);
+`__main__` dispatches to `rbx_boca/interactor_launcher.py`, which does
+`resource.setrlimit(RLIMIT_AS, 1GB)`, arms a process-group watchdog
+(`SIGTERM` after the budget, `SIGKILL` +5s), then `os.execv`s the interactor.
+
+> **Implementation risk to verify:** the bash watchdog does `exec {fd}>&-` so it
+> drops its copy of `pipe.exe`'s notify fd — otherwise the pipe never `HUP`s and
+> first-exit detection hangs. The Python launcher must replicate this exactly:
+> the watchdog child must **not inherit** the notify fd, and the main interactor
+> process must hold it open until exit. fd-inheritance / close-on-exec / `killpg`
+> semantics get **integration coverage** (real `.pyz` + stub interactor); the
+> pure parts (rlimit value, timeout computation) are extracted as tested helpers.
+
+**6-level priority logic** (`interactive_run_decision`). The ordering *is* the
+spec — resource limits beat the interactor verdict, which beats solution RTE:
+
+| # | Condition | Result |
+|---|-----------|--------|
+| 1 | interactor-first & `ecint ∉ {0,1,2,3,4}` (interactor crashed) | `run_exit=4` (judge error) |
+| 2 | `ecsf ∈ {3,7}` | `run_exit=ecsf` (TLE / MLE) |
+| 3 | interactor-first | `ecint∈{1..4}` → emit testlib code, `run_exit=0`; `0` → fall through; else `run_exit=4` |
+| 4 | `ecsf ≠ 0` | `run_exit=ecsf` (solution RTE) |
+| 5 | (always) re-check interactor | as #3 |
+| 6 | otherwise | `run_exit=0` (success → compare decides) |
+
+`compare_verdict` then reads the emitted `testlib exitcode` line if present
+(`1,2 → WA(6)`, `3 → 43`, else `47`); otherwise it runs the checker
+(`0 → AC(4)`, `1,2 → WA(6)`, `3 → 43`, else `47`).
 
 ### 7. `entrypoints.py` (thin glue)
 
