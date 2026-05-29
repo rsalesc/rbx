@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 from typing import Optional
 
+# Run-phase judge-error exit code. Mirrors JUDGE_ERROR=4 in
+# rbx/resources/packagers/boca_next/runtime/interactor_run.sh:101. Named to
+# disambiguate from the compare-phase AC=4 in compare_verdict, which is unrelated.
+_INTERACTOR_JUDGE_ERROR = 4
+
 
 @dataclass(frozen=True)
 class PipeLog:
@@ -60,7 +65,7 @@ def _check_interactor(ecint: int) -> Optional['RunDecision']:
         return None
     if 1 <= ecint <= 4:
         return RunDecision(run_exit=0, testlib_code=ecint)
-    return RunDecision(run_exit=4, testlib_code=None)
+    return RunDecision(run_exit=_INTERACTOR_JUDGE_ERROR, testlib_code=None)
 
 
 def interactive_run_decision(first_tag: int, ecsf: int, ecint: int) -> RunDecision:
@@ -74,7 +79,7 @@ def interactive_run_decision(first_tag: int, ecsf: int, ecint: int) -> RunDecisi
 
     # 1. interactor crashed before solution
     if interactor_first and not is_testlib:
-        return _check_interactor(ecint)  # -> run_exit 4
+        return _check_interactor(ecint)  # -> run_exit _INTERACTOR_JUDGE_ERROR
 
     # 2. solution TLE (3) / MLE (7)
     if ecsf in (3, 7):

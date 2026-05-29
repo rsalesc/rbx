@@ -19,6 +19,15 @@ def test_pipelog_rejects_short_log():
         verdicts.PipeLog.parse('1\n0\n')
 
 
+def test_pipelog_rejects_non_numeric_line():
+    with pytest.raises(ValueError):
+        verdicts.PipeLog.parse('a\nb\nc\n')
+
+
+def test_pipelog_ignores_extra_lines():
+    assert verdicts.PipeLog.parse('1\n2\n3\n4\n5\n') == verdicts.PipeLog(1, 2, 3)
+
+
 @pytest.mark.parametrize(
     'safeexec_exit,expected',
     [
@@ -58,6 +67,7 @@ D = verdicts.RunDecision
     [
         (2, 0, 139, D(run_exit=4, testlib_code=None)),
         (2, 0, 5, D(run_exit=4, testlib_code=None)),
+        (2, 0, -1, D(run_exit=4, testlib_code=None)),
         (1, 3, 0, D(run_exit=3, testlib_code=None)),
         (1, 7, 0, D(run_exit=7, testlib_code=None)),
         (2, 3, 1, D(run_exit=3, testlib_code=None)),
