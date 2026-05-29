@@ -1,7 +1,20 @@
+import json
+import subprocess
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, List
 
 from rbx_boca import entrypoints
+
+_RUNTIME = (
+    Path(__file__).resolve().parents[5]
+    / 'rbx'
+    / 'resources'
+    / 'packagers'
+    / 'boca_next'
+    / 'runtime'
+)
 
 
 @dataclass
@@ -162,3 +175,40 @@ def test_interactor_launcher_does_not_require_context_factory(monkeypatch):
     )
     rc = entrypoints.main(['__interactor_launcher__', '1', '2', '--', './i.exe'])
     assert rc == 0
+
+
+# --- Task 8.2: python -m rbx_boca entry ---
+
+
+def test_main_module_limits_subprocess(tmp_path):
+    bundle = tmp_path / 'bundle'
+    bundle.mkdir()
+    (bundle / 'task.json').write_text(
+        json.dumps({'task_type': 'batch', 'output_kb': 65536})
+    )
+    (bundle / 'language.json').write_text(
+        json.dumps(
+            {
+                'language': {
+                    'id': 'cpp',
+                    'kind': 'compiled_static',
+                    'compiler_argv': ['g++', '-o', '{exe}', '{src}'],
+                    'run_argv': ['{exe}'],
+                },
+                'limits': {'time_sec': 3, 'runs': 2, 'memory_mb': 256},
+            }
+        )
+    )
+    env = {
+        'PATH': '/usr/bin:/bin',
+        'PYTHONPATH': str(_RUNTIME),
+        'RBX_BOCA_BUNDLE_DIR': str(bundle),
+    }
+    result = subprocess.run(
+        [sys.executable, '-m', 'rbx_boca', 'limits'],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == ['3', '2', '256', '65536']
