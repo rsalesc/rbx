@@ -54,6 +54,8 @@ def test_build_safeexec_argv_includes_procs_and_chroot():
     argv = sandbox.build_safeexec_argv(spec, program=['java', '-jar', 'run.jar'])
     assert '-u256' in argv and '-R/jail' in argv and '-n0' in argv
     assert argv[-3:] == ['java', '-jar', 'run.jar']
+    assert '--' in argv
+    assert argv[argv.index('--') + 1 :] == ['java', '-jar', 'run.jar']
 
 
 def test_profile_for_compiled_static_run():
@@ -133,6 +135,7 @@ def test_profile_for_compiled_static_compile():
     assert spec.procs is None
     assert spec.out_kb == 50000
     assert spec.runs == 1
+    assert spec.cpu_sec == 20
     assert spec.wall_sec == 20
     assert spec.mem_kb == 512000
     assert spec.stdin is None

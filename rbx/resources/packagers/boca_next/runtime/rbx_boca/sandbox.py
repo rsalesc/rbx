@@ -37,6 +37,7 @@ def build_safeexec_argv(
     if spec.stdin is not None:
         argv.append(f'-i{spec.stdin}')
     argv += [f'-o{spec.stdout}', f'-e{spec.stderr}']
+    argv.append('--')
     argv += list(program)
     return argv
 
@@ -131,7 +132,10 @@ def profile_for(
                 stderr=stderr,
             )
     else:  # compile
-        wall_sec = cpu_sec * 2
+        # BOCA compile scripts set BOTH the CPU limit (-t) and the wall
+        # limit (-T) to 2x the timelimit (compile/cpp:96,132).
+        cpu_sec = cpu_sec * 2
+        wall_sec = cpu_sec
         if kind == 'jvm_jar':
             spec = SafeExecSpec(
                 runs=1,
