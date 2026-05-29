@@ -1,4 +1,9 @@
+import os
+import shutil
+from pathlib import Path
 from typing import Any, List
+
+from rbx_boca.manifest import LanguageSpec
 
 
 def render_argv(template: List[str], **subst: Any) -> List[str]:
@@ -25,3 +30,18 @@ def render_argv(template: List[str], **subst: Any) -> List[str]:
                     rendered = rendered.replace('{' + key + '}', str(val))
             out.append(rendered)
     return out
+
+
+def resolve_compiler(spec: LanguageSpec) -> str:
+    """Resolve the compiler/interpreter binary: PATH lookup of compiler_argv[0],
+    then the first executable fallback. Mirrors `which X || X=/usr/bin/X` in the
+    bash compile templates."""
+    primary = spec.compiler_argv[0]
+    found = shutil.which(primary)
+    if found:
+        return found
+    for cand in spec.compiler_fallbacks:
+        p = Path(cand)
+        if p.is_file() and os.access(cand, os.X_OK):
+            return cand
+    raise FileNotFoundError(f'compiler not found for {spec.id}: {primary}')
