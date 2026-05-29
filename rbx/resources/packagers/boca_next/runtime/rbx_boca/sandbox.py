@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -37,3 +38,136 @@ def build_safeexec_argv(
     argv += [f'-o{spec.stdout}', f'-e{spec.stderr}']
     argv += list(program)
     return argv
+
+
+_KNOWN_KINDS = ('compiled_static', 'jvm_jar', 'interpreted')
+_KNOWN_PHASES = ('run', 'compile')
+
+_JVM_MEM_KB = 20000000
+_JVM_RUN_OUT_KB = 20000
+_COMPILE_OUT_KB = 50000
+
+
+def profile_for(
+    kind: str,
+    phase: str,
+    *,
+    cpu_sec: int,
+    memory_mb: int,
+    nruns: int = 1,
+    out_kb: int = 0,
+    uid: int,
+    gid: int,
+    chdir: str = '.',
+    chroot: Optional[str] = None,
+    stdin: Optional[str] = None,
+    stdout: str = 'stdout0',
+    stderr: str = 'stderr0',
+    overrides: Optional[dict] = None,
+) -> SafeExecSpec:
+    if kind not in _KNOWN_KINDS:
+        raise ValueError(f'unknown kind: {kind!r}')
+    if phase not in _KNOWN_PHASES:
+        raise ValueError(f'unknown phase: {phase!r}')
+
+    mem_kb = memory_mb * 1000
+
+    if phase == 'run':
+        wall_sec = cpu_sec * 4
+        run_stdin = 'stdin0' if stdin is None else stdin
+        if kind == 'compiled_static':
+            spec = SafeExecSpec(
+                runs=nruns,
+                cpu_sec=cpu_sec,
+                wall_sec=wall_sec,
+                mem_kb=mem_kb,
+                out_kb=out_kb,
+                fds=10,
+                n=1,
+                procs=None,
+                uid=uid,
+                gid=gid,
+                chdir=chdir,
+                chroot=chroot,
+                stdin=run_stdin,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        elif kind == 'jvm_jar':
+            spec = SafeExecSpec(
+                runs=1,
+                cpu_sec=cpu_sec,
+                wall_sec=wall_sec,
+                mem_kb=_JVM_MEM_KB,
+                out_kb=_JVM_RUN_OUT_KB,
+                fds=256,
+                n=0,
+                procs=256,
+                uid=uid,
+                gid=gid,
+                chdir=chdir,
+                chroot=chroot,
+                stdin=run_stdin,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        else:  # interpreted
+            spec = SafeExecSpec(
+                runs=1,
+                cpu_sec=cpu_sec,
+                wall_sec=wall_sec,
+                mem_kb=mem_kb,
+                out_kb=out_kb,
+                fds=256,
+                n=0,
+                procs=256,
+                uid=uid,
+                gid=gid,
+                chdir=chdir,
+                chroot=chroot,
+                stdin=run_stdin,
+                stdout=stdout,
+                stderr=stderr,
+            )
+    else:  # compile
+        wall_sec = cpu_sec * 2
+        if kind == 'jvm_jar':
+            spec = SafeExecSpec(
+                runs=1,
+                cpu_sec=cpu_sec,
+                wall_sec=wall_sec,
+                mem_kb=_JVM_MEM_KB,
+                out_kb=_COMPILE_OUT_KB,
+                fds=256,
+                n=0,
+                procs=256,
+                uid=uid,
+                gid=gid,
+                chdir=chdir,
+                chroot=chroot,
+                stdin=None,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        else:  # compiled_static & interpreted
+            spec = SafeExecSpec(
+                runs=1,
+                cpu_sec=cpu_sec,
+                wall_sec=wall_sec,
+                mem_kb=mem_kb,
+                out_kb=_COMPILE_OUT_KB,
+                fds=1000,
+                n=0,
+                procs=None,
+                uid=uid,
+                gid=gid,
+                chdir=chdir,
+                chroot=chroot,
+                stdin=None,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+    if overrides:
+        spec = dataclasses.replace(spec, **overrides)
+    return spec

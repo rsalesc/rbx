@@ -1,3 +1,4 @@
+import pytest
 from rbx_boca import sandbox
 
 
@@ -53,3 +54,146 @@ def test_build_safeexec_argv_includes_procs_and_chroot():
     argv = sandbox.build_safeexec_argv(spec, program=['java', '-jar', 'run.jar'])
     assert '-u256' in argv and '-R/jail' in argv and '-n0' in argv
     assert argv[-3:] == ['java', '-jar', 'run.jar']
+
+
+def test_profile_for_compiled_static_run():
+    spec = sandbox.profile_for(
+        'compiled_static',
+        'run',
+        cpu_sec=3,
+        memory_mb=256,
+        nruns=2,
+        out_kb=65536,
+        uid=1,
+        gid=1,
+    )
+    assert spec.fds == 10
+    assert spec.n == 1
+    assert spec.procs is None
+    assert spec.mem_kb == 256000
+    assert spec.out_kb == 65536
+    assert spec.runs == 2
+    assert spec.wall_sec == 12
+    assert spec.cpu_sec == 3
+    assert spec.stdin == 'stdin0'
+
+
+def test_profile_for_jvm_jar_run_forces_nruns_and_hardcodes():
+    spec = sandbox.profile_for(
+        'jvm_jar',
+        'run',
+        cpu_sec=2,
+        memory_mb=256,
+        nruns=5,
+        out_kb=100,
+        uid=1,
+        gid=1,
+    )
+    assert spec.fds == 256
+    assert spec.procs == 256
+    assert spec.n == 0
+    assert spec.mem_kb == 20000000
+    assert spec.out_kb == 20000
+    assert spec.runs == 1
+    assert spec.wall_sec == 8
+    assert spec.stdin == 'stdin0'
+
+
+def test_profile_for_interpreted_run():
+    spec = sandbox.profile_for(
+        'interpreted',
+        'run',
+        cpu_sec=2,
+        memory_mb=256,
+        nruns=5,
+        out_kb=4096,
+        uid=1,
+        gid=1,
+    )
+    assert spec.fds == 256
+    assert spec.procs == 256
+    assert spec.n == 0
+    assert spec.mem_kb == 256000
+    assert spec.out_kb == 4096
+    assert spec.runs == 1
+    assert spec.wall_sec == 8
+
+
+def test_profile_for_compiled_static_compile():
+    spec = sandbox.profile_for(
+        'compiled_static',
+        'compile',
+        cpu_sec=10,
+        memory_mb=512,
+        uid=1,
+        gid=1,
+    )
+    assert spec.fds == 1000
+    assert spec.n == 0
+    assert spec.procs is None
+    assert spec.out_kb == 50000
+    assert spec.runs == 1
+    assert spec.wall_sec == 20
+    assert spec.mem_kb == 512000
+    assert spec.stdin is None
+
+
+def test_profile_for_interpreted_compile():
+    spec = sandbox.profile_for(
+        'interpreted',
+        'compile',
+        cpu_sec=10,
+        memory_mb=512,
+        uid=1,
+        gid=1,
+    )
+    assert spec.fds == 1000
+    assert spec.n == 0
+    assert spec.procs is None
+    assert spec.out_kb == 50000
+    assert spec.runs == 1
+    assert spec.stdin is None
+
+
+def test_profile_for_jvm_jar_compile_unified():
+    spec = sandbox.profile_for(
+        'jvm_jar',
+        'compile',
+        cpu_sec=10,
+        memory_mb=512,
+        uid=1,
+        gid=1,
+    )
+    assert spec.fds == 256
+    assert spec.n == 0
+    assert spec.procs == 256
+    assert spec.mem_kb == 20000000
+    assert spec.out_kb == 50000
+    assert spec.runs == 1
+    assert spec.wall_sec == 20
+    assert spec.stdin is None
+
+
+def test_profile_for_overrides_win():
+    spec = sandbox.profile_for(
+        'compiled_static',
+        'run',
+        cpu_sec=1,
+        memory_mb=64,
+        uid=1,
+        gid=1,
+        overrides={'fds': 99},
+    )
+    assert spec.fds == 99
+
+
+def test_profile_for_unknown_kind_raises():
+    with pytest.raises(ValueError):
+        sandbox.profile_for('nope', 'run', cpu_sec=1, memory_mb=64, uid=1, gid=1)
+
+
+def test_profile_for_unknown_phase_raises():
+    with pytest.raises(ValueError):
+        sandbox.profile_for(
+            'compiled_static', 'nope', cpu_sec=1, memory_mb=64, uid=1, gid=1
+        )
