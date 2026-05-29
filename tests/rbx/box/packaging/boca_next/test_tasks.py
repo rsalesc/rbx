@@ -175,3 +175,28 @@ def test_interactive_compare_uses_testlib_line_without_checker(tmp_path):
     )
     assert rc == 43  # compare_verdict(3, None)
     assert called == []  # checker NOT invoked
+
+
+# --- Task 6.4: InteractiveTask.run ---
+
+
+def test_interactive_run_parses_pipelog_and_emits_testlib(tmp_path):
+    def runner(argv, **kw):
+        # emulate pipe.exe writing its 3-line log: interactor-first, sol ok, WA(1)
+        (tmp_path / 'pipe.log').write_text('2\n0\n1\n')
+        return 0
+
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    ctx = _ctx(
+        tmp_path,
+        runner=runner,
+        lang_spec=spec,
+        task_type='interactive',
+        pipe_path='/bin/pipe.exe',
+        make_fifos=lambda: None,
+    )
+    rc = tasks.InteractiveTask().run(
+        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+    )
+    assert rc == 0  # interactive_run_decision(2,0,1) -> run_exit 0, testlib 1
+    assert (tmp_path / 'stdout0').read_text().strip() == 'testlib exitcode 1'

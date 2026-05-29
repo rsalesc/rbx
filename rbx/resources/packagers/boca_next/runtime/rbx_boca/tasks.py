@@ -28,6 +28,10 @@ _OTHER_ERROR = 47
 
 # Local filenames inside the sandbox cwd.
 _STDIN = 'stdin0'
+_STDOUT = 'stdout0'
+_FIFO_IN = 'fifo.in'
+_FIFO_OUT = 'fifo.out'
+_PIPE_LOG = 'pipe.log'
 
 # First line of team output that carries an interactor (testlib) verdict.
 _TESTLIB_RE = re.compile(r'^testlib exitcode\s+(-?\d+)\s*$')
@@ -211,6 +215,94 @@ class InteractiveTask:
     """Interactive task: solution and interactor talk over a pair of fifos,
     bridged by pipe.exe. The interactor's verdict (testlib code) is recorded
     into stdout0 so the (shared) compare step can read it without a checker."""
+
+    def run(self, ctx: RunContext, args: List[str]) -> int:
+        # BOCA run argv: basename inputfile timelimit repetitions memory out_kb
+        basename, inputfile, timelimit, repetitions, memory, outputsize_kb = (
+            args[0],
+            args[1],
+            int(args[2]),
+            int(args[3]),
+            int(args[4]),
+            int(args[5]),
+        )
+        spec = ctx.spec
+
+        # Make the bidirectional fifos (stubbable for unit tests).
+        make_fifos = (
+            ctx.make_fifos
+            if ctx.make_fifos is not None
+            else (lambda: self._default_make_fifos(ctx))
+        )
+        make_fifos()
+
+        # Build the safeexec-wrapped solution command.
+        run_extra = {}
+        if spec.kind == 'interpreted':
+            run_extra['interp'] = languages.resolve_compiler(spec)
+        program = languages.build_run_argv(
+            spec, exe=basename, memory_mb=memory, **run_extra
+        )
+        spec_se = sandbox.profile_for(
+            spec.kind,
+            'run',
+            cpu_sec=timelimit,
+            memory_mb=memory,
+            nruns=repetitions,
+            out_kb=outputsize_kb,
+            uid=ctx.uid,
+            gid=ctx.gid,
+            chroot=ctx.chroot,
+            overrides=spec.sandbox_overrides,
+        )
+        solution_cmd = sandbox.build_safeexec_argv(
+            spec_se, program, safeexec=ctx.safeexec.path
+        )
+
+        # pipe.exe -i fifo.in -o fifo.out -e <sol stderr> -E <int stderr>
+        #          -- <solution cmd> = <interactor launcher cmd>
+        pipe_argv = [
+            str(ctx.pipe_path),
+            '-i',
+            _FIFO_IN,
+            '-o',
+            _FIFO_OUT,
+            '-e',
+            spec_se.stderr,
+            '-E',
+            'interactor.stderr',
+            '--',
+        ]
+        pipe_argv += solution_cmd
+        pipe_argv += ['=']
+        # The interactor launcher receives the test input path ({input} token);
+        # testlib interactors read the input file from their argv.
+        pipe_argv += languages.render_argv(
+            list(ctx.interactor_launch_argv), input=inputfile
+        )
+
+        ctx.runner(pipe_argv)
+
+        # Parse pipe.log and apply the ordered interactive decision logic.
+        log = verdicts.PipeLog.parse((ctx.cwd / _PIPE_LOG).read_text())
+        decision = verdicts.interactive_run_decision(
+            log.first_tag, log.solution_status, log.interactor_status
+        )
+
+        # Record the interactor verdict for the compare step (no checker run).
+        if decision.testlib_code is not None:
+            (ctx.cwd / _STDOUT).write_text(
+                'testlib exitcode {}\n'.format(decision.testlib_code)
+            )
+
+        return decision.run_exit
+
+    def _default_make_fifos(self, ctx: RunContext) -> None:
+        for name in (_FIFO_IN, _FIFO_OUT):
+            path = ctx.cwd / name
+            if path.exists():
+                path.unlink()
+            os.mkfifo(str(path))
 
     def compare(self, ctx: RunContext, args: List[str]) -> int:
         return _compare(ctx, args)
