@@ -67,9 +67,9 @@ def _ctx(
         gid=65534,
         chroot=None,
         cache_dir=Path(tmp_path) / 'cache',
-        checker_path=Path(checker_path),
-        interactor_path=Path(interactor_path),
-        pipe_path=Path(pipe_path),
+        checker_path=Path(checker_path) if checker_path is not None else None,
+        interactor_path=Path(interactor_path) if interactor_path is not None else None,
+        pipe_path=Path(pipe_path) if pipe_path is not None else None,
         static_link_ok=static_link_ok
         if static_link_ok is not None
         else (lambda exe: True),
@@ -183,6 +183,30 @@ def test_batch_compare_runs_checker(tmp_path):
     assert rc == 6  # compare_verdict(None, 1)
 
 
+def test_compare_without_checker_path_returns_judge_error(tmp_path):
+    """No testlib marker + checker_path unconfigured -> fail loudly with 47,
+    and the checker/runner is never invoked."""
+    (tmp_path / 'team.out').write_text('42\n')
+    (tmp_path / 'exp.out').write_text('42\n')
+    (tmp_path / 'in.txt').write_text('x\n')
+    called = []
+    ctx = _ctx(
+        tmp_path,
+        runner=lambda argv, **kw: called.append(argv) or 0,
+        checker_path=None,
+    )
+    rc = tasks.BatchTask().compare(
+        ctx,
+        [
+            str(tmp_path / 'team.out'),
+            str(tmp_path / 'exp.out'),
+            str(tmp_path / 'in.txt'),
+        ],
+    )
+    assert rc == 47  # OTHER_ERROR
+    assert called == []  # checker NOT invoked
+
+
 def test_interactive_compare_uses_testlib_line_without_checker(tmp_path):
     (tmp_path / 'team.out').write_text('testlib exitcode 3\n')
     (tmp_path / 'exp.out').write_text('\n')
@@ -276,6 +300,57 @@ def test_interactive_run_malformed_log_returns_judge_error(tmp_path):
         ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
     )
     assert rc == 4  # judge error
+
+
+def test_interactive_run_without_pipe_path_returns_judge_error(tmp_path):
+    """pipe_path unconfigured -> fail loudly with judge error 4, runner never
+    invoked (no pipe.exe built/run)."""
+    called = []
+
+    def runner(argv, **kw):
+        called.append(argv)
+        return 0
+
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    (tmp_path / 'in.txt').write_text('x\n')
+    ctx = _ctx(
+        tmp_path,
+        runner=runner,
+        lang_spec=spec,
+        task_type='interactive',
+        pipe_path=None,
+        make_fifos=lambda: None,
+    )
+    rc = tasks.InteractiveTask().run(
+        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+    )
+    assert rc == 4  # judge error
+    assert called == []  # runner NOT invoked
+
+
+def test_interactive_run_without_interactor_path_returns_judge_error(tmp_path):
+    """interactor_path unconfigured -> fail loudly with judge error 4."""
+    called = []
+
+    def runner(argv, **kw):
+        called.append(argv)
+        return 0
+
+    spec = _spec('cpp', 'compiled_static', run_argv=['{exe}'])
+    (tmp_path / 'in.txt').write_text('x\n')
+    ctx = _ctx(
+        tmp_path,
+        runner=runner,
+        lang_spec=spec,
+        task_type='interactive',
+        interactor_path=None,
+        make_fifos=lambda: None,
+    )
+    rc = tasks.InteractiveTask().run(
+        ctx, ['run.exe', str(tmp_path / 'in.txt'), '3', '1', '256', '65536']
+    )
+    assert rc == 4  # judge error
+    assert called == []  # runner NOT invoked
 
 
 # --- Task 6.5: compile paths (jvm manifest, interpreted, kotlin) ---

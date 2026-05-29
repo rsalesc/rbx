@@ -15,6 +15,7 @@ stdlib-only, Python 3.8 compatible.
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -121,6 +122,12 @@ def _compare(ctx: 'RunContext', args: List[str]) -> int:
     testlib_code = _read_testlib_code(Path(team_output))
     if testlib_code is not None:
         return verdicts.compare_verdict(testlib_code=testlib_code, checker_exit=None)
+
+    # No testlib marker: we are about to invoke the checker. If its path was
+    # never wired, fail loudly instead of exec'ing a program named "None".
+    if ctx.checker_path is None:
+        print('checker_path not configured', file=sys.stderr)
+        return _OTHER_ERROR
 
     checker_exit = ctx.runner(
         [str(ctx.checker_path), input_file, team_output, expected_output]
@@ -323,6 +330,12 @@ class InteractiveTask(BaseTask):
         return pipe_argv
 
     def run(self, ctx: RunContext, args: List[str]) -> int:
+        # Fail loudly if the interactive assets were never wired, instead of
+        # building a pipe argv that exec's a program named "None".
+        if ctx.interactor_path is None or ctx.pipe_path is None:
+            print('interactor_path/pipe_path not configured', file=sys.stderr)
+            return _JUDGE_ERROR
+
         # Copy the test input into stdin0 so the interactor (which is invoked
         # with `stdin0 stdout0`) reads the actual test data. Mirrors the batch
         # path's stdin0 population; the interactor argv passes the literal
