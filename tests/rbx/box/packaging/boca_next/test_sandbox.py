@@ -197,3 +197,34 @@ def test_profile_for_unknown_phase_raises():
         sandbox.profile_for(
             'compiled_static', 'nope', cpu_sec=1, memory_mb=64, uid=1, gid=1
         )
+
+
+def test_safeexec_run_invokes_runner_and_returns_exit():
+    calls = []
+
+    def fake_runner(argv, **kw):
+        calls.append(argv)
+        return 7  # MLE
+
+    ex = sandbox.SafeExec(path='/usr/bin/safeexec', runner=fake_runner)
+    spec = sandbox.SafeExecSpec(
+        runs=1,
+        cpu_sec=1,
+        wall_sec=4,
+        mem_kb=64000,
+        out_kb=1024,
+        fds=10,
+        n=1,
+        procs=None,
+        uid=1,
+        gid=1,
+        chdir='.',
+        chroot=None,
+        stdin='stdin0',
+        stdout='stdout0',
+        stderr='stderr0',
+    )
+    code = ex.run(spec, program=['./run.exe'])
+    assert code == 7
+    assert calls[0][0] == '/usr/bin/safeexec'
+    assert calls[0][-1] == './run.exe'

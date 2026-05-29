@@ -1,6 +1,7 @@
 import dataclasses
+import subprocess
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 
 @dataclass(frozen=True)
@@ -171,3 +172,21 @@ def profile_for(
     if overrides:
         spec = dataclasses.replace(spec, **overrides)
     return spec
+
+
+def _default_runner(argv: List[str], **kwargs) -> int:
+    return subprocess.call(argv, **kwargs)
+
+
+class SafeExec:
+    def __init__(
+        self,
+        path: str = 'safeexec',
+        runner: Optional[Callable[..., int]] = None,
+    ) -> None:
+        self.path = path
+        self.runner = runner if runner is not None else _default_runner
+
+    def run(self, spec: SafeExecSpec, program: List[str], **kwargs) -> int:
+        argv = build_safeexec_argv(spec, program, safeexec=self.path)
+        return self.runner(argv, **kwargs)
