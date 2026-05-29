@@ -15,3 +15,12 @@ class PipeLog:
         if len(lines) < 3:
             raise ValueError(f'pipe.log must have 3 numeric lines, got: {text!r}')
         return PipeLog(int(lines[0]), int(lines[1]), int(lines[2]))
+
+
+def batch_run_exit(safeexec_exit: int) -> int:
+    """Map safeexec's exit code to the run-script exit code BOCA expects.
+
+    Mirrors rbx/resources/packagers/boca/run/* : codes > 10 (child exited with
+    nonzero N, reported as N+10) collapse to 9 (runtime error).
+    """
+    return 9 if safeexec_exit > 10 else safeexec_exit
