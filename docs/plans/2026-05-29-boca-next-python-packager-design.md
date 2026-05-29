@@ -324,3 +324,36 @@ arrive as argv from BOCA. `tests` is a trivial validation hook (`exit 0`).
   follow-up issue.
 - Migrating or deprecating the existing bash packager.
 - Polygon/BOCA upload integration changes.
+
+## Implementation corrections (as-built)
+
+The earlier prose above was written from slightly incorrect research. The
+following points are the authoritative description of the Layer 2 runtime as
+actually built; where they conflict with text above, these win.
+
+- **`nruns` is honored for ALL kinds in the batch run phase.** The earlier kind
+  table claimed `nruns` is forced to `1` for JVM/interpreted runs. That is WRONG
+  versus the bash: `run/cpp`, `run/java`, and `run/py3` all pass `-r$nruns`.
+  Forcing to `1` happens only in Layer 1's limits computation and for
+  interactive tasks — never in the per-language run profiles. So
+  `sandbox.profile_for` honors the passed `nruns` for `compiled_static`,
+  `jvm_jar`, AND `interpreted` in the run phase.
+- **safeexec argv includes `-n` (process limit) and a `--` separator.**
+  `build_safeexec_argv` emits `-n{n}` (`1` for `compiled_static`; `0` for JVM,
+  interpreted, and compile) and a literal `--` before the program, so JVM /
+  interpreter dash-args are not parsed by safeexec. The compile phase uses
+  cpu = wall = 2× the timelimit (bash `-t$ttime -T$ttime`, `ttime = time*2`);
+  the run phase uses cpu = 1× and wall = 4×.
+- **Manifests are read via `pkgutil.get_data('rbx_boca', name)` from INSIDE the
+  `rbx_boca` package** (not the zip root), with an `RBX_BOCA_BUNDLE_DIR` env
+  override for testing. (The design originally sketched manifests at the zip
+  root; bundling them inside the package is what makes zip-safe reading work via
+  `pkgutil`.)
+- **The interactor launcher's `RLIMIT_AS` is best-effort** — clamped to the hard
+  limit and with errors swallowed — so it works on non-Linux dev machines.
+  Production Linux still applies the ~1GB cap.
+- **Interactive testing scope:** a full real-`pipe.exe` / SUID-`safeexec`
+  interactive run needs gcc + root and is out of scope for hermetic CI. The risk
+  (a leaked notify fd → `pipe.exe` hang) is instead covered by the
+  interactor-launcher fd-inheritance + watchdog integration tests, plus a
+  `build_pipe_argv` shape test that structurally matches `interactor_run.sh`.
