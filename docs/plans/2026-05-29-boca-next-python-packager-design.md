@@ -123,7 +123,7 @@ the one for its own language:
 ```jsonc
 {
   "language": { "...one LanguageSpec..." : true },
-  "limits":   { "time_sec": 3, "runs": 2, "memory_mb": 256 }
+  "limits":   { "time_sec": 3, "runs": 2, "memory_mb": 256, "wall_time_sec": 12 }
 }
 ```
 
@@ -341,9 +341,19 @@ actually built; where they conflict with text above, these win.
 - **safeexec argv includes `-n` (process limit) and a `--` separator.**
   `build_safeexec_argv` emits `-n{n}` (`1` for `compiled_static`; `0` for JVM,
   interpreted, and compile) and a literal `--` before the program, so JVM /
-  interpreter dash-args are not parsed by safeexec. The compile phase uses
-  cpu = wall = 2× the timelimit (bash `-t$ttime -T$ttime`, `ttime = time*2`);
-  the run phase uses cpu = 1× and wall = 4×.
+  interpreter dash-args are not parsed by safeexec.
+- **Time limits are configured, not hardcoded multiples** (revises the original
+  `×4` run / `×2` compile sketch). `profile_for` is a dumb assembler taking
+  explicit `cpu_sec` and `wall_sec`; the caller supplies the policy:
+  - **Run wall TL** is an absolute `wall_time_sec` field on `LimitsConfig` (a
+    per-problem limit, hence in the limits). The run phase sets `cpu_sec` from
+    the BOCA run argv and `wall_sec = limits.wall_time_sec`.
+  - **Compile TL** is an absolute `compile_time_sec` field on `LanguageSpec`
+    (default `30`; a per-language property — JVM langs set it higher), used as
+    `cpu_sec == wall_sec == compile_time_sec` (TL == wall TL), fully decoupled
+    from the problem timelimit.
+  - Interactive `ittime` (the interactor watchdog budget) is `wall_time_sec + 1`
+    (`interactor_run.sh:13`, where `ttime` is the wall TL).
 - **Manifests are read via `pkgutil.get_data('rbx_boca', name)` from INSIDE the
   `rbx_boca` package** (not the zip root), with an `RBX_BOCA_BUNDLE_DIR` env
   override for testing. (The design originally sketched manifests at the zip

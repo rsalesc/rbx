@@ -227,6 +227,7 @@ class BatchTask(BaseTask):
             spec.kind,
             'run',
             cpu_sec=timelimit,
+            wall_sec=ctx.lang.limits.wall_time_sec,
             memory_mb=memory,
             nruns=repetitions,
             out_kb=outputsize_kb,
@@ -278,10 +279,12 @@ class InteractiveTask(BaseTask):
         program = languages.build_run_argv(
             spec, exe=basename, memory_mb=memory, **run_extra
         )
+        wall_time_sec = ctx.lang.limits.wall_time_sec
         spec_se = sandbox.profile_for(
             spec.kind,
             'run',
             cpu_sec=timelimit,
+            wall_sec=wall_time_sec,
             memory_mb=memory,
             nruns=repetitions,
             out_kb=outputsize_kb,
@@ -300,8 +303,8 @@ class InteractiveTask(BaseTask):
         )
 
         # Interactor side: re-enter this bundle under the watchdog/RLIMIT_AS cap.
-        # ittime = wall TL + 1 (interactor_run.sh:13).
-        ittime = timelimit + 1
+        # ittime = wall TL + 1 (interactor_run.sh:13, where ttime is the wall TL).
+        ittime = wall_time_sec + 1
         interactor_cmd = list(ctx.interactor_launch_argv) + [
             '__interactor_launcher__',
             str(ittime),

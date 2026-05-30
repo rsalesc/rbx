@@ -63,6 +63,7 @@ def test_profile_for_compiled_static_run():
         'compiled_static',
         'run',
         cpu_sec=3,
+        wall_sec=12,
         memory_mb=256,
         nruns=2,
         out_kb=65536,
@@ -85,6 +86,7 @@ def test_profile_for_jvm_jar_run_honors_nruns_and_hardcodes():
         'jvm_jar',
         'run',
         cpu_sec=2,
+        wall_sec=8,
         memory_mb=256,
         nruns=5,
         out_kb=100,
@@ -106,6 +108,7 @@ def test_profile_for_interpreted_run():
         'interpreted',
         'run',
         cpu_sec=2,
+        wall_sec=8,
         memory_mb=256,
         nruns=5,
         out_kb=4096,
@@ -122,10 +125,12 @@ def test_profile_for_interpreted_run():
 
 
 def test_profile_for_compiled_static_compile():
+    # Compile uses caller-supplied cpu == wall == compile_time_sec (TL == wall TL).
     spec = sandbox.profile_for(
         'compiled_static',
         'compile',
-        cpu_sec=10,
+        cpu_sec=20,
+        wall_sec=20,
         memory_mb=512,
         uid=1,
         gid=1,
@@ -145,7 +150,8 @@ def test_profile_for_interpreted_compile():
     spec = sandbox.profile_for(
         'interpreted',
         'compile',
-        cpu_sec=10,
+        cpu_sec=20,
+        wall_sec=20,
         memory_mb=512,
         uid=1,
         gid=1,
@@ -162,7 +168,8 @@ def test_profile_for_jvm_jar_compile_unified():
     spec = sandbox.profile_for(
         'jvm_jar',
         'compile',
-        cpu_sec=10,
+        cpu_sec=20,
+        wall_sec=20,
         memory_mb=512,
         uid=1,
         gid=1,
@@ -182,6 +189,7 @@ def test_profile_for_overrides_win():
         'compiled_static',
         'run',
         cpu_sec=1,
+        wall_sec=4,
         memory_mb=64,
         uid=1,
         gid=1,
@@ -192,13 +200,15 @@ def test_profile_for_overrides_win():
 
 def test_profile_for_unknown_kind_raises():
     with pytest.raises(ValueError):
-        sandbox.profile_for('nope', 'run', cpu_sec=1, memory_mb=64, uid=1, gid=1)
+        sandbox.profile_for(
+            'nope', 'run', cpu_sec=1, wall_sec=4, memory_mb=64, uid=1, gid=1
+        )
 
 
 def test_profile_for_unknown_phase_raises():
     with pytest.raises(ValueError):
         sandbox.profile_for(
-            'compiled_static', 'nope', cpu_sec=1, memory_mb=64, uid=1, gid=1
+            'compiled_static', 'nope', cpu_sec=1, wall_sec=4, memory_mb=64, uid=1, gid=1
         )
 
 

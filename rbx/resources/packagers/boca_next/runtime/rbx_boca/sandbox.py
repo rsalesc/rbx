@@ -68,6 +68,7 @@ def profile_for(
     phase: str,
     *,
     cpu_sec: int,
+    wall_sec: int,
     memory_mb: int,
     nruns: int = 1,
     out_kb: int = 0,
@@ -88,7 +89,6 @@ def profile_for(
     mem_kb = memory_mb * 1000
 
     if phase == 'run':
-        wall_sec = cpu_sec * 4
         run_stdin = 'stdin0' if stdin is None else stdin
         if kind == 'compiled_static':
             spec = SafeExecSpec(
@@ -145,10 +145,9 @@ def profile_for(
                 stderr=stderr,
             )
     else:  # compile
-        # BOCA compile scripts set BOTH the CPU limit (-t) and the wall
-        # limit (-T) to 2x the timelimit (compile/cpp:96,132).
-        cpu_sec = cpu_sec * 2
-        wall_sec = cpu_sec
+        # Compile uses the caller-supplied cpu_sec/wall_sec as-is. The caller
+        # sets cpu_sec == wall_sec == spec.compile_time_sec (TL == wall TL),
+        # decoupled from the problem timelimit.
         if kind == 'jvm_jar':
             spec = SafeExecSpec(
                 runs=1,

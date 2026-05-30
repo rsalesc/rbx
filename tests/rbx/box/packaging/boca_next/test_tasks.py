@@ -52,7 +52,9 @@ def _ctx(
     spec = lang_spec if lang_spec is not None else _spec('cpp', 'compiled_static')
     lang = manifest.LanguageManifest(
         language=spec,
-        limits=manifest.LimitsConfig(time_sec=1, runs=1, memory_mb=256),
+        limits=manifest.LimitsConfig(
+            time_sec=1, runs=1, memory_mb=256, wall_time_sec=12
+        ),
     )
     task = manifest.TaskConfig(task_type=task_type, output_kb=output_kb)
     if safeexec is None:

@@ -14,6 +14,10 @@ class LanguageSpec:
     build: Optional[str] = None  # jvm: 'javac_then_jar' | 'kotlinc_include_runtime'
     syntax_check: bool = False  # interpreted (py3) py_compile pre-check
     sandbox_overrides: Dict[str, Any] = field(default_factory=dict)
+    # Absolute compile-phase time limit (seconds). Compile uses cpu == wall ==
+    # this value, decoupled from the problem timelimit (e.g. JVM langs set it
+    # higher). A per-language property, hence it lives on the spec.
+    compile_time_sec: int = 30
 
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> 'LanguageSpec':
@@ -27,6 +31,7 @@ class LanguageSpec:
             build=d.get('build'),
             syntax_check=bool(d.get('syntax_check', False)),
             sandbox_overrides=dict(d.get('sandbox_overrides', {})),
+            compile_time_sec=int(d.get('compile_time_sec', 30)),
         )
 
 
@@ -35,6 +40,10 @@ class LimitsConfig:
     time_sec: int
     runs: int
     memory_mb: int
+    # Absolute run-phase wall time limit (seconds), used directly as safeexec -T.
+    # A per-problem limit, hence it lives in the limits rather than being a
+    # hardcoded multiple of the cpu timelimit.
+    wall_time_sec: int
 
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> 'LimitsConfig':
@@ -42,6 +51,7 @@ class LimitsConfig:
             time_sec=int(d['time_sec']),
             runs=int(d['runs']),
             memory_mb=int(d['memory_mb']),
+            wall_time_sec=int(d['wall_time_sec']),
         )
 
 

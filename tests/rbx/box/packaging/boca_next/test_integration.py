@@ -95,7 +95,12 @@ def _interpreted_language_json():
             'run_argv': ['{interp}', '{exe}'],
             'syntax_check': False,
         },
-        'limits': {'time_sec': 3, 'runs': 1, 'memory_mb': 256},
+        'limits': {
+            'time_sec': 3,
+            'runs': 1,
+            'memory_mb': 256,
+            'wall_time_sec': 12,
+        },
     }
 
 
@@ -115,7 +120,12 @@ def test_pyz_limits_end_to_end(tmp_path):
                 'compiler_argv': ['g++', '-o', '{exe}', '{src}'],
                 'run_argv': ['{exe}'],
             },
-            'limits': {'time_sec': 3, 'runs': 2, 'memory_mb': 256},
+            'limits': {
+                'time_sec': 3,
+                'runs': 2,
+                'memory_mb': 256,
+                'wall_time_sec': 12,
+            },
         },
     )
     result = subprocess.run(
@@ -192,7 +202,9 @@ def test_compare_end_to_end_via_entrypoint(tmp_path):
             language=manifest.LanguageSpec.from_dict(
                 _interpreted_language_json()['language']
             ),
-            limits=manifest.LimitsConfig(time_sec=3, runs=1, memory_mb=256),
+            limits=manifest.LimitsConfig(
+                time_sec=3, runs=1, memory_mb=256, wall_time_sec=12
+            ),
         )
         return tasks.RunContext(
             task=manifest.TaskConfig(task_type='batch', output_kb=65536),
@@ -377,7 +389,9 @@ def _interactive_ctx(tmp_path):
     )
     lang = manifest.LanguageManifest(
         language=spec,
-        limits=manifest.LimitsConfig(time_sec=3, runs=1, memory_mb=256),
+        limits=manifest.LimitsConfig(
+            time_sec=3, runs=1, memory_mb=256, wall_time_sec=12
+        ),
     )
     return tasks.RunContext(
         task=manifest.TaskConfig(task_type='interactive', output_kb=65536),
@@ -432,7 +446,7 @@ def test_build_pipe_argv_shape(tmp_path):
         '-m',
         'rbx_boca',
         '__interactor_launcher__',
-        '4',  # ittime = timelimit(3) + 1
+        '13',  # ittime = wall_time_sec(12) + 1
         '__FD__',
         '--',
         '/box/interactor.exe',
@@ -461,7 +475,9 @@ def test_interactive_run_still_parses_pipelog(tmp_path):
                     'run_argv': ['{exe}'],
                 }
             ),
-            limits=manifest.LimitsConfig(time_sec=3, runs=1, memory_mb=256),
+            limits=manifest.LimitsConfig(
+                time_sec=3, runs=1, memory_mb=256, wall_time_sec=12
+            ),
         ),
         cwd=tmp_path,
         runner=runner,

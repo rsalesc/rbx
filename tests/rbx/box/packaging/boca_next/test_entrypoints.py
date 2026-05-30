@@ -203,7 +203,12 @@ def test_main_module_limits_subprocess(tmp_path):
                     'compiler_argv': ['g++', '-o', '{exe}', '{src}'],
                     'run_argv': ['{exe}'],
                 },
-                'limits': {'time_sec': 3, 'runs': 2, 'memory_mb': 256},
+                'limits': {
+                    'time_sec': 3,
+                    'runs': 2,
+                    'memory_mb': 256,
+                    'wall_time_sec': 12,
+                },
             }
         )
     )

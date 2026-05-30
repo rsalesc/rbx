@@ -9,9 +9,10 @@ LANG_JSON = """
     "compiler_argv": ["g++", "{flags}", "-o", "{exe}", "{src}"],
     "compiler_fallbacks": ["/usr/bin/g++"],
     "flags": "-std=c++20 -O2 -lm -static",
-    "run_argv": ["{exe}"]
+    "run_argv": ["{exe}"],
+    "compile_time_sec": 45
   },
-  "limits": {"time_sec": 3, "runs": 2, "memory_mb": 256}
+  "limits": {"time_sec": 3, "runs": 2, "memory_mb": 256, "wall_time_sec": 12}
 }
 """
 
@@ -30,7 +31,23 @@ def test_language_manifest_parses():
     assert m.language.build is None
     assert m.language.syntax_check is False
     assert m.language.sandbox_overrides == {}
+    assert m.language.compile_time_sec == 45
     assert m.limits.runs == 2
+    assert m.limits.wall_time_sec == 12
+
+
+def test_language_spec_compile_time_sec_defaults_to_30():
+    spec = manifest.LanguageSpec.from_dict(
+        {
+            'id': 'cpp',
+            'kind': 'compiled_static',
+            'compiler_argv': ['g++', '{src}'],
+            'compiler_fallbacks': [],
+            'flags': '',
+            'run_argv': ['{exe}'],
+        }
+    )
+    assert spec.compile_time_sec == 30
 
 
 def test_language_spec_optional_fields():
