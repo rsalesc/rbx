@@ -105,6 +105,45 @@ def _fmt_seconds(ms: int) -> str:
 | 0.05s  | 2000ms         | 10 (capped) | 0.500  | 0.05s        | exact, warns budget<2s|
 | 1.234s | (unset)        | 1           | 1.234  | 1.234s       | exact                 |
 
+### Judge-side `run/{lang}` scripts (resources)
+
+Emitting a fractional budget in `limits/{lang}` is only half the fix: the BOCA judge runs
+the submission through `rbx/resources/packagers/boca/run/{lang}`, which receives the budget
+as `$3` and passes it to `safeexec -t$time`. `safeexec.c` parses `-t` with `atof`, so it
+accepts fractional CPU limits — but the batch `run/*` scripts wrapped `$3` in **bash
+integer** operations:
+
+```bash
+time=$3
+if [ "$time" -gt "0" ]; then        # errors on "1.200": integer expression expected
+  let "ttime = $time + 30"          # bash integer arithmetic, also errors
+else
+  time=1                            # <-- silently resets the CPU limit to 1 second
+  ttime=30
+fi
+```
+
+With a fractional `$3`, the comparison errors (returns false) and the `else` branch resets
+`time=1`, so **every** batch problem would be judged with a 1-second CPU limit regardless of
+its real TL. The interactive `run/*` scripts already avoid this by computing an integer
+ceiling via `awk` for the bash-only operations while still passing the fractional `$time` to
+safeexec. The fix mirrors that in all eight batch scripts (`c`, `cc`, `cpp`, `java`, `kt`,
+`py2`, `py3`, and the unused `bkp` template):
+
+```bash
+time=$3
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")   # ceil, for bash integer ops only
+if [ "$rtime" -gt "0" ]; then
+  let "ttime = $rtime + 30"                           # wall limit = ceil(time) + 30
+else
+  time=1
+  ttime=30
+fi
+# safeexec still receives the exact fractional CPU budget: ... -t$time -T$ttime ...
+```
+
+MOJ run scripts use a different runtime and never had this block, so they are unaffected.
+
 ## Behavior change note
 
 Packages that previously got "nice" TLs now get a single run with the identical effective
