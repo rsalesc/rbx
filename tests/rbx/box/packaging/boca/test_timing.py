@@ -105,14 +105,11 @@ def test_get_limits_communication_is_single_run_and_exact():
 
 _WALL_SAMPLE = (
     'rtime=$(awk "BEGIN {print int($time+0.9999999)}")\n'
-    'if [ "$rtime" -gt "0" ]; then\n'
-    '  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
-    '+ {{rbxWallIncrement}} * $nruns + 0.9999999)}")\n'
-    'else\n'
+    'if [ "$rtime" -le "0" ]; then\n'
     '  time=1\n'
-    '  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
-    '+ {{rbxWallIncrement}} * $nruns + 0.9999999)}")\n'
     'fi\n'
+    'ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
+    '+ {{rbxWallIncrement}} * $nruns + 0.9999999)}")\n'
 )
 
 
@@ -160,11 +157,11 @@ def test_replace_walltime_on_real_run_template():
     assert 'ttime=30' not in out
 
 
-def test_replace_walltime_else_branch_keeps_wall_floor_on_real_template():
-    # The degenerate else-branch (forced time=1) must apply the FULL formula
-    # so wall stays >= the forced 1s CPU. With default coeffs both branches
-    # share the identical awk expression and no increment-only expression
-    # (which would yield ttime=0 under increment=0) survives.
+def test_replace_walltime_uses_single_formula_with_wall_floor():
+    # The wall formula now appears exactly once; the degenerate branch only
+    # forces time=1 (so wall stays >= the forced 1s CPU) before the shared
+    # awk expression runs. No increment-only expression (which would yield
+    # ttime=0 under increment=0) survives.
     from rbx.config import get_default_app_path
 
     template = (
@@ -173,7 +170,7 @@ def test_replace_walltime_else_branch_keeps_wall_floor_on_real_template():
     with _patched_coeffs(2.0, 0) as packager:
         out = packager._replace_walltime(template, 'cc')  # noqa: SLF001
     awk_expr = 'int($time * 2 + 0.000 * $nruns + 0.9999999)'
-    assert out.count(awk_expr) == 2
+    assert out.count(awk_expr) == 1
     assert 'int(0.000+0.9999999)' not in out
     assert 'int(0.000 + 0.9999999)' not in out
 

@@ -91,12 +91,12 @@ if [ "$4" != "" ]; then
   fi
 fi
 rtime=$(awk "BEGIN {print int($time+0.9999999)}")
-if [ "$rtime" -gt "0" ]; then
-  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} * $nruns + 0.9999999)}")
-else
+# A non-positive (rounded) time limit means "no real limit"; force a 1s CPU
+# budget so the wall formula below still yields a sane positive wall time.
+if [ "$rtime" -le "0" ]; then
   time=1
-  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} * $nruns + 0.9999999)}")
 fi
+ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} * $nruns + 0.9999999)}")
 
 maxm=512000
 if [ "$5" != "" ]; then
