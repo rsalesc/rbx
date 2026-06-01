@@ -29,8 +29,9 @@ _MAX_REP_TIME = (
 _MAX_REPS = 10  # Maximum number of reps to add
 
 
-def test_time(time):
-    return max(1, round(time))
+def _fmt_seconds(ms: int) -> str:
+    """Format integer milliseconds as exact fractional seconds (no float rounding)."""
+    return f'{ms // 1000}.{ms % 1000:03d}'
 
 
 class BocaPackager(BasePackager):
@@ -142,20 +143,20 @@ class BocaPackager(BasePackager):
             return 1
 
         def rounding_error(time):
-            return fabs(time - test_time(time))
+            return fabs(time - max(1, round(time)))
 
         def error_percentage(time, runs):
             return rounding_error(time * runs) / (time * runs)
 
         for i in range(1, _MAX_REPS + 1):
-            if error_percentage(time, i) <= extension.maximumTimeError:
+            if error_percentage(time, i) <= (extension.maximumTimeError or 0.0):
                 console.console.print(
                     f'[warning]Using {i} run(s) to define integer TL for BOCA when using language [item]{language}[/item] '
-                    f'(original TL is {pkg_timelimit}ms, new TL is {test_time(time * i) * 1000}ms).[/warning]'
+                    f'(original TL is {pkg_timelimit}ms, new TL is {max(1, round(time * i)) * 1000}ms).[/warning]'
                 )
                 return i
 
-        percent_str = f'{round(extension.maximumTimeError * 100)}%'
+        percent_str = f'{round((extension.maximumTimeError or 0.0) * 100)}%'
         console.console.print(
             f'[error]Error while defining limits for problem [item]{pkg.name}[/item], language [item]{language}[/item].[/error]'
         )
@@ -176,9 +177,7 @@ class BocaPackager(BasePackager):
             time_limit = f'{self._get_pkg_timelimit(language) / 1000:.2f}'
         else:
             no_of_runs = self._get_number_of_runs(language)
-            time_limit = test_time(
-                self._get_pkg_timelimit(language) / 1000 * no_of_runs
-            )
+            time_limit = _fmt_seconds(self._get_pkg_timelimit(language) * no_of_runs)
         return (
             '#!/bin/bash\n'
             f'echo {time_limit}\n'
