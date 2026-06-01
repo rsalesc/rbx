@@ -1,7 +1,7 @@
+import math
 import pathlib
 import shutil
-from math import fabs
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import typer
 
@@ -23,15 +23,27 @@ from rbx.box.schema import TaskType
 from rbx.box.statements.schema import Statement
 from rbx.config import get_default_app_path, get_testlib
 
-_MAX_REP_TIME = (
-    7  # TL to allow for additional rounding reps should be < _MAX_REP_TIME in seconds
-)
 _MAX_REPS = 10  # Maximum number of reps to add
 
 
 def _fmt_seconds(ms: int) -> str:
     """Format integer milliseconds as exact fractional seconds (no float rounding)."""
     return f'{ms // 1000}.{ms % 1000:03d}'
+
+
+def _compute_reps(tl_ms: int, min_ms: Optional[int]) -> Tuple[int, bool]:
+    """Return (repetitions, was_capped) for a BOCA limits script.
+
+    When `min_ms` is None, always a single run. Otherwise run enough times for the
+    accumulated budget (reps * tl) to reach `min_ms`, capped at `_MAX_REPS`. The effective
+    per-run TL stays exactly `tl_ms` regardless of the cap.
+    """
+    if min_ms is None:
+        return 1, False
+    reps = max(1, math.ceil(min_ms / tl_ms))
+    if reps > _MAX_REPS:
+        return _MAX_REPS, True
+    return reps, False
 
 
 class BocaPackager(BasePackager):
@@ -131,43 +143,16 @@ class BocaPackager(BasePackager):
         return limits.memory
 
     def _get_number_of_runs(self, language: BocaLanguage) -> int:
-        pkg = package.find_problem_package_or_die()
         extension = get_extension_or_default('boca', BocaExtension)
-        pkg_timelimit = self._get_pkg_timelimit(language)
-        time = pkg_timelimit / 1000  # convert to seconds
-
-        if time >= _MAX_REP_TIME:
+        tl_ms = self._get_pkg_timelimit(language)
+        reps, capped = _compute_reps(tl_ms, extension.minRunningTime)
+        if capped:
             console.console.print(
-                f'[warning]Use time limit of {time} seconds instead of {pkg_timelimit}ms because TL is too large.[/warning]'
+                f'[warning]minRunningTime of {extension.minRunningTime}ms could not be '
+                f'fully honored for language [item]{language}[/item] (TL is {tl_ms}ms); '
+                f'capping at {reps} run(s). The effective TL stays exact.[/warning]'
             )
-            return 1
-
-        def rounding_error(time):
-            return fabs(time - max(1, round(time)))
-
-        def error_percentage(time, runs):
-            return rounding_error(time * runs) / (time * runs)
-
-        for i in range(1, _MAX_REPS + 1):
-            if error_percentage(time, i) <= (extension.maximumTimeError or 0.0):
-                console.console.print(
-                    f'[warning]Using {i} run(s) to define integer TL for BOCA when using language [item]{language}[/item] '
-                    f'(original TL is {pkg_timelimit}ms, new TL is {max(1, round(time * i)) * 1000}ms).[/warning]'
-                )
-                return i
-
-        percent_str = f'{round((extension.maximumTimeError or 0.0) * 100)}%'
-        console.console.print(
-            f'[error]Error while defining limits for problem [item]{pkg.name}[/item], language [item]{language}[/item].[/error]'
-        )
-        console.console.print(
-            f'[error]Introducing an error of less than {percent_str} in the TL in less than '
-            f'{_MAX_REPS} runs is not possible.[/error]'
-        )
-        console.console.print(
-            f'[error]Original TL for [item]{language}[/item] is {pkg_timelimit}ms, please review it.[/error]'
-        )
-        raise typer.Exit(1)
+        return reps
 
     def _get_limits(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
