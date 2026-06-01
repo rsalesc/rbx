@@ -246,6 +246,15 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
                     source='override',
                 )
             )
+        elif mod.timeMultiplier is not None:
+            rows.append(
+                LimitsTableRow(
+                    languages=lang,
+                    solutions=None,
+                    time_limit_ms=int(base * mod.timeMultiplier),
+                    source=f'override (×{mod.timeMultiplier} of base)',
+                )
+            )
     return rows
 
 

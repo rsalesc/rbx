@@ -65,3 +65,33 @@ def test_rows_degrade_without_group_metadata():
     assert 'python' in langs
     # there should be a base row too
     assert any('base' in r.source.lower() for r in rows)
+
+
+def test_degraded_view_includes_time_multiplier_modifier():
+    profile = LimitsProfile(
+        timeLimit=1000,
+        modifiers={'java': LimitModifiers(timeMultiplier=2.0)},
+    )
+    rows = build_limits_table_rows(profile)
+    java_row = next(r for r in rows if r.languages == 'java')
+    assert java_row.time_limit_ms == 2000
+    assert '2.0' in java_row.source
+
+
+def test_render_limits_table_highlights_defaulted(capsys):
+    from rbx.box.limits_info import render_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['go'],
+                timeLimit=2000,
+                origin=TimingGroupOrigin.DEFAULTED,
+            )
+        ],
+    )
+    render_limits_table(profile, title='Test limits')
+    out = capsys.readouterr().out
+    assert 'go' in out
+    assert 'Test limits' in out
