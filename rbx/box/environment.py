@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar, Union
 
 import typer
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rbx import config, console
 from rbx.box import presets, safeeval
@@ -273,6 +273,31 @@ for the environment will be used.""",
         return self.get_extension(name, cls) or cls()
 
 
+class LanguageGroupFallback(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    relativeTo: Optional[str] = Field(
+        default=None,
+        description="""A language name whose group's estimated TL this empty group is
+relative to. If omitted, the multiplier is applied to the base estimate.""",
+    )
+    multiplier: float = Field(
+        description="""Multiplier applied when this group has no solutions.""",
+    )
+
+
+class LanguageGroup(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    languages: List[str] = Field(
+        description="""rbx language names that share a single estimated time limit.""",
+    )
+    whenEmpty: Optional[LanguageGroupFallback] = Field(
+        default=None,
+        description="""How to derive a TL for this group when it has no solutions.""",
+    )
+
+
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -280,6 +305,24 @@ class TimingConfig(BaseModel):
         default='step_up(max(fastest * 3, slowest * 1.5), 100)',
         description="""Formula to use to calculate the time limit for the environment.""",
     )
+
+    groups: List[LanguageGroup] = Field(
+        default_factory=list,
+        description="""Groups of related languages that share an estimated time limit.""",
+    )
+
+    @model_validator(mode='after')
+    def _validate_disjoint_groups(self):
+        seen: set[str] = set()
+        for group in self.groups:
+            for lang in group.languages:
+                if lang in seen:
+                    raise ValueError(
+                        f'Language {lang!r} appears in more than one timing group; '
+                        'groups must be disjoint.'
+                    )
+                seen.add(lang)
+        return self
 
 
 class Environment(BaseModel):
