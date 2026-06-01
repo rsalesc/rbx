@@ -4,13 +4,21 @@ from pydantic import BaseModel, Field
 
 BocaLanguage = typing.Literal['c', 'cpp', 'cc', 'kt', 'java', 'py2', 'py3']
 
-_MAX_REP_ERROR = 0.2  # 20% error allowed in time limit when adding reps
-
 
 class BocaExtension(BaseModel):
     languages: typing.List[BocaLanguage] = []
     flags: typing.Dict[BocaLanguage, str] = {}
-    maximumTimeError: float = _MAX_REP_ERROR
+    # Optional floor (in milliseconds) on the TOTAL BOCA time budget. When set, the
+    # solution is run ceil(minRunningTime / timeLimit) times so the accumulated budget
+    # reaches the floor, amortizing fixed startup/JIT overhead and measurement noise on
+    # small TLs. The effective per-run TL always stays exactly equal to the real TL.
+    minRunningTime: typing.Optional[int] = Field(default=None, gt=0)
+    # Deprecated (issue #494): BOCA/safeexec supports fractional time budgets, so rbx no
+    # longer rounds TLs. This field is ignored; use `minRunningTime` instead.
+    maximumTimeError: typing.Optional[float] = Field(
+        default=None,
+        deprecated='Ignored since #494; rbx emits exact fractional TLs. Use minRunningTime.',
+    )
     preferContestLetter: bool = False
     usePypy: bool = False
 
