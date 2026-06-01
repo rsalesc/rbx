@@ -134,6 +134,28 @@ async def _prompt_repartition(
     return assignment
 
 
+def relevant_languages_for_estimation(
+    env_languages: List[str],
+    timing_languages: List[str],
+    env_groups: List[environment.LanguageGroup],
+) -> List[str]:
+    """Languages that should participate in the partition during estimation:
+    those with solutions, those explicitly placed in a group, and any language
+    referenced by a group's whenEmpty.relativeTo (so the reference resolves).
+    Ordered by the environment's language order, with any leftover timing
+    languages appended."""
+    relevant: set[str] = set(timing_languages)
+    for group in env_groups:
+        relevant.update(group.languages)
+        if group.whenEmpty is not None and group.whenEmpty.relativeTo is not None:
+            relevant.add(group.whenEmpty.relativeTo)
+    ordered = [name for name in env_languages if name in relevant]
+    for lang in timing_languages:
+        if lang not in ordered:
+            ordered.append(lang)
+    return ordered
+
+
 async def estimate_time_limit(
     console: rich.console.Console,
     result: RunSolutionResult,
@@ -189,15 +211,11 @@ async def estimate_time_limit(
         formula = env.timing.formula
     env_groups = env.timing.groups
 
-    # Scope the partition to languages that matter: those with solutions plus any
-    # language explicitly placed in an env group. Other environment languages are
-    # left out so they don't generate spurious DEFAULTED warnings.
-    grouped_langs = {lang for group in env_groups for lang in group.languages}
-    relevant = set(timing_per_solution_per_language) | grouped_langs
-    all_languages = [lang.name for lang in env.languages if lang.name in relevant]
-    for lang in timing_per_solution_per_language:
-        if lang not in all_languages:
-            all_languages.append(lang)
+    all_languages = relevant_languages_for_estimation(
+        env_languages=[lang.name for lang in env.languages],
+        timing_languages=list(timing_per_solution_per_language.keys()),
+        env_groups=env_groups,
+    )
 
     repartition = None
     if not auto and len(all_languages) > 1:
