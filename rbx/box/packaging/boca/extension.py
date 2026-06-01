@@ -10,8 +10,7 @@ class BocaExtension(BaseModel):
     flags: typing.Dict[BocaLanguage, str] = {}
     # Optional floor (in milliseconds) on the TOTAL BOCA time budget. When set, the
     # solution is run ceil(minRunningTime / timeLimit) times so the accumulated budget
-    # reaches the floor, amortizing fixed startup/JIT overhead and measurement noise on
-    # small TLs. The effective per-run TL always stays exactly equal to the real TL.
+    # reaches this floor, while the effective per-run TL stays exactly equal to the real TL.
     minRunningTime: typing.Optional[int] = Field(default=None, gt=0)
     # Deprecated (issue #494): BOCA/safeexec supports fractional time budgets, so rbx no
     # longer rounds TLs. This field is ignored; use `minRunningTime` instead.

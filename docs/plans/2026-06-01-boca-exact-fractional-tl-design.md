@@ -66,8 +66,7 @@ else:
 ```
 
 `minRunningTime` is an optional, setter-controlled floor on the **total** BOCA budget
-(`reps · tl ≥ minRunningTime`). It exists to amortize fixed startup/JIT overhead and
-measurement noise on very small TLs. When unset, rbx always does a single run.
+(`reps · tl ≥ minRunningTime`). When unset, rbx always does a single run.
 
 The cap keeps the effective per-run TL exact; only the total budget falls short of the
 requested minimum, which is the safe failure mode (a warning is printed).
