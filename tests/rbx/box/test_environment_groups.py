@@ -40,3 +40,10 @@ def test_language_cannot_appear_in_two_groups():
 def test_when_empty_requires_multiplier():
     with pytest.raises(ValidationError):
         LanguageGroupFallback.model_validate({'relativeTo': 'cpp'})
+
+
+def test_when_empty_multiplier_must_be_positive():
+    with pytest.raises(ValidationError):
+        LanguageGroupFallback.model_validate({'multiplier': 0})
+    with pytest.raises(ValidationError):
+        LanguageGroupFallback.model_validate({'relativeTo': 'cpp', 'multiplier': -1.0})

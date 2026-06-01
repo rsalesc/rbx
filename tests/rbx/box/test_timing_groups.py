@@ -1,10 +1,14 @@
+import pytest
+
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
 from rbx.box.schema import TimingGroupOrigin
 from rbx.box.timing_groups import (
     GroupTimings,
+    GroupValidationError,
     ResolvedGroup,
     build_partition,
     resolve_groups,
+    validate_partition,
 )
 
 
@@ -107,3 +111,63 @@ def test_multiplier_chain_through_another_empty_group():
     cpp_tl = result.time_limit_per_language['cpp']
     assert result.time_limit_per_language['java'] == cpp_tl * 2
     assert result.time_limit_per_language['dart'] == cpp_tl * 2 * 2
+
+
+def test_relative_to_unknown_language_errors():
+    groups = build_partition(
+        env_groups=[
+            LanguageGroup(
+                languages=['java'],
+                whenEmpty=LanguageGroupFallback(relativeTo='rust', multiplier=2.0),
+            )
+        ],
+        all_languages=['java'],
+    )
+    with pytest.raises(GroupValidationError, match='rust'):
+        validate_partition(groups)
+
+
+def test_relative_to_same_group_errors():
+    groups = build_partition(
+        env_groups=[
+            LanguageGroup(
+                languages=['java', 'kotlin'],
+                whenEmpty=LanguageGroupFallback(relativeTo='kotlin', multiplier=2.0),
+            )
+        ],
+        all_languages=['java', 'kotlin'],
+    )
+    with pytest.raises(GroupValidationError, match='same group'):
+        validate_partition(groups)
+
+
+def test_cyclic_when_empty_errors():
+    groups = build_partition(
+        env_groups=[
+            LanguageGroup(
+                languages=['a'],
+                whenEmpty=LanguageGroupFallback(relativeTo='b', multiplier=2.0),
+            ),
+            LanguageGroup(
+                languages=['b'],
+                whenEmpty=LanguageGroupFallback(relativeTo='a', multiplier=2.0),
+            ),
+        ],
+        all_languages=['a', 'b'],
+    )
+    with pytest.raises(GroupValidationError, match='cycle'):
+        validate_partition(groups)
+
+
+def test_valid_partition_passes():
+    groups = build_partition(
+        env_groups=[
+            LanguageGroup(languages=['cpp']),
+            LanguageGroup(
+                languages=['java'],
+                whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+            ),
+        ],
+        all_languages=['cpp', 'java'],
+    )
+    validate_partition(groups)  # no raise

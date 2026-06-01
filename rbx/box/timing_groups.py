@@ -55,6 +55,48 @@ def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
     return out
 
 
+class GroupValidationError(ValueError):
+    pass
+
+
+def validate_partition(groups: List[ResolvedGroup]) -> None:
+    lang_index = _lang_to_group_index(groups)
+    # reference target existence + not-self
+    for idx, group in enumerate(groups):
+        if group.whenEmpty is None or group.whenEmpty.relativeTo is None:
+            continue
+        ref = group.whenEmpty.relativeTo
+        if ref not in lang_index:
+            raise GroupValidationError(
+                f'whenEmpty.relativeTo references unknown language {ref!r}.'
+            )
+        if lang_index[ref] == idx:
+            raise GroupValidationError(
+                f'whenEmpty.relativeTo {ref!r} points to the same group; it must '
+                'reference a different group.'
+            )
+    # cycle detection over group-to-group reference edges
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = [WHITE] * len(groups)
+
+    def visit(idx: int) -> None:
+        color[idx] = GRAY
+        group = groups[idx]
+        if group.whenEmpty is not None and group.whenEmpty.relativeTo is not None:
+            nxt = lang_index[group.whenEmpty.relativeTo]
+            if color[nxt] == GRAY:
+                raise GroupValidationError(
+                    'whenEmpty.relativeTo forms a cycle between timing groups.'
+                )
+            if color[nxt] == WHITE:
+                visit(nxt)
+        color[idx] = BLACK
+
+    for idx in range(len(groups)):
+        if color[idx] == WHITE:
+            visit(idx)
+
+
 def resolve_groups(
     groups: List[ResolvedGroup],
     pooled: Dict[int, GroupTimings],  # group index -> pooled timings (non-empty only)

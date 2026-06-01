@@ -282,6 +282,7 @@ class LanguageGroupFallback(BaseModel):
 relative to. If omitted, the multiplier is applied to the base estimate.""",
     )
     multiplier: float = Field(
+        gt=0,
         description="""Multiplier applied when this group has no solutions.""",
     )
 
