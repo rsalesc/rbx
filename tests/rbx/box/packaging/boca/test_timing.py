@@ -38,6 +38,11 @@ def test_compute_reps_caps_at_max_reps_and_flags():
     assert _compute_reps(50, 2000) == (10, True)
 
 
+def test_compute_reps_handles_nonpositive_tl():
+    assert _compute_reps(0, 1000) == (1, False)
+    assert _compute_reps(-5, 1000) == (1, False)
+
+
 class _StubPackage:
     def __init__(self, task_type=TaskType.BATCH, output_limit=65536):
         self.type = task_type
@@ -72,6 +77,8 @@ def test_get_limits_batch_emits_exact_budget_single_run():
         echos = _echo_lines(packager._get_limits('cpp'))  # noqa: SLF001
     assert echos[0] == 'echo 1.200'
     assert echos[1] == 'echo 1'
+    assert echos[2] == 'echo 256'
+    assert echos[3] == 'echo 65536'
 
 
 def test_get_limits_batch_honors_min_running_time():
@@ -80,6 +87,8 @@ def test_get_limits_batch_honors_min_running_time():
         echos = _echo_lines(packager._get_limits('cpp'))  # noqa: SLF001
     assert echos[0] == 'echo 1.200'
     assert echos[1] == 'echo 4'
+    assert echos[2] == 'echo 256'
+    assert echos[3] == 'echo 65536'
 
 
 def test_get_limits_communication_is_single_run_and_exact():
@@ -87,3 +96,5 @@ def test_get_limits_communication_is_single_run_and_exact():
         echos = _echo_lines(packager._get_limits('cpp'))  # noqa: SLF001
     assert echos[0] == 'echo 1.234'
     assert echos[1] == 'echo 1'
+    assert echos[2] == 'echo 256'
+    assert echos[3] == 'echo 65536'

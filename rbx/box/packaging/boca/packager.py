@@ -38,6 +38,8 @@ def _compute_reps(tl_ms: int, min_ms: Optional[int]) -> Tuple[int, bool]:
     accumulated budget (reps * tl) to reach `min_ms`, capped at `_MAX_REPS`. The effective
     per-run TL stays exactly `tl_ms` regardless of the cap.
     """
+    if tl_ms <= 0:
+        return 1, False
     if min_ms is None:
         return 1, False
     reps = max(1, math.ceil(min_ms / tl_ms))
