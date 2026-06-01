@@ -1,3 +1,6 @@
+from unittest import mock
+
+from rbx.box import tasks
 from rbx.box.environment import (
     EnvironmentLanguage,
     ExecutionConfig,
@@ -8,6 +11,30 @@ from rbx.box.environment import (
     resolve_walltime_coeffs,
 )
 from rbx.box.testing import testing_package
+from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
+from rbx.grading.limits import Limits
+
+
+def test_get_execution_config_uses_walltime_formula_for_language():
+    limits = Limits(time=1000, memory=256, output=4096)
+    with mock.patch.object(
+        tasks.environment, 'compute_walltime', return_value=4242
+    ) as m:
+        cfg = tasks._get_execution_config(limits, StupidSandbox, language='java')  # noqa: SLF001
+    assert cfg.sandbox is not None
+    assert cfg.sandbox.timeLimit == 1000
+    assert cfg.sandbox.wallTimeLimit == 4242
+    m.assert_called_once_with(1000, 'java')
+
+
+def test_get_execution_config_doubletl_passes_expanded_tl_as_x():
+    limits = Limits(time=1000, memory=256, output=4096, isDoubleTL=True)
+    with mock.patch.object(
+        tasks.environment, 'compute_walltime', return_value=9999
+    ) as m:
+        cfg = tasks._get_execution_config(limits, StupidSandbox, language='cpp')  # noqa: SLF001
+    m.assert_called_once_with(2000, 'cpp')
+    assert cfg.sandbox.wallTimeLimit == 9999
 
 
 def test_timing_config_walltime_defaults():

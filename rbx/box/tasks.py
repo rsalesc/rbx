@@ -1,7 +1,7 @@
 import pathlib
 from typing import Optional, Tuple, Type
 
-from rbx.box import checkers, limits_info, package, state
+from rbx.box import checkers, environment, limits_info, package, state
 from rbx.box.code import (
     CommunicationItem,
     find_language_name,
@@ -121,7 +121,7 @@ async def run_solution_on_testcase(
             timelimit_override,
             use_timelimit=use_timelimit,
         )
-        extra_config = _get_execution_config(limits, sandbox_type)
+        extra_config = _get_execution_config(limits, sandbox_type, language)
 
         if output_dir is None:
             assert testcase.outputPath is not None
@@ -188,6 +188,7 @@ async def run_solution_on_testcase(
 def _get_execution_config(
     limits: Limits,
     sandbox_type: Type[SandboxBase],
+    language: Optional[str] = None,
 ) -> ExecutionConfig:
     sandbox = EnvironmentSandbox()
     sandbox.timeLimit = limits.time
@@ -196,7 +197,9 @@ def _get_execution_config(
         sandbox.timeLimit = sandbox.timeLimit * 2
     sandbox.wallTimeLimit = sandbox.timeLimit
     if sandbox.timeLimit is not None and sandbox_type.use_soft_timeout():
-        sandbox.wallTimeLimit = sandbox.timeLimit * 2
+        sandbox.wallTimeLimit = environment.compute_walltime(
+            sandbox.timeLimit, language
+        )
     sandbox.memoryLimit = limits.memory
     sandbox.fileSizeLimit = limits.output
     return ExecutionConfig(sandbox=sandbox, problemLimits=limits)
@@ -236,8 +239,8 @@ async def _run_communication_solution_on_testcase(
             use_timelimit=use_timelimit,
         )
 
-        extra_config = _get_execution_config(limits, sandbox_type)
-        interactor_extra_config = _get_execution_config(limits, sandbox_type)
+        extra_config = _get_execution_config(limits, sandbox_type, language)
+        interactor_extra_config = _get_execution_config(limits, sandbox_type, language)
         if (
             interactor_extra_config.sandbox is not None
             and interactor_extra_config.sandbox.wallTimeLimit is not None
