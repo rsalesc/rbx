@@ -1,4 +1,13 @@
-from rbx.box.packaging.boca.packager import _compute_reps, _fmt_seconds
+import contextlib
+from unittest import mock
+
+from rbx.box.packaging.boca.extension import BocaExtension
+from rbx.box.packaging.boca.packager import (
+    BocaPackager,
+    _compute_reps,
+    _fmt_seconds,
+)
+from rbx.box.schema import TaskType
 
 
 def test_fmt_seconds_is_exact():
@@ -27,3 +36,54 @@ def test_compute_reps_ceil_to_reach_minimum_budget():
 def test_compute_reps_caps_at_max_reps_and_flags():
     # 0.05s TL, 2s minimum would need 40 reps; cap at 10 and flag capped=True.
     assert _compute_reps(50, 2000) == (10, True)
+
+
+class _StubPackage:
+    def __init__(self, task_type=TaskType.BATCH, output_limit=65536):
+        self.type = task_type
+        self.outputLimit = output_limit
+
+
+@contextlib.contextmanager
+def _patched_packager(tl_ms, task_type=TaskType.BATCH, extension=None):
+    pkg = _StubPackage(task_type=task_type)
+    packager = BocaPackager(testcase_entries=[])
+    with (
+        mock.patch.object(packager, '_get_pkg_timelimit', return_value=tl_ms),
+        mock.patch.object(packager, '_get_pkg_memorylimit', return_value=256),
+        mock.patch(
+            'rbx.box.packaging.boca.packager.package.find_problem_package_or_die',
+            return_value=pkg,
+        ),
+        mock.patch(
+            'rbx.box.packaging.boca.packager.get_extension_or_default',
+            return_value=extension if extension is not None else BocaExtension(),
+        ),
+    ):
+        yield packager
+
+
+def _echo_lines(script):
+    return [line for line in script.splitlines() if line.startswith('echo ')]
+
+
+def test_get_limits_batch_emits_exact_budget_single_run():
+    with _patched_packager(1200) as packager:
+        echos = _echo_lines(packager._get_limits('cpp'))  # noqa: SLF001
+    assert echos[0] == 'echo 1.200'
+    assert echos[1] == 'echo 1'
+
+
+def test_get_limits_batch_honors_min_running_time():
+    ext = BocaExtension(minRunningTime=1000)
+    with _patched_packager(300, extension=ext) as packager:
+        echos = _echo_lines(packager._get_limits('cpp'))  # noqa: SLF001
+    assert echos[0] == 'echo 1.200'
+    assert echos[1] == 'echo 4'
+
+
+def test_get_limits_communication_is_single_run_and_exact():
+    with _patched_packager(1234, task_type=TaskType.COMMUNICATION) as packager:
+        echos = _echo_lines(packager._get_limits('cpp'))  # noqa: SLF001
+    assert echos[0] == 'echo 1.234'
+    assert echos[1] == 'echo 1'

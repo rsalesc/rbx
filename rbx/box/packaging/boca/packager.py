@@ -156,13 +156,13 @@ class BocaPackager(BasePackager):
 
     def _get_limits(self, language: BocaLanguage) -> str:
         pkg = package.find_problem_package_or_die()
+        tl_ms = self._get_pkg_timelimit(language)
         if pkg.type == TaskType.COMMUNICATION:
             # Interactive tasks only support a single run.
             no_of_runs = 1
-            time_limit = f'{self._get_pkg_timelimit(language) / 1000:.2f}'
         else:
             no_of_runs = self._get_number_of_runs(language)
-            time_limit = _fmt_seconds(self._get_pkg_timelimit(language) * no_of_runs)
+        time_limit = _fmt_seconds(tl_ms * no_of_runs)
         return (
             '#!/bin/bash\n'
             f'echo {time_limit}\n'
