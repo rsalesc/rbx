@@ -1,5 +1,8 @@
 from unittest import mock
 
+import pytest
+from pydantic import ValidationError
+
 from rbx.box import tasks
 from rbx.box.environment import (
     EnvironmentLanguage,
@@ -47,6 +50,26 @@ def test_language_timing_config_optional_fields():
     cfg = LanguageTimingConfig()
     assert cfg.wallTimeMultiplier is None
     assert cfg.wallTimeIncrement is None
+
+
+def test_walltime_multiplier_must_be_at_least_one():
+    with pytest.raises(ValidationError):
+        TimingConfig(wallTimeMultiplier=0.5)
+
+
+def test_walltime_increment_must_be_nonnegative():
+    with pytest.raises(ValidationError):
+        TimingConfig(wallTimeIncrement=-1)
+
+
+def test_language_walltime_multiplier_must_be_at_least_one():
+    with pytest.raises(ValidationError):
+        LanguageTimingConfig(wallTimeMultiplier=0.5)
+
+
+def test_language_walltime_increment_must_be_nonnegative():
+    with pytest.raises(ValidationError):
+        LanguageTimingConfig(wallTimeIncrement=-1)
 
 
 def test_environment_language_accepts_timing():

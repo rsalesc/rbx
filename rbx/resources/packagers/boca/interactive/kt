@@ -107,7 +107,7 @@ if [ "$rtime" -gt "0" ]; then
   ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
 else
   time=1
-  ttime=$(awk "BEGIN {print int({{rbxWallIncrement}}+0.9999999)}")
+  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
 fi
 
 nruns=1

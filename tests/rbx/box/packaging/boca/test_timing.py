@@ -110,7 +110,8 @@ _WALL_SAMPLE = (
     '+ {{rbxWallIncrement}} + 0.9999999)}")\n'
     'else\n'
     '  time=1\n'
-    '  ttime=$(awk "BEGIN {print int({{rbxWallIncrement}}+0.9999999)}")\n'
+    '  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
+    '+ {{rbxWallIncrement}} + 0.9999999)}")\n'
     'fi\n'
 )
 
@@ -156,6 +157,24 @@ def test_replace_walltime_on_real_run_template():
     assert '+ 0.000' in out
     assert '+ 30' not in out
     assert 'ttime=30' not in out
+
+
+def test_replace_walltime_else_branch_keeps_wall_floor_on_real_template():
+    # The degenerate else-branch (forced time=1) must apply the FULL formula
+    # so wall stays >= the forced 1s CPU. With default coeffs both branches
+    # share the identical awk expression and no increment-only expression
+    # (which would yield ttime=0 under increment=0) survives.
+    from rbx.config import get_default_app_path
+
+    template = (
+        get_default_app_path() / 'packagers' / 'boca' / 'run' / 'cc'
+    ).read_text()
+    with _patched_coeffs(2.0, 0) as packager:
+        out = packager._replace_walltime(template, 'cc')  # noqa: SLF001
+    awk_expr = 'int($time * 2 + 0.000 + 0.9999999)'
+    assert out.count(awk_expr) == 2
+    assert 'int(0.000+0.9999999)' not in out
+    assert 'int(0.000 + 0.9999999)' not in out
 
 
 def test_cc_and_cpp_map_to_same_rbx_language_and_substitution():

@@ -211,11 +211,13 @@ class LanguageTimingConfig(BaseModel):
 
     wallTimeMultiplier: Optional[float] = Field(
         default=None,
+        ge=1.0,
         description="""Overrides the environment wall-time multiplier `a` for this language.""",
     )
 
     wallTimeIncrement: Optional[int] = Field(
         default=None,
+        ge=0,
         description="""Overrides the environment wall-time increment `b` (in milliseconds) for this language.""",
     )
 
@@ -302,11 +304,13 @@ class TimingConfig(BaseModel):
 
     wallTimeMultiplier: float = Field(
         default=2.0,
+        ge=1.0,
         description="""Default multiplier `a` in the wall-time formula `a*x + b`, where `x` is the expanded CPU time limit.""",
     )
 
     wallTimeIncrement: int = Field(
         default=0,
+        ge=0,
         description="""Default increment `b` (in milliseconds) in the wall-time formula `a*x + b`.""",
     )
 
