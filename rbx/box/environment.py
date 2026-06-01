@@ -1,7 +1,7 @@
 import functools
 import pathlib
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import typer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -399,6 +399,43 @@ def get_language_or_nil(name: str) -> Optional[EnvironmentLanguage]:
         if lang.name == name:
             return lang
     return None
+
+
+def resolve_walltime_coeffs(
+    timing: TimingConfig,
+    language: Optional[EnvironmentLanguage],
+) -> Tuple[float, int]:
+    """Resolves the effective (wall_time_multiplier, wall_time_increment_ms),
+    where a per-language override takes precedence field-by-field over the
+    environment-level timing defaults."""
+    multiplier = timing.wallTimeMultiplier
+    increment = timing.wallTimeIncrement
+    if language is not None and language.timing is not None:
+        if language.timing.wallTimeMultiplier is not None:
+            multiplier = language.timing.wallTimeMultiplier
+        if language.timing.wallTimeIncrement is not None:
+            increment = language.timing.wallTimeIncrement
+    return multiplier, increment
+
+
+def apply_walltime_formula(cpu_tl_ms: int, coeffs: Tuple[float, int]) -> int:
+    """Applies wall = a*x + b, where x is the expanded CPU time limit (ms)."""
+    multiplier, increment = coeffs
+    return int(cpu_tl_ms * multiplier + increment)
+
+
+def get_walltime_coeffs_for_language(
+    language: Optional[str],
+) -> Tuple[float, int]:
+    """Reads the active environment and resolves wall-time coefficients for the
+    given language name (None -> environment defaults)."""
+    env = get_environment()
+    lang = get_language_or_nil(language) if language is not None else None
+    return resolve_walltime_coeffs(env.timing, lang)
+
+
+def compute_walltime(cpu_tl_ms: int, language: Optional[str]) -> int:
+    return apply_walltime_formula(cpu_tl_ms, get_walltime_coeffs_for_language(language))
 
 
 def get_language(name: str) -> EnvironmentLanguage:
