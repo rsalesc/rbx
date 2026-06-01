@@ -203,6 +203,51 @@ timing:
   formula: "step_up(max(fastest * 2, slowest * 1.5), 100)"
 ```
 
+## Wall time limits
+
+Solutions are also bounded by a **wall (real) time** limit, in addition to the
+CPU time limit. Slow languages (Java, Kotlin, Python) can spend significant
+wall-clock time on JVM/interpreter startup before doing any work, so a wall
+limit that is too tight produces spurious time-limit verdicts.
+
+{{rbx}} computes the wall time limit from the CPU time limit with a configurable
+`a * x + b` formula, where `x` is the **effective per-language CPU time limit**
+(after any per-language modifiers and double-TL expansion):
+
+- `wallTimeMultiplier` (`a`) -- multiplier applied to the CPU time limit. Must be
+  `>= 1.0` (the wall limit can never be tighter than the CPU limit). Defaults to `2.0`.
+- `wallTimeIncrement` (`b`) -- extra wall time, in **milliseconds**, added on top.
+  Must be `>= 0`. Defaults to `0`.
+
+Configure the environment-wide defaults under the `timing` field:
+
+```yaml
+timing:
+  formula: "step_up(max(fastest * 3, slowest * 1.5), 100)"
+  wallTimeMultiplier: 2.0
+  wallTimeIncrement: 1000   # +1s of wall headroom for every solution
+```
+
+You can override either coefficient for a specific language using that
+language's `timing` field. Unspecified coefficients fall back to the
+environment-wide defaults:
+
+```yaml
+languages:
+  - name: "java"
+    # ...
+    timing:
+      wallTimeIncrement: 3000   # JVM startup headroom; multiplier inherited
+```
+
+The same formula and coefficients are used both when judging locally and when
+packaging for BOCA, so the wall time a solution gets is consistent across both.
+
+!!! note
+    The shipped default preset sets `wallTimeMultiplier: 2.0` and
+    `wallTimeIncrement: 1000`, with larger increments for slow languages
+    (`py: 2000`, `java`/`kt: 3000`).
+
 
 
 

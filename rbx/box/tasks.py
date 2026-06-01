@@ -240,6 +240,10 @@ async def _run_communication_solution_on_testcase(
         )
 
         extra_config = _get_execution_config(limits, sandbox_type, language)
+        # The interactor reuses the solution's language for its wall-time
+        # coefficients. This is an intentional approximation: it can only widen
+        # the interactor's wall budget (which is then summed with the solution's
+        # below), never tighten it. See the TODO below.
         interactor_extra_config = _get_execution_config(limits, sandbox_type, language)
         if (
             interactor_extra_config.sandbox is not None
