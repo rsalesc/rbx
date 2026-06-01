@@ -316,9 +316,11 @@ async def compute_time_limits(
     console.console.print(
         f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
     )
-    console.console.print(estimated_tl, highlight=True)
+    limits = estimated_tl.to_limits()
     limits_path.parent.mkdir(parents=True, exist_ok=True)
-    limits_path.write_text(utils.model_to_yaml(estimated_tl.to_limits()))
+    limits_path.write_text(utils.model_to_yaml(limits))
+
+    limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
 
     return estimated_tl
 
