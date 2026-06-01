@@ -206,6 +206,20 @@ class LinterConfig(BaseModel):
         return out
 
 
+class LanguageTimingConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    wallTimeMultiplier: Optional[float] = Field(
+        default=None,
+        description="""Overrides the environment wall-time multiplier `a` for this language.""",
+    )
+
+    wallTimeIncrement: Optional[int] = Field(
+        default=None,
+        description="""Overrides the environment wall-time increment `b` (in milliseconds) for this language.""",
+    )
+
+
 class EnvironmentLanguage(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -255,6 +269,11 @@ for the environment will be used.""",
         description="""Linters to run for this language during compilation.""",
     )
 
+    timing: Optional[LanguageTimingConfig] = Field(
+        default=None,
+        description="""Per-language overrides for timing configuration (e.g. wall time).""",
+    )
+
     @field_validator('linters', mode='before')
     @classmethod
     def _coerce_linter_shorthand(cls, v):
@@ -279,6 +298,16 @@ class TimingConfig(BaseModel):
     formula: str = Field(
         default='step_up(max(fastest * 3, slowest * 1.5), 100)',
         description="""Formula to use to calculate the time limit for the environment.""",
+    )
+
+    wallTimeMultiplier: float = Field(
+        default=2.0,
+        description="""Default multiplier `a` in the wall-time formula `a*x + b`, where `x` is the expanded CPU time limit.""",
+    )
+
+    wallTimeIncrement: int = Field(
+        default=0,
+        description="""Default increment `b` (in milliseconds) in the wall-time formula `a*x + b`.""",
     )
 
 
