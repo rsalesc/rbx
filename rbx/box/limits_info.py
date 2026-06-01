@@ -109,6 +109,20 @@ def get_saved_limits_profile(
     return load_yaml_model(limits_path, LimitsProfile)
 
 
+def get_display_limits_profile(
+    profile: str, root: pathlib.Path = pathlib.Path()
+) -> Optional[LimitsProfile]:
+    """Resolved limits profile for presentation: expanded to absolute base +
+    per-language limits (filled from the package when inheriting), with the saved
+    group metadata preserved so the per-group table can be rendered."""
+    saved = get_saved_limits_profile(profile, root=root)
+    if saved is None:
+        return None
+    display = get_limits_profile(profile, root=root)
+    display.groups = saved.groups
+    return display
+
+
 def get_package_limits_profile(root: pathlib.Path = pathlib.Path()) -> LimitsProfile:
     profile = LimitsProfile(inheritFromPackage=True)
     return _expand_limits_profile(profile, root=root)
