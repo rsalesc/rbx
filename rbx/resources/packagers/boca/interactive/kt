@@ -104,10 +104,10 @@ fi
 time=$3
 rtime=$(awk "BEGIN {print int($time+0.9999999)}")
 if [ "$rtime" -gt "0" ]; then
-  let "ttime = $rtime + 30"
+  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
 else
   time=1
-  ttime=30
+  ttime=$(awk "BEGIN {print int({{rbxWallIncrement}}+0.9999999)}")
 fi
 
 nruns=1

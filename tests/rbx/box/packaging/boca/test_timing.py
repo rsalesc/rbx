@@ -1,6 +1,9 @@
 import contextlib
 from unittest import mock
 
+from rbx.box.packaging.boca.boca_language_utils import (
+    get_rbx_language_from_boca_language,
+)
 from rbx.box.packaging.boca.extension import BocaExtension
 from rbx.box.packaging.boca.packager import (
     BocaPackager,
@@ -98,3 +101,76 @@ def test_get_limits_communication_is_single_run_and_exact():
     assert echos[1] == 'echo 1'
     assert echos[2] == 'echo 256'
     assert echos[3] == 'echo 65536'
+
+
+_WALL_SAMPLE = (
+    'rtime=$(awk "BEGIN {print int($time+0.9999999)}")\n'
+    'if [ "$rtime" -gt "0" ]; then\n'
+    '  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
+    '+ {{rbxWallIncrement}} + 0.9999999)}")\n'
+    'else\n'
+    '  time=1\n'
+    '  ttime=$(awk "BEGIN {print int({{rbxWallIncrement}}+0.9999999)}")\n'
+    'fi\n'
+)
+
+
+@contextlib.contextmanager
+def _patched_coeffs(multiplier, increment_ms):
+    with (
+        mock.patch(
+            'rbx.box.packaging.boca.packager.environment.resolve_walltime_coeffs',
+            return_value=(multiplier, increment_ms),
+        ),
+        mock.patch(
+            'rbx.box.packaging.boca.packager.environment.get_environment',
+        ),
+        mock.patch(
+            'rbx.box.packaging.boca.packager.environment.get_language_or_nil',
+        ),
+    ):
+        yield BocaPackager(testcase_entries=[])
+
+
+def test_replace_walltime_uses_default_formula_no_plus_30():
+    # Default coefficients: multiplier=2.0, increment=0ms.
+    with _patched_coeffs(2.0, 0) as packager:
+        out = packager._replace_walltime(_WALL_SAMPLE, 'cc')  # noqa: SLF001
+    assert '* 2' in out
+    assert '+ 0.000' in out
+    assert '{{rbxWallMultiplier}}' not in out
+    assert '{{rbxWallIncrement}}' not in out
+    assert '+ 30' not in out
+    assert 'ttime=30' not in out
+
+
+def test_replace_walltime_on_real_run_template():
+    from rbx.config import get_default_app_path
+
+    template = (
+        get_default_app_path() / 'packagers' / 'boca' / 'run' / 'cc'
+    ).read_text()
+    with _patched_coeffs(2.0, 0) as packager:
+        out = packager._replace_walltime(template, 'cc')  # noqa: SLF001
+    assert '* 2' in out
+    assert '+ 0.000' in out
+    assert '+ 30' not in out
+    assert 'ttime=30' not in out
+
+
+def test_cc_and_cpp_map_to_same_rbx_language_and_substitution():
+    assert get_rbx_language_from_boca_language(
+        'cc'
+    ) == get_rbx_language_from_boca_language('cpp')
+    with _patched_coeffs(2.0, 0) as packager:
+        cc_out = packager._replace_walltime(_WALL_SAMPLE, 'cc')  # noqa: SLF001
+        cpp_out = packager._replace_walltime(_WALL_SAMPLE, 'cpp')  # noqa: SLF001
+    assert cc_out == cpp_out
+
+
+def test_replace_walltime_honors_per_language_increment_override():
+    # Simulate an override of the increment to 3000ms.
+    with _patched_coeffs(2.0, 3000) as packager:
+        out = packager._replace_walltime(_WALL_SAMPLE, 'java')  # noqa: SLF001
+    assert '+ 3.000' in out
+    assert '+ 30' not in out
