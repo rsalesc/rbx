@@ -28,6 +28,11 @@ from rbx.utils import model_to_yaml
 
 STDERR_THRESHOLD_IN_BYTES = 1024 * 1024  # 1MB
 
+# Extra wall time (ms) granted to the interactor on top of the solution's wall
+# time in communication tasks, so the interactor never times out before the
+# solution does. Mirrors BOCA's `ittime = ttime + 1`.
+_INTERACTOR_WALL_MARGIN_MS = 1000
+
 
 class TooMuchStderrIssue(Issue):
     def __init__(self, solution: CodeItem):
@@ -205,6 +210,18 @@ def _get_execution_config(
     return ExecutionConfig(sandbox=sandbox, problemLimits=limits)
 
 
+def _interactor_wall_time(solution_wall_ms: int) -> int:
+    """Wall time (ms) for the interactor in a communication task.
+
+    The interactor only needs to outlive the solution so that it is never the
+    process that times out first (which would prematurely kill a still-legal
+    solution). It is a separate program (usually C++), so we do NOT re-apply the
+    solution's per-language wall formula to it; we just add a small fixed margin
+    to the solution's wall time, mirroring BOCA's `ittime = ttime + 1`.
+    """
+    return solution_wall_ms + _INTERACTOR_WALL_MARGIN_MS
+
+
 async def _run_communication_solution_on_testcase(
     solution: CodeItem,
     compiled_digest: str,
@@ -240,21 +257,18 @@ async def _run_communication_solution_on_testcase(
         )
 
         extra_config = _get_execution_config(limits, sandbox_type, language)
-        # The interactor reuses the solution's language for its wall-time
-        # coefficients. This is an intentional approximation: it can only widen
-        # the interactor's wall budget (which is then summed with the solution's
-        # below), never tighten it. See the TODO below.
-        interactor_extra_config = _get_execution_config(limits, sandbox_type, language)
+        # The interactor is not language-specific, so it is built without the
+        # solution's language. Its wall time is set below from the solution's
+        # wall plus a fixed margin so it always outlives the solution.
+        interactor_extra_config = _get_execution_config(limits, sandbox_type)
         if (
             interactor_extra_config.sandbox is not None
-            and interactor_extra_config.sandbox.wallTimeLimit is not None
             and extra_config.sandbox is not None
             and extra_config.sandbox.wallTimeLimit is not None
         ):
-            interactor_extra_config.sandbox.wallTimeLimit += (
+            interactor_extra_config.sandbox.wallTimeLimit = _interactor_wall_time(
                 extra_config.sandbox.wallTimeLimit
             )
-        # TODO: maybe combine wall time limits?
 
         if output_dir is None:
             assert testcase.outputPath is not None

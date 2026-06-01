@@ -130,3 +130,11 @@ def test_compute_walltime_uses_active_environment(
     assert compute_walltime(1000, 'py') == 4000
     assert compute_walltime(1000, 'java') == 5000
     assert compute_walltime(1000, 'kt') == 5000
+
+
+def test_interactor_wall_time_is_solution_wall_plus_fixed_margin():
+    # The interactor gets the solution's wall time plus a small fixed margin so
+    # it always outlives the solution; it does NOT double the solution's wall.
+    margin = tasks._INTERACTOR_WALL_MARGIN_MS  # noqa: SLF001
+    assert tasks._interactor_wall_time(2000) == 2000 + margin  # noqa: SLF001
+    assert tasks._interactor_wall_time(5000) == 5000 + margin  # noqa: SLF001
