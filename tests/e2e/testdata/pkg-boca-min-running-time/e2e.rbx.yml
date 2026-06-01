@@ -1,0 +1,27 @@
+scenarios:
+  - name: package-boca-min-running-time
+    description: >
+      Regression guard for #494 (deprecate BOCA rounding + approximation).
+
+      The problem TL is an "ugly" 300ms and the local env sets the BOCA
+      `minRunningTime` extension to 1000ms. The limits script echoes, in
+      order: time budget (seconds), number of runs, memory (MB), output
+      limit. Since #494 the budget is EXACT and never rounded: the solution
+      runs ceil(1000 / 300) = 4 times with an accumulated budget of
+      4 * 0.300 = 1.200s, so the effective per-run TL is exactly 300ms.
+
+      The line-anchored regex asserts the budget line (`echo 1.200`) and the
+      run count (`echo 4`). The OLD rounding heuristic instead emitted an
+      integer budget of `echo 1` over `echo 3` runs (effective 0.333s, a
+      +11% drift), so this regex fails to match the pre-#494 output.
+    steps:
+      - cmd: build
+      - cmd: time -s inherit -p boca
+      - cmd: pkg boca
+        expect:
+          files_exist:
+            - "build/*.zip"
+          zip_file_contains:
+            path: build/*.zip
+            entries:
+              limits/cc: "/(?ms)^echo 1.200$.*^echo 4$/"

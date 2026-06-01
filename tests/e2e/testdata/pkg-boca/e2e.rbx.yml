@@ -29,12 +29,13 @@ scenarios:
       and fell back to the base limits (1000ms / 256MB).
 
       The limits script echoes, in order: time (seconds), number of runs,
-      memory (MB), output limit. One line-anchored regex per entry asserts
-      both the time line (`echo 2`, from 2000ms) and the memory line
-      (`echo 512`). Anchoring matters: the literal `echo 2` would otherwise
-      match as a substring of the base-limit memory line `echo 256`, masking
-      a regression. Before #493 the `cc` script echoed `echo 1` / `echo 256`
-      (base limits) and this regex fails to match.
+      memory (MB), output limit. Since #494 the time line is an EXACT
+      fractional budget with no rounding, so a 2000ms TL emits `echo 2.000`
+      over a single run (`echo 1`). One line-anchored regex per entry
+      asserts the time line (`echo 2.000`), the run count (`echo 1`), and
+      the memory line (`echo 512`, from the 512MB modifier). Before #493 the
+      `cc` script echoed the base limits instead, so this regex fails to
+      match a regression.
     steps:
       - cmd: build
       - cmd: time -s inherit -p boca
@@ -43,5 +44,5 @@ scenarios:
           zip_file_contains:
             path: build/*.zip
             entries:
-              limits/cpp: "/(?ms)^echo 2$.*^echo 512$/"
-              limits/cc: "/(?ms)^echo 2$.*^echo 512$/"
+              limits/cpp: "/(?ms)^echo 2.000$.*^echo 1$.*^echo 512$/"
+              limits/cc: "/(?ms)^echo 2.000$.*^echo 1$.*^echo 512$/"

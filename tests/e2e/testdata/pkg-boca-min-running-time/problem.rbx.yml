@@ -1,0 +1,27 @@
+name: pkg-boca-min-running-time
+
+# A small, "ugly" time limit (300ms) that the old BOCA rounding heuristic
+# would have approximated. Combined with the BOCA `minRunningTime: 1000`
+# extension (see .local.rbx/env.rbx.yml), the limits script must run the
+# solution ceil(1000 / 300) = 4 times with an EXACT accumulated budget of
+# 4 * 0.300 = 1.200s, so the effective per-run TL stays exactly 300ms. See #494.
+timeLimit: 300
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4
