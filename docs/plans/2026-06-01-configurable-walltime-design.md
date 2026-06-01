@@ -96,25 +96,56 @@ two computed values.
 
 ### 4. BOCA (`rbx/box/packaging/boca/packager.py` + templates)
 
-Remove the hardcoded `let "ttime = $time + 30"` from the `run/*` and
-`interactive/*` templates. Substitute the per-language coefficients in
-`_expand_run_script` / `_replace_common`, using `awk` for the float multiply
-(bash `let` is integer-only):
+> **Updated for upstream main (PRs #493, #494).** Since this design was first
+> written, #494 reworked the wall block and #493 added a BOCA→rbx language
+> mapping helper. The current wall block in every `run/*` and `interactive/*`
+> template is:
+> ```bash
+> time=$3
+> rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+> if [ "$rtime" -gt "0" ]; then
+>   let "ttime = $rtime + 30"
+> else
+>   time=1
+>   ttime=30
+> fi
+> ```
+> `$time` is now an **exact fractional CPU budget in seconds** (aggregated over
+> `nruns`, emitted via `_fmt_seconds`), and `rtime` is its integer ceiling used
+> only for the `> 0` guard and for `-T`.
+
+Replace the hardcoded `let "ttime = $rtime + 30"` with the configurable formula,
+computed directly from the fractional `$time` via `awk` (bash arithmetic is
+integer-only) and ceiled to whole seconds for safeexec's `-T`:
 
 ```bash
 time=$3
-if [ "$time" -gt "0" ]; then
-  ttime=$(awk "BEGIN{print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrementSec}} + 0.999)}")
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
 else
   time=1
-  ttime={{rbxWallIncrementSec}}
+  ttime=$(awk "BEGIN {print int({{rbxWallIncrement}}+0.9999999)}")
 fi
 ```
 
-`{{rbxWallIncrementSec}} = ceil(b_ms / 1000)`. BOCA's `$time` is the per-language
-CPU TL in integer seconds (aggregated over `nruns`), which matches `x`. This
-deletes the Maratona-Mineira hack and makes rbx and BOCA agree by construction,
-since both derive from the same coefficients.
+`{{rbxWallMultiplier}}` = `a` (e.g. `2`); `{{rbxWallIncrement}}` = `b` in
+**exact fractional seconds** via the existing `_fmt_seconds(b_ms)` (e.g.
+`1.000`). BOCA's `$time` is the per-language CPU budget in fractional seconds
+(aggregated over `nruns`), which matches `x`. This deletes the Maratona-Mineira
+hack and makes rbx and BOCA agree by construction.
+
+Substitution lives in `_replace_common(text, lang)` (already called for every
+run/interactive script via `_expand_run_script`). `lang` is the **emitted BOCA
+language** (e.g. `cc`, `py3`); map it to the rbx language with the existing
+`get_rbx_language_from_boca_language(lang)` (added by #493) before resolving
+coefficients, so a `cpp` per-language override applies to both `cc` and `cpp`.
+The two placeholders are absent from non-run templates, so the extra `.replace`
+calls are harmless no-ops there.
+
+Templates to edit: `run/{c,cc,cpp,java,kt,py2,py3}` and
+`interactive/{c,cc,cpp,java,kt,py2,py3}`. Leave `run/bkp` (a backup, not
+emitted) untouched.
 
 ### 5. Sensible defaults in the shipped preset (`rbx/resources/presets/default/env.rbx.yml`)
 
@@ -138,8 +169,10 @@ Conservative defaults (small increments), not the old flat `+30s` cushion.
 - Unit: `resolve_walltime_coeffs` (env default, per-language override, fallback)
   and `compute_walltime`.
 - `tasks.py`: wall time uses the resolved per-language coefficients.
-- BOCA: emitted run/interactive scripts substitute the correct coefficients
-  (update existing packaging snapshot/tests).
+- BOCA: emitted run/interactive scripts substitute the correct coefficients.
+  Test homes added upstream: `tests/rbx/box/packaging/boca/test_timing.py`,
+  `test_default_preset_integration.py`, and the e2e `zip_file_contains` matcher
+  (`tests/e2e/`) for asserting limit/run script contents inside the zip.
 
 ## Decisions (confirmed)
 

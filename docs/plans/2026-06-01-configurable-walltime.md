@@ -11,9 +11,14 @@
 **Reference:** Design doc `docs/plans/2026-06-01-configurable-walltime-design.md`.
 
 **Notes for the implementer:**
-- The active BOCA packager is the legacy `rbx/box/packaging/boca/packager.py`. `boca_next/` is a stub (CLAUDE.md only) — out of scope.
+- This branch is rebased on top of upstream main including PRs #491 (BocaNext L2),
+  #493 (cc/cpp→rbx language mapping), and #494 (exact fractional BOCA time limits).
+  Tasks 4–6 below already account for those changes.
+- The active BOCA packager is the legacy `rbx/box/packaging/boca/packager.py`. `boca_next/` is now partially implemented but the `rbx package boca` CLI still wires `BocaPackager` (legacy) — out of scope. (Applying the same formula to BocaNext is a follow-up.)
 - `environment.TimingConfig` (env.rbx.yml `timing:`) is the target. Do NOT touch `rbx/box/timing.py` (`TimingProfile`) — that is the unrelated per-problem TL-estimation profile.
 - Defaults `multiplier=2.0, increment=0` reproduce today's rbx behavior exactly.
+- BOCA→rbx language mapping already exists: `get_rbx_language_from_boca_language` in `rbx/box/packaging/boca/boca_language_utils.py` (already imported in `packager.py`). Use it — the earlier "mapping risk" is resolved upstream.
+- BOCA emits exact fractional seconds via `_fmt_seconds(ms)` (`packager.py:29`). Reuse it for the wall-time increment placeholder.
 - New `@functools.cache` on module-level `rbx/box/` functions must be registered in `rbx.testing_utils.clear_all_functools_cache` (test isolation rule). The resolver below is a plain function (no cache) to avoid this.
 - Run tests with `uv run pytest ...`. Lint with `uv run ruff check --fix . && uv run ruff format .`.
 
@@ -333,83 +338,83 @@ feat(tasks): apply per-language wall-time formula in local judging
 
 ### Task 4: Wire wall-time formula into BOCA packaging
 
+> **Reworked for upstream #493/#494.** The wall block is now `ttime = $rtime + 30`
+> with `$time` an exact fractional-seconds budget; the cc/cpp→rbx mapping helper
+> already exists. See the design doc's updated section 4.
+
 **Files:**
-- Modify templates (replace hardcoded `ttime = $time + 30`):
-  - `rbx/resources/packagers/boca/run/{c,cpp,java,kt,py2,py3}`
-  - `rbx/resources/packagers/boca/interactive/{c,cpp,java,kt,py2,py3}`
-- Modify: `rbx/box/packaging/boca/packager.py` (`_replace_common` ~line 193 and/or `_expand_run_script` ~line 319; uses `_get_pkg_timelimit`/`limits_info`)
-- Test: `tests/rbx/box/packaging/` (find the existing BOCA packaging test; otherwise add a focused unit test on the substitution helper)
+- Modify templates (replace the `let "ttime = $rtime + 30"` line + the `else ttime=30` line):
+  - `rbx/resources/packagers/boca/run/{c,cc,cpp,java,kt,py2,py3}`
+  - `rbx/resources/packagers/boca/interactive/{c,cc,cpp,java,kt,py2,py3}`
+  - Leave `rbx/resources/packagers/boca/run/bkp` untouched (backup, not emitted).
+- Modify: `rbx/box/packaging/boca/packager.py` (`_replace_common` ~line 186; reuse `_fmt_seconds` ~line 29 and the already-imported `get_rbx_language_from_boca_language`)
+- Test: `tests/rbx/box/packaging/boca/test_timing.py` (unit) + optionally an e2e assertion in `tests/rbx/box/packaging/e2e/test_boca_e2e.py` / `tests/e2e/` via `zip_file_contains`.
 
 **Step 1: Write the failing test**
 
-First locate an existing BOCA packaging test (`grep -rl "BocaPackager\|_expand_run_script\|run/cpp" tests/`). Add a test asserting the emitted run script no longer contains `+ 30` and substitutes the resolved coefficients. Prefer testing the pure substitution: factor the coefficient→script substitution into a helper, e.g. `_replace_walltime(text, language)`, and unit-test it:
+Add a unit test in `tests/rbx/box/packaging/boca/test_timing.py` that exercises the substitution helper directly (follow the fixture style already in that file for setting up a package + boca limits profile). Assert:
+- The emitted `run`/`interactive` script for a language whose coeffs resolve to `(2.0, 1000 ms)` contains `* 2` and `+ 1.000` in the `ttime` awk expression, and **no** `+ 30`.
+- For `java` (preset increment 3000 ms) the script contains `+ 3.000`.
+- `cc` and `cpp` resolve to the **same** coefficients (verifies the BOCA→rbx mapping; a `cpp` per-language override applies to both).
 
-```python
-def test_boca_walltime_substitution(...):
-    # Given a template containing the {{rbxWallMultiplier}}/{{rbxWallIncrementSec}}
-    # placeholders and a language whose coeffs resolve to (2.0, 3000 ms),
-    # the substituted script contains 2.0 and ceil(3000/1000)=3, and no '+ 30'.
-```
-
-Match the project's existing BOCA test fixtures/patterns (see `tests/e2e/testdata/pkg-boca*`). If the cleanest seam is an e2e snapshot, update the snapshot instead and assert the script content.
+If a pure-string seam is cleaner, test the new `_replace_walltime` helper on a minimal template string containing the two placeholders.
 
 **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest <the boca test> -v`
+Run: `uv run pytest tests/rbx/box/packaging/boca/test_timing.py -v`
 Expected: FAIL (placeholders unsubstituted / `+ 30` still present).
 
 **Step 3: Implement**
 
-Edit each `run/*` and `interactive/*` template, replacing the block:
+Edit each `run/*` and `interactive/*` template (cc/cpp/c at one line offset, java/kt/py2/py3 at another — `grep -n 'ttime = \$rtime' rbx/resources/packagers/boca/{run,interactive}/*` lists them all). Replace:
 
 ```bash
-time=$3
-if [ "$time" -gt "0" ]; then
-  let "ttime = $time + 30"
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  let "ttime = $rtime + 30"
 else
   time=1
   ttime=30
 fi
 ```
 
-with (Java/Kotlin/Python templates have the same block at a different line — replace all):
+with:
 
 ```bash
-time=$3
-if [ "$time" -gt "0" ]; then
-  ttime=$(awk "BEGIN{print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrementSec}} + 0.999)}")
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
 else
   time=1
-  ttime={{rbxWallIncrementSec}}
+  ttime=$(awk "BEGIN {print int({{rbxWallIncrement}}+0.9999999)}")
 fi
 ```
 
-In `packager.py`, resolve coefficients per language using the shared resolver and the BOCA CPU TL, and substitute. Add a helper and call it from `_replace_common` (which already runs for run, interactive, compile, checker — only the run/interactive templates contain the placeholders, so substitution is a no-op elsewhere):
+In `packager.py`, add a helper and call it from `_replace_common` (it already runs for every run/interactive/compile/checker template; the placeholders only exist in run/interactive, so it is a harmless no-op elsewhere):
 
 ```python
-import math
-from rbx.box import environment
-
-def _replace_walltime(self, text: str, language: BocaLanguage) -> str:
+def _replace_walltime(self, text: str, lang: str) -> str:
+    # `lang` is the emitted BOCA language (e.g. 'cc', 'py3'); map to rbx.
+    rbx_language = get_rbx_language_from_boca_language(lang)
     env = environment.get_environment()
-    lang = environment.get_language_or_nil(language)
+    language = environment.get_language_or_nil(rbx_language)
     multiplier, increment_ms = environment.resolve_walltime_coeffs(
-        env.timing, lang
+        env.timing, language
     )
-    increment_sec = math.ceil(increment_ms / 1000)
     text = text.replace('{{rbxWallMultiplier}}', f'{multiplier:g}')
-    text = text.replace('{{rbxWallIncrementSec}}', str(increment_sec))
+    text = text.replace('{{rbxWallIncrement}}', _fmt_seconds(max(0, increment_ms)))
     return text
 ```
 
-> NOTE on the BOCA language identifier: `_replace_common` receives the BOCA template language (e.g. `cc`, `py3`), not the rbx language name (`cpp`, `py`). `get_language_or_nil` expects the rbx name. Map BOCA→rbx before resolving (reuse the existing BOCA language mapping in `boca/utils.py` / `get_boca_template_name`, inverted) so per-language overrides resolve correctly. If a clean inverse mapping is unavailable, resolve from the rbx language at the `_expand_run_script` call site (which is per emitted rbx language) instead of inside `_replace_common`. Choose the seam that lets coefficients resolve from the correct rbx language; verify against the env preset (java increment 3000 → `ttime` uses 3).
+Add `from rbx.box import environment` to `packager.py` if not already importable as a module (it currently imports specific names via `from rbx.box.environment import get_extension_or_default`). Then call `text = self._replace_walltime(text, lang)` at the end of `_replace_common` (before/after the existing `{{rbxPython3}}` replace).
 
-Call `self._replace_walltime(text, language)` inside `_replace_common` (or `_expand_run_script`).
+> `_fmt_seconds` formats ms as exact fractional seconds (`1000 -> '1.000'`), so the increment stays exact and the awk ceil yields whole seconds for safeexec `-T`. `{multiplier:g}` renders `2.0 -> '2'`, `1.5 -> '1.5'`.
 
 **Step 4: Run tests**
 
-Run: `uv run pytest <the boca test> -v`
-Expected: PASS. Also `grep -rn "+ 30\|let \"ttime" rbx/resources/packagers/boca/` returns nothing.
+Run: `uv run pytest tests/rbx/box/packaging/boca/test_timing.py -v`
+Expected: PASS. Also verify no leftover hardcoded wall increment in emitted templates:
+`grep -rn 'ttime = \$rtime + 30\|ttime=30' rbx/resources/packagers/boca/run rbx/resources/packagers/boca/interactive` returns nothing (bkp excluded).
 
 **Step 5: Commit**
 
@@ -452,6 +457,8 @@ languages:
 
 (Insert `timing:` at the top level alongside `sandbox`, `defaultCompilation`, etc.; add the per-language `timing:` under the existing `py`/`java`/`kt` entries. Keep `cpp`/`c` on the env default.)
 
+> The `extensions.boca` block in this preset is unaffected. Note #494 deprecated `maximumTimeError` (now ignored) and added `minRunningTime`; the default preset does not set either, so no change is needed there.
+
 **Step 2: Verify the preset loads**
 
 Run: `uv run python -c "from rbx.box.environment import Environment; from rbx.box.yaml_validation import load_yaml_model; import pathlib; e=load_yaml_model(pathlib.Path('rbx/resources/presets/default/env.rbx.yml'), Environment); print(e.timing.wallTimeMultiplier, e.timing.wallTimeIncrement); print({l.name: (l.timing and l.timing.wallTimeIncrement) for l in e.languages})"`
@@ -473,7 +480,7 @@ Run: `uv run ruff check --fix . && uv run ruff format .`
 
 **Step 2: Targeted tests**
 
-Run: `uv run pytest tests/rbx/box/walltime_test.py tests/rbx/box/tasks_test.py tests/rbx/box/test_timing.py -v`
+Run: `uv run pytest tests/rbx/box/walltime_test.py tests/rbx/box/tasks_test.py tests/rbx/box/test_timing.py tests/rbx/box/packaging/boca/test_timing.py tests/rbx/box/packaging/boca/test_default_preset_integration.py -v`
 Expected: PASS.
 
 **Step 3: Broader suite (excluding slow CLI)**
@@ -493,7 +500,9 @@ After review, open a PR referencing issue #490.
 
 ## Risks / things to watch
 
-- **BOCA language mapping**: the substitution must resolve coefficients from the correct rbx language (Task 4 NOTE). Getting this wrong means per-language overrides silently fall back to env defaults — verify java/kt/py emit `ttime` increment 3/3/2.
-- **`awk` availability** on BOCA judge hosts: `awk` is part of base BOCA images (the run scripts already use standard coreutils); acceptable. If undesirable, compute integer `ttime` in Python and substitute a literal — but that loses the `$time`-relative formula. Keep `awk`.
-- **Regression safety**: default `(2.0, 0)` keeps rbx identical to today; BOCA changes from `+30` to `2*x + 1` (preset). Confirm this is intended (it is — the `+30` was the Maratona-Mineira hack being removed).
+- **BOCA language mapping** *(resolved upstream)*: use `get_rbx_language_from_boca_language` (#493). Still worth a test assertion that `cc`/`cpp` resolve identically (Task 4 Step 1).
+- **`awk` availability**: the run/interactive scripts already use `awk` for the fractional `$time`/`rtime` math (post-#494), so depending on it for `ttime` is consistent and safe.
+- **Regression safety**: default `(2.0, 0)` keeps rbx identical to today. BOCA changes from `$rtime + 30` to `2*$time + 1` (preset) — a behavior change. The old `+30` was the Maratona-Mineira hack; confirm the smaller cushion is acceptable, and consider whether the global preset increment should be larger than 1 s for safety margin on real judges. **Open the PR description noting this BOCA wall-time change explicitly.**
 - **doubleTL**: `x` is the already-expanded CPU TL — confirmed via Task 3 test.
+- **`$time` is fractional seconds** (post-#494): the formula multiplies the exact fractional budget, not the integer `rtime` ceiling, so `2 * 0.5s = 1s` wall rather than `2 * 1s`. Intended (matches the rbx side which works in ms).
+- **BocaNext** (`boca_next/`, #491): not wired into the `boca` CLI yet; applying the same formula there is a follow-up, out of scope.
