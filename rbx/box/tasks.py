@@ -269,6 +269,9 @@ async def _run_communication_solution_on_testcase(
             interactor_extra_config.sandbox.wallTimeLimit = _interactor_wall_time(
                 extra_config.sandbox.wallTimeLimit
             )
+        # When the solution has no wall limit (sandbox without soft timeout),
+        # neither process gets one, so the interactor still outlives the
+        # solution; the override above is correctly skipped.
 
         if output_dir is None:
             assert testcase.outputPath is not None
