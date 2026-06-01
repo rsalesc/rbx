@@ -83,20 +83,20 @@ time=$3
 # $time is an EXACT fractional CPU budget (seconds); safeexec's -t accepts it
 # verbatim. Use an integer ceiling only for the bash integer comparison and the
 # real (wall) time limit, mirroring the interactive scripts (see #494).
-rtime=$(awk "BEGIN {print int($time+0.9999999)}")
-if [ "$rtime" -gt "0" ]; then
-  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
-else
-  time=1
-  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} + 0.9999999)}")
-fi
-
 nruns=1
 if [ "$4" != "" ]; then
   if [ "$4" -gt "0" ]; then
     nruns=$4
   fi
 fi
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} * $nruns + 0.9999999)}")
+else
+  time=1
+  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} * $nruns + 0.9999999)}")
+fi
+
 maxm=512000
 if [ "$5" != "" ]; then
   if [ "$5" -gt "0" ]; then

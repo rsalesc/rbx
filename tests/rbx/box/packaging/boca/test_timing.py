@@ -107,11 +107,11 @@ _WALL_SAMPLE = (
     'rtime=$(awk "BEGIN {print int($time+0.9999999)}")\n'
     'if [ "$rtime" -gt "0" ]; then\n'
     '  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
-    '+ {{rbxWallIncrement}} + 0.9999999)}")\n'
+    '+ {{rbxWallIncrement}} * $nruns + 0.9999999)}")\n'
     'else\n'
     '  time=1\n'
     '  ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} '
-    '+ {{rbxWallIncrement}} + 0.9999999)}")\n'
+    '+ {{rbxWallIncrement}} * $nruns + 0.9999999)}")\n'
     'fi\n'
 )
 
@@ -139,6 +139,7 @@ def test_replace_walltime_uses_default_formula_no_plus_30():
         out = packager._replace_walltime(_WALL_SAMPLE, 'cc')  # noqa: SLF001
     assert '* 2' in out
     assert '+ 0.000' in out
+    assert '* $nruns' in out
     assert '{{rbxWallMultiplier}}' not in out
     assert '{{rbxWallIncrement}}' not in out
     assert '+ 30' not in out
@@ -171,7 +172,7 @@ def test_replace_walltime_else_branch_keeps_wall_floor_on_real_template():
     ).read_text()
     with _patched_coeffs(2.0, 0) as packager:
         out = packager._replace_walltime(template, 'cc')  # noqa: SLF001
-    awk_expr = 'int($time * 2 + 0.000 + 0.9999999)'
+    awk_expr = 'int($time * 2 + 0.000 * $nruns + 0.9999999)'
     assert out.count(awk_expr) == 2
     assert 'int(0.000+0.9999999)' not in out
     assert 'int(0.000 + 0.9999999)' not in out
