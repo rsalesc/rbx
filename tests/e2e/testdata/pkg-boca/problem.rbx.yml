@@ -2,6 +2,14 @@ name: pkg-boca
 timeLimit: 1000
 memoryLimit: 256
 
+# A cpp-specific limit override. The default preset aliases the rbx `cpp`
+# language onto both BOCA variants `cc` and `cpp`, so both emitted limits
+# scripts must reflect this modifier rather than the base limits (#493).
+modifiers:
+  cpp:
+    time: 2000
+    memory: 512
+
 generators:
   - name: gen
     path: gens/gen.cpp

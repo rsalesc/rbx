@@ -24,7 +24,12 @@ from rbx.box.solutions import (
 )
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation
-from tests.e2e.spec import SolutionMatcher, TestsMatcher, ZipMatcher
+from tests.e2e.spec import (
+    SolutionMatcher,
+    TestsMatcher,
+    ZipFileMatcher,
+    ZipMatcher,
+)
 
 
 @dataclass
@@ -108,13 +113,22 @@ def check_file_contains(ctx: AssertionContext, mapping: Dict[str, str]) -> None:
         target = ctx.package_root / path
         if not target.exists():
             raise AssertionError(f'{path}: file does not exist')
-        text = target.read_text()
-        if len(needle) > 2 and needle.startswith('/') and needle.endswith('/'):
-            regex = needle[1:-1]
-            if not re.search(regex, text):
-                raise AssertionError(f'{path}: regex {needle} no match')
-        elif needle not in text:
-            raise AssertionError(f'{path}: missing {needle!r}')
+        _match_text(path, target.read_text(), needle)
+
+
+def _match_text(label: str, text: str, needle: str) -> None:
+    """Assert ``text`` matches ``needle`` using ``file_contains`` semantics.
+
+    A value longer than two chars wrapped in forward slashes is a regex (the
+    slashes are stripped); everything else is a literal substring. Raises
+    ``AssertionError`` prefixed with ``label`` on mismatch.
+    """
+    if len(needle) > 2 and needle.startswith('/') and needle.endswith('/'):
+        regex = needle[1:-1]
+        if not re.search(regex, text):
+            raise AssertionError(f'{label}: regex {needle} no match')
+    elif needle not in text:
+        raise AssertionError(f'{label}: missing {needle!r}')
 
 
 def _glob_in_zip(zip_path: pathlib.Path, pattern: str) -> bool:
@@ -131,6 +145,20 @@ def check_zip_contains(ctx: AssertionContext, matcher: ZipMatcher) -> None:
     for entry in matcher.entries:
         if not _glob_in_zip(zip_path, entry):
             raise AssertionError(f'{zip_path.name}: missing entry {entry!r}')
+
+
+def check_zip_file_contains(ctx: AssertionContext, matcher: ZipFileMatcher) -> None:
+    zip_paths = _glob(ctx.package_root, matcher.path)
+    if not zip_paths:
+        raise AssertionError(f'no zip matched {matcher.path!r}')
+    zip_path = zip_paths[0]
+    with zipfile.ZipFile(zip_path) as zf:
+        names = set(zf.namelist())
+        for entry, needle in matcher.entries.items():
+            if entry not in names:
+                raise AssertionError(f'{zip_path.name}: no entry {entry!r}')
+            text = zf.read(entry).decode()
+            _match_text(f'{zip_path.name}:{entry}', text, needle)
 
 
 def _load_skeleton(package_root: pathlib.Path) -> SolutionReportSkeleton:

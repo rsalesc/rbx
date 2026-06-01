@@ -12,6 +12,7 @@ from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.boca.boca_language_utils import (
     get_boca_template_name,
     get_emitted_boca_languages,
+    get_rbx_language_from_boca_language,
 )
 from rbx.box.packaging.boca.extension import (
     BocaExtension,
@@ -113,12 +114,18 @@ class BocaPackager(BasePackager):
         )
 
     def _get_pkg_timelimit(self, language: BocaLanguage) -> int:
-        limits = limits_info.get_limits(language, profile='boca')
+        # Limit modifiers are keyed by the underlying rbx language, so a BOCA
+        # variant (e.g. the legacy `cc` alias of `cpp`) must be mapped back to
+        # its rbx language before lookup -- otherwise it misses the modifier and
+        # falls back to the base limit (#493).
+        rbx_language = get_rbx_language_from_boca_language(language)
+        limits = limits_info.get_limits(rbx_language, profile='boca')
         assert limits.time is not None
         return limits.time
 
     def _get_pkg_memorylimit(self, language: BocaLanguage) -> int:
-        limits = limits_info.get_limits(language, profile='boca')
+        rbx_language = get_rbx_language_from_boca_language(language)
+        limits = limits_info.get_limits(rbx_language, profile='boca')
         assert limits.memory is not None
         return limits.memory
 

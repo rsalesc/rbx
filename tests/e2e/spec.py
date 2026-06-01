@@ -96,6 +96,19 @@ class ZipMatcher(_Forbid):
     entries: List[str]
 
 
+class ZipFileMatcher(_Forbid):
+    """Assert the *content* of named entries inside a zip.
+
+    ``path`` is a glob locating the zip under the package root; ``entries`` maps
+    a literal zip entry name to a matcher with the same substring/regex
+    semantics as ``file_contains`` (a value wrapped in slashes and longer than
+    two chars is a regex, otherwise a literal substring).
+    """
+
+    path: str
+    entries: Dict[str, str]
+
+
 class Expect(_Forbid):
     stdout_contains: Union[str, List[str], None] = None
     stderr_contains: Union[str, List[str], None] = None
@@ -105,6 +118,7 @@ class Expect(_Forbid):
     file_contains: Dict[str, str] = Field(default_factory=dict)
     zip_contains: Optional[ZipMatcher] = None
     zip_not_contains: Optional[ZipMatcher] = None
+    zip_file_contains: Optional[ZipFileMatcher] = None
     solutions: Optional[
         Dict[str, Annotated[SolutionMatcher, BeforeValidator(_coerce_solution_matcher)]]
     ] = None
