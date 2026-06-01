@@ -1,13 +1,14 @@
 import contextvars
 import pathlib
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 import typer
+from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import package
 from rbx.box.environment import VerificationLevel
-from rbx.box.schema import LimitModifiers, LimitsProfile
+from rbx.box.schema import LimitModifiers, LimitsProfile, TimingGroupOrigin
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.limits import Limits
 
@@ -195,3 +196,77 @@ def pretty_print_profile(profile: LimitsProfile):
     console.console.print(f'[status]Modifiers:[/status] {profile.modifiers}')
     if profile.inheritFromPackage:
         console.console.print('[status]Inherits from package.[/status]')
+
+
+class LimitsTableRow(BaseModel):
+    languages: str
+    solutions: Optional[int]
+    time_limit_ms: int
+    source: str
+    defaulted: bool = False
+
+
+def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
+    rows: List[LimitsTableRow] = []
+    if profile.groups:
+        for report in profile.groups:
+            if report.origin == TimingGroupOrigin.ESTIMATED:
+                source = (
+                    f'estimated (fastest {report.fastest} / slowest {report.slowest})'
+                )
+            elif report.origin == TimingGroupOrigin.MULTIPLIER:
+                ref = report.relativeToLanguage or 'base'
+                source = f'×{report.multiplier} of {ref}'
+            else:
+                source = 'DEFAULTED to base'
+            rows.append(
+                LimitsTableRow(
+                    languages=', '.join(report.languages),
+                    solutions=report.solutionCount,
+                    time_limit_ms=report.timeLimit,
+                    source=source,
+                    defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
+                )
+            )
+        return rows
+    # Degraded view: base row + each per-language modifier override.
+    base = profile.timeLimit or 0
+    rows.append(
+        LimitsTableRow(
+            languages='(base)', solutions=None, time_limit_ms=base, source='base'
+        )
+    )
+    for lang, mod in sorted(profile.modifiers.items()):
+        if mod.time is not None:
+            rows.append(
+                LimitsTableRow(
+                    languages=lang,
+                    solutions=None,
+                    time_limit_ms=mod.time,
+                    source='override',
+                )
+            )
+    return rows
+
+
+def render_limits_table(profile: LimitsProfile, title: str = 'Time limits') -> None:
+    import rich.table
+
+    table = rich.table.Table(title=title, show_lines=False)
+    table.add_column('Languages')
+    table.add_column('Solutions', justify='right')
+    table.add_column('Time Limit', justify='right')
+    table.add_column('Source')
+    for row in build_limits_table_rows(profile):
+        sols = '' if row.solutions is None else str(row.solutions)
+        tl = f'{row.time_limit_ms} ms'
+        if row.defaulted:
+            table.add_row(
+                f'[warning]{row.languages}[/warning]',
+                sols,
+                f'[warning]{tl}[/warning]',
+                f'[warning]⚠ {row.source}[/warning]',
+            )
+        else:
+            table.add_row(row.languages, sols, tl, row.source)
+    console.console.print(table)
