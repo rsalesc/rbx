@@ -442,4 +442,10 @@ class BocaPackager(BasePackager):
             str(build_path / self._get_zip_filename()), 'zip', into_path
         )
 
+        boca_profile = limits_info.get_saved_limits_profile('boca')
+        if boca_profile is not None:
+            limits_info.render_limits_table(
+                boca_profile, title='BOCA time limits (per language group)'
+            )
+
         return (build_path / self._get_zip_filename()).with_suffix('.zip')
