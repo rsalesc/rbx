@@ -31,6 +31,30 @@ def build_partition(
     return result
 
 
+def partition_from_assignment(
+    assignment: Dict[str, int],
+    env_groups: List[LanguageGroup],
+) -> List[ResolvedGroup]:
+    """Build groups from a {language: number} map. 0 = own singleton; N>=1 share a
+    bucket. Carries over an env group's whenEmpty only when the resulting membership
+    is identical to that env group."""
+    buckets: Dict[int, List[str]] = {}
+    singletons: List[List[str]] = []
+    for lang, number in assignment.items():
+        if number == 0:
+            singletons.append([lang])
+        else:
+            buckets.setdefault(number, []).append(lang)
+
+    env_when_empty = {frozenset(g.languages): g.whenEmpty for g in env_groups}
+    result: List[ResolvedGroup] = []
+    for _, langs in sorted(buckets.items()):
+        when_empty = env_when_empty.get(frozenset(langs))
+        result.append(ResolvedGroup(languages=langs, whenEmpty=when_empty))
+    result.extend(ResolvedGroup(languages=s) for s in singletons)
+    return result
+
+
 class GroupTimings(BaseModel):
     fastest: int
     slowest: int

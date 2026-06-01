@@ -7,6 +7,7 @@ from rbx.box.timing_groups import (
     GroupValidationError,
     ResolvedGroup,
     build_partition,
+    partition_from_assignment,
     resolve_groups,
     validate_partition,
 )
@@ -171,3 +172,42 @@ def test_valid_partition_passes():
         all_languages=['cpp', 'java'],
     )
     validate_partition(groups)  # no raise
+
+
+def test_assignment_zero_makes_singletons():
+    env_groups = [LanguageGroup(languages=['c', 'cpp'])]
+    groups = partition_from_assignment(
+        assignment={'c': 0, 'cpp': 0, 'python': 0},
+        env_groups=env_groups,
+    )
+    assert sorted(g.languages for g in groups) == [['c'], ['cpp'], ['python']]
+
+
+def test_identical_membership_preserves_when_empty():
+    env_groups = [
+        LanguageGroup(
+            languages=['java', 'kotlin'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+        )
+    ]
+    groups = partition_from_assignment(
+        assignment={'java': 1, 'kotlin': 1, 'cpp': 2},
+        env_groups=env_groups,
+    )
+    jvm = next(g for g in groups if set(g.languages) == {'java', 'kotlin'})
+    assert jvm.whenEmpty is not None and jvm.whenEmpty.multiplier == 2.0
+
+
+def test_changed_membership_drops_when_empty():
+    env_groups = [
+        LanguageGroup(
+            languages=['java', 'kotlin'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+        )
+    ]
+    groups = partition_from_assignment(
+        assignment={'java': 1, 'kotlin': 1, 'scala': 1},
+        env_groups=env_groups,
+    )
+    jvm = next(g for g in groups if 'java' in g.languages)
+    assert jvm.whenEmpty is None
