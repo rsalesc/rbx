@@ -49,7 +49,7 @@ The main entry point in `packager.py`. Pipeline:
 ### BOCA (`boca/`)
 
 **`BocaPackager`** -- Most structurally complex. Produces zip with per-language shell scripts:
-- `limits/{lang}` -- time limit script (uses clever rounding with multiple runs to minimize error)
+- `limits/{lang}` -- time limit script. Emits an EXACT fractional time budget (no rounding). When the optional `minRunningTime` is set, it runs the solution `ceil(minRunningTime / timeLimit)` times (capped at 10) so the accumulated budget reaches the floor while the effective per-run TL stays exact.
 - `compile/{lang}` -- embeds checker source, testlib.h, rbx.h inline in shell scripts
 - `compare/{lang}`, `run/{lang}`, `tests/{lang}` -- per-language scripts from templates
 - `description/problem.info` + PDF statement
@@ -57,7 +57,7 @@ The main entry point in `packager.py`. Pipeline:
 
 Supports interactive problems with special `run` scripts.
 
-**`extension.py`** -- `BocaExtension` model with language mapping, flags, `maximumTimeError`, `preferContestLetter`, `usePypy`.
+**`extension.py`** -- `BocaExtension` model with language mapping, flags, `minRunningTime`, `preferContestLetter`, `usePypy`. (`maximumTimeError` is deprecated/ignored -- see issue #494.)
 
 ### MOJ (`moj/`)
 

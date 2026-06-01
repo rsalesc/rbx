@@ -78,8 +78,12 @@ if [ ! -x "$sf" ]; then
 fi
 
 time=$3
-if [ "$time" -gt "0" ]; then
-  let "ttime = $time + 30"
+# $time is an EXACT fractional CPU budget (seconds); safeexec's -t accepts it
+# verbatim. Use an integer ceiling only for the bash integer comparison and the
+# real (wall) time limit, mirroring the interactive scripts (see #494).
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+if [ "$rtime" -gt "0" ]; then
+  let "ttime = $rtime + 30"
 else
   time=1
   ttime=30

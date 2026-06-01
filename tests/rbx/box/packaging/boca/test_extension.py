@@ -41,3 +41,21 @@ def test_resolved_template_none_when_unset():
 
 def test_boca_extension_languages_defaults_to_empty():
     assert BocaExtension().languages == []
+
+
+def test_min_running_time_defaults_to_none():
+    assert BocaExtension().minRunningTime is None
+
+
+def test_min_running_time_rejects_non_positive():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        BocaExtension(minRunningTime=0)
+    with pytest.raises(ValidationError):
+        BocaExtension(minRunningTime=-5)
+
+
+def test_min_running_time_accepts_positive_ms():
+    assert BocaExtension(minRunningTime=1000).minRunningTime == 1000
