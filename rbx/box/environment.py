@@ -435,6 +435,7 @@ def get_walltime_coeffs_for_language(
 
 
 def compute_walltime(cpu_tl_ms: int, language: Optional[str]) -> int:
+    """Computes the wall-time limit (ms) for a CPU time limit (ms) under the active environment's coefficients for the given language."""
     return apply_walltime_formula(cpu_tl_ms, get_walltime_coeffs_for_language(language))
 
 
