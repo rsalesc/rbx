@@ -19,3 +19,29 @@ scenarios:
               - "input/*"
               - "output/*"
               - "limits/*"
+
+  - name: package-boca-cc-cpp-limits
+    description: >
+      The default preset aliases the rbx `cpp` language onto both BOCA
+      variants `cc` and `cpp`. The package's `cpp` limit modifier
+      (time 2000ms, memory 512MB) must therefore apply to BOTH emitted
+      `limits/` scripts. Before #493 the `cc` script missed the modifier
+      and fell back to the base limits (1000ms / 256MB).
+
+      The limits script echoes, in order: time (seconds), number of runs,
+      memory (MB), output limit. One line-anchored regex per entry asserts
+      both the time line (`echo 2`, from 2000ms) and the memory line
+      (`echo 512`). Anchoring matters: the literal `echo 2` would otherwise
+      match as a substring of the base-limit memory line `echo 256`, masking
+      a regression. Before #493 the `cc` script echoed `echo 1` / `echo 256`
+      (base limits) and this regex fails to match.
+    steps:
+      - cmd: build
+      - cmd: time -s inherit -p boca
+      - cmd: pkg boca
+        expect:
+          zip_file_contains:
+            path: build/*.zip
+            entries:
+              limits/cpp: "/(?ms)^echo 2$.*^echo 512$/"
+              limits/cc: "/(?ms)^echo 2$.*^echo 512$/"

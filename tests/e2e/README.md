@@ -160,6 +160,29 @@ slashes, so `input/*` matches `input/foo/bar` too. `zip_not_contains`
 uses the same shape and asserts none of the patterns match. A missing
 zip in either matcher is an error, not a silent pass.
 
+#### `zip_file_contains`
+
+Asserts the **content** of named entries inside a zip (whereas
+`zip_contains` only checks entry presence). `path` is a glob locating the
+zip; `entries` maps a literal zip entry name to a matcher with the same
+substring/regex semantics as [`file_contains`](#file_contains) (a value
+longer than two chars wrapped in slashes is a regex, otherwise a literal
+substring).
+
+```yaml
+expect:
+  zip_file_contains:
+    path: build/*.zip
+    entries:
+      limits/cc:  "echo 512"                      # literal substring
+      limits/cpp: "/(?ms)^echo 2$.*^echo 512$/"   # multiline regex
+```
+
+Entry names are matched literally (no globbing). A missing zip, or a named
+entry absent from the zip, is an error. Because `entries` is a map, each
+entry takes a single matcher — assert multiple lines of one entry with a
+single (multiline) regex rather than repeating the key.
+
 #### `solutions`
 
 Per-solution verdict map. Reads `.box/runs/skeleton.yml` and the

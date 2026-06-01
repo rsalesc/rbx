@@ -42,6 +42,7 @@ from tests.e2e.assertions import (
     check_stdout_matches,
     check_tests,
     check_zip_contains,
+    check_zip_file_contains,
     check_zip_not_contains,
 )
 from tests.e2e.spec import Expect, Scenario, Step
@@ -84,6 +85,7 @@ _GENERIC_CHECKS = (
     ('file_contains', check_file_contains),
     ('zip_contains', check_zip_contains),
     ('zip_not_contains', check_zip_not_contains),
+    ('zip_file_contains', check_zip_file_contains),
     ('solutions', check_solutions),
     ('tests', check_tests),
 )

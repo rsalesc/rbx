@@ -14,9 +14,10 @@ from tests.e2e.assertions import (
     check_stdout_contains,
     check_stdout_matches,
     check_zip_contains,
+    check_zip_file_contains,
     check_zip_not_contains,
 )
-from tests.e2e.spec import ZipMatcher
+from tests.e2e.spec import ZipFileMatcher, ZipMatcher
 
 
 def _ctx(
@@ -296,3 +297,76 @@ def test_zip_not_contains_missing_zip_raises(tmp_path):
             _ctx(tmp_path),
             ZipMatcher(path='build/boca/*.zip', entries=['secrets/*']),
         )
+
+
+# ---------------------------------------------------------------------------
+# zip_file_contains
+# ---------------------------------------------------------------------------
+
+
+def _build_zip_with_contents(
+    path: pathlib.Path, entries: dict[str, str]
+) -> pathlib.Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, 'w') as zf:
+        for entry, contents in entries.items():
+            zf.writestr(entry, contents)
+    return path
+
+
+def test_zip_file_contains_substring_pass(tmp_path):
+    _build_zip_with_contents(
+        tmp_path / 'pkg.zip',
+        {'limits/cc': 'echo 2.00\necho 512\n', 'limits/cpp': 'echo 2.00\necho 512\n'},
+    )
+    check_zip_file_contains(
+        _ctx(tmp_path),
+        ZipFileMatcher(
+            path='pkg.zip',
+            entries={'limits/cc': 'echo 512', 'limits/cpp': 'echo 512'},
+        ),
+    )
+
+
+def test_zip_file_contains_substring_fail(tmp_path):
+    _build_zip_with_contents(tmp_path / 'pkg.zip', {'limits/cc': 'echo 256\n'})
+    with pytest.raises(AssertionError, match='missing'):
+        check_zip_file_contains(
+            _ctx(tmp_path),
+            ZipFileMatcher(path='pkg.zip', entries={'limits/cc': 'echo 512'}),
+        )
+
+
+def test_zip_file_contains_regex_pass(tmp_path):
+    _build_zip_with_contents(tmp_path / 'pkg.zip', {'limits/cc': 'echo 2.00\n'})
+    check_zip_file_contains(
+        _ctx(tmp_path),
+        ZipFileMatcher(path='pkg.zip', entries={'limits/cc': r'/echo \d+\.\d+/'}),
+    )
+
+
+def test_zip_file_contains_missing_entry_raises(tmp_path):
+    _build_zip_with_contents(tmp_path / 'pkg.zip', {'limits/cc': 'echo 512\n'})
+    with pytest.raises(AssertionError, match='no entry'):
+        check_zip_file_contains(
+            _ctx(tmp_path),
+            ZipFileMatcher(path='pkg.zip', entries={'limits/cpp': 'echo 512'}),
+        )
+
+
+def test_zip_file_contains_missing_zip_raises(tmp_path):
+    with pytest.raises(AssertionError, match='no zip matched'):
+        check_zip_file_contains(
+            _ctx(tmp_path),
+            ZipFileMatcher(path='build/*.zip', entries={'limits/cc': 'echo 512'}),
+        )
+
+
+def test_zip_file_contains_path_glob_pass(tmp_path):
+    _build_zip_with_contents(
+        tmp_path / 'build' / 'pkg-name.zip', {'limits/cc': 'echo 512\n'}
+    )
+    check_zip_file_contains(
+        _ctx(tmp_path),
+        ZipFileMatcher(path='build/*.zip', entries={'limits/cc': 'echo 512'}),
+    )
