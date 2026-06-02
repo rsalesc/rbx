@@ -1,7 +1,7 @@
 import pathlib
 from typing import Optional, Tuple, Type
 
-from rbx.box import checkers, limits_info, package, state
+from rbx.box import checkers, environment, limits_info, package, state
 from rbx.box.code import (
     CommunicationItem,
     find_language_name,
@@ -27,6 +27,11 @@ from rbx.grading.steps import (
 from rbx.utils import model_to_yaml
 
 STDERR_THRESHOLD_IN_BYTES = 1024 * 1024  # 1MB
+
+# Extra wall time (ms) granted to the interactor on top of the solution's wall
+# time in communication tasks, so the interactor never times out before the
+# solution does. Mirrors BOCA's `ittime = ttime + 1`.
+_INTERACTOR_WALL_MARGIN_MS = 1000
 
 
 class TooMuchStderrIssue(Issue):
@@ -121,7 +126,7 @@ async def run_solution_on_testcase(
             timelimit_override,
             use_timelimit=use_timelimit,
         )
-        extra_config = _get_execution_config(limits, sandbox_type)
+        extra_config = _get_execution_config(limits, sandbox_type, language)
 
         if output_dir is None:
             assert testcase.outputPath is not None
@@ -188,6 +193,7 @@ async def run_solution_on_testcase(
 def _get_execution_config(
     limits: Limits,
     sandbox_type: Type[SandboxBase],
+    language: Optional[str] = None,
 ) -> ExecutionConfig:
     sandbox = EnvironmentSandbox()
     sandbox.timeLimit = limits.time
@@ -196,10 +202,24 @@ def _get_execution_config(
         sandbox.timeLimit = sandbox.timeLimit * 2
     sandbox.wallTimeLimit = sandbox.timeLimit
     if sandbox.timeLimit is not None and sandbox_type.use_soft_timeout():
-        sandbox.wallTimeLimit = sandbox.timeLimit * 2
+        sandbox.wallTimeLimit = environment.compute_walltime(
+            sandbox.timeLimit, language
+        )
     sandbox.memoryLimit = limits.memory
     sandbox.fileSizeLimit = limits.output
     return ExecutionConfig(sandbox=sandbox, problemLimits=limits)
+
+
+def _interactor_wall_time(solution_wall_ms: int) -> int:
+    """Wall time (ms) for the interactor in a communication task.
+
+    The interactor only needs to outlive the solution so that it is never the
+    process that times out first (which would prematurely kill a still-legal
+    solution). It is a separate program (usually C++), so we do NOT re-apply the
+    solution's per-language wall formula to it; we just add a small fixed margin
+    to the solution's wall time, mirroring BOCA's `ittime = ttime + 1`.
+    """
+    return solution_wall_ms + _INTERACTOR_WALL_MARGIN_MS
 
 
 async def _run_communication_solution_on_testcase(
@@ -236,18 +256,22 @@ async def _run_communication_solution_on_testcase(
             use_timelimit=use_timelimit,
         )
 
-        extra_config = _get_execution_config(limits, sandbox_type)
+        extra_config = _get_execution_config(limits, sandbox_type, language)
+        # The interactor is not language-specific, so it is built without the
+        # solution's language. Its wall time is set below from the solution's
+        # wall plus a fixed margin so it always outlives the solution.
         interactor_extra_config = _get_execution_config(limits, sandbox_type)
         if (
             interactor_extra_config.sandbox is not None
-            and interactor_extra_config.sandbox.wallTimeLimit is not None
             and extra_config.sandbox is not None
             and extra_config.sandbox.wallTimeLimit is not None
         ):
-            interactor_extra_config.sandbox.wallTimeLimit += (
+            interactor_extra_config.sandbox.wallTimeLimit = _interactor_wall_time(
                 extra_config.sandbox.wallTimeLimit
             )
-        # TODO: maybe combine wall time limits?
+        # When the solution has no wall limit (sandbox without soft timeout),
+        # neither process gets one, so the interactor still outlives the
+        # solution; the override above is correctly skipped.
 
         if output_dir is None:
             assert testcase.outputPath is not None

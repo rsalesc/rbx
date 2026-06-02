@@ -102,20 +102,20 @@ if [ ! -x "$sf" ]; then
 fi
 
 time=$3
-rtime=$(awk "BEGIN {print int($time+0.9999999)}")
-if [ "$rtime" -gt "0" ]; then
-  let "ttime = $rtime + 30"
-else
-  time=1
-  ttime=30
-fi
-
 nruns=1
 if [ "$4" != "" ]; then
   if [ "$4" -gt "1" ]; then
     echo "WARNING: nruns is set to $4, but it will be ignored because it's not supported by interactive problems"
   fi
 fi
+rtime=$(awk "BEGIN {print int($time+0.9999999)}")
+# A non-positive (rounded) time limit means "no real limit"; force a 1s CPU
+# budget so the wall formula below still yields a sane positive wall time.
+if [ "$rtime" -le "0" ]; then
+  time=1
+fi
+ttime=$(awk "BEGIN {print int($time * {{rbxWallMultiplier}} + {{rbxWallIncrement}} * $nruns + 0.9999999)}")
+
 maxm=512000
 if [ "$5" != "" ]; then
   if [ "$5" -gt "0" ]; then
