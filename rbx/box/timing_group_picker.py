@@ -7,7 +7,7 @@ LEGEND_LINES = [
     '  [X] singleton  its own estimated limit',
     '  [ ] leftover   pooled with all other unmarked langs (default)',
     '',
-    '1-9 group · space/tab [X]/[ ] · 0 clear · enter confirm · q cancel',
+    '↑/↓ move · 1-9 group · space/tab [X]/[ ] · 0 clear · enter confirm · q cancel',
 ]
 
 
