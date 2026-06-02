@@ -305,12 +305,18 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     import rich.table
 
     rows = build_limits_table_rows(profile)
-    caption = None
+    caption_lines: List[str] = []
     if any(row.is_leftover for row in rows):
-        caption = (
+        caption_lines.append(
             f'{LEFTOVER_MARKER}leftover: languages not assigned to a group, '
             'pooled together (default).'
         )
+    if any(row.defaulted for row in rows):
+        caption_lines.append(
+            '[warning]⚠ DEFAULTED: no accepted solutions and no whenEmpty rule; '
+            'fell back to the base time limit.[/warning]'
+        )
+    caption = '\n'.join(caption_lines) if caption_lines else None
     table = rich.table.Table(
         title=title,
         title_style='bold bright_white',

@@ -212,6 +212,71 @@ def test_caption_present_only_with_leftover():
     assert build_limits_table(plain_profile).caption is None
 
 
+def test_caption_explains_defaulted_when_present():
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+            TimingGroupReport(
+                languages=['go'],
+                timeLimit=2000,
+                origin=TimingGroupOrigin.DEFAULTED,
+            ),
+        ],
+    )
+    caption = build_limits_table(profile).caption or ''
+    assert 'DEFAULTED' in caption
+    # styled as a warning so it renders yellow, like the defaulted rows
+    assert '[warning]' in caption
+
+
+def test_no_defaulted_caption_without_defaulted_row():
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+        ],
+    )
+    assert 'DEFAULTED' not in (build_limits_table(profile).caption or '')
+
+
+def test_render_includes_defaulted_caption(capsys):
+    from rbx.box.limits_info import render_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['go'],
+                timeLimit=2000,
+                origin=TimingGroupOrigin.DEFAULTED,
+            )
+        ],
+    )
+    render_limits_table(profile, title='Test limits')
+    out = capsys.readouterr().out
+    # the footer explanation appears below the table, not just the row glyph
+    assert 'fell back to the base time limit' in out
+
+
 def test_defaulted_leftover_renders_asterisk_and_warning(capsys):
     from rbx.box.limits_info import render_limits_table
 
