@@ -111,6 +111,44 @@ def test_multiplier_relative_to_base_when_relative_to_omitted():
     assert result.time_limit_per_language['java'] == int(result.base_time_limit * 3.0)
 
 
+def test_increment_added_on_top_of_multiplier():
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['java'],
+            whenEmpty=LanguageGroupFallback(
+                relativeTo='cpp', multiplier=2.0, increment=500
+            ),
+        ),
+    ]
+    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
+    result = resolve_groups(groups, pooled, base, _eval)
+    cpp_tl = result.time_limit_per_language['cpp']
+    assert result.time_limit_per_language['java'] == int(cpp_tl * 2.0 + 500)
+
+    report = next(r for r in result.reports if r.languages == ['java'])
+    assert report.multiplier == 2.0
+    assert report.increment == 500
+
+
+def test_increment_relative_to_base_when_relative_to_omitted():
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['java'],
+            whenEmpty=LanguageGroupFallback(multiplier=1.0, increment=300),
+        ),
+    ]
+    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
+    result = resolve_groups(groups, pooled, base, _eval)
+    # multiplier 1.0 against the base estimate, plus the increment.
+    assert result.time_limit_per_language['java'] == int(
+        result.base_time_limit * 1.0 + 300
+    )
+
+
 def test_multiplier_chain_through_another_empty_group():
     groups = [
         ResolvedGroup(languages=['cpp']),

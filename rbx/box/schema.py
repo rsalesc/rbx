@@ -657,6 +657,7 @@ class TimingGroupReport(BaseModel):
     slowest: Optional[int] = None
     relativeToLanguage: Optional[str] = None
     multiplier: Optional[float] = None
+    increment: Optional[int] = None
     isLeftover: bool = False
 
 

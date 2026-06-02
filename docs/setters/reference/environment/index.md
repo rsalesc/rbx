@@ -220,6 +220,7 @@ timing:
       whenEmpty:          # used only when this group has no solutions
         relativeTo: cpp   # any language; resolves to the group containing it
         multiplier: 2.0   # omit relativeTo to multiply the base estimate
+        increment: 500    # optional constant offset, in ms, added on top
     - languages: [python]
 ```
 
@@ -233,9 +234,11 @@ Semantics:
 - During estimation, the accepted-solution timings are pooled **per group**, and each
   group that has at least one solution gets its own estimated time limit from the formula.
 - `whenEmpty` is **optional** and is only used when a group has **no** solutions. It sets
-  the group's time limit to `multiplier ×` the time limit of the group containing
-  `relativeTo` (or `multiplier ×` the base estimate when `relativeTo` is omitted).
-  `multiplier` must be `> 0`.
+  the group's time limit to `multiplier × reference + increment`, where `reference` is the
+  time limit of the group containing `relativeTo` (or the base estimate when `relativeTo`
+  is omitted). `multiplier` is the slope and must be `> 0`; `increment` is an optional
+  constant offset in milliseconds (default `0`). For example, `multiplier: 2.0` with
+  `increment: 500` resolves to `2 × reference + 500 ms`.
 - A group that is empty and has no `whenEmpty` falls back to the base time limit, with a
   **loud warning** (source `DEFAULTED`).
 

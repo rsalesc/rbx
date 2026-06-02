@@ -172,7 +172,8 @@ def resolve_groups(
         elif group.whenEmpty is not None:
             ref = group.whenEmpty.relativeTo
             ref_tl = base_tl if ref is None else resolve(lang_index[ref])
-            tl = int(ref_tl * group.whenEmpty.multiplier)
+            increment = group.whenEmpty.increment or 0
+            tl = int(ref_tl * group.whenEmpty.multiplier + increment)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -180,6 +181,7 @@ def resolve_groups(
                 solutionCount=0,
                 relativeToLanguage=ref,
                 multiplier=group.whenEmpty.multiplier,
+                increment=group.whenEmpty.increment,
                 isLeftover=group.is_leftover,
             )
         else:
