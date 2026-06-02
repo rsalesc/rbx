@@ -16,6 +16,45 @@ rbx each package boca
 
 Both **batch** problems and **interactive** problems are supported.
 
+The BOCA packager uses the `boca` [limits profile](../profiling/index.md), so create it with
+`rbx time -p boca` before packaging.
+
+## Time limits
+
+{{rbx}} emits the **exact** time limit for each language into the BOCA package — fractional
+seconds included (e.g. a `1234 ms` limit becomes `1.234`). There is no rounding or approximation:
+the limit a solution gets in BOCA matches the one you estimated.
+
+### Minimum running time
+
+By default each solution runs **once** against the exact time limit. Some setups prefer a larger
+per-run budget (for instance, to absorb startup jitter on a loaded autojudge). You can set a
+**minimum total running time** under the BOCA extension in `env.rbx.yml`; {{rbx}} then runs the
+solution enough times to reach it (`ceil(minRunningTime / timeLimit)` runs), keeping each run's
+limit exact:
+
+```yaml
+extensions:
+  boca:
+    minRunningTime: 1000   # milliseconds; e.g. a 300ms problem runs 4x for a 1.2s budget
+```
+
+The number of runs is capped at 10; if the minimum can't be reached within that cap, {{rbx}}
+prints a warning and uses 10 runs.
+
+### Wall time
+
+BOCA solutions are also given a **wall (real) time** limit, computed from the CPU time limit with
+the same configurable `a * x + b` formula used during local judging — useful for slow languages
+that pay JVM/interpreter startup costs. See
+[Wall time limits](../reference/environment/index.md#wall-time-limits).
+
+### C++ language variants
+
+Older BOCA versions call the C++ language `cc` while newer ones call it `cpp`. {{rbx}} packages
+both variants, and both inherit the time and memory limits of the rbx `cpp` language, so the two
+always get identical limits regardless of which name your BOCA server uses.
+
 ## Interactive problems
 
 Interactive problems can be easily packaged for BOCA with {{rbx}}. There are some limitations to it, though:

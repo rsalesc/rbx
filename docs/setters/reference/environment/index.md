@@ -254,6 +254,11 @@ Pass `--auto` to skip the prompt and use the env groups as-is. After `rbx time` 
 with `DEFAULTED` rows highlighted. The **leftover** group is listed **first**, marked with a
 leading asterisk (`*`) on its languages and explained in a footer beneath the table.
 
+!!! note
+    The shipped default preset groups `python` on its own and `java`/`kotlin` together, while
+    leaving `c`/`cpp` ungrouped (the leftover pool). Both groups fall back relative to `cpp`
+    when they have no solutions: `python` at `3×` and `java`/`kotlin` at `2×` the C++ limit.
+
 ## Wall time limits
 
 Solutions are also bounded by a **wall (real) time** limit, in addition to the

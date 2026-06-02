@@ -102,8 +102,9 @@ modifiers:
 ```
 
 !!! tip
-    When `rbx time` detects accepted solutions in multiple languages, it will
-    automatically prompt you to set per-language limits. You can also edit the profile
+    You normally don't write `modifiers` by hand. When you run `rbx time`, the interactive
+    [language groups](/setters/profiling#language-groups) picker estimates a limit per group of
+    languages and writes the per-language modifiers for you. You can also edit the profile
     manually or through the TUI (`rbx ui` > **Edit limits profiles**).
 
 ### Verify with the profile active

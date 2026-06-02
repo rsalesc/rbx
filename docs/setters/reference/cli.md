@@ -161,7 +161,7 @@ rbx time [OPTIONS]
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
-| `--strategy`, `-s` | TEXT | Strategy to use for time limit estimation (estimate, inherit). | - |
+| `--strategy`, `-s` | TEXT | Strategy to use for time limit estimation (estimate, inherit, estimate_custom, custom). | - |
 | `--auto`, `-a` | BOOLEAN | Whether to automatically estimate the time limit. | `False` |
 | `--runs`, `-r` | INTEGER | Number of runs to perform for each solution. Zero means the config default. | `0` |
 | `--profile`, `-p` | TEXT | Profile to use for time limit estimation. | `local` |

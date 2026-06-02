@@ -486,7 +486,7 @@ async def time(
         None,
         '--strategy',
         '-s',
-        help='Strategy to use for time limit estimation (estimate, inherit).',
+        help='Strategy to use for time limit estimation (estimate, inherit, estimate_custom, custom).',
     ),
     auto: bool = typer.Option(
         False,
