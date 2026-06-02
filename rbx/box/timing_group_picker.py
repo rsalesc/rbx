@@ -1,4 +1,6 @@
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
+
+from prompt_toolkit.formatted_text import AnyFormattedText
 
 LEGEND_LINES = [
     'Assign each language to a time-limit bucket:',
@@ -65,6 +67,7 @@ async def prompt_group_assignment(
     default_number: Dict[str, int],
     input=None,
     output=None,
+    preview: Optional[Callable[[Dict[str, int]], AnyFormattedText]] = None,
 ) -> Optional[Dict[str, int]]:
     """Interactive single-screen group picker. Returns {language: group_number}
     where N>=1 is a shared group, 0 is unbucketed (leftover), and -1 is a
@@ -135,20 +138,23 @@ async def prompt_group_assignment(
     def _(event):
         event.app.exit(result=None)
 
-    layout = Layout(
-        HSplit(
-            [
-                Window(
-                    content=header, height=len(LEGEND_LINES), always_hide_cursor=True
-                ),
-                Window(
-                    content=body,
-                    height=len(state.languages),
-                    always_hide_cursor=True,
-                ),
-            ]
+    windows = [
+        Window(content=header, height=len(LEGEND_LINES), always_hide_cursor=True),
+        Window(content=body, height=len(state.languages), always_hide_cursor=True),
+    ]
+    if preview is not None:
+
+        def _preview_fragments():
+            return preview(state.assignment())
+
+        windows.append(
+            Window(
+                content=FormattedTextControl(_preview_fragments),
+                always_hide_cursor=True,
+                dont_extend_height=True,
+            )
         )
-    )
+    layout = Layout(HSplit(windows))
     style = Style.from_dict(
         {
             'header': 'bold',

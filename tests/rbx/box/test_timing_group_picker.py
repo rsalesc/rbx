@@ -84,6 +84,31 @@ async def test_picker_cancel_returns_none():
     assert result is None
 
 
+async def test_picker_invokes_preview_with_current_assignment():
+    from prompt_toolkit.formatted_text import ANSI
+
+    seen = []
+
+    def preview(assignment):
+        seen.append(dict(assignment))
+        return ANSI('preview')
+
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('\r')  # confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'java'],
+            {'cpp': 0, 'java': 0},
+            input=inp,
+            output=DummyOutput(),
+            preview=preview,
+        )
+    assert result == {'cpp': 1, 'java': 0}
+    # The picker rendered at least once and the final state reached the preview.
+    assert seen
+    assert {'cpp': 1, 'java': 0} in seen
+
+
 def test_legend_describes_three_states():
     from rbx.box.timing_group_picker import LEGEND_LINES
 
