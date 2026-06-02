@@ -13,14 +13,15 @@ from rbx.box.timing_groups import (
 )
 
 
-def test_implicit_singletons_for_unlisted_languages():
+def test_leftover_pool_for_unlisted_languages():
     groups = build_partition(
         env_groups=[LanguageGroup(languages=['c', 'cpp'])],
-        all_languages=['c', 'cpp', 'python'],
+        all_languages=['c', 'cpp', 'python', 'go'],
     )
-    # one explicit group + one implicit singleton, order preserved
-    assert [g.languages for g in groups] == [['c', 'cpp'], ['python']]
+    # one explicit group + ONE leftover pool of all unlisted languages, in order
+    assert [g.languages for g in groups] == [['c', 'cpp'], ['python', 'go']]
     assert groups[0].whenEmpty is None
+    assert groups[1].whenEmpty is None
 
 
 def test_partition_preserves_when_empty():
@@ -36,9 +37,17 @@ def test_partition_preserves_when_empty():
     assert groups[0].whenEmpty.multiplier == 2.0
 
 
-def test_build_partition_with_no_env_groups_makes_all_singletons():
+def test_build_partition_with_no_env_groups_makes_one_leftover_pool():
     groups = build_partition(env_groups=[], all_languages=['c', 'cpp', 'python'])
-    assert [g.languages for g in groups] == [['c'], ['cpp'], ['python']]
+    assert [g.languages for g in groups] == [['c', 'cpp', 'python']]
+
+
+def test_build_partition_no_leftover_when_all_grouped():
+    groups = build_partition(
+        env_groups=[LanguageGroup(languages=['c', 'cpp'])],
+        all_languages=['c', 'cpp'],
+    )
+    assert [g.languages for g in groups] == [['c', 'cpp']]
 
 
 def _eval(fastest, slowest):

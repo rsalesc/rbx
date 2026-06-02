@@ -15,8 +15,8 @@ def build_partition(
     env_groups: List[LanguageGroup],
     all_languages: List[str],
 ) -> List[ResolvedGroup]:
-    """Build a disjoint partition: explicit env groups first (in order), then an
-    implicit singleton for every language not covered by an explicit group."""
+    """Build a disjoint partition: explicit env groups first (in order), then a
+    single leftover pool holding every language not covered by an explicit group."""
     grouped: set[str] = set()
     result: List[ResolvedGroup] = []
     for group in env_groups:
@@ -24,10 +24,9 @@ def build_partition(
             ResolvedGroup(languages=list(group.languages), whenEmpty=group.whenEmpty)
         )
         grouped.update(group.languages)
-    for lang in all_languages:
-        if lang not in grouped:
-            result.append(ResolvedGroup(languages=[lang]))
-            grouped.add(lang)
+    leftover = [lang for lang in all_languages if lang not in grouped]
+    if leftover:
+        result.append(ResolvedGroup(languages=leftover))
     return result
 
 
