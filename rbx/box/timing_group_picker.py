@@ -57,7 +57,8 @@ async def prompt_group_assignment(
     output=None,
 ) -> Optional[Dict[str, int]]:
     """Interactive single-screen group picker. Returns {language: group_number}
-    (0 = own group) or None if cancelled."""
+    where N>=1 is a shared group, 0 is unbucketed (leftover), and -1 is a
+    singleton (own group); or None if cancelled."""
     if not languages:
         return {}
 
