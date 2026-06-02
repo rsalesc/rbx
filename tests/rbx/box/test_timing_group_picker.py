@@ -82,3 +82,14 @@ async def test_picker_cancel_returns_none():
             ['cpp', 'java'], {}, input=inp, output=DummyOutput()
         )
     assert result is None
+
+
+def test_legend_describes_three_states():
+    from rbx.box.timing_group_picker import LEGEND_LINES
+
+    text = '\n'.join(LEGEND_LINES)
+    assert '[N]' in text and 'grouped' in text
+    assert '[X]' in text and 'singleton' in text
+    assert '[ ]' in text and 'leftover' in text
+    # key hint still present
+    assert 'confirm' in text and 'cancel' in text

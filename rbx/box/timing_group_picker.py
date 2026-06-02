@@ -1,5 +1,15 @@
 from typing import Dict, List, Optional
 
+LEGEND_LINES = [
+    'Assign each language to a time-limit bucket:',
+    '',
+    '  [N] grouped    shares one estimated limit with same-numbered langs',
+    '  [X] singleton  its own estimated limit',
+    '  [ ] leftover   pooled with all other unmarked langs (default)',
+    '',
+    '1-9 group · space/tab [X]/[ ] · 0 clear · enter confirm · q cancel',
+]
+
 
 class GroupPickerState:
     def __init__(self, languages: List[str], default_number: Dict[str, int]):
@@ -70,20 +80,20 @@ async def prompt_group_assignment(
 
     state = GroupPickerState(languages, default_number)
 
-    header = FormattedTextControl(
-        lambda: [
-            (
-                'class:header',
-                'Assign each language to a group (same number = shared time limit).\n',
-            ),
-            (
-                'class:hint',
-                '↑/↓ or j/k move · 1-9 set group · space/tab toggle '
-                'singleton [X] / unbucketed [ ] · 0 clear · Enter confirm · '
-                'q cancel\n',
-            ),
-        ]
-    )
+    def _header_fragments():
+        fragments = []
+        last = len(LEGEND_LINES) - 1
+        for i, line in enumerate(LEGEND_LINES):
+            if i == 0:
+                style = 'class:header'
+            elif i == last:
+                style = 'class:hint'
+            else:
+                style = 'class:legend'
+            fragments.append((style, line + '\n'))
+        return fragments
+
+    header = FormattedTextControl(_header_fragments)
     body = FormattedTextControl(
         state.render_fragments, focusable=True, show_cursor=False
     )
@@ -128,7 +138,9 @@ async def prompt_group_assignment(
     layout = Layout(
         HSplit(
             [
-                Window(content=header, height=2, always_hide_cursor=True),
+                Window(
+                    content=header, height=len(LEGEND_LINES), always_hide_cursor=True
+                ),
                 Window(
                     content=body,
                     height=len(state.languages),
@@ -141,6 +153,7 @@ async def prompt_group_assignment(
         {
             'header': 'bold',
             'hint': 'ansibrightblack',
+            'legend': '',
             'current': 'bold reverse',
             'row': '',
             'box-current': 'ansiyellow bold',
