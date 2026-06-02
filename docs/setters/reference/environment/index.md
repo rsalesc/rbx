@@ -251,5 +251,6 @@ number; everything else starts unbucketed). Press `Enter` to confirm or `q` to c
 Pass `--auto` to skip the prompt and use the env groups as-is. After `rbx time` finishes (and again at the end of
 `rbx package boca`), a per-group table is printed showing the **Languages**, **Solutions**,
 **Time Limit**, and **Source** (estimated / `×N of <lang>` / `DEFAULTED`) for each group,
-with `DEFAULTED` rows highlighted.
+with `DEFAULTED` rows highlighted. The **leftover** group is listed **first**, marked with a
+leading asterisk (`*`) on its languages and explained in a footer beneath the table.
 
