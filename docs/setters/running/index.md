@@ -46,6 +46,8 @@ You can read more about each verification level [here](/setters/verification/#ve
 By default, {{rbx}} will run solutions with the maximum verification level. This means tests will be built
 and verified, and that all solutions will be run with twice the time limit, and a warning will show up if a TLE solution passed in `2*TL`.
 
+Solutions are also bounded by a configurable **wall (real) time** limit, derived from the CPU time limit — see [Wall time limits](/setters/reference/environment/#wall-time-limits).
+
 The results of a `rbx run` command can be inspected through the `rbx ui` command, as shown in the
 animation below.
 

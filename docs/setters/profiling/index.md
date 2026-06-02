@@ -42,8 +42,8 @@ solutions and applying a formula to their timings.
 3. **Solution execution** -- For formula-based strategies, all accepted solutions are run against all testcases with no time limit enforced, so that the true execution times can be measured.
 4. **Time report** -- The fastest and slowest solution times are shown, along with per-language breakdowns if solutions in multiple languages exist.
 5. **Formula evaluation** -- The formula is applied to compute the estimated time limit.
-6. **Per-language limits** -- If solutions exist in multiple languages and their estimated limits differ, you are prompted to select which languages should have language-specific time limits.
-7. **Profile persistence** -- The result is written to `.limits/<profile>.yml`.
+6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a sensible limit instead of falling back to the base. See [Language groups](#language-groups).
+7. **Profile persistence** -- The result is written to `.limits/<profile>.yml`, together with the chosen grouping as metadata.
 
 ### Strategies
 
@@ -173,6 +173,48 @@ step_up(slowest * 1.5, 100)
 step_up(fastest * 4, 100)
 ```
 
+## Language groups
+
+By default, a single time limit is estimated from the pooled timings of all accepted solutions
+and applied to every language. This is a problem when your accepted solutions don't cover every
+language your contest accepts: a language with no solutions (say, Java in a problem solved only in
+C++ and Python) would simply inherit the base limit, which may be far too tight for it.
+
+**Language groups** solve this. When you run `rbx time`, you are shown every environment language
+and can bucket related languages together. Each group gets its own estimated time limit from the
+formula, computed from the pooled timings of the accepted solutions in that group:
+
+- **Grouped** `[N]` -- the language belongs to numbered group `N` (`1`–`9`). Languages in the
+  same group share one estimated limit. Place compiled languages like `c`/`cpp` together, and
+  `java`/`kotlin` together.
+- **Singleton** `[X]` -- the language gets its own bucket (toggle with `space`/`tab`).
+- **Unbucketed** `[ ]` -- the default. All unbucketed languages join a single **leftover pool**
+  that is estimated together, so an unrepresented language inherits a represented sibling's limit
+  instead of the base limit. The leftover row is listed **first** in the table, marked with a `*`.
+
+The picker is **prepopulated from `env.rbx.yml`**: any groups you configure there appear
+preselected. After estimation, a per-group table is printed showing the estimated time limit
+for each group.
+
+Press <kbd>Enter</kbd> to confirm, or pass `--auto` to skip the prompt and use the configured
+env groups as-is.
+
+Groups are configured (and given empty-group fallbacks via `whenEmpty`) in `env.rbx.yml`. See the
+[Environment reference](../reference/environment/#language-groups) for the full schema and
+semantics.
+
+## Wall time limits
+
+In addition to the CPU time limit estimated above, every solution is bounded by a **wall (real)
+time** limit. Slow languages (Java, Kotlin, Python) spend significant wall-clock time on JVM /
+interpreter startup before doing any real work, so a wall limit derived too tightly from the CPU
+limit produces spurious time-limit verdicts.
+
+{{rbx}} computes the wall time limit from the CPU time limit with a configurable `a * x + b`
+formula (`wallTimeMultiplier` and `wallTimeIncrement`), configurable environment-wide and
+overridable per language. The same formula is used both when judging locally and when packaging
+for BOCA. See the [Environment reference](../reference/environment/#wall-time-limits) for details.
+
 ## Limits profiles
 
 Profiles are the mechanism {{rbx}} uses to store and manage time/memory limits independently of
@@ -215,6 +257,14 @@ modifiers:
 
 # The formula that was used to estimate the time limit (informational)
 formula: "step_up(max(fastest * 3, slowest * 1.5), 100)"
+
+# How languages were grouped during estimation (presentation-only metadata,
+# written automatically by `rbx time`; never used for limit resolution).
+groups:
+  - languages: [c, cpp]
+    timeLimit: 2000
+  - languages: [py]
+    timeLimit: 6000
 ```
 
 ### Per-language modifiers
@@ -235,8 +285,9 @@ The effective time limit for a language is computed as:
 3. If the language has a `timeMultiplier`, multiply the result by it.
 
 !!! tip
-    When `rbx time` detects that your accepted solutions are written in multiple languages with different
-    performance characteristics, it will prompt you to set per-language time limits automatically.
+    You don't usually edit `modifiers` by hand. When you run `rbx time`, the interactive
+    [language groups](#language-groups) picker estimates a limit per group of languages and writes
+    the resulting per-language modifiers for you.
 
 ### The `local` profile
 
