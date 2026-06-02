@@ -18,6 +18,7 @@ theme = Theme(
         'status': 'bright_white',
         'bstatus': 'bold bright_white',
         'item': 'bold blue',
+        'timelimit': 'bold cyan',
         'error': 'bold red',
         'success': 'bold green',
         'lnumber': 'dim cyan',

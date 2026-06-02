@@ -1,5 +1,6 @@
 import contextvars
 import pathlib
+import re
 from typing import Callable, Dict, List, Optional
 
 import typer
@@ -227,7 +228,7 @@ class LimitsTableRow(BaseModel):
 
 def _report_source(report: TimingGroupReport) -> str:
     if report.origin == TimingGroupOrigin.ESTIMATED:
-        return f'estimated (fastest {report.fastest} / slowest {report.slowest})'
+        return f'estimated (fastest {report.fastest} ms / slowest {report.slowest} ms)'
     if report.origin == TimingGroupOrigin.MULTIPLIER:
         ref = report.relativeToLanguage or 'base'
         return f'×{report.multiplier} of {ref}'
@@ -309,6 +310,18 @@ def _source_markup(source: str) -> str:
     return source
 
 
+# Matches a time figure like "1000 ms" so the number can be highlighted while
+# the unit is dimmed; applied uniformly to the Time Limit column and to the
+# fastest/slowest figures inside the Source column.
+_MS_PATTERN = re.compile(r'(\d+)\s*ms')
+
+
+def _highlight_ms(text: str) -> str:
+    """Colorize every "<number> ms" in ``text``: the figure pops in the
+    ``timelimit`` color, the unit is dimmed so the number stands out beside it."""
+    return _MS_PATTERN.sub(r'[timelimit]\1[/timelimit] [dim]ms[/dim]', text)
+
+
 def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     """Build a styled rich Table of the resolved per-language/group limits.
 
@@ -350,6 +363,8 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
         if row.defaulted:
+            # Defaulted rows are warnings: the yellow signals the fallback and
+            # deliberately overrides the per-figure time highlight.
             table.add_row(
                 f'[warning]{row.languages}[/warning]',
                 f'[warning]{sols}[/warning]',
@@ -357,7 +372,12 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
                 f'[warning]⚠ {row.source}[/warning]',
             )
         else:
-            table.add_row(row.languages, sols, tl, _source_markup(row.source))
+            table.add_row(
+                row.languages,
+                sols,
+                _highlight_ms(tl),
+                _highlight_ms(_source_markup(row.source)),
+            )
     return table
 
 

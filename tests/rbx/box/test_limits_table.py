@@ -90,7 +90,7 @@ def test_base_row_shows_estimated_provenance():
     assert rows[0].time_limit_ms == 1000
     # When estimated, the base row reports the same provenance as group rows,
     # pooled across every solution.
-    assert rows[0].source == 'estimated (fastest 100 / slowest 500)'
+    assert rows[0].source == 'estimated (fastest 100 ms / slowest 500 ms)'
     assert rows[0].solutions == 3
 
 
@@ -205,9 +205,79 @@ def test_build_limits_table_has_colored_columns():
 def test_source_markup_colors_by_origin():
     from rbx.box.limits_info import _source_markup
 
-    assert _source_markup('estimated (fastest 1 / slowest 2)').startswith('[success]')
+    assert _source_markup('estimated (fastest 1 ms / slowest 2 ms)').startswith(
+        '[success]'
+    )
     assert _source_markup('×4.0 of cpp').startswith('[item]')
     assert _source_markup('base') == 'base'
+
+
+def test_report_source_estimated_includes_ms_unit():
+    from rbx.box.limits_info import _report_source
+
+    report = TimingGroupReport(
+        languages=['c', 'cpp'],
+        timeLimit=1000,
+        origin=TimingGroupOrigin.ESTIMATED,
+        solutionCount=2,
+        fastest=280,
+        slowest=600,
+    )
+    # The fastest/slowest figures are times, so they carry the same "ms" unit
+    # shown in the Time Limit column.
+    assert _report_source(report) == 'estimated (fastest 280 ms / slowest 600 ms)'
+
+
+def test_highlight_ms_colors_number_and_dims_unit():
+    from rbx.box.limits_info import _highlight_ms
+
+    # The numeric value is highlighted (theme: timelimit) and the unit is dimmed
+    # so the figure stands out beside it.
+    assert _highlight_ms('1000 ms') == '[timelimit]1000[/timelimit] [dim]ms[/dim]'
+
+
+def test_highlight_ms_colors_every_time_in_a_string():
+    from rbx.box.limits_info import _highlight_ms
+
+    # Times embedded in the Source column (fastest/slowest) get the same
+    # treatment, so the figures match the Time Limit column.
+    out = _highlight_ms('estimated (fastest 280 ms / slowest 600 ms)')
+    assert out == (
+        'estimated (fastest [timelimit]280[/timelimit] [dim]ms[/dim] / '
+        'slowest [timelimit]600[/timelimit] [dim]ms[/dim])'
+    )
+
+
+def test_highlight_ms_leaves_non_time_text_untouched():
+    from rbx.box.limits_info import _highlight_ms
+
+    assert _highlight_ms('×4.0 of cpp') == '×4.0 of cpp'
+    assert _highlight_ms('DEFAULTED to base') == 'DEFAULTED to base'
+
+
+def test_estimated_time_renders_cyan_with_ms():
+    import rbx.console as console_module
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+        ],
+    )
+    out = console_module.capture_ansi(build_limits_table(profile), width=200)
+    # 'ms' unit is present and the time value carries the cyan (ANSI 36) color.
+    assert 'ms' in out
+    assert '\x1b[1;36m1000' in out
+    # the fastest/slowest figures in the Source column are colored the same way.
+    assert '\x1b[1;36m280' in out
 
 
 def test_leftover_row_is_first_and_marked():
