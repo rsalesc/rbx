@@ -218,6 +218,7 @@ class LimitsTableRow(BaseModel):
     time_limit_ms: int
     source: str
     defaulted: bool = False
+    is_leftover: bool = False
 
 
 def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
@@ -233,15 +234,21 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
                 source = f'×{report.multiplier} of {ref}'
             else:
                 source = 'DEFAULTED to base'
+            languages = ', '.join(report.languages)
+            if report.isLeftover:
+                languages = f'* {languages}'
             rows.append(
                 LimitsTableRow(
-                    languages=', '.join(report.languages),
+                    languages=languages,
                     solutions=report.solutionCount,
                     time_limit_ms=report.timeLimit,
                     source=source,
                     defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
+                    is_leftover=report.isLeftover,
                 )
             )
+        # Leftover group is shown first; stable sort keeps the rest in order.
+        rows.sort(key=lambda r: not r.is_leftover)
         return rows
     # Degraded view: base row + each per-language modifier override.
     base = profile.timeLimit or 0
@@ -292,17 +299,26 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     """
     import rich.table
 
+    rows = build_limits_table_rows(profile)
+    caption = None
+    if any(row.is_leftover for row in rows):
+        caption = (
+            '* leftover: languages not assigned to a group, '
+            'estimated together (default).'
+        )
     table = rich.table.Table(
         title=title,
         title_style='bold bright_white',
         header_style='bold bright_white',
+        caption=caption,
+        caption_style='bright_black',
         show_lines=False,
     )
     table.add_column('Languages', style='bold blue')
     table.add_column('Solutions', justify='right', style='bright_white')
     table.add_column('Time Limit', justify='right', style='bold bright_white')
     table.add_column('Source', style='bright_white')
-    for row in build_limits_table_rows(profile):
+    for row in rows:
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
         if row.defaulted:

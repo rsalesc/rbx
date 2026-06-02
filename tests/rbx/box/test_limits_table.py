@@ -131,3 +131,82 @@ def test_source_markup_colors_by_origin():
     assert _source_markup('estimated (fastest 1 / slowest 2)').startswith('[success]')
     assert _source_markup('×4.0 of cpp').startswith('[item]')
     assert _source_markup('base') == 'base'
+
+
+def test_leftover_row_is_first_and_marked():
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+            TimingGroupReport(
+                languages=['go', 'java'],
+                timeLimit=2000,
+                origin=TimingGroupOrigin.DEFAULTED,
+                isLeftover=True,
+            ),
+        ],
+    )
+    rows = build_limits_table_rows(profile)
+    # leftover pulled to the top, marked with a leading asterisk
+    assert rows[0].is_leftover is True
+    assert rows[0].languages.startswith('* ')
+    assert 'go, java' in rows[0].languages
+    # the rest keep their original order
+    assert rows[1].languages == 'c, cpp'
+
+
+def test_no_asterisk_when_no_leftover():
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+        ],
+    )
+    rows = build_limits_table_rows(profile)
+    assert rows[0].is_leftover is False
+    assert not rows[0].languages.startswith('*')
+
+
+def test_caption_present_only_with_leftover():
+    from rbx.box.limits_info import build_limits_table
+
+    leftover_profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['go', 'java'],
+                timeLimit=2000,
+                origin=TimingGroupOrigin.DEFAULTED,
+                isLeftover=True,
+            ),
+        ],
+    )
+    plain_profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+        ],
+    )
+    assert 'leftover' in (build_limits_table(leftover_profile).caption or '')
+    assert build_limits_table(plain_profile).caption is None
