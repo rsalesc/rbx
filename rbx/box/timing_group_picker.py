@@ -24,7 +24,7 @@ class GroupPickerState:
         lang = self.languages[self.cursor]
         # toggle between singleton (-1) and unbucketed (0); a numbered language
         # goes to singleton on the first press.
-        self.numbers[lang] = 0 if self.numbers[lang] == -1 else -1
+        self.numbers[lang] = 0 if self.numbers.get(lang, 0) == -1 else -1
 
     def assignment(self) -> Dict[str, int]:
         return dict(self.numbers)
@@ -79,7 +79,8 @@ async def prompt_group_assignment(
             (
                 'class:hint',
                 '↑/↓ or j/k move · 1-9 set group · space/tab toggle '
-                'singleton [X] / unbucketed [ ] · Enter confirm · q cancel\n',
+                'singleton [X] / unbucketed [ ] · 0 clear · Enter confirm · '
+                'q cancel\n',
             ),
         ]
     )

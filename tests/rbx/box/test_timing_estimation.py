@@ -1,6 +1,11 @@
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
 from rbx.box.schema import TimingGroupOrigin
-from rbx.box.timing import build_timing_profile, relevant_languages_for_estimation
+from rbx.box.timing import (
+    build_timing_profile,
+    default_assignment,
+    relevant_languages_for_estimation,
+)
+from rbx.box.timing_groups import partition_from_assignment
 
 
 def test_build_timing_profile_groups_languages():
@@ -83,3 +88,34 @@ def test_empty_leftover_pool_defaults_to_base():
         if r.origin == TimingGroupOrigin.DEFAULTED
     }
     assert ('go', 'java') in defaulted
+
+
+def test_default_assignment_round_trip_preserves_when_empty():
+    # The picker's prepopulated default, fed straight into the partition builder,
+    # must reproduce the env grouping (so whenEmpty carries over) and pool every
+    # ungrouped language into one leftover pool.
+    env_groups = [
+        LanguageGroup(languages=['c', 'cpp']),
+        LanguageGroup(
+            languages=['java', 'kotlin'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+        ),
+    ]
+    all_languages = ['c', 'cpp', 'java', 'kotlin', 'python', 'go']
+
+    default = default_assignment(all_languages, env_groups)
+    assert default == {
+        'c': 1,
+        'cpp': 1,
+        'java': 2,
+        'kotlin': 2,
+        'python': 0,
+        'go': 0,
+    }
+
+    groups = partition_from_assignment(default, env_groups)
+    jk = next(g for g in groups if set(g.languages) == {'java', 'kotlin'})
+    assert jk.whenEmpty is not None
+    assert jk.whenEmpty.multiplier == 2.0
+    # python + go are unbucketed -> a single leftover pool
+    assert ['python', 'go'] in [g.languages for g in groups]

@@ -111,18 +111,28 @@ def build_timing_profile(
     )
 
 
-async def _prompt_repartition(
+def default_assignment(
     all_languages: List[str],
     env_groups: List[environment.LanguageGroup],
-) -> Optional[Dict[str, int]]:
-    # Prepopulate numbers from env groups: env group #1 -> 1, etc.; ungrouped -> 0.
+) -> Dict[str, int]:
+    """Prepopulated picker state from env groups: env group #1 -> 1, etc.;
+    every other language -> 0 (unbucketed). Feeding this straight into
+    partition_from_assignment reproduces the env grouping (so whenEmpty carries
+    over) with all ungrouped languages pooled together."""
     default_number: Dict[str, int] = {lang: 0 for lang in all_languages}
     for i, group in enumerate(env_groups, start=1):
         for lang in group.languages:
             if lang in default_number:
                 default_number[lang] = i
+    return default_number
+
+
+async def _prompt_repartition(
+    all_languages: List[str],
+    env_groups: List[environment.LanguageGroup],
+) -> Optional[Dict[str, int]]:
     return await timing_group_picker.prompt_group_assignment(
-        all_languages, default_number
+        all_languages, default_assignment(all_languages, env_groups)
     )
 
 
