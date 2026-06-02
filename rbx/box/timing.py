@@ -292,8 +292,6 @@ async def estimate_time_limit(
         console.print(f'[error]Invalid language groups: {e}[/error]')
         return None
 
-    console.print(f'[success]Estimated time limit:[/success] {profile.timeLimit} ms')
-
     defaulted = [
         lang
         for report in (profile.groups or [])
