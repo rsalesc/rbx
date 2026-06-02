@@ -84,6 +84,45 @@ async def test_picker_cancel_returns_none():
     assert result is None
 
 
+def test_preview_text_suppressed_once_done():
+    s = GroupPickerState(['cpp'], {})
+    assert s.preview_text(lambda a: 'TABLE') == 'TABLE'
+    s.done = True
+    assert s.preview_text(lambda a: 'TABLE') == ''
+
+
+def test_preview_text_empty_without_callback():
+    s = GroupPickerState(['cpp'], {})
+    assert s.preview_text(None) == ''
+
+
+async def test_picker_invokes_preview_with_current_assignment():
+    from prompt_toolkit.formatted_text import ANSI
+
+    seen = []
+
+    def preview(assignment):
+        seen.append(dict(assignment))
+        return ANSI('preview')
+
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('\r')  # confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'java'],
+            {'cpp': 0, 'java': 0},
+            input=inp,
+            output=DummyOutput(),
+            preview=preview,
+        )
+    assert result == {'cpp': 1, 'java': 0}
+    # The picker rendered the live preview from the current assignment...
+    assert {'cpp': 0, 'java': 0} in seen
+    # ...but suppressed it on the confirming (final) paint, so the post-enter
+    # assignment never reaches the preview.
+    assert {'cpp': 1, 'java': 0} not in seen
+
+
 def test_legend_describes_three_states():
     from rbx.box.timing_group_picker import LEGEND_LINES
 
