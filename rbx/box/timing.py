@@ -169,9 +169,20 @@ def build_preview_renderer(
 async def _prompt_repartition(
     all_languages: List[str],
     env_groups: List[environment.LanguageGroup],
+    timing_per_solution_per_language: Dict[str, Dict[str, int]],
+    formula: str,
 ) -> Optional[Dict[str, int]]:
+    preview = build_preview_renderer(
+        timing_per_solution_per_language=timing_per_solution_per_language,
+        formula=formula,
+        env_groups=env_groups,
+        all_languages=all_languages,
+        width=console.console.size.width,
+    )
     return await timing_group_picker.prompt_group_assignment(
-        all_languages, default_assignment(all_languages, env_groups)
+        all_languages,
+        default_assignment(all_languages, env_groups),
+        preview=preview,
     )
 
 
@@ -252,7 +263,12 @@ async def estimate_time_limit(
 
     repartition = None
     if not auto and len(all_languages) > 1:
-        repartition = await _prompt_repartition(all_languages, env_groups)
+        repartition = await _prompt_repartition(
+            all_languages,
+            env_groups,
+            timing_per_solution_per_language,
+            formula,
+        )
         if repartition is None:
             console.print('[error]Time limit estimation cancelled.[/error]')
             return None

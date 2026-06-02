@@ -48,6 +48,33 @@ def test_preview_reports_invalid_grouping_inline():
     assert 'Invalid grouping' in out
 
 
+async def test_prompt_repartition_wires_a_working_preview(monkeypatch):
+    from rbx.box import timing, timing_group_picker
+
+    captured = {}
+
+    async def fake_picker(languages, default_number, preview=None, **kwargs):
+        captured['preview'] = preview
+        return default_number
+
+    monkeypatch.setattr(timing_group_picker, 'prompt_group_assignment', fake_picker)
+
+    await timing._prompt_repartition(  # noqa: SLF001
+        all_languages=['cpp', 'python'],
+        env_groups=[],
+        timing_per_solution_per_language={
+            'cpp': {'a.cpp': 100},
+            'python': {'p.py': 900},
+        },
+        formula='slowest * 3',
+    )
+
+    # The picker received a preview callback that renders the resolved table.
+    out = _text(captured['preview']({'cpp': 1, 'python': 2}))
+    assert 'Time Limit' in out
+    assert 'cpp' in out and 'python' in out
+
+
 def test_preview_memoizes_by_assignment():
     real = build_preview_renderer(
         timing_per_solution_per_language={'cpp': {'a.cpp': 100}},
