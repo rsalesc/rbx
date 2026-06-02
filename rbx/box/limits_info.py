@@ -1,13 +1,14 @@
 import contextvars
 import pathlib
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 import typer
+from pydantic import BaseModel
 
 from rbx import console
 from rbx.box import package
 from rbx.box.environment import VerificationLevel
-from rbx.box.schema import LimitModifiers, LimitsProfile
+from rbx.box.schema import LimitModifiers, LimitsProfile, TimingGroupOrigin
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.limits import Limits
 
@@ -108,6 +109,20 @@ def get_saved_limits_profile(
     return load_yaml_model(limits_path, LimitsProfile)
 
 
+def get_display_limits_profile(
+    profile: str, root: pathlib.Path = pathlib.Path()
+) -> Optional[LimitsProfile]:
+    """Resolved limits profile for presentation: expanded to absolute base +
+    per-language limits (filled from the package when inheriting), with the saved
+    group metadata preserved so the per-group table can be rendered."""
+    saved = get_saved_limits_profile(profile, root=root)
+    if saved is None:
+        return None
+    display = get_limits_profile(profile, root=root)
+    display.groups = saved.groups
+    return display
+
+
 def get_package_limits_profile(root: pathlib.Path = pathlib.Path()) -> LimitsProfile:
     profile = LimitsProfile(inheritFromPackage=True)
     return _expand_limits_profile(profile, root=root)
@@ -195,3 +210,133 @@ def pretty_print_profile(profile: LimitsProfile):
     console.console.print(f'[status]Modifiers:[/status] {profile.modifiers}')
     if profile.inheritFromPackage:
         console.console.print('[status]Inherits from package.[/status]')
+
+
+# Prefix marking the leftover group's languages cell; explained in the table
+# caption. Kept as one constant so the marker and its footer can't drift apart.
+LEFTOVER_MARKER = '* '
+
+
+class LimitsTableRow(BaseModel):
+    languages: str
+    solutions: Optional[int]
+    time_limit_ms: int
+    source: str
+    defaulted: bool = False
+    is_leftover: bool = False
+
+
+def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
+    rows: List[LimitsTableRow] = []
+    if profile.groups:
+        for report in profile.groups:
+            if report.origin == TimingGroupOrigin.ESTIMATED:
+                source = (
+                    f'estimated (fastest {report.fastest} / slowest {report.slowest})'
+                )
+            elif report.origin == TimingGroupOrigin.MULTIPLIER:
+                ref = report.relativeToLanguage or 'base'
+                source = f'×{report.multiplier} of {ref}'
+            else:
+                source = 'DEFAULTED to base'
+            languages = ', '.join(report.languages)
+            if report.isLeftover:
+                languages = f'{LEFTOVER_MARKER}{languages}'
+            rows.append(
+                LimitsTableRow(
+                    languages=languages,
+                    solutions=report.solutionCount,
+                    time_limit_ms=report.timeLimit,
+                    source=source,
+                    defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
+                    is_leftover=report.isLeftover,
+                )
+            )
+        # Leftover group is shown first; stable sort keeps the rest in order.
+        rows.sort(key=lambda r: not r.is_leftover)
+        return rows
+    # Degraded view: base row + each per-language modifier override.
+    base = profile.timeLimit or 0
+    rows.append(
+        LimitsTableRow(
+            languages='(base)', solutions=None, time_limit_ms=base, source='base'
+        )
+    )
+    for lang, mod in sorted(profile.modifiers.items()):
+        if mod.time is not None:
+            rows.append(
+                LimitsTableRow(
+                    languages=lang,
+                    solutions=None,
+                    time_limit_ms=mod.time,
+                    source='override',
+                )
+            )
+        elif mod.timeMultiplier is not None:
+            rows.append(
+                LimitsTableRow(
+                    languages=lang,
+                    solutions=None,
+                    time_limit_ms=int(base * mod.timeMultiplier),
+                    source=f'override (×{mod.timeMultiplier} of base)',
+                )
+            )
+    return rows
+
+
+def _source_markup(source: str) -> str:
+    if source.startswith('estimated'):
+        return f'[success]{source}[/success]'
+    if source.startswith('×'):
+        return f'[item]{source}[/item]'
+    return source
+
+
+def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
+    """Build a styled rich Table of the resolved per-language/group limits.
+
+    Structural column/header styles use literal rich style strings (the resolved
+    values of the project theme names: ``item`` -> ``bold blue``,
+    ``status`` -> ``bright_white``, ``bstatus`` -> ``bold bright_white``) so the
+    table renders correctly on any console, including non-themed ones used in
+    tests. Cell-level markup still uses theme names (``warning``/``success``/
+    ``item``), which resolve through the markup path.
+    """
+    import rich.table
+
+    rows = build_limits_table_rows(profile)
+    caption = None
+    if any(row.is_leftover for row in rows):
+        caption = (
+            f'{LEFTOVER_MARKER}leftover: languages not assigned to a group, '
+            'pooled together (default).'
+        )
+    table = rich.table.Table(
+        title=title,
+        title_style='bold bright_white',
+        header_style='bold bright_white',
+        caption=caption,
+        caption_style='bright_black',
+        show_lines=False,
+    )
+    table.add_column('Languages', style='bold blue')
+    table.add_column('Solutions', justify='right', style='bright_white')
+    table.add_column('Time Limit', justify='right', style='bold bright_white')
+    table.add_column('Source', style='bright_white')
+    for row in rows:
+        sols = '' if row.solutions is None else str(row.solutions)
+        tl = f'{row.time_limit_ms} ms'
+        if row.defaulted:
+            table.add_row(
+                f'[warning]{row.languages}[/warning]',
+                f'[warning]{sols}[/warning]',
+                f'[warning]{tl}[/warning]',
+                f'[warning]⚠ {row.source}[/warning]',
+            )
+        else:
+            table.add_row(row.languages, sols, tl, _source_markup(row.source))
+    return table
+
+
+def render_limits_table(profile: LimitsProfile, title: str = 'Time limits') -> None:
+    console.console.print(build_limits_table(profile, title))

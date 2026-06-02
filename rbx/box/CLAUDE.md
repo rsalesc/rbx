@@ -15,8 +15,9 @@ The central Pydantic model hierarchy defining `problem.rbx.yml`:
 - **`Testcase`** -- `inputPath`, `outputPath` (for manual test cases)
 - **`GeneratorCall`** -- `name`, `args` (references a generator program)
 - **`CodeItem`** -- `path`, `language`, `compilationArgs` (reference to any code file)
-- **`LimitsProfile`** -- Per-packager limit overrides with `modifiers` per language, `formula` support
+- **`LimitsProfile`** -- Per-packager limit overrides with `modifiers` per language, `formula` support; also carries optional `groups` metadata (a `TimingGroupReport` list, presentation-only) recording how languages were grouped during estimation
 - **`LimitModifiers`** -- `time`, `timeMultiplier`, `memory` per language
+- **`TimingGroupOrigin` / `TimingGroupReport`** -- presentation-only types describing each language group's resolved time limit and its source (estimated / `whenEmpty` multiple / defaulted)
 
 ### `ExpectedOutcome` (AutoEnum)
 
@@ -144,6 +145,7 @@ Manages language configurations from `env.rbx.yml`:
 - Compiler paths, flags, runtime commands per language
 - Sandbox configuration (memory limits, address space)
 - `VerificationLevel` enum: `NONE`, `VALIDATE`, `FAST_SOLUTIONS`, `ALL_SOLUTIONS`, `FULL`
+- `timing.groups` defines language groups for time-limit estimation; the pure grouping logic lives in `rbx/box/timing_groups.py`
 
 ## Code Compilation (`code.py`)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+import enum
 import pathlib
 import re
 import typing
@@ -639,6 +640,26 @@ class LimitModifiers(BaseModel):
     )
 
 
+class TimingGroupOrigin(str, enum.Enum):
+    ESTIMATED = 'estimated'
+    MULTIPLIER = 'multiplier'
+    DEFAULTED = 'defaulted'
+
+
+class TimingGroupReport(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    languages: List[str]
+    timeLimit: int
+    origin: TimingGroupOrigin
+    solutionCount: int = 0
+    fastest: Optional[int] = None
+    slowest: Optional[int] = None
+    relativeToLanguage: Optional[str] = None
+    multiplier: Optional[float] = None
+    isLeftover: bool = False
+
+
 class ValidatorTest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -793,6 +814,14 @@ Whether to inherit limits from the package.
         default=None,
         description="""
 A formula to estimate the time limit for the problem.
+""",
+    )
+
+    groups: Optional[List[TimingGroupReport]] = Field(
+        default=None,
+        description="""
+Metadata describing the language grouping used when this profile was estimated.
+Presentation-only; never used for limit resolution.
 """,
     )
 

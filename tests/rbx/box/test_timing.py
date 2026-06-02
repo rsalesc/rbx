@@ -155,10 +155,8 @@ class TestEstimateTimeLimit:
     @mock.patch('rbx.box.timing.consume_and_key_evaluation_items')
     @mock.patch('rbx.box.timing.find_language_name')
     @mock.patch('rbx.box.environment.get_environment')
-    @mock.patch('questionary.checkbox')
     async def test_estimate_time_limit_basic(
         self,
-        mock_checkbox,
         mock_env,
         mock_find_lang,
         mock_consume,
@@ -166,6 +164,8 @@ class TestEstimateTimeLimit:
         sample_solution_result,
     ):
         """Test basic time limit estimation."""
+        from types import SimpleNamespace
+
         # Mock the structured evaluations
         mock_consume.return_value = {
             str(sample_solution_result.skeleton.solutions[0].path): {
@@ -179,14 +179,17 @@ class TestEstimateTimeLimit:
         # Mock find_language_name to avoid language lookup issues
         mock_find_lang.side_effect = lambda sol: sol.language
 
-        # Mock environment
+        # Mock environment so the grouping code works
         mock_env.return_value.timing.formula = 'slowest * 2'
+        mock_env.return_value.timing.groups = []
+        mock_env.return_value.languages = [
+            SimpleNamespace(name='cpp'),
+            SimpleNamespace(name='py'),
+        ]
 
-        # Mock questionary for single language scenario
-        mock_checkbox.return_value.ask_async = mock.AsyncMock(return_value=[])
-
+        # auto=True skips the interactive repartition prompt
         result = await timing.estimate_time_limit(
-            mock_console, sample_solution_result, formula='slowest * 2'
+            mock_console, sample_solution_result, formula='slowest * 2', auto=True
         )
 
         assert result is not None
@@ -230,10 +233,13 @@ class TestEstimateTimeLimit:
         # Mock find_language_name to avoid language lookup issues
         mock_find_lang.side_effect = lambda sol: sol.language
 
-        # The current implementation has a bug where it doesn't handle
-        # the case of no timing data properly and raises ValueError
-        with pytest.raises(ValueError):
-            await timing.estimate_time_limit(mock_console, result)
+        # No timing data: estimation cannot proceed, so it returns None gracefully
+        # (previously this raised ValueError due to min() on an empty sequence).
+        estimate = await timing.estimate_time_limit(mock_console, result)
+        assert estimate is None
+        mock_console.print.assert_any_call(
+            '[error]No timings collected from solutions.[/error]'
+        )
 
     async def test_estimate_time_limit_no_solutions(self, mock_console):
         """Test time limit estimation with no solutions."""

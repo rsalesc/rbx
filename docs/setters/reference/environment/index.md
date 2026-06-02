@@ -203,6 +203,57 @@ timing:
   formula: "step_up(max(fastest * 2, slowest * 1.5), 100)"
 ```
 
+### Language groups
+
+By default, the time limit is estimated once from the pooled timings of all accepted
+solutions and applied to every language. With `timing.groups` you can instead estimate a
+separate time limit per group of languages, which is useful when languages with very
+different performance characteristics (e.g. compiled vs. interpreted) should not share a
+single limit.
+
+```yaml
+timing:
+  formula: "step_up(max(fastest * 3, slowest * 1.5), 100)"
+  groups:
+    - languages: [c, cpp]
+    - languages: [java, kotlin]
+      whenEmpty:          # used only when this group has no solutions
+        relativeTo: cpp   # any language; resolves to the group containing it
+        multiplier: 2.0   # omit relativeTo to multiply the base estimate
+    - languages: [python]
+```
+
+Semantics:
+
+- Groups are **disjoint**. Any language not listed in any group is left **unbucketed**
+  and joins a single shared **leftover pool**: the pool's accepted-solution timings are
+  estimated together, so an unrepresented language inherits a represented sibling's limit
+  instead of silently falling back to the base time limit. If the whole pool has no
+  solutions it DEFAULTs to the base limit (with a loud warning), like any other empty group.
+- During estimation, the accepted-solution timings are pooled **per group**, and each
+  group that has at least one solution gets its own estimated time limit from the formula.
+- `whenEmpty` is **optional** and is only used when a group has **no** solutions. It sets
+  the group's time limit to `multiplier ×` the time limit of the group containing
+  `relativeTo` (or `multiplier ×` the base estimate when `relativeTo` is omitted).
+  `multiplier` must be `> 0`.
+- A group that is empty and has no `whenEmpty` falls back to the base time limit, with a
+  **loud warning** (source `DEFAULTED`).
+
+The resolved per-language limits are written into the existing `.limits/{profile}.yml`
+`modifiers`, so nothing else in the pipeline changes; the chosen grouping is also stored as
+presentation-only metadata under a `groups:` key in that profile.
+
+`rbx time` is **interactive**: it shows every environment language and lets you place each
+one into a numbered group (`1`–`9`), make it a **singleton** `[X]` (its own bucket, via
+`space`/`tab`), or leave it **unbucketed** `[ ]` (the default — joins the leftover pool).
+The picker is prepopulated from `env.rbx.yml` (languages in an env group keep their group
+number; everything else starts unbucketed). Press `Enter` to confirm or `q` to cancel.
+Pass `--auto` to skip the prompt and use the env groups as-is. After `rbx time` finishes (and again at the end of
+`rbx package boca`), a per-group table is printed showing the **Languages**, **Solutions**,
+**Time Limit**, and **Source** (estimated / `×N of <lang>` / `DEFAULTED`) for each group,
+with `DEFAULTED` rows highlighted. The **leftover** group is listed **first**, marked with a
+leading asterisk (`*`) on its languages and explained in a footer beneath the table.
+
 ## Wall time limits
 
 Solutions are also bounded by a **wall (real) time** limit, in addition to the
@@ -247,7 +298,4 @@ packaging for BOCA, so the wall time a solution gets is consistent across both.
     The shipped default preset sets `wallTimeMultiplier: 2.0` and
     `wallTimeIncrement: 1000`, with larger increments for slow languages
     (`py: 2000`, `java`/`kt: 3000`).
-
-
-
 

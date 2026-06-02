@@ -19,7 +19,7 @@ from rbx.box.packaging.boca.extension import (
     BocaLanguage,
 )
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
-from rbx.box.schema import TaskType
+from rbx.box.schema import TaskType, TimingGroupOrigin
 from rbx.box.statements.schema import Statement
 from rbx.config import get_default_app_path, get_testlib
 
@@ -454,5 +454,23 @@ class BocaPackager(BasePackager):
         shutil.make_archive(
             str(build_path / self._get_zip_filename()), 'zip', into_path
         )
+
+        boca_profile = limits_info.get_display_limits_profile('boca')
+        if boca_profile is not None:
+            limits_info.render_limits_table(
+                boca_profile, title='BOCA time limits (per language group)'
+            )
+            defaulted = [
+                lang
+                for report in (boca_profile.groups or [])
+                if report.origin == TimingGroupOrigin.DEFAULTED
+                for lang in report.languages
+            ]
+            if defaulted:
+                console.console.print(
+                    '[warning]⚠ These languages have no solution and no whenEmpty '
+                    'rule, so they ship the base time limit: '
+                    f'{", ".join(defaulted)}.[/warning]'
+                )
 
         return (build_path / self._get_zip_filename()).with_suffix('.zip')

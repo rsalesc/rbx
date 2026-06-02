@@ -1,6 +1,5 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-import questionary
 import rich
 import rich.console
 import typer
@@ -8,7 +7,15 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel, Field
 
 from rbx import console, utils
-from rbx.box import environment, limits_info, package, safeeval, schema
+from rbx.box import (
+    environment,
+    limits_info,
+    package,
+    safeeval,
+    schema,
+    timing_group_picker,
+    timing_groups,
+)
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
 from rbx.box.formatting import href
@@ -26,6 +33,7 @@ class TimingProfile(BaseModel):
     timeLimit: int
     formula: Optional[str] = None
     timeLimitPerLanguage: Dict[str, int] = Field(default_factory=dict)
+    groups: Optional[List[schema.TimingGroupReport]] = None
 
     def to_limits(self):
         return schema.LimitsProfile(
@@ -35,6 +43,7 @@ class TimingProfile(BaseModel):
                 lang: schema.LimitModifiers(time=tl)
                 for lang, tl in self.timeLimitPerLanguage.items()
             },
+            groups=self.groups,
         )
 
 
@@ -55,6 +64,91 @@ def step_down(x: Any, step: int) -> int:
 def step_up(x: Any, step: int) -> int:
     x = int(x)
     return (x + step - 1) // step * step
+
+
+def build_timing_profile(
+    timing_per_solution_per_language: Dict[str, Dict[str, int]],
+    formula: str,
+    env_groups: List[environment.LanguageGroup],
+    all_languages: List[str],
+    repartition: Optional[Dict[str, int]] = None,
+) -> TimingProfile:
+    def _eval(fastest: int, slowest: int) -> int:
+        return int(safeeval.eval_int(formula, {'fastest': fastest, 'slowest': slowest}))
+
+    if repartition is not None:
+        groups = timing_groups.partition_from_assignment(repartition, env_groups)
+    else:
+        groups = timing_groups.build_partition(env_groups, all_languages)
+    timing_groups.validate_partition(groups)
+
+    pooled: Dict[int, timing_groups.GroupTimings] = {}
+    all_values: List[int] = []
+    for idx, group in enumerate(groups):
+        values: List[int] = []
+        count = 0
+        for lang in group.languages:
+            per_sol = timing_per_solution_per_language.get(lang, {})
+            values.extend(per_sol.values())
+            count += len(per_sol)
+        if values:
+            pooled[idx] = timing_groups.GroupTimings(
+                fastest=min(values), slowest=max(values), solution_count=count
+            )
+            all_values.extend(values)
+
+    base = timing_groups.GroupTimings(
+        fastest=min(all_values),
+        slowest=max(all_values),
+        solution_count=len(all_values),
+    )
+    result = timing_groups.resolve_groups(groups, pooled, base, _eval)
+    return TimingProfile(
+        timeLimit=result.base_time_limit,
+        formula=formula,
+        timeLimitPerLanguage=result.time_limit_per_language,
+        groups=result.reports,
+    )
+
+
+def default_assignment(
+    all_languages: List[str],
+    env_groups: List[environment.LanguageGroup],
+) -> Dict[str, int]:
+    """Prepopulated picker state from env groups: env group #1 -> 1, etc.;
+    every other language -> 0 (unbucketed). Feeding this straight into
+    partition_from_assignment reproduces the env grouping (so whenEmpty carries
+    over) with all ungrouped languages pooled together."""
+    default_number: Dict[str, int] = {lang: 0 for lang in all_languages}
+    for i, group in enumerate(env_groups, start=1):
+        for lang in group.languages:
+            if lang in default_number:
+                default_number[lang] = i
+    return default_number
+
+
+async def _prompt_repartition(
+    all_languages: List[str],
+    env_groups: List[environment.LanguageGroup],
+) -> Optional[Dict[str, int]]:
+    return await timing_group_picker.prompt_group_assignment(
+        all_languages, default_assignment(all_languages, env_groups)
+    )
+
+
+def relevant_languages_for_estimation(
+    env_languages: List[str],
+    timing_languages: List[str],
+) -> List[str]:
+    """Languages that participate in the partition during estimation: every
+    environment language (so unrepresented ones land in the picker and the
+    leftover pool / DEFAULTED warning), followed by any timing language not
+    declared in the environment. Ordered by the environment's language order."""
+    ordered = list(env_languages)
+    for lang in timing_languages:
+        if lang not in ordered:
+            ordered.append(lang)
+    return ordered
 
 
 async def estimate_time_limit(
@@ -98,87 +192,64 @@ async def estimate_time_limit(
 
     console.rule('[status]Time report[/status]', style='status')
 
+    if not timing_per_solution:
+        console.print('[error]No timings collected from solutions.[/error]')
+        return None
+
     fastest_time = min(timing_per_solution.values())
     slowest_time = max(timing_per_solution.values())
-
     console.print(f'Fastest solution: {fastest_time} ms')
     console.print(f'Slowest solution: {slowest_time} ms')
-
-    def _get_lang_fastest(lang: str) -> int:
-        return min(timing_per_solution_per_language[lang].values())
-
-    def _get_lang_slowest(lang: str) -> int:
-        return max(timing_per_solution_per_language[lang].values())
 
     env = environment.get_environment()
     if formula is None:
         formula = env.timing.formula
+    env_groups = env.timing.groups
 
-    def _eval(fastest_time: int, slowest_time: int) -> int:
-        return int(
-            safeeval.eval_int(
-                formula,
-                {
-                    'fastest': fastest_time,
-                    'slowest': slowest_time,
-                },
-            )
-        )
+    all_languages = relevant_languages_for_estimation(
+        env_languages=[lang.name for lang in env.languages],
+        timing_languages=list(timing_per_solution_per_language.keys()),
+    )
 
-    if len(timing_per_solution_per_language) > 1:
-        timing_language_list = [
-            (_get_lang_fastest(lang), lang) for lang in timing_per_solution_per_language
-        ]
-        fastest_language_time, fastest_language = min(timing_language_list)
-        slowest_language_time, slowest_language = max(timing_language_list)
-
-        console.print(
-            f'Fastest language: {fastest_language} ({fastest_language_time} ms)'
-        )
-        console.print(
-            f'Slowest language: {slowest_language} ({slowest_language_time} ms)'
-        )
+    repartition = None
+    if not auto and len(all_languages) > 1:
+        repartition = await _prompt_repartition(all_languages, env_groups)
+        if repartition is None:
+            console.print('[error]Time limit estimation cancelled.[/error]')
+            return None
 
     console.print()
     console.rule('[status]Time estimation[/status]', style='status')
-
     console.print(f'Using formula: {formula}')
 
-    estimated_tl = _eval(fastest_time, slowest_time)
-    console.print(f'[success]Estimated time limit:[/success] {estimated_tl} ms')
+    try:
+        profile = build_timing_profile(
+            timing_per_solution_per_language=timing_per_solution_per_language,
+            formula=formula,
+            env_groups=env_groups,
+            all_languages=all_languages,
+            repartition=repartition,
+        )
+    except timing_groups.GroupValidationError as e:
+        console.print(f'[error]Invalid language groups: {e}[/error]')
+        return None
 
-    estimated_tl_per_language = {}
-    if len(timing_per_solution_per_language) > 1:
-        for lang in timing_per_solution_per_language:
-            estimated_tl_per_language[lang] = _eval(
-                _get_lang_fastest(lang), _get_lang_slowest(lang)
-            )
+    console.print(f'[success]Estimated time limit:[/success] {profile.timeLimit} ms')
 
-    final_estimated_tls_per_language = {}
-    if estimated_tl_per_language:
-        for lang, tl in estimated_tl_per_language.items():
-            console.print(f'Estimated time limit for {lang}: {tl} ms')
+    defaulted = [
+        lang
+        for report in (profile.groups or [])
+        if report.origin == schema.TimingGroupOrigin.DEFAULTED
+        for lang in report.languages
+    ]
+    if defaulted:
+        console.print(
+            '[warning]⚠ The following languages have no solution and no whenEmpty '
+            f'rule, so they fall back to the base time limit of {profile.timeLimit} '
+            f'ms: {", ".join(defaulted)}.[/warning]'
+        )
 
-        all_distinct_tls = set(estimated_tl_per_language.values())
-        if len(all_distinct_tls) > 1 and not auto:
-            console.print()
-            console.print('It seems your problem has solutions for multiple languages!')
-            selected_langs = await questionary.checkbox(
-                'Please select which languages you want to have a specific time limit for '
-                '(or leave all unselected if you want to use a single global time limit)',
-                choices=list(estimated_tl_per_language.keys()),
-            ).ask_async()
-            if selected_langs:
-                for lang in selected_langs:
-                    final_estimated_tls_per_language[lang] = estimated_tl_per_language[
-                        lang
-                    ]
-
-    return TimingProfile(
-        timeLimit=estimated_tl,
-        formula=formula,
-        timeLimitPerLanguage=final_estimated_tls_per_language,
-    )
+    return profile
 
 
 async def compute_time_limits(
@@ -239,9 +310,11 @@ async def compute_time_limits(
     console.console.print(
         f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
     )
-    console.console.print(estimated_tl, highlight=True)
+    limits = estimated_tl.to_limits()
     limits_path.parent.mkdir(parents=True, exist_ok=True)
-    limits_path.write_text(utils.model_to_yaml(estimated_tl.to_limits()))
+    limits_path.write_text(utils.model_to_yaml(limits))
+
+    limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
 
     return estimated_tl
 
