@@ -84,6 +84,18 @@ async def test_picker_cancel_returns_none():
     assert result is None
 
 
+def test_preview_text_suppressed_once_done():
+    s = GroupPickerState(['cpp'], {})
+    assert s.preview_text(lambda a: 'TABLE') == 'TABLE'
+    s.done = True
+    assert s.preview_text(lambda a: 'TABLE') == ''
+
+
+def test_preview_text_empty_without_callback():
+    s = GroupPickerState(['cpp'], {})
+    assert s.preview_text(None) == ''
+
+
 async def test_picker_invokes_preview_with_current_assignment():
     from prompt_toolkit.formatted_text import ANSI
 
@@ -104,9 +116,11 @@ async def test_picker_invokes_preview_with_current_assignment():
             preview=preview,
         )
     assert result == {'cpp': 1, 'java': 0}
-    # The picker rendered at least once and the final state reached the preview.
-    assert seen
-    assert {'cpp': 1, 'java': 0} in seen
+    # The picker rendered the live preview from the current assignment...
+    assert {'cpp': 0, 'java': 0} in seen
+    # ...but suppressed it on the confirming (final) paint, so the post-enter
+    # assignment never reaches the preview.
+    assert {'cpp': 1, 'java': 0} not in seen
 
 
 def test_legend_describes_three_states():

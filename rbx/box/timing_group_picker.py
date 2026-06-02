@@ -20,6 +20,15 @@ class GroupPickerState:
             lang: int(default_number.get(lang, 0)) for lang in self.languages
         }
         self.cursor: int = 0
+        # Set once the user confirms; suppresses the live preview on the final
+        # paint so only the official table (printed afterwards) remains.
+        self.done: bool = False
+
+    def preview_text(self, preview):
+        """The live preview's content, or empty once the picker is confirmed."""
+        if self.done or preview is None:
+            return ''
+        return preview(self.assignment())
 
     def move(self, delta: int) -> None:
         if not self.languages:
@@ -131,6 +140,9 @@ async def prompt_group_assignment(
 
     @kb.add('enter')
     def _(event):
+        # Hide the live preview on the final paint; the official table is
+        # printed by the caller right after the picker returns.
+        state.done = True
         event.app.exit(result=state.assignment())
 
     @kb.add('c-c')
@@ -145,7 +157,7 @@ async def prompt_group_assignment(
     if preview is not None:
 
         def _preview_fragments():
-            return preview(state.assignment())
+            return state.preview_text(preview)
 
         windows.append(
             Window(
