@@ -28,9 +28,7 @@ def test_build_timing_profile_groups_languages():
     assert origins[('java', 'kotlin')] == TimingGroupOrigin.MULTIPLIER
 
 
-def test_relevant_languages_includes_relative_to_target():
-    # 'cpp' is referenced by java's whenEmpty but has no solution and is in no
-    # group of its own; it must still be pulled into scope.
+def test_relevant_languages_includes_all_env_languages():
     result = relevant_languages_for_estimation(
         env_languages=['c', 'cpp', 'java', 'kotlin', 'python', 'go'],
         timing_languages=['python'],
@@ -41,22 +39,14 @@ def test_relevant_languages_includes_relative_to_target():
             ),
         ],
     )
-    assert 'cpp' in result  # relativeTo target pulled in
-    assert 'python' in result  # has solution
-    assert 'java' in result and 'kotlin' in result  # grouped
-    assert 'go' not in result  # irrelevant, excluded
-    # ordering follows env_languages
-    assert result == [
-        name
-        for name in ['c', 'cpp', 'java', 'kotlin', 'python', 'go']
-        if name in result
-    ]
+    # every env language is now in scope, ordered by env order
+    assert result == ['c', 'cpp', 'java', 'kotlin', 'python', 'go']
 
 
-def test_relevant_languages_orders_by_env_then_appends_unknown_timing_langs():
+def test_relevant_languages_appends_unknown_timing_langs():
     result = relevant_languages_for_estimation(
         env_languages=['cpp', 'python'],
         timing_languages=['python', 'rust'],  # rust not in env list
         env_groups=[],
     )
-    assert result == ['python', 'rust']
+    assert result == ['cpp', 'python', 'rust']

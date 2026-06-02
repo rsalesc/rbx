@@ -131,17 +131,12 @@ def relevant_languages_for_estimation(
     timing_languages: List[str],
     env_groups: List[environment.LanguageGroup],
 ) -> List[str]:
-    """Languages that should participate in the partition during estimation:
-    those with solutions, those explicitly placed in a group, and any language
-    referenced by a group's whenEmpty.relativeTo (so the reference resolves).
-    Ordered by the environment's language order, with any leftover timing
-    languages appended."""
-    relevant: set[str] = set(timing_languages)
-    for group in env_groups:
-        relevant.update(group.languages)
-        if group.whenEmpty is not None and group.whenEmpty.relativeTo is not None:
-            relevant.add(group.whenEmpty.relativeTo)
-    ordered = [name for name in env_languages if name in relevant]
+    """Languages that participate in the partition during estimation: every
+    environment language (so unrepresented ones land in the picker and the
+    leftover pool / DEFAULTED warning), followed by any timing language not
+    declared in the environment. Ordered by the environment's language order."""
+    del env_groups  # no longer needed; all env languages are in scope
+    ordered = list(env_languages)
     for lang in timing_languages:
         if lang not in ordered:
             ordered.append(lang)
