@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Optional
 
-import questionary
 import rich
 import rich.console
 import typer
@@ -8,7 +7,15 @@ from ordered_set import OrderedSet
 from pydantic import BaseModel, Field
 
 from rbx import console, utils
-from rbx.box import environment, limits_info, package, safeeval, schema, timing_groups
+from rbx.box import (
+    environment,
+    limits_info,
+    package,
+    safeeval,
+    schema,
+    timing_group_picker,
+    timing_groups,
+)
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
 from rbx.box.formatting import href
@@ -105,7 +112,6 @@ def build_timing_profile(
 
 
 async def _prompt_repartition(
-    console: rich.console.Console,
     all_languages: List[str],
     env_groups: List[environment.LanguageGroup],
 ) -> Optional[Dict[str, int]]:
@@ -115,23 +121,9 @@ async def _prompt_repartition(
         for lang in group.languages:
             if lang in default_number:
                 default_number[lang] = i
-    console.print()
-    console.print(
-        'Assign each language to a group number (same number = shared time limit; '
-        "0 = its own group). A group's languages without solutions inherit the "
-        "group's estimated limit."
+    return await timing_group_picker.prompt_group_assignment(
+        all_languages, default_number
     )
-    assignment: Dict[str, int] = {}
-    for lang in all_languages:
-        answer = await questionary.text(
-            f'Group number for {lang}',
-            default=str(default_number[lang]),
-            validate=lambda x: x.isdigit(),
-        ).ask_async()
-        if answer is None:
-            return None
-        assignment[lang] = int(answer)
-    return assignment
 
 
 def relevant_languages_for_estimation(
@@ -219,7 +211,7 @@ async def estimate_time_limit(
 
     repartition = None
     if not auto and len(all_languages) > 1:
-        repartition = await _prompt_repartition(console, all_languages, env_groups)
+        repartition = await _prompt_repartition(all_languages, env_groups)
         if repartition is None:
             console.print('[error]Time limit estimation cancelled.[/error]')
             return None
