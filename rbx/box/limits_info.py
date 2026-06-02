@@ -272,24 +272,50 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
     return rows
 
 
-def render_limits_table(profile: LimitsProfile, title: str = 'Time limits') -> None:
+def _source_markup(source: str) -> str:
+    if source.startswith('estimated'):
+        return f'[success]{source}[/success]'
+    if source.startswith('×'):
+        return f'[item]{source}[/item]'
+    return source
+
+
+def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
+    """Build a styled rich Table of the resolved per-language/group limits.
+
+    Structural column/header styles use literal rich style strings (the resolved
+    values of the project theme names: ``item`` -> ``bold blue``,
+    ``status`` -> ``bright_white``, ``bstatus`` -> ``bold bright_white``) so the
+    table renders correctly on any console, including non-themed ones used in
+    tests. Cell-level markup still uses theme names (``warning``/``success``/
+    ``item``), which resolve through the markup path.
+    """
     import rich.table
 
-    table = rich.table.Table(title=title, show_lines=False)
-    table.add_column('Languages')
-    table.add_column('Solutions', justify='right')
-    table.add_column('Time Limit', justify='right')
-    table.add_column('Source')
+    table = rich.table.Table(
+        title=title,
+        title_style='bold bright_white',
+        header_style='bold bright_white',
+        show_lines=False,
+    )
+    table.add_column('Languages', style='bold blue')
+    table.add_column('Solutions', justify='right', style='bright_white')
+    table.add_column('Time Limit', justify='right', style='bold bright_white')
+    table.add_column('Source', style='bright_white')
     for row in build_limits_table_rows(profile):
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
         if row.defaulted:
             table.add_row(
                 f'[warning]{row.languages}[/warning]',
-                sols,
+                f'[warning]{sols}[/warning]',
                 f'[warning]{tl}[/warning]',
                 f'[warning]⚠ {row.source}[/warning]',
             )
         else:
-            table.add_row(row.languages, sols, tl, row.source)
-    console.console.print(table)
+            table.add_row(row.languages, sols, tl, _source_markup(row.source))
+    return table
+
+
+def render_limits_table(profile: LimitsProfile, title: str = 'Time limits') -> None:
+    console.console.print(build_limits_table(profile, title))

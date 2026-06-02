@@ -95,3 +95,39 @@ def test_render_limits_table_highlights_defaulted(capsys):
     out = capsys.readouterr().out
     assert 'go' in out
     assert 'Test limits' in out
+
+
+def test_build_limits_table_has_colored_columns():
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+        ],
+    )
+    table = build_limits_table(profile)
+    # Columns carry explicit (non-grey) styles. Structural styles use the
+    # resolved literal values of the project theme names so they render on any
+    # console (item -> 'bold blue', bstatus -> 'bold bright_white').
+    styles = [c.style for c in table.columns]
+    assert 'bold blue' in styles  # Languages column (theme: item)
+    assert 'bold bright_white' in styles  # Time Limit column (theme: bstatus)
+    assert table.header_style == 'bold bright_white'
+    # No column is left at the default grey ('info' / bright_black).
+    assert all(s not in (None, '', 'info', 'bright_black') for s in styles)
+
+
+def test_source_markup_colors_by_origin():
+    from rbx.box.limits_info import _source_markup
+
+    assert _source_markup('estimated (fastest 1 / slowest 2)').startswith('[success]')
+    assert _source_markup('×4.0 of cpp').startswith('[item]')
+    assert _source_markup('base') == 'base'
