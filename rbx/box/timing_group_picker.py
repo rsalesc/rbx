@@ -18,6 +18,14 @@ class GroupPickerState:
         if self.languages:
             self.numbers[self.languages[self.cursor]] = number
 
+    def toggle_singleton(self) -> None:
+        if not self.languages:
+            return
+        lang = self.languages[self.cursor]
+        # toggle between singleton (-1) and unbucketed (0); a numbered language
+        # goes to singleton on the first press.
+        self.numbers[lang] = 0 if self.numbers[lang] == -1 else -1
+
     def assignment(self) -> Dict[str, int]:
         return dict(self.numbers)
 
@@ -26,7 +34,12 @@ class GroupPickerState:
         fragments = []
         for i, lang in enumerate(self.languages):
             number = self.numbers[lang]
-            box = str(number) if number > 0 else ' '
+            if number > 0:
+                box = str(number)
+            elif number < 0:
+                box = 'X'
+            else:
+                box = ' '
             selected = i == self.cursor
             pointer = '❯ ' if selected else '  '
             row_style = 'class:current' if selected else 'class:row'
@@ -64,8 +77,8 @@ async def prompt_group_assignment(
             ),
             (
                 'class:hint',
-                '↑/↓ or j/k move · 0-9 set group (0 = own group) · '
-                'Enter confirm · q cancel\n',
+                '↑/↓ or j/k move · 1-9 set group · space/tab toggle '
+                'singleton [X] / unbucketed [ ] · Enter confirm · q cancel\n',
             ),
         ]
     )
@@ -85,11 +98,21 @@ async def prompt_group_assignment(
     def _(event):
         state.move(1)
 
-    for _digit in '0123456789':
+    for _digit in '123456789':
 
         @kb.add(_digit)
         def _(event, _digit=_digit):
             state.set_group(int(_digit))
+
+    @kb.add('0')
+    def _(event):
+        # explicit clear to unbucketed
+        state.set_group(0)
+
+    @kb.add('space')
+    @kb.add('tab')
+    def _(event):
+        state.toggle_singleton()
 
     @kb.add('enter')
     def _(event):

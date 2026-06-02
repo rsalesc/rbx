@@ -23,13 +23,44 @@ def test_state_set_group_and_assignment():
     assert s.assignment() == {'cpp': 1, 'java': 2}
 
 
-def test_render_fragments_marks_cursor_and_numbers():
-    s = GroupPickerState(['cpp', 'java'], {'cpp': 3})
+def test_render_fragments_shows_three_states():
+    # cpp -> group 3, java -> unbucketed (0), python -> singleton (-1)
+    s = GroupPickerState(['cpp', 'java', 'python'], {'cpp': 3, 'python': -1})
     text = ''.join(t for _, t in s.render_fragments())
     assert '[3] cpp' in text
     assert '[ ] java' in text
-    # the cursor pointer appears once for the selected (first) row
+    assert '[X] python' in text
     assert text.count('❯') == 1
+
+
+def test_toggle_singleton_cycles():
+    s = GroupPickerState(['cpp'], {'cpp': 0})
+    s.toggle_singleton()
+    assert s.assignment() == {'cpp': -1}  # unbucketed -> singleton
+    s.toggle_singleton()
+    assert s.assignment() == {'cpp': 0}  # singleton -> unbucketed
+
+
+def test_toggle_singleton_from_group_goes_to_singleton():
+    s = GroupPickerState(['cpp'], {'cpp': 2})
+    s.toggle_singleton()
+    assert s.assignment() == {'cpp': -1}
+
+
+async def test_picker_toggle_and_group_then_confirm():
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('\x1b[B')  # down -> java
+        inp.send_text(' ')  # space -> java singleton [X]
+        inp.send_text('\x1b[B')  # down -> python (stays unbucketed [ ])
+        inp.send_text('\r')  # enter -> confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'java', 'python'],
+            {'cpp': 0, 'java': 0, 'python': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result == {'cpp': 1, 'java': -1, 'python': 0}
 
 
 async def test_picker_assigns_and_confirms():
