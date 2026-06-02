@@ -17,7 +17,10 @@ def test_boca_table_flags_defaulted_language():
         ],
     )
     rows = build_limits_table_rows(profile)
-    assert rows[0].defaulted is True
+    # Base (fallback) row leads; the java group below it is flagged as defaulted.
+    assert rows[0].languages == '(base)'
+    java_row = next(r for r in rows if r.languages == 'java')
+    assert java_row.defaulted is True
 
 
 def test_inherit_display_profile_shows_real_package_base(

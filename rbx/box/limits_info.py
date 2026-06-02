@@ -219,6 +219,16 @@ class LimitsTableRow(BaseModel):
     is_leftover: bool = False
 
 
+def _base_row(profile: LimitsProfile) -> LimitsTableRow:
+    """The fallback row: the base time limit applied when nothing else does."""
+    return LimitsTableRow(
+        languages='(base)',
+        solutions=None,
+        time_limit_ms=profile.timeLimit or 0,
+        source='base',
+    )
+
+
 def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
     rows: List[LimitsTableRow] = []
     if profile.groups:
@@ -247,14 +257,11 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
             )
         # Leftover group is shown first; stable sort keeps the rest in order.
         rows.sort(key=lambda r: not r.is_leftover)
-        return rows
+        # Base (fallback) row always leads the table.
+        return [_base_row(profile), *rows]
     # Degraded view: base row + each per-language modifier override.
     base = profile.timeLimit or 0
-    rows.append(
-        LimitsTableRow(
-            languages='(base)', solutions=None, time_limit_ms=base, source='base'
-        )
-    )
+    rows.append(_base_row(profile))
     for lang, mod in sorted(profile.modifiers.items()):
         if mod.time is not None:
             rows.append(

@@ -28,12 +28,39 @@ def test_rows_from_group_metadata():
         ],
     )
     rows = build_limits_table_rows(profile)
-    assert rows[0].languages == 'c, cpp'
-    assert rows[0].time_limit_ms == 1000
-    assert rows[0].solutions == 2
-    assert 'estimated' in rows[0].source.lower()
-    assert rows[1].defaulted is True
-    assert 'default' in rows[1].source.lower()
+    # Base (fallback) row always leads.
+    assert rows[0].languages == '(base)'
+    assert rows[0].time_limit_ms == 2000
+    assert rows[0].source == 'base'
+    assert rows[1].languages == 'c, cpp'
+    assert rows[1].time_limit_ms == 1000
+    assert rows[1].solutions == 2
+    assert 'estimated' in rows[1].source.lower()
+    assert rows[2].defaulted is True
+    assert 'default' in rows[2].source.lower()
+
+
+def test_grouped_view_leads_with_base_row():
+    profile = LimitsProfile(
+        timeLimit=1500,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=280,
+                slowest=600,
+            ),
+        ],
+    )
+    rows = build_limits_table_rows(profile)
+    # The base (fallback) row is always present and leads the table, even when
+    # no group defaulted to it.
+    assert rows[0].languages == '(base)'
+    assert rows[0].time_limit_ms == 1500
+    assert rows[0].source == 'base'
+    assert rows[0].solutions is None
 
 
 def test_multiplier_row_shows_reference():
@@ -50,10 +77,11 @@ def test_multiplier_row_shows_reference():
         ],
     )
     rows = build_limits_table_rows(profile)
-    assert rows[0].languages == 'java, kotlin'
-    assert rows[0].time_limit_ms == 4000
-    assert 'cpp' in rows[0].source
-    assert rows[0].defaulted is False
+    assert rows[0].languages == '(base)'
+    assert rows[1].languages == 'java, kotlin'
+    assert rows[1].time_limit_ms == 4000
+    assert 'cpp' in rows[1].source
+    assert rows[1].defaulted is False
 
 
 def test_rows_degrade_without_group_metadata():
@@ -154,12 +182,14 @@ def test_leftover_row_is_first_and_marked():
         ],
     )
     rows = build_limits_table_rows(profile)
-    # leftover pulled to the top, marked with a leading asterisk
-    assert rows[0].is_leftover is True
-    assert rows[0].languages.startswith('* ')
-    assert 'go, java' in rows[0].languages
+    # base row leads; leftover group is pulled to the top of the group rows,
+    # marked with a leading asterisk
+    assert rows[0].languages == '(base)'
+    assert rows[1].is_leftover is True
+    assert rows[1].languages.startswith('* ')
+    assert 'go, java' in rows[1].languages
     # the rest keep their original order
-    assert rows[1].languages == 'c, cpp'
+    assert rows[2].languages == 'c, cpp'
 
 
 def test_no_asterisk_when_no_leftover():
@@ -177,8 +207,9 @@ def test_no_asterisk_when_no_leftover():
         ],
     )
     rows = build_limits_table_rows(profile)
-    assert rows[0].is_leftover is False
-    assert not rows[0].languages.startswith('*')
+    assert rows[0].languages == '(base)'
+    assert rows[1].is_leftover is False
+    assert not rows[1].languages.startswith('*')
 
 
 def test_caption_present_only_with_leftover():
