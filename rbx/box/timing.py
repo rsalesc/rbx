@@ -129,13 +129,11 @@ async def _prompt_repartition(
 def relevant_languages_for_estimation(
     env_languages: List[str],
     timing_languages: List[str],
-    env_groups: List[environment.LanguageGroup],
 ) -> List[str]:
     """Languages that participate in the partition during estimation: every
     environment language (so unrepresented ones land in the picker and the
     leftover pool / DEFAULTED warning), followed by any timing language not
     declared in the environment. Ordered by the environment's language order."""
-    del env_groups  # no longer needed; all env languages are in scope
     ordered = list(env_languages)
     for lang in timing_languages:
         if lang not in ordered:
@@ -201,7 +199,6 @@ async def estimate_time_limit(
     all_languages = relevant_languages_for_estimation(
         env_languages=[lang.name for lang in env.languages],
         timing_languages=list(timing_per_solution_per_language.keys()),
-        env_groups=env_groups,
     )
 
     repartition = None

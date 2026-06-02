@@ -32,12 +32,6 @@ def test_relevant_languages_includes_all_env_languages():
     result = relevant_languages_for_estimation(
         env_languages=['c', 'cpp', 'java', 'kotlin', 'python', 'go'],
         timing_languages=['python'],
-        env_groups=[
-            LanguageGroup(
-                languages=['java', 'kotlin'],
-                whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
-            ),
-        ],
     )
     # every env language is now in scope, ordered by env order
     assert result == ['c', 'cpp', 'java', 'kotlin', 'python', 'go']
@@ -47,6 +41,5 @@ def test_relevant_languages_appends_unknown_timing_langs():
     result = relevant_languages_for_estimation(
         env_languages=['cpp', 'python'],
         timing_languages=['python', 'rust'],  # rust not in env list
-        env_groups=[],
     )
     assert result == ['cpp', 'python', 'rust']
