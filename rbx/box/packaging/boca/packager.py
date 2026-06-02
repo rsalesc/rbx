@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 import typer
 
 from rbx import console, utils
-from rbx.box import header, limits_info, naming, package
+from rbx.box import environment, header, limits_info, naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.boca.boca_language_utils import (
@@ -183,14 +183,27 @@ class BocaPackager(BasePackager):
             raise typer.Exit(1)
         return compare_path.read_text()
 
+    def _replace_walltime(self, text: str, lang: str) -> str:
+        # `lang` is the emitted BOCA language (e.g. 'cc', 'py3'); map to rbx.
+        rbx_language = get_rbx_language_from_boca_language(lang)
+        env = environment.get_environment()
+        language = environment.get_language_or_nil(rbx_language)
+        multiplier, increment_ms = environment.resolve_walltime_coeffs(
+            env.timing, language
+        )
+        text = text.replace('{{rbxWallMultiplier}}', f'{multiplier:g}')
+        text = text.replace('{{rbxWallIncrement}}', _fmt_seconds(max(0, increment_ms)))
+        return text
+
     def _replace_common(self, text: str, lang: str) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
         flags = extension.flags_with_defaults()
         if lang in flags:
             text = text.replace('{{rbxFlags}}', flags[lang])
-        return text.replace(
+        text = text.replace(
             '{{rbxPython3}}', 'pypy3' if extension.usePypy else 'python3'
         )
+        return self._replace_walltime(text, lang)
 
     def _get_checker(self) -> str:
         checker_path = get_default_app_path() / 'packagers' / 'boca' / 'checker.sh'
