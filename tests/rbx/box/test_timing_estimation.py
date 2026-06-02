@@ -43,3 +43,43 @@ def test_relevant_languages_appends_unknown_timing_langs():
         timing_languages=['python', 'rust'],  # rust not in env list
     )
     assert result == ['cpp', 'python', 'rust']
+
+
+def test_unrepresented_languages_inherit_leftover_pool():
+    # cpp has solutions and is unbucketed; go/java are unbucketed with no
+    # solutions -> they share cpp's pooled estimate via the leftover pool.
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'a.cpp': 100, 'b.cpp': 150}},
+        formula='max(fastest * 3, slowest * 2)',
+        env_groups=[],
+        all_languages=['cpp', 'go', 'java'],
+    )
+    limits = profile.to_limits()
+    # one leftover pool: cpp's estimate applies to all members
+    assert limits.modifiers['cpp'].time == limits.modifiers['go'].time
+    assert limits.modifiers['go'].time == limits.modifiers['java'].time
+    assert profile.groups is not None
+    origins = {tuple(sorted(r.languages)): r.origin for r in profile.groups}
+    assert origins[('cpp', 'go', 'java')] == TimingGroupOrigin.ESTIMATED
+
+
+def test_empty_leftover_pool_defaults_to_base():
+    # No solutions for any leftover language other than the represented one in
+    # its own group; the leftover pool is empty -> DEFAULTED to base, no modifier.
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'a.cpp': 100, 'b.cpp': 150}},
+        formula='max(fastest * 3, slowest * 2)',
+        env_groups=[LanguageGroup(languages=['cpp'])],
+        all_languages=['cpp', 'go', 'java'],
+    )
+    limits = profile.to_limits()
+    # leftover pool (go, java) has no solutions -> DEFAULTED, no modifiers
+    assert 'go' not in limits.modifiers
+    assert 'java' not in limits.modifiers
+    assert profile.groups is not None
+    defaulted = {
+        tuple(sorted(r.languages)): r
+        for r in profile.groups
+        if r.origin == TimingGroupOrigin.DEFAULTED
+    }
+    assert ('go', 'java') in defaulted
