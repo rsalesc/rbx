@@ -225,8 +225,11 @@ timing:
 
 Semantics:
 
-- Groups are **disjoint**. Any language not listed in any group is treated as its own
-  implicit **singleton** group.
+- Groups are **disjoint**. Any language not listed in any group is left **unbucketed**
+  and joins a single shared **leftover pool**: the pool's accepted-solution timings are
+  estimated together, so an unrepresented language inherits a represented sibling's limit
+  instead of silently falling back to the base time limit. If the whole pool has no
+  solutions it DEFAULTs to the base limit (with a loud warning), like any other empty group.
 - During estimation, the accepted-solution timings are pooled **per group**, and each
   group that has at least one solution gets its own estimated time limit from the formula.
 - `whenEmpty` is **optional** and is only used when a group has **no** solutions. It sets
@@ -240,9 +243,12 @@ The resolved per-language limits are written into the existing `.limits/{profile
 `modifiers`, so nothing else in the pipeline changes; the chosen grouping is also stored as
 presentation-only metadata under a `groups:` key in that profile.
 
-`rbx time` is **interactive**: it prompts you to assign each language a group number
-(prepopulated from `env.rbx.yml`, where `0` means "its own group"). Pass `--auto` to skip
-the prompt and use the env groups as-is. After `rbx time` finishes (and again at the end of
+`rbx time` is **interactive**: it shows every environment language and lets you place each
+one into a numbered group (`1`–`9`), make it a **singleton** `[X]` (its own bucket, via
+`space`/`tab`), or leave it **unbucketed** `[ ]` (the default — joins the leftover pool).
+The picker is prepopulated from `env.rbx.yml` (languages in an env group keep their group
+number; everything else starts unbucketed). Press `Enter` to confirm or `q` to cancel.
+Pass `--auto` to skip the prompt and use the env groups as-is. After `rbx time` finishes (and again at the end of
 `rbx package boca`), a per-group table is printed showing the **Languages**, **Solutions**,
 **Time Limit**, and **Source** (estimated / `×N of <lang>` / `DEFAULTED`) for each group,
 with `DEFAULTED` rows highlighted.
