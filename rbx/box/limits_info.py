@@ -212,6 +212,11 @@ def pretty_print_profile(profile: LimitsProfile):
         console.console.print('[status]Inherits from package.[/status]')
 
 
+# Prefix marking the leftover group's languages cell; explained in the table
+# caption. Kept as one constant so the marker and its footer can't drift apart.
+LEFTOVER_MARKER = '* '
+
+
 class LimitsTableRow(BaseModel):
     languages: str
     solutions: Optional[int]
@@ -236,7 +241,7 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
                 source = 'DEFAULTED to base'
             languages = ', '.join(report.languages)
             if report.isLeftover:
-                languages = f'* {languages}'
+                languages = f'{LEFTOVER_MARKER}{languages}'
             rows.append(
                 LimitsTableRow(
                     languages=languages,
@@ -303,8 +308,8 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     caption = None
     if any(row.is_leftover for row in rows):
         caption = (
-            '* leftover: languages not assigned to a group, '
-            'estimated together (default).'
+            f'{LEFTOVER_MARKER}leftover: languages not assigned to a group, '
+            'pooled together (default).'
         )
     table = rich.table.Table(
         title=title,

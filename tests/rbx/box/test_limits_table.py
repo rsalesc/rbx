@@ -210,3 +210,26 @@ def test_caption_present_only_with_leftover():
     )
     assert 'leftover' in (build_limits_table(leftover_profile).caption or '')
     assert build_limits_table(plain_profile).caption is None
+
+
+def test_defaulted_leftover_renders_asterisk_and_warning(capsys):
+    from rbx.box.limits_info import render_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=2000,
+        groups=[
+            TimingGroupReport(
+                languages=['go', 'java'],
+                timeLimit=2000,
+                origin=TimingGroupOrigin.DEFAULTED,
+                isLeftover=True,
+            ),
+        ],
+    )
+    render_limits_table(profile, title='Test limits')
+    out = capsys.readouterr().out
+    # asterisk marker and the DEFAULTED warning glyph coexist in the same render
+    assert '*' in out
+    assert '⚠' in out
+    assert 'DEFAULTED' in out
+    assert 'go, java' in out
