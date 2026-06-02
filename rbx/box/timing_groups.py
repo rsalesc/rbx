@@ -34,16 +34,20 @@ def partition_from_assignment(
     assignment: Dict[str, int],
     env_groups: List[LanguageGroup],
 ) -> List[ResolvedGroup]:
-    """Build groups from a {language: number} map. 0 = own singleton; N>=1 share a
-    bucket. Carries over an env group's whenEmpty only when the resulting membership
-    is identical to that env group."""
+    """Build groups from a {language: state} map. State per language:
+    N>=1 share bucket N; -1 = own singleton group; 0 = the shared leftover pool.
+    Carries over an env group's whenEmpty only when the resulting membership is
+    identical to that env group."""
     buckets: Dict[int, List[str]] = {}
     singletons: List[List[str]] = []
-    for lang, number in assignment.items():
-        if number == 0:
+    leftover: List[str] = []
+    for lang, state in assignment.items():
+        if state == 0:
+            leftover.append(lang)
+        elif state < 0:
             singletons.append([lang])
         else:
-            buckets.setdefault(number, []).append(lang)
+            buckets.setdefault(state, []).append(lang)
 
     env_when_empty = {frozenset(g.languages): g.whenEmpty for g in env_groups}
     result: List[ResolvedGroup] = []
@@ -51,6 +55,8 @@ def partition_from_assignment(
         when_empty = env_when_empty.get(frozenset(langs))
         result.append(ResolvedGroup(languages=langs, whenEmpty=when_empty))
     result.extend(ResolvedGroup(languages=s) for s in singletons)
+    if leftover:
+        result.append(ResolvedGroup(languages=leftover))
     return result
 
 

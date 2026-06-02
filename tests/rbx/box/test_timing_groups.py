@@ -183,10 +183,10 @@ def test_valid_partition_passes():
     validate_partition(groups)  # no raise
 
 
-def test_assignment_zero_makes_singletons():
+def test_assignment_singleton_state_makes_singletons():
     env_groups = [LanguageGroup(languages=['c', 'cpp'])]
     groups = partition_from_assignment(
-        assignment={'c': 0, 'cpp': 0, 'python': 0},
+        assignment={'c': -1, 'cpp': -1, 'python': -1},
         env_groups=env_groups,
     )
     assert sorted(g.languages for g in groups) == [['c'], ['cpp'], ['python']]
@@ -220,3 +220,48 @@ def test_changed_membership_drops_when_empty():
     )
     jvm = next(g for g in groups if 'java' in g.languages)
     assert jvm.whenEmpty is None
+
+
+def test_partition_from_assignment_three_states():
+    # 1/2 = shared groups, -1 = singleton, 0 = unbucketed leftover pool
+    groups = partition_from_assignment(
+        assignment={
+            'c': 1,
+            'cpp': 1,
+            'java': 2,
+            'kotlin': 2,
+            'python': -1,
+            'go': 0,
+            'rust': 0,
+        },
+        env_groups=[],
+    )
+    langs = [g.languages for g in groups]
+    assert ['c', 'cpp'] in langs
+    assert ['java', 'kotlin'] in langs
+    assert ['python'] in langs  # singleton -> own group
+    assert ['go', 'rust'] in langs  # unbucketed -> ONE leftover pool
+    # numbered groups first (sorted), then singletons, then the leftover pool
+    assert langs[-1] == ['go', 'rust']
+
+
+def test_partition_from_assignment_no_leftover_group_when_none_unbucketed():
+    groups = partition_from_assignment(
+        assignment={'cpp': 1, 'python': -1},
+        env_groups=[],
+    )
+    assert [g.languages for g in groups] == [['cpp'], ['python']]
+
+
+def test_partition_from_assignment_preserves_when_empty_on_exact_match():
+    groups = partition_from_assignment(
+        assignment={'java': 1, 'kotlin': 1},
+        env_groups=[
+            LanguageGroup(
+                languages=['java', 'kotlin'],
+                whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+            ),
+        ],
+    )
+    assert groups[0].whenEmpty is not None
+    assert groups[0].whenEmpty.multiplier == 2.0
