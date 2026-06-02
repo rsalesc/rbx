@@ -205,13 +205,6 @@ def get_limits(
     return res
 
 
-def pretty_print_profile(profile: LimitsProfile):
-    console.console.print(f'[status]Time limit:[/status] {profile.timeLimit} ms')
-    console.console.print(f'[status]Modifiers:[/status] {profile.modifiers}')
-    if profile.inheritFromPackage:
-        console.console.print('[status]Inherits from package.[/status]')
-
-
 # Prefix marking the leftover group's languages cell; explained in the table
 # caption. Kept as one constant so the marker and its footer can't drift apart.
 LEFTOVER_MARKER = '* '

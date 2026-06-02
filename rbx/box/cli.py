@@ -513,13 +513,13 @@ async def time(
         help='Integrate the given limits profile into the package.',
     ),
 ):
-    current_profile = limits_info.get_limits_profile(profile)
-    if current_profile is not None:
-        console.console.print(
-            f'[status]Current limits for profile [item]{profile}[/item]:[/status]'
-        )
-        limits_info.pretty_print_profile(current_profile)
-        console.console.print()
+    current_profile = limits_info.get_display_limits_profile(profile)
+    if current_profile is None:
+        current_profile = limits_info.get_limits_profile(profile)
+    limits_info.render_limits_table(
+        current_profile, title=f'Current limits ({profile})'
+    )
+    console.console.print()
     if integrate:
         timing.integrate(profile)
         return
