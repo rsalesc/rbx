@@ -1,4 +1,6 @@
+import io
 import sys
+from typing import Optional
 
 import rich
 import rich.markup
@@ -33,6 +35,23 @@ stderr_console = Console(theme=theme, style='info', highlight=False, stderr=True
 
 def new_console():
     return Console(theme=theme, style='info', highlight=False)
+
+
+def capture_ansi(renderable, width: Optional[int] = None) -> str:
+    """Render a rich renderable (or markup string) to an ANSI string using the
+    project theme, suitable for embedding in a prompt_toolkit ``ANSI`` fragment."""
+    buf = io.StringIO()
+    cap = Console(
+        theme=theme,
+        style='info',
+        highlight=False,
+        file=buf,
+        force_terminal=True,
+        color_system='standard',
+        width=width,
+    )
+    cap.print(renderable)
+    return buf.getvalue()
 
 
 def multiline_prompt(text: str) -> str:
