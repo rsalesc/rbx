@@ -193,14 +193,11 @@ formula, computed from the pooled timings of the accepted solutions in that grou
   instead of the base limit. The leftover row is listed **first** in the table, marked with a `*`.
 
 The picker is **prepopulated from `env.rbx.yml`**: any groups you configure there appear
-preselected. After estimation, a per-group table is printed showing the **Languages**,
-**Solutions**, **Time Limit**, and **Source** of each group, where the source is one of
-`estimated`, `×N of <lang>` (inherited from another group), or `DEFAULTED` (the group had no
-solutions and no fallback, so it fell back to the base limit — highlighted as a warning).
+preselected. After estimation, a per-group table is printed showing the estimated time limit
+for each group.
 
 Press <kbd>Enter</kbd> to confirm, or pass `--auto` to skip the prompt and use the configured
-env groups as-is. The resolved per-language limits are written into the profile's `modifiers`,
-and the chosen grouping is stored as presentation-only metadata under a `groups:` key.
+env groups as-is.
 
 Groups are configured (and given empty-group fallbacks via `whenEmpty`) in `env.rbx.yml`. See the
 [Environment reference](../reference/environment/#language-groups) for the full schema and
