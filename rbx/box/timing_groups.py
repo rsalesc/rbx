@@ -9,6 +9,7 @@ from rbx.box.schema import TimingGroupOrigin, TimingGroupReport
 class ResolvedGroup(BaseModel):
     languages: List[str]
     whenEmpty: Optional[LanguageGroupFallback] = None
+    is_leftover: bool = False
 
 
 def build_partition(
@@ -26,7 +27,7 @@ def build_partition(
         grouped.update(group.languages)
     leftover = [lang for lang in all_languages if lang not in grouped]
     if leftover:
-        result.append(ResolvedGroup(languages=leftover))
+        result.append(ResolvedGroup(languages=leftover, is_leftover=True))
     return result
 
 
@@ -56,7 +57,7 @@ def partition_from_assignment(
         result.append(ResolvedGroup(languages=langs, whenEmpty=when_empty))
     result.extend(ResolvedGroup(languages=s) for s in singletons)
     if leftover:
-        result.append(ResolvedGroup(languages=leftover))
+        result.append(ResolvedGroup(languages=leftover, is_leftover=True))
     return result
 
 
@@ -157,6 +158,7 @@ def resolve_groups(
                 solutionCount=timings.solution_count,
                 fastest=timings.fastest,
                 slowest=timings.slowest,
+                isLeftover=group.is_leftover,
             )
         elif group.whenEmpty is not None:
             ref = group.whenEmpty.relativeTo
@@ -169,6 +171,7 @@ def resolve_groups(
                 solutionCount=0,
                 relativeToLanguage=ref,
                 multiplier=group.whenEmpty.multiplier,
+                isLeftover=group.is_leftover,
             )
         else:
             tl = base_tl
@@ -177,6 +180,7 @@ def resolve_groups(
                 timeLimit=tl,
                 origin=TimingGroupOrigin.DEFAULTED,
                 solutionCount=0,
+                isLeftover=group.is_leftover,
             )
         resolving.discard(idx)
         resolved_tl[idx] = tl

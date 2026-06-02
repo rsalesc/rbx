@@ -265,3 +265,38 @@ def test_partition_from_assignment_preserves_when_empty_on_exact_match():
     )
     assert groups[0].whenEmpty is not None
     assert groups[0].whenEmpty.multiplier == 2.0
+
+
+def test_build_partition_marks_leftover():
+    groups = build_partition(
+        env_groups=[LanguageGroup(languages=['c', 'cpp'])],
+        all_languages=['c', 'cpp', 'python', 'go'],
+    )
+    assert groups[0].is_leftover is False  # explicit env group
+    assert groups[1].languages == ['python', 'go']
+    assert groups[1].is_leftover is True  # the leftover pool
+
+
+def test_partition_from_assignment_marks_leftover():
+    groups = partition_from_assignment(
+        assignment={'cpp': 1, 'python': -1, 'go': 0, 'rust': 0},
+        env_groups=[],
+    )
+    leftover = [g for g in groups if g.is_leftover]
+    assert len(leftover) == 1
+    assert leftover[0].languages == ['go', 'rust']
+    non_leftover = [g for g in groups if not g.is_leftover]
+    assert {tuple(g.languages) for g in non_leftover} == {('cpp',), ('python',)}
+
+
+def test_resolve_propagates_is_leftover():
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(languages=['go', 'java'], is_leftover=True),
+    ]
+    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
+    result = resolve_groups(groups, pooled, base, _eval)
+    by_leftover = {tuple(r.languages): r.isLeftover for r in result.reports}
+    assert by_leftover[('cpp',)] is False
+    assert by_leftover[('go', 'java')] is True
