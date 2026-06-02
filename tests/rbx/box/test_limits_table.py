@@ -63,6 +63,55 @@ def test_grouped_view_leads_with_base_row():
     assert rows[0].solutions is None
 
 
+def test_base_row_shows_estimated_provenance():
+    profile = LimitsProfile(
+        timeLimit=1000,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=400,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=100,
+                slowest=200,
+            ),
+        ],
+        baseEstimate=TimingGroupReport(
+            languages=[],
+            timeLimit=1000,
+            origin=TimingGroupOrigin.ESTIMATED,
+            solutionCount=3,
+            fastest=100,
+            slowest=500,
+        ),
+    )
+    rows = build_limits_table_rows(profile)
+    assert rows[0].languages == '(base)'
+    assert rows[0].time_limit_ms == 1000
+    # When estimated, the base row reports the same provenance as group rows,
+    # pooled across every solution.
+    assert rows[0].source == 'estimated (fastest 100 / slowest 500)'
+    assert rows[0].solutions == 3
+
+
+def test_base_row_plain_without_estimate():
+    # No baseEstimate (e.g. a fixed/inherited limit) -> the base row stays plain.
+    profile = LimitsProfile(
+        timeLimit=1000,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1000,
+                origin=TimingGroupOrigin.DEFAULTED,
+            ),
+        ],
+    )
+    rows = build_limits_table_rows(profile)
+    assert rows[0].languages == '(base)'
+    assert rows[0].source == 'base'
+    assert rows[0].solutions is None
+
+
 def test_multiplier_row_shows_reference():
     profile = LimitsProfile(
         timeLimit=2000,

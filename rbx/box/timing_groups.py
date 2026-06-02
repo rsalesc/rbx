@@ -69,6 +69,7 @@ class GroupTimings(BaseModel):
 
 class ResolutionResult(BaseModel):
     base_time_limit: int
+    base_report: TimingGroupReport
     reports: List[TimingGroupReport]
     time_limit_per_language: Dict[str, int]
     defaulted_languages: List[str]
@@ -134,6 +135,14 @@ def resolve_groups(
     eval_fn: EvalFn,
 ) -> ResolutionResult:
     base_tl = eval_fn(base.fastest, base.slowest)
+    base_report = TimingGroupReport(
+        languages=[],
+        timeLimit=base_tl,
+        origin=TimingGroupOrigin.ESTIMATED,
+        solutionCount=base.solution_count,
+        fastest=base.fastest,
+        slowest=base.slowest,
+    )
     lang_index = _lang_to_group_index(groups)
 
     resolved_tl: Dict[int, int] = {}
@@ -202,6 +211,7 @@ def resolve_groups(
             tl_per_language[lang] = report.timeLimit
     return ResolutionResult(
         base_time_limit=base_tl,
+        base_report=base_report,
         reports=reports,
         time_limit_per_language=tl_per_language,
         defaulted_languages=defaulted,

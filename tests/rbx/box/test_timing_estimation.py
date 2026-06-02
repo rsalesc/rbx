@@ -31,6 +31,12 @@ def test_build_timing_profile_groups_languages():
     assert limits.groups is not None
     origins = {tuple(r.languages): r.origin for r in limits.groups}
     assert origins[('java', 'kotlin')] == TimingGroupOrigin.MULTIPLIER
+    # The base estimate is pooled across every solution timing (100..500).
+    assert limits.baseEstimate is not None
+    assert limits.baseEstimate.origin == TimingGroupOrigin.ESTIMATED
+    assert limits.baseEstimate.fastest == 100
+    assert limits.baseEstimate.slowest == 500
+    assert limits.baseEstimate.solutionCount == 3
 
 
 def test_relevant_languages_includes_all_env_languages():
