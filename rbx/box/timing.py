@@ -1,9 +1,11 @@
-from typing import Any, Dict, List, Optional
+import functools
+from typing import Any, Callable, Dict, List, Optional
 
 import rich
 import rich.console
 import typer
 from ordered_set import OrderedSet
+from prompt_toolkit.formatted_text import ANSI
 from pydantic import BaseModel, Field
 
 from rbx import console, utils
@@ -125,6 +127,43 @@ def default_assignment(
             if lang in default_number:
                 default_number[lang] = i
     return default_number
+
+
+def build_preview_renderer(
+    timing_per_solution_per_language: Dict[str, Dict[str, int]],
+    formula: str,
+    env_groups: List[environment.LanguageGroup],
+    all_languages: List[str],
+    width: Optional[int] = None,
+) -> Callable[[Dict[str, int]], ANSI]:
+    """Return a memoized callback mapping a picker assignment to an ``ANSI``
+    preview: the resolved limits table, or an inline error for invalid groupings.
+    Pure -- reuses the already-collected timings, never re-runs solutions."""
+
+    @functools.lru_cache(maxsize=None)
+    def _render(assignment_items: tuple) -> ANSI:
+        assignment = dict(assignment_items)
+        try:
+            profile = build_timing_profile(
+                timing_per_solution_per_language=timing_per_solution_per_language,
+                formula=formula,
+                env_groups=env_groups,
+                all_languages=all_languages,
+                repartition=assignment,
+            )
+        except timing_groups.GroupValidationError as e:
+            return ANSI(
+                console.capture_ansi(
+                    f'[warning]⚠ Invalid grouping: {e}[/warning]', width=width
+                )
+            )
+        table = limits_info.build_limits_table(profile.to_limits(), title='Preview')
+        return ANSI(console.capture_ansi(table, width=width))
+
+    def render(assignment: Dict[str, int]) -> ANSI:
+        return _render(tuple(sorted(assignment.items())))
+
+    return render
 
 
 async def _prompt_repartition(
