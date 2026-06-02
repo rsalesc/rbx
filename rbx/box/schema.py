@@ -825,6 +825,14 @@ Presentation-only; never used for limit resolution.
 """,
     )
 
+    baseEstimate: Optional[TimingGroupReport] = Field(
+        default=None,
+        description="""
+Metadata describing how the base (fallback) time limit was estimated, pooled
+across every solution. Presentation-only; never used for limit resolution.
+""",
+    )
+
     def timelimit_for_language(self, language: Optional[str] = None) -> int:
         assert self.timeLimit is not None
         res = self.timeLimit

@@ -36,6 +36,7 @@ class TimingProfile(BaseModel):
     formula: Optional[str] = None
     timeLimitPerLanguage: Dict[str, int] = Field(default_factory=dict)
     groups: Optional[List[schema.TimingGroupReport]] = None
+    baseEstimate: Optional[schema.TimingGroupReport] = None
 
     def to_limits(self):
         return schema.LimitsProfile(
@@ -46,6 +47,7 @@ class TimingProfile(BaseModel):
                 for lang, tl in self.timeLimitPerLanguage.items()
             },
             groups=self.groups,
+            baseEstimate=self.baseEstimate,
         )
 
 
@@ -110,6 +112,7 @@ def build_timing_profile(
         formula=formula,
         timeLimitPerLanguage=result.time_limit_per_language,
         groups=result.reports,
+        baseEstimate=result.base_report,
     )
 
 

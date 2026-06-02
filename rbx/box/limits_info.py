@@ -8,7 +8,12 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import package
 from rbx.box.environment import VerificationLevel
-from rbx.box.schema import LimitModifiers, LimitsProfile, TimingGroupOrigin
+from rbx.box.schema import (
+    LimitModifiers,
+    LimitsProfile,
+    TimingGroupOrigin,
+    TimingGroupReport,
+)
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.limits import Limits
 
@@ -120,6 +125,7 @@ def get_display_limits_profile(
         return None
     display = get_limits_profile(profile, root=root)
     display.groups = saved.groups
+    display.baseEstimate = saved.baseEstimate
     return display
 
 
@@ -219,19 +225,40 @@ class LimitsTableRow(BaseModel):
     is_leftover: bool = False
 
 
+def _report_source(report: TimingGroupReport) -> str:
+    if report.origin == TimingGroupOrigin.ESTIMATED:
+        return f'estimated (fastest {report.fastest} / slowest {report.slowest})'
+    if report.origin == TimingGroupOrigin.MULTIPLIER:
+        ref = report.relativeToLanguage or 'base'
+        return f'×{report.multiplier} of {ref}'
+    return 'DEFAULTED to base'
+
+
+def _base_row(profile: LimitsProfile) -> LimitsTableRow:
+    """The fallback row: the base time limit applied when nothing else does.
+
+    When the profile was estimated, the base is itself pooled across every
+    solution, so it carries the same ``estimated (fastest / slowest)`` provenance
+    as the group rows; otherwise it is just the configured base.
+    """
+    source = 'base'
+    solutions = None
+    if profile.baseEstimate is not None:
+        source = _report_source(profile.baseEstimate)
+        solutions = profile.baseEstimate.solutionCount
+    return LimitsTableRow(
+        languages='(base)',
+        solutions=solutions,
+        time_limit_ms=profile.timeLimit or 0,
+        source=source,
+    )
+
+
 def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
     rows: List[LimitsTableRow] = []
     if profile.groups:
         for report in profile.groups:
-            if report.origin == TimingGroupOrigin.ESTIMATED:
-                source = (
-                    f'estimated (fastest {report.fastest} / slowest {report.slowest})'
-                )
-            elif report.origin == TimingGroupOrigin.MULTIPLIER:
-                ref = report.relativeToLanguage or 'base'
-                source = f'×{report.multiplier} of {ref}'
-            else:
-                source = 'DEFAULTED to base'
+            source = _report_source(report)
             languages = ', '.join(report.languages)
             if report.isLeftover:
                 languages = f'{LEFTOVER_MARKER}{languages}'
@@ -247,14 +274,11 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
             )
         # Leftover group is shown first; stable sort keeps the rest in order.
         rows.sort(key=lambda r: not r.is_leftover)
-        return rows
+        # Base (fallback) row always leads the table.
+        return [_base_row(profile), *rows]
     # Degraded view: base row + each per-language modifier override.
     base = profile.timeLimit or 0
-    rows.append(
-        LimitsTableRow(
-            languages='(base)', solutions=None, time_limit_ms=base, source='base'
-        )
-    )
+    rows.append(_base_row(profile))
     for lang, mod in sorted(profile.modifiers.items()):
         if mod.time is not None:
             rows.append(

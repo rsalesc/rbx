@@ -88,6 +88,14 @@ def test_resolves_estimated_and_multiplier_and_default_groups():
     assert origins[('go',)] == TimingGroupOrigin.DEFAULTED
     assert result.defaulted_languages == ['go']
 
+    # The base (fallback) carries its own estimation provenance, pooled across
+    # every solution.
+    assert result.base_report.origin == TimingGroupOrigin.ESTIMATED
+    assert result.base_report.timeLimit == result.base_time_limit
+    assert result.base_report.fastest == 100
+    assert result.base_report.slowest == 500
+    assert result.base_report.solutionCount == 3
+
 
 def test_multiplier_relative_to_base_when_relative_to_omitted():
     groups = [
