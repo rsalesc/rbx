@@ -50,5 +50,11 @@ def test_seed_package_from_preset_overlays_real_files(tmp_path: pathlib.Path):
 
 
 def test_seed_package_from_preset_unknown_raises(tmp_path: pathlib.Path):
-    with pytest.raises((FileNotFoundError, AssertionError), match='nope-preset'):
+    with pytest.raises(FileNotFoundError, match='nope-preset'):
         seed_package_from_preset('nope-preset', tmp_path)
+
+
+def test_seed_package_from_preset_missing_dest_raises(tmp_path: pathlib.Path):
+    missing = tmp_path / 'does-not-exist'
+    with pytest.raises(FileNotFoundError, match='destination does not exist'):
+        seed_package_from_preset('default', missing)

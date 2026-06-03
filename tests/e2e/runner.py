@@ -28,10 +28,10 @@ import traceback
 import pytest
 from typer.testing import CliRunner
 
-import rbx
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from rbx.box.contest import contest_state
+from rbx.config import get_default_app_path
 from tests.e2e.assertions import (
     AssertionContext,
     check_file_contains,
@@ -79,20 +79,17 @@ COPY_IGNORE_PATTERNS = (
 def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
     """Overlay a named preset's ``problem/`` package into ``dest``.
 
-    Resolves ``rbx/resources/presets/<preset_name>/problem`` from the installed
-    ``rbx`` package and copies it into ``dest``, dereferencing symlinks (so
-    statement assets like ``documents/icpc.sty`` land as regular files) and
-    skipping build cruft (``.box``, ``build``, ...). Any files already present
-    in ``dest`` (e.g. the fixture's own ``e2e.rbx.yml``) are preserved unless
-    the preset overwrites them.
+    Resolves ``presets/<preset_name>/problem`` under the rbx resources path (the
+    same location ``rbx`` itself resolves presets from) and copies it into
+    ``dest``, dereferencing symlinks (so statement assets like
+    ``documents/icpc.sty`` land as regular files) and skipping build cruft
+    (``.box``, ``build``, ...). ``dest`` is an existing package directory (the
+    overlay target); any files already present (e.g. the fixture's own
+    ``e2e.rbx.yml``) are preserved unless the preset overwrites them.
     """
-    preset_problem_dir = (
-        pathlib.Path(rbx.__file__).parent
-        / 'resources'
-        / 'presets'
-        / preset_name
-        / 'problem'
-    )
+    if not dest.is_dir():
+        raise FileNotFoundError(f'seed destination does not exist: {dest}')
+    preset_problem_dir = get_default_app_path() / 'presets' / preset_name / 'problem'
     if not preset_problem_dir.is_dir():
         raise FileNotFoundError(
             f'preset {preset_name!r} problem package not found at {preset_problem_dir}'
