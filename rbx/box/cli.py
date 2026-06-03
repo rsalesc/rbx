@@ -28,6 +28,7 @@ from rbx.box import (
     package_utils,
     presets,
     setter_config,
+    sharing,
     state,
     summary,
     timing,
@@ -356,6 +357,12 @@ async def run(
         '-c',
         help='Whether to pick solutions interactively.',
     ),
+    share: Optional[str] = typer.Option(
+        None,
+        '--share',
+        help='Capture the run report and copy it to the clipboard. '
+        'Pass a format: --share png or --share text.',
+    ),
 ):
     main_solution = package.get_main_solution()
     if check and main_solution is None:
@@ -438,6 +445,30 @@ async def run(
         detailed=detailed,
         skip_printing_limits=sanitized,
     )
+
+    if share is not None:
+        if share not in ('png', 'text'):
+            console.console.print(
+                f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
+            )
+            raise typer.Exit(1)
+        rec = sharing.recording_console()
+        await print_run_report(
+            solution_result,
+            rec,
+            VerificationLevel(verification),
+            detailed=detailed,
+            skip_printing_limits=sanitized,
+        )
+        out_dir = package.get_build_path()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        result = sharing.share_report(
+            rec,
+            fmt=share,
+            title='rbx run report',
+            out_dir=out_dir,
+        )
+        sharing.print_share_result(console.console, result)
 
 
 @app.command(
