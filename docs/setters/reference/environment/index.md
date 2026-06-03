@@ -250,9 +250,10 @@ presentation-only metadata under a `groups:` key in that profile.
 one into a numbered group (`1`–`9`), make it a **singleton** `[X]` (its own bucket, via
 `space`/`tab`), or leave it **unbucketed** `[ ]` (the default — joins the leftover pool).
 The picker is prepopulated from `env.rbx.yml` (languages in an env group keep their group
-number; everything else starts unbucketed). Press `r` to force a group's limit to be relative
-to another group as `A × reference + B` (`A` is the multiplier, `B` an optional increment in
-ms, and the reference may be another group or the base estimate), or `R` to reset the grouping
+number; everything else starts unbucketed). Press `r` to derive a group's limit from
+another group as `multiplier × reference + increment` (the reference may be another group or the
+base estimate; the increment is an optional constant in ms) — `Tab` switches the focused field,
+`←`/`→` (or `h`/`l`) change the reference — or `R` to reset the grouping
 and all relative rules back to what `env.rbx.yml` defines. A forced relative **always**
 overrides the group's measured estimate, unlike `whenEmpty`, which applies only to empty
 groups. Press `Enter` to confirm or `q` to cancel.

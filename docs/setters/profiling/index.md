@@ -201,11 +201,13 @@ for each group.
 While in the picker you can **force** a group's time limit to be computed relative to another
 group instead of from its own measured timings:
 
-- Press <kbd>r</kbd> on a language to open an inline editor and force its group's limit to
-  `A·t + B`, where `t` is the reference's limit, `A` is the multiplier, and `B` is an optional
-  increment in milliseconds. The reference can be another group or the **base estimate**. In the
-  editor, <kbd>Tab</kbd> cycles between the reference, `A`, and `B`; type to set `A`/`B`;
-  <kbd>Enter</kbd> commits, <kbd>Esc</kbd> cancels, and <kbd>c</kbd> clears the rule.
+- Press <kbd>r</kbd> on a language to open an inline editor and derive its group's limit from
+  another group as `multiplier × reference + increment` (the formula is shown in the editor).
+  The reference can be another group or the **base estimate**; the increment is an optional
+  constant in milliseconds. In the editor, <kbd>Tab</kbd> switches the focused field
+  (reference / multiplier / increment), <kbd>←</kbd>/<kbd>→</kbd> (or <kbd>h</kbd>/<kbd>l</kbd>)
+  change the reference, you type to set the multiplier and increment, <kbd>Enter</kbd> commits,
+  <kbd>Esc</kbd> cancels, and <kbd>c</kbd> clears the rule.
 - Press <kbd>R</kbd> to reset the whole grouping and all relative rules back to what
   `env.rbx.yml` defines.
 

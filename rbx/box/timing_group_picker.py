@@ -19,9 +19,12 @@ LEGEND_LINES = [
     '  [X] singleton  its own estimated limit',
     '  [ ] leftover   pooled with all other unmarked langs (default)',
     '',
-    '↑/↓ move · 1-9 group · space/tab [X]/[ ] · 0 clear · r relative · R reset env'
-    ' · enter confirm · q cancel',
+    '↑/↓ or k/j move · 1-9 group · space/tab [X]/[ ] · 0 leftover'
+    ' · r derive limit from a group · R reset to env · enter confirm · q cancel',
 ]
+
+# Number of extra lines the inline relative editor draws under the cursor row.
+EDITOR_HEIGHT = 3
 
 
 class GroupPickerState:
@@ -208,14 +211,39 @@ class GroupPickerState:
         return suffix
 
     def _editor_fragments(self):
-        ref = self._edit_ref if self._edit_ref is not None else '(base estimate)'
-        return [
-            (
-                'class:editor',
-                f'      relative-to: [{ref}]  A:[{self._edit_a}]  B:[{self._edit_b}]\n'
-                '      Tab cycles ref · type A/B · enter ok · esc cancel · c clear\n',
-            )
+        ref = self._edit_ref if self._edit_ref is not None else 'base estimate'
+        increment = self._edit_b if self._edit_b else '0'
+        fields = [
+            ('reference', ref, 'ref'),
+            ('multiplier', self._edit_a, 'a'),
+            ('increment', increment, 'b'),
         ]
+        # Field row: the focused field is marked with a pointer and highlighted,
+        # so it is clear which of reference/multiplier/increment is being edited.
+        frags = [('class:editor', '      ')]
+        for idx, (label, value, key) in enumerate(fields):
+            if idx:
+                frags.append(('class:editor', '    '))
+            focused = self._edit_field == key
+            marker = '▸ ' if focused else '  '
+            field_style = 'class:editor-focus' if focused else 'class:editor'
+            frags.append((field_style, f'{marker}{label}: [{value}]'))
+        frags.append(('class:editor', '\n'))
+        # Explain what the parameters mean and how the limit is computed.
+        frags.append(
+            (
+                'class:editor-hint',
+                '      time limit = multiplier × reference + increment\n',
+            )
+        )
+        frags.append(
+            (
+                'class:editor-hint',
+                '      Tab: switch field · ←/→ or h/l: change reference · '
+                'enter: ok · esc: cancel · c: clear\n',
+            )
+        )
+        return frags
 
     def render_fragments(self):
         """prompt_toolkit formatted-text fragments: list of (style, text)."""
@@ -345,15 +373,17 @@ async def prompt_group_assignment(
     def _(event):
         state.edit_tab()
 
+    # Left/right (and vim h/l) cycle the reference group regardless of which
+    # field is focused; Tab switches the focused field.
     @kb.add('left', filter=editing)
+    @kb.add('h', filter=editing)
     def _(event):
-        if state.edit_field == 'ref':
-            state.cycle_ref(-1)
+        state.cycle_ref(-1)
 
     @kb.add('right', filter=editing)
+    @kb.add('l', filter=editing)
     def _(event):
-        if state.edit_field == 'ref':
-            state.cycle_ref(1)
+        state.cycle_ref(1)
 
     @kb.add('enter', filter=editing)
     def _(event):
@@ -372,9 +402,13 @@ async def prompt_group_assignment(
     def _(event):
         state.edit_key(event.data)
 
+    def _body_height():
+        # Grow to fit the inline editor's extra lines while it is open.
+        return len(state.languages) + (EDITOR_HEIGHT if state.editing else 0)
+
     windows = [
         Window(content=header, height=len(LEGEND_LINES), always_hide_cursor=True),
-        Window(content=body, height=len(state.languages), always_hide_cursor=True),
+        Window(content=body, height=_body_height, always_hide_cursor=True),
     ]
     if preview is not None:
 
@@ -399,6 +433,8 @@ async def prompt_group_assignment(
             'box-current': 'ansiyellow bold',
             'box': 'ansiyellow',
             'editor': 'ansicyan',
+            'editor-focus': 'ansicyan bold reverse',
+            'editor-hint': 'ansibrightblack',
             'relative': 'ansigreen',
         }
     )

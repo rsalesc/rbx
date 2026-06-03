@@ -289,21 +289,37 @@ def test_render_shows_inline_editor_when_editing():
     s.start_edit()
     s.set_ref('cpp')
     text = ''.join(t for _, t in s.render_fragments())
-    assert 'relative-to' in text
-    assert 'A:' in text and 'B:' in text
+    # named fields instead of terse A/B
+    assert 'reference' in text
+    assert 'multiplier' in text and 'increment' in text
+    # the formula is spelled out for the user
+    assert 'multiplier × reference + increment' in text
+
+
+def test_render_marks_focused_editor_field():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()  # starts focused on the reference field
+    text = ''.join(t for _, t in s.render_fragments())
+    assert '▸ reference' in text
+    s.edit_tab()  # -> multiplier
+    text = ''.join(t for _, t in s.render_fragments())
+    assert '▸ multiplier' in text
+    assert '▸ reference' not in text
 
 
 def test_render_no_editor_when_not_editing():
     s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
     text = ''.join(t for _, t in s.render_fragments())
-    assert 'relative-to' not in text
+    assert 'multiplier' not in text
 
 
-def test_legend_mentions_relative_and_reset():
+def test_legend_mentions_derive_and_reset():
     from rbx.box.timing_group_picker import LEGEND_LINES
 
     text = '\n'.join(LEGEND_LINES)
-    assert 'relative' in text
+    # the 'r' action is described meaningfully, and reset is mentioned
+    assert 'derive' in text
     assert 'reset' in text
 
 
@@ -382,6 +398,32 @@ async def test_picker_force_relative_flow():
         inp.send_text('0')
         inp.send_text('\r')  # commit edit
         inp.send_text('\r')  # confirm picker
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 0, 'py': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives['g2'].relativeTo == 'cpp'
+    assert result.relatives['g2'].multiplier == 2.0
+
+
+async def test_picker_vim_keys_navigate_and_cycle_reference():
+    # j moves down the list; in the editor, l cycles the reference (vim h/l).
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('j')  # vim down -> py
+        inp.send_text('2')  # py -> group 2
+        inp.send_text('r')  # open editor on py (g2), field=ref
+        inp.send_text('l')  # vim right: cycle ref None -> 'cpp'
+        inp.send_text('\t')  # Tab -> multiplier
+        inp.send_text('\x7f')  # clear seeded '1.0'
+        inp.send_text('\x7f')
+        inp.send_text('\x7f')
+        inp.send_text('2')  # multiplier = '2'
+        inp.send_text('\r')  # commit
+        inp.send_text('\r')  # confirm
         result = await prompt_group_assignment(
             ['cpp', 'py'],
             {'cpp': 0, 'py': 0},
