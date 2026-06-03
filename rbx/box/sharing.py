@@ -29,8 +29,8 @@ def detect_png_converter() -> Optional[PngConverter]:
 
 
 def svg_to_png(svg: str, png_path: Path) -> Optional[Path]:
-    """Convert SVG text to a PNG file. Returns the path on success, None if no
-    converter is available."""
+    """Convert SVG text to a PNG file. Returns the path on success, or None if no
+    converter is available or the conversion failed."""
     converter = detect_png_converter()
     if converter is None:
         return None
@@ -40,6 +40,8 @@ def svg_to_png(svg: str, png_path: Path) -> Optional[Path]:
     try:
         argv = converter.build_argv(svg_path, png_path)
         subprocess.run(argv, check=True, capture_output=True)
+    except (subprocess.CalledProcessError, OSError):
+        return None
     finally:
         svg_path.unlink(missing_ok=True)
     return png_path

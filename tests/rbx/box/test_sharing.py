@@ -34,3 +34,17 @@ def test_svg_to_png_invokes_converter(monkeypatch, tmp_path):
     out = sharing.svg_to_png('<svg/>', tmp_path / 'r.png')
     assert out == tmp_path / 'r.png'
     assert calls, 'converter should have been invoked'
+
+
+def test_svg_to_png_returns_none_on_converter_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        sharing.shutil,
+        'which',
+        lambda name: f'/usr/bin/{name}' if name == 'magick' else None,
+    )
+
+    def boom(*a, **k):
+        raise sharing.subprocess.CalledProcessError(1, a[0] if a else 'magick')
+
+    monkeypatch.setattr(sharing.subprocess, 'run', boom)
+    assert sharing.svg_to_png('<svg/>', tmp_path / 'r.png') is None
