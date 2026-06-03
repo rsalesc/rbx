@@ -1027,29 +1027,24 @@ async def stress(
         ).ask_async()
 
         if testgroup == '(create new manual group)':
-            new_group_name = await questionary.text(
-                'Enter the name of the new manual test group: '
-            ).ask_async()
-            new_group_glob = await questionary.text(
-                'Enter the testcase glob for the new manual group (e.g. tests/manual/corner/*.in): '
-            ).ask_async()
-            manual_target = promotion.create_manual_group(
-                new_group_name, new_group_glob
-            )
+            manual_target = await promotion.create_manual_group_interactively()
+            if manual_target is None:
+                # Aborted (Ctrl-C or empty input): write nothing, register nothing.
+                break
             manual_groups[manual_target.name] = manual_target
             testgroup = manual_target.name
 
         if testgroup in manual_groups:
             manual_target = manual_groups[testgroup]
             findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-            written = 0
             for i, _ in enumerate(report.findings):
                 finding_in_path = findings_dir / f'{i}.in'
                 promotion.promote_input_to_group(finding_in_path, manual_target)
-                written += 1
             console.console.print(
-                f'Added [item]{written}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}'
+                f'Added [item]{len(report.findings)}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}'
             )
+            # Break so the just-selected/created manual group is not re-processed
+            # by the script-route code below.
             break
 
         if testgroup == '(create new script)':

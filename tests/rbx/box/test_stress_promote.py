@@ -129,6 +129,35 @@ def test_stress_promote_create_new_manual_group(
     assert groups['fresh'].testcaseGlob == glob
 
 
+def test_stress_promote_create_new_manual_group_aborted_writes_nothing(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    report = _write_findings(testing_pkg, b'42\n')
+
+    # select -> create new; the name prompt returns None (Ctrl-C). Nothing should
+    # be written and no group added.
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', return_value=True),
+        mock.patch('questionary.select', _scripted_prompt('(create new manual group)')),
+        mock.patch('questionary.text', _scripted_prompt(None)),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp']
+        )
+
+    assert result.exit_code == 0, result.output
+    # No manual group folder was created and no static inputs were written.
+    assert not (testing_pkg.root / 'tests/manual').exists()
+
+    from rbx.box import package
+
+    package_obj = package.find_problem_package_or_die()
+    assert all(g.testcaseGlob is None for g in package_obj.testcases)
+
+
 def test_stress_promote_skip_writes_nothing(
     runner: CliRunner,
     testing_pkg: testing_package.TestingPackage,

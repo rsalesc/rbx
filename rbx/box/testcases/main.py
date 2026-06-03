@@ -190,15 +190,7 @@ async def _pick_manual_group(
         return None
 
     if choice == '(create new manual group)':
-        new_name = await questionary.text(
-            'Enter the name of the new manual group:'
-        ).ask_async()
-        glob = await questionary.text(
-            'Enter the testcase glob for the new group (e.g. tests/manual/corner/*.in):'
-        ).ask_async()
-        if not new_name or not glob:
-            return None
-        return promotion.create_manual_group(new_name, glob)
+        return await promotion.create_manual_group_interactively()
 
     return manual_groups[choice]
 

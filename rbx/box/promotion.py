@@ -108,3 +108,27 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     package_utils.clear_package_cache()
 
     return TestcaseGroup(name=name, testcaseGlob=glob)
+
+
+async def create_manual_group_interactively() -> Optional[TestcaseGroup]:
+    """Interactively prompt for a new manual group's name and glob, then create it.
+
+    Prompts for the group NAME and then the GLOB path (e.g.
+    ``tests/manual/corner/*.in``). If either prompt is aborted (``None`` from
+    Ctrl-C) or left empty/whitespace, returns ``None`` without creating anything.
+    Otherwise delegates to :func:`create_manual_group` and returns the resulting
+    ``TestcaseGroup``.
+    """
+    import questionary
+
+    name = await questionary.text('Name for the new manual group:').ask_async()
+    if name is None or not name.strip():
+        return None
+
+    glob = await questionary.text(
+        'Glob for the new manual group (e.g. tests/manual/corner/*.in):'
+    ).ask_async()
+    if glob is None or not glob.strip():
+        return None
+
+    return create_manual_group(name, glob)
