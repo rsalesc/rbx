@@ -14,6 +14,7 @@ from rbx.box.generators import (
 from rbx.box.schema import TestcaseGroup
 from rbx.box.testcase_extractors import (
     extract_generation_testcases,
+    extract_generation_testcases_from_groups,
     extract_generation_testcases_from_patterns,
 )
 from rbx.box.testcase_schema import TestcaseEntry
@@ -169,26 +170,88 @@ async def info(
         console.print()
 
 
-def _pick_manual_group(
+async def _pick_manual_group(
     manual_groups: Dict[str, TestcaseGroup],
 ) -> Optional[TestcaseGroup]:
     """Interactively pick (or create) a manual group to promote tests into.
 
-    STUB -- the interactive picker is implemented in Task 3. It must offer the
-    existing ``manual_groups`` plus a ``(create new manual group)`` option.
+    Offers the existing ``manual_groups`` plus a ``(create new manual group)``
+    option and a ``(skip)`` option. Returns the chosen ``TestcaseGroup`` object,
+    or ``None`` when the user skips/aborts.
     """
-    raise NotImplementedError('interactive group selection not yet implemented')
+    import questionary
+
+    choice = await questionary.select(
+        'Choose the manual group to promote into:',
+        choices=list(manual_groups) + ['(create new manual group)', '(skip)'],
+    ).ask_async()
+
+    if choice is None or choice == '(skip)':
+        return None
+
+    if choice == '(create new manual group)':
+        new_name = await questionary.text(
+            'Enter the name of the new manual group:'
+        ).ask_async()
+        glob = await questionary.text(
+            'Enter the testcase glob for the new group (e.g. tests/manual/corner/*.in):'
+        ).ask_async()
+        if not new_name or not glob:
+            return None
+        return promotion.create_manual_group(new_name, glob)
+
+    return manual_groups[choice]
 
 
 async def _promote_interactive(
     manual_groups: Dict[str, TestcaseGroup],
+    group: Optional[str] = None,
     progress: Optional[utils.StatusProgress] = None,
 ) -> None:
-    """Interactively select tests and promote them into a manual group.
+    """Interactively select tests and promote them into a manual group."""
+    import questionary
 
-    STUB -- the multi-select UI is implemented in Task 3.
-    """
-    raise NotImplementedError('interactive mode not yet implemented')
+    all_entries = await extract_generation_testcases_from_groups()
+    if not all_entries:
+        console.print('[error]No tests available to promote.[/error]')
+        return
+
+    selected = await questionary.checkbox(
+        'Select tests to promote to manual tests:',
+        choices=[str(entry.group_entry) for entry in all_entries],
+    ).ask_async()
+    if not selected:
+        return
+
+    selected_set = set(selected)
+    chosen_entries = [
+        entry for entry in all_entries if str(entry.group_entry) in selected_set
+    ]
+
+    if group is not None:
+        target = manual_groups[group]
+    else:
+        target = await _pick_manual_group(manual_groups)
+        if target is None:
+            return
+
+    with utils.StatusProgress('Promoting tests...') as s:
+        for entry in chosen_entries:
+            default = promotion.next_testcase_name(promotion.manual_group_dir(target))
+            name = await questionary.text(
+                f'Filename stem for {entry.group_entry}:',
+                default=default,
+            ).ask_async()
+            input_path = await _generate_input_for_editing(
+                entry, output=False, progress=s
+            )
+            written = promotion.promote_input_to_group(
+                input_path, target, name=name or None
+            )
+            console.print(
+                f'[success]Promoted [item]{entry.group_entry}[/item] to '
+                f'[item]{written}[/item].[/success]'
+            )
 
 
 @app.command('promote', help='Promote generated tests into a manual test group.')
@@ -223,13 +286,16 @@ async def promote(
     manual_groups = promotion.get_manual_groups_by_name()
 
     if not selectors:
-        # Interactive path (Task 3).
-        with utils.StatusProgress('Promoting tests...') as s:
-            await _promote_interactive(manual_groups, progress=s)
+        if group is not None and group not in manual_groups:
+            console.print(
+                f'[error]Manual group [item]{group}[/item] does not exist.[/error]'
+            )
+            raise typer.Exit(1)
+        await _promote_interactive(manual_groups, group=group)
         return
 
     if group is None:
-        target = _pick_manual_group(manual_groups)
+        target = await _pick_manual_group(manual_groups)
         if target is None:
             return
     else:
