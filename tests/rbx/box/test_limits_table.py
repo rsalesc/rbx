@@ -228,6 +228,33 @@ def test_report_source_estimated_includes_ms_unit():
     assert _report_source(report) == 'estimated (fastest 280 ms / slowest 600 ms)'
 
 
+def test_report_source_multiplier_renders_increment_when_present():
+    from rbx.box.limits_info import _report_source
+
+    report = TimingGroupReport(
+        languages=['java'],
+        timeLimit=2500,
+        origin=TimingGroupOrigin.MULTIPLIER,
+        relativeToLanguage='cpp',
+        multiplier=2.0,
+        increment=500,
+    )
+    assert _report_source(report) == '×2.0 of cpp + 500 ms'
+
+
+def test_report_source_multiplier_omits_increment_when_null():
+    from rbx.box.limits_info import _report_source
+
+    report = TimingGroupReport(
+        languages=['java'],
+        timeLimit=2000,
+        origin=TimingGroupOrigin.MULTIPLIER,
+        relativeToLanguage='cpp',
+        multiplier=2.0,
+    )
+    assert _report_source(report) == '×2.0 of cpp'
+
+
 def test_highlight_ms_colors_number_and_dims_unit():
     from rbx.box.limits_info import _highlight_ms
 

@@ -231,7 +231,10 @@ def _report_source(report: TimingGroupReport) -> str:
         return f'estimated (fastest {report.fastest} ms / slowest {report.slowest} ms)'
     if report.origin == TimingGroupOrigin.MULTIPLIER:
         ref = report.relativeToLanguage or 'base'
-        return f'×{report.multiplier} of {ref}'
+        source = f'×{report.multiplier} of {ref}'
+        if report.increment is not None:
+            source += f' + {report.increment} ms'
+        return source
     return 'DEFAULTED to base'
 
 

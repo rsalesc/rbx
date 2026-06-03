@@ -304,7 +304,14 @@ relative to. If omitted, the multiplier is applied to the base estimate.""",
     )
     multiplier: float = Field(
         gt=0,
-        description="""Multiplier applied when this group has no solutions.""",
+        description="""Slope applied to the reference TL when this group has no
+solutions. The resolved TL is ``multiplier * reference + increment``.""",
+    )
+    increment: Optional[int] = Field(
+        default=None,
+        description="""Constant offset (in milliseconds) added on top of the
+multiplied reference TL when this group has no solutions. The resolved TL is
+``multiplier * reference + increment``.""",
     )
 
 
