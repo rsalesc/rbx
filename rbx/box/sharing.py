@@ -148,7 +148,13 @@ def export_text(rec: rich.console.Console) -> str:
 
 
 def export_svg(rec: rich.console.Console, title: str) -> str:
-    return rec.export_svg(title=title)
+    svg = rec.export_svg(title=title)
+    # Rich places the spaces that separate styled spans at the start/end of a
+    # <text> run. Some SVG rasterizers (e.g. rsvg-convert) trim that leading and
+    # trailing whitespace when laying out each run, which drops the separators
+    # (`AC solution` -> `ACsolution`). Mark every run as whitespace-preserving so
+    # those spaces survive conversion to PNG.
+    return svg.replace('<text ', '<text xml:space="preserve" ')
 
 
 @dataclasses.dataclass

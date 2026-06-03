@@ -265,3 +265,15 @@ def test_capture_and_share_degrades_on_oserror(monkeypatch, tmp_path):
     rec = sharing.recording_console(width=80)
     result = sharing.capture_and_share(rec, fmt='text', title='t')
     assert result.copied is False
+
+
+def test_export_svg_marks_runs_whitespace_preserving():
+    # Rasterizers (rsvg-convert) trim leading/trailing whitespace per <text>
+    # run, which drops the spaces Rich puts between styled spans. Every run must
+    # be marked xml:space="preserve" so those separators survive PNG conversion.
+    rec = sharing.recording_console(width=80)
+    rec.print('Slowest [success]AC[/success] solution')
+    svg = sharing.export_svg(rec, title='t')
+    assert 'xml:space="preserve"' in svg
+    # No <text> run is left unmarked.
+    assert '<text ' not in svg.replace('<text xml:space="preserve" ', '')
