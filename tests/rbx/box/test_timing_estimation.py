@@ -126,3 +126,32 @@ def test_default_assignment_round_trip_reproduces_env_grouping():
     assert jk.forced_relative is None
     # python + go are unbucketed -> a single leftover pool
     assert ['python', 'go'] in [g.languages for g in groups]
+
+
+def test_default_relatives_seeds_only_empty_groups():
+    from rbx.box.environment import LanguageGroup, LanguageGroupFallback
+    from rbx.box.timing import default_relatives
+
+    env_groups = [
+        LanguageGroup(languages=['cpp']),  # has solutions
+        LanguageGroup(
+            languages=['py'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+        ),  # empty -> seed
+        LanguageGroup(
+            languages=['go'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+        ),  # has solutions -> do NOT seed
+    ]
+    langs_with_solutions = {'cpp', 'go'}
+    seeded = default_relatives(env_groups, langs_with_solutions)
+    assert set(seeded) == {'g2'}  # only the empty py group (env group #2)
+    assert seeded['g2'].multiplier == 2.0
+
+
+def test_default_relatives_skips_groups_without_when_empty():
+    from rbx.box.environment import LanguageGroup
+    from rbx.box.timing import default_relatives
+
+    env_groups = [LanguageGroup(languages=['py'])]  # empty but no whenEmpty
+    assert default_relatives(env_groups, set()) == {}

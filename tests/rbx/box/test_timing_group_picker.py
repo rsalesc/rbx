@@ -455,3 +455,18 @@ def test_legend_describes_three_states():
     assert '[ ]' in text and 'leftover' in text
     # key hint still present
     assert 'confirm' in text and 'cancel' in text
+
+
+async def test_prompt_seeds_relatives_into_state():
+    from rbx.box.environment import LanguageGroupFallback
+
+    with create_pipe_input() as inp:
+        inp.send_text('\r')  # immediately confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 1, 'py': 2},
+            relatives={'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.relatives['g2'].multiplier == 2.0

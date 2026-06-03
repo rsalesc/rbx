@@ -245,6 +245,7 @@ class GroupPickerState:
 async def prompt_group_assignment(
     languages: List[str],
     default_number: Dict[str, int],
+    relatives: Optional[Dict[str, LanguageGroupFallback]] = None,
     input=None,
     output=None,
     preview: Optional[Callable[..., AnyFormattedText]] = None,
@@ -254,7 +255,7 @@ async def prompt_group_assignment(
     unbucketed/leftover, -1 singleton) and whose ``relatives`` carries any
     forced-relative specs; or None if cancelled."""
     if not languages:
-        return GroupAssignment(numbers={})
+        return GroupAssignment(numbers={}, relatives={})
 
     from prompt_toolkit.application import Application
     from prompt_toolkit.filters import Condition
@@ -263,7 +264,7 @@ async def prompt_group_assignment(
     from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.styles import Style
 
-    state = GroupPickerState(languages, default_number)
+    state = GroupPickerState(languages, default_number, relatives=relatives)
 
     def _header_fragments():
         fragments = []
