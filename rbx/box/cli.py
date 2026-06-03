@@ -1037,11 +1037,22 @@ async def stress(
         if testgroup in manual_groups:
             manual_target = manual_groups[testgroup]
             findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-            for i, _ in enumerate(report.findings):
-                finding_in_path = findings_dir / f'{i}.in'
-                promotion.promote_input_to_group(finding_in_path, manual_target)
+            finding_paths = [
+                findings_dir / f'{i}.in' for i in range(len(report.findings))
+            ]
+            missing = next(
+                (i for i, p in enumerate(finding_paths) if not p.exists()), None
+            )
+            if missing is not None:
+                console.console.print(
+                    f'[error]Could not find the input file for finding {missing}; '
+                    'aborting.[/error]'
+                )
+                break
+            for p in finding_paths:
+                promotion.promote_input_to_group(p, manual_target)
             console.console.print(
-                f'Added [item]{len(report.findings)}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}'
+                f'[success]Added [item]{len(finding_paths)}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}.[/success]'
             )
             # Break so the just-selected/created manual group is not re-processed
             # by the script-route code below.

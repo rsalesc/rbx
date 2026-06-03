@@ -200,6 +200,30 @@ def test_promote_interactive_two_defaults_sequential(
     assert written == {b'123\n', b'456\n'}
 
 
+def test_promote_non_interactive_name_ignored_for_multiple(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    _setup_pkg_with_two_generated_tests(testing_pkg)
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    result = runner.invoke(
+        testcases_main.app,
+        ['promote', 'gen/0', 'gen/1', '--group', 'corner', '--name', 'foo'],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert '--name is ignored' in result.output
+    folder = testing_pkg.root / 'tests/manual/corner'
+    # --name was NOT applied: auto-counter names are used instead.
+    assert not (folder / 'foo.in').exists()
+    assert (folder / '000.in').is_file()
+    assert (folder / '001.in').is_file()
+    written = {(folder / '000.in').read_bytes(), (folder / '001.in').read_bytes()}
+    assert written == {b'123\n', b'456\n'}
+
+
 def test_promote_interactive_skip_writes_nothing(
     runner: CliRunner,
     testing_pkg: testing_package.TestingPackage,

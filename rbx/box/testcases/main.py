@@ -329,6 +329,11 @@ async def promote(
             raise typer.Exit(1)
 
         single = len(entries) == 1
+        if name is not None and not single:
+            console.print(
+                '[warning]--name is ignored when promoting more than one test; '
+                'using auto-generated names.[/warning]'
+            )
         for entry in entries:
             input_path = await _generate_input_for_editing(
                 entry, output=False, progress=s

@@ -158,6 +158,46 @@ def test_stress_promote_create_new_manual_group_aborted_writes_nothing(
     assert all(g.testcaseGlob is None for g in package_obj.testcases)
 
 
+def test_stress_promote_missing_finding_writes_nothing(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    # Report claims two findings, but only one finding `.in` file is on disk.
+    from rbx.box import package
+
+    findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
+    findings_dir.mkdir(parents=True, exist_ok=True)
+    (findings_dir / '0.in').write_bytes(b'5 7\n')
+    report = StressReport(
+        findings=[
+            StressFinding(generator=GeneratorCall(name='gen', args='0')),
+            StressFinding(generator=GeneratorCall(name='gen', args='1')),
+        ],
+        executed=2,
+        skipped=0,
+    )
+
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', return_value=True),
+        mock.patch('questionary.select', _scripted_prompt('corner')),
+        mock.patch('questionary.text', _scripted_prompt()),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp']
+        )
+
+    # Command exits cleanly (no raised FileNotFoundError) and writes nothing:
+    # the operation is all-or-nothing.
+    assert result.exit_code == 0, result.output
+    folder = testing_pkg.root / 'tests/manual/corner'
+    assert not any(folder.glob('*.in'))
+
+
 def test_stress_promote_skip_writes_nothing(
     runner: CliRunner,
     testing_pkg: testing_package.TestingPackage,
