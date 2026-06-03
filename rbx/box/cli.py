@@ -461,15 +461,7 @@ async def run(
             detailed=detailed,
             skip_printing_limits=sanitized,
         )
-        out_dir = package.get_build_path()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        result = sharing.share_report(
-            rec,
-            fmt=share,
-            title='rbx run report',
-            out_dir=out_dir,
-        )
-        sharing.print_share_result(console.console, result)
+        sharing.capture_and_share(rec, fmt=share, title='rbx run report')
 
 
 @app.command(

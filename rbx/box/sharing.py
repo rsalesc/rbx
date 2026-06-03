@@ -193,3 +193,17 @@ def print_share_result(console: rich.console.Console, result: ShareResult) -> No
         )
     else:
         console.print('[error]Failed to share report.[/error]')
+
+
+def capture_and_share(
+    rec: rich.console.Console, *, fmt: str, title: str
+) -> ShareResult:
+    """Share an already-recorded report: write fallbacks into the package build
+    dir, copy to the clipboard, and print the outcome."""
+    from rbx.box import package
+
+    out_dir = package.get_build_path()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = share_report(rec, fmt=fmt, title=title, out_dir=out_dir)
+    print_share_result(_console.console, result)
+    return result
