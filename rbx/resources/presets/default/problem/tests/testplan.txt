@@ -1,2 +1,5 @@
-gens/gen 123456
-gens/gen 12345678
+# Call a generator to produce random tests, one invocation per line.
+# Uncomment the lines below (or add your own) to generate tests.
+# Docs: https://rsalesc.github.io/rbx/setters/testset/
+# tests/gens/gen 123456
+# tests/gens/gen 12345678

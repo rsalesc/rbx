@@ -1,5 +1,6 @@
 #include "rbx.h"
 #include "testlib.h"
+// Validates the input format. Docs: https://rsalesc.github.io/rbx/setters/testset/
 
 using namespace std;
 
