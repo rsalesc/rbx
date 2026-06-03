@@ -1,4 +1,5 @@
 import dataclasses
+import io
 import os
 import shutil
 import subprocess
@@ -123,6 +124,13 @@ def recording_console(width: int = 120) -> rich.console.Console:
         # force_terminal=False keeps is_terminal False so rich.live.Live renders
         # a single final frame instead of animating when we re-render reports.
         force_terminal=False,
+        # A non-terminal console would otherwise drop colors from the recording;
+        # force truecolor so the exported SVG keeps the report's styling.
+        color_system='truecolor',
+        # Discard the visible output: we only want the recorded buffer. Without
+        # this the re-rendered report would be printed to the real stdout a
+        # second time.
+        file=io.StringIO(),
     )
 
 

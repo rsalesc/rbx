@@ -133,6 +133,26 @@ def test_recording_console_is_not_a_terminal():
     assert rec.is_terminal is False  # so rich.live.Live won't animate
 
 
+def test_recording_console_does_not_write_to_real_stdout(capsys):
+    # The recording console must swallow its visible output (it writes to an
+    # in-memory buffer) so re-rendering a report for capture does not print it
+    # to the user's terminal a second time.
+    rec = sharing.recording_console(width=80)
+    rec.print('should not appear on stdout')
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert 'should not appear on stdout' in sharing.export_text(rec)
+
+
+def test_export_svg_preserves_report_colors():
+    # A non-terminal recording console would otherwise drop colors; the exported
+    # SVG must keep the report's styling (e.g. the bold-green 'success' style).
+    rec = sharing.recording_console(width=80)
+    rec.print(rich.text.Text('AC', style='success'))
+    svg = sharing.export_svg(rec, title='t')
+    assert 'fill: #98a84b' in svg  # theme 'success' resolves to bold green
+
+
 def test_export_text_captures_rendered_content():
     rec = sharing.recording_console(width=80)
     rec.print(rich.text.Text('Timing summary: 123 ms'))
