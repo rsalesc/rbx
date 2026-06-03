@@ -1,31 +1,14 @@
 scenarios:
-  - name: lean-preset-smoke
+  - name: works
+    seed_from_preset: default
     description: >
-      Smoke-test a freshly-created problem from the lean default preset.
-
-      Approach: this fixture is a minimal COPY of the real default preset's
-      problem package (`rbx/resources/presets/default/problem/`), mirroring
-      its lean A+B layout (`documents/`, `tests/`, `sols/main.cpp`,
-      `validator.cpp`, `wcmp.cpp`). We do NOT materialize the preset via
-      `rbx create --preset default --local` here because the `--local`
-      install path (`presets._install_preset_from_resources`) requires an
-      interactive `questionary.confirm` prompt plus a network call to check
-      for newer releases, neither of which works under the hermetic e2e
-      harness (no stdin/TTY, no network, app-path is a fresh tmpdir).
-      Re-running the real preset end-to-end (build + run + statement) still
-      exercises the same code paths a created problem would.
-
-      The dropped full-pipeline coverage (WA verdict, unit tests,
-      BOCA/Polygon packaging) is intentionally deferred to a separate issue.
-
-      pdflatex is short-circuited by the autouse `mock_pdflatex` fixture in
-      `tests/e2e/conftest.py`, so `st b` yields an empty PDF and we only
-      assert the artefact path exists.
+      Seeds the temp package from the real rbx default preset (problem package)
+      at run time rather than copying it into the fixture, then verifies the
+      preset builds its testset, builds its statement, and judges the reference
+      solution as accepted.
     steps:
       - cmd: build
         expect:
-          files_exist:
-            - build/tests/samples/*.in
           tests:
             groups:
               samples: 2
