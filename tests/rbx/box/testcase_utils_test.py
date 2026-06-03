@@ -2,6 +2,7 @@ import pathlib
 from unittest import mock
 
 import pytest
+import rich.console
 import typer
 
 from rbx.box import package, testcase_utils
@@ -575,3 +576,32 @@ def test_interaction_entry_style_per_pipe():
     assert testcase_utils.interaction_entry_style(0) == 'status'
     assert testcase_utils.interaction_entry_style(1) == 'info'
     assert testcase_utils.interaction_entry_style(2) == 'error'
+
+
+def test_print_stderr_section_prints_contents(tmp_path, monkeypatch):
+    err = tmp_path / 'run.stderr'
+    err.write_text('debug: hello\n')
+
+    rec = rich.console.Console(record=True, force_terminal=False, width=80)
+    monkeypatch.setattr(testcase_utils.console, 'console', rec)
+
+    printed = testcase_utils.print_stderr_section(err)
+
+    assert printed is True
+    assert 'debug: hello' in rec.export_text()
+
+
+def test_print_stderr_section_skips_empty(tmp_path, monkeypatch):
+    err = tmp_path / 'run.stderr'
+    err.write_text('')
+    rec = rich.console.Console(record=True, width=80)
+    monkeypatch.setattr(testcase_utils.console, 'console', rec)
+
+    assert testcase_utils.print_stderr_section(err) is False
+
+
+def test_print_stderr_section_handles_missing_file(tmp_path, monkeypatch):
+    rec = rich.console.Console(record=True, width=80)
+    monkeypatch.setattr(testcase_utils.console, 'console', rec)
+    assert testcase_utils.print_stderr_section(tmp_path / 'nope.stderr') is False
+    assert testcase_utils.print_stderr_section(None) is False

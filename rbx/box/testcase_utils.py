@@ -243,6 +243,18 @@ def print_interaction(interaction: TestcaseInteraction):
         console.console.print(text)
 
 
+def print_stderr_section(stderr_path: Optional[pathlib.Path]) -> bool:
+    """Print captured stderr in its own section. Returns True if anything printed."""
+    if stderr_path is None or not stderr_path.is_file():
+        return False
+    content = stderr_path.read_text()
+    if not content.strip():
+        return False
+    console.console.rule('Stderr', style='error')
+    console.console.print(rich.text.Text(content.rstrip('\n'), style='error'))
+    return True
+
+
 def valid_interaction_suffixes() -> List[str]:
     return ['.interaction', '.pio']
 
