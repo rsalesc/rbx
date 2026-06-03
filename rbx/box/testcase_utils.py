@@ -99,7 +99,8 @@ class TestcaseInteractionEntry(BaseModel):
 
     # The text exchanged on this line (participant prefix already stripped).
     data: str
-    # Which participant produced this line: 0 = interactor, 1 = solution.
+    # Which participant produced this line: 0 = interactor, 1 = solution,
+    # 2 = solution's stderr.
     pipe: int
 
 
@@ -214,6 +215,10 @@ def get_alternate_interaction_texts(
     interactor_entries = []
     solution_entries = []
     for entry in interaction.entries:
+        if entry.pipe == 2:
+            # stderr is not part of the two-column interactor/solution dialogue
+            # shown in statements; skip it here.
+            continue
         if entry.pipe == 1:
             solution_entries.append(entry.data + '\n')
             interactor_entries.extend(['\n'] * (entry.data.count('\n') + 1))

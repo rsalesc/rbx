@@ -491,6 +491,25 @@ class TestGetAlternateInteractionTexts:
         assert interactor_text == expected_interactor
         assert solution_text == expected_solution
 
+    def test_get_alternate_interaction_texts_skips_stderr(self):
+        """stderr (pipe 2) is excluded from both interactor and solution columns."""
+        entries = [
+            TestcaseInteractionEntry(data='Hello', pipe=0),
+            TestcaseInteractionEntry(data='noise', pipe=2),
+            TestcaseInteractionEntry(data='Hi', pipe=1),
+        ]
+
+        interaction = TestcaseInteraction(
+            entries=entries, prefixes=('INTERACTOR:', 'SOLUTION:')
+        )
+
+        interactor_text, solution_text = get_alternate_interaction_texts(interaction)
+
+        assert 'noise' not in interactor_text
+        assert 'noise' not in solution_text
+        assert interactor_text == 'Hello\n\n'
+        assert solution_text == '\nHi\n'
+
     def test_get_alternate_interaction_texts_with_multiline(self):
         """Test with multiline entries."""
         entries = [
