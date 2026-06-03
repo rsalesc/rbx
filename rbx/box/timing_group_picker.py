@@ -12,7 +12,8 @@ LEGEND_LINES = [
     '  [X] singleton  its own estimated limit',
     '  [ ] leftover   pooled with all other unmarked langs (default)',
     '',
-    '↑/↓ move · 1-9 group · space/tab [X]/[ ] · 0 clear · enter confirm · q cancel',
+    '↑/↓ move · 1-9 group · space/tab [X]/[ ] · 0 clear · r relative · R reset env'
+    ' · enter confirm · q cancel',
 ]
 
 
@@ -157,6 +158,26 @@ class GroupPickerState:
     def assignment(self) -> Dict[str, int]:
         return dict(self.numbers)
 
+    def _relative_suffix(self, lang: str) -> str:
+        spec = self.relatives.get(self.group_key(lang))
+        if spec is None:
+            return ''
+        ref = spec.relativeTo if spec.relativeTo is not None else 'base'
+        suffix = f'  → {ref} ×{spec.multiplier:g}'
+        if spec.increment:
+            suffix += f' +{spec.increment}'
+        return suffix
+
+    def _editor_fragments(self):
+        ref = self._edit_ref if self._edit_ref is not None else '(base estimate)'
+        return [
+            (
+                'class:editor',
+                f'      relative-to: [{ref}]  A:[{self._edit_a}]  B:[{self._edit_b}]\n'
+                '      Tab cycles ref · type A/B · enter ok · esc cancel · c clear\n',
+            )
+        ]
+
     def render_fragments(self):
         """prompt_toolkit formatted-text fragments: list of (style, text)."""
         fragments = []
@@ -174,7 +195,11 @@ class GroupPickerState:
             box_style = 'class:box-current' if selected else 'class:box'
             fragments.append((row_style, pointer))
             fragments.append((box_style, f'[{box}] '))
-            fragments.append((row_style, f'{lang}\n'))
+            fragments.append((row_style, lang))
+            fragments.append(('class:relative', self._relative_suffix(lang)))
+            fragments.append((row_style, '\n'))
+            if i == self.cursor and self.editing:
+                fragments.extend(self._editor_fragments())
         return fragments
 
 
@@ -283,6 +308,8 @@ async def prompt_group_assignment(
             'row': '',
             'box-current': 'ansiyellow bold',
             'box': 'ansiyellow',
+            'editor': 'ansicyan',
+            'relative': 'ansigreen',
         }
     )
     app = Application(

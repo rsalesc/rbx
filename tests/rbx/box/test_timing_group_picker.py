@@ -254,6 +254,55 @@ def test_prune_relatives_drops_orphans():
     assert 's:rust' not in pruned
 
 
+def test_render_annotates_relative_group():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={
+            'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0, increment=100)
+        },
+    )
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'py' in text
+    assert '→ cpp' in text or '-> cpp' in text  # reference shown
+    assert '2' in text  # multiplier shown
+    assert '100' in text  # increment shown
+
+
+def test_render_annotates_relative_to_base():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={'g2': LanguageGroupFallback(relativeTo=None, multiplier=3.0)},
+    )
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'base' in text  # relativeTo=None shown as 'base'
+
+
+def test_render_shows_inline_editor_when_editing():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_ref('cpp')
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'relative-to' in text
+    assert 'A:' in text and 'B:' in text
+
+
+def test_render_no_editor_when_not_editing():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'relative-to' not in text
+
+
+def test_legend_mentions_relative_and_reset():
+    from rbx.box.timing_group_picker import LEGEND_LINES
+
+    text = '\n'.join(LEGEND_LINES)
+    assert 'relative' in text
+    assert 'reset' in text
+
+
 def test_legend_describes_three_states():
     from rbx.box.timing_group_picker import LEGEND_LINES
 
