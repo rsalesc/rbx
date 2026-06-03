@@ -1,2 +1,0 @@
-gens/gen 123456
-gens/gen 12345678

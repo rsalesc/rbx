@@ -1,4 +1,5 @@
 #include "testlib.h"
+// A testlib generator. Docs: https://rsalesc.github.io/rbx/setters/testset/
 
 using namespace std;
 

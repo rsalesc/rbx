@@ -9,11 +9,11 @@ env: "env.rbx.yml"
 tracking:
   problem:
     - path: ".gitignore"
-    - path: "statement/icpc.sty"
-    - path: "statement/template.rbx.tex"
+    - path: "documents/icpc.sty"
+    - path: "documents/template.rbx.tex"
   contest:
     - path: ".gitignore"
-    - path: "statement/icpc.sty"
-    - path: "statement/template.rbx.tex"
-    - path: "statement/contest.rbx.tex"
+    - path: "documents/icpc.sty"
+    - path: "documents/template.rbx.tex"
+    - path: "documents/contest.rbx.tex"
       symlink: true

@@ -7,17 +7,17 @@ titles:
 statements:
   - name: "statement-en"
     language: "en"
-    path: "statement/contest.rbx.tex"
+    path: "documents/contest.rbx.tex"
     type: JinjaTeX
     assets:
-      - "statement/icpc.sty"
-      - "statement/*.png"
-      - "statement/instructions.tex"
+      - "documents/icpc.sty"
+      - "documents/*.png"
+      - "documents/instructions.tex"
     joiner: {type: "tex2pdf"}
     override:
       configure:
         - type: "rbx-tex" # Convert rbxTeX to TeX
-          template: "statement/template.rbx.tex"
+          template: "documents/template.rbx.tex"
       vars:
         # Turn into false to hide time limits and memory limits in the problem statement.
         # Useful for ICPC-style contests where you distribute a separate info sheet.
@@ -36,7 +36,7 @@ statements:
       editorial: true
   - name: "info-en"
     extends: "statement-en"
-    path: "statement/info.rbx.tex"
+    path: "documents/info.rbx.tex"
     joiner: null
 vars:
   year: 2025

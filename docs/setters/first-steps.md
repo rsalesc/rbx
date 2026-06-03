@@ -22,81 +22,66 @@ This is how the directory structure of the pre-initialized problem preset will l
 
 ```bash
 test
-├── sols # (1)!
-│   ├── main.cpp
-│   └── wa-overflow.cpp
-├── statement # (2)!
-│   ├── olymp.sty
-│   ├── projecao.png
+├── problem.rbx.yml # (1)!
+├── validator.cpp # (2)!
+├── wcmp.cpp # (3)!
+├── documents # (4)!
 │   ├── statement.rbx.tex
-│   └── template.rbx.tex
-├── manual_tests # (3)!
+│   ├── icpc.sty
+│   ├── template.rbx.tex
 │   └── samples
 │       ├── 000.in
+│       ├── 000.rbx.tex
 │       └── 001.in
-├── testplan
-│   ├── random.txt # (4)!
-│   └── random.py # (5)!
-├── gens
-│   └── gen # (6)!
-├── problem.rbx.yml # (7)!
-├── validator.cpp # (8)!
-└── wcmp.cpp # (9)!
+├── tests # (5)!
+│   ├── testplan.txt # (6)!
+│   └── gen.cpp # (7)!
+└── sols
+    └── main.cpp # (8)!
 ```
 
-1.  All solutions for the problem: the correct and the incorrect ones.
-2.  All statement-related assets, including the legend of the problem itself
-    but also the tex templates and imported graphics.
-3.  Manually defined tests of the problem.
+1.  The {{YAML}} configuration file for this problem.
 
-    !!! note
-        Automatically generated tests are not defined by explicit input and output files, but are rather defined by generator entries in the problem configuration.
+2.  A {{testlib}} validator that checks whether the generated tests are
+    in the correct format.
 
-4.  A generator script for the problem.
+3.  A built-in {{testlib}} checker that compares tokens of the participant's output
+    and the judge's output.
+
+4.  All statement-related assets, including the legend of the problem itself
+    but also the tex templates, the `icpc.sty` style file and the sample testcases
+    (`documents/samples/`). Samples can carry an explanation alongside them
+    (e.g. `000.rbx.tex`).
+
+5.  Everything related to generating tests lives here: generator sources (e.g.
+    `tests/gen.cpp`) and the generator scripts (testplans) that call them.
+
+6.  A generator script for the problem (a _testplan_).
 
     Each line of a generator script describes one call to a generator, and a generator script groups all these calls together.
 
-    Example:
+    The preset ships this file fully commented out, just to show you the shape of a call:
 
     ```
-    gens/gen 123
-    gens/gen 456
+    # tests/gen 1000000000
+    # tests/gen 100
     ```
 
-    Calls the generator named `gen` (here in this problem, implemented through `gen.cpp`) twice, thus generating two testcases.
+    Uncommenting a line calls the generator named `gen` (here implemented through
+    `tests/gen.cpp`) once, thus generating one testcase. In this problem, this
+    script backs the testcase group `testplan`.
 
-    In this problem, this script is used to generate the testcase group `random`.
-
-5.  A program that outputs a generator script. Pretty similar to `random.txt`
-    above, except that this is a program that prints to the **stdout** a
-    generator script, and thus provides more flexibility to the setter.
-
-    Example:
-
-    ```python
-    #! /usr/bin/python3
-    for i in range(10):
-        print(f'gens/gen {i}')
-    ```
-
-    This program outputs a generator script that creates 10 testcases with increasing
-    parameter `i`.
-
-    In this problem, this program is used to generate the testcase group `program-random`.
-
-6.  An example of a {{testlib}} generator. In this case, the generator is used to
-    generate testcases for two testgroups: `random` and `program-random`.
+7.  An example of a {{testlib}} generator.
 
     !!! note
         A problem can have multiple generators. This one is just an example.
 
-7.  The {{YAML}} configuration file for this problem.
+8.  The single solution shipped by the preset: a correct, {{tags.accepted}} solution.
 
-8.  A {{testlib}} validator that checks whether the generated tests are
-    in the correct format.
-
-9.  A built-in {{testlib}} checker that compares tokens of the participant's output
-    and the judge's output.
+    !!! note
+        `problem.rbx.yml` already declares outcome patterns for other prefixes
+        (`ac-*`, `wa-*`, `tle-*`, ...), so you can add more solutions later just by
+        dropping in a file with the matching prefix.
 
 ## Build
 
@@ -107,15 +92,17 @@ $ rbx build
 $ ls build
 build
 │   └── tests
-│       ├── program-random
+│       ├── samples
 │       │   └── ...
-│       ├── random
-│       │   └── ...
-│       └── samples
+│       └── testplan
 │           └── ...
 ```
 
-You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this preset in particular, we have three testsets: `random`, `program-random` and `samples`.
+You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this preset in particular, we have two testsets: `samples` and `testplan`.
+
+!!! note
+    The `testplan` group ships empty because `tests/testplan.txt` is fully commented
+    out by default. We'll fill it in [further below](#generating-random-testcases).
 
 If you want, you can explore these folders manually, but {{rbx}} also provides a TUI (terminal UI) to explore the testcases.
 You can run `rbx ui` and select the first option to explore the built testcases.
@@ -145,9 +132,12 @@ As you can see from the solutions and the statement, the pre-initialized preset 
 
 ### Rewrite solutions
 
-Let's start rewriting the solutions. We can probably drop the slow solution since we're just naively summing numbers anyway.
+The lean preset ships a single solution, `sols/main.cpp`. Let's start by rewriting it to
+sum `N` numbers, and then **add a second, deliberately buggy** solution so we have something
+to catch later on.
 
-We can develop the following {{tags.accepted}} and {{tags.wrong_answer}} solutions.
+We can develop the following {{tags.accepted}} solution (rewriting `sols/main.cpp`) and
+{{tags.wrong_answer}} solution (a brand new file, `sols/wa-overflow.cpp`):
 
 === "sols/main.cpp"
     ```c++
@@ -187,13 +177,16 @@ We can develop the following {{tags.accepted}} and {{tags.wrong_answer}} solutio
     }
     ```
 
-If you want to add or delete solutions from our package, you can just make the changes to the files and update the
-references to them in the `problem.rbx.yml`, on the `solutions` section.
+Notice that we didn't have to touch `problem.rbx.yml` to register `sols/wa-overflow.cpp`.
 
 By default, the `solutions` section is configured to use the file name to determine the outcome of that solution,
 example: if the file name starts with `ac-`, its outcome should be `ACCEPTED`, and if it starts with `wa-`, its outcome
-should be `WRONG_ANSWER`, etc.
-You can manually edit the `solutions` section if you want a bespoke setup.
+should be `WRONG_ANSWER`, etc. The preset already declares the `sols/wa-*` → {{tags.wrong_answer}} pattern,
+so simply creating a file whose name starts with `wa-` is enough for {{rbx}} to pick it up with the
+right expected outcome.
+
+If you want to add or delete solutions from our package, you can just make the changes to the files
+(matching one of these prefixes), or manually edit the `solutions` section if you want a bespoke setup.
 
 You can find the full list of expected outcomes [here][rbx.box.schema.ExpectedOutcome].
 
@@ -251,12 +244,15 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
 
 Now, let's rewrite our random generator to generate `N` numbers instead of only two.
 
-We have to actually call this generator and generate testcases into some of the testgroups.
+We have to actually call this generator and generate testcases into the `testplan` testgroup.
 
-Let's delete the existing test groups in `problem.rbx.yml`, except for the `samples` one, and create a new `random` group. Let's generate 10 random tests for this group by using a generator script. We can either use a static generator script
-(represented in the example below as `random.txt`) or a dynamic generator script (represented in the example below as `random.py`).
+The preset already declares a `testplan` group backed by `tests/testplan.txt`, but that file
+ships fully commented out, so the group starts empty. Let's fill it in with 10 random tests by
+uncommenting/adding calls to the generator. We can either spell the calls out by hand in a
+static generator script (`tests/testplan.txt`) or have a program print them for us as a
+dynamic generator script (here shown as `tests/testplan.py`).
 
-=== "gens/gen.cpp"
+=== "tests/gen.cpp"
     ```c++
     #include "testlib.h"
 
@@ -277,24 +273,24 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
 
     1.  The generator now receive two parameters `N.max` (accessed through `#!c++ opt<int>(1)`) and `A.max` (accessed through `#!c++ opt<int>(2)`).
 
-=== "testplan/random.txt (static)"
+=== "tests/testplan.txt (static)"
     ```
-    gens/gen 1000 1000000000 1
-    gens/gen 1000 1000000000 2
-    gens/gen 1000 1000000000 3
-    gens/gen 1000 1000000000 4
-    gens/gen 1000 1000000000 5
-    gens/gen 1000 1000000000 6
-    gens/gen 1000 1000000000 7
-    gens/gen 1000 1000000000 8
-    gens/gen 1000 1000000000 9
-    gens/gen 1000 1000000000 10
+    tests/gen 1000 1000000000 1
+    tests/gen 1000 1000000000 2
+    tests/gen 1000 1000000000 3
+    tests/gen 1000 1000000000 4
+    tests/gen 1000 1000000000 5
+    tests/gen 1000 1000000000 6
+    tests/gen 1000 1000000000 7
+    tests/gen 1000 1000000000 8
+    tests/gen 1000 1000000000 9
+    tests/gen 1000 1000000000 10
     ```
 
-=== "testplan/random.py (dynamic)"
+=== "tests/testplan.py (dynamic)"
     ```python
     for i in range(10):
-        print(f'gens/gen 1000 1000000000 {i}') # (1)!
+        print(f'tests/gen 1000 1000000000 {i}') # (1)!
     ```
 
     1.  This line defines 10 random calls to the generator `gen`, 
@@ -316,18 +312,18 @@ Let's delete the existing test groups in `problem.rbx.yml`, except for the `samp
 
     testcases:
     - name: 'samples'
-        testcaseGlob: 'tests/samples/*.in'
-    - name: 'random'  # (1)!
+        testcaseGlob: 'documents/samples/*.in'
+    - name: 'testplan'  # (1)!
         generatorScript:
-            path: 'random.txt'  # or 'random.py', in case you want to use a dynamic generator
+            path: 'tests/testplan.txt'  # or 'tests/testplan.py', in case you want to use a dynamic generator
     ```
     
-    1.  Here, `random` would contain the 10 tests defined in `random.txt` or `random.py`.
+    1.  Here, `testplan` would contain the 10 tests defined in `tests/testplan.txt` or `tests/testplan.py`.
 
 Our newly defined generator `gen.cpp` will receive two positional arguments, `N` and `A`, and generate
 a list of `N` integers, each of which is at most `A`.
 
-Then, our generator script will can this generator 10 times to generate 10 different tests with
+Then, our generator script will call this generator 10 times to generate 10 different tests with
 `N` integers ranging from 1 to `A`.
 
 Now, if we run `rbx build`, we'd get our brand new generated tests.
@@ -338,11 +334,11 @@ Of course, last but not least, we have to update the statement of our problem. {
 has its own statement format, called {{rbxTeX}}. The format itself is simple, but the ecosystem
 behind it is complex and provides a lot of flexibility for setters.
 
-For now, you just need to know the body and meat of the statement is written at `statement/statement.rbx.tex`.
+For now, you just need to know the body and meat of the statement is written at `documents/statement.rbx.tex`.
 If you open it, you will find something like the following:
 
 
-=== "statement/statement.rbx.tex"
+=== "documents/statement.rbx.tex"
     ```tex
     %- block legend
     Given two integers $A$ and $B$, determine the value of $A + B$.
@@ -376,7 +372,7 @@ these blocks will be pieced together to form the final statement.
 
 Let's change each corresponding block to match our new problem description.
 
-=== "statement/statement.rbx.tex"
+=== "documents/statement.rbx.tex"
     ```tex
     %- block legend
     Given $N$ integers, print their sum.

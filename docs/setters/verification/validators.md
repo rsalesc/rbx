@@ -269,7 +269,7 @@ validator:
   path: 'validator.cpp'
 testcases:
   - name: samples
-    testcaseGlob: manual_tests/samples/*.in
+    testcaseGlob: documents/samples/*.in
   - name: general
     generatorScript:
       path: testplan/general.txt

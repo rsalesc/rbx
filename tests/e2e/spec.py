@@ -139,6 +139,11 @@ class Scenario(_Forbid):
     name: str
     description: Optional[str] = None
     markers: List[str] = Field(default_factory=list)
+    # Name of a preset under ``rbx/resources/presets/<name>/``. When set, the
+    # scenario's temp package is seeded at run time from that preset's
+    # ``problem/`` package (dereferencing symlinks, skipping build cruft), so
+    # the fixture dir itself need only contain ``e2e.rbx.yml``.
+    seed_from_preset: Optional[str] = None
     steps: List[Step] = Field(default_factory=list)
 
     @field_validator('markers')
