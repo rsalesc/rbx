@@ -38,33 +38,52 @@ def build_partition(
     return result
 
 
+def group_key(state: int, lang: str) -> str:
+    """Stable key for the group a language currently belongs to."""
+    if state > 0:
+        return f'g{state}'
+    if state < 0:
+        return f's:{lang}'
+    return 'leftover'
+
+
 def partition_from_assignment(
     assignment: Dict[str, int],
-    env_groups: List[LanguageGroup],
+    relatives: Optional[Dict[str, LanguageGroupFallback]] = None,
 ) -> List[ResolvedGroup]:
     """Build groups from a {language: state} map. State per language:
     N>=1 share bucket N; -1 = own singleton group; 0 = the shared leftover pool.
-    Carries over an env group's whenEmpty only when the resulting membership is
-    identical to that env group."""
+    Optional ``relatives`` maps a group-key (see group_key) to a forced relative
+    spec, stamped onto the matching group as ``forced_relative``."""
+    relatives = relatives or {}
     buckets: Dict[int, List[str]] = {}
-    singletons: List[List[str]] = []
+    singletons: List[tuple[str, List[str]]] = []
     leftover: List[str] = []
     for lang, state in assignment.items():
         if state == 0:
             leftover.append(lang)
         elif state < 0:
-            singletons.append([lang])
+            singletons.append((group_key(state, lang), [lang]))
         else:
             buckets.setdefault(state, []).append(lang)
 
-    env_when_empty = {frozenset(g.languages): g.whenEmpty for g in env_groups}
     result: List[ResolvedGroup] = []
-    for _, langs in sorted(buckets.items()):
-        when_empty = env_when_empty.get(frozenset(langs))
-        result.append(ResolvedGroup(languages=langs, whenEmpty=when_empty))
-    result.extend(ResolvedGroup(languages=s) for s in singletons)
+    for number, langs in sorted(buckets.items()):
+        result.append(
+            ResolvedGroup(languages=langs, forced_relative=relatives.get(f'g{number}'))
+        )
+    for key, langs in singletons:
+        result.append(
+            ResolvedGroup(languages=langs, forced_relative=relatives.get(key))
+        )
     if leftover:
-        result.append(ResolvedGroup(languages=leftover, is_leftover=True))
+        result.append(
+            ResolvedGroup(
+                languages=leftover,
+                is_leftover=True,
+                forced_relative=relatives.get('leftover'),
+            )
+        )
     return result
 
 

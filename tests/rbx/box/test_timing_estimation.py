@@ -96,10 +96,11 @@ def test_empty_leftover_pool_defaults_to_base():
     assert ('go', 'java') in defaulted
 
 
-def test_default_assignment_round_trip_preserves_when_empty():
+def test_default_assignment_round_trip_reproduces_env_grouping():
     # The picker's prepopulated default, fed straight into the partition builder,
-    # must reproduce the env grouping (so whenEmpty carries over) and pool every
-    # ungrouped language into one leftover pool.
+    # must reproduce the env grouping (membership) and pool every ungrouped
+    # language into one leftover pool. (whenEmpty is no longer re-derived here;
+    # env-crossing was dropped from partition_from_assignment.)
     env_groups = [
         LanguageGroup(languages=['c', 'cpp']),
         LanguageGroup(
@@ -119,9 +120,9 @@ def test_default_assignment_round_trip_preserves_when_empty():
         'go': 0,
     }
 
-    groups = partition_from_assignment(default, env_groups)
+    groups = partition_from_assignment(default)
     jk = next(g for g in groups if set(g.languages) == {'java', 'kotlin'})
-    assert jk.whenEmpty is not None
-    assert jk.whenEmpty.multiplier == 2.0
+    assert jk.whenEmpty is None
+    assert jk.forced_relative is None
     # python + go are unbucketed -> a single leftover pool
     assert ['python', 'go'] in [g.languages for g in groups]

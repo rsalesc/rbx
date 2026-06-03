@@ -230,42 +230,10 @@ def test_valid_partition_passes():
 
 
 def test_assignment_singleton_state_makes_singletons():
-    env_groups = [LanguageGroup(languages=['c', 'cpp'])]
     groups = partition_from_assignment(
         assignment={'c': -1, 'cpp': -1, 'python': -1},
-        env_groups=env_groups,
     )
     assert sorted(g.languages for g in groups) == [['c'], ['cpp'], ['python']]
-
-
-def test_identical_membership_preserves_when_empty():
-    env_groups = [
-        LanguageGroup(
-            languages=['java', 'kotlin'],
-            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
-        )
-    ]
-    groups = partition_from_assignment(
-        assignment={'java': 1, 'kotlin': 1, 'cpp': 2},
-        env_groups=env_groups,
-    )
-    jvm = next(g for g in groups if set(g.languages) == {'java', 'kotlin'})
-    assert jvm.whenEmpty is not None and jvm.whenEmpty.multiplier == 2.0
-
-
-def test_changed_membership_drops_when_empty():
-    env_groups = [
-        LanguageGroup(
-            languages=['java', 'kotlin'],
-            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
-        )
-    ]
-    groups = partition_from_assignment(
-        assignment={'java': 1, 'kotlin': 1, 'scala': 1},
-        env_groups=env_groups,
-    )
-    jvm = next(g for g in groups if 'java' in g.languages)
-    assert jvm.whenEmpty is None
 
 
 def test_partition_from_assignment_three_states():
@@ -280,7 +248,6 @@ def test_partition_from_assignment_three_states():
             'go': 0,
             'rust': 0,
         },
-        env_groups=[],
     )
     langs = [g.languages for g in groups]
     assert ['c', 'cpp'] in langs
@@ -294,23 +261,32 @@ def test_partition_from_assignment_three_states():
 def test_partition_from_assignment_no_leftover_group_when_none_unbucketed():
     groups = partition_from_assignment(
         assignment={'cpp': 1, 'python': -1},
-        env_groups=[],
     )
     assert [g.languages for g in groups] == [['cpp'], ['python']]
 
 
-def test_partition_from_assignment_preserves_when_empty_on_exact_match():
+def test_partition_applies_forced_relatives_by_group_key():
     groups = partition_from_assignment(
-        assignment={'java': 1, 'kotlin': 1},
-        env_groups=[
-            LanguageGroup(
-                languages=['java', 'kotlin'],
-                whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
-            ),
-        ],
+        {'cpp': 1, 'python': 2, 'go': 0, 'rust': -1},
+        relatives={
+            'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+            's:rust': LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+            'leftover': LanguageGroupFallback(relativeTo='cpp', multiplier=4.0),
+        },
     )
-    assert groups[0].whenEmpty is not None
-    assert groups[0].whenEmpty.multiplier == 2.0
+    by_lang = {g.languages[0]: g for g in groups}
+    assert by_lang['python'].forced_relative.multiplier == 2.0
+    assert by_lang['rust'].forced_relative.multiplier == 3.0
+    assert by_lang['go'].forced_relative.multiplier == 4.0
+    assert by_lang['cpp'].forced_relative is None
+
+
+def test_partition_no_longer_derives_when_empty_from_env():
+    # membership matches an env group, but partition_from_assignment must NOT
+    # re-derive whenEmpty anymore (env-crossing dropped).
+    groups = partition_from_assignment({'java': 1, 'kotlin': 1})
+    assert groups[0].whenEmpty is None
+    assert groups[0].forced_relative is None
 
 
 def test_build_partition_marks_leftover():
@@ -326,7 +302,6 @@ def test_build_partition_marks_leftover():
 def test_partition_from_assignment_marks_leftover():
     groups = partition_from_assignment(
         assignment={'cpp': 1, 'python': -1, 'go': 0, 'rust': 0},
-        env_groups=[],
     )
     leftover = [g for g in groups if g.is_leftover]
     assert len(leftover) == 1

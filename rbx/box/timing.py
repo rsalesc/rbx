@@ -81,7 +81,7 @@ def build_timing_profile(
         return int(safeeval.eval_int(formula, {'fastest': fastest, 'slowest': slowest}))
 
     if repartition is not None:
-        groups = timing_groups.partition_from_assignment(repartition, env_groups)
+        groups = timing_groups.partition_from_assignment(repartition)
     else:
         groups = timing_groups.build_partition(env_groups, all_languages)
     timing_groups.validate_partition(groups)
