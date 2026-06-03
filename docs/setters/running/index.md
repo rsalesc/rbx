@@ -53,6 +53,38 @@ animation below.
 
 {{ asciinema("6XYQ11Cv1HZ8TuTiCFXBXXM29") }}
 
+## Sharing a report
+
+Sometimes you want to send a run report (or a time-estimation report) to someone
+else. The `--share` flag captures the report exactly as it appears in your
+terminal and copies it to your **clipboard**, ready to paste into a chat, an
+issue, or an email.
+
+```bash
+# Copy the run report to the clipboard as an image (PNG)
+rbx run --share png
+
+# Copy it as plain text instead
+rbx run --share text
+
+# Works for the time-estimation report too — this captures the run report
+# *and* the per-language-group time limits table
+rbx time --share png
+```
+
+A few things to keep in mind:
+
+- `--share png` requires an **SVG-to-PNG converter** on your `PATH`. {{rbx}}
+  looks for `rsvg-convert`, then ImageMagick (`magick`/`convert`), then macOS
+  `qlmanage`. If none is found, the report is saved as an SVG file instead and
+  its path is printed.
+- Copying an **image** to the clipboard is supported on **macOS** and **Linux**
+  (the latter needs `xclip` or `wl-copy`). On other platforms — or when no
+  clipboard tool is available — the report is written to a file in your build
+  directory and its path is printed, so you never lose the artifact.
+- `--share text` works everywhere a clipboard tool is available, and falls back
+  to a file otherwise.
+
 ## Running tests with custom inputs
 
 You might want to run your solutions on a testcase that is not part of the testset, or even on a specific

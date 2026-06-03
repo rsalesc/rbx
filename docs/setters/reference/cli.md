@@ -12,9 +12,10 @@ rbx [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `-c`, `--cache` | [CacheLevel][rbx.grading.grading_context.CacheLevel] | Which degree of caching to use. | `CACHE_ALL` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile and run testlib components with sanitizers enabled. If you want to run the solutions with sanitizers enabled, use the "-s" flag in the corresponding run command. | `False` |
-| `--nocapture` | BOOLEAN | Whether to save extra logs and outputs from interactive solutions. | `True` |
+| `--capture`, `-cp` | BOOLEAN | Whether to save extra logs and outputs from interactive solutions. | `False` |
 | `-p`, `--profile` | TEXT | Which timing profile to use when running solutions. | - |
 | `--profiling` | BOOLEAN | Whether to profile (capture performance statistics) of the execution. | `False` |
+| `-C`, `--contest` | TEXT | Select a contest variant by id (when contest.rbx.yml has use_variants: true). Defaults to the RBX_CONTEST env var. | - |
 | `--version`, `-v` | BOOLEAN | - | `False` |
 
 
@@ -121,12 +122,13 @@ rbx run <SOLUTIONS> [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
-| `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
+| `--tag` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
 | `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
+| `--share` | TEXT | Capture the run report and copy it to the clipboard. Pass a format: --share png or --share text. | - |
 
 
 ---
@@ -166,6 +168,7 @@ rbx time [OPTIONS]
 | `--runs`, `-r` | INTEGER | Number of runs to perform for each solution. Zero means the config default. | `0` |
 | `--profile`, `-p` | TEXT | Profile to use for time limit estimation. | `local` |
 | `--integrate`, `-i` | BOOLEAN | Integrate the given limits profile into the package. | `False` |
+| `--share` | TEXT | Capture the time report (run report + limits table) and copy it to the clipboard. Pass a format: --share png or --share text. | - |
 
 
 ---
@@ -189,7 +192,7 @@ rbx irun <SOLUTIONS> [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
-| `--tag`, `-t` | TEXT | Include only solutions whose tags intersect with this. | - |
+| `--tag` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--validate` | BOOLEAN | Whether to validate inputs. | `True` |
 | `--generator`, `-g` | TEXT | Generator call to use to generate a single test for execution. | - |
@@ -216,6 +219,7 @@ rbx create [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--name` | TEXT | Name of the problem to create, which will be used as the name of the new folder. | - |
 | `--preset` | TEXT | Preset to use when creating the problem. | - |
+| `--local` | BOOLEAN | Whether to use a preset from the local version of rbx, instead of the global one (not recommended). | `False` |
 
 
 ---
@@ -257,6 +261,7 @@ rbx stress <NAME> [OPTIONS]
 | `--fuzz` | BOOLEAN | Whether to fuzz generator calls from all testgroups. | `False` |
 | `--fuzz-on` | TEXT | Testgroups to fuzz generator calls from. | - |
 | `--validate` | BOOLEAN | Whether to validate inputs. | `True` |
+| `--reference`, `-r` | TEXT | Reference solution to use for the stress test. | - |
 
 
 ---
@@ -510,7 +515,7 @@ rbx statements build <NAMES> [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
-| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
+| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. | `PDF` |
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
@@ -533,54 +538,48 @@ rbx download [OPTIONS]
 
 ### testlib
 
-Download the latest testlib.h. Always re-fetches from upstream.
+Download the latest testlib.h
 
 **Usage:**
 ```bash
 rbx download testlib [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description |
-| :--- | :--- |
-| `--into PATH` | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--into` | TEXT | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. | - |
 
 
 ---
 
 ### jngen
 
-Download the latest jngen.h. Always re-fetches from upstream.
+Download the latest jngen.h
 
 **Usage:**
 ```bash
 rbx download jngen [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description |
-| :--- | :--- |
-| `--into PATH` | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--into` | TEXT | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. | - |
 
 
 ---
 
 ### tgen
 
-Download the latest tgen.h. Always re-fetches from upstream.
+Download the latest tgen.h
 
 **Usage:**
 ```bash
 rbx download tgen [OPTIONS]
 ```
 
-**Options:**
-
-| Name | Description |
-| :--- | :--- |
-| `--into PATH` | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. |
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--into` | TEXT | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. | - |
 
 
 ---
@@ -651,6 +650,7 @@ rbx presets create [OPTIONS]
 | `--name` | TEXT | The name of the preset to create. This will also be the name of the folder. | - |
 | `--uri` | TEXT | The URI of the new preset. | - |
 | `--preset`, `-p` | TEXT | The URI of the preset to init the new preset from. | - |
+| `--local` | BOOLEAN | Whether to fetch the init preset from the local version of rbx, instead of the remote one (not recommended). | `False` |
 
 
 ---
@@ -726,6 +726,7 @@ rbx package polygon [OPTIONS]
 | `--upload-as-english` | BOOLEAN | If set, will force the main statement to be uploaded in English. | `False` |
 | `--upload-only` | TEXT | Only upload the following types of assets to Polygon. | - |
 | `--upload-skip` | TEXT | Skip uploading the following types of assets to Polygon. | - |
+| `--upload-tests-raw` | BOOLEAN | Upload built test inputs directly instead of relying on Polygon-side generators. Skips generator uploads and clears the test script. All test inputs must be < 1 MiB. Forces a full local build. Requires --upload. | `False` |
 | `--validate-statement` | BOOLEAN | If set, will validate the statement for Polygon. | `False` |
 
 
@@ -791,6 +792,10 @@ Manage contests (sub-command).
 rbx contest [OPTIONS]
 ```
 
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `-C`, `--contest` | TEXT | Select a contest variant by id. | - |
+
 
 ---
 
@@ -808,6 +813,7 @@ rbx contest create [OPTIONS]
 | `--path` | TEXT | Path where to create the contest. | - |
 | `--preset`, `-p` | TEXT | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
 If not provided, the default preset will be used, or the active preset if any. | - |
+| `--local` | BOOLEAN | Whether to use a preset from the local version of rbx, instead of the global one (not recommended). | `False` |
 
 
 ---
@@ -825,6 +831,28 @@ rbx contest init [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--preset`, `-p` | TEXT | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
 If not provided, the default preset will be used, or the active preset if any. | - |
+
+
+---
+
+### add_variant (av)
+
+Scaffold a new contest variant file.
+
+**Usage:**
+```bash
+rbx contest add_variant <VARIANT_ID> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `VARIANT_ID` | Id of the new variant. Must match ^[A-Za-z][A-Za-z0-9_-]*$. | Yes |
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--preset`, `-p` | TEXT | Preset to scaffold the variant from. Defaults to the active preset in the current directory, then the default preset. | - |
 
 
 ---
@@ -919,6 +947,18 @@ rbx contest summary [OPTIONS]
 
 ---
 
+### list (ls)
+
+List all contests in the current directory.
+
+**Usage:**
+```bash
+rbx contest list [OPTIONS]
+```
+
+
+---
+
 ### statements (st)
 
 Manage contest-level statements.
@@ -951,7 +991,7 @@ rbx contest statements build <NAMES> [OPTIONS]
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--languages` | TEXT | Languages to build statements for. If not specified, build statements for all available languages. | - |
 | `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
-| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. If not specified, will infer from the conversion steps specified in the package. | `PDF` |
+| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. | `PDF` |
 | `--samples` | BOOLEAN | Whether to build the statement with samples or not. | `True` |
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
@@ -1143,6 +1183,18 @@ rbx tool boca view [OPTIONS]
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--contest-id`, `-c` | TEXT | Contest identifier to load (stored under app data). | - |
+
+
+---
+
+#### submit
+
+Submit solutions to BOCA.
+
+**Usage:**
+```bash
+rbx tool boca submit [OPTIONS]
+```
 
 
 ---
