@@ -1,5 +1,5 @@
 import pathlib
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, Dict, List, Optional, Tuple
 
 import syncer
 import typer
@@ -235,19 +235,38 @@ async def _promote_interactive(
         if target is None:
             return
 
+    # Prompt for all filenames first, OUTSIDE the live spinner: animating a Rich
+    # spinner while a questionary prompt is open causes redraw artifacts.
+    #
+    # Because no file is written yet during this loop, ``next_testcase_name``
+    # would return the same ``000`` default for every test. To show sequential
+    # defaults (000, 001, 002, ...) we simulate the on-disk counter: ``used``
+    # seeds from the folder's existing ``.in`` stems and grows with every stem we
+    # tentatively assign, so each default is the next free stem given both the
+    # files on disk and the names chosen so far this run.
+    folder = promotion.manual_group_dir(target)
+    used = set(promotion.existing_testcase_stems(folder))
+    chosen: List[Tuple[GenerationTestcaseEntry, str]] = []
+    for entry in chosen_entries:
+        default = promotion.next_testcase_name(folder, used=used)
+        answer = await questionary.text(
+            f'Filename stem for {entry.group_entry}:',
+            default=default,
+        ).ask_async()
+        # ``None`` means Ctrl-C: abort without writing anything. An empty string
+        # means the user pressed Enter to accept the displayed default.
+        if answer is None:
+            return
+        stem = answer or default
+        used.add(stem)
+        chosen.append((entry, stem))
+
     with utils.StatusProgress('Promoting tests...') as s:
-        for entry in chosen_entries:
-            default = promotion.next_testcase_name(promotion.manual_group_dir(target))
-            name = await questionary.text(
-                f'Filename stem for {entry.group_entry}:',
-                default=default,
-            ).ask_async()
+        for entry, stem in chosen:
             input_path = await _generate_input_for_editing(
                 entry, output=False, progress=s
             )
-            written = promotion.promote_input_to_group(
-                input_path, target, name=name or None
-            )
+            written = promotion.promote_input_to_group(input_path, target, name=stem)
             console.print(
                 f'[success]Promoted [item]{entry.group_entry}[/item] to '
                 f'[item]{written}[/item].[/success]'

@@ -1,6 +1,6 @@
 import itertools
 import pathlib
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from rbx import utils
 from rbx.box import package, package_utils
@@ -17,16 +17,28 @@ def manual_group_dir(group: TestcaseGroup) -> pathlib.Path:
     return pathlib.Path(group.testcaseGlob).parent
 
 
-def next_testcase_name(folder: pathlib.Path) -> str:
+def existing_testcase_stems(folder: pathlib.Path) -> Set[str]:
+    """Return the set of ``*.in`` file stems present in ``folder``.
+
+    Empty when the folder does not exist.
+    """
+    if not folder.is_dir():
+        return set()
+    return {path.stem for path in folder.glob('*.in')}
+
+
+def next_testcase_name(folder: pathlib.Path, used: Optional[Set[str]] = None) -> str:
     """Return the next free zero-padded counter name (no extension).
 
     Scans ``folder`` for ``*.in`` files and returns the lowest non-colliding
     ``f'{i:03d}'`` stem. Returns ``'000'`` for an empty or nonexistent folder.
+
+    ``used`` adds extra reserved stems on top of the on-disk files, letting
+    callers simulate a counter across not-yet-written names.
     """
-    existing = set()
-    if folder.is_dir():
-        for path in folder.glob('*.in'):
-            existing.add(path.stem)
+    existing = existing_testcase_stems(folder)
+    if used is not None:
+        existing |= used
 
     for i in itertools.count():
         name = f'{i:03d}'

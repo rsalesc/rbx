@@ -158,3 +158,65 @@ def test_promote_interactive_create_new_group(
     groups = {g.name: g for g in package_obj.testcases}
     assert 'fresh' in groups
     assert groups['fresh'].testcaseGlob == glob
+
+
+def _setup_pkg_with_two_generated_tests(
+    testing_pkg: testing_package.TestingPackage,
+) -> None:
+    # gen-id.cpp echoes its single integer argument back as the test input.
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-id.cpp')
+    testing_pkg.add_testgroup_with_generators(
+        'gen',
+        [
+            {'name': 'gens/gen.cpp', 'args': '123'},
+            {'name': 'gens/gen.cpp', 'args': '456'},
+        ],
+    )
+
+
+def test_promote_interactive_two_defaults_sequential(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    _setup_pkg_with_two_generated_tests(testing_pkg)
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    # checkbox -> select both tests; select -> existing group; text -> accept
+    # default for both (empty string each). The simulated counter must produce
+    # 000 then 001, writing two distinct files.
+    with (
+        mock.patch('questionary.checkbox', _scripted_prompt(['gen/0', 'gen/1'])),
+        mock.patch('questionary.select', _scripted_prompt('corner')),
+        mock.patch('questionary.text', _scripted_prompt('', '')),
+    ):
+        result = runner.invoke(testcases_main.app, ['promote'])
+
+    assert result.exit_code == 0, result.output
+    folder = testing_pkg.root / 'tests/manual/corner'
+    assert (folder / '000.in').is_file()
+    assert (folder / '001.in').is_file()
+    written = {(folder / '000.in').read_bytes(), (folder / '001.in').read_bytes()}
+    assert written == {b'123\n', b'456\n'}
+
+
+def test_promote_interactive_skip_writes_nothing(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    _setup_pkg_with_generated_group(testing_pkg)
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    # checkbox -> select a test; select -> skip the group picker. Nothing should
+    # be written and no group added.
+    with (
+        mock.patch('questionary.checkbox', _scripted_prompt(['gen/0'])),
+        mock.patch('questionary.select', _scripted_prompt('(skip)')),
+        mock.patch('questionary.text', _scripted_prompt()),
+    ):
+        result = runner.invoke(testcases_main.app, ['promote'])
+
+    assert result.exit_code == 0, result.output
+    folder = testing_pkg.root / 'tests/manual/corner'
+    assert not any(folder.glob('*.in'))
