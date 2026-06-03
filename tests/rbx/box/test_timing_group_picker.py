@@ -1,7 +1,12 @@
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from rbx.box.timing_group_picker import GroupPickerState, prompt_group_assignment
+from rbx.box.environment import LanguageGroupFallback
+from rbx.box.timing_group_picker import (
+    GroupAssignment,
+    GroupPickerState,
+    prompt_group_assignment,
+)
 
 
 def test_state_move_clamps():
@@ -60,7 +65,7 @@ async def test_picker_toggle_and_group_then_confirm():
             input=inp,
             output=DummyOutput(),
         )
-    assert result == {'cpp': 1, 'java': -1, 'python': 0}
+    assert result.numbers == {'cpp': 1, 'java': -1, 'python': 0}
 
 
 async def test_picker_assigns_and_confirms():
@@ -72,7 +77,7 @@ async def test_picker_assigns_and_confirms():
         result = await prompt_group_assignment(
             ['cpp', 'java'], {'cpp': 0, 'java': 0}, input=inp, output=DummyOutput()
         )
-    assert result == {'cpp': 2, 'java': 2}
+    assert result.numbers == {'cpp': 2, 'java': 2}
 
 
 async def test_picker_cancel_returns_none():
@@ -86,9 +91,9 @@ async def test_picker_cancel_returns_none():
 
 def test_preview_text_suppressed_once_done():
     s = GroupPickerState(['cpp'], {})
-    assert s.preview_text(lambda a: 'TABLE') == 'TABLE'
+    assert s.preview_text(lambda a, r: 'TABLE') == 'TABLE'
     s.done = True
-    assert s.preview_text(lambda a: 'TABLE') == ''
+    assert s.preview_text(lambda a, r: 'TABLE') == ''
 
 
 def test_preview_text_empty_without_callback():
@@ -101,7 +106,7 @@ async def test_picker_invokes_preview_with_current_assignment():
 
     seen = []
 
-    def preview(assignment):
+    def preview(assignment, relatives=None):
         seen.append(dict(assignment))
         return ANSI('preview')
 
@@ -115,12 +120,458 @@ async def test_picker_invokes_preview_with_current_assignment():
             output=DummyOutput(),
             preview=preview,
         )
-    assert result == {'cpp': 1, 'java': 0}
+    assert result.numbers == {'cpp': 1, 'java': 0}
     # The picker rendered the live preview from the current assignment...
     assert {'cpp': 0, 'java': 0} in seen
     # ...but suppressed it on the confirming (final) paint, so the post-enter
     # assignment never reaches the preview.
     assert {'cpp': 1, 'java': 0} not in seen
+
+
+def test_group_key_per_state():
+    s = GroupPickerState(['cpp', 'py', 'go'], {'cpp': 2, 'py': -1, 'go': 0})
+    assert s.group_key('cpp') == 'g2'
+    assert s.group_key('py') == 's:py'
+    assert s.group_key('go') == 'leftover'
+
+
+def test_start_edit_seeds_defaults_and_commit():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)  # cursor -> py
+    s.start_edit()
+    assert s.editing
+    s.set_ref('cpp')
+    s.set_a('2.5')
+    s.set_b('100')
+    assert s.commit_edit() is True
+    assert not s.editing
+    assert s.relatives['g2'] == LanguageGroupFallback(
+        relativeTo='cpp', multiplier=2.5, increment=100
+    )
+
+
+def test_cancel_edit_discards():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('9')
+    s.cancel_edit()
+    assert not s.editing
+    assert 'g2' not in s.relatives
+
+
+def test_clear_relative_removes_spec():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+    )
+    s.move(1)
+    s.start_edit()
+    s.clear_relative()
+    assert 'g2' not in s.relatives
+    assert not s.editing
+
+
+def test_invalid_a_keeps_editing():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_ref('cpp')
+    s.set_a('abc')  # not a positive float
+    assert s.commit_edit() is False  # rejected
+    assert s.editing  # stays in editor
+
+
+def test_nonpositive_a_rejected():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('0')
+    assert s.commit_edit() is False
+    s.set_a('-3')
+    assert s.commit_edit() is False
+    assert s.editing
+
+
+def test_invalid_b_rejected_but_empty_ok():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_ref('cpp')
+    s.set_a('2.0')
+    s.set_b('xx')
+    assert s.commit_edit() is False
+    s.set_b('')  # empty increment is allowed (None)
+    assert s.commit_edit() is True
+    assert s.relatives['g2'].increment is None
+
+
+def test_reference_options_exclude_own_group_and_include_base():
+    s = GroupPickerState(['cpp', 'py', 'go'], {'cpp': 1, 'py': 2, 'go': 2})
+    s.move(1)  # cursor on py (group g2)
+    refs = s.reference_options()
+    assert None in refs  # base estimate
+    assert 'cpp' in refs  # representative of the other group
+    assert 'py' not in refs and 'go' not in refs  # own group excluded
+
+
+def test_cycle_ref_wraps():
+    s = GroupPickerState(['cpp', 'py', 'go'], {'cpp': 1, 'py': 2, 'go': 3})
+    s.move(1)  # py
+    s.start_edit()
+    opts = s.reference_options()  # e.g. [None, 'cpp', 'go']
+    start = s.edit_ref
+    s.cycle_ref(1)
+    assert s.edit_ref == opts[(opts.index(start) + 1) % len(opts)]
+
+
+def test_reset_restores_initial_numbers_and_relatives():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+    )
+    s.set_group(5)  # mutate cpp
+    s.move(1)
+    s.start_edit()
+    s.clear_relative()
+    s.reset_to_initial()
+    assert s.assignment() == {'cpp': 1, 'py': 2}
+    assert s.relatives == {
+        'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)
+    }
+
+
+def test_prune_relatives_drops_orphans():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={
+            'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+            's:rust': LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+        },
+    )
+    # 's:rust' has no corresponding language/group -> pruned; 'g2' kept (py in bucket 2)
+    pruned = s.prune_relatives()
+    assert 'g2' in pruned
+    assert 's:rust' not in pruned
+
+
+def test_render_annotates_relative_group():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={
+            'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0, increment=100)
+        },
+    )
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'py' in text
+    assert '→ cpp' in text or '-> cpp' in text  # reference shown
+    assert '2' in text  # multiplier shown
+    assert '100' in text  # increment shown
+
+
+def test_render_annotates_relative_to_base():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={'g2': LanguageGroupFallback(relativeTo=None, multiplier=3.0)},
+    )
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'base' in text  # relativeTo=None shown as 'base'
+
+
+def test_render_shows_inline_editor_when_editing():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_ref('cpp')
+    text = ''.join(t for _, t in s.render_fragments())
+    # named fields instead of terse A/B
+    assert 'reference' in text
+    assert 'multiplier' in text and 'increment' in text
+    # the formula is spelled out for the user
+    assert 'multiplier × reference + increment' in text
+
+
+def test_render_marks_focused_editor_field():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()  # starts focused on the reference field
+    text = ''.join(t for _, t in s.render_fragments())
+    assert '▸ reference' in text
+    s.edit_tab()  # -> multiplier
+    text = ''.join(t for _, t in s.render_fragments())
+    assert '▸ multiplier' in text
+    assert '▸ reference' not in text
+
+
+def test_render_no_editor_when_not_editing():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    text = ''.join(t for _, t in s.render_fragments())
+    assert 'multiplier' not in text
+
+
+def test_legend_mentions_derive_and_reset():
+    from rbx.box.timing_group_picker import LEGEND_LINES
+
+    text = '\n'.join(LEGEND_LINES)
+    # the 'r' action is described meaningfully, and reset is mentioned
+    assert 'derive' in text
+    assert 'reset' in text
+
+
+def test_edit_tab_cycles_fields():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    assert s.edit_field == 'ref'
+    s.edit_tab()
+    assert s.edit_field == 'a'
+    s.edit_tab()
+    assert s.edit_field == 'b'
+    s.edit_tab()
+    assert s.edit_field == 'ref'
+
+
+def test_start_edit_resets_field_to_ref():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()  # -> 'a'
+    s.cancel_edit()
+    s.start_edit()
+    assert s.edit_field == 'ref'
+
+
+def test_edit_key_types_into_focused_field():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()  # focus 'a'
+    s.set_a('')  # clear seeded default
+    s.edit_key('2')
+    s.edit_key('.')
+    s.edit_key('5')
+    assert s.edit_a == '2.5'
+    s.edit_key('\x7f')  # backspace
+    assert s.edit_a == '2.'
+
+
+def test_edit_key_ref_field_is_noop():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    assert s.edit_field == 'ref'
+    s.edit_key('9')  # typing on ref does nothing
+    assert s.edit_a == '1.0'
+    assert s.edit_b == ''
+
+
+def test_edit_key_types_into_b_field():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()  # 'a'
+    s.edit_tab()  # 'b'
+    s.edit_key('1')
+    s.edit_key('0')
+    s.edit_key('0')
+    assert s.edit_b == '100'
+
+
+def test_edit_key_rejects_non_numeric_multiplier():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()  # focus multiplier
+    s.set_a('')
+    s.edit_key('x')  # letter rejected
+    s.edit_key('2')
+    s.edit_key('.')
+    s.edit_key('.')  # a second decimal point is rejected
+    s.edit_key('5')
+    assert s.edit_a == '2.5'
+
+
+def test_edit_key_rejects_non_digit_increment():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()
+    s.edit_tab()  # focus increment
+    s.edit_key('1')
+    s.edit_key('.')  # increment is integer-only -> rejected
+    s.edit_key('a')  # rejected
+    s.edit_key('0')
+    assert s.edit_b == '10'
+
+
+def test_commit_sets_error_message_when_invalid():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('')  # empty multiplier
+    assert s.commit_edit() is False
+    assert 'multiplier' in s.edit_error
+
+
+def test_edit_key_clears_error():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('0')
+    assert s.commit_edit() is False
+    assert s.edit_error
+    s.edit_tab()  # focus multiplier
+    s.set_a('')
+    s.edit_key('2')  # a valid edit clears the stale error
+    assert s.edit_error == ''
+
+
+def test_render_shows_validation_error():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('abc')
+    s.commit_edit()
+    text = ''.join(t for _, t in s.render_fragments())
+    assert '⚠' in text and 'multiplier' in text
+
+
+async def test_picker_invalid_commit_keeps_editing_then_recovers():
+    # Pressing enter with an empty multiplier must not commit/exit; the user
+    # can then type a valid value and commit successfully.
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('\x1b[B')  # down -> py
+        inp.send_text('2')  # py -> group 2
+        inp.send_text('r')  # editor on py, field=ref
+        inp.send_text('\x1b[C')  # ref -> cpp
+        inp.send_text('\t')  # -> multiplier
+        inp.send_text('\x7f')  # clear seeded '1.0'
+        inp.send_text('\x7f')
+        inp.send_text('\x7f')
+        inp.send_text('\r')  # commit EMPTY multiplier -> invalid, stays editing
+        inp.send_text('2')  # type a valid multiplier
+        inp.send_text('\r')  # commit succeeds
+        inp.send_text('\r')  # confirm picker
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 0, 'py': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives['g2'].multiplier == 2.0
+
+
+async def test_picker_force_relative_flow():
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('\x1b[B')  # down -> py
+        inp.send_text('2')  # py -> group 2
+        inp.send_text('r')  # open editor on py (g2), field=ref
+        inp.send_text('\x1b[C')  # right: cycle ref None -> 'cpp'
+        inp.send_text('\t')  # Tab: ref -> a
+        inp.send_text('\x7f')  # backspace seeded '1.0'
+        inp.send_text('\x7f')
+        inp.send_text('\x7f')
+        inp.send_text('2')  # type '2.0'
+        inp.send_text('.')
+        inp.send_text('0')
+        inp.send_text('\r')  # commit edit
+        inp.send_text('\r')  # confirm picker
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 0, 'py': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives['g2'].relativeTo == 'cpp'
+    assert result.relatives['g2'].multiplier == 2.0
+
+
+async def test_picker_vim_keys_navigate_and_cycle_reference():
+    # j moves down the list; in the editor, l cycles the reference (vim h/l).
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('j')  # vim down -> py
+        inp.send_text('2')  # py -> group 2
+        inp.send_text('r')  # open editor on py (g2), field=ref
+        inp.send_text('l')  # vim right: cycle ref None -> 'cpp'
+        inp.send_text('\t')  # Tab -> multiplier
+        inp.send_text('\x7f')  # clear seeded '1.0'
+        inp.send_text('\x7f')
+        inp.send_text('\x7f')
+        inp.send_text('2')  # multiplier = '2'
+        inp.send_text('\r')  # commit
+        inp.send_text('\r')  # confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 0, 'py': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives['g2'].relativeTo == 'cpp'
+    assert result.relatives['g2'].multiplier == 2.0
+
+
+async def test_picker_digit_routes_into_editor_not_group():
+    # While editing, a digit must land in the A buffer, not call set_group.
+    with create_pipe_input() as inp:
+        inp.send_text('\x1b[B')  # down -> py
+        inp.send_text('2')  # py -> group 2
+        inp.send_text('r')  # editor on py, field=ref
+        inp.send_text('\x1b[C')  # ref -> cpp
+        inp.send_text('\t')  # -> field 'a'
+        inp.send_text('\x7f')  # clear seeded '1.0'
+        inp.send_text('\x7f')
+        inp.send_text('\x7f')
+        inp.send_text('3')  # A = '3'
+        inp.send_text('\r')  # commit
+        inp.send_text('\r')  # confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 1, 'py': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    # py stayed in group 2 (the '3' did not re-group it); spec multiplier is 3.
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives['g2'].multiplier == 3.0
+
+
+async def test_picker_reset_restores_env():
+    with create_pipe_input() as inp:
+        inp.send_text('5')  # mutate cpp -> 5
+        inp.send_text('R')  # reset to initial
+        inp.send_text('\r')  # confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 1, 'py': 2},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.numbers == {'cpp': 1, 'py': 2}
+
+
+async def test_picker_returns_group_assignment_struct():
+    with create_pipe_input() as inp:
+        inp.send_text('\r')
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 1, 'py': 2},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert isinstance(result, GroupAssignment)
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives == {}
 
 
 def test_legend_describes_three_states():
@@ -132,3 +583,18 @@ def test_legend_describes_three_states():
     assert '[ ]' in text and 'leftover' in text
     # key hint still present
     assert 'confirm' in text and 'cancel' in text
+
+
+async def test_prompt_seeds_relatives_into_state():
+    from rbx.box.environment import LanguageGroupFallback
+
+    with create_pipe_input() as inp:
+        inp.send_text('\r')  # immediately confirm
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 1, 'py': 2},
+            relatives={'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.relatives['g2'].multiplier == 2.0

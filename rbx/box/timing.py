@@ -76,12 +76,13 @@ def build_timing_profile(
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
     repartition: Optional[Dict[str, int]] = None,
+    relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
     def _eval(fastest: int, slowest: int) -> int:
         return int(safeeval.eval_int(formula, {'fastest': fastest, 'slowest': slowest}))
 
     if repartition is not None:
-        groups = timing_groups.partition_from_assignment(repartition, env_groups)
+        groups = timing_groups.partition_from_assignment(repartition, relatives)
     else:
         groups = timing_groups.build_partition(env_groups, all_languages)
     timing_groups.validate_partition(groups)
@@ -120,10 +121,11 @@ def default_assignment(
     all_languages: List[str],
     env_groups: List[environment.LanguageGroup],
 ) -> Dict[str, int]:
-    """Prepopulated picker state from env groups: env group #1 -> 1, etc.;
-    every other language -> 0 (unbucketed). Feeding this straight into
-    partition_from_assignment reproduces the env grouping (so whenEmpty carries
-    over) with all ungrouped languages pooled together."""
+    """Prepopulated picker buckets from env groups: env group #i -> bucket i;
+    every other language -> 0 (the shared leftover pool). This reproduces the env
+    grouping's membership in the picker only. Forced-relative specs (env
+    ``whenEmpty``) no longer flow through ``partition_from_assignment``; they are
+    seeded separately (see ``default_relatives``)."""
     default_number: Dict[str, int] = {lang: 0 for lang in all_languages}
     for i, group in enumerate(env_groups, start=1):
         for lang in group.languages:
@@ -132,20 +134,40 @@ def default_assignment(
     return default_number
 
 
+def default_relatives(
+    env_groups: List[environment.LanguageGroup],
+    langs_with_solutions: set,
+) -> Dict[str, environment.LanguageGroupFallback]:
+    """Seed picker relatives from env whenEmpty, but only for groups that have
+    NO measured solutions (matching env whenEmpty's empty-only semantics at the
+    moment of init). Keyed by the picker group-key the env group maps to
+    (env group i -> bucket i -> 'g{i}')."""
+    seeded: Dict[str, environment.LanguageGroupFallback] = {}
+    for i, group in enumerate(env_groups, start=1):
+        if group.whenEmpty is None:
+            continue
+        if any(lang in langs_with_solutions for lang in group.languages):
+            continue
+        seeded[f'g{i}'] = group.whenEmpty
+    return seeded
+
+
 def build_preview_renderer(
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
     formula: str,
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
     width: Optional[int] = None,
-) -> Callable[[Dict[str, int]], ANSI]:
-    """Return a memoized callback mapping a picker assignment to an ``ANSI``
-    preview: the resolved limits table, or an inline error for invalid groupings.
-    Pure -- reuses the already-collected timings, never re-runs solutions."""
+) -> Callable[..., ANSI]:
+    """Return a memoized callback mapping a picker assignment (and optional
+    forced-relative specs) to an ``ANSI`` preview: the resolved limits table, or
+    an inline error for invalid groupings. Pure -- reuses the already-collected
+    timings, never re-runs solutions."""
 
     @functools.lru_cache(maxsize=None)
-    def _render(assignment_items: tuple) -> ANSI:
+    def _render(assignment_items: tuple, relative_items: tuple) -> ANSI:
         assignment = dict(assignment_items)
+        relatives = dict(relative_items)
         try:
             profile = build_timing_profile(
                 timing_per_solution_per_language=timing_per_solution_per_language,
@@ -153,6 +175,7 @@ def build_preview_renderer(
                 env_groups=env_groups,
                 all_languages=all_languages,
                 repartition=assignment,
+                relatives=relatives,
             )
         except timing_groups.GroupValidationError as e:
             return ANSI(
@@ -163,8 +186,15 @@ def build_preview_renderer(
         table = limits_info.build_limits_table(profile.to_limits(), title='Preview')
         return ANSI(console.capture_ansi(table, width=width))
 
-    def render(assignment: Dict[str, int]) -> ANSI:
-        return _render(tuple(sorted(assignment.items())))
+    def render(
+        assignment: Dict[str, int],
+        relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
+    ) -> ANSI:
+        relatives = relatives or {}
+        return _render(
+            tuple(sorted(assignment.items())),
+            tuple(sorted(relatives.items(), key=lambda kv: kv[0])),
+        )
 
     return render
 
@@ -174,7 +204,7 @@ async def _prompt_repartition(
     env_groups: List[environment.LanguageGroup],
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
     formula: str,
-) -> Optional[Dict[str, int]]:
+) -> Optional[timing_group_picker.GroupAssignment]:
     preview = build_preview_renderer(
         timing_per_solution_per_language=timing_per_solution_per_language,
         formula=formula,
@@ -182,9 +212,13 @@ async def _prompt_repartition(
         all_languages=all_languages,
         width=console.console.size.width,
     )
+    langs_with_solutions = {
+        lang for lang, per_sol in timing_per_solution_per_language.items() if per_sol
+    }
     return await timing_group_picker.prompt_group_assignment(
         all_languages,
         default_assignment(all_languages, env_groups),
+        relatives=default_relatives(env_groups, langs_with_solutions),
         preview=preview,
     )
 
@@ -265,16 +299,19 @@ async def estimate_time_limit(
     )
 
     repartition = None
+    relatives = None
     if not auto and len(all_languages) > 1:
-        repartition = await _prompt_repartition(
+        picked = await _prompt_repartition(
             all_languages,
             env_groups,
             timing_per_solution_per_language,
             formula,
         )
-        if repartition is None:
+        if picked is None:
             console.print('[error]Time limit estimation cancelled.[/error]')
             return None
+        repartition = picked.numbers
+        relatives = picked.relatives
 
     console.print()
     console.rule('[status]Time estimation[/status]', style='status')
@@ -287,6 +324,7 @@ async def estimate_time_limit(
             env_groups=env_groups,
             all_languages=all_languages,
             repartition=repartition,
+            relatives=relatives,
         )
     except timing_groups.GroupValidationError as e:
         console.print(f'[error]Invalid language groups: {e}[/error]')

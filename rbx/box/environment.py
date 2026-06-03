@@ -295,7 +295,7 @@ for the environment will be used.""",
 
 
 class LanguageGroupFallback(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid', frozen=True)
 
     relativeTo: Optional[str] = Field(
         default=None,

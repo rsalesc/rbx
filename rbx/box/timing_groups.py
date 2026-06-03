@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -9,7 +9,14 @@ from rbx.box.schema import TimingGroupOrigin, TimingGroupReport
 class ResolvedGroup(BaseModel):
     languages: List[str]
     whenEmpty: Optional[LanguageGroupFallback] = None
+    forced_relative: Optional[LanguageGroupFallback] = None
     is_leftover: bool = False
+
+
+def _effective_fallback(group: 'ResolvedGroup') -> Optional[LanguageGroupFallback]:
+    """The fallback whose reference edge matters for validation: a forced
+    relative (picker path) takes precedence, else the env whenEmpty."""
+    return group.forced_relative or group.whenEmpty
 
 
 def build_partition(
@@ -31,33 +38,55 @@ def build_partition(
     return result
 
 
+def group_key(state: int, lang: str) -> str:
+    """Stable key for the group a language currently belongs to."""
+    if state > 0:
+        return f'g{state}'
+    if state < 0:
+        return f's:{lang}'
+    return 'leftover'
+
+
 def partition_from_assignment(
     assignment: Dict[str, int],
-    env_groups: List[LanguageGroup],
+    relatives: Optional[Dict[str, LanguageGroupFallback]] = None,
 ) -> List[ResolvedGroup]:
     """Build groups from a {language: state} map. State per language:
     N>=1 share bucket N; -1 = own singleton group; 0 = the shared leftover pool.
-    Carries over an env group's whenEmpty only when the resulting membership is
-    identical to that env group."""
+    Optional ``relatives`` maps a group-key (see group_key) to a forced relative
+    spec, stamped onto the matching group as ``forced_relative``."""
+    relatives = relatives or {}
     buckets: Dict[int, List[str]] = {}
-    singletons: List[List[str]] = []
+    singletons: List[Tuple[str, List[str]]] = []
     leftover: List[str] = []
     for lang, state in assignment.items():
         if state == 0:
             leftover.append(lang)
         elif state < 0:
-            singletons.append([lang])
+            singletons.append((group_key(state, lang), [lang]))
         else:
             buckets.setdefault(state, []).append(lang)
 
-    env_when_empty = {frozenset(g.languages): g.whenEmpty for g in env_groups}
     result: List[ResolvedGroup] = []
-    for _, langs in sorted(buckets.items()):
-        when_empty = env_when_empty.get(frozenset(langs))
-        result.append(ResolvedGroup(languages=langs, whenEmpty=when_empty))
-    result.extend(ResolvedGroup(languages=s) for s in singletons)
+    for number, langs in sorted(buckets.items()):
+        result.append(
+            ResolvedGroup(
+                languages=langs,
+                forced_relative=relatives.get(group_key(number, langs[0])),
+            )
+        )
+    for key, langs in singletons:
+        result.append(
+            ResolvedGroup(languages=langs, forced_relative=relatives.get(key))
+        )
     if leftover:
-        result.append(ResolvedGroup(languages=leftover, is_leftover=True))
+        result.append(
+            ResolvedGroup(
+                languages=leftover,
+                is_leftover=True,
+                forced_relative=relatives.get(group_key(0, '')),
+            )
+        )
     return result
 
 
@@ -94,16 +123,17 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
     lang_index = _lang_to_group_index(groups)
     # reference target existence + not-self
     for idx, group in enumerate(groups):
-        if group.whenEmpty is None or group.whenEmpty.relativeTo is None:
+        fallback = _effective_fallback(group)
+        if fallback is None or fallback.relativeTo is None:
             continue
-        ref = group.whenEmpty.relativeTo
+        ref = fallback.relativeTo
         if ref not in lang_index:
             raise GroupValidationError(
-                f'whenEmpty.relativeTo references unknown language {ref!r}.'
+                f'relative reference points to unknown language {ref!r}.'
             )
         if lang_index[ref] == idx:
             raise GroupValidationError(
-                f'whenEmpty.relativeTo {ref!r} points to the same group; it must '
+                f'relative reference {ref!r} points to the same group; it must '
                 'reference a different group.'
             )
     # cycle detection over group-to-group reference edges
@@ -112,12 +142,12 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
 
     def visit(idx: int) -> None:
         color[idx] = GRAY
-        group = groups[idx]
-        if group.whenEmpty is not None and group.whenEmpty.relativeTo is not None:
-            nxt = lang_index[group.whenEmpty.relativeTo]
+        fallback = _effective_fallback(groups[idx])
+        if fallback is not None and fallback.relativeTo is not None:
+            nxt = lang_index[fallback.relativeTo]
             if color[nxt] == GRAY:
                 raise GroupValidationError(
-                    'whenEmpty.relativeTo forms a cycle between timing groups.'
+                    'relative references form a cycle between timing groups.'
                 )
             if color[nxt] == WHITE:
                 visit(nxt)
@@ -158,7 +188,25 @@ def resolve_groups(
         resolving.add(idx)
         group = groups[idx]
         timings = pooled.get(idx)
-        if timings is not None:
+        if group.forced_relative is not None:
+            fb = group.forced_relative
+            ref = fb.relativeTo
+            ref_tl = base_tl if ref is None else resolve(lang_index[ref])
+            increment = fb.increment or 0
+            tl = int(ref_tl * fb.multiplier + increment)
+            report = TimingGroupReport(
+                languages=list(group.languages),
+                timeLimit=tl,
+                origin=TimingGroupOrigin.MULTIPLIER,
+                solutionCount=timings.solution_count if timings else 0,
+                fastest=timings.fastest if timings else None,
+                slowest=timings.slowest if timings else None,
+                relativeToLanguage=ref,
+                multiplier=fb.multiplier,
+                increment=fb.increment,
+                isLeftover=group.is_leftover,
+            )
+        elif timings is not None:
             tl = eval_fn(timings.fastest, timings.slowest)
             report = TimingGroupReport(
                 languages=list(group.languages),
