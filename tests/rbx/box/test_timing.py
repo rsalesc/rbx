@@ -10,6 +10,7 @@ import yaml
 
 from rbx.box import schema, timing
 from rbx.box.deferred import Deferred
+from rbx.box.environment import LanguageGroupFallback
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.solutions import EvaluationItem, RunSolutionResult
 from rbx.box.testcase_schema import TestcaseEntry
@@ -426,3 +427,57 @@ class TestTimingIntegration:
         assert result is not None
         assert isinstance(result, timing.TimingProfile)
         assert result.timeLimit == 1000
+
+
+class TestForcedRelativeIntegration:
+    """Integration tests for the forced-relative override through the public
+    build_timing_profile path."""
+
+    def test_forced_relative_overrides_group_with_own_timings(self):
+        """The headline behavior: a forced relative spec overrides a group's OWN
+        measured timings, not just an empty group.
+
+        Setup (formula='slowest', so _eval(fastest, slowest) == slowest):
+          - repartition puts cpp in bucket 1, python in bucket 2.
+          - Both groups HAVE their own measured solutions:
+              cpp:    a.cpp = 100ms  -> estimated limit = slowest(100) = 100
+              python: b.py  = 900ms  -> estimated limit would be 900
+          - python's bucket (group key 'g2') carries a forced relative spec
+            relativeTo='cpp', multiplier=2.0, increment=50.
+
+        Expected python limit = multiplier * cpp_estimate + increment
+                              = 2.0 * 100 + 50 = 250
+        and explicitly NOT python's own 900ms estimate -- proving the forced
+        relative wins over the group's own measured timings.
+        """
+        profile = timing.build_timing_profile(
+            timing_per_solution_per_language={
+                'cpp': {'a.cpp': 100},
+                'python': {'b.py': 900},
+            },
+            formula='slowest',
+            env_groups=[],
+            all_languages=['cpp', 'python'],
+            repartition={'cpp': 1, 'python': 2},
+            relatives={
+                'g2': LanguageGroupFallback(
+                    relativeTo='cpp', multiplier=2.0, increment=50
+                )
+            },
+        )
+
+        # python's resolved limit is the forced relative value, not its own 900.
+        assert profile.timeLimitPerLanguage['python'] == 250
+        assert profile.timeLimitPerLanguage['python'] != 900
+        # cpp is still estimated from its own (only) measurement.
+        assert profile.timeLimitPerLanguage['cpp'] == 100
+
+        # The overridden group report keeps the measured solution count for
+        # display and is flagged as MULTIPLIER origin.
+        python_group = next(
+            report for report in profile.groups if 'python' in report.languages
+        )
+        assert python_group.origin == schema.TimingGroupOrigin.MULTIPLIER
+        assert python_group.solutionCount == 1
+        assert python_group.relativeToLanguage == 'cpp'
+        assert python_group.timeLimit == 250
