@@ -107,11 +107,11 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
         ref = fallback.relativeTo
         if ref not in lang_index:
             raise GroupValidationError(
-                f'whenEmpty.relativeTo references unknown language {ref!r}.'
+                f'relative reference points to unknown language {ref!r}.'
             )
         if lang_index[ref] == idx:
             raise GroupValidationError(
-                f'whenEmpty.relativeTo {ref!r} points to the same group; it must '
+                f'relative reference {ref!r} points to the same group; it must '
                 'reference a different group.'
             )
     # cycle detection over group-to-group reference edges
@@ -125,7 +125,7 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
             nxt = lang_index[fallback.relativeTo]
             if color[nxt] == GRAY:
                 raise GroupValidationError(
-                    'whenEmpty.relativeTo forms a cycle between timing groups.'
+                    'relative references form a cycle between timing groups.'
                 )
             if color[nxt] == WHITE:
                 visit(nxt)
