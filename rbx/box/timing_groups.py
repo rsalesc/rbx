@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -57,7 +57,7 @@ def partition_from_assignment(
     spec, stamped onto the matching group as ``forced_relative``."""
     relatives = relatives or {}
     buckets: Dict[int, List[str]] = {}
-    singletons: List[tuple[str, List[str]]] = []
+    singletons: List[Tuple[str, List[str]]] = []
     leftover: List[str] = []
     for lang, state in assignment.items():
         if state == 0:
@@ -70,7 +70,10 @@ def partition_from_assignment(
     result: List[ResolvedGroup] = []
     for number, langs in sorted(buckets.items()):
         result.append(
-            ResolvedGroup(languages=langs, forced_relative=relatives.get(f'g{number}'))
+            ResolvedGroup(
+                languages=langs,
+                forced_relative=relatives.get(group_key(number, langs[0])),
+            )
         )
     for key, langs in singletons:
         result.append(
@@ -81,7 +84,7 @@ def partition_from_assignment(
             ResolvedGroup(
                 languages=leftover,
                 is_leftover=True,
-                forced_relative=relatives.get('leftover'),
+                forced_relative=relatives.get(group_key(0, '')),
             )
         )
     return result
