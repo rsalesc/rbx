@@ -87,3 +87,39 @@ def test_copy_text_linux_wayland_uses_wl_copy(monkeypatch):
 def test_copy_image_unsupported_returns_false(monkeypatch):
     monkeypatch.setattr(sharing.sys, 'platform', 'win32')
     assert sharing.copy_image_to_clipboard(sharing.Path('/tmp/x.png')) is False
+
+
+def test_copy_image_macos_escapes_path_quotes(monkeypatch, tmp_path):
+    monkeypatch.setattr(sharing.sys, 'platform', 'darwin')
+    seen = {}
+
+    def fake_run(argv, **k):
+        seen['argv'] = argv
+        return mock.Mock(returncode=0)
+
+    monkeypatch.setattr(sharing.subprocess, 'run', fake_run)
+    weird = tmp_path / 'a"b.png'
+    weird.write_bytes(b'x')
+    assert sharing.copy_image_to_clipboard(weird) is True
+    script = seen['argv'][-1]
+    # the raw quote must be backslash-escaped inside the AppleScript string
+    assert '\\"' in script
+
+
+def test_copy_image_linux_missing_tool_does_not_read(monkeypatch, tmp_path):
+    monkeypatch.setattr(sharing.sys, 'platform', 'linux')
+    monkeypatch.delenv('WAYLAND_DISPLAY', raising=False)
+    monkeypatch.setattr(sharing.shutil, 'which', lambda n: None)
+    missing = tmp_path / 'does-not-exist.png'  # never created
+    assert sharing.copy_image_to_clipboard(missing) is False
+
+
+def test_copy_text_oserror_returns_false(monkeypatch):
+    monkeypatch.setattr(sharing.sys, 'platform', 'darwin')
+    monkeypatch.setattr(sharing.shutil, 'which', lambda n: '/usr/bin/pbcopy')
+
+    def boom(*a, **k):
+        raise OSError('exec failed')
+
+    monkeypatch.setattr(sharing.subprocess, 'run', boom)
+    assert sharing.copy_text_to_clipboard('x') is False

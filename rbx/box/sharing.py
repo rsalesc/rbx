@@ -59,6 +59,16 @@ def _linux_clipboard_tool() -> Optional[str]:
     return None
 
 
+def _run_clipboard(argv: List[str], input: Optional[bytes] = None) -> bool:
+    """Run a clipboard subprocess. Returns True on a zero exit code, False if the
+    command fails to launch (OSError) or exits non-zero."""
+    try:
+        result = subprocess.run(argv, input=input, capture_output=True)
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
 def copy_text_to_clipboard(text: str) -> bool:
     data = text.encode('utf-8')
     if sys.platform == 'darwin' and shutil.which('pbcopy'):
@@ -75,26 +85,25 @@ def copy_text_to_clipboard(text: str) -> bool:
         argv = None
     if argv is None:
         return False
-    result = subprocess.run(argv, input=data, capture_output=True)
-    return result.returncode == 0
+    return _run_clipboard(argv, input=data)
 
 
 def copy_image_to_clipboard(png_path: Path) -> bool:
     if sys.platform == 'darwin':
-        script = (
-            f'set the clipboard to (read (POSIX file "{png_path}") as «class PNGf»)'
-        )
-        result = subprocess.run(['osascript', '-e', script], capture_output=True)
-        return result.returncode == 0
+        escaped = str(png_path).replace('\\', '\\\\').replace('"', '\\"')
+        script = f'set the clipboard to (read (POSIX file "{escaped}") as «class PNGf»)'
+        return _run_clipboard(['osascript', '-e', script])
     if sys.platform.startswith('linux'):
         tool = _linux_clipboard_tool()
-        data = png_path.read_bytes()
         if tool == 'xclip':
             argv = ['xclip', '-selection', 'clipboard', '-t', 'image/png']
         elif tool == 'wl-copy':
             argv = ['wl-copy', '--type', 'image/png']
         else:
             return False
-        result = subprocess.run(argv, input=data, capture_output=True)
-        return result.returncode == 0
+        try:
+            data = png_path.read_bytes()
+        except OSError:
+            return False
+        return _run_clipboard(argv, input=data)
     return False
