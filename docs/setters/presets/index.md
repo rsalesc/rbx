@@ -146,13 +146,13 @@ env: "env.rbx.yml"
 tracking:
   problem:
     - path: ".gitignore"
-    - path: "statement/icpc.sty"
-    - path: "statement/template.rbx.tex"
+    - path: "documents/icpc.sty"
+    - path: "documents/template.rbx.tex"
   contest:
     - path: ".gitignore"
-    - path: "statement/icpc.sty"
-    - path: "statement/template.rbx.tex"
-    - path: "statement/contest.rbx.tex"
+    - path: "documents/icpc.sty"
+    - path: "documents/template.rbx.tex"
+    - path: "documents/contest.rbx.tex"
       symlink: true
 
 ```
@@ -191,15 +191,15 @@ the following structure:
 
 ```bash
 contest/
-├── statement/
+├── documents/
 │   └── icpc.sty -> ../../common_icpc.sty
 problem/
-└── statement/
+└── documents/
     └── icpc.sty -> ../../common_icpc.sty
 └── common_icpc.sty
 ```
 
-In this case, you can track both `contest/statement/icpc.sty` and `problem/statement/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} will make sure to create a symlink to `common_icpc.sty` automagically for you.
+In this case, you can track both `contest/documents/icpc.sty` and `problem/documents/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} will make sure to create a symlink to `common_icpc.sty` automagically for you.
 
 This approach is particularly useful when you want to share a common file between the contest and the problem packages.
 

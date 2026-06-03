@@ -114,7 +114,7 @@ Now run `rbx build`, and the counterexample is regenerated as a permanent test i
     here on.
 
 !!! note
-    A future {{rbx}} release will let you promote a finding straight to a `manual_tests/`
+    A future {{rbx}} release will let you promote a finding straight to a `documents/samples/`
     file in a single step ([issue #442](https://github.com/rsalesc/rbx/issues/442)). Until
     that lands, the test-group route above is the way to make a counterexample permanent.
 
