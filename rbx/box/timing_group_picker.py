@@ -1,9 +1,16 @@
 from typing import Callable, Dict, List, Optional
 
 from prompt_toolkit.formatted_text import AnyFormattedText
+from pydantic import BaseModel
 
 from rbx.box import timing_groups
 from rbx.box.environment import LanguageGroupFallback
+
+
+class GroupAssignment(BaseModel):
+    numbers: Dict[str, int]
+    relatives: Dict[str, LanguageGroupFallback] = {}
+
 
 LEGEND_LINES = [
     'Assign each language to a time-limit bucket:',
@@ -41,6 +48,7 @@ class GroupPickerState:
         self._edit_ref: Optional[str] = None
         self._edit_a: str = ''
         self._edit_b: str = ''
+        self._edit_field: str = 'ref'
 
     def group_key(self, lang: str) -> str:
         return timing_groups.group_key(self.numbers[lang], lang)
@@ -67,6 +75,7 @@ class GroupPickerState:
             return
         existing = self.relatives.get(self.group_key(self.current_lang()))
         self.editing = True
+        self._edit_field = 'ref'
         self._edit_ref = existing.relativeTo if existing else None
         self._edit_a = str(existing.multiplier) if existing else '1.0'
         self._edit_b = (
@@ -96,6 +105,36 @@ class GroupPickerState:
 
     def set_b(self, text: str) -> None:
         self._edit_b = text
+
+    @property
+    def edit_a(self) -> str:
+        return self._edit_a
+
+    @property
+    def edit_b(self) -> str:
+        return self._edit_b
+
+    def edit_tab(self) -> None:
+        order = ['ref', 'a', 'b']
+        self._edit_field = order[(order.index(self._edit_field) + 1) % len(order)]
+
+    @property
+    def edit_field(self) -> str:
+        return self._edit_field
+
+    def edit_key(self, data: str) -> None:
+        """Route a raw key press to the focused editor field."""
+        if self._edit_field == 'ref':
+            return  # ref is changed via cycle_ref / edit_tab, not typed
+        buf = self._edit_a if self._edit_field == 'a' else self._edit_b
+        if data == '\x7f' or data == '\b':  # backspace
+            buf = buf[:-1]
+        elif data.isprintable():
+            buf += data
+        if self._edit_field == 'a':
+            self._edit_a = buf
+        else:
+            self._edit_b = buf
 
     def commit_edit(self) -> bool:
         try:
@@ -136,7 +175,7 @@ class GroupPickerState:
         """The live preview's content, or empty once the picker is confirmed."""
         if self.done or preview is None:
             return ''
-        return preview(self.assignment())
+        return preview(self.assignment(), self.prune_relatives())
 
     def move(self, delta: int) -> None:
         if not self.languages:
@@ -208,15 +247,17 @@ async def prompt_group_assignment(
     default_number: Dict[str, int],
     input=None,
     output=None,
-    preview: Optional[Callable[[Dict[str, int]], AnyFormattedText]] = None,
-) -> Optional[Dict[str, int]]:
-    """Interactive single-screen group picker. Returns {language: group_number}
-    where N>=1 is a shared group, 0 is unbucketed (leftover), and -1 is a
-    singleton (own group); or None if cancelled."""
+    preview: Optional[Callable[..., AnyFormattedText]] = None,
+) -> Optional[GroupAssignment]:
+    """Interactive single-screen group picker. Returns a ``GroupAssignment``
+    whose ``numbers`` maps {language: group_number} (N>=1 shared group, 0
+    unbucketed/leftover, -1 singleton) and whose ``relatives`` carries any
+    forced-relative specs; or None if cancelled."""
     if not languages:
-        return {}
+        return GroupAssignment(numbers={})
 
     from prompt_toolkit.application import Application
+    from prompt_toolkit.filters import Condition
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import HSplit, Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
@@ -244,43 +285,91 @@ async def prompt_group_assignment(
 
     kb = KeyBindings()
 
-    @kb.add('up')
-    @kb.add('k')
+    editing = Condition(lambda: state.editing)
+    not_editing = ~editing
+
+    @kb.add('up', filter=not_editing)
+    @kb.add('k', filter=not_editing)
     def _(event):
         state.move(-1)
 
-    @kb.add('down')
-    @kb.add('j')
+    @kb.add('down', filter=not_editing)
+    @kb.add('j', filter=not_editing)
     def _(event):
         state.move(1)
 
     for _digit in '123456789':
 
-        @kb.add(_digit)
+        @kb.add(_digit, filter=not_editing)
         def _(event, _digit=_digit):
             state.set_group(int(_digit))
 
-    @kb.add('0')
+    @kb.add('0', filter=not_editing)
     def _(event):
         # explicit clear to unbucketed
         state.set_group(0)
 
-    @kb.add('space')
-    @kb.add('tab')
+    @kb.add('space', filter=not_editing)
+    @kb.add('tab', filter=not_editing)
     def _(event):
         state.toggle_singleton()
 
-    @kb.add('enter')
+    @kb.add('r', filter=not_editing)
+    def _(event):
+        state.start_edit()
+
+    @kb.add('R', filter=not_editing)
+    def _(event):
+        state.reset_to_initial()
+
+    @kb.add('enter', filter=not_editing)
     def _(event):
         # Hide the live preview on the final paint; the official table is
         # printed by the caller right after the picker returns.
         state.done = True
-        event.app.exit(result=state.assignment())
+        event.app.exit(
+            result=GroupAssignment(
+                numbers=state.assignment(),
+                relatives=state.prune_relatives(),
+            )
+        )
 
-    @kb.add('c-c')
-    @kb.add('q')
+    @kb.add('c-c', filter=not_editing)
+    @kb.add('q', filter=not_editing)
     def _(event):
         event.app.exit(result=None)
+
+    # Edit-mode bindings: active only while the inline relative editor is open.
+    @kb.add('tab', filter=editing)
+    def _(event):
+        state.edit_tab()
+
+    @kb.add('left', filter=editing)
+    def _(event):
+        if state.edit_field == 'ref':
+            state.cycle_ref(-1)
+
+    @kb.add('right', filter=editing)
+    def _(event):
+        if state.edit_field == 'ref':
+            state.cycle_ref(1)
+
+    @kb.add('enter', filter=editing)
+    def _(event):
+        # commit_edit flips editing=False on success; stay editing if invalid.
+        state.commit_edit()
+
+    @kb.add('escape', filter=editing)
+    def _(event):
+        state.cancel_edit()
+
+    @kb.add('c', filter=editing)
+    def _(event):
+        state.clear_relative()
+
+    @kb.add('<any>', filter=editing)
+    def _(event):
+        state.edit_key(event.data)
 
     windows = [
         Window(content=header, height=len(LEGEND_LINES), always_hide_cursor=True),
