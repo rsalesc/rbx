@@ -2,7 +2,7 @@ from unittest import mock
 
 import rich.text
 
-from rbx.box import sharing
+from rbx.box import limits_info, schema, sharing
 
 
 def test_detect_png_converter_prefers_rsvg(monkeypatch):
@@ -221,3 +221,15 @@ def test_share_report_png_no_converter_falls_back_to_svg(monkeypatch, tmp_path):
     assert result.file_path == tmp_path / 'report.svg'
     assert result.file_path.exists()
     assert '<svg' in result.file_path.read_text()
+
+
+def test_share_report_captures_limits_table(tmp_path):
+    # The rbx time report stacks the run report and the per-language-group
+    # limits table into one recording console; this checks the limits table
+    # (the timing breakdown) is captured intact.
+    profile = schema.LimitsProfile(timeLimit=1500)
+    rec = sharing.recording_console(width=100)
+    rec.print(limits_info.build_limits_table(profile, title='Time limits (local)'))
+    text = sharing.export_text(rec)
+    assert 'Time limits (local)' in text
+    assert '1500 ms' in text

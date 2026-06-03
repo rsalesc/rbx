@@ -353,6 +353,7 @@ async def compute_time_limits(
     profile: str = 'local',
     formula: Optional[str] = None,
     auto: bool = False,
+    share: Optional[str] = None,
 ):
     if package.get_main_solution() is None:
         console.console.print(
@@ -409,6 +410,31 @@ async def compute_time_limits(
     limits_path.write_text(utils.model_to_yaml(limits))
 
     limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
+
+    if share is not None:
+        from rbx.box import sharing
+
+        rec = sharing.recording_console()
+        await print_run_report(
+            solution_result,
+            rec,
+            VerificationLevel(verification),
+            detailed=detailed,
+            skip_printing_limits=True,
+        )
+        rec.print()
+        rec.print(
+            limits_info.build_limits_table(limits, title=f'Time limits ({profile})')
+        )
+        out_dir = package.get_build_path()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        result = sharing.share_report(
+            rec,
+            fmt=share,
+            title='rbx time report',
+            out_dir=out_dir,
+        )
+        sharing.print_share_result(console.console, result)
 
     return estimated_tl
 

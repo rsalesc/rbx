@@ -544,7 +544,19 @@ async def time(
         '-i',
         help='Integrate the given limits profile into the package.',
     ),
+    share: Optional[str] = typer.Option(
+        None,
+        '--share',
+        help='Capture the time report (run report + limits table) and copy it '
+        'to the clipboard. Pass a format: --share png or --share text.',
+    ),
 ):
+    if share is not None and share not in ('png', 'text'):
+        console.console.print(
+            f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
+        )
+        raise typer.Exit(1)
+
     current_profile = limits_info.get_display_limits_profile(profile)
     if current_profile is None:
         current_profile = limits_info.get_limits_profile(profile)
@@ -628,7 +640,7 @@ async def time(
         return None
 
     await timing.compute_time_limits(
-        check, detailed, runs, formula=formula, profile=profile, auto=auto
+        check, detailed, runs, formula=formula, profile=profile, auto=auto, share=share
     )
 
 
