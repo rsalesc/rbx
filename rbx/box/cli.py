@@ -364,6 +364,12 @@ async def run(
         'Pass a format: --share png or --share text.',
     ),
 ):
+    if share is not None and share not in ('png', 'text'):
+        console.console.print(
+            f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
+        )
+        raise typer.Exit(1)
+
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
@@ -447,11 +453,6 @@ async def run(
     )
 
     if share is not None:
-        if share not in ('png', 'text'):
-            console.console.print(
-                f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
-            )
-            raise typer.Exit(1)
         rec = sharing.recording_console()
         await print_run_report(
             solution_result,
