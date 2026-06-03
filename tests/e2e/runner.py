@@ -28,6 +28,7 @@ import traceback
 import pytest
 from typer.testing import CliRunner
 
+import rbx
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from rbx.box.contest import contest_state
@@ -73,6 +74,36 @@ COPY_IGNORE_PATTERNS = (
     '.cache',
     '.testdata',
 )
+
+
+def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
+    """Overlay a named preset's ``problem/`` package into ``dest``.
+
+    Resolves ``rbx/resources/presets/<preset_name>/problem`` from the installed
+    ``rbx`` package and copies it into ``dest``, dereferencing symlinks (so
+    statement assets like ``documents/icpc.sty`` land as regular files) and
+    skipping build cruft (``.box``, ``build``, ...). Any files already present
+    in ``dest`` (e.g. the fixture's own ``e2e.rbx.yml``) are preserved unless
+    the preset overwrites them.
+    """
+    preset_problem_dir = (
+        pathlib.Path(rbx.__file__).parent
+        / 'resources'
+        / 'presets'
+        / preset_name
+        / 'problem'
+    )
+    if not preset_problem_dir.is_dir():
+        raise FileNotFoundError(
+            f'preset {preset_name!r} problem package not found at {preset_problem_dir}'
+        )
+    shutil.copytree(
+        preset_problem_dir,
+        dest,
+        symlinks=False,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(*COPY_IGNORE_PATTERNS),
+    )
 
 
 # Field names on ``Expect`` paired with the assertion check they dispatch to.
@@ -192,6 +223,8 @@ class E2EScenarioItem(pytest.Item):
                     ignore=shutil.ignore_patterns(*COPY_IGNORE_PATTERNS),
                 )
             )
+            if self.scenario.seed_from_preset:
+                seed_package_from_preset(self.scenario.seed_from_preset, pkg_dir)
             # ``rbx`` CLI commands use ``syncer`` which calls
             # ``asyncio.get_event_loop()``; on Python 3.12+ that requires a
             # current loop to be set. Provision one for the duration of the
