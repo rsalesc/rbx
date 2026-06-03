@@ -1,2 +1,3 @@
+# Each line calls a generator to produce tests; uncomment to use.
 # tests/gen 1000000000
 # tests/gen 100

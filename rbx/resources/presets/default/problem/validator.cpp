@@ -1,5 +1,6 @@
 #include "rbx.h"
 #include "testlib.h"
+// A testlib validator. Docs: https://rsalesc.github.io/rbx/setters/testset/
 
 using namespace std;
 
