@@ -76,12 +76,13 @@ def build_timing_profile(
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
     repartition: Optional[Dict[str, int]] = None,
+    relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
     def _eval(fastest: int, slowest: int) -> int:
         return int(safeeval.eval_int(formula, {'fastest': fastest, 'slowest': slowest}))
 
     if repartition is not None:
-        groups = timing_groups.partition_from_assignment(repartition)
+        groups = timing_groups.partition_from_assignment(repartition, relatives)
     else:
         groups = timing_groups.build_partition(env_groups, all_languages)
     timing_groups.validate_partition(groups)
@@ -120,10 +121,11 @@ def default_assignment(
     all_languages: List[str],
     env_groups: List[environment.LanguageGroup],
 ) -> Dict[str, int]:
-    """Prepopulated picker state from env groups: env group #1 -> 1, etc.;
-    every other language -> 0 (unbucketed). Feeding this straight into
-    partition_from_assignment reproduces the env grouping (so whenEmpty carries
-    over) with all ungrouped languages pooled together."""
+    """Prepopulated picker buckets from env groups: env group #i -> bucket i;
+    every other language -> 0 (the shared leftover pool). This reproduces the env
+    grouping's membership in the picker only. Forced-relative specs (env
+    ``whenEmpty``) no longer flow through ``partition_from_assignment``; they are
+    seeded separately (see ``default_relatives``)."""
     default_number: Dict[str, int] = {lang: 0 for lang in all_languages}
     for i, group in enumerate(env_groups, start=1):
         for lang in group.languages:
@@ -138,14 +140,16 @@ def build_preview_renderer(
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
     width: Optional[int] = None,
-) -> Callable[[Dict[str, int]], ANSI]:
-    """Return a memoized callback mapping a picker assignment to an ``ANSI``
-    preview: the resolved limits table, or an inline error for invalid groupings.
-    Pure -- reuses the already-collected timings, never re-runs solutions."""
+) -> Callable[..., ANSI]:
+    """Return a memoized callback mapping a picker assignment (and optional
+    forced-relative specs) to an ``ANSI`` preview: the resolved limits table, or
+    an inline error for invalid groupings. Pure -- reuses the already-collected
+    timings, never re-runs solutions."""
 
     @functools.lru_cache(maxsize=None)
-    def _render(assignment_items: tuple) -> ANSI:
+    def _render(assignment_items: tuple, relative_items: tuple) -> ANSI:
         assignment = dict(assignment_items)
+        relatives = dict(relative_items)
         try:
             profile = build_timing_profile(
                 timing_per_solution_per_language=timing_per_solution_per_language,
@@ -153,6 +157,7 @@ def build_preview_renderer(
                 env_groups=env_groups,
                 all_languages=all_languages,
                 repartition=assignment,
+                relatives=relatives,
             )
         except timing_groups.GroupValidationError as e:
             return ANSI(
@@ -163,8 +168,15 @@ def build_preview_renderer(
         table = limits_info.build_limits_table(profile.to_limits(), title='Preview')
         return ANSI(console.capture_ansi(table, width=width))
 
-    def render(assignment: Dict[str, int]) -> ANSI:
-        return _render(tuple(sorted(assignment.items())))
+    def render(
+        assignment: Dict[str, int],
+        relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
+    ) -> ANSI:
+        relatives = relatives or {}
+        return _render(
+            tuple(sorted(assignment.items())),
+            tuple(sorted(relatives.items(), key=lambda kv: kv[0])),
+        )
 
     return render
 

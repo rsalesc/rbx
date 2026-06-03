@@ -1,7 +1,6 @@
-import pytest
 from prompt_toolkit.formatted_text import ANSI, to_formatted_text
 
-from rbx.box.environment import LanguageGroup, LanguageGroupFallback
+from rbx.box.environment import LanguageGroupFallback
 from rbx.box.timing import build_preview_renderer
 
 
@@ -25,32 +24,45 @@ def test_preview_renders_estimated_table():
     assert 'cpp' in out and 'python' in out
 
 
-@pytest.mark.xfail(
-    reason='Picker-driven cycles flow through relatives, wired in Task 3; '
-    'partition_from_assignment no longer carries env whenEmpty over (Task 2).',
-    strict=True,
-)
-def test_preview_reports_invalid_grouping_inline():
-    # Two env groups whose whenEmpty rules reference each other -> cycle.
-    env_groups = [
-        LanguageGroup(
-            languages=['a'],
-            whenEmpty=LanguageGroupFallback(relativeTo='b', multiplier=2.0),
-        ),
-        LanguageGroup(
-            languages=['b'],
-            whenEmpty=LanguageGroupFallback(relativeTo='a', multiplier=2.0),
-        ),
-    ]
+def test_preview_reflects_forced_relative():
     render = build_preview_renderer(
-        timing_per_solution_per_language={},  # both groups empty -> resolve via cycle
+        timing_per_solution_per_language={'cpp': {'sol.cpp': 200}},
+        formula='slowest',
+        env_groups=[],
+        all_languages=['cpp', 'python'],
+        width=80,
+    )
+    out = _text(
+        render(
+            {'cpp': 1, 'python': 2},
+            {'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+        )
+    )
+    # python's group (g2) is forced relative to cpp x2.0; cpp estimate = 200 ->
+    # python = 400ms must appear in the rendered table.
+    assert '400' in out
+
+
+def test_preview_reports_invalid_grouping_inline():
+    # Two picker groups whose forced relatives reference each other -> cycle.
+    render = build_preview_renderer(
+        timing_per_solution_per_language={},
         formula='slowest * 3',
-        env_groups=env_groups,
+        env_groups=[],
         all_languages=['a', 'b'],
         width=80,
     )
-    # assignment reproduces the two env groups exactly, carrying their whenEmpty
-    out = _text(render({'a': 1, 'b': 2}))
+    # The forced relatives make g1 -> b and g2 -> a, forming a cycle, so
+    # validate_partition raises and the preview renders the inline warning.
+    out = _text(
+        render(
+            {'a': 1, 'b': 2},
+            {
+                'g1': LanguageGroupFallback(relativeTo='b', multiplier=2.0),
+                'g2': LanguageGroupFallback(relativeTo='a', multiplier=2.0),
+            },
+        )
+    )
     assert 'Invalid grouping' in out
 
 
