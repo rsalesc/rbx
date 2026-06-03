@@ -1,16 +1,17 @@
 import pathlib
-from typing import Annotated, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 import syncer
 import typer
 
 from rbx import annotations, config, utils
-from rbx.box import package
+from rbx.box import package, promotion
 from rbx.box.generators import (
     GenerationTestcaseEntry,
     generate_outputs_for_testcases,
     generate_standalone,
 )
+from rbx.box.schema import TestcaseGroup
 from rbx.box.testcase_extractors import (
     extract_generation_testcases,
     extract_generation_testcases_from_patterns,
@@ -166,3 +167,101 @@ async def info(
                 f'[status]Generator script:[/status] {testcase.metadata.generator_script.path}, line {testcase.metadata.generator_script.line}'
             )
         console.print()
+
+
+def _pick_manual_group(
+    manual_groups: Dict[str, TestcaseGroup],
+) -> Optional[TestcaseGroup]:
+    """Interactively pick (or create) a manual group to promote tests into.
+
+    STUB -- the interactive picker is implemented in Task 3. It must offer the
+    existing ``manual_groups`` plus a ``(create new manual group)`` option.
+    """
+    raise NotImplementedError('interactive group selection not yet implemented')
+
+
+async def _promote_interactive(
+    manual_groups: Dict[str, TestcaseGroup],
+    progress: Optional[utils.StatusProgress] = None,
+) -> None:
+    """Interactively select tests and promote them into a manual group.
+
+    STUB -- the multi-select UI is implemented in Task 3.
+    """
+    raise NotImplementedError('interactive mode not yet implemented')
+
+
+@app.command('promote', help='Promote generated tests into a manual test group.')
+@package.within_problem
+@syncer.sync
+async def promote(
+    selectors: Annotated[
+        Optional[List[str]],
+        typer.Argument(
+            help='Tests to promote, as [group]/[index] selectors. '
+            'If omitted, tests are selected interactively.'
+        ),
+    ] = None,
+    group: Annotated[
+        Optional[str],
+        typer.Option(
+            '--group',
+            '-G',
+            help='Destination manual test group.',
+        ),
+    ] = None,
+    name: Annotated[
+        Optional[str],
+        typer.Option(
+            '--name',
+            '-n',
+            help='Filename stem for the promoted test. '
+            'Only meaningful when promoting exactly one test.',
+        ),
+    ] = None,
+):
+    manual_groups = promotion.get_manual_groups_by_name()
+
+    if not selectors:
+        # Interactive path (Task 3).
+        with utils.StatusProgress('Promoting tests...') as s:
+            await _promote_interactive(manual_groups, progress=s)
+        return
+
+    if group is None:
+        target = _pick_manual_group(manual_groups)
+        if target is None:
+            return
+    else:
+        if group not in manual_groups:
+            console.print(
+                f'[error]Manual group [item]{group}[/item] does not exist.[/error]'
+            )
+            console.print(
+                '[error]Create it first by running [item]rbx testcases promote[/item] '
+                'interactively (without a [item]--group[/item]).[/error]'
+            )
+            raise typer.Exit(1)
+        target = manual_groups[group]
+
+    patterns = [TestcasePattern.parse(selector) for selector in selectors]
+    with utils.StatusProgress('Promoting tests...') as s:
+        entries = await extract_generation_testcases_from_patterns(patterns)
+        if not entries:
+            console.print('[error]No tests matched the provided selectors.[/error]')
+            raise typer.Exit(1)
+
+        single = len(entries) == 1
+        for entry in entries:
+            input_path = await _generate_input_for_editing(
+                entry, output=False, progress=s
+            )
+            written = promotion.promote_input_to_group(
+                input_path,
+                target,
+                name=name if single else None,
+            )
+            console.print(
+                f'[success]Promoted [item]{entry.group_entry}[/item] to '
+                f'[item]{written}[/item].[/success]'
+            )
