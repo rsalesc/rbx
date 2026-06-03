@@ -145,6 +145,15 @@ class SandboxParams(pydantic.BaseModel):
     reverse_io: bool = False
     pgid: Optional[int] = None
 
+    # When set, stdout and stderr are tee'd (in true write order, marked '>' and
+    # '!' respectively) into this file while the clean stdout/stderr files are
+    # still produced. Used by ``rbx irun --merge-stderr`` for batch tasks. Left
+    # unset for every other run, so it never affects normal execution or caching.
+    merged_capture: Optional[pathlib.Path] = None
+    # Tee granularity for ``merged_capture`` ('line' or 'char'). Defaults to
+    # line-level teeing, which keeps each marked line atomic in the merged file.
+    tee_mode: Optional[Literal['char', 'line']] = None
+
     def get_cacheable_params(self) -> Dict[str, Any]:
         return self.model_dump(mode='json', exclude_unset=True, exclude_none=True)
 
@@ -208,6 +217,10 @@ class CommunicationParams(pydantic.BaseModel):
 
     merged_capture: Optional[pathlib.Path] = None
     tee_mode: Optional[Literal['char', 'line']] = 'char'
+    # When True, the solution's stderr is also tee'd into ``merged_capture``
+    # (marked '!'), interleaved with the interactor/solution dialogue in true
+    # write order, while still being written to the solution's stderr file.
+    tee_stderr: bool = False
 
 
 class SandboxLog(pydantic.BaseModel):

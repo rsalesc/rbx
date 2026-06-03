@@ -444,6 +444,77 @@ class TestStepsRunCoordinated:
 
         assert merged_content == expected_content
 
+    async def test_run_coordinated_with_merged_capture_and_stderr(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """Solution stderr is tee'd into the merged capture (marked '!')."""
+        interactor_file = testdata_path / 'steps_run_test' / 'simple_interactor.py'
+        solution_file = testdata_path / 'steps_run_test' / 'simple_solution.py'
+
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.extend(
+            [
+                GradingFileInput(
+                    src=interactor_file, dest=pathlib.Path('interactor.py')
+                ),
+                GradingFileInput(src=solution_file, dest=pathlib.Path('solution.py')),
+            ]
+        )
+        artifacts.outputs.extend(
+            [
+                GradingFileOutput(
+                    src=pathlib.Path('merged.log'), dest=pathlib.Path('merged.log')
+                ),
+                GradingFileOutput(
+                    src=pathlib.Path('solution.stderr'),
+                    dest=pathlib.Path('solution.stderr'),
+                ),
+            ]
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        interactor_params = CoordinatedRunParams(
+            command=f'{sys.executable} interactor.py',
+            params=SandboxParams(timeout=5000),
+        )
+        solution_params = CoordinatedRunParams(
+            command=f'{sys.executable} solution.py',
+            params=SandboxParams(
+                stderr_file=pathlib.Path('solution.stderr'),
+                timeout=5000,
+            ),
+        )
+
+        solution_log, interactor_log = await steps.run_coordinated(
+            interactor_params,
+            solution_params,
+            artifacts,
+            sandbox,
+            merged_capture=pathlib.Path('merged.log'),
+            line_capture=True,
+            tee_stderr=True,
+        )
+
+        assert solution_log is not None
+        assert interactor_log is not None
+
+        merged_content = (cleandir / 'merged.log').read_text()
+        merged_lines = merged_content.splitlines()
+
+        # stderr lines appear in the merged capture, marked with '!'.
+        assert '!Received: world' in merged_lines
+        assert '!Solution finished' in merged_lines
+        # stdout (solution) lines are marked '>', interactor lines '<'.
+        assert '>3' in merged_lines
+        assert '<world' in merged_lines
+
+        # The standalone stderr file stays clean (no markers, no stdout).
+        solution_stderr = (cleandir / 'solution.stderr').read_text()
+        assert 'Received: world' in solution_stderr
+        assert 'Solution finished' in solution_stderr
+        assert '!' not in solution_stderr
+        assert '>3' not in solution_stderr
+
     async def test_run_coordinated_output_artifacts_failure(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):

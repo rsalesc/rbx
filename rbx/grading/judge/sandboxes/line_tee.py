@@ -15,9 +15,11 @@ extra = sys.argv[2]
 
 with open(extra, 'w') as f:
     for line in sys.stdin:
-        # Write merged capture first.
-        sys.stderr.write(c)
-        sys.stderr.write(line)
+        # Write merged capture first. The marker and the line are written in a
+        # single call so that, when several tees append to the same merged file
+        # concurrently (e.g. a solution's stdout and stderr in batch mode), the
+        # marker can never be split away from its line by an interleaving write.
+        sys.stderr.write(c + line)
         sys.stderr.flush()
 
         # Write to program.

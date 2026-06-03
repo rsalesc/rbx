@@ -877,6 +877,7 @@ async def run_coordinated(
     sandbox: SandboxBase,
     merged_capture: Optional[pathlib.Path] = None,
     line_capture: bool = False,
+    tee_stderr: bool = False,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     sandbox.reset()
 
@@ -902,6 +903,7 @@ async def run_coordinated(
             CommunicationParams(
                 merged_capture=merged_capture,
                 tee_mode='line' if line_capture else 'char',
+                tee_stderr=tee_stderr,
             ),
         )
 
