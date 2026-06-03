@@ -758,6 +758,8 @@ async def run_item(
     extra_args: Optional[str] = None,
     extra_config: Optional[ExecutionConfig] = None,
     retry_index: Optional[int] = None,
+    merged_capture: Optional[DigestOrDest] = None,
+    line_capture: bool = False,
 ) -> Optional[RunLog]:
     with package.get_new_sandbox() as sandbox:
         _check_stack_limit()
@@ -776,6 +778,20 @@ async def run_item(
             extra_config,
             retry_index,
         )
+
+        if merged_capture is not None:
+            # Tee stdout ('>') and stderr ('!') into a single merged file in true
+            # write order, keeping the clean stdout/stderr files intact. Used by
+            # ``rbx irun --merge-stderr`` for batch tasks.
+            merged_capture_path = pathlib.Path(MERGED_CAPTURE_FILENAME)
+            prepared.sandbox_params.merged_capture = merged_capture_path
+            prepared.sandbox_params.tee_mode = 'line' if line_capture else 'char'
+            prepared.artifacts.outputs.append(
+                GradingFileOutput(
+                    src=merged_capture_path,
+                    **merged_capture.expand(),
+                )
+            )
 
         with profiling.PushContext('code.run_item'):
             # Do not cache remote solutions.
@@ -836,6 +852,7 @@ async def run_communication(
     solution: CommunicationItem,
     merged_capture: Optional[DigestOrDest] = None,
     line_capture: bool = False,
+    tee_stderr: bool = False,
     retry_index: Optional[int] = None,
 ) -> Tuple[Optional[RunLog], Optional[RunLog]]:
     with package.get_new_sandbox() as sandbox:
@@ -886,4 +903,5 @@ async def run_communication(
                 dependency_cache=package.get_dependency_cache(),
                 merged_capture=merged_capture_path,
                 line_capture=line_capture,
+                tee_stderr=tee_stderr,
             )

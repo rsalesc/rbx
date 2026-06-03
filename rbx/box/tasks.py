@@ -91,6 +91,7 @@ async def run_solution_on_testcase(
     use_timelimit: bool = True,
     capture_pipes: Optional[bool] = None,
     line_capture: bool = False,
+    merge_stderr: bool = False,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -114,6 +115,7 @@ async def run_solution_on_testcase(
             filestem=filestem,
             is_stress=is_stress,
             line_capture=line_capture,
+            merge_stderr=merge_stderr,
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
@@ -139,6 +141,10 @@ async def run_solution_on_testcase(
         eval_path = output_path.with_suffix('.eval')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # When interleaving is requested, tee stdout/stderr into a merged '.pio'
+        # file in true write order; the clean stdout/stderr files are unaffected.
+        merged_capture_path = output_path.with_suffix('.pio') if merge_stderr else None
+
         with profiling.PushContext('tasks.run_solution_on_testcase'):
             run_log = await run_item(
                 solution,
@@ -148,6 +154,10 @@ async def run_solution_on_testcase(
                 stderr=DigestOrDest.create(error_path),
                 extra_config=extra_config,
                 retry_index=retry_index,
+                merged_capture=DigestOrDest.create(merged_capture_path)
+                if merged_capture_path is not None
+                else None,
+                line_capture=True,
             )
 
         if checker_digest is not None:
@@ -237,6 +247,7 @@ async def _run_communication_solution_on_testcase(
     use_timelimit: bool = True,
     capture_pipes: Optional[bool] = None,
     line_capture: bool = False,
+    merge_stderr: bool = False,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -326,7 +337,11 @@ async def _run_communication_solution_on_testcase(
             file_prefix='solution',
         )
 
-        merged_capture_path = output_path.with_suffix('.pio') if capture_pipes else None
+        # ``merge_stderr`` needs the merged capture to interleave the solution's
+        # stderr into, even when pipe capture is otherwise off.
+        merged_capture_path = (
+            output_path.with_suffix('.pio') if (capture_pipes or merge_stderr) else None
+        )
         interactor_run_log, run_log = await run_communication(
             interactor=interactor_item,
             solution=solution_item,
@@ -334,7 +349,10 @@ async def _run_communication_solution_on_testcase(
             merged_capture=DigestOrDest.create(merged_capture_path)
             if merged_capture_path
             else None,
-            line_capture=line_capture,
+            # Force line-level teeing when folding stderr in, so each marked line
+            # stays atomic in the merged file.
+            line_capture=line_capture or merge_stderr,
+            tee_stderr=merge_stderr,
         )
 
         checker_result = await checkers.check_communication(

@@ -127,6 +127,11 @@ class SolutionReportSkeleton(BaseModel):
     compiled_solutions: Dict[str, str]
     verification: VerificationLevel
     capture_pipes: bool = False
+    # When set (irun -e), the solution's stderr is interleaved with its output in
+    # true line order. Riding on the skeleton keeps a toggled flag from ever
+    # serving a stale merged capture (irun only caches with an explicit
+    # --testcase).
+    merge_stderr: bool = False
 
     def get_solution_limits(self, solution: Solution) -> Limits:
         lang = code.find_language_name(solution)
@@ -804,6 +809,7 @@ async def _run_interactive_solutions(
                 interactor_digest=interactor_digest,
                 verification=verification,
                 capture_pipes=skeleton.capture_pipes,
+                merge_stderr=skeleton.merge_stderr,
             )
 
         yield EvaluationItem(
@@ -831,6 +837,7 @@ async def _get_interactive_skeleton(
     sanitized: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
+    merge_stderr: bool = False,
 ) -> SolutionReportSkeleton:
     solutions, compiled_solutions = await _get_compiled_solutions_for_skeleton(
         tracked_solutions,
@@ -862,6 +869,7 @@ async def _get_interactive_skeleton(
         verification=verification,
         compiled_solutions=compiled_solutions,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
+        merge_stderr=merge_stderr,
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
@@ -879,11 +887,21 @@ async def run_and_print_interactive_solutions(
     check: bool = True,
     custom_output: bool = False,
     print: bool = False,
+    merge_stderr: bool = False,
     sanitized: bool = False,
     validate: bool = True,
     visualize: bool = False,
 ):
     pkg = package.find_problem_package_or_die()
+
+    # Interleaving stderr only changes what is rendered, which only happens with
+    # -p. Warn (don't fail) if -e is given without -p.
+    if merge_stderr and not print:
+        console.console.print(
+            '[warning]--merge-stderr/-e has no effect without --print/-p; '
+            'stderr will be written to its file as usual.[/warning]'
+        )
+        merge_stderr = False
 
     # Refresh irun dir.
     irun_dir = package.get_problem_iruns_dir()
@@ -912,6 +930,7 @@ async def run_and_print_interactive_solutions(
             sanitized=sanitized,
             progress=progress,
             check=check,
+            merge_stderr=merge_stderr,
         )
         items = _run_interactive_solutions(
             entry,
@@ -938,7 +957,27 @@ async def run_and_print_interactive_solutions(
             )
 
         stdout_path = eval.log.stdout_absolute_path
-        if print and stdout_path is not None:
+        merged_path = (
+            stdout_path.with_suffix('.pio') if stdout_path is not None else None
+        )
+        if (
+            print
+            and skeleton.merge_stderr
+            and merged_path is not None
+            and merged_path.is_file()
+        ):
+            # Interleaved view: the merged capture already weaves stderr (red)
+            # into the output/interaction in true line order, so render it in
+            # place of the plain Output + separate Stderr sections.
+            rule = 'Interaction' if pkg.type == TaskType.COMMUNICATION else 'Output'
+            console.console.rule(rule, style='status')
+            print_best_output(
+                [merged_path],
+                pkg.type,
+                empty_warning=True,
+                capture_pipes=skeleton.capture_pipes,
+            )
+        elif print and stdout_path is not None:
             if pkg.type == TaskType.COMMUNICATION:
                 console.console.rule('Interaction', style='status')
                 output_files = get_all_interaction_files(stdout_path) + [
