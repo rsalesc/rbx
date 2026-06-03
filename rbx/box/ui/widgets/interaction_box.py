@@ -57,6 +57,9 @@ class InteractionBox(RichLogBox):
         for entry in interaction.entries:
             if entry.pipe == 0:
                 self.write(rich.text.Text(entry.data.rstrip(), style='green'))
+            elif entry.pipe == 2:
+                # stderr: render distinctly from the solution's stdout.
+                self.write(rich.text.Text(entry.data.rstrip(), style='red'))
             else:
                 self.write(rich.text.Text(entry.data.rstrip()))
 

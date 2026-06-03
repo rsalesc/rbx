@@ -76,6 +76,7 @@ from rbx.box.testcase_utils import (
     get_all_interaction_files,
     get_best_interaction_file,
     print_best_output,
+    print_stderr_section,
 )
 from rbx.grading import grading_context, steps
 from rbx.grading.async_executor import AsyncStreamer
@@ -953,6 +954,9 @@ async def run_and_print_interactive_solutions(
             console.console.rule('Output', style='status')
             output_files = [stdout_path]
             print_best_output(output_files, pkg.type, empty_warning=True)
+
+            if eval.log.stderr_absolute_path is not None:
+                print_stderr_section(eval.log.stderr_absolute_path)
         elif stdout_path is not None:
             if stdout_path.with_suffix('.pout').is_file():
                 stdout_path = stdout_path.with_suffix('.pout')

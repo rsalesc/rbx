@@ -1,0 +1,9 @@
+scenarios:
+  - name: stderr-section
+    steps:
+      - cmd: build
+      - cmd: irun sols/main.cpp -t main/0 -p -v4
+        expect:
+          stdout_contains:
+            - "Stderr"
+            - "DBG_STDERR_MARKER"

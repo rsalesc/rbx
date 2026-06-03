@@ -11,6 +11,8 @@ from rbx.box.package import get_build_tests_path
 from rbx.box.schema import TaskType, Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 
+STDERR_PREFIX = '!'
+
 
 class TestcasePattern(BaseModel):
     __test__ = False
@@ -97,7 +99,8 @@ class TestcaseInteractionEntry(BaseModel):
 
     # The text exchanged on this line (participant prefix already stripped).
     data: str
-    # Which participant produced this line: 0 = interactor, 1 = solution.
+    # Which participant produced this line: 0 = interactor, 1 = solution,
+    # 2 = solution's stderr.
     pipe: int
 
 
@@ -165,9 +168,10 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
 
     ``.interaction`` files use the predetermined prefixes ``<`` (interactor)
     and ``>`` (solution); any other suffix (e.g. ``.pio``) reads the two
-    prefixes from the first two lines of the file. Each remaining non-empty
-    line becomes one :class:`TestcaseInteractionEntry` (no merging is done
-    here -- see :func:`merge_interaction_entries` for the chunked view).
+    prefixes from the first two lines of the file. Lines starting with ``!``
+    (the stderr prefix) become pipe 2 entries. Each remaining non-empty line
+    becomes one :class:`TestcaseInteractionEntry` (no merging is done here --
+    see :func:`merge_interaction_entries` for the chunked view).
     """
     entries = []
     with file.open('r') as f:
@@ -191,6 +195,9 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
             elif line.startswith(solution_prefix):
                 stripped = line[len(solution_prefix) :].rstrip()
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=1))
+            elif line.startswith(STDERR_PREFIX):
+                stripped = line[len(STDERR_PREFIX) :].rstrip()
+                entries.append(TestcaseInteractionEntry(data=stripped, pipe=2))
             else:
                 raise TestcaseInteractionParsingError(
                     f'Invalid line in interaction file {file}. Expected the line to start with the interactor or solution prefix ({interactor_prefix} or {solution_prefix}).'
@@ -208,23 +215,45 @@ def get_alternate_interaction_texts(
     interactor_entries = []
     solution_entries = []
     for entry in interaction.entries:
+        if entry.pipe == 2:
+            # stderr is not part of the two-column interactor/solution dialogue
+            # shown in statements; skip it here.
+            continue
         if entry.pipe == 1:
             solution_entries.append(entry.data + '\n')
             interactor_entries.extend(['\n'] * (entry.data.count('\n') + 1))
         else:
+            # entry.pipe == 0 (interactor); pipe 2 (stderr) was skipped above.
             interactor_entries.append(entry.data + '\n')
             solution_entries.extend(['\n'] * (entry.data.count('\n') + 1))
     return ''.join(interactor_entries), ''.join(solution_entries)
 
 
+def interaction_entry_style(pipe: int) -> str:
+    if pipe == 0:
+        return 'status'
+    if pipe == 2:
+        return 'error'
+    return 'info'
+
+
 def print_interaction(interaction: TestcaseInteraction):
     for entry in interaction.entries:
         text = rich.text.Text(entry.data)
-        if entry.pipe == 0:
-            text.stylize('status')
-        else:
-            text.stylize('info')
+        text.stylize(interaction_entry_style(entry.pipe))
         console.console.print(text)
+
+
+def print_stderr_section(stderr_path: Optional[pathlib.Path]) -> bool:
+    """Print captured stderr in its own section. Returns True if anything printed."""
+    if stderr_path is None or not stderr_path.is_file():
+        return False
+    content = stderr_path.read_text()
+    if not content.strip():
+        return False
+    console.console.rule('Stderr', style='error')
+    console.console.print(rich.text.Text(content.rstrip('\n'), style='error'))
+    return True
 
 
 def valid_interaction_suffixes() -> List[str]:

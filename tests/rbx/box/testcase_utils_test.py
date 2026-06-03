@@ -2,9 +2,10 @@ import pathlib
 from unittest import mock
 
 import pytest
+import rich.console
 import typer
 
-from rbx.box import package
+from rbx.box import package, testcase_utils
 from rbx.box.schema import Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import (
@@ -422,6 +423,19 @@ class TestMergeInteractionEntries:
         assert result[0].data == 'line1\nline2\nline3'
         assert result[0].pipe == 0
 
+    def test_consecutive_stderr_pipe_merged(self):
+        # Forward-compat: stderr (pipe 2) entries merge like any other pipe.
+        entries = [
+            TestcaseInteractionEntry(data='err1', pipe=2),
+            TestcaseInteractionEntry(data='err2', pipe=2),
+            TestcaseInteractionEntry(data='out1', pipe=1),
+        ]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 2
+        assert result[0].data == 'err1\nerr2'
+        assert result[0].pipe == 2
+        assert result[1].pipe == 1
+
     def test_merge_then_alternate(self):
         entries = [
             TestcaseInteractionEntry(data='a1', pipe=0),
@@ -491,6 +505,25 @@ class TestGetAlternateInteractionTexts:
         assert interactor_text == expected_interactor
         assert solution_text == expected_solution
 
+    def test_get_alternate_interaction_texts_skips_stderr(self):
+        """stderr (pipe 2) is excluded from both interactor and solution columns."""
+        entries = [
+            TestcaseInteractionEntry(data='Hello', pipe=0),
+            TestcaseInteractionEntry(data='noise', pipe=2),
+            TestcaseInteractionEntry(data='Hi', pipe=1),
+        ]
+
+        interaction = TestcaseInteraction(
+            entries=entries, prefixes=('INTERACTOR:', 'SOLUTION:')
+        )
+
+        interactor_text, solution_text = get_alternate_interaction_texts(interaction)
+
+        assert 'noise' not in interactor_text
+        assert 'noise' not in solution_text
+        assert interactor_text == 'Hello\n\n'
+        assert solution_text == '\nHi\n'
+
     def test_get_alternate_interaction_texts_with_multiline(self):
         """Test with multiline entries."""
         entries = [
@@ -536,3 +569,52 @@ class TestPrintInteraction:
         # Check that both entries are printed
         assert 'Hello from interactor' in captured.out
         assert 'Hello from solution' in captured.out
+
+
+def test_parse_interaction_recognizes_stderr_prefix(tmp_path: pathlib.Path):
+    f = tmp_path / 'sample.interaction'
+    f.write_text('< 3\n! reading n\n> 1 2 3\n! done\n')
+
+    interaction = testcase_utils.parse_interaction(f)
+
+    assert [(e.pipe, e.data) for e in interaction.entries] == [
+        (0, ' 3'),
+        (2, ' reading n'),
+        (1, ' 1 2 3'),
+        (2, ' done'),
+    ]
+
+
+def test_interaction_entry_style_per_pipe():
+    assert testcase_utils.interaction_entry_style(0) == 'status'
+    assert testcase_utils.interaction_entry_style(1) == 'info'
+    assert testcase_utils.interaction_entry_style(2) == 'error'
+
+
+def test_print_stderr_section_prints_contents(tmp_path, monkeypatch):
+    err = tmp_path / 'run.stderr'
+    err.write_text('debug: hello\n')
+
+    rec = rich.console.Console(record=True, force_terminal=False, width=80)
+    monkeypatch.setattr(testcase_utils.console, 'console', rec)
+
+    printed = testcase_utils.print_stderr_section(err)
+
+    assert printed is True
+    assert 'debug: hello' in rec.export_text()
+
+
+def test_print_stderr_section_skips_empty(tmp_path, monkeypatch):
+    err = tmp_path / 'run.stderr'
+    err.write_text('')
+    rec = rich.console.Console(record=True, width=80)
+    monkeypatch.setattr(testcase_utils.console, 'console', rec)
+
+    assert testcase_utils.print_stderr_section(err) is False
+
+
+def test_print_stderr_section_handles_missing_file(tmp_path, monkeypatch):
+    rec = rich.console.Console(record=True, width=80)
+    monkeypatch.setattr(testcase_utils.console, 'console', rec)
+    assert testcase_utils.print_stderr_section(tmp_path / 'nope.stderr') is False
+    assert testcase_utils.print_stderr_section(None) is False
