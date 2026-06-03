@@ -28,6 +28,7 @@ from rbx.box import (
     package_utils,
     presets,
     setter_config,
+    sharing,
     state,
     summary,
     timing,
@@ -356,7 +357,19 @@ async def run(
         '-c',
         help='Whether to pick solutions interactively.',
     ),
+    share: Optional[str] = typer.Option(
+        None,
+        '--share',
+        help='Capture the run report and copy it to the clipboard. '
+        'Pass a format: --share png or --share text.',
+    ),
 ):
+    if share is not None and share not in ('png', 'text'):
+        console.console.print(
+            f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
+        )
+        raise typer.Exit(1)
+
     main_solution = package.get_main_solution()
     if check and main_solution is None:
         console.console.print(
@@ -439,6 +452,17 @@ async def run(
         skip_printing_limits=sanitized,
     )
 
+    if share is not None:
+        rec = sharing.recording_console()
+        await print_run_report(
+            solution_result,
+            rec,
+            VerificationLevel(verification),
+            detailed=detailed,
+            skip_printing_limits=sanitized,
+        )
+        sharing.capture_and_share(rec, fmt=share, title='rbx run report')
+
 
 @app.command(
     'summary, sum',
@@ -512,7 +536,19 @@ async def time(
         '-i',
         help='Integrate the given limits profile into the package.',
     ),
+    share: Optional[str] = typer.Option(
+        None,
+        '--share',
+        help='Capture the time report (run report + limits table) and copy it '
+        'to the clipboard. Pass a format: --share png or --share text.',
+    ),
 ):
+    if share is not None and share not in ('png', 'text'):
+        console.console.print(
+            f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
+        )
+        raise typer.Exit(1)
+
     current_profile = limits_info.get_display_limits_profile(profile)
     if current_profile is None:
         current_profile = limits_info.get_limits_profile(profile)
@@ -596,7 +632,7 @@ async def time(
         return None
 
     await timing.compute_time_limits(
-        check, detailed, runs, formula=formula, profile=profile, auto=auto
+        check, detailed, runs, formula=formula, profile=profile, auto=auto, share=share
     )
 
 

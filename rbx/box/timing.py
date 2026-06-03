@@ -15,6 +15,7 @@ from rbx.box import (
     package,
     safeeval,
     schema,
+    sharing,
     timing_group_picker,
     timing_groups,
 )
@@ -353,6 +354,7 @@ async def compute_time_limits(
     profile: str = 'local',
     formula: Optional[str] = None,
     auto: bool = False,
+    share: Optional[str] = None,
 ):
     if package.get_main_solution() is None:
         console.console.print(
@@ -409,6 +411,21 @@ async def compute_time_limits(
     limits_path.write_text(utils.model_to_yaml(limits))
 
     limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
+
+    if share is not None:
+        rec = sharing.recording_console()
+        await print_run_report(
+            solution_result,
+            rec,
+            VerificationLevel(verification),
+            detailed=detailed,
+            skip_printing_limits=True,
+        )
+        rec.print()
+        rec.print(
+            limits_info.build_limits_table(limits, title=f'Time limits ({profile})')
+        )
+        sharing.capture_and_share(rec, fmt=share, title='rbx time report')
 
     return estimated_tl
 
