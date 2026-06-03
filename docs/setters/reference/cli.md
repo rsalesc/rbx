@@ -200,6 +200,7 @@ rbx irun <SOLUTIONS> [OPTIONS]
 | `--output`, `-O` | BOOLEAN | Whether to ask user for custom output. | `False` |
 | `--visualize` | BOOLEAN | Whether to generate visualizations for inputs and outputs. | `False` |
 | `--print`, `-p` | BOOLEAN | Whether to print outputs to terminal. | `False` |
+| `--merge-stderr`, `-e` | BOOLEAN | Interleave stderr with the solution output in true line order (colored distinctly). Requires -p. Default: stderr is shown in a separate section. | `False` |
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
 | `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
 

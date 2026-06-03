@@ -112,6 +112,20 @@ also use the `-p` flag to instruct it to print the results into the console inst
 
 {{ asciinema("OW9JfUpTzwQlvwcXmR3xSnS3q") }}
 
+When printing with `-p`, the solution's `stderr` is shown in its own colored section right after the output.
+If you'd rather see it woven into the output in true line order — handy for debugging where each log line was
+emitted relative to the program's output — add the `--merge-stderr` / `-e` flag. The interleaved `stderr` lines
+are colored distinctly, and the clean output is left untouched so the checker still sees exactly what the
+solution printed.
+
+```bash
+# Interleave stderr with the output in true line order (requires -p)
+rbx irun <solution-name> -t sample/0 -p -e
+```
+
+For [interactive (communication) problems](/setters/grading/interactors/), `-e` folds the solution's `stderr`
+into the interaction view as a third stream, alongside the interactor and solution messages.
+
 !!! tip
     By default, the test you've written will be validated, so make sure you've typed it perfectly.
 
