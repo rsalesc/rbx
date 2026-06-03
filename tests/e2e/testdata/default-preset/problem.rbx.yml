@@ -1,5 +1,7 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Package.json
+# Minimal A+B problem. See the README in this preset, and the rbx docs at
+# https://rsalesc.github.io/rbx/ for everything you can add.
 name: "new-problem"
 timeLimit: 1000 # ms
 memoryLimit: 256 # MiB
@@ -9,13 +11,10 @@ checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download ch
 validator: {path: "validator.cpp"}
 testcases:
   - name: "samples"
-    testcaseGlob: "manual_tests/samples/*.in" # Pattern for the sample inputs.
-  - name: "random"
+    testcaseGlob: "documents/samples/*.in" # Pattern for the sample inputs.
+  - name: "testplan"
     generatorScript:
-      path: "testplan/random.txt" # Static generator script (testplan).
-  - name: "program-random"
-    generatorScript:
-      path: "testplan/random.py" # Generator script written programatically.
+      path: "tests/testplan.txt" # Static generator script (testplan).
 solutions:
   - path: "sols/main*.*"
     outcome: "ACCEPTED"
@@ -33,37 +32,19 @@ solutions:
     outcome: "INCORRECT"
 statements:
   - name: "statement-en"
-    path: "statement/statement.rbx.tex" # Open this file to edit your statement.
+    path: "documents/statement.rbx.tex" # Open this file to edit your statement.
     type: "rbxTeX"
     language: "en"
     assets: # Define assets for the statement.
-      - "statement/icpc.sty"
-      - "statement/*.png"
+      - "documents/icpc.sty"
+      - "documents/*.png"
     configure:
       - type: "rbx-tex" # Convert rbxTeX to TeX
-        template: "statement/template.rbx.tex"
+        template: "documents/template.rbx.tex"
     vars:
       # Set to false to hide time limits and memory limits in the problem statement.
       show_limits: true
-stresses:
-  - name: "stress"
-    generator:
-      name: "gens/gen"
-      args: "[1..<N.max>] @" # `@` generates a random string
-    finder: "[sols/wa.cpp] ~ INCORRECT"
-unitTests:
-  validator:
-    - glob: "unit/validator/valid*.in"
-      outcome: "VALID"
-    - glob: "unit/validator/invalid*.in"
-      outcome: "INVALID"
-  checker:
-    - glob: "unit/checker/ac*"
-      outcome: "ACCEPTED"
-    - glob: "unit/checker/wa*"
-      outcome: "WRONG_ANSWER"
-# Can be used in the validator, checker, interactor, stress tests
-# and in the statement.
+# Variables usable in the validator, checker, interactor, stress tests and statement.
 vars:
   # Author name to be displayed in the editorial.
   author: "John Doe"

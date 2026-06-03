@@ -77,11 +77,10 @@
 
 \setlength{\voffset}{-1in}
 
-% Increase section text sizes (titleformat lines stripped from the
-% e2e fixture: the Polygon demacro pass scans icpc.sty with TexSoup,
-% which mis-parses {\section} as an unmatched command argument. The
-% real preset keeps these; pdflatex is mocked here so they are not
-% needed for the e2e assertions.)
+% Increase section text sizes
+\titleformat{\section}{\LARGE\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\Large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
 
 \newcommand{\insereArquivo}[1]{
 	\ifnum0\pdffilesize{#1}>0

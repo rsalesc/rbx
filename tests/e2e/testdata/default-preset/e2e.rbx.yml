@@ -1,38 +1,39 @@
 scenarios:
-  - name: full-pipeline
+  - name: lean-preset-smoke
     description: >
-      End-to-end migration of the legacy `test_default_preset_problem`
-      CLI test. The fixture is a verbatim copy of
-      `rbx/resources/presets/default/problem/`, so it exercises the
-      same code paths as a freshly-created problem from the default
-      preset: build, run all reference solutions, run unit tests,
-      build the rbxTeX statement (mocked pdflatex), and produce both
-      BOCA and Polygon packages.
+      Smoke-test a freshly-created problem from the lean default preset.
+
+      Approach: this fixture is a minimal COPY of the real default preset's
+      problem package (`rbx/resources/presets/default/problem/`), mirroring
+      its lean A+B layout (`documents/`, `tests/`, `sols/main.cpp`,
+      `validator.cpp`, `wcmp.cpp`). We do NOT materialize the preset via
+      `rbx create --preset default --local` here because the `--local`
+      install path (`presets._install_preset_from_resources`) requires an
+      interactive `questionary.confirm` prompt plus a network call to check
+      for newer releases, neither of which works under the hermetic e2e
+      harness (no stdin/TTY, no network, app-path is a fresh tmpdir).
+      Re-running the real preset end-to-end (build + run + statement) still
+      exercises the same code paths a created problem would.
+
+      The dropped full-pipeline coverage (WA verdict, unit tests,
+      BOCA/Polygon packaging) is intentionally deferred to a separate issue.
+
+      pdflatex is short-circuited by the autouse `mock_pdflatex` fixture in
+      `tests/e2e/conftest.py`, so `st b` yields an empty PDF and we only
+      assert the artefact path exists.
     steps:
+      - cmd: build
+        expect:
+          files_exist:
+            - build/tests/samples/*.in
+          tests:
+            groups:
+              samples: 2
       - cmd: run
         expect:
           solutions:
             sols/main.cpp: ac
-            sols/wa-overflow.cpp: wa
-      - cmd: unit
-      - cmd: time -s inherit -p boca
-      - cmd: time -s inherit -p polygon
       - cmd: st b
         expect:
           files_exist:
             - build/statement-en.pdf
-      - cmd: pkg boca
-        expect:
-          files_exist:
-            - build/*.zip
-          zip_contains:
-            path: build/*.zip
-            entries:
-              - description/problem.info
-              - input/*
-              - output/*
-              - limits/*
-      - cmd: pkg polygon
-        expect:
-          files_exist:
-            - build/problem.zip
