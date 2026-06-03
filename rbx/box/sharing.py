@@ -1,9 +1,11 @@
 import dataclasses
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 # Ordered preference of SVG->PNG converters. Each entry builds the argv given
 # (svg_path, png_path).
@@ -45,3 +47,54 @@ def svg_to_png(svg: str, png_path: Path) -> Optional[Path]:
     finally:
         svg_path.unlink(missing_ok=True)
     return png_path
+
+
+def _linux_clipboard_tool() -> Optional[str]:
+    if os.environ.get('WAYLAND_DISPLAY') and shutil.which('wl-copy'):
+        return 'wl-copy'
+    if shutil.which('xclip'):
+        return 'xclip'
+    if shutil.which('wl-copy'):
+        return 'wl-copy'
+    return None
+
+
+def copy_text_to_clipboard(text: str) -> bool:
+    data = text.encode('utf-8')
+    if sys.platform == 'darwin' and shutil.which('pbcopy'):
+        argv: Optional[List[str]] = ['pbcopy']
+    elif sys.platform.startswith('linux'):
+        tool = _linux_clipboard_tool()
+        if tool == 'xclip':
+            argv = ['xclip', '-selection', 'clipboard']
+        elif tool == 'wl-copy':
+            argv = ['wl-copy']
+        else:
+            argv = None
+    else:
+        argv = None
+    if argv is None:
+        return False
+    result = subprocess.run(argv, input=data, capture_output=True)
+    return result.returncode == 0
+
+
+def copy_image_to_clipboard(png_path: Path) -> bool:
+    if sys.platform == 'darwin':
+        script = (
+            f'set the clipboard to (read (POSIX file "{png_path}") as «class PNGf»)'
+        )
+        result = subprocess.run(['osascript', '-e', script], capture_output=True)
+        return result.returncode == 0
+    if sys.platform.startswith('linux'):
+        tool = _linux_clipboard_tool()
+        data = png_path.read_bytes()
+        if tool == 'xclip':
+            argv = ['xclip', '-selection', 'clipboard', '-t', 'image/png']
+        elif tool == 'wl-copy':
+            argv = ['wl-copy', '--type', 'image/png']
+        else:
+            return False
+        result = subprocess.run(argv, input=data, capture_output=True)
+        return result.returncode == 0
+    return False

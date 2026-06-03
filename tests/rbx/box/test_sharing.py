@@ -48,3 +48,42 @@ def test_svg_to_png_returns_none_on_converter_failure(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sharing.subprocess, 'run', boom)
     assert sharing.svg_to_png('<svg/>', tmp_path / 'r.png') is None
+
+
+def test_copy_text_macos_uses_pbcopy(monkeypatch):
+    monkeypatch.setattr(sharing.sys, 'platform', 'darwin')
+    captured = {}
+
+    def fake_run(argv, input=None, **k):
+        captured['argv'] = argv
+        captured['input'] = input
+        return mock.Mock(returncode=0)
+
+    monkeypatch.setattr(sharing.subprocess, 'run', fake_run)
+    monkeypatch.setattr(sharing.shutil, 'which', lambda n: '/usr/bin/pbcopy')
+    assert sharing.copy_text_to_clipboard('hello') is True
+    assert captured['argv'] == ['pbcopy']
+    assert captured['input'] == b'hello'
+
+
+def test_copy_text_linux_wayland_uses_wl_copy(monkeypatch):
+    monkeypatch.setattr(sharing.sys, 'platform', 'linux')
+    monkeypatch.setenv('WAYLAND_DISPLAY', 'wayland-0')
+    monkeypatch.setattr(
+        sharing.shutil,
+        'which',
+        lambda n: '/usr/bin/wl-copy' if n == 'wl-copy' else None,
+    )
+    seen = {}
+    monkeypatch.setattr(
+        sharing.subprocess,
+        'run',
+        lambda argv, input=None, **k: seen.update(argv=argv) or mock.Mock(returncode=0),
+    )
+    assert sharing.copy_text_to_clipboard('x') is True
+    assert seen['argv'][0] == 'wl-copy'
+
+
+def test_copy_image_unsupported_returns_false(monkeypatch):
+    monkeypatch.setattr(sharing.sys, 'platform', 'win32')
+    assert sharing.copy_image_to_clipboard(sharing.Path('/tmp/x.png')) is False
