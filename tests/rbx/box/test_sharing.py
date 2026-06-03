@@ -1,5 +1,7 @@
 from unittest import mock
 
+import rich.text
+
 from rbx.box import sharing
 
 
@@ -123,3 +125,36 @@ def test_copy_text_oserror_returns_false(monkeypatch):
 
     monkeypatch.setattr(sharing.subprocess, 'run', boom)
     assert sharing.copy_text_to_clipboard('x') is False
+
+
+def test_recording_console_is_not_a_terminal():
+    rec = sharing.recording_console(width=80)
+    assert rec.record is True
+    assert rec.is_terminal is False  # so rich.live.Live won't animate
+
+
+def test_export_text_captures_rendered_content():
+    rec = sharing.recording_console(width=80)
+    rec.print(rich.text.Text('Timing summary: 123 ms'))
+    text = sharing.export_text(rec)
+    assert 'Timing summary: 123 ms' in text
+
+
+def test_share_report_text_copies_to_clipboard(monkeypatch, tmp_path):
+    rec = sharing.recording_console(width=80)
+    rec.print('hello world')
+    monkeypatch.setattr(sharing, 'copy_text_to_clipboard', lambda t: True)
+    result = sharing.share_report(rec, fmt='text', title='t', out_dir=tmp_path)
+    assert result.copied is True
+    assert result.fmt == 'text'
+    assert result.file_path is None
+
+
+def test_share_report_text_falls_back_to_file(monkeypatch, tmp_path):
+    rec = sharing.recording_console(width=80)
+    rec.print('hello world')
+    monkeypatch.setattr(sharing, 'copy_text_to_clipboard', lambda t: False)
+    result = sharing.share_report(rec, fmt='text', title='t', out_dir=tmp_path)
+    assert result.copied is False
+    assert result.file_path is not None and result.file_path.exists()
+    assert 'hello world' in result.file_path.read_text()

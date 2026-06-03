@@ -7,6 +7,10 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional
 
+import rich.console
+
+from rbx import console as _console  # for the shared theme
+
 # Ordered preference of SVG->PNG converters. Each entry builds the argv given
 # (svg_path, png_path).
 _CONVERTERS = [
@@ -107,3 +111,75 @@ def copy_image_to_clipboard(png_path: Path) -> bool:
             return False
         return _run_clipboard(argv, input=data)
     return False
+
+
+def recording_console(width: int = 120) -> rich.console.Console:
+    return rich.console.Console(
+        theme=_console.theme,
+        style='info',
+        highlight=False,
+        record=True,
+        width=width,
+        # force_terminal=False keeps is_terminal False so rich.live.Live renders
+        # a single final frame instead of animating when we re-render reports.
+        force_terminal=False,
+    )
+
+
+def export_text(rec: rich.console.Console) -> str:
+    return rec.export_text()
+
+
+def export_svg(rec: rich.console.Console, title: str) -> str:
+    return rec.export_svg(title=title)
+
+
+@dataclasses.dataclass
+class ShareResult:
+    fmt: str
+    copied: bool
+    file_path: Optional[Path] = None
+
+
+def share_report(
+    rec: rich.console.Console,
+    fmt: str,
+    title: str,
+    out_dir: Path,
+) -> ShareResult:
+    """Convert a recorded report to `fmt` ('png'|'text') and copy to clipboard.
+    Falls back to writing a file under out_dir if clipboard/convert is
+    unavailable."""
+    if fmt == 'text':
+        text = export_text(rec)
+        if copy_text_to_clipboard(text):
+            return ShareResult(fmt='text', copied=True)
+        path = out_dir / 'report.txt'
+        path.write_text(text)
+        return ShareResult(fmt='text', copied=False, file_path=path)
+
+    # fmt == 'png'
+    svg = export_svg(rec, title=title)
+    png_path = out_dir / 'report.png'
+    if svg_to_png(svg, png_path) is not None and copy_image_to_clipboard(png_path):
+        return ShareResult(fmt='png', copied=True, file_path=png_path)
+    # Could not convert and/or copy: persist whichever artifact we have.
+    if png_path.exists():
+        return ShareResult(fmt='png', copied=False, file_path=png_path)
+    svg_path = out_dir / 'report.svg'
+    svg_path.write_text(svg)
+    return ShareResult(fmt='png', copied=False, file_path=svg_path)
+
+
+def print_share_result(console, result: ShareResult) -> None:
+    if result.copied:
+        console.print(
+            f'[success]✓ Report copied to clipboard ({result.fmt.upper()}).[/success]'
+        )
+    elif result.file_path is not None:
+        console.print(
+            f'[warning]Could not copy to clipboard; wrote report to '
+            f'[item]{result.file_path}[/item].[/warning]'
+        )
+    else:
+        console.print('[error]Failed to share report.[/error]')
