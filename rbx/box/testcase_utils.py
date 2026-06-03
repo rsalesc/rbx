@@ -11,6 +11,8 @@ from rbx.box.package import get_build_tests_path
 from rbx.box.schema import TaskType, Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 
+STDERR_PREFIX = '!'
+
 
 class TestcasePattern(BaseModel):
     __test__ = False
@@ -165,9 +167,10 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
 
     ``.interaction`` files use the predetermined prefixes ``<`` (interactor)
     and ``>`` (solution); any other suffix (e.g. ``.pio``) reads the two
-    prefixes from the first two lines of the file. Each remaining non-empty
-    line becomes one :class:`TestcaseInteractionEntry` (no merging is done
-    here -- see :func:`merge_interaction_entries` for the chunked view).
+    prefixes from the first two lines of the file. Lines starting with ``!``
+    (the stderr prefix) become pipe 2 entries. Each remaining non-empty line
+    becomes one :class:`TestcaseInteractionEntry` (no merging is done here --
+    see :func:`merge_interaction_entries` for the chunked view).
     """
     entries = []
     with file.open('r') as f:
@@ -191,6 +194,9 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
             elif line.startswith(solution_prefix):
                 stripped = line[len(solution_prefix) :].rstrip()
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=1))
+            elif line.startswith(STDERR_PREFIX):
+                stripped = line[len(STDERR_PREFIX) :].rstrip()
+                entries.append(TestcaseInteractionEntry(data=stripped, pipe=2))
             else:
                 raise TestcaseInteractionParsingError(
                     f'Invalid line in interaction file {file}. Expected the line to start with the interactor or solution prefix ({interactor_prefix} or {solution_prefix}).'
@@ -217,13 +223,18 @@ def get_alternate_interaction_texts(
     return ''.join(interactor_entries), ''.join(solution_entries)
 
 
+def interaction_entry_style(pipe: int) -> str:
+    if pipe == 0:
+        return 'status'
+    if pipe == 2:
+        return 'error'
+    return 'info'
+
+
 def print_interaction(interaction: TestcaseInteraction):
     for entry in interaction.entries:
         text = rich.text.Text(entry.data)
-        if entry.pipe == 0:
-            text.stylize('status')
-        else:
-            text.stylize('info')
+        text.stylize(interaction_entry_style(entry.pipe))
         console.console.print(text)
 
 

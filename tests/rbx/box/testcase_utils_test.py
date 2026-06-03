@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 import typer
 
-from rbx.box import package
+from rbx.box import package, testcase_utils
 from rbx.box.schema import Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import (
@@ -536,3 +536,23 @@ class TestPrintInteraction:
         # Check that both entries are printed
         assert 'Hello from interactor' in captured.out
         assert 'Hello from solution' in captured.out
+
+
+def test_parse_interaction_recognizes_stderr_prefix(tmp_path: pathlib.Path):
+    f = tmp_path / 'sample.interaction'
+    f.write_text('< 3\n! reading n\n> 1 2 3\n! done\n')
+
+    interaction = testcase_utils.parse_interaction(f)
+
+    assert [(e.pipe, e.data) for e in interaction.entries] == [
+        (0, ' 3'),
+        (2, ' reading n'),
+        (1, ' 1 2 3'),
+        (2, ' done'),
+    ]
+
+
+def test_interaction_entry_style_per_pipe():
+    assert testcase_utils.interaction_entry_style(0) == 'status'
+    assert testcase_utils.interaction_entry_style(1) == 'info'
+    assert testcase_utils.interaction_entry_style(2) == 'error'
