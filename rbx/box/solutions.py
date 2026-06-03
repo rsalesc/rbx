@@ -2312,6 +2312,12 @@ class LiveRunReporter(FullRunReporter):
         self._update_live(finished=True)
         self.live.stop()
         self.live = None
+        # On a real terminal, Live.stop() advances to a new line, so each group
+        # lands on its own row. On a non-terminal console (e.g. when capturing
+        # the report to share it) Live finalizes without a trailing newline, so
+        # groups would otherwise run together; emit one explicitly.
+        if not self.console.is_terminal:
+            self.console.print()
 
     def render_pre_evaluation(self, entry: GenerationTestcaseEntry):
         self.pre_evaluated = entry.group_entry.index + 1
