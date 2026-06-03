@@ -327,7 +327,7 @@ dynamic generator script (here shown as `tests/testplan.py`).
 Our newly defined generator `gen.cpp` will receive two positional arguments, `N` and `A`, and generate
 a list of `N` integers, each of which is at most `A`.
 
-Then, our generator script will can this generator 10 times to generate 10 different tests with
+Then, our generator script will call this generator 10 times to generate 10 different tests with
 `N` integers ranging from 1 to `A`.
 
 Now, if we run `rbx build`, we'd get our brand new generated tests.
