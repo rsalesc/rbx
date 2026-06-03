@@ -161,17 +161,19 @@ def share_report(
     # fmt == 'png'
     svg = export_svg(rec, title=title)
     png_path = out_dir / 'report.png'
-    if svg_to_png(svg, png_path) is not None and copy_image_to_clipboard(png_path):
-        return ShareResult(fmt='png', copied=True, file_path=png_path)
-    # Could not convert and/or copy: persist whichever artifact we have.
-    if png_path.exists():
+    converted = svg_to_png(svg, png_path)
+    if converted is not None:
+        # PNG was produced this run; try to copy it.
+        if copy_image_to_clipboard(png_path):
+            return ShareResult(fmt='png', copied=True, file_path=png_path)
         return ShareResult(fmt='png', copied=False, file_path=png_path)
+    # No converter available: persist the SVG so the user still has an artifact.
     svg_path = out_dir / 'report.svg'
     svg_path.write_text(svg)
     return ShareResult(fmt='png', copied=False, file_path=svg_path)
 
 
-def print_share_result(console, result: ShareResult) -> None:
+def print_share_result(console: rich.console.Console, result: ShareResult) -> None:
     if result.copied:
         console.print(
             f'[success]✓ Report copied to clipboard ({result.fmt.upper()}).[/success]'

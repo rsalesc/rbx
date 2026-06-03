@@ -158,3 +158,46 @@ def test_share_report_text_falls_back_to_file(monkeypatch, tmp_path):
     assert result.copied is False
     assert result.file_path is not None and result.file_path.exists()
     assert 'hello world' in result.file_path.read_text()
+
+
+def test_share_report_png_copies_to_clipboard(monkeypatch, tmp_path):
+    rec = sharing.recording_console(width=80)
+    rec.print('hi')
+
+    def fake_convert(svg, png_path):
+        png_path.write_bytes(b'\x89PNG')
+        return png_path
+
+    monkeypatch.setattr(sharing, 'svg_to_png', fake_convert)
+    monkeypatch.setattr(sharing, 'copy_image_to_clipboard', lambda p: True)
+    result = sharing.share_report(rec, fmt='png', title='t', out_dir=tmp_path)
+    assert result.copied is True
+    assert result.fmt == 'png'
+    assert result.file_path == tmp_path / 'report.png'
+
+
+def test_share_report_png_copy_fails_keeps_png(monkeypatch, tmp_path):
+    rec = sharing.recording_console(width=80)
+    rec.print('hi')
+
+    def fake_convert(svg, png_path):
+        png_path.write_bytes(b'\x89PNG')
+        return png_path
+
+    monkeypatch.setattr(sharing, 'svg_to_png', fake_convert)
+    monkeypatch.setattr(sharing, 'copy_image_to_clipboard', lambda p: False)
+    result = sharing.share_report(rec, fmt='png', title='t', out_dir=tmp_path)
+    assert result.copied is False
+    assert result.file_path == tmp_path / 'report.png'
+    assert result.file_path.exists()
+
+
+def test_share_report_png_no_converter_falls_back_to_svg(monkeypatch, tmp_path):
+    rec = sharing.recording_console(width=80)
+    rec.print('hi')
+    monkeypatch.setattr(sharing, 'svg_to_png', lambda svg, png_path: None)
+    result = sharing.share_report(rec, fmt='png', title='t', out_dir=tmp_path)
+    assert result.copied is False
+    assert result.file_path == tmp_path / 'report.svg'
+    assert result.file_path.exists()
+    assert '<svg' in result.file_path.read_text()
