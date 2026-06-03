@@ -423,6 +423,19 @@ class TestMergeInteractionEntries:
         assert result[0].data == 'line1\nline2\nline3'
         assert result[0].pipe == 0
 
+    def test_consecutive_stderr_pipe_merged(self):
+        # Forward-compat: stderr (pipe 2) entries merge like any other pipe.
+        entries = [
+            TestcaseInteractionEntry(data='err1', pipe=2),
+            TestcaseInteractionEntry(data='err2', pipe=2),
+            TestcaseInteractionEntry(data='out1', pipe=1),
+        ]
+        result = merge_interaction_entries(entries)
+        assert len(result) == 2
+        assert result[0].data == 'err1\nerr2'
+        assert result[0].pipe == 2
+        assert result[1].pipe == 1
+
     def test_merge_then_alternate(self):
         entries = [
             TestcaseInteractionEntry(data='a1', pipe=0),

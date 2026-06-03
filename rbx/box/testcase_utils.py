@@ -223,6 +223,7 @@ def get_alternate_interaction_texts(
             solution_entries.append(entry.data + '\n')
             interactor_entries.extend(['\n'] * (entry.data.count('\n') + 1))
         else:
+            # entry.pipe == 0 (interactor); pipe 2 (stderr) was skipped above.
             interactor_entries.append(entry.data + '\n')
             solution_entries.extend(['\n'] * (entry.data.count('\n') + 1))
     return ''.join(interactor_entries), ''.join(solution_entries)
