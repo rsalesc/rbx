@@ -41,6 +41,7 @@ from tests.e2e.assertions import (
     check_stderr_contains,
     check_stdout_contains,
     check_stdout_matches,
+    check_stdout_not_contains,
     check_tests,
     check_zip_contains,
     check_zip_file_contains,
@@ -106,6 +107,7 @@ def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
 # Field names on ``Expect`` paired with the assertion check they dispatch to.
 _GENERIC_CHECKS = (
     ('stdout_contains', check_stdout_contains),
+    ('stdout_not_contains', check_stdout_not_contains),
     ('stderr_contains', check_stderr_contains),
     ('stdout_matches', check_stdout_matches),
     ('files_exist', check_files_exist),

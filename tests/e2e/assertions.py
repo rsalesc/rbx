@@ -71,6 +71,14 @@ def check_stdout_contains(
             raise AssertionError(f'stdout missing {needle!r}')
 
 
+def check_stdout_not_contains(
+    ctx: AssertionContext, expected: Union[str, List[str]]
+) -> None:
+    for needle in _as_list(expected):
+        if needle in ctx.stdout:
+            raise AssertionError(f'stdout unexpectedly contains {needle!r}')
+
+
 def check_stderr_contains(
     ctx: AssertionContext, expected: Union[str, List[str]]
 ) -> None:

@@ -959,6 +959,56 @@ class TestStepsRun:
         assert 'test1.py' in glob_output_content
         assert 'test2.py' in glob_output_content
 
+    async def test_run_with_merged_capture(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """Batch run tees stdout ('>') and stderr ('!') into a merged file while
+        keeping the clean stdout/stderr files intact."""
+        script_file = testdata_path / 'steps_run_test' / 'interleaved_io.py'
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.append(
+            GradingFileInput(src=script_file, dest=pathlib.Path('script.py'))
+        )
+        artifacts.outputs.extend(
+            [
+                GradingFileOutput(
+                    src=pathlib.Path('output.txt'), dest=pathlib.Path('output.txt')
+                ),
+                GradingFileOutput(
+                    src=pathlib.Path('output.err'), dest=pathlib.Path('output.err')
+                ),
+                GradingFileOutput(
+                    src=pathlib.Path('merged.pio'), dest=pathlib.Path('merged.pio')
+                ),
+            ]
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        params = SandboxParams(
+            stdout_file=pathlib.Path('output.txt'),
+            stderr_file=pathlib.Path('output.err'),
+            merged_capture=pathlib.Path('merged.pio'),
+        )
+        command = f'{sys.executable} script.py'
+
+        result = await steps.run(command, params, sandbox, artifacts)
+
+        assert result is not None
+        assert result.exitcode == 0
+
+        # Clean stdout/stderr files stay unpolluted (no markers, no cross-stream
+        # contents), so the checker can still read clean output.
+        assert (cleandir / 'output.txt').read_text() == 'out line 1\nout line 2\n'
+        assert (cleandir / 'output.err').read_text() == 'err line 1\nerr line 2\n'
+
+        # The merged file interleaves both streams with their markers.
+        merged_lines = (cleandir / 'merged.pio').read_text().splitlines()
+        assert merged_lines[:2] == ['<', '>']
+        assert '>out line 1' in merged_lines
+        assert '>out line 2' in merged_lines
+        assert '!err line 1' in merged_lines
+        assert '!err line 2' in merged_lines
+
 
 def test_run_log_summary_includes_sandbox_message_on_sandbox_error():
     log = steps.RunLog(

@@ -701,6 +701,14 @@ async def irun(
     print: bool = typer.Option(
         False, '--print', '-p', help='Whether to print outputs to terminal.'
     ),
+    merge_stderr: bool = typer.Option(
+        False,
+        '--merge-stderr',
+        '-e',
+        help='Interleave stderr with the solution output in true line order '
+        '(colored distinctly). Requires -p. Default: stderr is shown in a '
+        'separate section.',
+    ),
     sanitized: bool = typer.Option(
         False,
         '--sanitized',
@@ -771,6 +779,7 @@ async def irun(
             testcase_entry=get_parsed_entry(testcase) if testcase else None,
             custom_output=output,
             print=print,
+            merge_stderr=merge_stderr,
             sanitized=sanitized,
             validate=validate,
             visualize=visualize,

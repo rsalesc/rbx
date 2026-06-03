@@ -111,6 +111,7 @@ class ZipFileMatcher(_Forbid):
 
 class Expect(_Forbid):
     stdout_contains: Union[str, List[str], None] = None
+    stdout_not_contains: Union[str, List[str], None] = None
     stderr_contains: Union[str, List[str], None] = None
     stdout_matches: Optional[str] = None
     files_exist: List[str] = Field(default_factory=list)

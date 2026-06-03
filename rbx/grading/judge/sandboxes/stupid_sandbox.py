@@ -245,10 +245,80 @@ class StupidSandbox(SandboxBase):
         ) as commands:
             commands.write('%s\n' % command)
 
+        if params.merged_capture is not None:
+            return self._run_with_merged_capture(command, params)
+
         program = Program(command, self._get_program_params(params))
         result = program.wait()
 
         return self._get_sandbox_log(result, params)
+
+    def _run_with_merged_capture(
+        self, command: List[str], params: SandboxParams
+    ) -> SandboxLog:
+        """Run a single program, teeing its stdout ('>') and stderr ('!') into a
+        merged capture file in true write order while still producing the clean
+        stdout/stderr files. Used by ``rbx irun --merge-stderr`` for batch tasks.
+        """
+        assert params.merged_capture is not None
+        communication_params = CommunicationParams(
+            merged_capture=params.merged_capture,
+            tee_mode=params.tee_mode or 'line',
+        )
+        # Seed the merged file with the prefix header expected by the '.pio'
+        # parser; the tees then append their marked lines.
+        self.create_file_from_string(params.merged_capture, '<\n>\n', override=True)
+
+        program_params = self._get_program_params(params)
+        base_io = self._get_io(params)
+        # The program's stdout/stderr are piped into the tees; its stdin still
+        # comes straight from the input file (if any).
+        program_params.io = ProgramIO(
+            input=base_io.input,
+            output=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        program = Program(command, program_params)
+        assert program.pipes.output is not None
+        assert program.pipes.stderr is not None
+
+        group_id = os.getpgid(program.pid)
+        stdout_tee = self._get_tee_program(
+            '>',
+            stdin=program.pipes.output,
+            stdout=subprocess.DEVNULL,
+            capture=params.stdout_file,
+            pgid=group_id,
+            communication_params=communication_params,
+        )
+        stderr_tee = self._get_tee_program(
+            '!',
+            stdin=program.pipes.stderr,
+            stdout=subprocess.DEVNULL,
+            capture=params.stderr_file,
+            pgid=group_id,
+            communication_params=communication_params,
+        )
+
+        result: Optional[SandboxLog] = None
+        for _ in range(3):
+            pid, status, ru = os.wait4(-group_id, 0)
+            if pid == program.pid:
+                program_result = program.process_exit(status, ru)
+                result = self._get_sandbox_log(program_result, params)
+                # Closing the read ends signals EOF to the tees so they finish.
+                program.pipes.output.close()
+                program.pipes.stderr.close()
+            elif pid in (stdout_tee.pid, stderr_tee.pid):
+                pass
+            else:
+                raise RuntimeError(f'Unknown pid: {pid}')
+
+        for p in (program, stdout_tee, stderr_tee):
+            p.close()
+
+        assert result is not None
+        return result
 
     def run_communication(
         self,
@@ -284,6 +354,13 @@ class StupidSandbox(SandboxBase):
         should_tee = self._needs_teeing(
             params, interactor_params, communication_params.merged_capture
         )
+        # Tee the solution's stderr into the merged capture (marked '!') only
+        # when we already have a merged file to append to.
+        should_tee_stderr = (
+            should_tee
+            and communication_params.tee_stderr
+            and communication_params.merged_capture is not None
+        )
 
         if should_tee:
             if communication_params.merged_capture:
@@ -312,16 +389,34 @@ class StupidSandbox(SandboxBase):
             solution_input_pipe = interactor_tee.pipes.output
             solution_output_pipe = solution_tee.pipes.input
 
+        stderr_tee: Optional[Program] = None
+        if should_tee_stderr:
+            # The tee writes the clean stderr copy to its own extra file (the
+            # solution's stderr file) and the '!'-marked copy to the merged
+            # capture; its stdout is irrelevant so it is discarded.
+            stderr_tee = self._get_tee_program(
+                '!',
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                capture=params.stderr_file,
+                pgid=group_id,
+                communication_params=communication_params,
+            )
+            assert stderr_tee.pipes.input is not None
+
         program_params = self._get_program_params(params)
         program_params.io = self._get_io(params, pipe_io=True)
         program_params.io.input = solution_input_pipe
         program_params.io.output = solution_output_pipe
+        if stderr_tee is not None:
+            program_params.io.stderr = stderr_tee.pipes.input
         program_params.pgid = group_id
         program = Program(command, program_params)
 
         results: List[Optional[SandboxLog]] = [None, None]
 
-        for idx in range(4 if should_tee else 2):
+        num_processes = 2 + (2 if should_tee else 0) + (1 if should_tee_stderr else 0)
+        for idx in range(num_processes):
             pid, status, ru = os.wait4(-group_id, 0)
 
             if pid == interactor.pid:
@@ -348,7 +443,12 @@ class StupidSandbox(SandboxBase):
                 if should_tee:
                     assert solution_tee.pipes.input is not None
                     solution_tee.pipes.input.close()
+                if stderr_tee is not None:
+                    assert stderr_tee.pipes.input is not None
+                    stderr_tee.pipes.input.close()
             elif should_tee and (pid in (solution_tee.pid, interactor_tee.pid)):
+                pass
+            elif stderr_tee is not None and pid == stderr_tee.pid:
                 pass
             else:
                 raise RuntimeError(f'Unknown pid: {pid}')
@@ -358,6 +458,8 @@ class StupidSandbox(SandboxBase):
         if should_tee:
             for p in (solution_tee, interactor_tee):
                 p.close()
+        if stderr_tee is not None:
+            stderr_tee.close()
 
         return typing.cast(Tuple[SandboxLog, SandboxLog], tuple(results))
 

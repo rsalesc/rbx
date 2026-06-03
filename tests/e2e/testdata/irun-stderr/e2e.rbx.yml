@@ -7,3 +7,16 @@ scenarios:
           stdout_contains:
             - "Stderr"
             - "DBG_STDERR_MARKER"
+  - name: merge-stderr
+    steps:
+      - cmd: build
+      # With -e, stderr is interleaved with the output in true line order
+      # instead of being shown under a separate "Stderr" section.
+      - cmd: irun sols/main.cpp -t main/0 -p -e -v4
+        expect:
+          stdout_contains:
+            - "DBG_STDERR_MARKER"
+          stdout_not_contains:
+            - "Stderr"
+          files_exist:
+            - "**/*.pio"
