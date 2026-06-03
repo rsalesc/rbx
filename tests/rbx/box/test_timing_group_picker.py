@@ -1,6 +1,7 @@
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
+from rbx.box.environment import LanguageGroupFallback
 from rbx.box.timing_group_picker import GroupPickerState, prompt_group_assignment
 
 
@@ -121,6 +122,136 @@ async def test_picker_invokes_preview_with_current_assignment():
     # ...but suppressed it on the confirming (final) paint, so the post-enter
     # assignment never reaches the preview.
     assert {'cpp': 1, 'java': 0} not in seen
+
+
+def test_group_key_per_state():
+    s = GroupPickerState(['cpp', 'py', 'go'], {'cpp': 2, 'py': -1, 'go': 0})
+    assert s.group_key('cpp') == 'g2'
+    assert s.group_key('py') == 's:py'
+    assert s.group_key('go') == 'leftover'
+
+
+def test_start_edit_seeds_defaults_and_commit():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)  # cursor -> py
+    s.start_edit()
+    assert s.editing
+    s.set_ref('cpp')
+    s.set_a('2.5')
+    s.set_b('100')
+    assert s.commit_edit() is True
+    assert not s.editing
+    assert s.relatives['g2'] == LanguageGroupFallback(
+        relativeTo='cpp', multiplier=2.5, increment=100
+    )
+
+
+def test_cancel_edit_discards():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('9')
+    s.cancel_edit()
+    assert not s.editing
+    assert 'g2' not in s.relatives
+
+
+def test_clear_relative_removes_spec():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+    )
+    s.move(1)
+    s.start_edit()
+    s.clear_relative()
+    assert 'g2' not in s.relatives
+    assert not s.editing
+
+
+def test_invalid_a_keeps_editing():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_ref('cpp')
+    s.set_a('abc')  # not a positive float
+    assert s.commit_edit() is False  # rejected
+    assert s.editing  # stays in editor
+
+
+def test_nonpositive_a_rejected():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('0')
+    assert s.commit_edit() is False
+    s.set_a('-3')
+    assert s.commit_edit() is False
+    assert s.editing
+
+
+def test_invalid_b_rejected_but_empty_ok():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_ref('cpp')
+    s.set_a('2.0')
+    s.set_b('xx')
+    assert s.commit_edit() is False
+    s.set_b('')  # empty increment is allowed (None)
+    assert s.commit_edit() is True
+    assert s.relatives['g2'].increment is None
+
+
+def test_reference_options_exclude_own_group_and_include_base():
+    s = GroupPickerState(['cpp', 'py', 'go'], {'cpp': 1, 'py': 2, 'go': 2})
+    s.move(1)  # cursor on py (group g2)
+    refs = s.reference_options()
+    assert None in refs  # base estimate
+    assert 'cpp' in refs  # representative of the other group
+    assert 'py' not in refs and 'go' not in refs  # own group excluded
+
+
+def test_cycle_ref_wraps():
+    s = GroupPickerState(['cpp', 'py', 'go'], {'cpp': 1, 'py': 2, 'go': 3})
+    s.move(1)  # py
+    s.start_edit()
+    opts = s.reference_options()  # e.g. [None, 'cpp', 'go']
+    start = s.edit_ref
+    s.cycle_ref(1)
+    assert s.edit_ref == opts[(opts.index(start) + 1) % len(opts)]
+
+
+def test_reset_restores_initial_numbers_and_relatives():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)},
+    )
+    s.set_group(5)  # mutate cpp
+    s.move(1)
+    s.start_edit()
+    s.clear_relative()
+    s.reset_to_initial()
+    assert s.assignment() == {'cpp': 1, 'py': 2}
+    assert s.relatives == {
+        'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0)
+    }
+
+
+def test_prune_relatives_drops_orphans():
+    s = GroupPickerState(
+        ['cpp', 'py'],
+        {'cpp': 1, 'py': 2},
+        relatives={
+            'g2': LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+            's:rust': LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+        },
+    )
+    # 's:rust' has no corresponding language/group -> pruned; 'g2' kept (py in bucket 2)
+    pruned = s.prune_relatives()
+    assert 'g2' in pruned
+    assert 's:rust' not in pruned
 
 
 def test_legend_describes_three_states():

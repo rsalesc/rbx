@@ -2,6 +2,9 @@ from typing import Callable, Dict, List, Optional
 
 from prompt_toolkit.formatted_text import AnyFormattedText
 
+from rbx.box import timing_groups
+from rbx.box.environment import LanguageGroupFallback
+
 LEGEND_LINES = [
     'Assign each language to a time-limit bucket:',
     '',
@@ -14,7 +17,12 @@ LEGEND_LINES = [
 
 
 class GroupPickerState:
-    def __init__(self, languages: List[str], default_number: Dict[str, int]):
+    def __init__(
+        self,
+        languages: List[str],
+        default_number: Dict[str, int],
+        relatives: Optional[Dict[str, LanguageGroupFallback]] = None,
+    ):
         self.languages: List[str] = list(languages)
         self.numbers: Dict[str, int] = {
             lang: int(default_number.get(lang, 0)) for lang in self.languages
@@ -23,6 +31,105 @@ class GroupPickerState:
         # Set once the user confirms; suppresses the live preview on the final
         # paint so only the official table (printed afterwards) remains.
         self.done: bool = False
+        # Forced relative specs keyed by group-key (see timing_groups.group_key).
+        self.relatives: Dict[str, LanguageGroupFallback] = dict(relatives or {})
+        self._initial_numbers = dict(self.numbers)
+        self._initial_relatives = dict(self.relatives)
+        # Edit-mode scratch state for the relative-spec editor.
+        self.editing = False
+        self._edit_ref: Optional[str] = None
+        self._edit_a: str = ''
+        self._edit_b: str = ''
+
+    def group_key(self, lang: str) -> str:
+        return timing_groups.group_key(self.numbers[lang], lang)
+
+    def current_lang(self) -> Optional[str]:
+        return self.languages[self.cursor] if self.languages else None
+
+    def reference_options(self) -> List[Optional[str]]:
+        """None (base estimate) + one representative language per OTHER group,
+        in language order."""
+        own = self.group_key(self.current_lang())
+        opts: List[Optional[str]] = [None]
+        seen: set = set()
+        for lang in self.languages:
+            key = self.group_key(lang)
+            if key == own or key in seen:
+                continue
+            seen.add(key)
+            opts.append(lang)
+        return opts
+
+    def start_edit(self) -> None:
+        if not self.languages:
+            return
+        existing = self.relatives.get(self.group_key(self.current_lang()))
+        self.editing = True
+        self._edit_ref = existing.relativeTo if existing else None
+        self._edit_a = str(existing.multiplier) if existing else '1.0'
+        self._edit_b = (
+            str(existing.increment)
+            if existing and existing.increment is not None
+            else ''
+        )
+
+    @property
+    def edit_ref(self) -> Optional[str]:
+        """The reference language currently selected in the inline editor."""
+        return self._edit_ref
+
+    def set_ref(self, ref: Optional[str]) -> None:
+        self._edit_ref = ref
+
+    def cycle_ref(self, delta: int) -> None:
+        opts = self.reference_options()
+        try:
+            i = opts.index(self._edit_ref)
+        except ValueError:
+            i = 0
+        self._edit_ref = opts[(i + delta) % len(opts)]
+
+    def set_a(self, text: str) -> None:
+        self._edit_a = text
+
+    def set_b(self, text: str) -> None:
+        self._edit_b = text
+
+    def commit_edit(self) -> bool:
+        try:
+            a = float(self._edit_a)
+        except ValueError:
+            return False
+        if a <= 0:
+            return False
+        b: Optional[int] = None
+        if self._edit_b.strip():
+            try:
+                b = int(self._edit_b)
+            except ValueError:
+                return False
+        self.relatives[self.group_key(self.current_lang())] = LanguageGroupFallback(
+            relativeTo=self._edit_ref, multiplier=a, increment=b
+        )
+        self.editing = False
+        return True
+
+    def cancel_edit(self) -> None:
+        self.editing = False
+
+    def clear_relative(self) -> None:
+        self.relatives.pop(self.group_key(self.current_lang()), None)
+        self.editing = False
+
+    def reset_to_initial(self) -> None:
+        self.numbers = dict(self._initial_numbers)
+        self.relatives = dict(self._initial_relatives)
+        self.editing = False
+
+    def prune_relatives(self) -> Dict[str, LanguageGroupFallback]:
+        live = {self.group_key(lang) for lang in self.languages}
+        return {k: v for k, v in self.relatives.items() if k in live}
 
     def preview_text(self, preview):
         """The live preview's content, or empty once the picker is confirmed."""
