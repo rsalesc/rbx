@@ -20,7 +20,7 @@ need a couple of operators.
 Our generator expression is:
 
 ```
-gens/gen [1..5] <A.max> @
+tests/gens/gen [1..5] <A.max> @
 ```
 
 - `[1..5]` keeps the count of integers tiny — at most five numbers per test.
@@ -46,7 +46,7 @@ thing.
 ## Running the stress
 
 ```bash
-rbx stress -g "gens/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
+rbx stress -g "tests/gens/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
 ```
 
 <!-- TODO(#437): record the rbx stress run (kickoff -> counterexample) and replace REPLACE_ME_CAST_ID. -->
@@ -74,7 +74,7 @@ A counterexample is only useful if it survives into your testset. Right after a 
 
 Answer **yes**. {{rbx}} then lists every test group backed by a `.txt` generator script,
 plus two extra options: `(create new script)` and `(skip)`. Choose `(create new script)`
-and name it `testplan/corner.txt`.
+and name it `tests/corner.txt`.
 
 {{rbx}} appends the found generator call to that script — prefixed with a
 `# Obtained by running rbx stress ...` comment so you know where it came from — and adds a
@@ -86,22 +86,22 @@ new `corner` test group to `problem.rbx.yml`:
 
     testcases:
     - name: 'samples'
-        testcaseGlob: 'tests/samples/*.in'
-    - name: 'random'
+        testcaseGlob: 'documents/samples/*.in'
+    - name: 'testplan'
         generatorScript:
-            path: 'random.txt'
+            path: 'tests/testplan.txt'
     - name: 'corner'  # (1)!
         generatorScript:
-            path: 'corner.txt'  # (2)!
+            path: 'tests/corner.txt'  # (2)!
     ```
 
-    1.  The new group `corner` is backed by the freshly created `testplan/corner.txt`.
-    2.  The `path` is relative to the testplan root, so bare `corner.txt` here and the `testplan/corner.txt` you typed are the same file.
+    1.  The new group `corner` is backed by the freshly created `tests/corner.txt`.
+    2.  The `path` is relative to the testplan root, so bare `corner.txt` here and the `tests/corner.txt` you typed are the same file.
 
-=== "testplan/corner.txt"
+=== "tests/corner.txt"
     ```
-    # Obtained by running `rbx stress -g 'gens/gen [1..5] <A.max> @' -f sols/wa-overflow.cpp`
-    gens/gen 3 1000000000 a1b2c3d4
+    # Obtained by running `rbx stress -g 'tests/gens/gen [1..5] <A.max> @' -f sols/wa-overflow.cpp`
+    tests/gens/gen 3 1000000000 a1b2c3d4
     ```
 
 Now run `rbx build`, and the counterexample is regenerated as a permanent test in the
