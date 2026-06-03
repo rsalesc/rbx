@@ -9,7 +9,14 @@ from rbx.box.schema import TimingGroupOrigin, TimingGroupReport
 class ResolvedGroup(BaseModel):
     languages: List[str]
     whenEmpty: Optional[LanguageGroupFallback] = None
+    forced_relative: Optional[LanguageGroupFallback] = None
     is_leftover: bool = False
+
+
+def _effective_fallback(group: 'ResolvedGroup') -> Optional[LanguageGroupFallback]:
+    """The fallback whose reference edge matters for validation: a forced
+    relative (picker path) takes precedence, else the env whenEmpty."""
+    return group.forced_relative or group.whenEmpty
 
 
 def build_partition(
@@ -94,9 +101,10 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
     lang_index = _lang_to_group_index(groups)
     # reference target existence + not-self
     for idx, group in enumerate(groups):
-        if group.whenEmpty is None or group.whenEmpty.relativeTo is None:
+        fallback = _effective_fallback(group)
+        if fallback is None or fallback.relativeTo is None:
             continue
-        ref = group.whenEmpty.relativeTo
+        ref = fallback.relativeTo
         if ref not in lang_index:
             raise GroupValidationError(
                 f'whenEmpty.relativeTo references unknown language {ref!r}.'
@@ -112,9 +120,9 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
 
     def visit(idx: int) -> None:
         color[idx] = GRAY
-        group = groups[idx]
-        if group.whenEmpty is not None and group.whenEmpty.relativeTo is not None:
-            nxt = lang_index[group.whenEmpty.relativeTo]
+        fallback = _effective_fallback(groups[idx])
+        if fallback is not None and fallback.relativeTo is not None:
+            nxt = lang_index[fallback.relativeTo]
             if color[nxt] == GRAY:
                 raise GroupValidationError(
                     'whenEmpty.relativeTo forms a cycle between timing groups.'
@@ -158,7 +166,25 @@ def resolve_groups(
         resolving.add(idx)
         group = groups[idx]
         timings = pooled.get(idx)
-        if timings is not None:
+        if group.forced_relative is not None:
+            fb = group.forced_relative
+            ref = fb.relativeTo
+            ref_tl = base_tl if ref is None else resolve(lang_index[ref])
+            increment = fb.increment or 0
+            tl = int(ref_tl * fb.multiplier + increment)
+            report = TimingGroupReport(
+                languages=list(group.languages),
+                timeLimit=tl,
+                origin=TimingGroupOrigin.MULTIPLIER,
+                solutionCount=timings.solution_count if timings else 0,
+                fastest=timings.fastest if timings else None,
+                slowest=timings.slowest if timings else None,
+                relativeToLanguage=ref,
+                multiplier=fb.multiplier,
+                increment=fb.increment,
+                isLeftover=group.is_leftover,
+            )
+        elif timings is not None:
             tl = eval_fn(timings.fastest, timings.slowest)
             report = TimingGroupReport(
                 languages=list(group.languages),

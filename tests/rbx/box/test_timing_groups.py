@@ -346,3 +346,59 @@ def test_resolve_propagates_is_leftover():
     by_leftover = {tuple(r.languages): r.isLeftover for r in result.reports}
     assert by_leftover[('cpp',)] is False
     assert by_leftover[('go', 'java')] is True
+
+
+def _eval_slowest(fastest, slowest):
+    # simple deterministic formula for tests: just the slowest
+    return slowest
+
+
+def test_forced_relative_wins_over_pooled_timings():
+    # group 0 has solutions; group 1 forced relative to group 0
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['python'],
+            forced_relative=LanguageGroupFallback(
+                relativeTo='cpp', multiplier=2.0, increment=100
+            ),
+        ),
+    ]
+    pooled = {
+        0: GroupTimings(fastest=100, slowest=200, solution_count=1),
+        1: GroupTimings(fastest=500, slowest=900, solution_count=1),
+    }
+    base = GroupTimings(fastest=100, slowest=900, solution_count=2)
+    result = resolve_groups(groups, pooled, base, _eval_slowest)
+    # group 1 ignores its own timings (would be 900) -> 2.0*200 + 100 = 500
+    assert result.reports[1].timeLimit == 500
+    assert result.reports[1].origin == TimingGroupOrigin.MULTIPLIER
+    assert result.reports[1].relativeToLanguage == 'cpp'
+    # solution count of the overridden group is preserved for display
+    assert result.reports[1].solutionCount == 1
+
+
+def test_forced_relative_validates_self_reference():
+    groups = [
+        ResolvedGroup(
+            languages=['cpp'],
+            forced_relative=LanguageGroupFallback(relativeTo='cpp', multiplier=2.0),
+        )
+    ]
+    with pytest.raises(GroupValidationError):
+        validate_partition(groups)
+
+
+def test_forced_relative_to_base_estimate():
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['python'],
+            forced_relative=LanguageGroupFallback(relativeTo=None, multiplier=3.0),
+        ),
+    ]
+    pooled = {0: GroupTimings(fastest=100, slowest=200, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=200, solution_count=1)
+    result = resolve_groups(groups, pooled, base, _eval_slowest)
+    # base_tl = _eval(100, 200) = 200; forced -> 3.0*200 = 600
+    assert result.reports[1].timeLimit == 600
