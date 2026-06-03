@@ -2,5 +2,5 @@
 # Arguments are passed to the generator; here gen takes the max value for A/B.
 # Uncomment the lines below (or add your own) to generate tests.
 # Docs: https://rsalesc.github.io/rbx/setters/testset/
-# tests/gens/gen 1000000000
-# tests/gens/gen 100
+# tests/gen 1000000000
+# tests/gen 100

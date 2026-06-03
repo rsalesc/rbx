@@ -36,8 +36,7 @@ test
 │       └── 001.in
 ├── tests # (6)!
 │   ├── testplan.txt # (7)!
-│   └── gens
-│       └── gen.cpp # (8)!
+│   └── gen.cpp # (8)!
 └── sols
     └── main.cpp # (9)!
 ```
@@ -57,8 +56,8 @@ test
     (`documents/samples/`). Samples can carry an explanation alongside them
     (e.g. `000.rbx.tex`).
 
-6.  Everything related to generating tests lives here: generator sources under
-    `tests/gens/` and the generator scripts (testplans) that call them.
+6.  Everything related to generating tests lives here: generator sources (e.g.
+    `tests/gen.cpp`) and the generator scripts (testplans) that call them.
 
 7.  A generator script for the problem (a _testplan_).
 
@@ -67,12 +66,12 @@ test
     The preset ships this file fully commented out, just to show you the shape of a call:
 
     ```
-    # tests/gens/gen 1000000000
-    # tests/gens/gen 100
+    # tests/gen 1000000000
+    # tests/gen 100
     ```
 
     Uncommenting a line calls the generator named `gen` (here implemented through
-    `tests/gens/gen.cpp`) once, thus generating one testcase. In this problem, this
+    `tests/gen.cpp`) once, thus generating one testcase. In this problem, this
     script backs the testcase group `testplan`.
 
 8.  An example of a {{testlib}} generator.
@@ -256,7 +255,7 @@ uncommenting/adding calls to the generator. We can either spell the calls out by
 static generator script (`tests/testplan.txt`) or have a program print them for us as a
 dynamic generator script (here shown as `tests/testplan.py`).
 
-=== "tests/gens/gen.cpp"
+=== "tests/gen.cpp"
     ```c++
     #include "testlib.h"
 
@@ -279,22 +278,22 @@ dynamic generator script (here shown as `tests/testplan.py`).
 
 === "tests/testplan.txt (static)"
     ```
-    tests/gens/gen 1000 1000000000 1
-    tests/gens/gen 1000 1000000000 2
-    tests/gens/gen 1000 1000000000 3
-    tests/gens/gen 1000 1000000000 4
-    tests/gens/gen 1000 1000000000 5
-    tests/gens/gen 1000 1000000000 6
-    tests/gens/gen 1000 1000000000 7
-    tests/gens/gen 1000 1000000000 8
-    tests/gens/gen 1000 1000000000 9
-    tests/gens/gen 1000 1000000000 10
+    tests/gen 1000 1000000000 1
+    tests/gen 1000 1000000000 2
+    tests/gen 1000 1000000000 3
+    tests/gen 1000 1000000000 4
+    tests/gen 1000 1000000000 5
+    tests/gen 1000 1000000000 6
+    tests/gen 1000 1000000000 7
+    tests/gen 1000 1000000000 8
+    tests/gen 1000 1000000000 9
+    tests/gen 1000 1000000000 10
     ```
 
 === "tests/testplan.py (dynamic)"
     ```python
     for i in range(10):
-        print(f'tests/gens/gen 1000 1000000000 {i}') # (1)!
+        print(f'tests/gen 1000 1000000000 {i}') # (1)!
     ```
 
     1.  This line defines 10 random calls to the generator `gen`, 

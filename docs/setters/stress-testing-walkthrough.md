@@ -20,7 +20,7 @@ need a couple of operators.
 Our generator expression is:
 
 ```
-tests/gens/gen [1..5] <A.max> @
+tests/gen [1..5] <A.max> @
 ```
 
 - `[1..5]` keeps the count of integers tiny — at most five numbers per test.
@@ -46,7 +46,7 @@ thing.
 ## Running the stress
 
 ```bash
-rbx stress -g "tests/gens/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
+rbx stress -g "tests/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
 ```
 
 <!-- TODO(#437): record the rbx stress run (kickoff -> counterexample) and replace REPLACE_ME_CAST_ID. -->
@@ -100,8 +100,8 @@ new `corner` test group to `problem.rbx.yml`:
 
 === "tests/corner.txt"
     ```
-    # Obtained by running `rbx stress -g 'tests/gens/gen [1..5] <A.max> @' -f sols/wa-overflow.cpp`
-    tests/gens/gen 3 1000000000 a1b2c3d4
+    # Obtained by running `rbx stress -g 'tests/gen [1..5] <A.max> @' -f sols/wa-overflow.cpp`
+    tests/gen 3 1000000000 a1b2c3d4
     ```
 
 Now run `rbx build`, and the counterexample is regenerated as a permanent test in the

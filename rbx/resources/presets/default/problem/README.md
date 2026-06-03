@@ -9,7 +9,7 @@ the problem only as far as you need.
 - `documents/` — the statement (`statement.rbx.tex`), its assets, and `samples/`
   (sample inputs `*.in` plus `*.rbx.tex` explanations shown in the statement).
 - `tests/` — `testplan.txt`, a static generator script (commented out for now),
-  and `gens/` with the generators it calls (e.g. `gen.cpp`).
+  and the generators it calls (e.g. `gen.cpp`).
 - `sols/` — solutions. `main.cpp` is the reference **accepted** solution.
 - `validator.cpp` — checks every input is well-formed.
 - `wcmp.cpp` — the checker that compares your output against the reference.
@@ -23,7 +23,7 @@ the problem only as far as you need.
 - **Generate tests** — uncomment lines in `tests/testplan.txt` to feed inputs
   and call generators.
   [Testset](https://rsalesc.github.io/rbx/setters/testset/)
-- **Write generators** — add programs under `tests/gens/` for randomized or
+- **Write generators** — add programs under `tests/` for randomized or
   programmatic test families.
   [Generators](https://rsalesc.github.io/rbx/setters/testset/generators/)
 - **Stress testing** — pit solutions against each other to hunt for failing
