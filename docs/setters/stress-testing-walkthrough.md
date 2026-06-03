@@ -113,10 +113,23 @@ Now run `rbx build`, and the counterexample is regenerated as a permanent test i
     has already been resolved to a concrete string, so the test is fully deterministic from
     here on.
 
+The same picker also lists every **manual** test group (those backed by a glob, like
+`tests/manual/*.in`), plus a `(create new manual group)` option. Choosing a manual group
+saves each finding's **actual failing input** as a static `.in` file rather than appending a
+generator call — `rbx build` regenerates the matching `.out` for you. Picking
+`(create new manual group)` prompts for a group name and a glob path (e.g.
+`tests/manual/corner/*.in`) and wires it into `problem.rbx.yml`.
+
 !!! note
-    A future {{rbx}} release will let you promote a finding straight to a `documents/samples/`
-    file in a single step ([issue #442](https://github.com/rsalesc/rbx/issues/442)). Until
-    that lands, the test-group route above is the way to make a counterexample permanent.
+    Use the manual-group route when you want the *input itself* frozen in your testset (no
+    generator needed to reproduce it); use the generator-script route above when you'd rather
+    keep the reproducing generator call. Either way the counterexample becomes a permanent
+    test ([issue #442](https://github.com/rsalesc/rbx/issues/442)).
+
+!!! tip
+    To promote tests you *already* have — rather than fresh stress findings — into a manual
+    group, use [`rbx testcases promote`](/setters/reference/cli), which copies existing
+    testcase inputs into a glob-backed manual group as static `.in` files.
 
 ## Next steps
 
