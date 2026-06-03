@@ -23,10 +23,9 @@ This is how the directory structure of the pre-initialized problem preset will l
 ```bash
 test
 ├── problem.rbx.yml # (1)!
-├── README.md # (2)!
-├── validator.cpp # (3)!
-├── wcmp.cpp # (4)!
-├── documents # (5)!
+├── validator.cpp # (2)!
+├── wcmp.cpp # (3)!
+├── documents # (4)!
 │   ├── statement.rbx.tex
 │   ├── icpc.sty
 │   ├── template.rbx.tex
@@ -34,32 +33,30 @@ test
 │       ├── 000.in
 │       ├── 000.rbx.tex
 │       └── 001.in
-├── tests # (6)!
-│   ├── testplan.txt # (7)!
-│   └── gen.cpp # (8)!
+├── tests # (5)!
+│   ├── testplan.txt # (6)!
+│   └── gen.cpp # (7)!
 └── sols
-    └── main.cpp # (9)!
+    └── main.cpp # (8)!
 ```
 
 1.  The {{YAML}} configuration file for this problem.
 
-2.  A short README describing the preset and pointing you at the docs.
-
-3.  A {{testlib}} validator that checks whether the generated tests are
+2.  A {{testlib}} validator that checks whether the generated tests are
     in the correct format.
 
-4.  A built-in {{testlib}} checker that compares tokens of the participant's output
+3.  A built-in {{testlib}} checker that compares tokens of the participant's output
     and the judge's output.
 
-5.  All statement-related assets, including the legend of the problem itself
+4.  All statement-related assets, including the legend of the problem itself
     but also the tex templates, the `icpc.sty` style file and the sample testcases
     (`documents/samples/`). Samples can carry an explanation alongside them
     (e.g. `000.rbx.tex`).
 
-6.  Everything related to generating tests lives here: generator sources (e.g.
+5.  Everything related to generating tests lives here: generator sources (e.g.
     `tests/gen.cpp`) and the generator scripts (testplans) that call them.
 
-7.  A generator script for the problem (a _testplan_).
+6.  A generator script for the problem (a _testplan_).
 
     Each line of a generator script describes one call to a generator, and a generator script groups all these calls together.
 
@@ -74,12 +71,12 @@ test
     `tests/gen.cpp`) once, thus generating one testcase. In this problem, this
     script backs the testcase group `testplan`.
 
-8.  An example of a {{testlib}} generator.
+7.  An example of a {{testlib}} generator.
 
     !!! note
         A problem can have multiple generators. This one is just an example.
 
-9.  The single solution shipped by the preset: a correct, {{tags.accepted}} solution.
+8.  The single solution shipped by the preset: a correct, {{tags.accepted}} solution.
 
     !!! note
         `problem.rbx.yml` already declares outcome patterns for other prefixes

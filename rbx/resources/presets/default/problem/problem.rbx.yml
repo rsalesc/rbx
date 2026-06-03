@@ -1,7 +1,5 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Package.json
-# Minimal A+B problem. See the README in this preset, and the rbx docs at
-# https://rsalesc.github.io/rbx/ for everything you can add.
 name: "new-problem"
 timeLimit: 1000 # ms
 memoryLimit: 256 # MiB
