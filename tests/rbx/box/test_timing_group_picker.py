@@ -382,6 +382,92 @@ def test_edit_key_types_into_b_field():
     assert s.edit_b == '100'
 
 
+def test_edit_key_rejects_non_numeric_multiplier():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()  # focus multiplier
+    s.set_a('')
+    s.edit_key('x')  # letter rejected
+    s.edit_key('2')
+    s.edit_key('.')
+    s.edit_key('.')  # a second decimal point is rejected
+    s.edit_key('5')
+    assert s.edit_a == '2.5'
+
+
+def test_edit_key_rejects_non_digit_increment():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.edit_tab()
+    s.edit_tab()  # focus increment
+    s.edit_key('1')
+    s.edit_key('.')  # increment is integer-only -> rejected
+    s.edit_key('a')  # rejected
+    s.edit_key('0')
+    assert s.edit_b == '10'
+
+
+def test_commit_sets_error_message_when_invalid():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('')  # empty multiplier
+    assert s.commit_edit() is False
+    assert 'multiplier' in s.edit_error
+
+
+def test_edit_key_clears_error():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('0')
+    assert s.commit_edit() is False
+    assert s.edit_error
+    s.edit_tab()  # focus multiplier
+    s.set_a('')
+    s.edit_key('2')  # a valid edit clears the stale error
+    assert s.edit_error == ''
+
+
+def test_render_shows_validation_error():
+    s = GroupPickerState(['cpp', 'py'], {'cpp': 1, 'py': 2})
+    s.move(1)
+    s.start_edit()
+    s.set_a('abc')
+    s.commit_edit()
+    text = ''.join(t for _, t in s.render_fragments())
+    assert '⚠' in text and 'multiplier' in text
+
+
+async def test_picker_invalid_commit_keeps_editing_then_recovers():
+    # Pressing enter with an empty multiplier must not commit/exit; the user
+    # can then type a valid value and commit successfully.
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('\x1b[B')  # down -> py
+        inp.send_text('2')  # py -> group 2
+        inp.send_text('r')  # editor on py, field=ref
+        inp.send_text('\x1b[C')  # ref -> cpp
+        inp.send_text('\t')  # -> multiplier
+        inp.send_text('\x7f')  # clear seeded '1.0'
+        inp.send_text('\x7f')
+        inp.send_text('\x7f')
+        inp.send_text('\r')  # commit EMPTY multiplier -> invalid, stays editing
+        inp.send_text('2')  # type a valid multiplier
+        inp.send_text('\r')  # commit succeeds
+        inp.send_text('\r')  # confirm picker
+        result = await prompt_group_assignment(
+            ['cpp', 'py'],
+            {'cpp': 0, 'py': 0},
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result.numbers == {'cpp': 1, 'py': 2}
+    assert result.relatives['g2'].multiplier == 2.0
+
+
 async def test_picker_force_relative_flow():
     with create_pipe_input() as inp:
         inp.send_text('1')  # cpp -> group 1

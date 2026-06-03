@@ -52,6 +52,7 @@ class GroupPickerState:
         self._edit_a: str = ''
         self._edit_b: str = ''
         self._edit_field: str = 'ref'
+        self._edit_error: str = ''
 
     def group_key(self, lang: str) -> str:
         return timing_groups.group_key(self.numbers[lang], lang)
@@ -79,6 +80,7 @@ class GroupPickerState:
         existing = self.relatives.get(self.group_key(self.current_lang()))
         self.editing = True
         self._edit_field = 'ref'
+        self._edit_error = ''
         self._edit_ref = existing.relativeTo if existing else None
         self._edit_a = str(existing.multiplier) if existing else '1.0'
         self._edit_b = (
@@ -125,36 +127,56 @@ class GroupPickerState:
     def edit_field(self) -> str:
         return self._edit_field
 
+    @property
+    def edit_error(self) -> str:
+        return self._edit_error
+
+    def _accepts_char(self, buf: str, data: str) -> bool:
+        """Whether ``data`` is a valid next character for the focused field.
+        Multiplier accepts digits and a single decimal point; increment accepts
+        digits only."""
+        if self._edit_field == 'a':
+            return data.isdigit() or (data == '.' and '.' not in buf)
+        return data.isdigit()  # 'b'
+
     def edit_key(self, data: str) -> None:
-        """Route a raw key press to the focused editor field."""
+        """Route a raw key press to the focused editor field, ignoring any
+        character that would make the multiplier/increment non-numeric."""
         if self._edit_field == 'ref':
             return  # ref is changed via cycle_ref / edit_tab, not typed
         buf = self._edit_a if self._edit_field == 'a' else self._edit_b
         if data == '\x7f' or data == '\b':  # backspace
             buf = buf[:-1]
-        elif data.isprintable():
+        elif self._accepts_char(buf, data):
             buf += data
+        else:
+            return  # reject invalid character; leave the buffer untouched
         if self._edit_field == 'a':
             self._edit_a = buf
         else:
             self._edit_b = buf
+        self._edit_error = ''  # any successful edit clears a stale error
 
     def commit_edit(self) -> bool:
         try:
             a = float(self._edit_a)
         except ValueError:
+            self._edit_error = 'multiplier must be a number greater than 0'
             return False
         if a <= 0:
+            self._edit_error = 'multiplier must be greater than 0'
             return False
         b: Optional[int] = None
         if self._edit_b.strip():
             try:
                 b = int(self._edit_b)
             except ValueError:
+                self._edit_error = 'increment must be a whole number of milliseconds'
                 return False
         self.relatives[self.group_key(self.current_lang())] = LanguageGroupFallback(
             relativeTo=self._edit_ref, multiplier=a, increment=b
         )
+        self._edit_error = ''
         self.editing = False
         return True
 
@@ -243,7 +265,13 @@ class GroupPickerState:
                 'enter: ok · esc: cancel · c: clear\n',
             )
         )
+        if self._edit_error:
+            frags.append(('class:editor-error', f'      ⚠ {self._edit_error}\n'))
         return frags
+
+    def editor_height(self) -> int:
+        """Number of lines the inline editor draws (grows for an error line)."""
+        return EDITOR_HEIGHT + (1 if self._edit_error else 0)
 
     def render_fragments(self):
         """prompt_toolkit formatted-text fragments: list of (style, text)."""
@@ -404,7 +432,7 @@ async def prompt_group_assignment(
 
     def _body_height():
         # Grow to fit the inline editor's extra lines while it is open.
-        return len(state.languages) + (EDITOR_HEIGHT if state.editing else 0)
+        return len(state.languages) + (state.editor_height() if state.editing else 0)
 
     windows = [
         Window(content=header, height=len(LEGEND_LINES), always_hide_cursor=True),
@@ -435,6 +463,7 @@ async def prompt_group_assignment(
             'editor': 'ansicyan',
             'editor-focus': 'ansicyan bold reverse',
             'editor-hint': 'ansibrightblack',
+            'editor-error': 'ansired bold',
             'relative': 'ansigreen',
         }
     )
