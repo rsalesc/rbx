@@ -27,15 +27,31 @@ def test_svg_to_png_invokes_converter(monkeypatch, tmp_path):
         'which',
         lambda name: f'/usr/bin/{name}' if name == 'magick' else None,
     )
+    png_path = tmp_path / 'r.png'
     calls = []
-    monkeypatch.setattr(
-        sharing.subprocess,
-        'run',
-        lambda *a, **k: calls.append((a, k)) or mock.Mock(returncode=0),
-    )
-    out = sharing.svg_to_png('<svg/>', tmp_path / 'r.png')
-    assert out == tmp_path / 'r.png'
+
+    def fake_run(*a, **k):
+        calls.append((a, k))
+        png_path.write_bytes(b'\x89PNG fake')  # converter produces the output
+        return mock.Mock(returncode=0)
+
+    monkeypatch.setattr(sharing.subprocess, 'run', fake_run)
+    out = sharing.svg_to_png('<svg/>', png_path)
+    assert out == png_path
     assert calls, 'converter should have been invoked'
+
+
+def test_svg_to_png_returns_none_on_empty_output(monkeypatch, tmp_path):
+    # Converter exits 0 but writes nothing usable to the requested path.
+    monkeypatch.setattr(
+        sharing.shutil,
+        'which',
+        lambda name: f'/usr/bin/{name}' if name == 'magick' else None,
+    )
+    monkeypatch.setattr(
+        sharing.subprocess, 'run', lambda *a, **k: mock.Mock(returncode=0)
+    )
+    assert sharing.svg_to_png('<svg/>', tmp_path / 'missing.png') is None
 
 
 def test_svg_to_png_returns_none_on_converter_failure(monkeypatch, tmp_path):
@@ -233,3 +249,19 @@ def test_share_report_captures_limits_table(tmp_path):
     text = sharing.export_text(rec)
     assert 'Time limits (local)' in text
     assert '1500 ms' in text
+
+
+def test_capture_and_share_degrades_on_oserror(monkeypatch, tmp_path):
+    # Sharing runs after the report is shown; a filesystem error must not crash
+    # the command.
+    from rbx.box import package
+
+    monkeypatch.setattr(package, 'get_build_path', lambda: tmp_path)
+
+    def boom(*a, **k):
+        raise OSError('disk full')
+
+    monkeypatch.setattr(sharing, 'share_report', boom)
+    rec = sharing.recording_console(width=80)
+    result = sharing.capture_and_share(rec, fmt='text', title='t')
+    assert result.copied is False

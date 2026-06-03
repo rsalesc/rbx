@@ -13,12 +13,13 @@ import rich.console
 from rbx import console as _console  # for the shared theme
 
 # Ordered preference of SVG->PNG converters. Each entry builds the argv given
-# (svg_path, png_path).
+# (svg_path, png_path). Only converters that render an SVG faithfully to the
+# requested output path belong here (e.g. macOS `qlmanage` is excluded: it is a
+# thumbnailer that writes `<name>.png` into a directory, not a real renderer).
 _CONVERTERS = [
     ('rsvg-convert', lambda svg, png: ['rsvg-convert', str(svg), '-o', str(png)]),
     ('magick', lambda svg, png: ['magick', str(svg), str(png)]),
     ('convert', lambda svg, png: ['convert', str(svg), str(png)]),
-    ('qlmanage', lambda svg, png: ['qlmanage', '-t', '-o', str(png.parent), str(svg)]),
 ]
 
 
@@ -51,6 +52,14 @@ def svg_to_png(svg: str, png_path: Path) -> Optional[Path]:
         return None
     finally:
         svg_path.unlink(missing_ok=True)
+    # A zero exit code is not enough: a converter can succeed yet write nothing
+    # (or an empty file) to the requested path. Only report success if a usable
+    # PNG actually exists.
+    try:
+        if png_path.stat().st_size == 0:
+            return None
+    except OSError:
+        return None
     return png_path
 
 
@@ -199,11 +208,19 @@ def capture_and_share(
     rec: rich.console.Console, *, fmt: str, title: str
 ) -> ShareResult:
     """Share an already-recorded report: write fallbacks into the package build
-    dir, copy to the clipboard, and print the outcome."""
+    dir, copy to the clipboard, and print the outcome.
+
+    Sharing is a convenience side-effect that runs after the report has already
+    been shown, so any failure here (e.g. an unwritable build dir) degrades to a
+    warning instead of crashing the command."""
     from rbx.box import package
 
-    out_dir = package.get_build_path()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    result = share_report(rec, fmt=fmt, title=title, out_dir=out_dir)
+    try:
+        out_dir = package.get_build_path()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        result = share_report(rec, fmt=fmt, title=title, out_dir=out_dir)
+    except OSError as e:
+        _console.console.print(f'[warning]Could not share report: {e}.[/warning]')
+        return ShareResult(fmt=fmt, copied=False)
     print_share_result(_console.console, result)
     return result
