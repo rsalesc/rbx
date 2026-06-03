@@ -1000,6 +1000,8 @@ async def stress(
     )
     if not res:
         return
+    from rbx.box import promotion
+
     testgroup = None
     while testgroup is None or testgroup:
         groups_by_name = {
@@ -1008,13 +1010,47 @@ async def stress(
             if group.generatorScript is not None
             and group.generatorScript.path.suffix == '.txt'
         }
+        manual_groups = promotion.get_manual_groups_by_name()
 
         import questionary
 
         testgroup = await questionary.select(
-            'Choose the testgroup to add the tests to.\nOnly test groups that have a .txt generatorScript are shown below: ',
-            choices=list(groups_by_name) + ['(create new script)', '(skip)'],
+            'Choose the testgroup to add the tests to.\n'
+            'Script groups (.txt generatorScript) and manual (glob-backed) groups are shown below: ',
+            choices=list(groups_by_name)
+            + list(manual_groups)
+            + [
+                '(create new script)',
+                '(create new manual group)',
+                '(skip)',
+            ],
         ).ask_async()
+
+        if testgroup == '(create new manual group)':
+            new_group_name = await questionary.text(
+                'Enter the name of the new manual test group: '
+            ).ask_async()
+            new_group_glob = await questionary.text(
+                'Enter the testcase glob for the new manual group (e.g. tests/manual/corner/*.in): '
+            ).ask_async()
+            manual_target = promotion.create_manual_group(
+                new_group_name, new_group_glob
+            )
+            manual_groups[manual_target.name] = manual_target
+            testgroup = manual_target.name
+
+        if testgroup in manual_groups:
+            manual_target = manual_groups[testgroup]
+            findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
+            written = 0
+            for i, _ in enumerate(report.findings):
+                finding_in_path = findings_dir / f'{i}.in'
+                promotion.promote_input_to_group(finding_in_path, manual_target)
+                written += 1
+            console.console.print(
+                f'Added [item]{written}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}'
+            )
+            break
 
         if testgroup == '(create new script)':
             new_script_name = await questionary.text(
