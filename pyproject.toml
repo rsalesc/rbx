@@ -110,10 +110,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["rbx"]
-exclude = ["rbx/testdata"]
+exclude = ["rbx/testdata", "docs"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["rbx/testdata"]
+exclude = ["rbx/testdata", ".claude", ".worktrees", "docs"]
 
 [tool.ruff]
 extend-exclude = ["rbx/box/ui/_vendor"]
