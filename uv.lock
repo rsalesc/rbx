@@ -2717,7 +2717,7 @@ wheels = [
 
 [[package]]
 name = "rbx-cp"
-version = "0.37.1"
+version = "0.38.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -2838,7 +2838,7 @@ requires-dist = [
     { name = "tree-sitter-cpp", specifier = ">=0.22.0" },
     { name = "typer", specifier = ">=0.15.1" },
     { name = "typing-extensions", specifier = ">=4.14.1" },
-    { name = "uvicorn", specifier = ">=0.37.1" },
+    { name = "uvicorn", specifier = ">=0.38.0" },
     { name = "yamlfix", specifier = ">=1.17.0" },
 ]
 
@@ -2850,10 +2850,10 @@ dev = [
     { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
     { name = "mkdocs-macros-plugin", specifier = ">=1.0.5" },
     { name = "mkdocs-material", specifier = ">=9.5.28" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.37.1" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.38.0" },
     { name = "pre-commit", specifier = ">=3.7.1" },
     { name = "pytest", specifier = ">=8.2.2" },
-    { name = "pytest-asyncio", specifier = ">=0.37.1" },
+    { name = "pytest-asyncio", specifier = ">=0.38.0" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-randomly", specifier = ">=3.15.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },

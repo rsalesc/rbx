@@ -1,3 +1,29 @@
+## 0.38.0 (2026-06-04)
+
+### Feat
+
+- **irun**: --merge-stderr/-e flag for true line-order stderr interleave (#517) (#519)
+- **presets**: make the default preset lean (#413) (#515)
+- **timing**: share run/time reports to clipboard (#388) (#518)
+- **irun**: show solution stderr in irun (#266) (#516)
+- **timing**: force relative time limits in the rbx time picker (#512) (#514)
+- **timing**: add increment to group relative timings (#511) (#513)
+- **timing**: highlight time figures in the limits table (#508) (#509)
+- **timing**: always show base time limit as leading table row (#507)
+- **timing**: render current limits as a table in rbx time (#505)
+- **timing**: explain DEFAULTED below limits table (#502) (#503)
+- **timing**: live timing-table preview during group selection (#500) (#501)
+- **timing**: language groups for time-limit estimation (#497) (#499)
+- configurable per-language wall time limits (#490) (#498)
+
+### Fix
+
+- reformat groupings in default preset
+- reduce default wall time increment in preset
+- remove success message for time limit
+- **boca**: emit exact fractional time limits, deprecate rounding (#494) (#496)
+- **boca**: map cc/cpp alias to rbx language for limit lookup (#493) (#495)
+
 ## 0.37.1 (2026-05-29)
 
 ### Fix
