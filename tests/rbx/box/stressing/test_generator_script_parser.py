@@ -39,6 +39,14 @@ def test_statement_spans_nested_testgroup():
     assert 'testgroup' not in kinds
 
 
+def test_statement_spans_sorted_by_start_line():
+    script = 'gens/a 1\n@testgroup g {\ngens/b 2\n}\ngens/c 3\n'
+    spans = gsp.statement_spans(script)
+    starts = [s.start_line for s in spans]
+    assert starts == sorted(starts)
+    assert starts == [1, 3, 5]  # two top-level + one inside the group
+
+
 class TestParseAndTransformFunction:
     """Test suite for the parse_and_transform function behavior."""
 

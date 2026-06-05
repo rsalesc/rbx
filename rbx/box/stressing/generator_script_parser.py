@@ -239,7 +239,7 @@ class StatementSpan:
 _STATEMENT_RULES = {'generator_call', 'copy_test', 'inline_input', 'testgroup'}
 
 
-def statement_spans(script: str) -> List['StatementSpan']:
+def statement_spans(script: str) -> List[StatementSpan]:
     """Line spans (1-indexed, inclusive) of each leaf statement in an rbx script.
 
     Comments are not statements. A `@testgroup` is descended into: its child
@@ -261,7 +261,7 @@ def statement_spans(script: str) -> List['StatementSpan']:
                     StatementSpan(
                         start_line=meta.line,
                         end_line=meta.end_line,
-                        kind=rule,
+                        kind=str(rule),
                     )
                 )
 
