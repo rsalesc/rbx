@@ -716,3 +716,45 @@ class TestRelativeSourcePath:
         assert package.get_relative_source_path(
             CodeItem(path=external)
         ) == pathlib.Path('remote.cpp')
+
+
+class TestCompilationFiles:
+    def test_dest_is_package_relative(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A compilation file lands at its package-relative path inside the sandbox."""
+        testing_pkg.add_file('lib.h')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=['lib.h'])
+        assert package.get_compilation_files(code_item) == [
+            (pathlib.Path('lib.h'), pathlib.Path('lib.h'))
+        ]
+
+    def test_accepts_file_outside_code_dir(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A compilation file outside the code's folder is now accepted."""
+        # lib.h at root, source in gens/: rejected before, allowed now.
+        testing_pkg.add_file('lib.h')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=['lib.h'])
+        # Must not raise.
+        package.get_compilation_files(code_item)
+
+    def test_rejects_missing_file(self, testing_pkg: testing_package.TestingPackage):
+        """A non-existent compilation file is rejected."""
+        gen = testing_pkg.add_file('gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=['nope.h'])
+        with pytest.raises(typer.Exit):
+            package.get_compilation_files(code_item)
+
+    def test_rejects_file_outside_package(
+        self, testing_pkg: testing_package.TestingPackage, tmp_path: pathlib.Path
+    ):
+        """A compilation file outside the package directory is rejected."""
+        outside = tmp_path / 'outside.h'
+        outside.write_text('')
+        gen = testing_pkg.add_file('gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=[str(outside)])
+        with pytest.raises(typer.Exit):
+            package.get_compilation_files(code_item)
