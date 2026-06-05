@@ -1,9 +1,42 @@
 import pathlib
 
+from rbx.box.stressing import generator_script_parser as gsp
 from rbx.box.stressing.generator_script_parser import (
     ScriptGeneratedInput,
     parse_and_transform,
 )
+
+
+def test_statement_spans_single_line_call():
+    script = 'gens/gen --n=5\n'
+    spans = gsp.statement_spans(script)
+    assert len(spans) == 1
+    assert (spans[0].start_line, spans[0].end_line) == (1, 1)
+    assert spans[0].kind == 'generator_call'
+
+
+def test_statement_spans_input_block_multiline():
+    script = '@input {\n1 2 3\n4 5 6\n}\n'
+    spans = gsp.statement_spans(script)
+    assert len(spans) == 1
+    assert spans[0].start_line == 1
+    assert spans[0].end_line == 4
+    assert spans[0].kind == 'inline_input'
+
+
+def test_statement_spans_skips_comments_and_blanks():
+    script = '// a comment\n\ngens/gen 1\n'
+    spans = gsp.statement_spans(script)
+    assert [(s.start_line, s.kind) for s in spans] == [(3, 'generator_call')]
+
+
+def test_statement_spans_nested_testgroup():
+    script = '@testgroup g {\ngens/a 1\n@input "x"\n}\n'
+    spans = gsp.statement_spans(script)
+    kinds = [s.kind for s in spans]
+    assert 'generator_call' in kinds and 'inline_input' in kinds
+    # the testgroup wrapper itself must NOT be reported
+    assert 'testgroup' not in kinds
 
 
 class TestParseAndTransformFunction:

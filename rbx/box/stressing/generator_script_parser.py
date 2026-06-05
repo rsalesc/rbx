@@ -1,4 +1,5 @@
 import ast
+import dataclasses
 import pathlib
 from typing import List, Optional
 
@@ -226,6 +227,47 @@ class TestPlanTransformer(lark.Transformer):
                 result.append(stmt)
 
         return result
+
+
+@dataclasses.dataclass
+class StatementSpan:
+    start_line: int
+    end_line: int
+    kind: str
+
+
+_STATEMENT_RULES = {'generator_call', 'copy_test', 'inline_input', 'testgroup'}
+
+
+def statement_spans(script: str) -> List['StatementSpan']:
+    """Line spans (1-indexed, inclusive) of each leaf statement in an rbx script.
+
+    Comments are not statements. A `@testgroup` is descended into: its child
+    statements are reported (not the group wrapper), since each child is one test.
+    """
+    tree = parse(script)
+    spans: List[StatementSpan] = []
+
+    def walk(node):
+        for child in node.children:
+            if not isinstance(child, lark.Tree):
+                continue
+            rule = child.data
+            if rule == 'testgroup':
+                walk(child)  # report inner statements, not the wrapper
+            elif rule in _STATEMENT_RULES:
+                meta = child.meta
+                spans.append(
+                    StatementSpan(
+                        start_line=meta.line,
+                        end_line=meta.end_line,
+                        kind=rule,
+                    )
+                )
+
+    walk(tree)
+    spans.sort(key=lambda s: s.start_line)
+    return spans
 
 
 def parse(script: str) -> lark.ParseTree:
