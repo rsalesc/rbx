@@ -3,6 +3,7 @@ import pathlib
 from typing import Dict, Iterable, Optional, Set
 
 from rbx import utils
+from rbx.box import generator_script_handlers as gsh
 from rbx.box import package, package_utils
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import TestcaseGroup
@@ -133,8 +134,6 @@ def is_promotable(
 
 def remove_script_entries(entries: Iterable[GenerationTestcaseEntry]) -> None:
     """Delete each entry's originating statement from its rbx generator script."""
-    from rbx.box import generator_script_handlers as gsh
-
     by_path: Dict[pathlib.Path, Set[int]] = {}
     for entry in entries:
         gse = entry.metadata.generator_script
@@ -149,6 +148,9 @@ def remove_script_entries(entries: Iterable[GenerationTestcaseEntry]) -> None:
     }
 
     for path, start_lines in by_path.items():
+        assert path in script_entry_by_path, (
+            f'No registered generator script found for {path}.'
+        )
         script_entry = script_entry_by_path[path]
         handler = gsh.get_generator_script_handler(
             path.read_text(),
