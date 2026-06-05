@@ -461,8 +461,9 @@ class TestCompileItem:
         gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=gen, language='cpp'))
 
-        # _precompile_header is called positionally: (..., artifacts, input, ...)
-        # i.e. the candidate header is the 5th positional arg (index 4).
+        # _precompile_header is called positionally: (..., artifacts,
+        # input_artifact, ...) i.e. the candidate header is the 5th positional
+        # arg (index 4).
         precompiled_dests = [
             call.args[4].dest for call in mock_precompile_header.call_args_list
         ]
@@ -700,6 +701,7 @@ int custom_function();
     async def test_compile_nested_source_mirrors_path(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
+        """A subdir source is compiled at its package-relative path."""
         gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=gen, language='cpp'))
 
@@ -722,6 +724,7 @@ int custom_function();
     async def test_compile_flat_source_unchanged(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
+        """A flat source keeps its basename (mirroring is a no-op at root)."""
         sol = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=sol, language='cpp'))
 
@@ -775,6 +778,19 @@ class TestCompilationFiles:
             (pathlib.Path('lib.h'), pathlib.Path('lib.h'))
         ]
 
+    def test_dest_preserves_nested_subdir(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A compilation file in a nested dir keeps its package-relative path."""
+        testing_pkg.add_file('headers/lib.h')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        code_item = CodeItem(
+            path=gen, language='cpp', compilationFiles=['headers/lib.h']
+        )
+        assert package.get_compilation_files(code_item) == [
+            (pathlib.Path('headers/lib.h'), pathlib.Path('headers/lib.h'))
+        ]
+
     def test_accepts_file_outside_code_dir(
         self, testing_pkg: testing_package.TestingPackage
     ):
@@ -783,8 +799,10 @@ class TestCompilationFiles:
         testing_pkg.add_file('lib.h')
         gen = testing_pkg.add_file('gens/gen.cpp')
         code_item = CodeItem(path=gen, language='cpp', compilationFiles=['lib.h'])
-        # Must not raise.
-        package.get_compilation_files(code_item)
+        # Must not raise, and lands at its package-relative path.
+        assert package.get_compilation_files(code_item) == [
+            (pathlib.Path('lib.h'), pathlib.Path('lib.h'))
+        ]
 
     def test_rejects_missing_file(self, testing_pkg: testing_package.TestingPackage):
         """A non-existent compilation file is rejected."""

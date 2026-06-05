@@ -34,6 +34,8 @@ def _resolve_download_target(name: str, into: Optional[str]) -> pathlib.Path:
     return target
 
 
+# Builtin headers are injected beside the source (mirroring its package-relative
+# directory) so quoted #includes like "testlib.h" resolve without -I..
 def maybe_add_rbx_header(code: CodeItem, artifacts: steps.GradingArtifacts):
     header.get_header()
     artifact = get_local_artifact('rbx.h')
