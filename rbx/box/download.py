@@ -38,6 +38,7 @@ def maybe_add_rbx_header(code: CodeItem, artifacts: steps.GradingArtifacts):
     header.get_header()
     artifact = get_local_artifact('rbx.h')
     assert artifact is not None
+    artifact.dest = package.get_relative_source_path(code).parent / artifact.dest
     compilation_files = package.get_compilation_files(code)
     if any(dest == artifact.dest for _, dest in compilation_files):
         return
@@ -47,6 +48,7 @@ def maybe_add_rbx_header(code: CodeItem, artifacts: steps.GradingArtifacts):
 def maybe_add_testlib(code: CodeItem, artifacts: steps.GradingArtifacts):
     # Try to get from compilation files, then from package folder, then from tool.
     artifact = get_local_artifact('testlib.h') or steps.testlib_grading_input()
+    artifact.dest = package.get_relative_source_path(code).parent / artifact.dest
     compilation_files = package.get_compilation_files(code)
     if any(dest == artifact.dest for _, dest in compilation_files):
         return
@@ -56,6 +58,7 @@ def maybe_add_testlib(code: CodeItem, artifacts: steps.GradingArtifacts):
 def maybe_add_jngen(code: CodeItem, artifacts: steps.GradingArtifacts):
     # Try to get from compilation files, then from package folder, then from tool.
     artifact = get_local_artifact('jngen.h') or steps.jngen_grading_input()
+    artifact.dest = package.get_relative_source_path(code).parent / artifact.dest
     compilation_files = package.get_compilation_files(code)
     if any(dest == artifact.dest for _, dest in compilation_files):
         return
@@ -65,6 +68,7 @@ def maybe_add_jngen(code: CodeItem, artifacts: steps.GradingArtifacts):
 def maybe_add_tgen(code: CodeItem, artifacts: steps.GradingArtifacts):
     # Try to get from compilation files, then from package folder, then from tool.
     artifact = get_local_artifact('tgen.h') or steps.tgen_grading_input()
+    artifact.dest = package.get_relative_source_path(code).parent / artifact.dest
     compilation_files = package.get_compilation_files(code)
     if any(dest == artifact.dest for _, dest in compilation_files):
         return

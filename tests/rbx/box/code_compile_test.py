@@ -313,6 +313,34 @@ class TestCompileItem:
         )
         assert tgen_input is not None
 
+    async def test_builtin_headers_placed_in_source_dir(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """Builtin headers are placed in the source's directory for subdir sources."""
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        artifacts = mock_steps_with_caching.call_args.kwargs['artifacts']
+        testlib = next(
+            (i for i in artifacts.inputs if i.dest.name == 'testlib.h'), None
+        )
+        assert testlib is not None
+        assert testlib.dest == pathlib.Path('gens/testlib.h')
+
+    async def test_builtin_headers_flat_unchanged(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """Flat packages keep builtin headers at the package root."""
+        sol = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=sol, language='cpp'))
+
+        artifacts = mock_steps_with_caching.call_args.kwargs['artifacts']
+        testlib = next(
+            (i for i in artifacts.inputs if i.dest.name == 'testlib.h'), None
+        )
+        assert testlib is not None
+        assert testlib.dest == pathlib.Path('testlib.h')
+
     async def test_compile_sandbox_params_basic(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
