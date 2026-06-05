@@ -1,9 +1,10 @@
 import itertools
 import pathlib
-from typing import Dict, Optional, Set
+from typing import Dict, Iterable, Optional, Set
 
 from rbx import utils
 from rbx.box import package, package_utils
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import TestcaseGroup
 
 
@@ -108,6 +109,58 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     package_utils.clear_package_cache()
 
     return TestcaseGroup(name=name, testcaseGlob=glob)
+
+
+def script_format_by_path() -> Dict[pathlib.Path, str]:
+    """Map each generator-script path in the package to its format ('rbx'/'box')."""
+    res: Dict[pathlib.Path, str] = {}
+    for group in package.get_test_groups_by_name().values():
+        gs = group.generatorScript
+        if gs is not None:
+            res[gs.path] = gs.format
+    return res
+
+
+def is_promotable(
+    entry: GenerationTestcaseEntry, script_formats: Dict[pathlib.Path, str]
+) -> bool:
+    """True iff entry came from an rbx generator script and is not a @copy."""
+    md = entry.metadata
+    if md.generator_script is None or md.copied_from is not None:
+        return False
+    return script_formats.get(md.generator_script.path) == 'rbx'
+
+
+def remove_script_entries(entries: Iterable[GenerationTestcaseEntry]) -> None:
+    """Delete each entry's originating statement from its rbx generator script."""
+    from rbx.box import generator_script_handlers as gsh
+
+    by_path: Dict[pathlib.Path, Set[int]] = {}
+    for entry in entries:
+        gse = entry.metadata.generator_script
+        assert gse is not None
+        by_path.setdefault(gse.path, set()).add(gse.line)
+
+    groups = package.get_test_groups_by_name()
+    script_entry_by_path = {
+        g.generatorScript.path: g.generatorScript
+        for g in groups.values()
+        if g.generatorScript is not None
+    }
+
+    for path, start_lines in by_path.items():
+        script_entry = script_entry_by_path[path]
+        handler = gsh.get_generator_script_handler(
+            path.read_text(),
+            gsh.GeneratorScriptHandlerParams(script_entry),
+        )
+        handler.remove(start_lines)
+        new_text = (
+            handler.script if handler.script.endswith('\n') else handler.script + '\n'
+        )
+        path.write_text(new_text)
+
+    package_utils.clear_package_cache()
 
 
 async def create_manual_group_interactively() -> Optional[TestcaseGroup]:

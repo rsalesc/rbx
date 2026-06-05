@@ -1,8 +1,93 @@
 import pathlib
 
 from rbx.box import package, promotion
-from rbx.box.schema import TestcaseGroup
+from rbx.box.generation_schema import (
+    GenerationMetadata,
+    GenerationTestcaseEntry,
+    GeneratorScriptEntry,
+)
+from rbx.box.schema import GeneratorCall, Testcase, TestcaseGroup
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
+
+
+def _entry(metadata):
+    return GenerationTestcaseEntry(
+        group_entry=TestcaseEntry(group='g', index=0),
+        subgroup_entry=TestcaseEntry(group='g', index=0),
+        metadata=metadata,
+    )
+
+
+def _md(**kw):
+    return GenerationMetadata(copied_to=Testcase(inputPath=pathlib.Path('x.in')), **kw)
+
+
+SCRIPT = pathlib.Path('tests/plan.txt')
+FORMATS = {SCRIPT: 'rbx'}
+
+
+def test_promotable_rbx_generator_call():
+    md = _md(
+        generator_call=GeneratorCall(name='g'),
+        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
+    )
+    assert promotion.is_promotable(_entry(md), FORMATS) is True
+
+
+def test_promotable_input_content():
+    md = _md(
+        content='1 2 3',
+        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
+    )
+    assert promotion.is_promotable(_entry(md), FORMATS) is True
+
+
+def test_not_promotable_copy():
+    md = _md(
+        copied_from=Testcase(inputPath=pathlib.Path('a.in')),
+        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
+    )
+    assert promotion.is_promotable(_entry(md), FORMATS) is False
+
+
+def test_not_promotable_no_script():
+    md = _md(generator_call=GeneratorCall(name='g'))
+    assert promotion.is_promotable(_entry(md), FORMATS) is False
+
+
+def test_not_promotable_box_format():
+    md = _md(
+        generator_call=GeneratorCall(name='g'),
+        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
+    )
+    assert promotion.is_promotable(_entry(md), {SCRIPT: 'box'}) is False
+
+
+def test_script_format_by_path(testing_pkg: testing_package.TestingPackage):
+    testing_pkg.add_testgroup_from_plan('main', 'gen 1\ngen 2\n')
+
+    formats = promotion.script_format_by_path()
+
+    plan_path = testing_pkg.root / 'testplan' / 'main.txt'
+    assert formats[plan_path] == 'rbx'
+
+
+def test_remove_script_entries_removes_originating_statement(
+    testing_pkg: testing_package.TestingPackage,
+):
+    testing_pkg.add_testgroup_from_plan('main', 'gen 1\ngen 2\n')
+    plan_path = testing_pkg.root / 'testplan' / 'main.txt'
+
+    md = _md(
+        generator_call=GeneratorCall(name='gen', args='1'),
+        generator_script=GeneratorScriptEntry(path=plan_path, line=1),
+    )
+    promotion.remove_script_entries([_entry(md)])
+
+    remaining = plan_path.read_text()
+    assert 'gen 1' not in remaining
+    assert 'gen 2' in remaining
 
 
 def test_manual_group_dir_returns_directory_of_glob():
