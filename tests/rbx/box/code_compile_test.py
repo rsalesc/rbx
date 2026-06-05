@@ -652,6 +652,46 @@ int custom_function();
         assert code_item.path in stack.warnings
         assert stack.warning_logs[code_item.path] == [warning_log]
 
+    async def test_compile_nested_source_mirrors_path(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        call_args = mock_steps_with_caching.call_args
+        commands = call_args[0][0]
+        artifacts = call_args.kwargs['artifacts']
+
+        # Compile command references the mirrored, package-relative source
+        # (and not the flat basename).
+        tokens = commands[0].split()
+        assert 'gens/gen.cpp' in tokens
+        assert 'gen.cpp' not in tokens
+        # The compilable artifact is placed at its package-relative path.
+        compilable = next(
+            (i for i in artifacts.inputs if i.dest == pathlib.Path('gens/gen.cpp')),
+            None,
+        )
+        assert compilable is not None
+
+    async def test_compile_flat_source_unchanged(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        sol = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=sol, language='cpp'))
+
+        call_args = mock_steps_with_caching.call_args
+        commands = call_args[0][0]
+        artifacts = call_args.kwargs['artifacts']
+        # Flat package: package-relative path == basename, so the source token
+        # is the plain basename and the compilable artifact stays at the root.
+        assert 'solution.cpp' in commands[0].split()
+        compilable = next(
+            (i for i in artifacts.inputs if i.dest == pathlib.Path('solution.cpp')),
+            None,
+        )
+        assert compilable is not None
+
 
 class TestRelativeSourcePath:
     def test_nested_source_is_package_relative(

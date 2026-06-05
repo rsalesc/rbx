@@ -217,7 +217,10 @@ def _get_java_class_name(compilable_path: pathlib.Path) -> Optional[str]:
 
 
 def _get_code_variables(code: CodeItem, language: str) -> dict[str, Any]:
-    res = {'source': code.path.name, 'language': language}
+    res = {
+        'source': package.get_relative_source_path(code).as_posix(),
+        'language': language,
+    }
     java_klass = _get_java_class_name(code.path)
     if java_klass is not None:
         res['javaClass'] = java_klass
