@@ -336,6 +336,11 @@ class TestRbxGeneratorScriptHandlerRemove:
         h.remove({2})
         assert h.script.splitlines() == ['gens/b 2']  # comment gone too
 
+    def test_remove_strips_comment_above_input_block(self):
+        h = _rbx_handler('// big block\n@input {\n1\n2\n}\ngens/c 3\n')
+        h.remove({2})  # start line of the @input block
+        assert h.script.splitlines() == ['gens/c 3']  # comment + whole block gone
+
     def test_remove_keeps_comment_separated_by_blank(self):
         h = _rbx_handler('// header\n\ngens/a 1\n')
         h.remove({3})

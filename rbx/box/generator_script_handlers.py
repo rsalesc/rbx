@@ -86,6 +86,7 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
                 drop.add(ln)
             # Walk upward over contiguous comment lines (stop at blank or code).
             prev = span.start_line - 1
+            # Textual heuristic: treat lines starting with // or # as comments.
             while prev >= 1:
                 stripped = lines[prev - 1].strip()
                 if stripped.startswith('//') or stripped.startswith('#'):
