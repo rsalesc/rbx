@@ -128,8 +128,11 @@ generator call — `rbx build` regenerates the matching `.out` for you. Picking
 
 !!! tip
     To promote tests you *already* have — rather than fresh stress findings — into a manual
-    group, use [`rbx testcases promote`](/setters/reference/cli), which copies existing
-    testcase inputs into a glob-backed manual group as static `.in` files.
+    group, use [`rbx testcases promote`](/setters/reference/cli). It **moves** a test that was
+    produced by an `rbx`-format generator script into a manual group: it writes the static `.in`
+    and deletes the originating script line or `@input` block (plus its leading comments) so the
+    test is no longer regenerated. It only applies to rbx-script-generated tests — not `@copy`
+    lines, already-file-backed/manual tests, or box-format scripts.
 
 ## Next steps
 
