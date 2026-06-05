@@ -115,7 +115,7 @@ Now run `rbx build`, and the counterexample is regenerated as a permanent test i
 
 The same picker also lists your **manual** test groups, plus `(create new manual group)`.
 Choosing one saves each finding's actual failing input as a static `.in` file instead of a
-generator call — `rbx build` still fills in the `.out` ([issue #442](https://github.com/rsalesc/rbx/issues/442)).
+generator call — `rbx build` still fills in the `.out`.
 
 !!! tip
     To freeze tests you *already* have, use [`rbx testcases promote`](/setters/reference/cli):
