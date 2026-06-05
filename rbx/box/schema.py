@@ -285,11 +285,13 @@ class CodeItem(BaseModel):
     compilationFiles: Optional[List[str]] = Field(
         default=[],
         description="""
-Extra files that should be placed alongside the code file during its compilation,
+Extra files that should be available during the compilation of the code file,
 such as testlib.h, jngen.h, tgen.h, etc.
 
-The paths should be given relative to the package directory, but will be included
-relative to the `path` directory.
+The paths should be given relative to the package directory, and are placed at the
+same package-relative path inside the sandbox (the package directory structure is
+mirrored). This means a code file in a subdirectory can include a file from
+elsewhere in the package via a relative path (e.g. `#include "../lib.h"`).
 
 Testlib, jngen and tgen are already included by default.
 """,
