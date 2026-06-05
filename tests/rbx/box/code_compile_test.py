@@ -651,3 +651,28 @@ int custom_function();
         stack = warning_stack.get_warning_stack()
         assert code_item.path in stack.warnings
         assert stack.warning_logs[code_item.path] == [warning_log]
+
+
+class TestRelativeSourcePath:
+    def test_nested_source_is_package_relative(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        assert package.get_relative_source_path(CodeItem(path=gen)) == pathlib.Path(
+            'gens/gen.cpp'
+        )
+
+    def test_flat_source_is_basename(self, testing_pkg: testing_package.TestingPackage):
+        sol = testing_pkg.add_file('solution.cpp')
+        assert package.get_relative_source_path(CodeItem(path=sol)) == pathlib.Path(
+            'solution.cpp'
+        )
+
+    def test_external_source_falls_back_to_basename(
+        self, testing_pkg: testing_package.TestingPackage, tmp_path: pathlib.Path
+    ):
+        # A path outside the package root keeps the legacy flat basename.
+        external = tmp_path / 'somewhere' / 'remote.cpp'
+        assert package.get_relative_source_path(
+            CodeItem(path=external)
+        ) == pathlib.Path('remote.cpp')

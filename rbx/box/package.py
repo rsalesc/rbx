@@ -536,6 +536,18 @@ def get_statement_chunks_folder(root: pathlib.Path = pathlib.Path()) -> pathlib.
     return dir
 
 
+def get_relative_source_path(code: CodeItem) -> pathlib.Path:
+    """Package-relative path where ``code.path`` is mirrored inside the sandbox.
+
+    Falls back to the bare basename for paths outside the package root (e.g.
+    remote/temporary files), which preserves the legacy flat placement.
+    """
+    try:
+        return utils.relcwd(code.path)
+    except ValueError:
+        return pathlib.Path(code.path.name)
+
+
 # Return each compilation file and to where it should be moved inside
 # the sandbox.
 def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
