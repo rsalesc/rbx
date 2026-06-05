@@ -451,6 +451,23 @@ class TestCompileItem:
                         '#pragma GCC diagnostic ignored "-Wshadow"' in processed_content
                     )
 
+    async def test_precompile_targets_source_dir_header(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        mock_precompile_header,
+    ):
+        """Precompiled headers for a subdir source target the source dir."""
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        # _precompile_header is called positionally: (..., artifacts, input, ...)
+        # i.e. the candidate header is the 5th positional arg (index 4).
+        precompiled_dests = [
+            call.args[4].dest for call in mock_precompile_header.call_args_list
+        ]
+        assert pathlib.Path('gens/testlib.h') in precompiled_dests
+
     async def test_compile_precompilation_disabled(
         self,
         testing_pkg: testing_package.TestingPackage,
