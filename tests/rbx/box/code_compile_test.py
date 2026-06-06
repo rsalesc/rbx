@@ -457,7 +457,11 @@ class TestCompileItem:
         mock_steps_with_caching,
         mock_precompile_header,
     ):
-        """Precompiled builtin headers target the __internal__/ dir."""
+        """Every tool-injected header under __internal__/ is precompiled.
+
+        The dir check replaces the old name allow-list, so rbx.h -- which the
+        allow-list excluded -- is now precompiled too.
+        """
         gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=gen, language='cpp'))
 
@@ -468,6 +472,9 @@ class TestCompileItem:
             call.args[4].dest for call in mock_precompile_header.call_args_list
         ]
         assert pathlib.Path('__internal__/testlib.h') in precompiled_dests
+        assert pathlib.Path('__internal__/rbx.h') in precompiled_dests
+        assert precompiled_dests
+        assert all(steps.is_internal_path(dest) for dest in precompiled_dests)
 
     async def test_precompile_ignores_user_header_outside_internal_dir(
         self,

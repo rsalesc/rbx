@@ -520,6 +520,15 @@ def _get_cxx_version_output(command: str, extra_flags: str = '') -> Optional[str
 INTERNAL_DIR = pathlib.PosixPath('__internal__')
 
 
+def is_internal_path(path: pathlib.Path) -> bool:
+    """Whether a sandbox-relative path lives under the reserved __internal__/ dir.
+
+    Only tool-injected files land there (bits/stdc++.h and the builtin
+    testlib/jngen/tgen/rbx headers); user files keep their package-relative paths.
+    """
+    return path.is_relative_to(INTERNAL_DIR)
+
+
 def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
     if not is_cpp_command(get_exe_from_command(command)):
         return None

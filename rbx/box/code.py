@@ -670,12 +670,12 @@ async def compile_item(
             with profiling.Profiler('code.precompile'):
                 precompilation_inputs = []
                 for input in artifacts.inputs:
+                    # Precompile the tool-injected headers in __internal__/; only
+                    # those are placed there, so no name allow-list is needed.
                     if (
                         input.src is not None
                         and input.src.suffix == '.h'
-                        and input.dest.is_relative_to(steps.INTERNAL_DIR)
-                        and input.dest.name
-                        in ['stdc++.h', 'jngen.h', 'tgen.h', 'testlib.h']
+                        and steps.is_internal_path(input.dest)
                     ):
                         precompilation_inputs.append(
                             await _precompile_header(
