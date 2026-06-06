@@ -551,6 +551,29 @@ async def test_edit_filenames_type_and_submit(cleandir):
     assert [e for e, _ in result] == entries
 
 
+async def test_edit_filenames_ignores_typed_whitespace(cleandir):
+    from prompt_toolkit.input.defaults import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from rbx.box.schema import TestcaseGroup
+
+    entries = _make_entries('a')
+    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
+
+    with create_pipe_input() as inp:
+        # A space must be ignored (no awkward 'manual-000 .in'); the 'z' still
+        # lands, so the stem becomes '000z' rather than '000 z'.
+        inp.send_text(' ')
+        inp.send_text('z')
+        inp.send_text('\r')
+        result = await testcases_main._edit_filenames(  # noqa: SLF001
+            group, entries, input=inp, output=DummyOutput()
+        )
+
+    assert result is not None
+    assert [stem for _, stem in result] == ['000z']
+
+
 async def test_edit_filenames_escape_aborts(cleandir):
     from prompt_toolkit.input.defaults import create_pipe_input
     from prompt_toolkit.output import DummyOutput

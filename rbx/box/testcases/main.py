@@ -355,9 +355,14 @@ async def _edit_filenames(
 
     @kb.add('<any>')
     def _(event):
-        # Only printable single characters edit the focused stem; control keys
-        # and multi-char sequences are ignored.
-        if len(event.data) == 1 and event.data.isprintable():
+        # Only printable, non-whitespace single characters edit the focused
+        # stem; control keys, whitespace (which would yield an awkward
+        # filename), and multi-char sequences are ignored.
+        if (
+            len(event.data) == 1
+            and event.data.isprintable()
+            and not event.data.isspace()
+        ):
             state.type_char(event.data)
 
     layout = Layout(

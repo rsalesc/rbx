@@ -334,6 +334,18 @@ def test_validate_stems_rejects_whitespace_only():
     assert 'empty' in msg.lower()
 
 
+def test_validate_stems_rejects_embedded_whitespace():
+    msg = promotion.validate_stems(['000', 'ed ge'])
+    assert msg is not None
+    assert 'whitespace' in msg.lower()
+
+
+def test_validate_stems_rejects_trailing_whitespace():
+    msg = promotion.validate_stems(['000 '])
+    assert msg is not None
+    assert 'whitespace' in msg.lower()
+
+
 def test_validate_stems_rejects_duplicates():
     msg = promotion.validate_stems(['000', '000'])
     assert msg is not None

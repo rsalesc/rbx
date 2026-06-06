@@ -61,6 +61,9 @@ def stems_matching_glob(glob: str, base_dir: pathlib.Path = pathlib.Path()) -> S
     regex = re.compile(f'^{pattern}$')
 
     stems: Set[str] = set()
+    # Candidates are pre-filtered by ``base_dir.glob(glob)`` (pathlib ``*`` does
+    # not cross ``/``), so each candidate lies within a single path segment and
+    # the regex's ``.*`` greediness is safely bounded to that segment.
     for path in base_dir.glob(glob):
         rel = path.relative_to(base_dir).as_posix()
         match = regex.match(rel)
@@ -104,7 +107,10 @@ def default_stems(
     collision-free against both files already matching ``glob`` and the stems
     assigned earlier in the same batch (000, 001, ... skipping taken ones).
     """
-    used: Set[str] = set(stems_matching_glob(glob, base_dir=base_dir))
+    # ``next_testcase_name`` re-scans disk on every call and unions ``used`` on
+    # top, so we only need to accumulate the stems chosen so far this batch --
+    # the on-disk collisions are handled for us.
+    used: Set[str] = set()
     stems: List[str] = []
     for _ in range(count):
         stem = next_testcase_name(glob, used=used, base_dir=base_dir)
@@ -116,13 +122,15 @@ def default_stems(
 def validate_stems(stems: List[str]) -> Optional[str]:
     """Return an error message if ``stems`` is not a valid batch, else ``None``.
 
-    A batch is invalid if any stem is empty/whitespace-only (no filename) or if
-    two stems are equal (they would map to the same file and overwrite one
-    another).
+    A batch is invalid if any stem is empty/whitespace-only (no filename),
+    contains whitespace (would yield an awkward filename), or if two stems are
+    equal (they would map to the same file and overwrite one another).
     """
     for stem in stems:
         if not stem.strip():
             return 'Filenames cannot be empty.'
+        if any(ch.isspace() for ch in stem):
+            return f'Filename {stem!r} must not contain whitespace.'
     seen: Set[str] = set()
     for stem in stems:
         if stem in seen:
