@@ -430,13 +430,16 @@ async def _prepare_run(
         if dest not in exec_dests:
             artifacts.inputs.append(GradingFileInput(src=src, dest=dest))
             exec_dests.add(dest)
-    dep_graph = deps_graph.expand(code)
-    if dep_graph is not None and DependencyKind.EXECUTION in dep_graph.kinds:
+    # Only interpreted languages (EXECUTION-kind scanner) contribute here; C++ and
+    # other compiled languages short-circuit inside expand() without walking.
+    dep_graph = deps_graph.expand(code, require_kind=DependencyKind.EXECUTION)
+    if dep_graph is not None:
         # The entry script is symlinked from the content-addressed cache, so the
         # interpreter resolves its module search root to the cache dir (via the
         # symlink's realpath) instead of the mirrored source dir. Put the mirrored
         # source dir back on PYTHONPATH so sibling imports resolve, matching how
-        # `python3 <dir>/script.py` normally behaves.
+        # `python3 <dir>/script.py` normally behaves. This overrides any PYTHONPATH
+        # already in set_env (none is, today); the host PYTHONPATH is not inherited.
         source_dir = dep_graph.root.parent.as_posix()
         existing_pythonpath = sandbox_params.set_env.get('PYTHONPATH')
         sandbox_params.set_env['PYTHONPATH'] = (
@@ -661,8 +664,8 @@ async def compile_item(
         from rbx.box.dependencies import graph as deps_graph
         from rbx.box.dependencies.scanner import DependencyKind
 
-        dep_graph = deps_graph.expand(code)
-        if dep_graph is not None and DependencyKind.COMPILATION in dep_graph.kinds:
+        dep_graph = deps_graph.expand(code, require_kind=DependencyKind.COMPILATION)
+        if dep_graph is not None:
             existing = {input.dest for input in artifacts.inputs}
             for dep in dep_graph.files():
                 if dep not in existing:

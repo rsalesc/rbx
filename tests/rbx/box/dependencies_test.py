@@ -104,6 +104,21 @@ class TestPythonReferences:
         refs = python.PythonScanner().references(pathlib.Path('sols/sub/main.py'))
         assert any(r.target == pathlib.Path('common/util.py') for r in refs)
 
+    def test_deep_import_ships_intermediate_init_markers(self, testing_pkg):
+        from rbx.box.dependencies import python
+
+        testing_pkg.add_file('a/__init__.py').write_text('')
+        testing_pkg.add_file('a/b/__init__.py').write_text('')
+        testing_pkg.add_file('a/b/c.py').write_text('Z = 1\n')
+        main = testing_pkg.add_file('main.py')
+        main.write_text('import a.b.c\n')
+        refs = python.PythonScanner().references(pathlib.Path('main.py'))
+        targets = {r.target for r in refs if r.target is not None}
+        # The leaf AND every existing intermediate __init__.py must be discovered.
+        assert pathlib.Path('a/b/c.py') in targets
+        assert pathlib.Path('a/__init__.py') in targets
+        assert pathlib.Path('a/b/__init__.py') in targets
+
 
 class TestExpand:
     def test_cpp_transitive_excludes_root(self, testing_pkg):

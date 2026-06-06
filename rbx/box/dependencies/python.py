@@ -7,21 +7,33 @@ from rbx.box.dependencies import scanner
 from rbx.box.dependencies.scanner import DependencyKind, Reference
 
 
-def _resolve_dotted(base: pathlib.Path, dotted: str) -> Optional[pathlib.Path]:
-    """Resolve a dotted module name under ``base`` to a package-relative ``.py`` /
-    ``__init__.py`` file, or ``None`` if it is not a package file (stdlib/third-party)."""
+def _rel_if_package_file(path: pathlib.Path) -> Optional[pathlib.Path]:
+    package_root = utils.abspath(pathlib.Path())
+    abs_path = utils.abspath(path)
+    if abs_path.is_file() and abs_path.is_relative_to(package_root):
+        return abs_path.relative_to(package_root)
+    return None
+
+
+def _module_references(base: pathlib.Path, dots: str, dotted: str) -> List[Reference]:
+    """References for a dotted module name resolved under ``base``: every existing
+    intermediate ``__init__.py`` package marker (so ``import a.b.c`` also ships
+    ``a/__init__.py`` and ``a/b/__init__.py`` when they exist) plus the leaf module
+    (``a/b/c.py`` or ``a/b/c/__init__.py``). The leaf is always emitted, with
+    ``target=None`` when it is not a package file (stdlib/third-party/a bare name)."""
     parts = [p for p in dotted.split('.') if p]
     if not parts:
-        return None
-    package_root = utils.abspath(pathlib.Path())
-    for candidate in (
-        base.joinpath(*parts).with_suffix('.py'),
-        base.joinpath(*parts, '__init__.py'),
-    ):
-        cand = utils.abspath(candidate)
-        if cand.is_file() and cand.is_relative_to(package_root):
-            return cand.relative_to(package_root)
-    return None
+        return []
+    refs: List[Reference] = []
+    for i in range(1, len(parts)):
+        marker = _rel_if_package_file(base.joinpath(*parts[:i], '__init__.py'))
+        if marker is not None:
+            refs.append(Reference(f'{dots}{".".join(parts[:i])}', marker))
+    leaf = _rel_if_package_file(
+        base.joinpath(*parts).with_suffix('.py')
+    ) or _rel_if_package_file(base.joinpath(*parts, '__init__.py'))
+    refs.append(Reference(f'{dots}{dotted}', leaf))
+    return refs
 
 
 @scanner.register
@@ -44,9 +56,7 @@ class PythonScanner(scanner.DependencyScanner):
             if isinstance(node, ast.Import):
                 # Absolute imports: resolve as a sibling of the importing file.
                 for alias in node.names:
-                    refs.append(
-                        Reference(alias.name, _resolve_dotted(base_dir, alias.name))
-                    )
+                    refs.extend(_module_references(base_dir, '', alias.name))
             elif isinstance(node, ast.ImportFrom):
                 # Relative imports ascend ``level - 1`` directories from the file dir.
                 anchor = base_dir
@@ -54,20 +64,14 @@ class PythonScanner(scanner.DependencyScanner):
                     anchor = anchor.parent
                 dots = '.' * node.level
                 if node.module:
-                    refs.append(
-                        Reference(
-                            f'{dots}{node.module}',
-                            _resolve_dotted(anchor, node.module),
-                        )
-                    )
+                    refs.extend(_module_references(anchor, dots, node.module))
                     # An imported name may itself be a submodule file of ``module``.
                     for alias in node.names:
                         if alias.name == '*':
                             continue
-                        dotted = f'{node.module}.{alias.name}'
-                        refs.append(
-                            Reference(
-                                f'{dots}{dotted}', _resolve_dotted(anchor, dotted)
+                        refs.extend(
+                            _module_references(
+                                anchor, dots, f'{node.module}.{alias.name}'
                             )
                         )
                 elif node.level > 0:
@@ -75,10 +79,5 @@ class PythonScanner(scanner.DependencyScanner):
                     for alias in node.names:
                         if alias.name == '*':
                             continue
-                        refs.append(
-                            Reference(
-                                f'{dots}{alias.name}',
-                                _resolve_dotted(anchor, alias.name),
-                            )
-                        )
+                        refs.extend(_module_references(anchor, dots, alias.name))
         return refs

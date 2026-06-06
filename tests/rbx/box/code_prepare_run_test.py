@@ -12,7 +12,9 @@ class TestPrepareRunExecutionFiles:
     ):
         testing_pkg.add_file('sols/helper.py').write_text('X = 1\n')
         main = testing_pkg.add_file('sols/main.py')
-        main.write_text('from . import helper\nprint(helper.X)\n')
+        # Absolute sibling import is the runnable idiom for a directly-executed
+        # script (a relative `from .` import cannot run as a bare __main__).
+        main.write_text('import helper\nprint(helper.X)\n')
         item = CodeItem(path=main, language='py')
 
         digest = await code.compile_item(item)  # passthrough digest for Python
