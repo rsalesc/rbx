@@ -670,12 +670,15 @@ async def compile_item(
             with profiling.Profiler('code.precompile'):
                 precompilation_inputs = []
                 for input in artifacts.inputs:
-                    # Precompile the tool-injected headers in __internal__/; only
-                    # those are placed there, so no name allow-list is needed.
+                    # Precompile the static tool-injected headers in __internal__/.
+                    # rbx.h is skipped: it is regenerated per problem (it embeds the
+                    # package vars), so precompiling it yields no cross-problem cache
+                    # reuse.
                     if (
                         input.src is not None
                         and input.src.suffix == '.h'
                         and steps.is_internal_path(input.dest)
+                        and input.dest.name != 'rbx.h'
                     ):
                         precompilation_inputs.append(
                             await _precompile_header(

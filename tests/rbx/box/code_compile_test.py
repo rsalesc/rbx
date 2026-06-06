@@ -457,10 +457,11 @@ class TestCompileItem:
         mock_steps_with_caching,
         mock_precompile_header,
     ):
-        """Every tool-injected header under __internal__/ is precompiled.
+        """Tool-injected headers under __internal__/ are precompiled, except rbx.h.
 
-        The dir check replaces the old name allow-list, so rbx.h -- which the
-        allow-list excluded -- is now precompiled too.
+        The dir check replaces the old name allow-list. rbx.h is skipped because it
+        is regenerated per problem (it embeds the package vars), so precompiling it
+        has no cross-problem cache benefit.
         """
         gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=gen, language='cpp'))
@@ -472,7 +473,7 @@ class TestCompileItem:
             call.args[4].dest for call in mock_precompile_header.call_args_list
         ]
         assert pathlib.Path('__internal__/testlib.h') in precompiled_dests
-        assert pathlib.Path('__internal__/rbx.h') in precompiled_dests
+        assert pathlib.Path('__internal__/rbx.h') not in precompiled_dests
         assert precompiled_dests
         assert all(steps.is_internal_path(dest) for dest in precompiled_dests)
 
