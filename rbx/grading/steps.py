@@ -159,6 +159,11 @@ class GradingFileInput(BaseModel):
     executable: bool = False
     # Whether to track file through its hash (disable for optimization).
     hash: bool = True
+    # Whether the file may be symlinked from the cache (the default, for speed). Set
+    # False to force a real copy -- e.g. an interpreted entry script, whose realpath
+    # must stay inside the sandbox so the interpreter's module search root resolves to
+    # the mirrored source dir rather than the content cache.
+    symlink: bool = True
 
 
 class GradingFileOutput(BaseModel):
@@ -314,7 +319,7 @@ async def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: Sandbox
                 input_artifact.digest.value,
                 override=True,
                 executable=input_artifact.executable,
-                try_symlink=True,
+                try_symlink=input_artifact.symlink,
             )
             continue
         assert input_artifact.src is not None
@@ -323,7 +328,7 @@ async def _process_input_artifacts(artifacts: GradingArtifacts, sandbox: Sandbox
             artifacts.root / input_artifact.src,
             executable=input_artifact.executable,
             override=True,
-            try_symlink=True,
+            try_symlink=input_artifact.symlink,
         )
     for output_artifact in artifacts.outputs:
         if output_artifact.touch:

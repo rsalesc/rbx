@@ -595,6 +595,14 @@ def get_compilation_config(
     )
 
 
+def is_interpreted(language: str, solution: bool = False) -> bool:
+    """Whether the language runs its source directly (the compilable is the
+    executable) rather than producing a separate binary. This is exactly the
+    signal ``compile_item`` uses to take the passthrough path."""
+    config = get_compilation_config(language, solution)
+    return bool(config.passthrough) or not config.commands
+
+
 def merge_execution_configs(
     execution_configs: List[Optional[Union[ExecutionConfig, BaseExecutionConfig]]],
     solution: bool = False,
