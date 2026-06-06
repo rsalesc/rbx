@@ -212,6 +212,195 @@ async def _pick_manual_group(
     return manual_groups[choice]
 
 
+class _FilenameEditorState:
+    """Mutable state for the batch filename editor.
+
+    Holds one editable stem buffer per selected test, the focused row, and the
+    fixed glob prefix/suffix used to render each row's full-path preview.
+    """
+
+    def __init__(
+        self,
+        entries: List[GenerationTestcaseEntry],
+        glob: str,
+        defaults: List[str],
+    ):
+        self.entries = entries
+        self.glob = glob
+        # The fixed text around the glob's last '*' (e.g. 'manual_tests/manual-'
+        # and '.in'); the stem is what the user edits between them.
+        head, _, tail = glob.rpartition('*')
+        self.prefix = head
+        self.suffix = tail
+        self.stems: List[str] = list(defaults)
+        self.cursor: int = 0
+        self.done: bool = False
+
+    def current_stem(self) -> str:
+        return self.stems[self.cursor]
+
+    def move(self, delta: int) -> None:
+        n = len(self.entries)
+        if n:
+            self.cursor = (self.cursor + delta) % n
+
+    def type_char(self, data: str) -> None:
+        self.stems[self.cursor] += data
+
+    def backspace(self) -> None:
+        self.stems[self.cursor] = self.stems[self.cursor][:-1]
+
+    def error(self) -> Optional[str]:
+        return promotion.validate_stems(self.stems)
+
+    def render_fragments(self):
+        """prompt_toolkit formatted-text fragments: list of (style, text)."""
+        fragments = []
+        width = max((len(e.full_repr()) for e in self.entries), default=0)
+        for i, entry in enumerate(self.entries):
+            selected = i == self.cursor
+            pointer = '> ' if selected else '  '
+            row_style = 'class:current' if selected else 'class:row'
+            source = entry.full_repr().ljust(width)
+            fragments.append((row_style, f'{pointer}{source}  ->  '))
+            fragments.append(('class:fixed', self.prefix))
+            stem_style = 'class:stem-current' if selected else 'class:stem'
+            fragments.append((stem_style, self.stems[i] or ' '))
+            fragments.append(('class:fixed', self.suffix))
+            fragments.append((row_style, '\n'))
+        return fragments
+
+
+async def _edit_filenames(
+    target_group: TestcaseGroup,
+    chosen_entries: List[GenerationTestcaseEntry],
+    input=None,
+    output=None,
+) -> Optional[List[Tuple[GenerationTestcaseEntry, str]]]:
+    """Batch-edit the destination filenames for the selected tests.
+
+    Shows one row per test with its source (read-only) and an editable filename
+    stem, pre-filled with a sequential glob-aware default. The full relative
+    path is rendered live around the stem. Returns the list of
+    ``(entry, stem)`` pairs on submit, or ``None`` if the user aborts (Esc /
+    Ctrl-C) or if the package has no chosen entries.
+    """
+    if not chosen_entries:
+        return None
+
+    assert target_group.testcaseGlob is not None
+    glob = target_group.testcaseGlob
+    defaults = promotion.default_stems(glob, len(chosen_entries))
+    state = _FilenameEditorState(chosen_entries, glob, defaults)
+
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import HSplit, Layout, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.styles import Style
+
+    HEADER_LINES = [
+        'Edit the filename for each promoted test:',
+        'Tab/↓ next · Shift-Tab/↑ prev · type to edit · enter confirm · esc cancel',
+    ]
+
+    def _header_fragments():
+        return [
+            ('class:header' if i == 0 else 'class:hint', line + '\n')
+            for i, line in enumerate(HEADER_LINES)
+        ]
+
+    def _status_fragments():
+        if state.done:
+            return []
+        error = state.error()
+        if error:
+            return [('class:error', f'⚠ {error}\n')]
+        return [('class:ok', 'Press enter to confirm.\n')]
+
+    header = FormattedTextControl(_header_fragments)
+    body = FormattedTextControl(
+        state.render_fragments, focusable=True, show_cursor=False
+    )
+    status = FormattedTextControl(_status_fragments)
+
+    kb = KeyBindings()
+
+    @kb.add('up')
+    @kb.add('s-tab')
+    def _(event):
+        state.move(-1)
+
+    @kb.add('down')
+    @kb.add('tab')
+    def _(event):
+        state.move(1)
+
+    @kb.add('backspace')
+    def _(event):
+        state.backspace()
+
+    @kb.add('enter')
+    def _(event):
+        # Block submit while the batch is invalid (empty/duplicate names).
+        if state.error() is not None:
+            return
+        state.done = True
+        event.app.exit(result=list(zip(state.entries, state.stems)))
+
+    @kb.add('escape', eager=True)
+    @kb.add('c-c')
+    def _(event):
+        event.app.exit(result=None)
+
+    @kb.add('<any>')
+    def _(event):
+        # Only printable single characters edit the focused stem; control keys
+        # and multi-char sequences are ignored.
+        if len(event.data) == 1 and event.data.isprintable():
+            state.type_char(event.data)
+
+    layout = Layout(
+        HSplit(
+            [
+                Window(
+                    content=header,
+                    height=len(HEADER_LINES),
+                    always_hide_cursor=True,
+                ),
+                Window(
+                    content=body,
+                    height=len(chosen_entries),
+                    always_hide_cursor=True,
+                ),
+                Window(content=status, height=1, always_hide_cursor=True),
+            ]
+        )
+    )
+    style = Style.from_dict(
+        {
+            'header': 'bold',
+            'hint': 'ansibrightblack',
+            'current': 'bold',
+            'row': '',
+            'fixed': 'ansibrightblack',
+            'stem': 'ansicyan',
+            'stem-current': 'ansicyan bold reverse',
+            'error': 'ansired bold',
+            'ok': 'ansibrightblack',
+        }
+    )
+    app = Application(
+        layout=layout,
+        key_bindings=kb,
+        style=style,
+        full_screen=False,
+        input=input,
+        output=output,
+    )
+    return await app.run_async()
+
+
 async def _promote_interactive(
     manual_groups: Dict[str, TestcaseGroup],
     script_formats: Dict[pathlib.Path, str],
@@ -257,31 +446,14 @@ async def _promote_interactive(
         if target is None:
             return
 
-    # Prompt for all filenames first, OUTSIDE the live spinner: animating a Rich
-    # spinner while a questionary prompt is open causes redraw artifacts.
-    #
-    # Because no file is written yet during this loop, ``next_testcase_name``
-    # would return the same ``000`` default for every test. To show sequential
-    # defaults (000, 001, 002, ...) we simulate the on-disk counter: ``used``
-    # seeds from the folder's existing ``.in`` stems and grows with every stem we
-    # tentatively assign, so each default is the next free stem given both the
-    # files on disk and the names chosen so far this run.
-    folder = promotion.manual_group_dir(target)
-    used = set(promotion.existing_testcase_stems(folder))
-    chosen: List[Tuple[GenerationTestcaseEntry, str]] = []
-    for entry in chosen_entries:
-        default = promotion.next_testcase_name(folder, used=used)
-        answer = await questionary.text(
-            f'Filename stem for {entry.group_entry}:',
-            default=default,
-        ).ask_async()
-        # ``None`` means Ctrl-C: abort without writing anything. An empty string
-        # means the user pressed Enter to accept the displayed default.
-        if answer is None:
-            return
-        stem = answer or default
-        used.add(stem)
-        chosen.append((entry, stem))
+    # Edit all filenames in a single batch form, OUTSIDE the live spinner:
+    # animating a Rich spinner while a prompt_toolkit app is open causes redraw
+    # artifacts. Each row's default stem is a sequential glob-aware counter (see
+    # promotion.default_stems). Returns None on abort (Esc / Ctrl-C) -> write
+    # nothing, leave the scripts untouched.
+    chosen = await _edit_filenames(target, chosen_entries)
+    if chosen is None:
+        return
 
     promoted_entries: List[GenerationTestcaseEntry] = []
     with utils.StatusProgress('Promoting tests...') as s:

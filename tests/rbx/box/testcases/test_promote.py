@@ -28,6 +28,32 @@ def _scripted_prompt(*values):
     return factory
 
 
+def _accept_default_filenames():
+    """Mock for ``_edit_filenames`` that accepts the glob-aware defaults.
+
+    Stands in for the prompt_toolkit batch editor: it assigns the same
+    sequential glob-aware default stems the real editor pre-fills, so the
+    downstream write/remove behavior can be asserted without driving the TUI.
+    """
+    from rbx.box import promotion
+
+    async def edit_filenames(target_group, chosen_entries, **kwargs):
+        glob = target_group.testcaseGlob
+        stems = promotion.default_stems(glob, len(chosen_entries))
+        return list(zip(chosen_entries, stems))
+
+    return edit_filenames
+
+
+def _abort_filenames():
+    """Mock for ``_edit_filenames`` that aborts (returns None), like Esc/Ctrl-C."""
+
+    async def edit_filenames(target_group, chosen_entries, **kwargs):
+        return None
+
+    return edit_filenames
+
+
 @pytest.fixture
 def runner() -> CliRunner:
     # The promote command is wrapped in @syncer.sync, which calls
@@ -176,12 +202,14 @@ def test_promote_interactive_existing_group(
     testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
 
     # checkbox -> select one test (by its full_repr label); select -> existing
-    # group; text -> accept default.
+    # group; the batch filename editor accepts the default stem.
     label = 'gen/0 (gens/gen.cpp 123)'
     with (
         mock.patch('questionary.checkbox', _scripted_prompt([label])),
         mock.patch('questionary.select', _scripted_prompt('corner')),
-        mock.patch('questionary.text', _scripted_prompt('')),
+        mock.patch.object(
+            testcases_main, '_edit_filenames', _accept_default_filenames()
+        ),
     ):
         result = runner.invoke(testcases_main.app, ['promote'])
 
@@ -263,12 +291,15 @@ def test_promote_interactive_create_new_group(
 
     glob = 'tests/manual/fresh/*.in'
     label = 'gen/0 (gens/gen.cpp 123)'
-    # checkbox -> select test; select -> create new; text -> name, then glob,
-    # then filename stem (accept default).
+    # checkbox -> select test; select -> create new; text -> name, then glob (the
+    # group-creation prompts); the batch filename editor accepts the default.
     with (
         mock.patch('questionary.checkbox', _scripted_prompt([label])),
         mock.patch('questionary.select', _scripted_prompt('(create new manual group)')),
-        mock.patch('questionary.text', _scripted_prompt('fresh', glob, '')),
+        mock.patch('questionary.text', _scripted_prompt('fresh', glob)),
+        mock.patch.object(
+            testcases_main, '_edit_filenames', _accept_default_filenames()
+        ),
     ):
         result = runner.invoke(testcases_main.app, ['promote'])
 
@@ -296,14 +327,16 @@ def test_promote_interactive_two_defaults_sequential(
     (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
     testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
 
-    # checkbox -> select both tests; select -> existing group; text -> accept
-    # default for both (empty string each). The simulated counter must produce
-    # 000 then 001, writing two distinct files.
+    # checkbox -> select both tests; select -> existing group; the batch editor
+    # accepts the defaults. The glob-aware counter must produce 000 then 001,
+    # writing two distinct files.
     labels = ['gen/0 (gens/gen.cpp 123)', 'gen/1 (gens/gen.cpp 456)']
     with (
         mock.patch('questionary.checkbox', _scripted_prompt(labels)),
         mock.patch('questionary.select', _scripted_prompt('corner')),
-        mock.patch('questionary.text', _scripted_prompt('', '')),
+        mock.patch.object(
+            testcases_main, '_edit_filenames', _accept_default_filenames()
+        ),
     ):
         result = runner.invoke(testcases_main.app, ['promote'])
 
@@ -317,6 +350,64 @@ def test_promote_interactive_two_defaults_sequential(
     script = _script_path(testing_pkg).read_text()
     assert 'gens/gen.cpp 123' not in script
     assert 'gens/gen.cpp 456' not in script
+
+
+def test_promote_interactive_prefixed_glob_matches(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Regression: a prefixed glob (manual-*.in) must receive a file matching the
+    # glob (manual-000.in), not 000.in, so it is picked up at build time.
+    import fnmatch
+
+    _setup_pkg_with_script_group(testing_pkg)
+    (testing_pkg.root / 'manual_tests').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('manual', 'manual_tests/manual-*.in')
+
+    label = 'gen/0 (gens/gen.cpp 123)'
+    with (
+        mock.patch('questionary.checkbox', _scripted_prompt([label])),
+        mock.patch('questionary.select', _scripted_prompt('manual')),
+        mock.patch.object(
+            testcases_main, '_edit_filenames', _accept_default_filenames()
+        ),
+    ):
+        result = runner.invoke(testcases_main.app, ['promote'])
+
+    assert result.exit_code == 0, result.output
+    dest = testing_pkg.root / 'manual_tests/manual-000.in'
+    assert dest.is_file()
+    assert dest.read_bytes() == b'123\n'
+    # The written path matches the group's own glob.
+    assert fnmatch.fnmatch('manual_tests/manual-000.in', 'manual_tests/manual-*.in')
+    # The plain 000.in (the buggy destination) is NOT written.
+    assert not (testing_pkg.root / 'manual_tests/000.in').exists()
+    assert 'gens/gen.cpp 123' not in _script_path(testing_pkg).read_text()
+
+
+def test_promote_interactive_abort_editor_writes_nothing(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    # Aborting the batch filename editor (Esc/Ctrl-C -> None) must write nothing
+    # and leave the source script untouched.
+    _setup_pkg_with_script_group(testing_pkg)
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    label = 'gen/0 (gens/gen.cpp 123)'
+    with (
+        mock.patch('questionary.checkbox', _scripted_prompt([label])),
+        mock.patch('questionary.select', _scripted_prompt('corner')),
+        mock.patch.object(testcases_main, '_edit_filenames', _abort_filenames()),
+    ):
+        result = runner.invoke(testcases_main.app, ['promote'])
+
+    assert result.exit_code == 0, result.output
+    folder = testing_pkg.root / 'tests/manual/corner'
+    assert not any(folder.glob('*.in'))
+    # Source untouched.
+    assert 'gens/gen.cpp 123' in _script_path(testing_pkg).read_text()
 
 
 def test_promote_non_interactive_name_ignored_for_multiple(
@@ -369,3 +460,135 @@ def test_promote_interactive_skip_writes_nothing(
     assert not any(folder.glob('*.in'))
     # Source untouched.
     assert 'gens/gen.cpp 123' in _script_path(testing_pkg).read_text()
+
+
+# --- batch filename editor: state + prompt_toolkit smoke -------------------
+
+
+def _make_entries(*reprs):
+    """Build minimal GenerationTestcaseEntry objects with the given generator."""
+    import pathlib
+
+    from rbx.box.generation_schema import (
+        GenerationMetadata,
+        GenerationTestcaseEntry,
+        GeneratorScriptEntry,
+    )
+    from rbx.box.schema import GeneratorCall, Testcase
+    from rbx.box.testcase_schema import TestcaseEntry
+
+    entries = []
+    for i, rep in enumerate(reprs):
+        md = GenerationMetadata(
+            copied_to=Testcase(inputPath=pathlib.Path(f'{i}.in')),
+            generator_call=GeneratorCall(name=rep),
+            generator_script=GeneratorScriptEntry(
+                path=pathlib.Path('plan.txt'), line=i
+            ),
+        )
+        entries.append(
+            GenerationTestcaseEntry(
+                group_entry=TestcaseEntry(group='gen', index=i),
+                subgroup_entry=TestcaseEntry(group='gen', index=i),
+                metadata=md,
+            )
+        )
+    return entries
+
+
+def test_filename_editor_state_renders_preview_around_stem():
+    entries = _make_entries('a', 'b')
+    state = testcases_main._FilenameEditorState(  # noqa: SLF001
+        entries, 'manual_tests/manual-*.in', ['000', '001']
+    )
+    text = ''.join(t for _, t in state.render_fragments())
+    # The fixed glob prefix/suffix frame the editable stem -> full path preview.
+    assert 'manual_tests/manual-000.in' in text
+    assert 'manual_tests/manual-001.in' in text
+
+
+def test_filename_editor_state_move_wraps_and_edits_focused():
+    entries = _make_entries('a', 'b')
+    state = testcases_main._FilenameEditorState(  # noqa: SLF001
+        entries, 'tests/*.in', ['000', '001']
+    )
+    assert state.cursor == 0
+    state.move(-1)  # wraps to last
+    assert state.cursor == 1
+    state.type_char('x')
+    assert state.stems[1] == '001x'
+    state.backspace()
+    assert state.stems[1] == '001'
+
+
+def test_filename_editor_state_error_on_duplicate():
+    entries = _make_entries('a', 'b')
+    state = testcases_main._FilenameEditorState(  # noqa: SLF001
+        entries, 'tests/*.in', ['000', '000']
+    )
+    assert state.error() is not None
+
+
+async def test_edit_filenames_type_and_submit(cleandir):
+    from prompt_toolkit.input.defaults import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from rbx.box.schema import TestcaseGroup
+
+    entries = _make_entries('a', 'b')
+    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
+
+    with create_pipe_input() as inp:
+        # Append 'z' to the first stem (000 -> 000z), then submit with enter.
+        inp.send_text('z')
+        inp.send_text('\r')
+        result = await testcases_main._edit_filenames(  # noqa: SLF001
+            group, entries, input=inp, output=DummyOutput()
+        )
+
+    assert result is not None
+    assert [stem for _, stem in result] == ['000z', '001']
+    assert [e for e, _ in result] == entries
+
+
+async def test_edit_filenames_escape_aborts(cleandir):
+    from prompt_toolkit.input.defaults import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from rbx.box.schema import TestcaseGroup
+
+    entries = _make_entries('a')
+    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
+
+    with create_pipe_input() as inp:
+        inp.send_text('\x1b')  # Esc -> abort
+        result = await testcases_main._edit_filenames(  # noqa: SLF001
+            group, entries, input=inp, output=DummyOutput()
+        )
+
+    assert result is None
+
+
+async def test_edit_filenames_blocks_submit_while_invalid(cleandir):
+    from prompt_toolkit.input.defaults import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from rbx.box.schema import TestcaseGroup
+
+    entries = _make_entries('a', 'b')
+    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
+
+    with create_pipe_input() as inp:
+        # Clear the first stem (000 -> '') making the batch invalid (empty name).
+        for _ in range(3):
+            inp.send_text('\x7f')  # backspace x3
+        inp.send_text('\r')  # enter is blocked while invalid
+        # Recover by typing a valid distinct stem, then submit.
+        inp.send_text('9')
+        inp.send_text('\r')
+        result = await testcases_main._edit_filenames(  # noqa: SLF001
+            group, entries, input=inp, output=DummyOutput()
+        )
+
+    assert result is not None
+    assert [stem for _, stem in result] == ['9', '001']

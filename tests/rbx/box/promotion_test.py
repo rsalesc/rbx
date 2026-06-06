@@ -1,4 +1,7 @@
+import fnmatch
 import pathlib
+
+import pytest
 
 from rbx.box import package, promotion
 from rbx.box.generation_schema import (
@@ -100,30 +103,120 @@ def test_manual_group_dir_with_flat_glob():
     assert promotion.manual_group_dir(group) == pathlib.Path('tests')
 
 
-def test_next_testcase_name_on_empty_folder(tmp_path: pathlib.Path):
-    assert promotion.next_testcase_name(tmp_path) == '000'
+# --- fill_glob -------------------------------------------------------------
 
 
-def test_next_testcase_name_on_nonexistent_folder(tmp_path: pathlib.Path):
-    assert promotion.next_testcase_name(tmp_path / 'missing') == '000'
+def test_fill_glob_simple_wildcard():
+    assert promotion.fill_glob('tests/manual/*.in', '000') == pathlib.Path(
+        'tests/manual/000.in'
+    )
 
 
-def test_next_testcase_name_skips_existing(tmp_path: pathlib.Path):
-    (tmp_path / '000.in').write_text('a')
-    (tmp_path / '001.in').write_text('b')
-    assert promotion.next_testcase_name(tmp_path) == '002'
+def test_fill_glob_prefixed_filename():
+    assert promotion.fill_glob('manual_tests/manual-*.in', '000') == pathlib.Path(
+        'manual_tests/manual-000.in'
+    )
+
+
+def test_fill_glob_fills_only_last_wildcard():
+    # The first '*' is treated as fixed text; only the LAST is filled.
+    assert promotion.fill_glob('a*/b-*.in', '000') == pathlib.Path('a*/b-000.in')
+
+
+def test_fill_glob_without_wildcard_raises():
+    with pytest.raises(ValueError):
+        promotion.fill_glob('tests/manual/000.in', '000')
+
+
+# --- stems_matching_glob ---------------------------------------------------
+
+
+def test_stems_matching_glob_extracts_substring(tmp_path: pathlib.Path):
+    (tmp_path / 'manual_tests').mkdir()
+    (tmp_path / 'manual_tests/manual-000.in').write_text('a')
+    (tmp_path / 'manual_tests/manual-007.in').write_text('b')
+
+    stems = promotion.stems_matching_glob('manual_tests/manual-*.in', base_dir=tmp_path)
+
+    assert stems == {'000', '007'}
+
+
+def test_stems_matching_glob_simple_wildcard(tmp_path: pathlib.Path):
+    (tmp_path / 'tests/manual').mkdir(parents=True)
+    (tmp_path / 'tests/manual/000.in').write_text('a')
+    (tmp_path / 'tests/manual/042.in').write_text('b')
+
+    stems = promotion.stems_matching_glob('tests/manual/*.in', base_dir=tmp_path)
+
+    assert stems == {'000', '042'}
+
+
+def test_stems_matching_glob_ignores_non_matching_files(tmp_path: pathlib.Path):
+    (tmp_path / 'manual_tests').mkdir()
+    (tmp_path / 'manual_tests/manual-000.in').write_text('a')
+    # Differently-prefixed .in file and a README should be ignored.
+    (tmp_path / 'manual_tests/other-001.in').write_text('b')
+    (tmp_path / 'manual_tests/README.txt').write_text('c')
+
+    stems = promotion.stems_matching_glob('manual_tests/manual-*.in', base_dir=tmp_path)
+
+    assert stems == {'000'}
+
+
+def test_stems_matching_glob_empty_when_missing(tmp_path: pathlib.Path):
+    assert (
+        promotion.stems_matching_glob('manual_tests/manual-*.in', base_dir=tmp_path)
+        == set()
+    )
+
+
+# --- next_testcase_name (glob-aware) ---------------------------------------
+
+
+def test_next_testcase_name_on_empty_dir(tmp_path: pathlib.Path):
+    assert promotion.next_testcase_name('tests/manual/*.in', base_dir=tmp_path) == '000'
+
+
+def test_next_testcase_name_skips_existing_matching_glob(tmp_path: pathlib.Path):
+    (tmp_path / 'manual_tests').mkdir()
+    (tmp_path / 'manual_tests/manual-000.in').write_text('a')
+    (tmp_path / 'manual_tests/manual-001.in').write_text('b')
+    assert (
+        promotion.next_testcase_name('manual_tests/manual-*.in', base_dir=tmp_path)
+        == '002'
+    )
 
 
 def test_next_testcase_name_picks_lowest_free(tmp_path: pathlib.Path):
-    (tmp_path / '000.in').write_text('a')
-    (tmp_path / '002.in').write_text('c')
-    assert promotion.next_testcase_name(tmp_path) == '001'
+    (tmp_path / 'manual_tests').mkdir()
+    (tmp_path / 'manual_tests/manual-000.in').write_text('a')
+    (tmp_path / 'manual_tests/manual-002.in').write_text('c')
+    assert (
+        promotion.next_testcase_name('manual_tests/manual-*.in', base_dir=tmp_path)
+        == '001'
+    )
 
 
-def test_next_testcase_name_ignores_non_in_files(tmp_path: pathlib.Path):
-    (tmp_path / '000.out').write_text('a')
-    (tmp_path / '000.ans').write_text('a')
-    assert promotion.next_testcase_name(tmp_path) == '000'
+def test_next_testcase_name_ignores_non_matching_files(tmp_path: pathlib.Path):
+    (tmp_path / 'manual_tests').mkdir()
+    # A differently-prefixed file does not occupy the manual-* namespace.
+    (tmp_path / 'manual_tests/other-000.in').write_text('a')
+    assert (
+        promotion.next_testcase_name('manual_tests/manual-*.in', base_dir=tmp_path)
+        == '000'
+    )
+
+
+def test_next_testcase_name_honours_used_reserve_set(tmp_path: pathlib.Path):
+    assert (
+        promotion.next_testcase_name(
+            'tests/manual/*.in', used={'000', '001'}, base_dir=tmp_path
+        )
+        == '002'
+    )
+
+
+# --- promote_input_to_group ------------------------------------------------
 
 
 def test_promote_input_to_group_writes_input(tmp_path: pathlib.Path):
@@ -163,6 +256,88 @@ def test_promote_input_to_group_auto_increments(tmp_path: pathlib.Path):
 
     assert first.name == '000.in'
     assert second.name == '001.in'
+
+
+def test_promote_input_to_group_fills_prefixed_glob(tmp_path: pathlib.Path):
+    """Regression: the destination must MATCH the group's own glob.
+
+    The bug wrote ``manual_tests/000.in`` for a ``manual_tests/manual-*.in``
+    group, so the promoted test did not match the glob and was silently dropped
+    at build. The written path must satisfy the glob.
+    """
+    src = tmp_path / 'src.in'
+    src.write_text('payload\n')
+    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
+
+    written = promotion.promote_input_to_group(src, group, base_dir=tmp_path)
+
+    assert written == tmp_path / 'manual_tests/manual-000.in'
+    # The written path matches the group's glob (the whole point of the fix).
+    rel = written.relative_to(tmp_path).as_posix()
+    assert fnmatch.fnmatch(rel, group.testcaseGlob)
+    assert written.read_text() == 'payload\n'
+
+
+def test_promote_input_to_group_explicit_name_fills_prefixed_glob(
+    tmp_path: pathlib.Path,
+):
+    src = tmp_path / 'src.in'
+    src.write_text('payload\n')
+    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
+
+    written = promotion.promote_input_to_group(
+        src, group, name='edge', base_dir=tmp_path
+    )
+
+    assert written == tmp_path / 'manual_tests/manual-edge.in'
+    rel = written.relative_to(tmp_path).as_posix()
+    assert fnmatch.fnmatch(rel, group.testcaseGlob)
+
+
+# --- batch helpers: default_stems / validate_stems -------------------------
+
+
+def test_default_stems_sequential_on_empty_dir(tmp_path: pathlib.Path):
+    stems = promotion.default_stems('manual_tests/manual-*.in', 3, base_dir=tmp_path)
+    assert stems == ['000', '001', '002']
+
+
+def test_default_stems_skips_existing_matching_files(tmp_path: pathlib.Path):
+    (tmp_path / 'manual_tests').mkdir()
+    (tmp_path / 'manual_tests/manual-000.in').write_text('a')
+    (tmp_path / 'manual_tests/manual-002.in').write_text('b')
+
+    stems = promotion.default_stems('manual_tests/manual-*.in', 2, base_dir=tmp_path)
+
+    # 000 and 002 are taken on disk -> 001 then 003.
+    assert stems == ['001', '003']
+
+
+def test_default_stems_collision_free():
+    stems = promotion.default_stems('tests/*.in', 5)
+    assert len(set(stems)) == len(stems) == 5
+
+
+def test_validate_stems_accepts_distinct():
+    assert promotion.validate_stems(['000', '001', 'edge']) is None
+
+
+def test_validate_stems_rejects_empty():
+    msg = promotion.validate_stems(['000', ''])
+    assert msg is not None
+    assert 'empty' in msg.lower()
+
+
+def test_validate_stems_rejects_whitespace_only():
+    msg = promotion.validate_stems(['000', '   '])
+    assert msg is not None
+    assert 'empty' in msg.lower()
+
+
+def test_validate_stems_rejects_duplicates():
+    msg = promotion.validate_stems(['000', '000'])
+    assert msg is not None
+    assert 'duplicate' in msg.lower() or '000' in msg
 
 
 def test_get_manual_groups_by_name_only_glob_groups(
