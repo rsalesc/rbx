@@ -67,6 +67,17 @@ def test_not_promotable_box_format():
     assert promotion.is_promotable(_entry(md), {SCRIPT: 'box'}) is False
 
 
+def test_not_promotable_dynamic_script():
+    # A non-.txt generator script is dynamic (a program emits the plan) and is
+    # not line-addressable, so it cannot be promoted even when it is rbx-format.
+    dynamic = pathlib.Path('testplan/random.py')
+    md = _md(
+        generator_call=GeneratorCall(name='g'),
+        generator_script=GeneratorScriptEntry(path=dynamic, line=1),
+    )
+    assert promotion.is_promotable(_entry(md), {dynamic: 'rbx'}) is False
+
+
 def test_script_format_by_path(testing_pkg: testing_package.TestingPackage):
     testing_pkg.add_testgroup_from_plan('main', 'gen 1\ngen 2\n')
 

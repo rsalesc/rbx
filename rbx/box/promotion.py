@@ -223,6 +223,10 @@ def is_promotable(
     md = entry.metadata
     if md.generator_script is None or md.copied_from is not None:
         return False
+    # Only static ``.txt`` scripts are line-addressable; dynamic scripts (a
+    # program that emits the plan, e.g. ``.py``) cannot be edited line-by-line.
+    if md.generator_script.path.suffix != '.txt':
+        return False
     return script_formats.get(md.generator_script.path) == 'rbx'
 
 

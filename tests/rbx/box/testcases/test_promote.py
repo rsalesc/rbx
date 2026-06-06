@@ -203,7 +203,7 @@ def test_promote_interactive_existing_group(
 
     # checkbox -> select one test (by its full_repr label); select -> existing
     # group; the batch filename editor accepts the default stem.
-    label = 'gen/0 (gens/gen.cpp 123)'
+    label = 'gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]'
     with (
         mock.patch('questionary.checkbox', _scripted_prompt([label])),
         mock.patch('questionary.select', _scripted_prompt('corner')),
@@ -258,9 +258,36 @@ def test_promote_interactive_excludes_non_promotable_and_shows_metadata(
     assert result.exit_code == 0, result.output
     choices = captured['choices']
     # Only the rbx-script test is offered (the manual src/0 is excluded).
-    assert choices == ['gen/0 (gens/gen.cpp 123)']
-    # Label includes the metadata (generator call text from full_repr()).
+    assert choices == ['gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]']
+    # Label includes the generator call and the originating script location.
     assert 'gens/gen.cpp 123' in choices[0]
+    assert 'testplan/gen.txt:1' in choices[0]
+
+
+def test_non_promotable_reason_dynamic_script():
+    # A non-.txt (dynamic) generator script reports the dynamic-script reason.
+    import pathlib
+
+    from rbx.box.generation_schema import (
+        GenerationMetadata,
+        GenerationTestcaseEntry,
+        GeneratorScriptEntry,
+    )
+    from rbx.box.schema import GeneratorCall, Testcase
+    from rbx.box.testcase_schema import TestcaseEntry
+
+    dynamic = pathlib.Path('testplan/random.py')
+    entry = GenerationTestcaseEntry(
+        group_entry=TestcaseEntry(group='g', index=0),
+        subgroup_entry=TestcaseEntry(group='g', index=0),
+        metadata=GenerationMetadata(
+            copied_to=Testcase(inputPath=pathlib.Path('x.in')),
+            generator_call=GeneratorCall(name='g'),
+            generator_script=GeneratorScriptEntry(path=dynamic, line=1),
+        ),
+    )
+    reason = testcases_main._non_promotable_reason(entry, {dynamic: 'rbx'})  # noqa: SLF001
+    assert 'dynamic generator script' in reason
 
 
 def test_promote_interactive_no_promotable_tests(
@@ -290,7 +317,7 @@ def test_promote_interactive_create_new_group(
     _setup_pkg_with_script_group(testing_pkg)
 
     glob = 'tests/manual/fresh/*.in'
-    label = 'gen/0 (gens/gen.cpp 123)'
+    label = 'gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]'
     # checkbox -> select test; select -> create new; text -> name, then glob (the
     # group-creation prompts); the batch filename editor accepts the default.
     with (
@@ -330,7 +357,10 @@ def test_promote_interactive_two_defaults_sequential(
     # checkbox -> select both tests; select -> existing group; the batch editor
     # accepts the defaults. The glob-aware counter must produce 000 then 001,
     # writing two distinct files.
-    labels = ['gen/0 (gens/gen.cpp 123)', 'gen/1 (gens/gen.cpp 456)']
+    labels = [
+        'gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]',
+        'gen/1 (gens/gen.cpp 456) [testplan/gen.txt:2]',
+    ]
     with (
         mock.patch('questionary.checkbox', _scripted_prompt(labels)),
         mock.patch('questionary.select', _scripted_prompt('corner')),
@@ -364,7 +394,7 @@ def test_promote_interactive_prefixed_glob_matches(
     (testing_pkg.root / 'manual_tests').mkdir(parents=True, exist_ok=True)
     testing_pkg.add_testgroup_from_glob('manual', 'manual_tests/manual-*.in')
 
-    label = 'gen/0 (gens/gen.cpp 123)'
+    label = 'gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]'
     with (
         mock.patch('questionary.checkbox', _scripted_prompt([label])),
         mock.patch('questionary.select', _scripted_prompt('manual')),
@@ -395,7 +425,7 @@ def test_promote_interactive_abort_editor_writes_nothing(
     (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
     testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
 
-    label = 'gen/0 (gens/gen.cpp 123)'
+    label = 'gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]'
     with (
         mock.patch('questionary.checkbox', _scripted_prompt([label])),
         mock.patch('questionary.select', _scripted_prompt('corner')),
@@ -447,7 +477,7 @@ def test_promote_interactive_skip_writes_nothing(
 
     # checkbox -> select a test; select -> skip the group picker. Nothing should
     # be written, no group added, and the source line must be untouched.
-    label = 'gen/0 (gens/gen.cpp 123)'
+    label = 'gen/0 (gens/gen.cpp 123) [testplan/gen.txt:1]'
     with (
         mock.patch('questionary.checkbox', _scripted_prompt([label])),
         mock.patch('questionary.select', _scripted_prompt('(skip)')),
