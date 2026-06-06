@@ -103,3 +103,39 @@ class TestPythonReferences:
         src.write_text('from ...common import util\n')
         refs = python.PythonScanner().references(pathlib.Path('sols/sub/main.py'))
         assert any(r.target == pathlib.Path('common/util.py') for r in refs)
+
+
+class TestExpand:
+    def test_cpp_transitive_excludes_root(self, testing_pkg):
+        from rbx.box.dependencies import graph
+        from rbx.box.dependencies.scanner import DependencyKind
+        from rbx.box.schema import CodeItem
+
+        testing_pkg.add_file('lib.h').write_text('#include "extra.h"\n')
+        testing_pkg.add_file('extra.h').write_text('#pragma once\n')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        gen.write_text('#include "../lib.h"\nint main(){}\n')
+
+        g = graph.expand(CodeItem(path=gen, language='cpp'))
+        assert g is not None
+        assert g.kinds == {DependencyKind.COMPILATION}
+        assert g.files() == [pathlib.Path('extra.h'), pathlib.Path('lib.h')]
+
+    def test_cycle_safe(self, testing_pkg):
+        from rbx.box.dependencies import graph
+        from rbx.box.schema import CodeItem
+
+        testing_pkg.add_file('a.h').write_text('#include "b.h"\n')
+        testing_pkg.add_file('b.h').write_text('#include "a.h"\n')
+        src = testing_pkg.add_file('m.cpp')
+        src.write_text('#include "a.h"\nint main(){}\n')
+        g = graph.expand(CodeItem(path=src, language='cpp'))
+        assert set(g.files()) == {pathlib.Path('a.h'), pathlib.Path('b.h')}
+
+    def test_none_for_unhandled_language(self, testing_pkg):
+        from rbx.box.dependencies import graph
+        from rbx.box.schema import CodeItem
+
+        j = testing_pkg.add_file('Main.java')
+        j.write_text('class Main {}\n')
+        assert graph.expand(CodeItem(path=j, language='java')) is None
