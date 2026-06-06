@@ -853,3 +853,31 @@ class TestCompilationFiles:
         code_item = CodeItem(path=gen, language='cpp', compilationFiles=[str(outside)])
         with pytest.raises(typer.Exit):
             package.get_compilation_files(code_item)
+
+
+class TestExecutionFiles:
+    def test_dest_is_package_relative(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        testing_pkg.add_file('data.txt')
+        sol = testing_pkg.add_file('sols/main.py')
+        item = CodeItem(path=sol, language='py', executionFiles=['data.txt'])
+        assert package.get_execution_files(item) == [
+            (pathlib.Path('data.txt'), pathlib.Path('data.txt'))
+        ]
+
+    def test_rejects_missing(self, testing_pkg: testing_package.TestingPackage):
+        sol = testing_pkg.add_file('m.py')
+        item = CodeItem(path=sol, language='py', executionFiles=['nope.txt'])
+        with pytest.raises(typer.Exit):
+            package.get_execution_files(item)
+
+    def test_with_digest_propagates_execution_files(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        from rbx.box.schema import CodeItemWithDigest
+
+        sol = testing_pkg.add_file('m.py')
+        item = CodeItem(path=sol, language='py', executionFiles=['m.py'])
+        wd = CodeItemWithDigest.create(item, 'deadbeef')
+        assert wd.executionFiles == ['m.py']
