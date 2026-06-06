@@ -7,6 +7,7 @@ from tree_sitter import Language, Node, Parser
 from rbx import utils
 from rbx.box.dependencies import scanner
 from rbx.box.dependencies.scanner import DependencyKind, Reference
+from rbx.grading.language_kind import LanguageKind
 
 _LANGUAGE = Language(tree_sitter_cpp.language())
 
@@ -48,11 +49,10 @@ def _resolve(including_file: pathlib.Path, spelling: str) -> Optional[pathlib.Pa
 
 @scanner.register
 class CppScanner(scanner.DependencyScanner):
-    kinds = {DependencyKind.COMPILATION}
+    name = 'cpp'
+    language_kinds = {LanguageKind.CXX}
+    dependency_kinds = {DependencyKind.COMPILATION}
     can_rewrite = True
-
-    def handles(self, language: str) -> bool:
-        return language in ('cpp', 'c')
 
     def references(self, file: pathlib.Path) -> List[Reference]:
         tree = _parser().parse(pathlib.Path(file).read_bytes())

@@ -1,7 +1,19 @@
 import functools
 import pathlib
+import shlex
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import (
+    Annotated,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import typer
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -13,6 +25,7 @@ from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
+from rbx.grading.language_kind import LanguageKind, command_kinds
 from rbx.grading.limits import Limits
 
 T = TypeVar('T', bound=BaseModel)
@@ -269,6 +282,12 @@ for the environment will be used.""",
     linters: List[LinterConfig] = Field(
         default_factory=list,
         description="""Linters to run for this language during compilation.""",
+    )
+
+    scanners: List[str] = Field(
+        default_factory=list,
+        description="""Dependency scanners (by registry name) to apply for this
+language, in addition to the ones automatically selected by language kind.""",
     )
 
     timing: Optional[LanguageTimingConfig] = Field(
@@ -601,6 +620,25 @@ def is_interpreted(language: str, solution: bool = False) -> bool:
     signal ``compile_item`` uses to take the passthrough path."""
     config = get_compilation_config(language, solution)
     return bool(config.passthrough) or not config.commands
+
+
+def language_kinds(language: EnvironmentLanguage) -> Set[LanguageKind]:
+    """The set of :class:`LanguageKind` a language belongs to, derived from its
+    toolchain: the compilation commands if it compiles, else its execution command.
+    Deriving from the actual compiler/interpreter (not the language *name*) keeps
+    dispatch robust to custom language names."""
+    if language.compilation and language.compilation.commands:
+        commands = list(language.compilation.commands)
+    elif language.execution and language.execution.command:
+        commands = [language.execution.command]
+    else:
+        commands = []
+
+    kinds: Set[LanguageKind] = set()
+    for command in commands:
+        parts = shlex.split(command)
+        kinds |= command_kinds(parts[0] if parts else command)
+    return kinds
 
 
 def merge_execution_configs(

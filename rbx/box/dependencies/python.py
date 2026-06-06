@@ -5,6 +5,7 @@ from typing import List, Optional
 from rbx import utils
 from rbx.box.dependencies import scanner
 from rbx.box.dependencies.scanner import DependencyKind, Reference
+from rbx.grading.language_kind import LanguageKind
 
 
 def _rel_if_package_file(path: pathlib.Path) -> Optional[pathlib.Path]:
@@ -38,11 +39,10 @@ def _module_references(base: pathlib.Path, dots: str, dotted: str) -> List[Refer
 
 @scanner.register
 class PythonScanner(scanner.DependencyScanner):
-    kinds = {DependencyKind.EXECUTION}
+    name = 'python'
+    language_kinds = {LanguageKind.PYTHON}
+    dependency_kinds = {DependencyKind.EXECUTION}
     can_rewrite = False
-
-    def handles(self, language: str) -> bool:
-        return language == 'py'
 
     def references(self, file: pathlib.Path) -> List[Reference]:
         file = pathlib.Path(file)

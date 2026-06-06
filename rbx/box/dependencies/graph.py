@@ -26,20 +26,26 @@ def expand(
 ) -> Optional[DependencyGraph]:
     """Transitively discover ``code``'s quoted-include / relative-import dependencies.
 
-    Returns ``None`` when there is no scanner for the language, the source lives
-    outside the package root (remote/temporary files stay flat), or ``require_kind``
-    is given and the language's scanner does not contribute that kind. The last case
-    short-circuits **before** the (potentially expensive) transitive walk, so e.g. a
-    C++ source skips scanning entirely on the execution path. Cycle-safe; only
-    references that resolve to an existing file under the package root are followed.
+    The scanners are chosen by the language's :func:`~rbx.box.environment.language_kinds`
+    (plus any explicitly named in the language's ``scanners`` field), never by the raw
+    language name. Returns ``None`` when no scanner applies, the source lives outside
+    the package root (remote/temporary files stay flat), or ``require_kind`` is given
+    and no applicable scanner contributes that kind. The last case short-circuits
+    **before** the (potentially expensive) transitive walk, so e.g. a C++ source skips
+    scanning entirely on the execution path. Cycle-safe; only references that resolve
+    to an existing file under the package root are followed.
     """
     # Lazy import avoids a code <-> dependencies import cycle.
-    from rbx.box.code import find_language_name
+    from rbx.box.code import find_language
+    from rbx.box.environment import language_kinds
 
-    instance = scanner.get_scanner(find_language_name(code))
-    if instance is None:
-        return None
-    if require_kind is not None and require_kind not in instance.kinds:
+    language = find_language(code)
+    scanners = scanner.get_scanners_for_kinds(
+        language_kinds(language), language.scanners
+    )
+    if require_kind is not None:
+        scanners = [s for s in scanners if require_kind in s.dependency_kinds]
+    if not scanners:
         return None
     package_root = utils.abspath(pathlib.Path())
     abs_path = utils.abspath(code.path)
@@ -53,9 +59,14 @@ def expand(
         current = queue.popleft()
         if current in nodes:
             continue
-        refs = instance.references(current)
+        refs: List[Reference] = []
+        for instance in scanners:
+            refs.extend(instance.references(current))
         nodes[current] = refs
         for ref in refs:
             if ref.target is not None and ref.target not in nodes:
                 queue.append(ref.target)
-    return DependencyGraph(root=root, nodes=nodes, kinds=set(instance.kinds))
+    kinds: Set[DependencyKind] = set()
+    for instance in scanners:
+        kinds |= instance.dependency_kinds
+    return DependencyGraph(root=root, nodes=nodes, kinds=kinds)

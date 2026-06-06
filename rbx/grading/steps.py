@@ -29,6 +29,7 @@ from rbx.grading.judge.sandbox import (
     SandboxParams,
 )
 from rbx.grading.judge.storage import copyfileobj
+from rbx.grading.language_kind import LanguageKind, command_kinds
 from rbx.grading.limits import Limits
 
 MAX_STDOUT_LEN = 1024 * 1024 * 128  # 128 MB
@@ -456,16 +457,19 @@ def get_exe_from_command(command: str) -> str:
     return cmds[0]
 
 
+# These ``is_*_command`` predicates are thin aliases over ``command_kinds`` and are
+# kept for readability at call sites. New code should prefer ``command_kinds``
+# directly; tracked for deprecation in https://github.com/rsalesc/rbx/issues/529.
 def _is_c_command(exe_command: str) -> bool:
-    return 'gcc' in exe_command or 'clang' in exe_command
+    return LanguageKind.C in command_kinds(exe_command)
 
 
 def is_cpp_command(exe_command: str) -> bool:
-    return 'g++' in exe_command or 'clang++' in exe_command
+    return LanguageKind.CPP in command_kinds(exe_command)
 
 
 def is_cxx_command(exe_command: str) -> bool:
-    return is_cpp_command(exe_command) or _is_c_command(exe_command)
+    return LanguageKind.CXX in command_kinds(exe_command)
 
 
 def is_cxx_sanitizer_command(command: str) -> bool:
@@ -478,15 +482,15 @@ def is_cxx_sanitizer_command(command: str) -> bool:
 
 
 def is_java_command(exe_command: str) -> bool:
-    return 'javac' in exe_command or 'java' in exe_command
+    return LanguageKind.JAVA in command_kinds(exe_command)
 
 
 def is_kotlin_command(exe_command: str) -> bool:
-    return 'kotlinc' in exe_command or 'kotlin' in exe_command
+    return LanguageKind.KOTLIN in command_kinds(exe_command)
 
 
 def is_java_like_command(exe_command: str) -> bool:
-    return is_java_command(exe_command) or is_kotlin_command(exe_command)
+    return LanguageKind.JVM in command_kinds(exe_command)
 
 
 @functools.cache

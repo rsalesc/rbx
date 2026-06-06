@@ -5,13 +5,13 @@ import pytest
 
 from rbx.box.dependencies import scanner
 from rbx.box.dependencies.scanner import DependencyKind, DependencyScanner, Reference
+from rbx.grading.language_kind import LanguageKind
 
 
 class _Dummy(DependencyScanner):
-    kinds = {DependencyKind.COMPILATION}
-
-    def handles(self, language: str) -> bool:
-        return language == 'dummy'
+    name = 'dummy'
+    language_kinds = {LanguageKind.CXX}
+    dependency_kinds = {DependencyKind.COMPILATION}
 
     def references(self, file: pathlib.Path) -> List[Reference]:
         return []
@@ -21,6 +21,19 @@ def test_register_and_get_scanner():
     scanner.register(_Dummy)
     assert isinstance(scanner.get_scanner('dummy'), _Dummy)
     assert scanner.get_scanner('nope') is None
+
+
+def test_get_scanners_by_kind_and_explicit_name():
+    scanner.register(_Dummy)
+    # Selected automatically by language kind...
+    cxx = scanner.get_scanners_for_kinds({LanguageKind.CXX})
+    assert any(s.name == 'dummy' for s in cxx)
+    # ...not by an unrelated kind...
+    py = scanner.get_scanners_for_kinds({LanguageKind.PYTHON})
+    assert not any(s.name == 'dummy' for s in py)
+    # ...unless named explicitly.
+    py_named = scanner.get_scanners_for_kinds({LanguageKind.PYTHON}, ['dummy'])
+    assert any(s.name == 'dummy' for s in py_named)
 
 
 def test_rewrite_unsupported_by_default():
@@ -154,3 +167,34 @@ class TestExpand:
         j = testing_pkg.add_file('Main.java')
         j.write_text('class Main {}\n')
         assert graph.expand(CodeItem(path=j, language='java')) is None
+
+    def test_c_source_dispatches_to_cpp_scanner_by_kind(self, testing_pkg):
+        # A 'c' language has kinds {CXX, C}; the cpp scanner declares {CXX}, so it is
+        # selected by kind intersection -- no dependence on the language name.
+        from rbx.box.dependencies import graph
+        from rbx.box.schema import CodeItem
+
+        testing_pkg.add_file('lib.h').write_text('#pragma once\n')
+        src = testing_pkg.add_file('m.c')
+        src.write_text('#include "lib.h"\nint main(){}\n')
+        g = graph.expand(CodeItem(path=src, language='c'))
+        assert g is not None
+        assert pathlib.Path('lib.h') in g.files()
+
+    def test_language_kinds_derive_from_toolchain(self, testing_pkg):
+        from rbx.box import environment
+
+        assert environment.language_kinds(environment.get_language('cpp')) == {
+            LanguageKind.CPP,
+            LanguageKind.CXX,
+        }
+        assert environment.language_kinds(environment.get_language('c')) == {
+            LanguageKind.C,
+            LanguageKind.CXX,
+        }
+        assert environment.language_kinds(environment.get_language('py')) == {
+            LanguageKind.PYTHON
+        }
+        assert LanguageKind.JVM in environment.language_kinds(
+            environment.get_language('java')
+        )
