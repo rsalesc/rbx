@@ -2,7 +2,7 @@ import dataclasses
 import pathlib
 import shlex
 from abc import abstractmethod
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 import typer
 
@@ -36,6 +36,10 @@ class GeneratorScriptHandler:
     def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
         pass
 
+    @abstractmethod
+    def remove(self, start_lines: Set[int]) -> None:
+        pass
+
     def normalize_call_name(self, call_name: str) -> str:
         if self.script_entry.root == pathlib.Path():
             return call_name
@@ -65,6 +69,47 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
         for call in calls:
             name = self.normalize_call_name(call.name)
             self.script += f'\n{name} {call.args or ""}'
+
+    def remove(self, start_lines: Set[int]) -> None:
+        spans = {
+            s.start_line: s
+            for s in generator_script_parser.statement_spans(self.script)
+        }
+        lines = self.script.splitlines()  # 0-indexed; 1-indexed line N is lines[N-1]
+
+        drop = set()
+        for start in start_lines:
+            span = spans.get(start)
+            if span is None:
+                continue  # no statement starts there; ignore defensively
+            for ln in range(span.start_line, span.end_line + 1):
+                drop.add(ln)
+            # Walk upward over contiguous comment lines (stop at blank or code).
+            prev = span.start_line - 1
+            # Textual heuristic: treat lines starting with // or # as comments.
+            while prev >= 1:
+                stripped = lines[prev - 1].strip()
+                if stripped.startswith('//') or stripped.startswith('#'):
+                    drop.add(prev)
+                    prev -= 1
+                else:
+                    break
+
+        kept = [line for i, line in enumerate(lines, start=1) if i not in drop]
+        self.script = _normalize_blank_lines('\n'.join(kept))
+
+
+def _normalize_blank_lines(text: str) -> str:
+    out = []
+    for line in text.splitlines():
+        if not line.strip() and out and not out[-1].strip():
+            continue  # collapse consecutive blanks
+        out.append(line)
+    while out and not out[0].strip():
+        out.pop(0)
+    while out and not out[-1].strip():
+        out.pop()
+    return '\n'.join(out)
 
 
 def _parse_box_testplan_line(line: str) -> Tuple[int, str, str]:
@@ -140,6 +185,11 @@ class BoxGeneratorScriptHandler(GeneratorScriptHandler):
         for call in calls:
             name = pathlib.Path(self.normalize_call_name(call.name)).with_suffix('.exe')
             self.script += f'\n{group} ; {name} {call.args or ""}'
+
+    def remove(self, start_lines: Set[int]) -> None:
+        raise NotImplementedError(
+            'Removing tests is only supported for rbx-format scripts.'
+        )
 
 
 REGISTERED_HANDLERS = {

@@ -1009,6 +1009,8 @@ async def stress(
     )
     if not res:
         return
+    from rbx.box import promotion
+
     testgroup = None
     while testgroup is None or testgroup:
         groups_by_name = {
@@ -1017,13 +1019,53 @@ async def stress(
             if group.generatorScript is not None
             and group.generatorScript.path.suffix == '.txt'
         }
+        manual_groups = promotion.get_manual_groups_by_name()
 
         import questionary
 
         testgroup = await questionary.select(
-            'Choose the testgroup to add the tests to.\nOnly test groups that have a .txt generatorScript are shown below: ',
-            choices=list(groups_by_name) + ['(create new script)', '(skip)'],
+            'Choose the testgroup to add the tests to.\n'
+            'Script groups (.txt generatorScript) and manual (glob-backed) groups are shown below: ',
+            choices=list(groups_by_name)
+            + list(manual_groups)
+            + [
+                '(create new script)',
+                '(create new manual group)',
+                '(skip)',
+            ],
         ).ask_async()
+
+        if testgroup == '(create new manual group)':
+            manual_target = await promotion.create_manual_group_interactively()
+            if manual_target is None:
+                # Aborted (Ctrl-C or empty input): write nothing, register nothing.
+                break
+            manual_groups[manual_target.name] = manual_target
+            testgroup = manual_target.name
+
+        if testgroup in manual_groups:
+            manual_target = manual_groups[testgroup]
+            findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
+            finding_paths = [
+                findings_dir / f'{i}.in' for i in range(len(report.findings))
+            ]
+            missing = next(
+                (i for i, p in enumerate(finding_paths) if not p.exists()), None
+            )
+            if missing is not None:
+                console.console.print(
+                    f'[error]Could not find the input file for finding {missing}; '
+                    'aborting.[/error]'
+                )
+                break
+            for p in finding_paths:
+                promotion.promote_input_to_group(p, manual_target)
+            console.console.print(
+                f'[success]Added [item]{len(finding_paths)}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}.[/success]'
+            )
+            # Break so the just-selected/created manual group is not re-processed
+            # by the script-route code below.
+            break
 
         if testgroup == '(create new script)':
             new_script_name = await questionary.text(

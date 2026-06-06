@@ -303,6 +303,68 @@ gen5 arg5
         assert parsed[0].group is None
 
 
+def _rbx_handler(script):
+    return get_generator_script_handler(
+        script,
+        GeneratorScriptHandlerParams(
+            GeneratorScript(path=pathlib.Path('s.txt'), format='rbx')
+        ),
+    )
+
+
+class TestRbxGeneratorScriptHandlerRemove:
+    """Test suite for RbxGeneratorScriptHandler.remove."""
+
+    def test_remove_single_generator_call(self):
+        h = _rbx_handler('gens/a 1\ngens/b 2\ngens/c 3\n')
+        h.remove({2})
+        assert h.script.splitlines() == ['gens/a 1', 'gens/c 3']
+
+    def test_remove_input_block(self):
+        h = _rbx_handler('gens/a 1\n@input {\n1\n2\n}\ngens/c 3\n')
+        h.remove({2})  # start line of the @input block
+        assert 'input' not in h.script
+        assert h.script.splitlines() == ['gens/a 1', 'gens/c 3']
+
+    def test_remove_strips_contiguous_comment_above(self):
+        h = _rbx_handler('// makes a big case\ngens/a 1\ngens/b 2\n')
+        h.remove({2})
+        assert h.script.splitlines() == ['gens/b 2']  # comment gone too
+
+    def test_remove_strips_contiguous_hash_comment_above(self):
+        h = _rbx_handler('# makes a big case\ngens/a 1\ngens/b 2\n')
+        h.remove({2})
+        assert h.script.splitlines() == ['gens/b 2']  # comment gone too
+
+    def test_remove_strips_comment_above_input_block(self):
+        h = _rbx_handler('// big block\n@input {\n1\n2\n}\ngens/c 3\n')
+        h.remove({2})  # start line of the @input block
+        assert h.script.splitlines() == ['gens/c 3']  # comment + whole block gone
+
+    def test_remove_keeps_comment_separated_by_blank(self):
+        h = _rbx_handler('// header\n\ngens/a 1\n')
+        h.remove({3})
+        assert '// header' in h.script  # blank gap breaks association
+
+    def test_remove_multiple_bottom_up(self):
+        h = _rbx_handler('gens/a 1\ngens/b 2\ngens/c 3\n')
+        h.remove({1, 3})
+        assert h.script.splitlines() == ['gens/b 2']
+
+    def test_remove_non_statement_start_is_ignored(self):
+        h = _rbx_handler('gens/a 1\ngens/b 2\n')
+        h.remove({99})  # no statement starts there
+        assert h.script.splitlines() == ['gens/a 1', 'gens/b 2']
+
+    def test_box_handler_remove_raises(self):
+        script_entry = GeneratorScript(path=pathlib.Path('s.txt'), format='box')
+        handler = BoxGeneratorScriptHandler(
+            '1 ; gen.exe', GeneratorScriptHandlerParams(script_entry)
+        )
+        with pytest.raises(NotImplementedError):
+            handler.remove({1})
+
+
 class TestBoxGeneratorScriptHandler:
     """Test suite for BoxGeneratorScriptHandler."""
 
