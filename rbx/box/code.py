@@ -652,12 +652,15 @@ async def compile_item(
         for input in artifacts.inputs:
             await _ignore_warning_in_cxx_input(input)
 
-        # Add system bits/stdc++.h to the compilation.
+        # Add system bits/stdc++.h to the compilation. It lives in the reserved
+        # __internal__/ dir (alongside the builtin headers) and is exposed via
+        # -I__internal__ so <bits/stdc++.h> resolves there without putting the
+        # mirrored package root on the include path.
         bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
         if bits_artifact is not None:
             artifacts.inputs.append(bits_artifact)
             commands = [
-                command + ' -I.'
+                command + f' -I{steps.INTERNAL_DIR}'
                 for command in commands
                 if is_cxx_command(get_exe_from_command(command))
             ]
@@ -670,6 +673,7 @@ async def compile_item(
                     if (
                         input.src is not None
                         and input.src.suffix == '.h'
+                        and input.dest.is_relative_to(steps.INTERNAL_DIR)
                         and input.dest.name
                         in ['stdc++.h', 'jngen.h', 'tgen.h', 'testlib.h']
                     ):

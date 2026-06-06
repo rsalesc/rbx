@@ -26,7 +26,7 @@ class TestSandboxMirroringIntegration:
     async def test_subdir_source_finds_testlib(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        """A subdir source resolves #include "testlib.h" from its own dir."""
+        """A subdir source resolves #include "testlib.h" from __internal__/ (via -I)."""
         gen = testing_pkg.add_file('gens/gen.cpp')
         gen.write_text(
             '#include "testlib.h"\n'
@@ -39,6 +39,22 @@ class TestSandboxMirroringIntegration:
         digest = await code.compile_item(CodeItem(path=gen, language='cpp'))
         assert digest
 
+    async def test_subdir_source_with_bits_stdcpp_compiles(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A subdir source resolves <bits/stdc++.h> from __internal__/ (via -I).
+
+        On hosts whose compiler lacks the header, rbx injects it at
+        ``__internal__/bits/stdc++.h`` and exposes it with ``-I__internal__``; on
+        hosts that ship it, the system copy is used. Either way this must compile.
+        """
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        gen.write_text(
+            '#include <bits/stdc++.h>\nint main() { std::printf("ok\\n"); return 0; }\n'
+        )
+        digest = await code.compile_item(CodeItem(path=gen, language='cpp'))
+        assert digest
+
     async def test_flat_source_still_compiles(
         self, testing_pkg: testing_package.TestingPackage
     ):
@@ -46,6 +62,31 @@ class TestSandboxMirroringIntegration:
         sol = testing_pkg.add_file('sol.cpp')
         sol.write_text('#include <cstdio>\nint main(){ printf("ok\\n"); }\n')
         digest = await code.compile_item(CodeItem(path=sol, language='cpp'))
+        assert digest
+
+    async def test_user_header_beside_source_shadows_builtin(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A declared user header beside the source wins over the __internal__/ builtin.
+
+        The local ``testlib.h`` (declared as a compilation file so it lands beside the
+        source) defines a sentinel the real testlib.h lacks, so the source only
+        compiles if the source-relative copy is used instead of the builtin in
+        ``__internal__/`` (quoted includes resolve source-dir first).
+        """
+        testing_pkg.add_file('gens/testlib.h').write_text(
+            '#pragma once\ninline int sentinel() { return 7; }\n'
+        )
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        gen.write_text(
+            '#include "testlib.h"\n'
+            '#include <cstdio>\n'
+            'int main() { printf("%d\\n", sentinel()); return 0; }\n'
+        )
+        code_item = CodeItem(
+            path=gen, language='cpp', compilationFiles=['gens/testlib.h']
+        )
+        digest = await code.compile_item(code_item)
         assert digest
 
     async def test_subdir_python_generator_runs_from_mirrored_location(

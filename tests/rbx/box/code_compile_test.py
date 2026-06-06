@@ -76,7 +76,7 @@ class TestCompileItem:
             '-Wno-unused-result',
             '-Wno-sign-compare',
             '-Wno-char-subscripts',
-            '-I.',
+            '-I__internal__',
         ]
 
         assert commands[0] == ' '.join([cmd for cmd in expected_cmd if cmd])
@@ -313,10 +313,10 @@ class TestCompileItem:
         )
         assert tgen_input is not None
 
-    async def test_builtin_headers_placed_in_source_dir(
+    async def test_builtin_headers_placed_in_internal_dir(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
-        """Builtin headers are placed in the source's directory for subdir sources."""
+        """Builtin headers live in the reserved __internal__/ dir for subdir sources."""
         gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=gen, language='cpp'))
 
@@ -325,12 +325,12 @@ class TestCompileItem:
             (i for i in artifacts.inputs if i.dest.name == 'testlib.h'), None
         )
         assert testlib is not None
-        assert testlib.dest == pathlib.Path('gens/testlib.h')
+        assert testlib.dest == pathlib.Path('__internal__/testlib.h')
 
-    async def test_builtin_headers_flat_unchanged(
+    async def test_builtin_headers_internal_dir_independent_of_source_location(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
-        """Flat packages keep builtin headers at the package root."""
+        """Builtins land in __internal__/ regardless of where the source sits."""
         sol = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=sol, language='cpp'))
 
@@ -339,7 +339,7 @@ class TestCompileItem:
             (i for i in artifacts.inputs if i.dest.name == 'testlib.h'), None
         )
         assert testlib is not None
-        assert testlib.dest == pathlib.Path('testlib.h')
+        assert testlib.dest == pathlib.Path('__internal__/testlib.h')
 
     async def test_compile_sandbox_params_basic(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
@@ -386,7 +386,7 @@ class TestCompileItem:
         with mock.patch('rbx.box.code.maybe_get_bits_stdcpp_for_commands') as mock_bits:
             mock_bits.return_value = GradingFileInput(
                 src=pathlib.Path('bits/stdc++.h'),
-                dest=pathlib.Path('bits/stdc++.h'),
+                dest=pathlib.Path('__internal__/bits/stdc++.h'),
             )
 
             await code.compile_item(code_item)
@@ -398,8 +398,8 @@ class TestCompileItem:
             # Should call the bits function
             mock_bits.assert_called_once()
 
-            # Should include -I. flag for C++ commands
-            assert any('-I.' in cmd for cmd in commands)
+            # Should include -I__internal__ flag for C++ commands
+            assert any('-I__internal__' in cmd for cmd in commands)
 
             # Should include bits/stdc++.h in artifacts
             bits_input = next(
@@ -451,13 +451,13 @@ class TestCompileItem:
                         '#pragma GCC diagnostic ignored "-Wshadow"' in processed_content
                     )
 
-    async def test_precompile_targets_source_dir_header(
+    async def test_precompile_targets_internal_dir_header(
         self,
         testing_pkg: testing_package.TestingPackage,
         mock_steps_with_caching,
         mock_precompile_header,
     ):
-        """Precompiled headers for a subdir source target the source dir."""
+        """Precompiled builtin headers target the __internal__/ dir."""
         gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
         await code.compile_item(CodeItem(path=gen, language='cpp'))
 
@@ -467,7 +467,31 @@ class TestCompileItem:
         precompiled_dests = [
             call.args[4].dest for call in mock_precompile_header.call_args_list
         ]
-        assert pathlib.Path('gens/testlib.h') in precompiled_dests
+        assert pathlib.Path('__internal__/testlib.h') in precompiled_dests
+
+    async def test_precompile_ignores_user_header_outside_internal_dir(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        mock_precompile_header,
+    ):
+        """A user compilation file named like a builtin is not precompiled.
+
+        Only headers under __internal__/ are precompiled; a same-named file the
+        user ships elsewhere (here a root ``testlib.h`` declared as a compilation
+        file for a subdir source) must be left alone.
+        """
+        testing_pkg.add_file('testlib.h').write_text('#pragma once\n')
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(
+            CodeItem(path=gen, language='cpp', compilationFiles=['testlib.h'])
+        )
+
+        precompiled_dests = [
+            call.args[4].dest for call in mock_precompile_header.call_args_list
+        ]
+        assert pathlib.Path('__internal__/testlib.h') in precompiled_dests
+        assert pathlib.Path('testlib.h') not in precompiled_dests
 
     async def test_compile_precompilation_disabled(
         self,

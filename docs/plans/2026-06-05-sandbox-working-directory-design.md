@@ -35,10 +35,13 @@ In (Phase 1 — this design):
 - Repurpose `compilationFiles` so extra files land at their **package-relative**
   path, and **lift** the "must be under the code's folder" restriction (relax to
   "under the package root"). This enables `../lib.h`-style includes.
-- Place auto-injected builtin headers (testlib / jngen / tgen / rbx) in the
-  **source's own directory** (instead of always at the sandbox root) so quoted
-  `#include "testlib.h"` keeps resolving for mirrored sources, with **no `-I.`**.
-- Keep precompiled headers (`.gch`) working for nested sources.
+- Place auto-injected builtin headers (testlib / jngen / tgen / rbx) **and**
+  `bits/stdc++.h` in a single reserved sandbox dir `__internal__/`, exposed via
+  one `-I__internal__` flag (replacing the old `-I.`). Quoted `#include "testlib.h"`
+  resolves there from **any** source location (flat or nested) via the `-I`
+  fallback, and the package root never lands on the include path.
+- Keep precompiled headers (`.gch`) working for nested sources (they follow their
+  header into `__internal__/`).
 
 Out (Phase 2 — separate design/plan, lower priority per the issue):
 
@@ -136,27 +139,53 @@ worked in the flat layout still resolves via the source's mirrored directory —
 source code is unchanged. Lifting the restriction is purely **additive**: it newly
 permits `../lib.h` (previously a hard error).
 
-### 3. Builtin headers in the source's directory
+### 3. Builtin headers (and `bits/stdc++.h`) in a reserved `__internal__/` dir
 
-`code.py:compile_item` (the single chokepoint, `code.py:628-631`) — inject
-testlib / jngen / tgen / rbx at `code.path.parent / <name>` instead of always at
-the root. For a flat package `code.path.parent == .`, so the dest equals the root
-— **byte-identical to today**. For a subdir source it lands beside the source so
-quoted `#include "testlib.h"` resolves with **no `-I.`** (consistent with the
-issue's preference to avoid language-specific flag hacks).
+> **Revised during implementation.** The original plan placed builtins in the
+> *source's own directory* and left `bits/stdc++.h` at the root with `-I.`. That
+> had two problems: (a) it didn't actually help angle-bracket includes of a subdir
+> source (a `#include <lib.h>` companion that worked flat broke when mirrored,
+> because `-I.` searches only the root); and (b) `-I.` puts the whole mirrored
+> package tree on the include path. The cleaner unification below replaces it.
 
-`<bits/stdc++.h>` is **left untouched**: it stays at the root with its own `-I.`,
-and angle-bracket resolution via `-I.` works regardless of where the source sits.
+A single reserved sandbox dir `steps.INTERNAL_DIR = __internal__/` holds **all**
+tool-injected headers:
+
+- `download.maybe_add_{rbx,testlib,jngen,tgen}` set the artifact dest to
+  `INTERNAL_DIR / <name>` (e.g. `__internal__/testlib.h`).
+- `steps.{_maybe_get_bits_stdcpp_for_clang,_get_system_bits_stdcpp}` set the bits
+  dest to `INTERNAL_DIR / bits / stdc++.h`.
+- `code.py:compile_item` appends `-I__internal__` (was `-I.`) to each C++ command
+  when bits is injected.
+
+Because a **quoted** `#include "x"` searches (1) the including file's directory,
+then (2) the `-I` dirs, a source anywhere resolves `#include "testlib.h"` to
+`__internal__/testlib.h` via the `-I` fallback — no per-source placement needed.
+`#include <bits/stdc++.h>` resolves the same way. The package root is **not** on
+the include path, so the source tree can't accidentally shadow a system header.
+
+This also dissolves the old dedup: builtins live in `__internal__/` and user
+`compilationFiles` land at their package-relative paths, so their dests can never
+collide — `download.py` no longer needs the `get_compilation_files` dedup check.
+A user who ships their own `testlib.h` *beside the source* (declared as a
+compilation file) still wins, since the source-relative copy is found before the
+`-I__internal__` fallback.
+
+**Consequence (accepted):** angle-bracket includes of *project* headers
+(`#include <lib.h>` for your own header) no longer resolve — only quoted includes
+do. testlib/jngen/tgen are all quoted, and `<...>` should mean system/stdlib, so
+this is the intended, consistent behavior (it also drops the incidental flat-layout
+support that relied on `-I.`).
 
 ### 4. Precompiled headers for nested sources — for free
 
 `_precompile_header` sets the `.gch` dest to
-`input_artifact.dest.with_suffix('.h.gch')` (`code.py:553`). With the builtin
-header now at `gens/testlib.h`, the precompiled output lands at
-`gens/testlib.h.gch` — right beside it, where the compiler picks it up. Because
-there is now a **single** copy of each builtin (source dir only), there is no
-double-precompile and no extra logic required. The precompile filter at
-`code.py:662-685` matches on `dest.name`, which is unchanged.
+`input_artifact.dest.with_suffix('.h.gch')`. With the builtin header now at
+`__internal__/testlib.h`, the precompiled output lands at
+`__internal__/testlib.h.gch` — right beside it, where the compiler picks it up.
+The precompile filter additionally requires `dest.is_relative_to(INTERNAL_DIR)`,
+so a user `compilationFile` that happens to be named `testlib.h` is **not**
+needlessly precompiled.
 
 ### 5. Audit for flat-layout assumptions
 
@@ -169,18 +198,21 @@ back outputs by name, packaging/import paths that synthesize `compilationFiles`
 
 ## Migration impact
 
-- **Flat packages** (source at the root): `str(code.path) == code.path.name`, and
-  the builtin dest collapses to the root → **byte-identical** behavior.
+- **Flat packages** (source at the root): the source dest is still the basename;
+  builtins move from the root to `__internal__/` but resolve identically via
+  `-I__internal__`, so quoted includes are unaffected.
 - **Subdir packages with companion headers under the code dir**: keep working
-  (same relative offset), and `#include "testlib.h"` keeps resolving thanks to the
-  source-dir builtin placement.
+  (same relative offset for quoted includes), and `#include "testlib.h"` resolves
+  from `__internal__/` via the `-I` fallback.
 - **New capability**: `../lib.h`-style includes from a subdir source, declared via
   the now-unrestricted `compilationFiles` (and, in Phase 2, auto-expanded).
-- **Known starting-point limitation**: a header reached cross-directory (via `../`)
-  that *itself* `#include "testlib.h"` will not find the builtin (it only sits in
-  the primary source's dir). This case is impossible today, so it is not a
-  regression. Builtin auto-placement is expected to be deprecated later anyway.
-- **Cache**: dest paths change → a one-time global recompile. Acceptable.
+- **Behavior change (accepted)**: angle-bracket includes of *project* headers
+  (`#include <lib.h>`) no longer resolve — the package root is no longer on the
+  include path. Quoted includes are the supported form for project headers and work
+  everywhere. (The old `-I.` made `<lib.h>` work for *flat* packages incidentally;
+  for *subdir* sources it was already broken by mirroring.)
+- **Cache**: dest paths change → a one-time recompile for affected packages.
+  Acceptable.
 
 ## Testing
 
