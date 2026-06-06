@@ -419,6 +419,24 @@ async def _prepare_run(
     if outputs:
         artifacts.outputs.extend(outputs)
 
+    # Mirror manual + auto-discovered execution files at their package-relative path.
+    # C++ contributes none here (its deps are compile-time); Python siblings land via
+    # auto-expansion. Manual executionFiles remain the escape hatch for all languages.
+    from rbx.box.dependencies import graph as deps_graph
+    from rbx.box.dependencies.scanner import DependencyKind
+
+    exec_dests = {input.dest for input in artifacts.inputs}
+    for src, dest in package.get_execution_files(code):
+        if dest not in exec_dests:
+            artifacts.inputs.append(GradingFileInput(src=src, dest=dest))
+            exec_dests.add(dest)
+    dep_graph = deps_graph.expand(code)
+    if dep_graph is not None and DependencyKind.EXECUTION in dep_graph.kinds:
+        for dep in dep_graph.files():
+            if dep not in exec_dests:
+                artifacts.inputs.append(GradingFileInput(src=dep, dest=dep))
+                exec_dests.add(dep)
+
     return PreparedRun(
         command=command,
         sandbox_params=sandbox_params,
