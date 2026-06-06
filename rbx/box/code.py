@@ -432,6 +432,16 @@ async def _prepare_run(
             exec_dests.add(dest)
     dep_graph = deps_graph.expand(code)
     if dep_graph is not None and DependencyKind.EXECUTION in dep_graph.kinds:
+        # The entry script is symlinked from the content-addressed cache, so the
+        # interpreter resolves its module search root to the cache dir (via the
+        # symlink's realpath) instead of the mirrored source dir. Put the mirrored
+        # source dir back on PYTHONPATH so sibling imports resolve, matching how
+        # `python3 <dir>/script.py` normally behaves.
+        source_dir = dep_graph.root.parent.as_posix()
+        existing_pythonpath = sandbox_params.set_env.get('PYTHONPATH')
+        sandbox_params.set_env['PYTHONPATH'] = (
+            f'{source_dir}:{existing_pythonpath}' if existing_pythonpath else source_dir
+        )
         for dep in dep_graph.files():
             if dep not in exec_dests:
                 artifacts.inputs.append(GradingFileInput(src=dep, dest=dep))
