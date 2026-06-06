@@ -278,6 +278,20 @@ class TestCompileItem:
         )
         assert testlib_input is not None
 
+    async def test_auto_expands_quoted_include(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """A parent-dir quoted include is auto-discovered without compilationFiles."""
+        testing_pkg.add_file('lib.h').write_text('#pragma once\n')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        gen.write_text('#include "../lib.h"\nint main(){}\n')
+
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        artifacts = mock_steps_with_caching.call_args.kwargs['artifacts']
+        dests = {inp.dest for inp in artifacts.inputs}
+        assert pathlib.Path('lib.h') in dests
+
     async def test_compile_artifacts_with_jngen(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):

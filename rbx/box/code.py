@@ -628,6 +628,19 @@ async def compile_item(
             for src, dest in package.get_compilation_files(code)
         )
 
+        # Auto-expand transitive quoted #include "..." dependencies (default-on,
+        # additive). Manual compilationFiles remain the escape hatch.
+        from rbx.box.dependencies import graph as deps_graph
+        from rbx.box.dependencies.scanner import DependencyKind
+
+        dep_graph = deps_graph.expand(code)
+        if dep_graph is not None and DependencyKind.COMPILATION in dep_graph.kinds:
+            existing = {input.dest for input in artifacts.inputs}
+            for dep in dep_graph.files():
+                if dep not in existing:
+                    artifacts.inputs.append(GradingFileInput(src=dep, dest=dep))
+                    existing.add(dep)
+
         download.maybe_add_testlib(code, artifacts)
         download.maybe_add_jngen(code, artifacts)
         download.maybe_add_tgen(code, artifacts)
