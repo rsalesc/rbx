@@ -75,3 +75,31 @@ class TestCppRewrite:
         out = cpp.CppScanner().rewrite(text, {'lib.h': 'flat.h'}.get)
         assert '/* #include "lib.h" */' in out  # comment untouched
         assert '#include "flat.h"' in out  # real directive rewritten
+
+
+class TestPythonReferences:
+    def test_relative_sibling_and_stdlib(self, testing_pkg):
+        from rbx.box.dependencies import python
+
+        testing_pkg.add_file('sols/helper.py').write_text('X = 1\n')
+        main = testing_pkg.add_file('sols/main.py')
+        main.write_text(
+            'import os\n'
+            'from . import helper\n'
+            'import helper as h2\n'
+            'print(helper.X, h2.X, os.getpid())\n'
+        )
+        refs = python.PythonScanner().references(pathlib.Path('sols/main.py'))
+        targets = {r.target for r in refs if r.target is not None}
+        assert pathlib.Path('sols/helper.py') in targets
+        # stdlib os never resolves to a package file.
+        assert all(r.target != pathlib.Path('os.py') for r in refs)
+
+    def test_parent_package_import(self, testing_pkg):
+        from rbx.box.dependencies import python
+
+        testing_pkg.add_file('common/util.py').write_text('Y = 2\n')
+        src = testing_pkg.add_file('sols/sub/main.py')
+        src.write_text('from ...common import util\n')
+        refs = python.PythonScanner().references(pathlib.Path('sols/sub/main.py'))
+        assert any(r.target == pathlib.Path('common/util.py') for r in refs)
