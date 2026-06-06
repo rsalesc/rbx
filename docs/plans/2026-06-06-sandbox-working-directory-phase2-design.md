@@ -132,11 +132,18 @@ class DependencyGraph:
         Deterministic order."""
 
 
-def expand(code: CodeItem) -> Optional[DependencyGraph]:
+def expand(
+    code: CodeItem, require_kind: Optional[DependencyKind] = None
+) -> Optional[DependencyGraph]:
     """BFS from code.path using the language scanner. Cycle-safe (visited set);
     keeps only references that resolve to an existing file under the package root.
     Returns None when there is no scanner for the language, or the source lives
-    outside the package root (remote/temporary files stay flat, as today)."""
+    outside the package root (remote/temporary files stay flat, as today).
+
+    `require_kind` short-circuits *before* the walk when the language's scanner
+    cannot contribute that kind: a C++ source skips scanning entirely on the
+    execution path (`_prepare_run` runs once per solution x testcase, the hot path),
+    and a Python source skips it on the compile path."""
 ```
 
 `nodes` includes the **root** so that #525 can rewrite the root source's own
@@ -159,7 +166,12 @@ Each scanner owns its resolution (single source of truth; never duplicated in
   `node.level` for relative imports (`from . import x`, `from ..pkg import y`) and
   treat a bare `import sibling` / `from sibling import …` as a sibling only when
   `<dir>/sibling.py` or `<dir>/sibling/__init__.py` exists; otherwise (stdlib /
-  third-party) `target = None`. `kinds = {EXECUTION}`. `can_rewrite = False`.
+  third-party) `target = None`. For a deep dotted import (`import a.b.c`) it also
+  emits the existing intermediate package markers (`a/__init__.py`,
+  `a/b/__init__.py`) so the mirror preserves regular-package semantics.
+  `kinds = {EXECUTION}`. `can_rewrite = False`. (A relative `from . import x` is
+  *discovered* and mirrored but cannot execute in a directly-run `__main__` script;
+  the runnable idiom for a mirrored script is the absolute `import x`.)
 
 tree-sitter-cpp is already a dependency (`pyproject.toml`) and is used by
 `linters/cpp/testlib.py`; the C++ scanner reuses that pattern. tree-sitter is
@@ -221,6 +233,28 @@ not added here; they are added at run time.)
 the communication path). Add **manual `executionFiles`** for all languages, **plus**
 (if `DependencyKind.EXECUTION in graph.kinds`) `graph.files()` — union, dedup by dest.
 This is the new execution-time mirroring.
+
+### Execution: `PYTHONPATH` (discovered during implementation)
+
+Mirroring the sibling module into the sandbox is **necessary but not sufficient** for
+Python. The entry script is materialized as a **symlink into the content-addressed
+cache** (the sandbox's perf optimization). Python ≥3.11 sets `sys.path[0]` to the
+*realpath* of the script's directory, which resolves through the symlink to the cache
+store — **not** the mirrored sandbox directory where the sibling module lives. So
+`import sibling` fails with `ModuleNotFoundError` even though `sibling.py` sits right
+next to the script in the sandbox. (This is a latent issue since Phase 1; #524 is the
+first feature to actually exercise runtime sibling imports — Phase 1's nested-Python
+guard had no imports, so it passed under the old flat layout too.)
+
+**Fix:** for execution-mirrored languages, set `sandbox_params.set_env['PYTHONPATH']`
+to the mirrored source's directory (package-relative; `.` for a flat package),
+preserving any existing value. This restores the directory that `python3 dir/script.py`
+would normally put on the path. It is gated on `DependencyKind.EXECUTION in
+graph.kinds` (currently Python only) and reuses the graph already computed in
+`_prepare_run`. `set_env` is part of the run cache key, so this is cache-correct (a
+one-time invalidation for Python runs). We deliberately add **only** the source dir
+(not the package root) to match normal Python semantics and avoid shadowing stdlib
+with root-level modules.
 
 ### Schema (`schema.CodeItem`)
 
