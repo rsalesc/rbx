@@ -513,6 +513,22 @@ def _get_cxx_version_output(command: str, extra_flags: str = '') -> Optional[str
     return output.stderr.decode()
 
 
+# Reserved sandbox directory for tool-injected headers (bits/stdc++.h and the
+# builtin testlib/jngen/tgen/rbx headers). Exposed to the compiler via
+# ``-I<INTERNAL_DIR>`` so the corresponding includes resolve from any source
+# location without putting the (mirrored) package root on the include path.
+INTERNAL_DIR = pathlib.PosixPath('__internal__')
+
+
+def is_internal_path(path: pathlib.Path) -> bool:
+    """Whether a sandbox-relative path lives under the reserved __internal__/ dir.
+
+    Only tool-injected files land there (bits/stdc++.h and the builtin
+    testlib/jngen/tgen/rbx headers); user files keep their package-relative paths.
+    """
+    return path.is_relative_to(INTERNAL_DIR)
+
+
 def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
     if not is_cpp_command(get_exe_from_command(command)):
         return None
@@ -529,7 +545,7 @@ def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]
     if not is_cxx_sanitizer_command(command):
         _complain_about_clang()
     bits = get_bits_stdcpp()
-    return GradingFileInput(src=bits, dest=pathlib.Path('bits/stdc++.h'))
+    return GradingFileInput(src=bits, dest=INTERNAL_DIR / 'bits' / 'stdc++.h')
 
 
 def _find_system_paths_in_version_output(version_output: str) -> List[pathlib.Path]:
@@ -559,7 +575,7 @@ def _get_system_bits_stdcpp(command: str) -> Optional[GradingFileInput]:
             continue
         return GradingFileInput(
             src=utils.abspath(bits_candidate),
-            dest=pathlib.Path('bits/stdc++.h'),
+            dest=INTERNAL_DIR / 'bits' / 'stdc++.h',
         )
     return None
 

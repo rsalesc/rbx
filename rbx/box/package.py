@@ -536,10 +536,22 @@ def get_statement_chunks_folder(root: pathlib.Path = pathlib.Path()) -> pathlib.
     return dir
 
 
+def get_relative_source_path(code: CodeItem) -> pathlib.Path:
+    """Package-relative path where ``code.path`` is mirrored inside the sandbox.
+
+    Falls back to the bare basename for paths outside the package root (e.g.
+    remote/temporary files), which preserves the legacy flat placement.
+    """
+    try:
+        return utils.relcwd(code.path)
+    except ValueError:
+        return pathlib.Path(code.path.name)
+
+
 # Return each compilation file and to where it should be moved inside
 # the sandbox.
 def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
-    code_dir = utils.abspath(code.path.parent)
+    package_root = utils.abspath(pathlib.Path())
 
     res = []
     for compilation_file in code.compilationFiles or []:
@@ -550,19 +562,15 @@ def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Pa
                 f'code {code.href()} does not exist.[/error]',
             )
             raise typer.Exit(1)
-        if not compilation_file_path.is_relative_to(code_dir):
+        if not compilation_file_path.is_relative_to(package_root):
             console.console.print(
                 f'[error]Compilation file [item]{compilation_file}[/item] for '
-                f"code {code.href()} is not under the code's folder.[/error]",
+                f'code {code.href()} is not under the package directory.[/error]',
             )
             raise typer.Exit(1)
 
-        res.append(
-            (
-                pathlib.Path(compilation_file),
-                compilation_file_path.relative_to(code_dir),
-            )
-        )
+        rel = compilation_file_path.relative_to(package_root)
+        res.append((rel, rel))
     return res
 
 

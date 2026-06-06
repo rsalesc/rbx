@@ -76,7 +76,7 @@ class TestCompileItem:
             '-Wno-unused-result',
             '-Wno-sign-compare',
             '-Wno-char-subscripts',
-            '-I.',
+            '-I__internal__',
         ]
 
         assert commands[0] == ' '.join([cmd for cmd in expected_cmd if cmd])
@@ -313,6 +313,34 @@ class TestCompileItem:
         )
         assert tgen_input is not None
 
+    async def test_builtin_headers_placed_in_internal_dir(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """Builtin headers live in the reserved __internal__/ dir for subdir sources."""
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        artifacts = mock_steps_with_caching.call_args.kwargs['artifacts']
+        testlib = next(
+            (i for i in artifacts.inputs if i.dest.name == 'testlib.h'), None
+        )
+        assert testlib is not None
+        assert testlib.dest == pathlib.Path('__internal__/testlib.h')
+
+    async def test_builtin_headers_internal_dir_independent_of_source_location(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """Builtins land in __internal__/ regardless of where the source sits."""
+        sol = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=sol, language='cpp'))
+
+        artifacts = mock_steps_with_caching.call_args.kwargs['artifacts']
+        testlib = next(
+            (i for i in artifacts.inputs if i.dest.name == 'testlib.h'), None
+        )
+        assert testlib is not None
+        assert testlib.dest == pathlib.Path('__internal__/testlib.h')
+
     async def test_compile_sandbox_params_basic(
         self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
     ):
@@ -358,7 +386,7 @@ class TestCompileItem:
         with mock.patch('rbx.box.code.maybe_get_bits_stdcpp_for_commands') as mock_bits:
             mock_bits.return_value = GradingFileInput(
                 src=pathlib.Path('bits/stdc++.h'),
-                dest=pathlib.Path('bits/stdc++.h'),
+                dest=pathlib.Path('__internal__/bits/stdc++.h'),
             )
 
             await code.compile_item(code_item)
@@ -370,8 +398,8 @@ class TestCompileItem:
             # Should call the bits function
             mock_bits.assert_called_once()
 
-            # Should include -I. flag for C++ commands
-            assert any('-I.' in cmd for cmd in commands)
+            # Should include -I__internal__ flag for C++ commands
+            assert any('-I__internal__' in cmd for cmd in commands)
 
             # Should include bits/stdc++.h in artifacts
             bits_input = next(
@@ -422,6 +450,56 @@ class TestCompileItem:
                     assert (
                         '#pragma GCC diagnostic ignored "-Wshadow"' in processed_content
                     )
+
+    async def test_precompile_targets_internal_dir_header(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        mock_precompile_header,
+    ):
+        """Tool-injected headers under __internal__/ are precompiled, except rbx.h.
+
+        The dir check replaces the old name allow-list. rbx.h is skipped because it
+        is regenerated per problem (it embeds the package vars), so precompiling it
+        has no cross-problem cache benefit.
+        """
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        # _precompile_header is called positionally: (..., artifacts,
+        # input_artifact, ...) i.e. the candidate header is the 5th positional
+        # arg (index 4).
+        precompiled_dests = [
+            call.args[4].dest for call in mock_precompile_header.call_args_list
+        ]
+        assert pathlib.Path('__internal__/testlib.h') in precompiled_dests
+        assert pathlib.Path('__internal__/rbx.h') not in precompiled_dests
+        assert precompiled_dests
+        assert all(steps.is_internal_path(dest) for dest in precompiled_dests)
+
+    async def test_precompile_ignores_user_header_outside_internal_dir(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        mock_precompile_header,
+    ):
+        """A user compilation file named like a builtin is not precompiled.
+
+        Only headers under __internal__/ are precompiled; a same-named file the
+        user ships elsewhere (here a root ``testlib.h`` declared as a compilation
+        file for a subdir source) must be left alone.
+        """
+        testing_pkg.add_file('testlib.h').write_text('#pragma once\n')
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(
+            CodeItem(path=gen, language='cpp', compilationFiles=['testlib.h'])
+        )
+
+        precompiled_dests = [
+            call.args[4].dest for call in mock_precompile_header.call_args_list
+        ]
+        assert pathlib.Path('__internal__/testlib.h') in precompiled_dests
+        assert pathlib.Path('testlib.h') not in precompiled_dests
 
     async def test_compile_precompilation_disabled(
         self,
@@ -651,3 +729,127 @@ int custom_function();
         stack = warning_stack.get_warning_stack()
         assert code_item.path in stack.warnings
         assert stack.warning_logs[code_item.path] == [warning_log]
+
+    async def test_compile_nested_source_mirrors_path(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """A subdir source is compiled at its package-relative path."""
+        gen = testing_pkg.add_file('gens/gen.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=gen, language='cpp'))
+
+        call_args = mock_steps_with_caching.call_args
+        commands = call_args[0][0]
+        artifacts = call_args.kwargs['artifacts']
+
+        # Compile command references the mirrored, package-relative source
+        # (and not the flat basename).
+        tokens = commands[0].split()
+        assert 'gens/gen.cpp' in tokens
+        assert 'gen.cpp' not in tokens
+        # The compilable artifact is placed at its package-relative path.
+        compilable = next(
+            (i for i in artifacts.inputs if i.dest == pathlib.Path('gens/gen.cpp')),
+            None,
+        )
+        assert compilable is not None
+
+    async def test_compile_flat_source_unchanged(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """A flat source keeps its basename (mirroring is a no-op at root)."""
+        sol = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        await code.compile_item(CodeItem(path=sol, language='cpp'))
+
+        call_args = mock_steps_with_caching.call_args
+        commands = call_args[0][0]
+        artifacts = call_args.kwargs['artifacts']
+        # Flat package: package-relative path == basename, so the source token
+        # is the plain basename and the compilable artifact stays at the root.
+        assert 'solution.cpp' in commands[0].split()
+        compilable = next(
+            (i for i in artifacts.inputs if i.dest == pathlib.Path('solution.cpp')),
+            None,
+        )
+        assert compilable is not None
+
+
+class TestRelativeSourcePath:
+    def test_nested_source_is_package_relative(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        assert package.get_relative_source_path(CodeItem(path=gen)) == pathlib.Path(
+            'gens/gen.cpp'
+        )
+
+    def test_flat_source_is_basename(self, testing_pkg: testing_package.TestingPackage):
+        sol = testing_pkg.add_file('solution.cpp')
+        assert package.get_relative_source_path(CodeItem(path=sol)) == pathlib.Path(
+            'solution.cpp'
+        )
+
+    def test_external_source_falls_back_to_basename(
+        self, testing_pkg: testing_package.TestingPackage, tmp_path: pathlib.Path
+    ):
+        # A path outside the package root keeps the legacy flat basename.
+        external = tmp_path / 'somewhere' / 'remote.cpp'
+        assert package.get_relative_source_path(
+            CodeItem(path=external)
+        ) == pathlib.Path('remote.cpp')
+
+
+class TestCompilationFiles:
+    def test_dest_is_package_relative(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A compilation file lands at its package-relative path inside the sandbox."""
+        testing_pkg.add_file('lib.h')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=['lib.h'])
+        assert package.get_compilation_files(code_item) == [
+            (pathlib.Path('lib.h'), pathlib.Path('lib.h'))
+        ]
+
+    def test_dest_preserves_nested_subdir(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A compilation file in a nested dir keeps its package-relative path."""
+        testing_pkg.add_file('headers/lib.h')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        code_item = CodeItem(
+            path=gen, language='cpp', compilationFiles=['headers/lib.h']
+        )
+        assert package.get_compilation_files(code_item) == [
+            (pathlib.Path('headers/lib.h'), pathlib.Path('headers/lib.h'))
+        ]
+
+    def test_accepts_file_outside_code_dir(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A compilation file outside the code's folder is now accepted."""
+        # lib.h at root, source in gens/: rejected before, allowed now.
+        testing_pkg.add_file('lib.h')
+        gen = testing_pkg.add_file('gens/gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=['lib.h'])
+        # Must not raise, and lands at its package-relative path.
+        assert package.get_compilation_files(code_item) == [
+            (pathlib.Path('lib.h'), pathlib.Path('lib.h'))
+        ]
+
+    def test_rejects_missing_file(self, testing_pkg: testing_package.TestingPackage):
+        """A non-existent compilation file is rejected."""
+        gen = testing_pkg.add_file('gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=['nope.h'])
+        with pytest.raises(typer.Exit):
+            package.get_compilation_files(code_item)
+
+    def test_rejects_file_outside_package(
+        self, testing_pkg: testing_package.TestingPackage, tmp_path: pathlib.Path
+    ):
+        """A compilation file outside the package directory is rejected."""
+        outside = tmp_path / 'outside.h'
+        outside.write_text('')
+        gen = testing_pkg.add_file('gen.cpp')
+        code_item = CodeItem(path=gen, language='cpp', compilationFiles=[str(outside)])
+        with pytest.raises(typer.Exit):
+            package.get_compilation_files(code_item)

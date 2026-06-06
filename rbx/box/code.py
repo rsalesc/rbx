@@ -217,7 +217,10 @@ def _get_java_class_name(compilable_path: pathlib.Path) -> Optional[str]:
 
 
 def _get_code_variables(code: CodeItem, language: str) -> dict[str, Any]:
-    res = {'source': code.path.name, 'language': language}
+    res = {
+        'source': package.get_relative_source_path(code).as_posix(),
+        'language': language,
+    }
     java_klass = _get_java_class_name(code.path)
     if java_klass is not None:
         res['javaClass'] = java_klass
@@ -649,12 +652,15 @@ async def compile_item(
         for input in artifacts.inputs:
             await _ignore_warning_in_cxx_input(input)
 
-        # Add system bits/stdc++.h to the compilation.
+        # Add system bits/stdc++.h to the compilation. It lives in the reserved
+        # __internal__/ dir (alongside the builtin headers) and is exposed via
+        # -I__internal__ so <bits/stdc++.h> resolves there without putting the
+        # mirrored package root on the include path.
         bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
         if bits_artifact is not None:
             artifacts.inputs.append(bits_artifact)
             commands = [
-                command + ' -I.'
+                command + f' -I{steps.INTERNAL_DIR}'
                 for command in commands
                 if is_cxx_command(get_exe_from_command(command))
             ]
@@ -664,11 +670,15 @@ async def compile_item(
             with profiling.Profiler('code.precompile'):
                 precompilation_inputs = []
                 for input in artifacts.inputs:
+                    # Precompile the static tool-injected headers in __internal__/.
+                    # rbx.h is skipped: it is regenerated per problem (it embeds the
+                    # package vars), so precompiling it yields no cross-problem cache
+                    # reuse.
                     if (
                         input.src is not None
                         and input.src.suffix == '.h'
-                        and input.dest.name
-                        in ['stdc++.h', 'jngen.h', 'tgen.h', 'testlib.h']
+                        and steps.is_internal_path(input.dest)
+                        and input.dest.name != 'rbx.h'
                     ):
                         precompilation_inputs.append(
                             await _precompile_header(

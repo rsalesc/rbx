@@ -34,40 +34,37 @@ def _resolve_download_target(name: str, into: Optional[str]) -> pathlib.Path:
     return target
 
 
+# Builtin headers are injected into the reserved __internal__/ directory (exposed
+# via -I__internal__) so quoted #includes like "testlib.h" resolve from any source
+# location, flat or nested. A user's own header of the same name still wins when it
+# sits next to the source, since quoted includes are resolved source-relative first;
+# otherwise the builtin in __internal__/ is used as the fallback.
 def maybe_add_rbx_header(code: CodeItem, artifacts: steps.GradingArtifacts):
     header.get_header()
     artifact = get_local_artifact('rbx.h')
     assert artifact is not None
-    compilation_files = package.get_compilation_files(code)
-    if any(dest == artifact.dest for _, dest in compilation_files):
-        return
+    artifact.dest = steps.INTERNAL_DIR / artifact.dest
     artifacts.inputs.append(artifact)
 
 
 def maybe_add_testlib(code: CodeItem, artifacts: steps.GradingArtifacts):
-    # Try to get from compilation files, then from package folder, then from tool.
+    # Prefer a testlib.h shipped at the package root, else fall back to the tool's.
     artifact = get_local_artifact('testlib.h') or steps.testlib_grading_input()
-    compilation_files = package.get_compilation_files(code)
-    if any(dest == artifact.dest for _, dest in compilation_files):
-        return
+    artifact.dest = steps.INTERNAL_DIR / artifact.dest
     artifacts.inputs.append(artifact)
 
 
 def maybe_add_jngen(code: CodeItem, artifacts: steps.GradingArtifacts):
-    # Try to get from compilation files, then from package folder, then from tool.
+    # Prefer a jngen.h shipped at the package root, else fall back to the tool's.
     artifact = get_local_artifact('jngen.h') or steps.jngen_grading_input()
-    compilation_files = package.get_compilation_files(code)
-    if any(dest == artifact.dest for _, dest in compilation_files):
-        return
+    artifact.dest = steps.INTERNAL_DIR / artifact.dest
     artifacts.inputs.append(artifact)
 
 
 def maybe_add_tgen(code: CodeItem, artifacts: steps.GradingArtifacts):
-    # Try to get from compilation files, then from package folder, then from tool.
+    # Prefer a tgen.h shipped at the package root, else fall back to the tool's.
     artifact = get_local_artifact('tgen.h') or steps.tgen_grading_input()
-    compilation_files = package.get_compilation_files(code)
-    if any(dest == artifact.dest for _, dest in compilation_files):
-        return
+    artifact.dest = steps.INTERNAL_DIR / artifact.dest
     artifacts.inputs.append(artifact)
 
 
