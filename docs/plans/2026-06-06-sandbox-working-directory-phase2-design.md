@@ -96,11 +96,10 @@ class Reference:
 
 
 class DependencyScanner(abc.ABC):
-    kinds: ClassVar[Set[DependencyKind]]
+    name: ClassVar[str]                              # registry key
+    language_kinds: ClassVar[Set[LanguageKind]]      # which language families it handles
+    dependency_kinds: ClassVar[Set[DependencyKind]]  # compile- vs run-time deps
     can_rewrite: ClassVar[bool] = False
-
-    @abc.abstractmethod
-    def handles(self, language: str) -> bool: ...
 
     @abc.abstractmethod
     def references(self, file: pathlib.Path) -> List[Reference]:
@@ -114,9 +113,19 @@ class DependencyScanner(abc.ABC):
         raise NotImplementedError
 ```
 
-Registry: `@register` decorator + `get_scanner(language) -> Optional[DependencyScanner]`
-(returns `None` for unhandled languages — Java/Kotlin/etc.). Same shape as
-`linters/registry.py`.
+> **Revised during PR review.** Scanners are no longer dispatched by raw language
+> name (`handles(language)`). A scanner declares the `LanguageKind`s it applies to
+> (`CppScanner → {CXX}`, `PythonScanner → {PYTHON}`); a code's kinds come from
+> `environment.language_kinds`, derived from its **toolchain** (compile/execution
+> commands via `grading.language_kind.command_kinds`), not its name. The existing
+> `is_*_command` predicates become thin aliases over `command_kinds` (deprecation
+> tracked in #529).
+
+Registry (`@register` by `name`): `get_scanner(name)` for explicit lookup, and
+`get_scanners_for_kinds(kinds, names)` which returns every scanner whose
+`language_kinds` intersects `kinds`, plus any explicitly named in a language's
+`scanners` env field (mirroring `linters`). `expand` resolves the applicable scanners
+this way and returns `None` when none apply (Java/Kotlin/etc.).
 
 ### The engine (`graph.py`)
 
@@ -234,7 +243,7 @@ the communication path). Add **manual `executionFiles`** for all languages, **pl
 (if `DependencyKind.EXECUTION in graph.kinds`) `graph.files()` — union, dedup by dest.
 This is the new execution-time mirroring.
 
-### Execution: `PYTHONPATH` (discovered during implementation)
+### Execution: copy interpreted entry scripts (discovered during implementation)
 
 Mirroring the sibling module into the sandbox is **necessary but not sufficient** for
 Python. The entry script is materialized as a **symlink into the content-addressed
@@ -246,15 +255,18 @@ next to the script in the sandbox. (This is a latent issue since Phase 1; #524 i
 first feature to actually exercise runtime sibling imports — Phase 1's nested-Python
 guard had no imports, so it passed under the old flat layout too.)
 
-**Fix:** for execution-mirrored languages, set `sandbox_params.set_env['PYTHONPATH']`
-to the mirrored source's directory (package-relative; `.` for a flat package),
-preserving any existing value. This restores the directory that `python3 dir/script.py`
-would normally put on the path. It is gated on `DependencyKind.EXECUTION in
-graph.kinds` (currently Python only) and reuses the graph already computed in
-`_prepare_run`. `set_env` is part of the run cache key, so this is cache-correct (a
-one-time invalidation for Python runs). We deliberately add **only** the source dir
-(not the package root) to match normal Python semantics and avoid shadowing stdlib
-with root-level modules.
+> **Revised during PR review.** The first fix set `PYTHONPATH` to the mirrored source
+> dir for Python runs. The cleaner, language-agnostic fix below replaces it.
+
+**Fix:** materialize the entry script as a **real copy** rather than a cache symlink
+when the language is *interpreted*. `GradingFileInput` gains a `symlink: bool = True`
+field; `_process_input_artifacts` honours it (`try_symlink=input.symlink`); and
+`_prepare_run` sets `symlink=False` on the executable input for interpreted languages.
+A copied script's realpath is its own sandbox path, so `sys.path[0]` is the mirrored
+directory and the (still-symlinked) siblings resolve naturally. "Interpreted" is
+derived from the language definition via `environment.is_interpreted` (passthrough /
+no compile commands — the same signal `compile_item` uses), so this generalises to any
+interpreted language, not just Python, with no per-language env var.
 
 ### Schema (`schema.CodeItem`)
 
