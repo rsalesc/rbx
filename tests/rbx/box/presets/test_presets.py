@@ -20,6 +20,42 @@ from rbx.box.presets.lock_schema import LockedAsset, SymlinkInfo
 from rbx.box.presets.schema import TrackedAsset
 from rbx.box.testing.testing_preset import TestingPreset
 
+
+def test_preset_parses_libraries_block():
+    from rbx.box.presets.schema import Preset
+
+    preset = Preset.model_validate(
+        {
+            'name': 'sample',
+            'uri': 'owner/repo',
+            'libraries': {
+                'problem': [
+                    {
+                        'name': 'testlib',
+                        'source': 'MikeMirzayanov/testlib',
+                        'path': 'testlib.h',
+                        'version': 'master',
+                        'dest': 'testlib.h',
+                        'always_include': True,
+                    }
+                ]
+            },
+        }
+    )
+
+    lib = preset.libraries.problem[0]
+    assert lib.name == 'testlib'
+    assert lib.source == 'MikeMirzayanov/testlib'
+    assert str(lib.path) == 'testlib.h'
+    assert lib.version == 'master'
+    assert str(lib.dest) == 'testlib.h'
+    assert lib.always_include is True
+    assert lib.symlink is False
+    assert lib.include_as is None
+    # Defaults: no libraries block => empty lists.
+    assert Preset(name='xyz', uri='owner/repo').libraries.problem == []
+
+
 # ===================
 # Reusable Fixtures
 # ===================
