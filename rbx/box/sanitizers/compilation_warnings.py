@@ -4,11 +4,11 @@ from collections import Counter
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 from rbx import utils
+from rbx.grading.language_kind import LanguageKind, command_kinds
 from rbx.grading.steps import (
     PreprocessLog,
     _is_first_party_warning_file,
     get_exe_from_command,
-    is_cxx_command,
 )
 
 if TYPE_CHECKING:
@@ -151,4 +151,7 @@ def apply_warning_status(task: 'CompilationTask') -> None:
     task.warning_summary = summarizer.summarize(warning_logs)
 
 
-register(is_cxx_command, CppCompilationWarningSummarizer())
+register(
+    lambda exe: LanguageKind.CXX in command_kinds(exe),
+    CppCompilationWarningSummarizer(),
+)
