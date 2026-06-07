@@ -457,40 +457,18 @@ def get_exe_from_command(command: str) -> str:
     return cmds[0]
 
 
-# These ``is_*_command`` predicates are thin aliases over ``command_kinds`` and are
-# kept for readability at call sites. New code should prefer ``command_kinds``
-# directly; tracked for deprecation in https://github.com/rsalesc/rbx/issues/529.
-def _is_c_command(exe_command: str) -> bool:
-    return LanguageKind.C in command_kinds(exe_command)
-
-
-def is_cpp_command(exe_command: str) -> bool:
-    return LanguageKind.CPP in command_kinds(exe_command)
-
-
-def is_cxx_command(exe_command: str) -> bool:
-    return LanguageKind.CXX in command_kinds(exe_command)
-
-
 def is_cxx_sanitizer_command(command: str) -> bool:
+    """Whether ``command`` compiles C/C++ *and* enables a sanitizer.
+
+    Compound predicate (cxx + ``fsanitize``) kept as a named helper because the
+    combination is checked at several call sites.
+    """
     exe = get_exe_from_command(command)
     if not exe:
         return False
-    if not is_cxx_command(exe):
+    if LanguageKind.CXX not in command_kinds(exe):
         return False
     return 'fsanitize' in command
-
-
-def is_java_command(exe_command: str) -> bool:
-    return LanguageKind.JAVA in command_kinds(exe_command)
-
-
-def is_kotlin_command(exe_command: str) -> bool:
-    return LanguageKind.KOTLIN in command_kinds(exe_command)
-
-
-def is_java_like_command(exe_command: str) -> bool:
-    return LanguageKind.JVM in command_kinds(exe_command)
 
 
 @functools.cache
@@ -511,7 +489,7 @@ def _get_cxx_version_output(command: str, extra_flags: str = '') -> Optional[str
     if not cmds:
         return None
     exe = cmds[0]
-    if not is_cxx_command(exe):
+    if LanguageKind.CXX not in command_kinds(exe):
         return None
 
     extra = shlex.split(extra_flags)
@@ -539,7 +517,7 @@ def is_internal_path(path: pathlib.Path) -> bool:
 
 
 def _maybe_get_bits_stdcpp_for_clang(command: str) -> Optional[GradingFileInput]:
-    if not is_cpp_command(get_exe_from_command(command)):
+    if LanguageKind.CPP not in command_kinds(get_exe_from_command(command)):
         return None
     version_output = _get_cxx_version_output(command)
     if version_output is None:
@@ -573,7 +551,7 @@ def _find_system_paths_in_version_output(version_output: str) -> List[pathlib.Pa
 
 
 def _get_system_bits_stdcpp(command: str) -> Optional[GradingFileInput]:
-    if not is_cpp_command(get_exe_from_command(command)):
+    if LanguageKind.CPP not in command_kinds(get_exe_from_command(command)):
         return None
     version_output = _get_cxx_version_output(command, '-xc++ -E -')
     if version_output is None:
@@ -780,7 +758,7 @@ async def compile(
         params.set_stdall(stdout=stdout_file, stderr=stderr_file)
 
         # Remove memory constraints for Java.
-        if is_java_like_command(get_exe_from_command(command)):
+        if LanguageKind.JVM in command_kinds(get_exe_from_command(command)):
             params.address_space = None
 
         try:
@@ -795,7 +773,10 @@ async def compile(
                         utils.highlight_json_obj(cmd),
                     )
                     err.print('[warning]Is it installed and on your PATH?[/warning]')
-                    if is_cxx_command(e.executable) and sys.platform == 'darwin':
+                    if (
+                        LanguageKind.CXX in command_kinds(e.executable)
+                        and sys.platform == 'darwin'
+                    ):
                         err.print(
                             '[warning]On macOS the GNU compiler is not bundled — '
                             "install it with '[item]brew install gcc[/item]', then "
@@ -870,7 +851,7 @@ async def run(
     params = params.model_copy(deep=True)  # Copy to allow further modification.
 
     # Remove memory constraints for Java.
-    if is_java_like_command(get_exe_from_command(command)):
+    if LanguageKind.JVM in command_kinds(get_exe_from_command(command)):
         params.address_space = None
 
     try:
@@ -915,7 +896,7 @@ async def run_coordinated(
     interactor_params = interactor.params.model_copy(deep=True)
     solution_params = solution.params.model_copy(deep=True)
 
-    if is_java_like_command(get_exe_from_command(solution.command)):
+    if LanguageKind.JVM in command_kinds(get_exe_from_command(solution.command)):
         solution_params.address_space = None
 
     try:

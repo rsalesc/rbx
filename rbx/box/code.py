@@ -38,6 +38,7 @@ from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem, Solution
 from rbx.grading import grading_context, profiling, steps, steps_with_caching
 from rbx.grading.judge.sandbox import SandboxParams
+from rbx.grading.language_kind import LanguageKind, command_kinds
 from rbx.grading.steps import (
     DigestHolder,
     DigestOrDest,
@@ -48,8 +49,6 @@ from rbx.grading.steps import (
     RunLog,
     RunLogMetadata,
     get_exe_from_command,
-    is_cpp_command,
-    is_cxx_command,
     maybe_get_bits_stdcpp_for_commands,
 )
 from rbx.utils import is_arm
@@ -113,7 +112,7 @@ async def is_executable_sanitized(executable: DigestOrSource) -> bool:
 
 
 def add_sanitizer_flags_to_command(command: str) -> str:
-    if is_cxx_command(command):
+    if LanguageKind.CXX in command_kinds(command):
         return command + ' -fsanitize=address,undefined -fno-omit-frame-pointer -g'
     return command
 
@@ -128,20 +127,20 @@ CXX_WARNING_FLAGS = (
 
 
 def add_color_flags_to_command(command: str) -> str:
-    if is_cxx_command(command):
+    if LanguageKind.CXX in command_kinds(command):
         return command + ' -fdiagnostics-color=always'
     return command
 
 
 def add_warning_flags_to_command(command: str) -> str:
-    if is_cxx_command(command):
+    if LanguageKind.CXX in command_kinds(command):
         return command + ' ' + CXX_WARNING_FLAGS
     return command
 
 
 def add_arm_flags_to_command(command: str) -> str:
     # Disable FMA in ARM.
-    if is_cxx_command(command) and is_arm():
+    if LanguageKind.CXX in command_kinds(command) and is_arm():
         return command + ' -ffp-contract=off'
     return command
 
@@ -467,7 +466,7 @@ async def _prepare_run(
 
 
 def _should_precompile(commands: List[str]) -> bool:
-    return any(is_cpp_command(command) for command in commands)
+    return any(LanguageKind.CPP in command_kinds(command) for command in commands)
 
 
 async def _precompile_header(
@@ -705,7 +704,7 @@ async def compile_item(
             commands = [
                 command + f' -I{steps.INTERNAL_DIR}'
                 for command in commands
-                if is_cxx_command(get_exe_from_command(command))
+                if LanguageKind.CXX in command_kinds(get_exe_from_command(command))
             ]
 
         # Precompile C++ interesting header files.
