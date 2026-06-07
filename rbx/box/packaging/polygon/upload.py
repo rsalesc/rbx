@@ -116,14 +116,18 @@ def _get_validator_name() -> str:
     return validator.path.with_stem('validator').name
 
 
-def _collect_generators() -> List[Generator]:
+def _collect_generators(
+    entries: Optional[List['GenerationTestcaseEntry']] = None,
+) -> List[Generator]:
     """Generators referenced by the package's testcases, de-duplicated by path,
     in deterministic order.
 
-    Mirrors the de-duplication used by ``_upload_testcases`` so the upload
+    Shared by ``_build_upload_namespace`` and ``_upload_testcases`` so the upload
     namespace and the actual generator uploads agree on the set of generators.
+    Pass already-extracted ``entries`` to avoid re-walking the testcase groups.
     """
-    entries = asyncio.run(extract_generation_testcases_from_groups())
+    if entries is None:
+        entries = asyncio.run(extract_generation_testcases_from_groups())
     generators: Dict[str, Generator] = {}
     for entry in entries:
         if not entry.metadata.generator_call:
@@ -372,14 +376,7 @@ def _upload_generator(
 
 def _upload_testcases(problem: api.Problem, ns: flattening.FlatNamespace):
     entries = asyncio.run(extract_generation_testcases_from_groups())
-    generators: Dict[str, Generator] = {}
-    for entry in entries:
-        if not entry.metadata.generator_call:
-            continue
-        generator = package.get_generator_or_nil(entry.metadata.generator_call.name)
-        if generator is None:
-            continue
-        generators[str(generator.path)] = generator
+    generators = _collect_generators(entries)
 
     if generators:
         _update_jngen(problem)  # TODO: only upload if necessary
@@ -389,7 +386,7 @@ def _upload_testcases(problem: api.Problem, ns: flattening.FlatNamespace):
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
-        for generator in generators.values():
+        for generator in generators:
             futures.append(executor.submit(_upload_generator, problem, generator, ns))
         for future in futures:
             future.result()
@@ -673,42 +670,42 @@ async def upload_problem(
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
 
-    # Build the flat namespace once, unconditionally, so that flat names stay
-    # globally consistent regardless of which subset is being uploaded. Only the
-    # upload calls below are gated.
     # Build the shared flat namespace only when a source category is actually
     # uploaded -- statements-only uploads need no source naming and must not be
     # aborted by the flattening guardrail. Dependency headers are shared
     # resources, so ship them whenever any source that may ``#include`` them
     # (generators, solutions, checker/validator/interactor) is uploaded.
-    ns: Optional[flattening.FlatNamespace] = None
-    if which_upload & {'files', 'solutions', 'tests'}:
-        ns = _build_upload_namespace()
+    ns: Optional[flattening.FlatNamespace] = (
+        _build_upload_namespace()
+        if which_upload & {'files', 'solutions', 'tests'}
+        else None
+    )
+    if ns is not None:
         _upload_dep_files(problem, ns)
 
-    if 'files' in which_upload:
-        assert ns is not None
-        _update_rbx_header(problem)
-        _update_checker(problem, ns)
-
-    if (
-        pkg.type == TaskType.COMMUNICATION
-        and package.get_interactor_or_nil() is not None
-    ):
         if 'files' in which_upload:
+            _update_rbx_header(problem)
+            _update_checker(problem, ns)
+
+        if (
+            pkg.type == TaskType.COMMUNICATION
+            and package.get_interactor_or_nil() is not None
+            and 'files' in which_upload
+        ):
             _update_interactor(problem, ns)
 
-    if pkg.validator is not None:
-        if 'files' in which_upload:
+        if pkg.validator is not None and 'files' in which_upload:
             _upload_validator(problem, ns)
 
-    if 'solutions' in which_upload:
-        _upload_solutions(problem, ns)
-    if 'tests' in which_upload:
-        if raw_tests:
-            _upload_testcases_raw(problem)
-        else:
-            _upload_testcases(problem, ns)
+        if 'solutions' in which_upload:
+            _upload_solutions(problem, ns)
+
+        if 'tests' in which_upload:
+            if raw_tests:
+                _upload_testcases_raw(problem)
+            else:
+                _upload_testcases(problem, ns)
+
     if 'statements' in which_upload:
         await _upload_statement(
             problem, main_language=main_language, upload_as_english=upload_as_english
