@@ -548,30 +548,41 @@ def get_relative_source_path(code: CodeItem) -> pathlib.Path:
         return pathlib.Path(code.path.name)
 
 
-# Return each compilation file and to where it should be moved inside
-# the sandbox.
-def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
+# Return each declared file and to where it should be moved inside the sandbox.
+# ``src`` and ``dest`` are the same package-relative path: the package directory
+# structure is mirrored, and ``cwd`` is the package root.
+def _get_declared_files(
+    code: CodeItem, declared: Optional[List[str]], label: str
+) -> List[Tuple[pathlib.Path, pathlib.Path]]:
     package_root = utils.abspath(pathlib.Path())
 
     res = []
-    for compilation_file in code.compilationFiles or []:
-        compilation_file_path = utils.abspath(pathlib.Path(compilation_file))
-        if not compilation_file_path.is_file():
+    for entry in declared or []:
+        entry_path = utils.abspath(pathlib.Path(entry))
+        if not entry_path.is_file():
             console.console.print(
-                f'[error]Compilation file [item]{compilation_file}[/item] for '
+                f'[error]{label} [item]{entry}[/item] for '
                 f'code {code.href()} does not exist.[/error]',
             )
             raise typer.Exit(1)
-        if not compilation_file_path.is_relative_to(package_root):
+        if not entry_path.is_relative_to(package_root):
             console.console.print(
-                f'[error]Compilation file [item]{compilation_file}[/item] for '
+                f'[error]{label} [item]{entry}[/item] for '
                 f'code {code.href()} is not under the package directory.[/error]',
             )
             raise typer.Exit(1)
 
-        rel = compilation_file_path.relative_to(package_root)
+        rel = entry_path.relative_to(package_root)
         res.append((rel, rel))
     return res
+
+
+def get_compilation_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
+    return _get_declared_files(code, code.compilationFiles, 'Compilation file')
+
+
+def get_execution_files(code: CodeItem) -> List[Tuple[pathlib.Path, pathlib.Path]]:
+    return _get_declared_files(code, code.executionFiles, 'Execution file')
 
 
 @functools.cache

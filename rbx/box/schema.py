@@ -297,6 +297,22 @@ Testlib, jngen and tgen are already included by default.
 """,
     )
 
+    executionFiles: Optional[List[str]] = Field(
+        default=[],
+        description="""
+Extra files that should be available at *execution* time, the runtime equivalent of
+`compilationFiles`.
+
+The paths should be given relative to the package directory, and are placed at the
+same package-relative path inside the sandbox (the package directory structure is
+mirrored). Use this for runtime companion files a compiled binary or interpreted
+script needs at run time (data files, sibling modules, etc.).
+
+Sibling Python imports and quoted C++ includes are auto-discovered; this field is the
+escape hatch for files that cannot be discovered automatically.
+""",
+    )
+
     def href(self, hyperlink: bool = True) -> str:
         return href(self.path, hyperlink=hyperlink)
 
@@ -315,6 +331,7 @@ class CodeItemWithDigest(CodeItem):
             path=code_item.path,
             language=code_item.language,
             compilationFiles=code_item.compilationFiles,
+            executionFiles=code_item.executionFiles,
             digest=digest,
         )
 
@@ -382,6 +399,7 @@ class OutputFromItemWithDigest(OutputFromItem, CodeItemWithDigest):
             path=output_from_item.path,
             language=output_from_item.language,
             compilationFiles=output_from_item.compilationFiles,
+            executionFiles=output_from_item.executionFiles,
             digest=digest,
         )
 
