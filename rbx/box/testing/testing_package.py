@@ -67,7 +67,49 @@ class TestingPackage(TestingShared):
             preset_path.mkdir(parents=True, exist_ok=True)
         else:
             preset_path = presets.get_active_preset_path(self.root)
-        return TestingPreset(preset_path)
+        testing_preset = TestingPreset(preset_path)
+        self._declare_standard_libraries(testing_preset)
+        return testing_preset
+
+    def _declare_standard_libraries(self, testing_preset: TestingPreset) -> None:
+        """Make testlib/jngen/tgen available to compiled test code via the
+        always_include library mechanism, replacing the removed hardcoded
+        auto-injection. Headers are copied from the bundled offline copies (no
+        network) into `.local.rbx/libs/<name>/` so they do NOT appear at a
+        source-resolvable path (keeping the dependency scanner / package
+        contents unperturbed); `always_include` injects them into `__internal__/`
+        at compile time exactly as the real mechanism does.
+        """
+        import importlib.resources
+
+        from rbx.box.presets.schema import Library
+
+        specs = [('testlib', 'testlib.h'), ('jngen', 'jngen.h'), ('tgen', 'tgen.h')]
+        new_libs = []
+        for name, filename in specs:
+            dest = pathlib.Path('.local.rbx') / 'libs' / name / filename
+            target = self.root / dest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with importlib.resources.as_file(
+                importlib.resources.files('rbx')
+                / 'resources'
+                / 'predownloaded'
+                / filename
+            ) as src:
+                target.write_bytes(pathlib.Path(src).read_bytes())
+            new_libs.append(
+                Library(
+                    name=name,
+                    source=filename,
+                    path=pathlib.Path(filename),
+                    dest=dest,
+                    always_include=True,
+                )
+            )
+        testing_preset.yml.libraries.problem = (
+            testing_preset.yml.libraries.problem + new_libs
+        )
+        testing_preset.save()
 
     def print_tree(self):
         print_directory_tree(self.root)
