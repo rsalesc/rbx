@@ -7,12 +7,7 @@ import typer
 from rbx import annotations, console
 from rbx.box import header, package, remote
 from rbx.box.schema import CodeItem
-from rbx.config import (
-    download_jngen,
-    download_testlib,
-    download_tgen,
-    get_builtin_checker,
-)
+from rbx.config import get_builtin_checker
 from rbx.grading import steps
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -54,38 +49,74 @@ _INTO_HELP = (
 )
 
 
-@app.command('testlib', help='Download the latest testlib.h')
+def _download_libraries(name: Optional[str], into: Optional[str]) -> None:
+    from rbx.box import libraries as box_libraries
+    from rbx.box.presets import library_fetch
+
+    declared = box_libraries.get_declared_libraries()
+    if name is None:
+        if into is not None:
+            console.console.print('[error]--into requires a library name.[/error]')
+            raise typer.Exit(1)
+        targets = declared
+        if not targets:
+            console.console.print(
+                '[warning]The active preset declares no libraries.[/warning]'
+            )
+            return
+    else:
+        targets = [lib for lib in declared if lib.name == name]
+        if not targets:
+            console.console.print(
+                f'[error]No library named [item]{name}[/item] is declared by the '
+                'active preset.[/error]'
+            )
+            raise typer.Exit(1)
+
+    for library in targets:
+        cached = library_fetch.fetch_library(library)
+        if into is not None:
+            target = _resolve_download_target(library.dest.name, into)
+            shutil.copyfile(cached, target)
+            console.console.print(
+                f'Downloaded [item]{library.name}[/item] into [item]{target}[/item].'
+            )
+        else:
+            library_fetch.materialize_library(library, cached, pathlib.Path.cwd())
+            console.console.print(
+                f'Downloaded [item]{library.name}[/item] to [item]{library.dest}[/item].'
+            )
+
+
+@app.command(
+    'lib, library', help='Download preset-declared libraries (omit NAME for all).'
+)
 @package.within_problem
-def testlib(
+def lib(
+    name: Optional[str] = typer.Argument(
+        None, help='Library name; omit to (re)fetch all declared libraries.'
+    ),
     into: Optional[str] = typer.Option(None, '--into', help=_INTO_HELP),
 ):
-    target = _resolve_download_target('testlib.h', into)
-    shutil.copyfile(download_testlib(), target)
-    console.console.print(
-        f'Downloaded [item]testlib.h[/item] into [item]{target}[/item].'
-    )
+    _download_libraries(name, into)
 
 
-@app.command('jngen', help='Download the latest jngen.h')
+@app.command('testlib', help='Download the preset-declared testlib library.')
 @package.within_problem
-def jngen(
-    into: Optional[str] = typer.Option(None, '--into', help=_INTO_HELP),
-):
-    target = _resolve_download_target('jngen.h', into)
-    shutil.copyfile(download_jngen(), target)
-    console.console.print(
-        f'Downloaded [item]jngen.h[/item] into [item]{target}[/item].'
-    )
+def testlib(into: Optional[str] = typer.Option(None, '--into', help=_INTO_HELP)):
+    _download_libraries('testlib', into)
 
 
-@app.command('tgen', help='Download the latest tgen.h')
+@app.command('jngen', help='Download the preset-declared jngen library.')
 @package.within_problem
-def tgen(
-    into: Optional[str] = typer.Option(None, '--into', help=_INTO_HELP),
-):
-    target = _resolve_download_target('tgen.h', into)
-    shutil.copyfile(download_tgen(), target)
-    console.console.print(f'Downloaded [item]tgen.h[/item] into [item]{target}[/item].')
+def jngen(into: Optional[str] = typer.Option(None, '--into', help=_INTO_HELP)):
+    _download_libraries('jngen', into)
+
+
+@app.command('tgen', help='Download the preset-declared tgen library.')
+@package.within_problem
+def tgen(into: Optional[str] = typer.Option(None, '--into', help=_INTO_HELP)):
+    _download_libraries('tgen', into)
 
 
 @app.command('checker', help='Download a built-in checker from testlib GH repo.')

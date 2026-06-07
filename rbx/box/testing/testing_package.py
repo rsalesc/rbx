@@ -102,7 +102,7 @@ class TestingPackage(TestingShared):
             new_libs.append(
                 Library(
                     name=name,
-                    source=filename,
+                    source=str(target.resolve()),
                     path=pathlib.Path(filename),
                     dest=dest,
                     always_include=True,
