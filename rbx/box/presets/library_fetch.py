@@ -7,7 +7,7 @@ from typing import Optional
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import git_utils
 from rbx.box.presets.fetch import get_library_fetch_info
 from rbx.box.presets.schema import Library
@@ -76,6 +76,31 @@ def fetch_library(library: Library) -> pathlib.Path:
     if not dst.exists():
         _clone_and_copy(info.fetch_uri, ref, library.path, dst)
     return dst
+
+
+def materialize_library(
+    library: Library, cache_path: pathlib.Path, pkg_root: pathlib.Path
+) -> None:
+    """Place a fetched library into the package at `library.dest`.
+
+    Copy mode writes a real file at `dest`. Symlink mode stores the content
+    under `.local.rbx/libs/<name>/` and makes `dest` a relative symlink to it.
+    """
+    dest = pkg_root / library.dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_symlink() or dest.exists():
+        dest.unlink()
+
+    if not library.symlink:
+        shutil.copyfile(cache_path, dest)
+        return
+
+    filename = library.path.name if library.path is not None else cache_path.name
+    stored = pkg_root / '.local.rbx' / 'libs' / library.name / filename
+    stored.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(cache_path, stored)
+    rel = utils.relpath(utils.abspath(stored), utils.abspath(dest).parent)
+    dest.symlink_to(rel)
 
 
 def _require_path(library: Library) -> None:

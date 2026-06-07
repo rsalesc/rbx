@@ -78,6 +78,50 @@ def test_fetch_library_github_requires_path(tmp_path, monkeypatch):
         library_fetch.fetch_library(lib)
 
 
+def test_materialize_copy(tmp_path):
+    cache = tmp_path / 'cache.h'
+    cache.write_text('content')
+    lib = Library(name='lib', source='x', path='lib.h', dest='sub/lib.h')
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+
+    library_fetch.materialize_library(lib, cache, pkg)
+
+    out = pkg / 'sub' / 'lib.h'
+    assert out.is_file() and not out.is_symlink()
+    assert out.read_text() == 'content'
+
+
+def test_materialize_symlink(tmp_path):
+    cache = tmp_path / 'cache.h'
+    cache.write_text('content')
+    lib = Library(name='lib', source='x', path='lib.h', dest='sub/lib.h', symlink=True)
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+
+    library_fetch.materialize_library(lib, cache, pkg)
+
+    out = pkg / 'sub' / 'lib.h'
+    stored = pkg / '.local.rbx' / 'libs' / 'lib' / 'lib.h'
+    assert stored.is_file()
+    assert out.is_symlink()
+    assert out.resolve() == stored.resolve()
+    assert out.read_text() == 'content'
+
+
+def test_materialize_overwrites_existing(tmp_path):
+    # Re-materializing replaces a prior file/symlink at dest cleanly.
+    cache = tmp_path / 'cache.h'
+    cache.write_text('v2')
+    lib = Library(name='lib', source='x', path='lib.h', dest='lib.h')
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+    (pkg / 'lib.h').write_text('v1')
+
+    library_fetch.materialize_library(lib, cache, pkg)
+    assert (pkg / 'lib.h').read_text() == 'v2'
+
+
 def test_resolve_remote_head_parses_sha(monkeypatch):
     from rbx.box import git_utils
 
