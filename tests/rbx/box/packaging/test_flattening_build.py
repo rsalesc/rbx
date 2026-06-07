@@ -47,6 +47,19 @@ def test_build_flat_namespace_rewrites_to_mangled_names_on_collision(testing_pkg
     assert '#include "x__util.h"' in txt and '#include "y__util.h"' in txt
 
 
+def test_build_flat_namespace_reads_out_of_package_root(testing_pkg, tmp_path):
+    # A root whose source lives outside the package (like the builtin checker)
+    # has only a basename mirror path; its bytes must be read from the real path.
+    external = tmp_path / 'builtin_checker.cpp'
+    external.write_text('#include "testlib.h"\nint main(){}\n')
+    code = CodeItem(path=external)
+    ns = flattening.build_flat_namespace(
+        [code], reserved={pathlib.Path('builtin_checker.cpp'): 'check.cpp'}
+    )
+    assert {f.flat_name for f in ns.files} == {'check.cpp'}
+    assert ns.content_for(code).decode() == '#include "testlib.h"\nint main(){}\n'
+
+
 def test_build_flat_namespace_errors_on_unrewritable_crossdir(testing_pkg):
     testing_pkg.add_file('common/helper.py').write_text('x = 1\n')
     # A parent-relative import genuinely resolves to a cross-directory package file

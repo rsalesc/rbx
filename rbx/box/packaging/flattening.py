@@ -249,17 +249,24 @@ def build_flat_namespace(
     reserved: Mapping[pathlib.Path, str] = {},
     enforce_stem_unique: bool = False,
 ) -> FlatNamespace:
+    from rbx import utils
     from rbx.box import package
 
     members: Set[pathlib.Path] = set()
     refs_by_path: Dict[pathlib.Path, List[Reference]] = {}
     rewritable: Dict[pathlib.Path, DependencyScanner] = {}
     roots: Dict[pathlib.Path, CodeItem] = {}
+    # Real on-disk location of each member. In-package deps live at ``root_dir /
+    # path``; a root whose source lives outside the package (e.g. the builtin
+    # checker, whose mirror path is only a basename) must be read from its actual
+    # path instead.
+    src_abs: Dict[pathlib.Path, pathlib.Path] = {}
     root_dir = _package_root()
 
     for code in sources:
         rel = package.get_relative_source_path(code)
         roots[rel] = code
+        src_abs[rel] = utils.abspath(code.path)
         scanner = _rewritable_scanner(code)
 
         graph = deps_graph.expand(code, require_kind=DependencyKind.COMPILATION)
@@ -287,7 +294,7 @@ def build_flat_namespace(
 
     files: List[FlatFile] = []
     for path in sorted(members):
-        raw = (root_dir / path).read_bytes()
+        raw = src_abs.get(path, root_dir / path).read_bytes()
         if path in rewritable:
             rename = _rename_for(refs_by_path.get(path, []), name_of)
             content = (
