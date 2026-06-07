@@ -24,7 +24,13 @@ def assign_flat_names(
     packages stay byte-identical. Colliding paths get a ``__``-joined, sanitized
     rendering of their package-relative path, with a deterministic ``__<n>``
     counter fallback for residual collisions. Deterministic and order-independent.
+
+    Only paths present in ``paths`` are assigned; ``reserved`` keys absent from
+    ``paths`` are ignored. ``reserved`` values must be mutually distinct (they
+    bypass collision handling), otherwise a :class:`ValueError` is raised.
     """
+    if len(set(reserved.values())) != len(reserved):
+        raise ValueError('reserved flat names must be mutually distinct')
     ordered = sorted(set(paths))
     result: Dict[pathlib.Path, str] = {}
     taken: set = set()
@@ -56,6 +62,7 @@ def assign_flat_names(
         bare_ok = (
             basename_counts[path.name] == 1
             and mangle_counts[_mangle(path)] == 1
+            # bare name must not collide with an already-claimed reserved name
             and path.name not in taken
             and (
                 not enforce_stem_unique

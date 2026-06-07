@@ -1,10 +1,17 @@
 import pathlib
 
+import pytest
+
 from rbx.box.packaging import flattening
 
 
 def _p(*parts: str) -> pathlib.Path:
     return pathlib.Path(*parts)
+
+
+def _assert_unique(names: dict) -> None:
+    flat = list(names.values())
+    assert len(set(flat)) == len(flat), f'duplicate flat names: {flat}'
 
 
 def test_unique_basenames_keep_bare_name():
@@ -48,9 +55,25 @@ def test_enforce_stem_unique_mangles_same_stem_diff_ext():
 def test_residual_mangle_collision_gets_counter():
     names = flattening.assign_flat_names([_p('a', 'b__c.h'), _p('a__b', 'c.h')])
     assert sorted(names.values()) == ['a__b__c.h', 'a__b__c__1.h']
+    _assert_unique(names)
+
+
+def test_sanitization_induced_collision_gets_counter():
+    # 'a-b/c.h' and 'a_b/c.h' both sanitize+mangle to 'a_b__c.h'.
+    names = flattening.assign_flat_names([_p('a-b', 'c.h'), _p('a_b', 'c.h')])
+    assert sorted(names.values()) == ['a_b__c.h', 'a_b__c__1.h']
+    _assert_unique(names)
 
 
 def test_assignment_is_order_independent():
     a = flattening.assign_flat_names([_p('x', 'g.cpp'), _p('y', 'g.cpp')])
     b = flattening.assign_flat_names([_p('y', 'g.cpp'), _p('x', 'g.cpp')])
     assert a == b
+
+
+def test_duplicate_reserved_names_raise():
+    with pytest.raises(ValueError, match='mutually distinct'):
+        flattening.assign_flat_names(
+            [_p('a.cpp'), _p('b.cpp')],
+            reserved={_p('a.cpp'): 'same.cpp', _p('b.cpp'): 'same.cpp'},
+        )
