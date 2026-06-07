@@ -924,6 +924,11 @@ def _install_package_from_preset(
 
 
 def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bool):
+    # Libraries are tool-managed: every create/sync re-fetches per the version
+    # spec and overwrites the materialized file. Reproducibility comes from the
+    # committed files (the pin), not from a lock — so local hand-edits to a
+    # materialized library are intentionally NOT preserved. Vendor a custom copy
+    # under a different path/source if you need to diverge.
     from rbx.box.presets import library_fetch
 
     libs = preset.libraries.contest if is_contest else preset.libraries.problem
@@ -937,7 +942,9 @@ def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bo
 
 
 def install_contest(
-    dest_pkg: pathlib.Path, fetch_info: Optional[PresetFetchInfo] = None
+    dest_pkg: pathlib.Path,
+    fetch_info: Optional[PresetFetchInfo] = None,
+    materialize: bool = True,
 ):
     if fetch_info is not None:
         _install_preset_from_fetch_info(
@@ -966,11 +973,14 @@ def install_contest(
         expansions=expansions,
     )
     clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
-    materialize_libraries(preset, dest_pkg, is_contest=True)
+    if materialize:
+        materialize_libraries(preset, dest_pkg, is_contest=True)
 
 
 def install_problem(
-    dest_pkg: pathlib.Path, fetch_info: Optional[PresetFetchInfo] = None
+    dest_pkg: pathlib.Path,
+    fetch_info: Optional[PresetFetchInfo] = None,
+    materialize: bool = True,
 ):
     if fetch_info is not None:
         _install_preset_from_fetch_info(
@@ -999,7 +1009,8 @@ def install_problem(
         expansions=expansions,
     )
     clean_copied_problem_dir(dest_pkg)
-    materialize_libraries(preset, dest_pkg, is_contest=False)
+    if materialize:
+        materialize_libraries(preset, dest_pkg, is_contest=False)
 
 
 def install_preset(
