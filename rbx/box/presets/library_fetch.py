@@ -97,6 +97,9 @@ def materialize_library(
 
     filename = library.path.name if library.path is not None else cache_path.name
     stored = pkg_root / '.local.rbx' / 'libs' / library.name / filename
+    # Clear the per-library backing dir first so it always reflects exactly the
+    # current library file (no orphans left behind when `path`/filename changes).
+    shutil.rmtree(stored.parent, ignore_errors=True)
     stored.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(cache_path, stored)
     rel = utils.relpath(utils.abspath(stored), utils.abspath(dest).parent)

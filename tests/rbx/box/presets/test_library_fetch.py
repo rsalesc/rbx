@@ -122,6 +122,26 @@ def test_materialize_overwrites_existing(tmp_path):
     assert (pkg / 'lib.h').read_text() == 'v2'
 
 
+def test_materialize_symlink_clears_stale_backing_file(tmp_path):
+    # Re-materializing a symlink library whose filename changed must not leave
+    # the old backing file behind under .local.rbx/libs/<name>/.
+    cache = tmp_path / 'cache.h'
+    cache.write_text('content')
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+
+    old = Library(name='lib', source='x', path='old.h', dest='old.h', symlink=True)
+    library_fetch.materialize_library(old, cache, pkg)
+    assert (pkg / '.local.rbx' / 'libs' / 'lib' / 'old.h').is_file()
+
+    new = Library(name='lib', source='x', path='new.h', dest='new.h', symlink=True)
+    library_fetch.materialize_library(new, cache, pkg)
+
+    libs_dir = pkg / '.local.rbx' / 'libs' / 'lib'
+    assert (libs_dir / 'new.h').is_file()
+    assert not (libs_dir / 'old.h').exists()  # stale orphan removed
+
+
 def test_resolve_remote_head_parses_sha(monkeypatch):
     from rbx.box import git_utils
 
