@@ -8,6 +8,7 @@ from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
+from rbx.box.packaging import flattening
 from rbx.box.packaging.packager import (
     BaseContestPackager,
     BasePackager,
@@ -156,11 +157,31 @@ class PolygonPackager(BasePackager):
     def _get_judging(self) -> polygon_schema.Judging:
         return polygon_schema.Judging(testsets=[self._get_single_testset()])
 
-    def _get_files(self) -> List[polygon_schema.File]:
-        return [
+    def _flatten_sources(self) -> flattening.FlatNamespace:
+        pkg = package.find_problem_package_or_die()
+        checker = package.get_checker_or_builtin()
+        sources = [checker]
+        reserved = {package.get_relative_source_path(checker): 'check.cpp'}
+        if pkg.interactor is not None:
+            sources.append(pkg.interactor)
+            reserved[package.get_relative_source_path(pkg.interactor)] = (
+                'interactor.cpp'
+            )
+        return flattening.build_flat_namespace(sources, reserved=reserved)
+
+    def _get_files(self, ns: flattening.FlatNamespace) -> List[polygon_schema.File]:
+        files = [
             polygon_schema.File(path='files/testlib.h', type='h.g++'),
             polygon_schema.File(path='files/rbx.h', type='h.g++'),
         ]
+        for dep in ns.dep_files():
+            ftype = (
+                'h.g++'
+                if dep.flat_name.endswith(('.h', '.hpp', '.hh', '.hxx'))
+                else 'cpp.g++'
+            )
+            files.append(polygon_schema.File(path=f'files/{dep.flat_name}', type=ftype))
+        return files
 
     def _statement_application_type(self, statement: BuiltStatement) -> str:
         return 'application/pdf'
@@ -202,12 +223,14 @@ class PolygonPackager(BasePackager):
     ):
         pkg = package.find_problem_package_or_die()
 
+        ns = self._flatten_sources()
+
         problem = polygon_schema.Problem(
             short_name=pkg.name,
             names=self._get_names(),
             checker=self._get_checker(),
             judging=self._get_judging(),
-            files=self._get_files(),
+            files=self._get_files(ns),
             interactor=self._get_interactor(),
             # TODO: revisit polygon problem statements
             # statements=self._process_statements(built_statements, into_path),
@@ -227,10 +250,13 @@ class PolygonPackager(BasePackager):
         files_path.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(get_testlib(), files_path / 'testlib.h')
         shutil.copyfile(header.get_header(), files_path / 'rbx.h')
-        shutil.copyfile(package.get_checker_or_builtin().path, files_path / 'check.cpp')
-        shutil.copyfile(package.get_checker_or_builtin().path, into_path / 'check.cpp')
-        if pkg.interactor is not None:
-            shutil.copyfile(pkg.interactor.path, files_path / 'interactor.cpp')
+        ns.materialize(
+            files_path
+        )  # writes check.cpp, interactor.cpp + every dep, rewritten
+        # Root copy for the Polygon UI ('cpy').
+        (into_path / 'check.cpp').write_bytes(
+            ns.content_for(package.get_checker_or_builtin())
+        )
 
         # Copy all testcases
         (into_path / 'tests').mkdir(parents=True, exist_ok=True)
