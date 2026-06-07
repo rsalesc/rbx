@@ -8,6 +8,7 @@ from rbx import console
 from rbx.box import header, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.packaging import flattening
 from rbx.box.packaging.boca.boca_language_utils import get_emitted_boca_languages
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguage
 from rbx.box.packaging.boca.packager import BocaPackager
@@ -64,11 +65,34 @@ class MojPackager(BocaPackager):
             .replace('{{checkerHash}}', checker_hash)
         )
 
+    def _flatten_checker(self) -> flattening.FlatNamespace:
+        checker = package.get_checker_or_builtin()
+        return flattening.build_flat_namespace(
+            [checker],
+            reserved={package.get_relative_source_path(checker): 'checker.cpp'},
+        )
+
+    def _flatten_interactor(self) -> flattening.FlatNamespace:
+        interactor = package.get_interactor()
+        return flattening.build_flat_namespace(
+            [interactor],
+            reserved={package.get_relative_source_path(interactor): 'interactor.cpp'},
+        )
+
+    # ``package()`` ships the checker/interactor via ``_flatten_*().materialize()``
+    # (root + deps), so these overrides are not on MOJ's hot path. They are kept to
+    # return the *rewritten* source (quoted includes point at the flattened dep
+    # names) and to shadow ``BocaPackager``'s versions, which emit a BOCA compile
+    # script rather than raw source.
     def _get_checker(self) -> str:
-        return package.get_checker_or_builtin().path.read_text()
+        return (
+            self._flatten_checker()
+            .content_for(package.get_checker_or_builtin())
+            .decode()
+        )
 
     def _get_interactor(self) -> str:
-        return package.get_interactor().path.read_text()
+        return self._flatten_interactor().content_for(package.get_interactor()).decode()
 
     def _expand_language_vars(self, language: BocaLanguage, dir: pathlib.Path):
         extension = get_extension_or_default('boca', BocaExtension)
@@ -160,16 +184,16 @@ class MojPackager(BocaPackager):
         rbx_header_path.parent.mkdir(parents=True, exist_ok=True)
         rbx_header_path.write_text(header.get_header().read_text())
 
-        # Prepare checker
-        checker_path = into_path / 'scripts' / 'checker.cpp'
-        checker_path.parent.mkdir(parents=True, exist_ok=True)
-        checker_path.write_text(self._get_checker())
+        # Prepare checker (+ its flattened compilation deps), all under scripts/.
+        scripts_path = into_path / 'scripts'
+        scripts_path.mkdir(parents=True, exist_ok=True)
+        self._flatten_checker().materialize(scripts_path)
 
         # Prepare interactor
         if pkg.type == TaskType.COMMUNICATION:
-            interactor_path = into_path / 'scripts' / 'interactor.cpp'
-            interactor_path.parent.mkdir(parents=True, exist_ok=True)
-            interactor_path.write_text(self._get_interactor())
+            interactor_scripts_path = into_path / 'scripts'
+            interactor_scripts_path.mkdir(parents=True, exist_ok=True)
+            self._flatten_interactor().materialize(interactor_scripts_path)
 
             interactor_prep_path = into_path / 'scripts' / 'interactor_prep.sh'
             interactor_prep_path.parent.mkdir(parents=True, exist_ok=True)

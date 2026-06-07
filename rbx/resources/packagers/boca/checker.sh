@@ -13,23 +13,9 @@ if [ ! -x "$cc" ]; then
     echo "$cc not found or it's not executable"
     exit 47
 fi
-read -r -d '' TestlibContent <<"RBXTESTLIBEOF"
-{{testlib_content}}
-RBXTESTLIBEOF
+{{embedded_files}}
 
-read -r -d '' RbxHeaderContent <<"RBXRBXHEADEREOF"
-{{rbx_header_content}}
-RBXRBXHEADEREOF
-
-read -r -d '' CheckerContent <<"RBXCHECKEREOF"
-{{checker_content}}
-RBXCHECKEREOF
-
-printf "%s" "${TestlibContent}" >testlib.h
-printf "%s" "${RbxHeaderContent}" >rbx.h
-printf "%s" "${CheckerContent}" >$CHECKER_PATH
-
-checker_hash=($(cat $CHECKER_PATH rbx.h testlib.h | md5sum))
+checker_hash=($(cat {{embedded_hash_inputs}} | md5sum))
 checker_cache="$CACHE_DIR/checker-${checker_hash}"
 
 echo "Polygon checker hash: $checker_hash"
