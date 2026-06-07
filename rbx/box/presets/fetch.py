@@ -1,6 +1,6 @@
 import pathlib
 import re
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -127,7 +127,7 @@ def get_preset_fetch_info(
 
 class LibraryFetchInfo(BaseModel):
     # One of: 'github' | 'git' | 'raw' | 'local'.
-    kind: str
+    kind: Literal['github', 'git', 'raw', 'local']
     # For github/git/raw: the URL to fetch from. For local: the filesystem path.
     fetch_uri: str
 

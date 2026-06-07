@@ -1,6 +1,7 @@
 import pathlib
 
 from rbx import utils
+from rbx.box import git_utils
 from rbx.box.presets.fetch import (
     PresetFetchInfo,
     get_library_fetch_info,
@@ -47,6 +48,19 @@ def test_library_fetch_info_local(tmp_path):
 
 def test_library_fetch_info_invalid_returns_none():
     assert get_library_fetch_info('not a valid source !!!') is None
+
+
+def test_library_fetch_info_bare_token_never_hits_network(monkeypatch):
+    # The whole point of the resolver ordering: a bare token (no scheme, no '/',
+    # not an existing path) must resolve without ever reaching the tool-tag
+    # branch of get_preset_fetch_info, which performs a `git ls-remote`.
+    def _boom(*args, **kwargs):
+        raise AssertionError('latest_remote_tag must not be called')
+
+    monkeypatch.setattr(git_utils, 'latest_remote_tag', _boom)
+
+    assert get_library_fetch_info('testlib') is None
+    assert get_library_fetch_info('not-a-real-lib') is None
 
 
 class TestPresetFetchInfo:
