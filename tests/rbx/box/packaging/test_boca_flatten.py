@@ -25,6 +25,22 @@ def test_boca_checker_embeds_and_rewrites_deps(testing_pkg):
     assert '{{embedded_hash_inputs}}' not in script
 
 
+def test_boca_checker_embeds_manual_compilation_files(testing_pkg):
+    # A checker relying on a custom compilationFiles header (#526) ships it into
+    # the embedded compile script even when it is not an auto-discovered include.
+    testing_pkg.add_file('extra/helper.h').write_text('#pragma once\nint H=1;\n')
+    testing_pkg.add_file('check.cpp').write_text(
+        '#include "helper.h"\n#include "testlib.h"\nint main(){}\n'
+    )
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.yml.checker.compilationFiles = ['extra/helper.h']
+    testing_pkg.save()
+
+    script = BocaPackager(testcase_entries=[])._get_checker()  # noqa: SLF001
+    assert '>helper.h' in script  # the compilationFiles header is materialized
+    assert 'checker.cpp helper.h' in script or 'helper.h' in script  # in md5 inputs
+
+
 def test_boca_flat_checker_embeds_only_three(testing_pkg):
     # A flat checker with no deps embeds exactly testlib.h, rbx.h, checker.cpp.
     testing_pkg.add_file('check.cpp').write_text('#include "testlib.h"\nint main(){}\n')

@@ -47,6 +47,23 @@ def test_build_flat_namespace_flat_source_is_byte_identical(testing_pkg):
     assert ns.content_for(checker).decode() == original  # byte-for-byte unchanged
 
 
+def test_build_flat_namespace_ships_manual_compilation_files(testing_pkg):
+    # A manual compilationFiles header that the source does NOT #include is still
+    # collected and shipped (#526) -- this path is independent of #include
+    # auto-discovery.
+    testing_pkg.add_file('extra/helper.h').write_text('#pragma once\nint H=1;\n')
+    testing_pkg.add_file('check.cpp').write_text('#include "testlib.h"\nint main(){}\n')
+    checker = CodeItem(
+        path=pathlib.Path('check.cpp'), compilationFiles=['extra/helper.h']
+    )
+    ns = flattening.build_flat_namespace(
+        [checker], reserved={pathlib.Path('check.cpp'): 'check.cpp'}
+    )
+    assert {f.flat_name for f in ns.files} == {'check.cpp', 'helper.h'}
+    helper = next(f for f in ns.files if f.flat_name == 'helper.h')
+    assert helper.content.decode() == '#pragma once\nint H=1;\n'
+
+
 def test_build_flat_namespace_rewrites_to_mangled_names_on_collision(testing_pkg):
     # Two deps share the basename util.h, so both get mangled flat names. The
     # rewritten includes must point at the mangled names -- this fails if the

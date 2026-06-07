@@ -79,8 +79,12 @@ class MojPackager(BocaPackager):
             reserved={package.get_relative_source_path(interactor): 'interactor.cpp'},
         )
 
+    # ``package()`` ships the checker/interactor via ``_flatten_*().materialize()``
+    # (root + deps), so these overrides are not on MOJ's hot path. They are kept to
+    # return the *rewritten* source (quoted includes point at the flattened dep
+    # names) and to shadow ``BocaPackager``'s versions, which emit a BOCA compile
+    # script rather than raw source.
     def _get_checker(self) -> str:
-        # Rewritten source (quoted includes point at the flattened dep names).
         return (
             self._flatten_checker()
             .content_for(package.get_checker_or_builtin())
