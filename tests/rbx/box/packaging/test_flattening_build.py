@@ -30,6 +30,23 @@ def test_build_flat_namespace_flattens_and_rewrites_checker(testing_pkg):
     assert ns.flat_name_for(checker) == 'check.cpp'
 
 
+def test_build_flat_namespace_rewrites_to_mangled_names_on_collision(testing_pkg):
+    # Two deps share the basename util.h, so both get mangled flat names. The
+    # rewritten includes must point at the mangled names -- this fails if the
+    # source were shipped verbatim (no rewrite).
+    testing_pkg.add_file('x/util.h').write_text('#pragma once\nint X=1;\n')
+    testing_pkg.add_file('y/util.h').write_text('#pragma once\nint Y=1;\n')
+    testing_pkg.add_file('main.cpp').write_text(
+        '#include "x/util.h"\n#include "y/util.h"\nint main(){}\n'
+    )
+    root = CodeItem(path=pathlib.Path('main.cpp'))
+    ns = flattening.build_flat_namespace([root])
+    assert {f.flat_name for f in ns.files} == {'main.cpp', 'x__util.h', 'y__util.h'}
+    txt = ns.content_for(root).decode()
+    assert '"x/util.h"' not in txt and '"y/util.h"' not in txt
+    assert '#include "x__util.h"' in txt and '#include "y__util.h"' in txt
+
+
 def test_build_flat_namespace_errors_on_unrewritable_crossdir(testing_pkg):
     testing_pkg.add_file('common/helper.py').write_text('x = 1\n')
     # A parent-relative import genuinely resolves to a cross-directory package file
@@ -40,5 +57,17 @@ def test_build_flat_namespace_errors_on_unrewritable_crossdir(testing_pkg):
         'from ..common.helper import x\nprint(x)\n'
     )
     gen = CodeItem(path=pathlib.Path('gens/g.py'))
+    with pytest.raises(typer.Exit):
+        flattening.build_flat_namespace([gen])
+
+
+def test_build_flat_namespace_guards_compilationfile_crossdir(testing_pkg):
+    # A non-rewritable source whose manual compilationFiles entry itself pulls in
+    # a cross-directory dependency must also fail loudly (the helper would ship
+    # incomplete on a flat judge).
+    testing_pkg.add_file('other/leaf.py').write_text('y = 2\n')
+    testing_pkg.add_file('lib/mid.py').write_text('from ..other.leaf import y\n')
+    testing_pkg.add_file('gens/g.py').write_text('print(1)\n')
+    gen = CodeItem(path=pathlib.Path('gens/g.py'), compilationFiles=['lib/mid.py'])
     with pytest.raises(typer.Exit):
         flattening.build_flat_namespace([gen])

@@ -2,7 +2,7 @@ import collections
 import dataclasses
 import pathlib
 import re
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
 import typer
 
@@ -142,15 +142,18 @@ def _package_root() -> pathlib.Path:
     return utils.abspath(pathlib.Path())
 
 
-def _rewritable_scanner(code: CodeItem) -> Optional[DependencyScanner]:
+def _scanners_for(code: CodeItem) -> List[DependencyScanner]:
     from rbx.box import environment
     from rbx.box.code import find_language
 
     language = find_language(code)
-    scanners = deps_scanner.get_scanners_for_kinds(
+    return deps_scanner.get_scanners_for_kinds(
         environment.language_kinds(language), language.scanners
     )
-    for s in scanners:
+
+
+def _rewritable_scanner(code: CodeItem) -> Optional[DependencyScanner]:
+    for s in _scanners_for(code):
         if s.can_rewrite and DependencyKind.COMPILATION in s.dependency_kinds:
             return s
     return None
@@ -168,14 +171,21 @@ def _rename_for(refs: List[Reference], name_of: Dict[pathlib.Path, str]):
     return rename
 
 
-def _walk(scanner, start, members, refs_by_path, rewritable):
+def _walk(
+    scanner: DependencyScanner,
+    start: pathlib.Path,
+    members: Set[pathlib.Path],
+    refs_by_path: Dict[pathlib.Path, List[Reference]],
+    rewritable: Dict[pathlib.Path, DependencyScanner],
+    root_dir: pathlib.Path,
+) -> None:
     """BFS a manual compilationFile's own quoted-include closure."""
     queue = collections.deque([start])
     while queue:
         current = queue.popleft()
         if current in refs_by_path:
             continue
-        refs = scanner.references(_package_root() / current)
+        refs = scanner.references(root_dir / current)
         refs_by_path[current] = refs
         members.add(current)
         rewritable.setdefault(current, scanner)
@@ -184,12 +194,42 @@ def _walk(scanner, start, members, refs_by_path, rewritable):
                 queue.append(ref.target)
 
 
-def _guard_non_rewritable(code: CodeItem, rel: pathlib.Path) -> None:
-    # All applicable scanners (any kind) so we can see resolving cross-dir deps.
-    graph = deps_graph.expand(code)
-    if graph is None:
+def _guard_non_rewritable(
+    code: CodeItem,
+    rel: pathlib.Path,
+    comp_dests: Sequence[pathlib.Path],
+    root_dir: pathlib.Path,
+) -> None:
+    """Fail loudly when a non-rewritable source (or one of its compilationFiles)
+    pulls in a cross-directory dependency that cannot be flattened.
+
+    Walks the source's whole resolving closure (the source plus each manual
+    ``compilationFiles`` entry and their transitive references) and flags any
+    reference whose target lives in a different directory than the file that
+    references it -- such an import/include cannot resolve once flattened.
+    """
+    scanners = _scanners_for(code)
+    if not scanners:
         return
-    cross_dir = [t for t in graph.files() if t.parent != rel.parent]
+    cross_dir: Set[pathlib.Path] = set()
+    seen: Set[pathlib.Path] = set()
+    queue = collections.deque([rel, *comp_dests])
+    while queue:
+        current = queue.popleft()
+        if current in seen:
+            continue
+        seen.add(current)
+        abs_current = root_dir / current
+        if not abs_current.is_file():
+            continue
+        for s in scanners:
+            for ref in s.references(abs_current):
+                if ref.target is None:
+                    continue
+                if ref.target.parent != current.parent:
+                    cross_dir.add(ref.target)
+                if ref.target not in seen:
+                    queue.append(ref.target)
     if not cross_dir:
         return
     listed = ', '.join(str(t) for t in sorted(cross_dir))
@@ -211,10 +251,11 @@ def build_flat_namespace(
 ) -> FlatNamespace:
     from rbx.box import package
 
-    members: set = set()
+    members: Set[pathlib.Path] = set()
     refs_by_path: Dict[pathlib.Path, List[Reference]] = {}
     rewritable: Dict[pathlib.Path, DependencyScanner] = {}
     roots: Dict[pathlib.Path, CodeItem] = {}
+    root_dir = _package_root()
 
     for code in sources:
         rel = package.get_relative_source_path(code)
@@ -231,13 +272,14 @@ def build_flat_namespace(
         else:
             members.add(rel)
 
-        for _, dest in package.get_compilation_files(code):
+        comp_dests = [dest for _, dest in package.get_compilation_files(code)]
+        for dest in comp_dests:
             members.add(dest)
             if scanner is not None:
-                _walk(scanner, dest, members, refs_by_path, rewritable)
+                _walk(scanner, dest, members, refs_by_path, rewritable, root_dir)
 
         if scanner is None:
-            _guard_non_rewritable(code, rel)
+            _guard_non_rewritable(code, rel, comp_dests, root_dir)
 
     name_of = assign_flat_names(
         members, reserved=reserved, enforce_stem_unique=enforce_stem_unique
@@ -245,7 +287,7 @@ def build_flat_namespace(
 
     files: List[FlatFile] = []
     for path in sorted(members):
-        raw = (_package_root() / path).read_bytes()
+        raw = (root_dir / path).read_bytes()
         if path in rewritable:
             rename = _rename_for(refs_by_path.get(path, []), name_of)
             content = (
