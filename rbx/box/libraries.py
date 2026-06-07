@@ -2,6 +2,7 @@ import functools
 import pathlib
 from typing import List
 
+from rbx import console
 from rbx.box.presets.schema import Library
 from rbx.grading import steps
 
@@ -42,7 +43,14 @@ def add_always_include_libraries(artifacts: steps.GradingArtifacts) -> bool:
             continue
         src = root / lib.dest
         if not src.is_file():
-            # Not materialized (e.g. needs `rbx presets sync`); skip silently.
+            # Declared but not materialized — turn a later cryptic "file not
+            # found" compile error into an actionable hint.
+            console.console.print(
+                f'[warning]Library [item]{lib.name}[/item] is declared but not '
+                f'materialized at [item]{lib.dest}[/item]; run '
+                '[item]rbx presets sync[/item] (or [item]rbx download '
+                f'{lib.name}[/item]).[/warning]'
+            )
             continue
         artifacts.inputs.append(steps.GradingFileInput(src=src, dest=dest))
         existing.add(dest)

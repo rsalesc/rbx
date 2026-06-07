@@ -59,6 +59,15 @@ def fetch_library(library: Library) -> pathlib.Path:
 
     if info.is_github():
         _require_path(library)
+        assert library.path is not None
+        if not library.path.suffix:
+            console.console.print(
+                f'[error]Library [item]{library.name}[/item] uses a GitHub source '
+                f'with a directory [item]path[/item] ([item]{library.path}[/item]), '
+                'which the single-file raw fetch cannot handle. Use a git URL '
+                '(ending in [item].git[/item]) to fetch a directory.[/error]'
+            )
+            raise typer.Exit(1)
         ref = _resolve_ref(info.fetch_uri, library.version)
         dst = _cache_path(library, ref)
         if not dst.exists():

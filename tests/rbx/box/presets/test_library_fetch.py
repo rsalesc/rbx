@@ -66,6 +66,21 @@ def test_fetch_library_github_strips_git_suffix(tmp_path, monkeypatch):
     )
 
 
+def test_fetch_library_github_directory_path_rejected(tmp_path, monkeypatch):
+    import typer
+
+    monkeypatch.setattr(library_fetch, 'get_app_path', lambda: tmp_path / 'app')
+    lib = Library(
+        name='somelib',
+        source='https://github.com/owner/repo',
+        path='single_include',  # a directory (no suffix) — unsupported via raw fetch
+        version='v1',
+        dest='lib.h',
+    )
+    with pytest.raises(typer.Exit):
+        library_fetch.fetch_library(lib)
+
+
 def test_fetch_library_github_requires_path(tmp_path, monkeypatch):
     monkeypatch.setattr(library_fetch, 'get_app_path', lambda: tmp_path / 'app')
     lib = Library(
