@@ -674,6 +674,11 @@ async def compile_item(
         download.maybe_add_jngen(code, artifacts)
         download.maybe_add_tgen(code, artifacts)
         download.maybe_add_rbx_header(code, artifacts)
+
+        from rbx.box import libraries
+
+        added_always_include = libraries.add_always_include_libraries(artifacts)
+
         compilable_path = await maybe_rename_java_class(compilable_path, file_mapping)
         artifacts.inputs.append(
             GradingFileInput(
@@ -701,6 +706,7 @@ async def compile_item(
         bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
         if bits_artifact is not None:
             artifacts.inputs.append(bits_artifact)
+        if bits_artifact is not None or added_always_include:
             commands = [
                 command + f' -I{steps.INTERNAL_DIR}'
                 for command in commands
