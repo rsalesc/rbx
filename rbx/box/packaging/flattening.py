@@ -1,8 +1,15 @@
+import collections
 import dataclasses
 import pathlib
 import re
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
+import typer
+
+from rbx import console
+from rbx.box.dependencies import graph as deps_graph
+from rbx.box.dependencies import scanner as deps_scanner
+from rbx.box.dependencies.scanner import DependencyKind, DependencyScanner, Reference
 from rbx.box.schema import CodeItem
 
 
@@ -127,3 +134,132 @@ class FlatNamespace:
         into_dir.mkdir(parents=True, exist_ok=True)
         for f in self.files:
             (into_dir / f.flat_name).write_bytes(f.content)
+
+
+def _package_root() -> pathlib.Path:
+    from rbx import utils
+
+    return utils.abspath(pathlib.Path())
+
+
+def _rewritable_scanner(code: CodeItem) -> Optional[DependencyScanner]:
+    from rbx.box import environment
+    from rbx.box.code import find_language
+
+    language = find_language(code)
+    scanners = deps_scanner.get_scanners_for_kinds(
+        environment.language_kinds(language), language.scanners
+    )
+    for s in scanners:
+        if s.can_rewrite and DependencyKind.COMPILATION in s.dependency_kinds:
+            return s
+    return None
+
+
+def _rename_for(refs: List[Reference], name_of: Dict[pathlib.Path, str]):
+    by_spelling = {r.spelling: r for r in refs}
+
+    def rename(spelling: str) -> Optional[str]:
+        ref = by_spelling.get(spelling)
+        if ref is None or ref.target is None:
+            return None
+        return name_of.get(ref.target)
+
+    return rename
+
+
+def _walk(scanner, start, members, refs_by_path, rewritable):
+    """BFS a manual compilationFile's own quoted-include closure."""
+    queue = collections.deque([start])
+    while queue:
+        current = queue.popleft()
+        if current in refs_by_path:
+            continue
+        refs = scanner.references(_package_root() / current)
+        refs_by_path[current] = refs
+        members.add(current)
+        rewritable.setdefault(current, scanner)
+        for ref in refs:
+            if ref.target is not None and ref.target not in refs_by_path:
+                queue.append(ref.target)
+
+
+def _guard_non_rewritable(code: CodeItem, rel: pathlib.Path) -> None:
+    # All applicable scanners (any kind) so we can see resolving cross-dir deps.
+    graph = deps_graph.expand(code)
+    if graph is None:
+        return
+    cross_dir = [t for t in graph.files() if t.parent != rel.parent]
+    if not cross_dir:
+        return
+    listed = ', '.join(str(t) for t in sorted(cross_dir))
+    console.console.print(
+        f'[error]Cannot flatten {code.href()} for a flat judge: it depends on '
+        f'cross-directory files [item]{listed}[/item] but its language does not '
+        f'support include/import rewriting.[/error]\n'
+        f'[error]Flatten it manually or keep its dependencies in the same '
+        f'directory. See issue #525.[/error]'
+    )
+    raise typer.Exit(1)
+
+
+def build_flat_namespace(
+    sources: Sequence[CodeItem],
+    *,
+    reserved: Mapping[pathlib.Path, str] = {},
+    enforce_stem_unique: bool = False,
+) -> FlatNamespace:
+    from rbx.box import package
+
+    members: set = set()
+    refs_by_path: Dict[pathlib.Path, List[Reference]] = {}
+    rewritable: Dict[pathlib.Path, DependencyScanner] = {}
+    roots: Dict[pathlib.Path, CodeItem] = {}
+
+    for code in sources:
+        rel = package.get_relative_source_path(code)
+        roots[rel] = code
+        scanner = _rewritable_scanner(code)
+
+        graph = deps_graph.expand(code, require_kind=DependencyKind.COMPILATION)
+        if graph is not None:
+            for path, refs in graph.nodes.items():
+                members.add(path)
+                refs_by_path.setdefault(path, refs)
+                if scanner is not None:
+                    rewritable.setdefault(path, scanner)
+        else:
+            members.add(rel)
+
+        for _, dest in package.get_compilation_files(code):
+            members.add(dest)
+            if scanner is not None:
+                _walk(scanner, dest, members, refs_by_path, rewritable)
+
+        if scanner is None:
+            _guard_non_rewritable(code, rel)
+
+    name_of = assign_flat_names(
+        members, reserved=reserved, enforce_stem_unique=enforce_stem_unique
+    )
+
+    files: List[FlatFile] = []
+    for path in sorted(members):
+        raw = (_package_root() / path).read_bytes()
+        if path in rewritable:
+            rename = _rename_for(refs_by_path.get(path, []), name_of)
+            content = (
+                rewritable[path].rewrite(raw.decode('utf-8'), rename).encode('utf-8')
+            )
+        else:
+            content = raw
+        files.append(
+            FlatFile(
+                flat_name=name_of[path],
+                source_path=path,
+                content=content,
+                is_root=path in roots,
+                origin_code=roots.get(path),
+            )
+        )
+    return FlatNamespace(files=files, name_of=name_of)
