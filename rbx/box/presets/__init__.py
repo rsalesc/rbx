@@ -923,6 +923,19 @@ def _install_package_from_preset(
         )
 
 
+def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bool):
+    from rbx.box.presets import library_fetch
+
+    libs = preset.libraries.contest if is_contest else preset.libraries.problem
+    for library in libs:
+        cached = library_fetch.fetch_library(library)
+        library_fetch.materialize_library(library, cached, pkg_root)
+        console.console.print(
+            f'Materialized library [item]{library.name}[/item] at '
+            f'[item]{library.dest}[/item].'
+        )
+
+
 def install_contest(
     dest_pkg: pathlib.Path, fetch_info: Optional[PresetFetchInfo] = None
 ):
@@ -953,6 +966,7 @@ def install_contest(
         expansions=expansions,
     )
     clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
+    materialize_libraries(preset, dest_pkg, is_contest=True)
 
 
 def install_problem(
@@ -985,6 +999,7 @@ def install_problem(
         expansions=expansions,
     )
     clean_copied_problem_dir(dest_pkg)
+    materialize_libraries(preset, dest_pkg, is_contest=False)
 
 
 def install_preset(
@@ -1046,6 +1061,7 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
         force=force,
         symlinks=symlinks,
     )
+    materialize_libraries(get_active_preset(), pathlib.Path(), is_contest=is_contest())
     generate_lock()
 
 

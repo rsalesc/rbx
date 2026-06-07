@@ -56,6 +56,38 @@ def test_preset_parses_libraries_block():
     assert Preset(name='xyz', uri='owner/repo').libraries.problem == []
 
 
+def test_materialize_libraries_local_source(tmp_path, monkeypatch):
+    from rbx.box import presets
+    from rbx.box.presets import library_fetch
+    from rbx.box.presets.schema import Preset
+
+    # Keep the global cache inside tmp_path so the test stays offline & isolated.
+    monkeypatch.setattr(library_fetch, 'get_app_path', lambda: tmp_path / 'app')
+
+    src = tmp_path / 'src.h'
+    src.write_text('// header')
+
+    preset = Preset(
+        name='sample',
+        uri='owner/repo',
+        libraries={
+            'problem': [{'name': 'lib', 'source': str(src), 'dest': 'libs/lib.h'}],
+            'contest': [{'name': 'clib', 'source': str(src), 'dest': 'clib.h'}],
+        },
+    )
+
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+
+    presets.materialize_libraries(preset, pkg, is_contest=False)
+    assert (pkg / 'libs' / 'lib.h').read_text() == '// header'
+    # Only problem libraries materialized when is_contest=False.
+    assert not (pkg / 'clib.h').exists()
+
+    presets.materialize_libraries(preset, pkg, is_contest=True)
+    assert (pkg / 'clib.h').read_text() == '// header'
+
+
 # ===================
 # Reusable Fixtures
 # ===================
