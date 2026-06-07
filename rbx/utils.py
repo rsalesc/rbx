@@ -1,5 +1,6 @@
 import atexit
 import contextlib
+import dataclasses
 import enum
 import functools
 import json
@@ -34,7 +35,7 @@ import typer
 import yaml
 from packaging.version import InvalidVersion
 from packaging.version import Version as PyPIVersion
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from rich import text
 from rich.highlighter import JSONHighlighter
 
@@ -43,6 +44,53 @@ from rbx.console import console
 
 T = TypeVar('T', bound=BaseModel)
 _R = TypeVar('_R')
+
+
+@dataclasses.dataclass(frozen=True)
+class Removed:
+    """Annotation flag marking a model field that has been removed.
+
+    Pair it with Pydantic's native ``Field(deprecated=...)`` on a model that inherits
+    :class:`RejectsRemovedFields`::
+
+        legacy: Annotated[Optional[str], Removed()] = Field(
+            default=None, deprecated='Use `new_field` instead (removed in v1).'
+        )
+
+    The ``deprecated`` text is the single source of truth: it renders the field as
+    deprecated in the schema/docs AND becomes the error message if a config still sets
+    the field. Unlike a bare ``deprecated`` field -- which only warns on attribute
+    access and stays usable -- a ``Removed`` field is a hard load-time error.
+    """
+
+
+class RejectsRemovedFields(BaseModel):
+    """Base model that rejects any field flagged with :class:`Removed`.
+
+    A config that still sets a removed field fails to load with that field's
+    ``deprecated`` message. Pair with ``model_config = ConfigDict(extra='forbid')`` so
+    unknown fields are rejected too.
+    """
+
+    @model_validator(mode='before')
+    @classmethod
+    def _reject_removed_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        for name, field in cls.model_fields.items():
+            if not any(isinstance(m, Removed) for m in field.metadata):
+                continue
+            keys = {name}
+            if field.alias is not None:
+                keys.add(field.alias)
+            if keys & data.keys():
+                message = (
+                    field.deprecated
+                    if isinstance(field.deprecated, str)
+                    else f'`{name}` was removed.'
+                )
+                raise ValueError(message)
+        return data
 
 
 def loop_agnostic_async_cache(

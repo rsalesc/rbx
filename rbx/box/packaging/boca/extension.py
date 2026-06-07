@@ -1,39 +1,13 @@
 import typing
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
+
+from rbx.utils import RejectsRemovedFields, Removed
 
 BocaLanguage = typing.Literal['c', 'cpp', 'cc', 'kt', 'java', 'py2', 'py3']
 
-# Fields removed in rbx v1, mapped to an actionable migration hint. Surfaced as a
-# clear error at env load (see the "Migrating to rbx v1" troubleshooting guide).
-_REMOVED_ENV_FIELDS = {
-    'languages': (
-        'Env-level `extensions.boca.languages` was removed in rbx v1. Declare '
-        '`languages` per rbx language under its `extensions.boca` instead; the '
-        "emitted set is the union of every language's `languages`."
-    ),
-    'maximumTimeError': (
-        '`maximumTimeError` was removed in rbx v1. It has been ignored since #494 '
-        '(rbx emits exact fractional time limits). Use `minRunningTime` instead.'
-    ),
-}
-_REMOVED_LANGUAGE_FIELDS = {
-    'bocaLanguage': (
-        '`bocaLanguage` was removed in rbx v1. Use `languages` (a list) instead, '
-        'with an explicit `template`.'
-    ),
-}
 
-
-def _reject_removed(data: typing.Any, removed: typing.Mapping[str, str]) -> typing.Any:
-    if isinstance(data, dict):
-        for field, hint in removed.items():
-            if field in data:
-                raise ValueError(hint)
-    return data
-
-
-class BocaExtension(BaseModel):
+class BocaExtension(RejectsRemovedFields):
     model_config = ConfigDict(extra='forbid')
 
     flags: typing.Dict[BocaLanguage, str] = {}
@@ -44,10 +18,22 @@ class BocaExtension(BaseModel):
     preferContestLetter: bool = False
     usePypy: bool = False
 
-    @model_validator(mode='before')
-    @classmethod
-    def _reject_removed_fields(cls, data: typing.Any) -> typing.Any:
-        return _reject_removed(data, _REMOVED_ENV_FIELDS)
+    # Removed in rbx v1 (see the "Migrating to rbx v1" troubleshooting guide).
+    languages: typing.Annotated[typing.Optional[typing.List[str]], Removed()] = Field(
+        default=None,
+        deprecated=(
+            'Env-level `extensions.boca.languages` was removed in rbx v1. Declare '
+            '`languages` per rbx language under its `extensions.boca` instead; the '
+            "emitted set is the union of every language's `languages`."
+        ),
+    )
+    maximumTimeError: typing.Annotated[typing.Optional[float], Removed()] = Field(
+        default=None,
+        deprecated=(
+            '`maximumTimeError` was removed in rbx v1. It has been ignored since #494 '
+            '(rbx emits exact fractional time limits). Use `minRunningTime` instead.'
+        ),
+    )
 
     def flags_with_defaults(self) -> typing.Dict[BocaLanguage, str]:
         res: typing.Dict[BocaLanguage, str] = {
@@ -59,7 +45,7 @@ class BocaExtension(BaseModel):
         return res
 
 
-class BocaLanguageExtension(BaseModel):
+class BocaLanguageExtension(RejectsRemovedFields):
     model_config = ConfigDict(extra='forbid')
 
     # BOCA languages this rbx language maps to. The first entry is the canonical/primary
@@ -71,10 +57,14 @@ class BocaLanguageExtension(BaseModel):
     # is set.
     template: typing.Optional[str] = None
 
-    @model_validator(mode='before')
-    @classmethod
-    def _reject_removed_fields(cls, data: typing.Any) -> typing.Any:
-        return _reject_removed(data, _REMOVED_LANGUAGE_FIELDS)
+    # Removed in rbx v1 (see the "Migrating to rbx v1" troubleshooting guide).
+    bocaLanguage: typing.Annotated[typing.Optional[str], Removed()] = Field(
+        default=None,
+        deprecated=(
+            '`bocaLanguage` was removed in rbx v1. Use `languages` (a list) instead, '
+            'with an explicit `template`.'
+        ),
+    )
 
     @model_validator(mode='after')
     def _require_template_with_languages(self) -> 'BocaLanguageExtension':

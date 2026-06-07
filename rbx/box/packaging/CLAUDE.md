@@ -71,7 +71,7 @@ Polygon (offline + upload) and BOCA/MOJ are **flat** judges: they compile each s
 
 Supports interactive problems with special `run` scripts.
 
-**`extension.py`** -- env-level `BocaExtension` (`flags`, `minRunningTime`, `preferContestLetter`, `usePypy`) and per-language `BocaLanguageExtension` (`languages` list + required `template`). Both `model_config = extra='forbid'`. rbx v1 (#471) removed the legacy singular `bocaLanguage`, the env-level `languages` allowlist, the implicit `template` fallback, and `maximumTimeError` (#494); a `model_validator` rejects each removed field at env load with a migration hint, and `template` is required whenever `languages` is set. `resolved_languages`/`primary_language`/`resolved_template` now read only the plural fields.
+**`extension.py`** -- env-level `BocaExtension` (`flags`, `minRunningTime`, `preferContestLetter`, `usePypy`) and per-language `BocaLanguageExtension` (`languages` list + required `template`). Both `model_config = extra='forbid'`. rbx v1 (#471) removed the legacy singular `bocaLanguage`, the env-level `languages` allowlist, the implicit `template` fallback, and `maximumTimeError` (#494). Removed fields are kept as fields flagged `Annotated[..., Removed()]` + `Field(deprecated='<migration hint>')`: the shared `RejectsRemovedFields` base (in `rbx/utils.py`) reads the flag and raises that hint at env load, so the explanation lives on the field. `template` is required whenever `languages` is set (`model_validator`), and `resolved_languages`/`primary_language`/`resolved_template` read only the plural fields.
 
 ### MOJ (`moj/`)
 
