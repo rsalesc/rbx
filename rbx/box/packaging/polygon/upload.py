@@ -676,11 +676,19 @@ async def upload_problem(
     # Build the flat namespace once, unconditionally, so that flat names stay
     # globally consistent regardless of which subset is being uploaded. Only the
     # upload calls below are gated.
-    ns = _build_upload_namespace()
+    # Build the shared flat namespace only when a source category is actually
+    # uploaded -- statements-only uploads need no source naming and must not be
+    # aborted by the flattening guardrail. Dependency headers are shared
+    # resources, so ship them whenever any source that may ``#include`` them
+    # (generators, solutions, checker/validator/interactor) is uploaded.
+    ns: Optional[flattening.FlatNamespace] = None
+    if which_upload & {'files', 'solutions', 'tests'}:
+        ns = _build_upload_namespace()
+        _upload_dep_files(problem, ns)
 
     if 'files' in which_upload:
+        assert ns is not None
         _update_rbx_header(problem)
-        _upload_dep_files(problem, ns)
         _update_checker(problem, ns)
 
     if (
