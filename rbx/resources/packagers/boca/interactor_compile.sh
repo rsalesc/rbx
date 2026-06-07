@@ -18,13 +18,9 @@ if [ ! -x "$cc" ]; then
   exit 47
 fi
 
-read -r -d '' InteractorContent <<"RBXINTERACTOREOF"
-{{interactor_content}}
-RBXINTERACTOREOF
+{{embedded_files}}
 
-printf "%s" "${InteractorContent}" >$INTERACTOR_PATH
-
-interactor_hash=($(cat $INTERACTOR_PATH rbx.h testlib.h | md5sum))
+interactor_hash=($(cat {{embedded_hash_inputs}} | md5sum))
 interactor_cache="$CACHE_DIR/interactor-${interactor_hash}"
 
 echo "Interactor hash: $interactor_hash"

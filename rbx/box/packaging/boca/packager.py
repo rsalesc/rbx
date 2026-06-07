@@ -9,6 +9,7 @@ from rbx import console, utils
 from rbx.box import environment, header, limits_info, naming, package
 from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.packaging import flattening
 from rbx.box.packaging.boca.boca_language_utils import (
     get_boca_template_name,
     get_emitted_boca_languages,
@@ -205,6 +206,24 @@ class BocaPackager(BasePackager):
         )
         return self._replace_walltime(text, lang)
 
+    def _embed_block(
+        self, named_contents: List[Tuple[str, str]]
+    ) -> Tuple[str, List[str]]:
+        """Emit a shell block that writes each (name, content) pair to disk.
+
+        Each file is embedded via a uniquely-tagged heredoc and printf'd to its
+        flat name, generalizing the legacy three fixed heredocs to N files.
+        Returns the block and the ordered list of written filenames.
+        """
+        lines = []
+        names = []
+        for i, (name, content) in enumerate(named_contents):
+            eof = f'RBXEMBED{i}EOF'
+            lines.append(f'read -r -d \'\' RBXEMBED{i} <<"{eof}"\n{content}\n{eof}\n')
+            lines.append(f'printf "%s" "${{RBXEMBED{i}}}" >{name}\n')
+            names.append(name)
+        return ''.join(lines), names
+
     def _get_checker(self) -> str:
         checker_path = get_default_app_path() / 'packagers' / 'boca' / 'checker.sh'
         if not checker_path.exists():
@@ -212,15 +231,22 @@ class BocaPackager(BasePackager):
                 '[error]BOCA template checker script not found.[/error]'
             )
             raise typer.Exit(1)
-        checker_text = checker_path.read_text()
-        testlib = get_testlib().read_text()
-        checker = package.get_checker_or_builtin().path.read_text()
-        rbx_header = header.get_header().read_text()
+
+        checker = package.get_checker_or_builtin()
+        reserved = {package.get_relative_source_path(checker): 'checker.cpp'}
+        ns = flattening.build_flat_namespace([checker], reserved=reserved)
+
+        named = [
+            ('testlib.h', get_testlib().read_text()),
+            ('rbx.h', header.get_header().read_text()),
+        ]
+        named += [(f.flat_name, f.content.decode('utf-8')) for f in ns.files]
+        block, names = self._embed_block(named)
+
         return (
-            self._replace_common(checker_text, 'cc')
-            .replace('{{testlib_content}}', testlib)
-            .replace('{{rbx_header_content}}', rbx_header)
-            .replace('{{checker_content}}', checker)
+            self._replace_common(checker_path.read_text(), 'cc')
+            .replace('{{embedded_files}}', block)
+            .replace('{{embedded_hash_inputs}}', ' '.join(names))
         )
 
     def _get_interactor(self) -> str:
@@ -233,10 +259,20 @@ class BocaPackager(BasePackager):
             )
             raise typer.Exit(1)
 
-        interactor_text = interactor_path.read_text()
-        interactor = package.get_interactor().path.read_text()
-        return self._replace_common(interactor_text, 'cc').replace(
-            '{{interactor_content}}', interactor
+        interactor = package.get_interactor()
+        reserved = {package.get_relative_source_path(interactor): 'interactor.cpp'}
+        ns = flattening.build_flat_namespace([interactor], reserved=reserved)
+
+        # The interactor reuses the testlib.h/rbx.h written by the checker step,
+        # so we embed only its own namespace files but still hash the headers.
+        named = [(f.flat_name, f.content.decode('utf-8')) for f in ns.files]
+        block, names = self._embed_block(named)
+        hash_inputs = ' '.join(names + ['rbx.h', 'testlib.h'])
+
+        return (
+            self._replace_common(interactor_path.read_text(), 'cc')
+            .replace('{{embedded_files}}', block)
+            .replace('{{embedded_hash_inputs}}', hash_inputs)
         )
 
     def _get_safeexec(self) -> str:
