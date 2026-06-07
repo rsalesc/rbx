@@ -469,6 +469,20 @@ def _should_precompile(commands: List[str]) -> bool:
     return any(LanguageKind.CPP in command_kinds(command) for command in commands)
 
 
+def _add_internal_include(commands: List[str]) -> List[str]:
+    """Add `-I__internal__` to each C++ command, leaving other commands intact.
+
+    Non-C++ commands (e.g. `javac`) must be preserved unchanged — dropping them
+    would empty the command list and break the compile.
+    """
+    return [
+        command + f' -I{steps.INTERNAL_DIR}'
+        if LanguageKind.CXX in command_kinds(get_exe_from_command(command))
+        else command
+        for command in commands
+    ]
+
+
 async def _precompile_header(
     compilation_options: Union[CompilationConfig, BaseCompilationConfig],
     sanitized: SanitizationLevel,
@@ -707,11 +721,7 @@ async def compile_item(
         if bits_artifact is not None:
             artifacts.inputs.append(bits_artifact)
         if bits_artifact is not None or added_always_include:
-            commands = [
-                command + f' -I{steps.INTERNAL_DIR}'
-                for command in commands
-                if LanguageKind.CXX in command_kinds(get_exe_from_command(command))
-            ]
+            commands = _add_internal_include(commands)
 
         # Precompile C++ interesting header files.
         if precompile and _should_precompile(commands):
