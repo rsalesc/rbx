@@ -71,3 +71,23 @@ def test_no_preset_returns_empty(tmp_path, monkeypatch):
     assert libraries.get_always_include_libraries() == []
     artifacts = steps.GradingArtifacts()
     assert libraries.add_always_include_libraries(artifacts) is False
+
+
+def test_testing_package_declares_standard_libraries(testing_pkg):
+    # The TestingPackage chokepoint must PERSIST testlib/jngen/tgen as
+    # always_include libraries (the exclude_unset trap means a nested mutation
+    # would be silently dropped). This proves the library mechanism provides
+    # them independently of the hardcoded maybe_add_* injection (removed next).
+    libraries.get_declared_libraries.cache_clear()
+    names = {lib.name for lib in libraries.get_declared_libraries()}
+    assert {'testlib', 'jngen', 'tgen'} <= names
+
+    artifacts = steps.GradingArtifacts()
+    added = libraries.add_always_include_libraries(artifacts)
+    assert added is True
+    dests = {str(i.dest) for i in artifacts.inputs}
+    assert {
+        '__internal__/testlib.h',
+        '__internal__/jngen.h',
+        '__internal__/tgen.h',
+    } <= dests

@@ -1,3 +1,4 @@
+import importlib.resources
 import pathlib
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -5,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from rbx import console, utils
 from rbx.box import package_utils, presets
 from rbx.box.fields import Primitive
+from rbx.box.presets.schema import Libraries, Library
 from rbx.box.schema import (
     CheckerTest,
     CodeItem,
@@ -79,11 +81,11 @@ class TestingPackage(TestingShared):
         source-resolvable path (keeping the dependency scanner / package
         contents unperturbed); `always_include` injects them into `__internal__/`
         at compile time exactly as the real mechanism does.
+
+        NOTE: this reads `rbx/resources/predownloaded/{testlib,jngen,tgen}.h`,
+        which therefore must remain bundled as test fixtures even after the
+        runtime offline fallback is removed.
         """
-        import importlib.resources
-
-        from rbx.box.presets.schema import Library
-
         specs = [('testlib', 'testlib.h'), ('jngen', 'jngen.h'), ('tgen', 'tgen.h')]
         new_libs = []
         for name, filename in specs:
@@ -106,8 +108,12 @@ class TestingPackage(TestingShared):
                     always_include=True,
                 )
             )
-        testing_preset.yml.libraries.problem = (
-            testing_preset.yml.libraries.problem + new_libs
+        # Assign the WHOLE `libraries` field (not a nested attribute) so Pydantic
+        # marks it set; otherwise model_to_yaml(exclude_unset=True) would drop the
+        # block and get_declared_libraries() would read an empty list.
+        current = testing_preset.yml.libraries
+        testing_preset.yml.libraries = Libraries(
+            problem=current.problem + new_libs, contest=current.contest
         )
         testing_preset.save()
 
