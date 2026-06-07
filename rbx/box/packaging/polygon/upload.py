@@ -10,6 +10,7 @@ import typer
 from rbx import console, utils
 from rbx.box import header, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.packaging import flattening
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.statement_block_utils import (
     get_processed_statement_blocks,
@@ -17,6 +18,7 @@ from rbx.box.packaging.polygon.statement_block_utils import (
 )
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
 from rbx.box.schema import (
+    CodeItem,
     ExpectedOutcome,
     Generator,
     GeneratorCall,
@@ -114,6 +116,60 @@ def _get_validator_name() -> str:
     return validator.path.with_stem('validator').name
 
 
+def _collect_generators() -> List[Generator]:
+    """Generators referenced by the package's testcases, de-duplicated by path,
+    in deterministic order.
+
+    Mirrors the de-duplication used by ``_upload_testcases`` so the upload
+    namespace and the actual generator uploads agree on the set of generators.
+    """
+    entries = asyncio.run(extract_generation_testcases_from_groups())
+    generators: Dict[str, Generator] = {}
+    for entry in entries:
+        if not entry.metadata.generator_call:
+            continue
+        gen = package.get_generator_or_nil(entry.metadata.generator_call.name)
+        if gen is None:
+            continue
+        generators[str(gen.path)] = gen
+    return [generators[k] for k in sorted(generators)]
+
+
+def _build_upload_namespace() -> flattening.FlatNamespace:
+    """Build a single flat namespace spanning every uploaded source.
+
+    The checker/interactor/validator keep their special Polygon names via
+    ``reserved``; everything else (solutions, generators) is disambiguated so
+    same-basename sources in different directories no longer collide (#527).
+    ``enforce_stem_unique`` is required because Polygon compiles each source to a
+    program named after its stem.
+    """
+    pkg = package.find_problem_package_or_die()
+    sources: List[CodeItem] = []
+    reserved: Dict[pathlib.Path, str] = {}
+
+    checker = package.get_checker_or_builtin()
+    sources.append(checker)
+    reserved[package.get_relative_source_path(checker)] = _get_checker_name()
+
+    interactor = package.get_interactor_or_nil()
+    if interactor is not None:
+        sources.append(interactor)
+        reserved[package.get_relative_source_path(interactor)] = _get_interactor_name()
+
+    if pkg.validator is not None:
+        validator = package.get_validator()
+        sources.append(validator)
+        reserved[package.get_relative_source_path(validator)] = _get_validator_name()
+
+    sources.extend(package.get_solutions())
+    sources.extend(_collect_generators())
+
+    return flattening.build_flat_namespace(
+        sources, reserved=reserved, enforce_stem_unique=True
+    )
+
+
 def _update_rbx_header(problem: api.Problem):
     console.console.print('Uploading rbx.h...')
     rbx_header = header.get_header()
@@ -147,45 +203,55 @@ def _update_tgen(problem: api.Problem):
     )
 
 
-def _update_checker(problem: api.Problem):
+def _upload_dep_files(problem: api.Problem, ns: flattening.FlatNamespace):
+    for dep in ns.dep_files():
+        console.console.print(f'Uploading dependency {dep.flat_name}...')
+        problem.save_file(
+            type=api.FileType.RESOURCE,
+            name=dep.flat_name,
+            file=dep.content,
+            source_type=None,
+        )
+
+
+def _update_checker(problem: api.Problem, ns: flattening.FlatNamespace):
     checker = package.get_checker_or_builtin()
     source_type = get_polygon_language_from_code_item(checker)
     console.console.print(f'Uploading checker (lang: {source_type})...')
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_checker_name(),
-        file=checker.path.read_bytes(),
+        file=ns.content_for(checker),
         source_type=source_type,
     )
 
     problem.set_checker(_get_checker_name())
 
 
-def _update_interactor(problem: api.Problem):
+def _update_interactor(problem: api.Problem, ns: flattening.FlatNamespace):
     interactor = package.get_interactor()
     source_type = get_polygon_language_from_code_item(interactor)
     console.console.print(f'Uploading interactor (lang: {source_type})...')
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_interactor_name(),
-        file=interactor.path.read_bytes(),
+        file=ns.content_for(interactor),
         source_type=source_type,
     )
 
     problem.set_interactor(_get_interactor_name())
 
 
-def _upload_validator(problem: api.Problem):
+def _upload_validator(problem: api.Problem, ns: flattening.FlatNamespace):
     validator = package.get_validator()
     if validator is None:
         return
     source_type = get_polygon_language_from_code_item(validator)
     console.console.print(f'Uploading validator (lang: {source_type})...')
-    validator = package.get_validator()
     problem.save_file(
         type=api.FileType.SOURCE,
         name=_get_validator_name(),
-        file=validator.path.read_bytes(),
+        file=ns.content_for(validator),
         source_type=source_type,
     )
 
@@ -283,7 +349,9 @@ def _validate_raw_tests(
     return errors
 
 
-def _upload_generator(problem: api.Problem, generator: Generator):
+def _upload_generator(
+    problem: api.Problem, generator: Generator, ns: flattening.FlatNamespace
+):
     generator_source_type = get_polygon_language_from_code_item(generator)
     console.console.print(
         f'Uploading generator {generator.href()} (lang: {generator_source_type})...'
@@ -291,8 +359,8 @@ def _upload_generator(problem: api.Problem, generator: Generator):
     try:
         problem.save_file(
             type=api.FileType.SOURCE,
-            name=generator.path.name,
-            file=generator.path.read_bytes(),
+            name=ns.flat_name_for(generator),
+            file=ns.content_for(generator),
             source_type=generator_source_type,
         )
     except api.PolygonRequestFailedException as e:
@@ -302,7 +370,7 @@ def _upload_generator(problem: api.Problem, generator: Generator):
         raise typer.Exit(1) from None
 
 
-def _upload_testcases(problem: api.Problem):
+def _upload_testcases(problem: api.Problem, ns: flattening.FlatNamespace):
     entries = asyncio.run(extract_generation_testcases_from_groups())
     generators: Dict[str, Generator] = {}
     for entry in entries:
@@ -322,7 +390,7 @@ def _upload_testcases(problem: api.Problem):
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
         for generator in generators.values():
-            futures.append(executor.submit(_upload_generator, problem, generator))
+            futures.append(executor.submit(_upload_generator, problem, generator, ns))
         for future in futures:
             future.result()
 
@@ -340,7 +408,7 @@ def _upload_testcases(problem: api.Problem):
                     continue
                 calls.append(
                     GeneratorCall(
-                        name=generator.path.stem,
+                        name=pathlib.Path(ns.flat_name_for(generator)).stem,
                         args=entry.metadata.generator_call.args,
                     )
                 )
@@ -420,21 +488,22 @@ def _upload_testcases_raw(problem: api.Problem):
         progress.update(task_id, completed=len(entries))
 
 
-def _upload_solutions(problem: api.Problem):
+def _upload_solutions(problem: api.Problem, ns: flattening.FlatNamespace):
     saved_solutions = set()
 
     def process_solution(solution: Solution, i: int):
         source_type = get_polygon_language_from_code_item(solution)
+        name = ns.flat_name_for(solution)
         console.console.print(
             f'Uploading solution {solution.href()} (lang: {source_type}, tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
         )
         problem.save_solution(
-            solution.path.name,
-            solution.path.read_bytes(),
+            name,
+            ns.content_for(solution),
             source_type=source_type,
             tag=_get_solution_tag(solution, is_first=i == 0),
         )
-        saved_solutions.add(solution.path.name)
+        saved_solutions.add(name)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
@@ -604,28 +673,34 @@ async def upload_problem(
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
 
+    # Build the flat namespace once, unconditionally, so that flat names stay
+    # globally consistent regardless of which subset is being uploaded. Only the
+    # upload calls below are gated.
+    ns = _build_upload_namespace()
+
     if 'files' in which_upload:
         _update_rbx_header(problem)
-        _update_checker(problem)
+        _upload_dep_files(problem, ns)
+        _update_checker(problem, ns)
 
     if (
         pkg.type == TaskType.COMMUNICATION
         and package.get_interactor_or_nil() is not None
     ):
         if 'files' in which_upload:
-            _update_interactor(problem)
+            _update_interactor(problem, ns)
 
     if pkg.validator is not None:
         if 'files' in which_upload:
-            _upload_validator(problem)
+            _upload_validator(problem, ns)
 
     if 'solutions' in which_upload:
-        _upload_solutions(problem)
+        _upload_solutions(problem, ns)
     if 'tests' in which_upload:
         if raw_tests:
             _upload_testcases_raw(problem)
         else:
-            _upload_testcases(problem)
+            _upload_testcases(problem, ns)
     if 'statements' in which_upload:
         await _upload_statement(
             problem, main_language=main_language, upload_as_english=upload_as_english
