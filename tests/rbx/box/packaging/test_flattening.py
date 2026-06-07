@@ -77,3 +77,18 @@ def test_duplicate_reserved_names_raise():
             [_p('a.cpp'), _p('b.cpp')],
             reserved={_p('a.cpp'): 'same.cpp', _p('b.cpp'): 'same.cpp'},
         )
+
+
+def test_flatnamespace_materialize_writes_every_file(tmp_path):
+    ns = flattening.FlatNamespace(
+        files=[
+            flattening.FlatFile('check.cpp', _p('check.cpp'), b'CHK', True, None),
+            flattening.FlatFile('lib.h', _p('sub', 'lib.h'), b'LIB', False, None),
+        ],
+        name_of={_p('check.cpp'): 'check.cpp', _p('sub', 'lib.h'): 'lib.h'},
+    )
+    ns.materialize(tmp_path)
+    assert (tmp_path / 'check.cpp').read_bytes() == b'CHK'
+    assert (tmp_path / 'lib.h').read_bytes() == b'LIB'
+    assert [f.flat_name for f in ns.dep_files()] == ['lib.h']
+    assert [f.flat_name for f in ns.root_files()] == ['check.cpp']

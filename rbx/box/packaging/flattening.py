@@ -1,6 +1,9 @@
+import dataclasses
 import pathlib
 import re
-from typing import Dict, Iterable, Mapping
+from typing import Dict, Iterable, List, Mapping, Optional
+
+from rbx.box.schema import CodeItem
 
 
 def _sanitize(name: str) -> str:
@@ -83,3 +86,44 @@ def assign_flat_names(
             candidate = f'{stem}__{n}{suffix}'
         _claim(path, candidate)
     return result
+
+
+@dataclasses.dataclass(frozen=True)
+class FlatFile:
+    flat_name: str
+    source_path: pathlib.Path  # package-relative original
+    content: bytes  # rewritten for rewritable members, original bytes otherwise
+    is_root: bool
+    origin_code: Optional[CodeItem] = None
+
+
+@dataclasses.dataclass
+class FlatNamespace:
+    files: List[FlatFile]
+    name_of: Dict[pathlib.Path, str]
+
+    def root_files(self) -> List[FlatFile]:
+        return [f for f in self.files if f.is_root]
+
+    def dep_files(self) -> List[FlatFile]:
+        return [f for f in self.files if not f.is_root]
+
+    def file_for(self, code: CodeItem) -> FlatFile:
+        from rbx.box import package
+
+        rel = package.get_relative_source_path(code)
+        for f in self.files:
+            if f.source_path == rel:
+                return f
+        raise KeyError(f'{rel} not in flat namespace')
+
+    def flat_name_for(self, code: CodeItem) -> str:
+        return self.file_for(code).flat_name
+
+    def content_for(self, code: CodeItem) -> bytes:
+        return self.file_for(code).content
+
+    def materialize(self, into_dir: pathlib.Path) -> None:
+        into_dir.mkdir(parents=True, exist_ok=True)
+        for f in self.files:
+            (into_dir / f.flat_name).write_bytes(f.content)
