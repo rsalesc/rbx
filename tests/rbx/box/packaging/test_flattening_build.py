@@ -118,3 +118,57 @@ def test_build_flat_namespace_guards_compilationfile_crossdir(testing_pkg):
     gen = CodeItem(path=pathlib.Path('gens/g.py'), compilationFiles=['lib/mid.py'])
     with pytest.raises(typer.Exit):
         flattening.build_flat_namespace([gen])
+
+
+def test_build_flat_namespace_errors_on_out_of_package_include(testing_pkg):
+    # A quoted include that escapes the package root resolves locally (the header
+    # exists at the source's real on-disk location) but cannot survive flattening:
+    # its target is outside the package, so it is never collected/shipped and the
+    # '..' spelling breaks on a flat judge. This must fail loudly, not ship silently
+    # broken (the rewritable counterpart of the non-rewritable guardrail).
+    outside = testing_pkg.root.parent / 'shared'
+    outside.mkdir(parents=True, exist_ok=True)
+    (outside / 'lib.h').write_text('#pragma once\nint N=1;\n')
+    testing_pkg.add_file('checkers/check.cpp').write_text(
+        '#include "../../shared/lib.h"\n#include "testlib.h"\nint main(){}\n'
+    )
+    checker = CodeItem(path=pathlib.Path('checkers/check.cpp'))
+    with pytest.raises(typer.Exit):
+        flattening.build_flat_namespace(
+            [checker], reserved={pathlib.Path('checkers/check.cpp'): 'check.cpp'}
+        )
+
+
+def test_build_flat_namespace_errors_on_out_of_package_include_in_dep(testing_pkg):
+    # The escaping include lives in a transitively-pulled in-package dep, not the
+    # root, so the guard must walk the whole rewritable closure.
+    outside = testing_pkg.root.parent / 'shared'
+    outside.mkdir(parents=True, exist_ok=True)
+    (outside / 'other.h').write_text('#pragma once\nint M=1;\n')
+    testing_pkg.add_file('common/lib.h').write_text(
+        '#pragma once\n#include "../../shared/other.h"\n'
+    )
+    testing_pkg.add_file('checkers/check.cpp').write_text(
+        '#include "../common/lib.h"\n#include "testlib.h"\nint main(){}\n'
+    )
+    checker = CodeItem(path=pathlib.Path('checkers/check.cpp'))
+    with pytest.raises(typer.Exit):
+        flattening.build_flat_namespace(
+            [checker], reserved={pathlib.Path('checkers/check.cpp'): 'check.cpp'}
+        )
+
+
+def test_build_flat_namespace_allows_unresolved_non_parent_include(testing_pkg):
+    # A quoted include with no '..' that does not resolve in-package (a builtin or a
+    # quoted system header like "bits/stdc++.h") resolves beside the source on the
+    # judge and must NOT trip the out-of-package guard -- false-positive guard.
+    testing_pkg.add_file('check.cpp').write_text(
+        '#include "bits/stdc++.h"\n#include "testlib.h"\nint main(){}\n'
+    )
+    checker = CodeItem(path=pathlib.Path('check.cpp'))
+    ns = flattening.build_flat_namespace(
+        [checker], reserved={pathlib.Path('check.cpp'): 'check.cpp'}
+    )
+    assert {f.flat_name for f in ns.files} == {'check.cpp'}
+    # The unresolved system-style include is left untouched.
+    assert '#include "bits/stdc++.h"' in ns.content_for(checker).decode()

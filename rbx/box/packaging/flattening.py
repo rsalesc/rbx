@@ -2,7 +2,7 @@ import collections
 import dataclasses
 import pathlib
 import re
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 import typer
 
@@ -243,6 +243,50 @@ def _guard_non_rewritable(
     raise typer.Exit(1)
 
 
+def _guard_unresolvable_includes(
+    refs_by_path: Dict[pathlib.Path, List[Reference]],
+    rewritable: Dict[pathlib.Path, DependencyScanner],
+) -> None:
+    """Fail loudly when a *rewritable* (e.g. C++) source or dep has a quoted include
+    that escapes the package root.
+
+    An include like ``#include "../../shared/lib.h"`` resolves locally against the
+    file's real on-disk location -- so the package builds and verifies green -- but
+    its target lives outside the package root, so it is never collected, shipped, or
+    rewritten. The flattened source keeps the ``..`` spelling, which cannot resolve
+    once the directory structure is gone, and the flat judge silently fails to
+    compile. Catch it here instead.
+
+    Only ``..``-bearing spellings are flagged: a bare unresolved spelling is a
+    builtin header (``testlib.h``/``rbx.h``/``jngen.h``/``tgen.h``, injected beside
+    the source on every target) or a quoted system header, both of which resolve on
+    the judge; a forward-only subpath can only resolve inside the package (handled by
+    rewriting) or fail locally too. ``..`` is never a system include, so this is
+    false-positive-free.
+    """
+    violations: List[Tuple[pathlib.Path, str]] = []
+    for path in sorted(rewritable):
+        for ref in refs_by_path.get(path, []):
+            if ref.target is not None:
+                continue
+            if '..' in re.split(r'[\\/]', ref.spelling):
+                violations.append((path, ref.spelling))
+    if not violations:
+        return
+    listed = '\n'.join(
+        f'  [item]{p}[/item] includes [item]{s}[/item]' for p, s in violations
+    )
+    console.console.print(
+        '[error]Cannot flatten a source for a flat judge: the following quoted '
+        'includes resolve outside the package root, so they cannot be shipped or '
+        f'rewritten:[/error]\n{listed}\n'
+        '[error]Move the dependency inside the package directory (and include it via '
+        'a path under the package root) so it can be flattened. See issue '
+        '#525.[/error]'
+    )
+    raise typer.Exit(1)
+
+
 def build_flat_namespace(
     sources: Sequence[CodeItem],
     *,
@@ -287,6 +331,12 @@ def build_flat_namespace(
 
         if scanner is None:
             _guard_non_rewritable(code, rel, comp_dests, root_dir)
+
+    # Rewritable sources are handled above, but a quoted include that resolves
+    # *outside* the package root never becomes a member (the dependency engine drops
+    # it), so it is silently left unrewritten. Catch those before shipping a package
+    # that builds locally yet won't compile on the flat judge.
+    _guard_unresolvable_includes(refs_by_path, rewritable)
 
     name_of = assign_flat_names(
         members, reserved=reserved, enforce_stem_unique=enforce_stem_unique
