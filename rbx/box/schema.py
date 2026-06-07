@@ -293,7 +293,8 @@ same package-relative path inside the sandbox (the package directory structure i
 mirrored). This means a code file in a subdirectory can include a file from
 elsewhere in the package via a relative path (e.g. `#include "../lib.h"`).
 
-Testlib, jngen and tgen are already included by default.
+Third-party libraries such as testlib.h, jngen.h and tgen.h are provided by the
+preset's `libraries` configuration (see the preset docs), not auto-injected.
 """,
     )
 

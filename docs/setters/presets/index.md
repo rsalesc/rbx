@@ -203,6 +203,99 @@ In this case, you can track both `contest/documents/icpc.sty` and `problem/docum
 
 This approach is particularly useful when you want to share a common file between the contest and the problem packages.
 
+## Libraries
+
+Competitive programming packages usually rely on a handful of third-party header libraries:
+[testlib](https://github.com/MikeMirzayanov/testlib), [jngen](https://github.com/ifsmirnov/jngen),
+[tgen](https://github.com/rsalesc/tgen), and similar. Instead of vendoring these files by hand in every
+package, a preset can **declare** them once, and {{rbx}} will fetch, cache, and materialize them into
+each problem and contest created from the preset.
+
+This is configured through a `libraries:` block in `preset.rbx.yml`. It mirrors the shape of
+[`tracking`](#setting-up-the-preset-definition): it has a `problem:` list (materialized into every
+problem package) and a `contest:` list (materialized into every contest package).
+
+```yaml title="preset.rbx.yml"
+libraries:
+  problem:
+    - name: testlib            # logical name; also the `rbx download <name>` argument
+      source: MikeMirzayanov/testlib   # owner/repo, full GitHub URL, a git URL, a raw download URL, or a local path
+      path: testlib.h          # file (or directory) within the source repo; omit for a raw-URL source
+      version: latest          # a commit prefix, a tag/branch/release, or "latest" (default-branch HEAD)
+      dest: testlib.h          # where it is materialized in the package
+      symlink: false           # copy to dest (false), or store under .local.rbx/libs/ and symlink dest to it (true)
+      always_include: true     # also inject into the reserved __internal__/ dir so ANY source can #include it
+      # include_as: bits/stdc++.h   # optional: include spelling when always_include (defaults to the basename of `path`)
+  contest:
+    - ...
+```
+
+### Per-entry fields
+
+- **`name`** -- a logical name for the library. It is used as the cache key and as the argument to
+  `rbx download <name>`.
+- **`source`** -- where the library comes from. Accepts the same URI grammar used by the preset
+  `uri`: an `owner/repo` shorthand, a full GitHub URL, a generic git URL, a raw download URL, or a
+  local path.
+- **`path`** -- the file (or directory) to take from the source repository. Omit it for a raw-URL
+  source, since the URL already points directly at the file.
+- **`version`** -- which revision to fetch: a commit prefix, a tag/branch/release name, or `latest`
+  (the default-branch HEAD).
+- **`dest`** -- where the library is materialized inside the package.
+- **`symlink`** -- when `false` (default), the real file is copied to `dest`. When `true`, the content
+  is stored under `.local.rbx/libs/<name>/` and `dest` becomes a relative symlink into it.
+- **`always_include`** -- when `true`, the library is also injected into the reserved `__internal__/`
+  directory so that **any** source can `#include` it without it having to resolve relative to the
+  includer.
+- **`include_as`** -- the include spelling to expose when `always_include` is set. Defaults to the
+  basename of `path`. Use it for nested names such as `bits/stdc++.h`.
+
+### How it works
+
+- **Global cache.** Each library is fetched once into a global cache (`~/.rbx/libs/...`) and reused
+  across all packages, so the same header is not downloaded again and again.
+- **Materialization.** Declared libraries are materialized (and committed) directly into the package.
+  In copy mode, the real file is written at `dest`. In symlink mode, the content is committed under
+  `.local.rbx/libs/<name>/` and `dest` is made a relative symlink to it.
+- **Reproducibility.** The committed materialized files **are** the pin -- there is no separate
+  lockfile. To freeze a library's content, pin its `version` to a tag or commit. A `version` of
+  `latest` re-resolves the default-branch HEAD on every `rbx presets sync`, so it can drift over time.
+- **Syncing.** `rbx presets sync` re-fetches each library according to its `version` and overwrites the
+  materialized files. Libraries are tool-managed, so local hand-edits to them are **not** preserved --
+  if you need a customized copy, vendor it under a different `path`/`source` so it diverges from the
+  declared library.
+- **Network.** The first fetch of a remote library requires network access; there is no offline
+  fallback for an uncached library.
+- **Resolution.** With `always_include: true`, the library is placed in `__internal__/` and exposed via
+  `-I__internal__`, so it is resolvable from any source directory. Without it, the library is only found
+  when a source `#include`s it and the materialized file is resolvable relative to that source.
+
+### Fetching libraries manually
+
+You usually don't need to fetch libraries by hand -- they are materialized automatically when packages
+are created and refreshed on `rbx presets sync`. When you do want to fetch them explicitly, use
+`rbx download`:
+
+```bash
+# Fetch and materialize a single declared library, by name.
+rbx download <name>
+rbx download lib <name>   # equivalent, explicit alias
+
+# Refetch all declared libraries.
+rbx download lib
+
+# Write a single library to a custom path instead of its `dest`.
+rbx download <name> --into path/to/file.h
+```
+
+`rbx download testlib`, `rbx download jngen`, and `rbx download tgen` are convenience aliases that
+resolve the declared library of the same name.
+
+!!! note
+    The `default` preset declares `testlib`, `jngen`, and `tgen`, all with `always_include: true`.
+    Packages created from it therefore behave just like before -- those headers are available to every
+    source -- but now they are versioned, fetched, and cached instead of being hardcoded into {{rbx}}.
+
 ## Using a preset
 
 Presets can be used both when creating a contest or when creating a problem. Below
