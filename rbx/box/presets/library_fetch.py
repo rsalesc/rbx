@@ -1,4 +1,5 @@
 import hashlib
+import os
 import pathlib
 import shutil
 import tempfile
@@ -57,20 +58,34 @@ def fetch_library(library: Library) -> pathlib.Path:
         return dst
 
     if info.is_github():
+        _require_path(library)
         ref = _resolve_ref(info.fetch_uri, library.version)
         dst = _cache_path(library, ref)
         if not dst.exists():
-            owner_repo = info.fetch_uri.removeprefix('https://github.com/')
+            owner_repo = info.fetch_uri.removeprefix(
+                'https://github.com/'
+            ).removesuffix('.git')
             raw = f'https://raw.githubusercontent.com/{owner_repo}/{ref}/{library.path}'
             _download_url(raw, dst)
         return dst
 
     # Arbitrary git: clone + checkout + copy path.
+    _require_path(library)
     ref = library.version if library.version != 'latest' else None
     dst = _cache_path(library, ref or 'latest')
     if not dst.exists():
         _clone_and_copy(info.fetch_uri, ref, library.path, dst)
     return dst
+
+
+def _require_path(library: Library) -> None:
+    if library.path is None:
+        console.console.print(
+            f'[error]Library [item]{library.name}[/item] from a GitHub/git '
+            f'source must set [item]path[/item] (the file or directory within '
+            f'the repo).[/error]'
+        )
+        raise typer.Exit(1)
 
 
 def _resolve_ref(github_uri: str, version: str) -> str:
@@ -88,7 +103,11 @@ def _download_url(url: str, dst: pathlib.Path) -> None:
         console.console.print(f'[error]Failed to download [item]{url}[/item].[/error]')
         raise typer.Exit(1)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_bytes(r.content)
+    # Write atomically so an interrupted download never leaves a corrupt file
+    # that the fetch-once guard would then trust forever.
+    tmp = dst.parent / (dst.name + '.tmp')
+    tmp.write_bytes(r.content)
+    os.replace(tmp, dst)
 
 
 def _clone_and_copy(
@@ -102,7 +121,17 @@ def _clone_and_copy(
             repo.git.checkout(ref)
         src = pathlib.Path(td) / (path or '')
         dst.parent.mkdir(parents=True, exist_ok=True)
+        # Stage the copy in a temp path next to dst, then atomically move it
+        # into place. The caller guards `if not dst.exists()`, so dst is absent
+        # at replace time; an interrupted copy never corrupts the cache.
+        tmp = dst.parent / (dst.name + '.tmp')
+        if tmp.exists():
+            if tmp.is_dir():
+                shutil.rmtree(tmp)
+            else:
+                tmp.unlink()
         if src.is_dir():
-            shutil.copytree(src, dst, dirs_exist_ok=True)
+            shutil.copytree(src, tmp)
         else:
-            shutil.copyfile(src, dst)
+            shutil.copyfile(src, tmp)
+        os.replace(tmp, dst)

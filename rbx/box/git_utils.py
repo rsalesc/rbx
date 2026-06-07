@@ -87,8 +87,16 @@ def has_remote_tag(uri: str, tag: str) -> bool:
 
 def resolve_remote_head(uri: str) -> str:
     """Return the commit SHA the remote's default branch (HEAD) points at."""
-    out = subprocess.check_output(['git', 'ls-remote', uri, 'HEAD'], text=True)
-    return out.split()[0]
+    if not utils.command_exists('git'):
+        raise ValueError('git is not installed')
+    try:
+        out = subprocess.check_output(['git', 'ls-remote', uri, 'HEAD'], text=True)
+    except subprocess.CalledProcessError as ex:
+        raise ValueError(f'Could not resolve HEAD for {uri}') from ex
+    parts = out.split()
+    if not parts:
+        raise ValueError(f'No HEAD found for {uri}')
+    return parts[0]
 
 
 def check_symlinks(root: pathlib.Path) -> bool:

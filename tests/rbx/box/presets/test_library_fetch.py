@@ -1,3 +1,6 @@
+import pytest
+import typer
+
 from rbx.box.presets import library_fetch
 from rbx.box.presets.schema import Library
 
@@ -36,3 +39,61 @@ def test_fetch_library_local_file_source(tmp_path, monkeypatch):
     lib = Library(name='foo', source=str(src_file), dest='foo.h')
     cached = library_fetch.fetch_library(lib)
     assert cached.read_text() == '// foo'
+
+
+def test_fetch_library_github_strips_git_suffix(tmp_path, monkeypatch):
+    monkeypatch.setattr(library_fetch, 'get_app_path', lambda: tmp_path / 'app')
+    captured = {}
+
+    def fake_download(url, dst):
+        captured['url'] = url
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text('// header')
+
+    monkeypatch.setattr(library_fetch, '_download_url', fake_download)
+
+    lib = Library(
+        name='testlib',
+        source='https://github.com/MikeMirzayanov/testlib.git',
+        path='testlib.h',
+        version='v0.9.40',  # pinned ref => no network HEAD resolve
+        dest='testlib.h',
+    )
+    cached = library_fetch.fetch_library(lib)
+    assert cached.read_text() == '// header'
+    assert captured['url'] == (
+        'https://raw.githubusercontent.com/MikeMirzayanov/testlib/v0.9.40/testlib.h'
+    )
+
+
+def test_fetch_library_github_requires_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(library_fetch, 'get_app_path', lambda: tmp_path / 'app')
+    lib = Library(
+        name='testlib',
+        source='https://github.com/MikeMirzayanov/testlib',
+        version='v0.9.40',
+        dest='testlib.h',
+    )
+    with pytest.raises(typer.Exit):
+        library_fetch.fetch_library(lib)
+
+
+def test_resolve_remote_head_parses_sha(monkeypatch):
+    from rbx.box import git_utils
+
+    monkeypatch.setattr(git_utils.utils, 'command_exists', lambda *a, **k: True)
+    monkeypatch.setattr(
+        git_utils.subprocess,
+        'check_output',
+        lambda *a, **k: 'abc123\tHEAD\n',
+    )
+    assert git_utils.resolve_remote_head('https://x/y') == 'abc123'
+
+
+def test_resolve_remote_head_empty_raises(monkeypatch):
+    from rbx.box import git_utils
+
+    monkeypatch.setattr(git_utils.utils, 'command_exists', lambda *a, **k: True)
+    monkeypatch.setattr(git_utils.subprocess, 'check_output', lambda *a, **k: '')
+    with pytest.raises(ValueError):
+        git_utils.resolve_remote_head('https://x/y')
