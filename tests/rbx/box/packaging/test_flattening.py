@@ -1,0 +1,56 @@
+import pathlib
+
+from rbx.box.packaging import flattening
+
+
+def _p(*parts: str) -> pathlib.Path:
+    return pathlib.Path(*parts)
+
+
+def test_unique_basenames_keep_bare_name():
+    names = flattening.assign_flat_names(
+        [_p('check.cpp'), _p('lib', 'util.h'), _p('gens', 'gen.cpp')]
+    )
+    assert names == {
+        _p('check.cpp'): 'check.cpp',
+        _p('lib', 'util.h'): 'util.h',
+        _p('gens', 'gen.cpp'): 'gen.cpp',
+    }
+
+
+def test_basename_collision_uses_double_underscore_path():
+    names = flattening.assign_flat_names(
+        [_p('gens', 'a', 'gen.cpp'), _p('gens', 'b', 'gen.cpp')]
+    )
+    assert names == {
+        _p('gens', 'a', 'gen.cpp'): 'gens__a__gen.cpp',
+        _p('gens', 'b', 'gen.cpp'): 'gens__b__gen.cpp',
+    }
+
+
+def test_reserved_names_are_honored_and_force_others_to_mangle():
+    names = flattening.assign_flat_names(
+        [_p('checker.cpp'), _p('sub', 'check.cpp')],
+        reserved={_p('checker.cpp'): 'check.cpp'},
+    )
+    assert names[_p('checker.cpp')] == 'check.cpp'
+    assert names[_p('sub', 'check.cpp')] == 'sub__check.cpp'
+
+
+def test_enforce_stem_unique_mangles_same_stem_diff_ext():
+    names = flattening.assign_flat_names(
+        [_p('a', 'gen.cpp'), _p('b', 'gen.cc')], enforce_stem_unique=True
+    )
+    assert names[_p('a', 'gen.cpp')] == 'a__gen.cpp'
+    assert names[_p('b', 'gen.cc')] == 'b__gen.cc'
+
+
+def test_residual_mangle_collision_gets_counter():
+    names = flattening.assign_flat_names([_p('a', 'b__c.h'), _p('a__b', 'c.h')])
+    assert sorted(names.values()) == ['a__b__c.h', 'a__b__c__1.h']
+
+
+def test_assignment_is_order_independent():
+    a = flattening.assign_flat_names([_p('x', 'g.cpp'), _p('y', 'g.cpp')])
+    b = flattening.assign_flat_names([_p('y', 'g.cpp'), _p('x', 'g.cpp')])
+    assert a == b
