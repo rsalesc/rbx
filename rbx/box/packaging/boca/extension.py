@@ -1,25 +1,53 @@
 import typing
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 BocaLanguage = typing.Literal['c', 'cpp', 'cc', 'kt', 'java', 'py2', 'py3']
 
+# Fields removed in rbx v1, mapped to an actionable migration hint. Surfaced as a
+# clear error at env load (see the "Migrating to rbx v1" troubleshooting guide).
+_REMOVED_ENV_FIELDS = {
+    'languages': (
+        'Env-level `extensions.boca.languages` was removed in rbx v1. Declare '
+        '`languages` per rbx language under its `extensions.boca` instead; the '
+        "emitted set is the union of every language's `languages`."
+    ),
+    'maximumTimeError': (
+        '`maximumTimeError` was removed in rbx v1. It has been ignored since #494 '
+        '(rbx emits exact fractional time limits). Use `minRunningTime` instead.'
+    ),
+}
+_REMOVED_LANGUAGE_FIELDS = {
+    'bocaLanguage': (
+        '`bocaLanguage` was removed in rbx v1. Use `languages` (a list) instead, '
+        'with an explicit `template`.'
+    ),
+}
+
+
+def _reject_removed(data: typing.Any, removed: typing.Mapping[str, str]) -> typing.Any:
+    if isinstance(data, dict):
+        for field, hint in removed.items():
+            if field in data:
+                raise ValueError(hint)
+    return data
+
 
 class BocaExtension(BaseModel):
-    languages: typing.List[BocaLanguage] = []
+    model_config = ConfigDict(extra='forbid')
+
     flags: typing.Dict[BocaLanguage, str] = {}
     # Optional floor (in milliseconds) on the TOTAL BOCA time budget. When set, the
     # solution is run ceil(minRunningTime / timeLimit) times so the accumulated budget
     # reaches this floor, while the effective per-run TL stays exactly equal to the real TL.
     minRunningTime: typing.Optional[int] = Field(default=None, gt=0)
-    # Deprecated (issue #494): BOCA/safeexec supports fractional time budgets, so rbx no
-    # longer rounds TLs. This field is ignored; use `minRunningTime` instead.
-    maximumTimeError: typing.Optional[float] = Field(
-        default=None,
-        deprecated='Ignored since #494; rbx emits exact fractional TLs. Use minRunningTime.',
-    )
     preferContestLetter: bool = False
     usePypy: bool = False
+
+    @model_validator(mode='before')
+    @classmethod
+    def _reject_removed_fields(cls, data: typing.Any) -> typing.Any:
+        return _reject_removed(data, _REMOVED_ENV_FIELDS)
 
     def flags_with_defaults(self) -> typing.Dict[BocaLanguage, str]:
         res: typing.Dict[BocaLanguage, str] = {
@@ -32,27 +60,35 @@ class BocaExtension(BaseModel):
 
 
 class BocaLanguageExtension(BaseModel):
-    # Deprecated: use `languages` instead. Kept for back-compat (see issue #471).
-    bocaLanguage: typing.Optional[str] = Field(
-        default=None,
-        deprecated='Use `languages` instead.',
-    )
-    # BOCA languages this rbx language maps to. First entry is the canonical/primary,
-    # used as the forward (rbx -> BOCA) mapping. All entries are emitted as separate
-    # per-language script dirs in the BOCA package (e.g. ['cc', 'cpp'] emits both).
+    model_config = ConfigDict(extra='forbid')
+
+    # BOCA languages this rbx language maps to. The first entry is the canonical/primary
+    # one, used as the forward (rbx -> BOCA) mapping. Every entry is emitted as a separate
+    # per-language script dir in the BOCA package (e.g. ['cc', 'cpp'] emits both).
     languages: typing.Optional[typing.List[str]] = None
     # On-disk BOCA template dir (under rbx/resources/packagers/boca/{compile,run,
-    # interactive}/) to source per-language scripts from. Falls back to
-    # primary_language for back-compat (see issue #471).
+    # interactive}/) to source per-language scripts from. Required whenever `languages`
+    # is set.
     template: typing.Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def _reject_removed_fields(cls, data: typing.Any) -> typing.Any:
+        return _reject_removed(data, _REMOVED_LANGUAGE_FIELDS)
+
+    @model_validator(mode='after')
+    def _require_template_with_languages(self) -> 'BocaLanguageExtension':
+        if self.languages and not self.template:
+            raise ValueError(
+                'A `template` is required when `languages` is set on a BOCA language '
+                'extension. Set `template` to one of the on-disk template dirs '
+                '(c, cc, cpp, java, kt, py2, py3).'
+            )
+        return self
 
     @property
     def resolved_languages(self) -> typing.List[str]:
-        if self.languages:
-            return self.languages
-        if self.bocaLanguage:
-            return [self.bocaLanguage]
-        return []
+        return self.languages or []
 
     @property
     def primary_language(self) -> typing.Optional[str]:
@@ -61,4 +97,4 @@ class BocaLanguageExtension(BaseModel):
 
     @property
     def resolved_template(self) -> typing.Optional[str]:
-        return self.template or self.primary_language
+        return self.template

@@ -1,7 +1,7 @@
 from unittest import mock
 
 from rbx.box.packaging.boca import boca_language_utils
-from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtension
+from rbx.box.packaging.boca.extension import BocaLanguageExtension
 
 
 def _mk_language(name: str, ext: BocaLanguageExtension | None = None):
@@ -12,17 +12,26 @@ def _mk_language(name: str, ext: BocaLanguageExtension | None = None):
 
 
 def test_forward_map_uses_primary_from_languages(monkeypatch):
-    cpp_lang = _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp']))
+    cpp_lang = _mk_language(
+        'cpp', BocaLanguageExtension(languages=['cc', 'cpp'], template='cc')
+    )
     monkeypatch.setattr(boca_language_utils, 'get_language', lambda n: cpp_lang)
-    env = mock.MagicMock()
-    env.extensions = None
-    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
 
     assert boca_language_utils.get_boca_language_from_rbx_language('cpp') == 'cc'
 
 
+def test_forward_map_name_fallback_for_literal(monkeypatch):
+    # rbx language named 'c' with NO boca extension falls back to its own name.
+    c_lang = _mk_language('c', BocaLanguageExtension())
+    monkeypatch.setattr(boca_language_utils, 'get_language', lambda n: c_lang)
+
+    assert boca_language_utils.get_boca_language_from_rbx_language('c') == 'c'
+
+
 def test_reverse_map_resolves_alias_via_membership(monkeypatch):
-    cpp_lang = _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp']))
+    cpp_lang = _mk_language(
+        'cpp', BocaLanguageExtension(languages=['cc', 'cpp'], template='cc')
+    )
     env = mock.MagicMock()
     env.languages = [cpp_lang]
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -34,49 +43,26 @@ def test_reverse_map_resolves_alias_via_membership(monkeypatch):
     assert boca_language_utils.get_rbx_language_from_boca_language('cpp') == 'cpp'
 
 
-def test_reverse_map_back_compat_with_singular(monkeypatch):
-    py_lang = _mk_language('py', BocaLanguageExtension(bocaLanguage='py3'))
-    env = mock.MagicMock()
-    env.languages = [py_lang]
-    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
-    monkeypatch.setattr(
-        boca_language_utils, 'get_language_by_extension_or_nil', lambda _: None
-    )
-
-    assert boca_language_utils.get_rbx_language_from_boca_language('py3') == 'py'
-
-
-def _mk_env(languages, boca_ext_languages=None):
+def _mk_env(languages):
     env = mock.MagicMock()
     env.languages = languages
-    if boca_ext_languages is None:
-        env.extensions = None
-    else:
-        env.extensions = mock.MagicMock()
-        env.extensions.boca = BocaExtension(languages=boca_ext_languages)
     return env
 
 
 def test_emitted_set_union_from_languages(monkeypatch):
     env = _mk_env(
         [
-            _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp'])),
-            _mk_language('py', BocaLanguageExtension(bocaLanguage='py3')),
+            _mk_language(
+                'cpp', BocaLanguageExtension(languages=['cc', 'cpp'], template='cc')
+            ),
+            _mk_language(
+                'py', BocaLanguageExtension(languages=['py3'], template='py3')
+            ),
         ]
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
 
     assert boca_language_utils.get_emitted_boca_languages() == ['cc', 'cpp', 'py3']
-
-
-def test_emitted_set_includes_env_level_languages(monkeypatch):
-    env = _mk_env(
-        [_mk_language('cpp', BocaLanguageExtension(languages=['cc']))],
-        boca_ext_languages=['java'],
-    )
-    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
-
-    assert boca_language_utils.get_emitted_boca_languages() == ['cc', 'java']
 
 
 def test_emitted_set_name_fallback_for_zero_config(monkeypatch):
@@ -91,8 +77,10 @@ def test_emitted_set_name_fallback_for_zero_config(monkeypatch):
 def test_emitted_set_deduplicates_and_preserves_order(monkeypatch):
     env = _mk_env(
         [
-            _mk_language('cpp', BocaLanguageExtension(languages=['cc', 'cpp'])),
-            _mk_language('cc', BocaLanguageExtension(languages=['cc'])),
+            _mk_language(
+                'cpp', BocaLanguageExtension(languages=['cc', 'cpp'], template='cc')
+            ),
+            _mk_language('cc', BocaLanguageExtension(languages=['cc'], template='cc')),
         ]
     )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
@@ -104,7 +92,9 @@ def test_emitted_set_name_fallback_skipped_when_resolved_non_empty(monkeypatch):
     # When an rbx language declares languages, name-fallback must NOT also
     # contribute the language's name. cpp -> ['cc'] should emit only ['cc'],
     # never ['cc', 'cpp'].
-    env = _mk_env([_mk_language('cpp', BocaLanguageExtension(languages=['cc']))])
+    env = _mk_env(
+        [_mk_language('cpp', BocaLanguageExtension(languages=['cc'], template='cc'))]
+    )
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
 
     assert boca_language_utils.get_emitted_boca_languages() == ['cc']
@@ -119,18 +109,6 @@ def test_emitted_set_non_literal_name_with_no_boca_config_contributes_nothing(
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
 
     assert boca_language_utils.get_emitted_boca_languages() == []
-
-
-def test_emitted_set_dedupes_resolved_with_env_level_overlap(monkeypatch):
-    # cpp resolves to ['cc']; env-level lists ['cc', 'java'].
-    # Expect ['cc', 'java'] — 'cc' appears once, in resolved-first order.
-    env = _mk_env(
-        [_mk_language('cpp', BocaLanguageExtension(languages=['cc']))],
-        boca_ext_languages=['cc', 'java'],
-    )
-    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
-
-    assert boca_language_utils.get_emitted_boca_languages() == ['cc', 'java']
 
 
 def test_get_boca_template_name_uses_resolved_template(monkeypatch):
@@ -154,7 +132,7 @@ def test_get_boca_template_name_uses_resolved_template(monkeypatch):
 def test_get_boca_template_name_falls_back_to_boca_language(monkeypatch):
     # No rbx language declared -> reverse map returns the BOCA name itself,
     # and the helper must fall back to using the BOCA name as the template dir
-    # rather than raising. Preserves zero-config / env-level emission.
+    # rather than raising. Preserves zero-config emission.
     env = mock.MagicMock()
     env.languages = []
     monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
