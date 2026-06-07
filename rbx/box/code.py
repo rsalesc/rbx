@@ -684,9 +684,6 @@ async def compile_item(
                     artifacts.inputs.append(GradingFileInput(src=dep, dest=dep))
                     existing.add(dep)
 
-        download.maybe_add_testlib(code, artifacts)
-        download.maybe_add_jngen(code, artifacts)
-        download.maybe_add_tgen(code, artifacts)
         download.maybe_add_rbx_header(code, artifacts)
 
         from rbx.box import libraries

@@ -47,27 +47,6 @@ def maybe_add_rbx_header(code: CodeItem, artifacts: steps.GradingArtifacts):
     artifacts.inputs.append(artifact)
 
 
-def maybe_add_testlib(code: CodeItem, artifacts: steps.GradingArtifacts):
-    # Prefer a testlib.h shipped at the package root, else fall back to the tool's.
-    artifact = get_local_artifact('testlib.h') or steps.testlib_grading_input()
-    artifact.dest = steps.INTERNAL_DIR / artifact.dest
-    artifacts.inputs.append(artifact)
-
-
-def maybe_add_jngen(code: CodeItem, artifacts: steps.GradingArtifacts):
-    # Prefer a jngen.h shipped at the package root, else fall back to the tool's.
-    artifact = get_local_artifact('jngen.h') or steps.jngen_grading_input()
-    artifact.dest = steps.INTERNAL_DIR / artifact.dest
-    artifacts.inputs.append(artifact)
-
-
-def maybe_add_tgen(code: CodeItem, artifacts: steps.GradingArtifacts):
-    # Prefer a tgen.h shipped at the package root, else fall back to the tool's.
-    artifact = get_local_artifact('tgen.h') or steps.tgen_grading_input()
-    artifact.dest = steps.INTERNAL_DIR / artifact.dest
-    artifacts.inputs.append(artifact)
-
-
 _INTO_HELP = (
     'Path (relative to the package root) where the file should be placed. '
     'Parent directories are created automatically. If omitted, the file is '
