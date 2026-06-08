@@ -1,14 +1,16 @@
 import pathlib
 from typing import List
+from unittest import mock
 
 import pytest
 import typer
 
 from rbx.box.generation_schema import (
+    GenerationMetadata,
     GeneratorScriptEntry,
     TestcaseOrScriptEntry,
 )
-from rbx.box.schema import CodeItem, GeneratorScript, TestcaseGroup
+from rbx.box.schema import CodeItem, GeneratorScript, Testcase, TestcaseGroup
 from rbx.box.testcase_extractors import (
     TestcaseGroupVisitor,
     TestcaseVisitor,
@@ -16,6 +18,7 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_generic_entries,
     extract_generation_testcases_from_groups,
     extract_generation_testcases_from_patterns,
+    get_generation_metadata_markup,
     run_testcase_visitor,
 )
 from rbx.box.testcase_schema import TestcaseEntry
@@ -1856,3 +1859,75 @@ class TestRunTestcaseVisitorWithVisualizers:
         assert visited_entries[0].solution_visualizer.path == pathlib.Path(
             'sub_out_vis.py'
         )
+
+
+def _script_metadata(script_path: pathlib.Path, line: int) -> GenerationMetadata:
+    return GenerationMetadata(
+        copied_to=Testcase(inputPath=pathlib.Path('out.in')),
+        generator_script=GeneratorScriptEntry(path=script_path, line=line),
+    )
+
+
+class TestGenerationMetadataMarkup:
+    """``get_generation_metadata_markup`` inlines the generator-script line."""
+
+    def test_inlines_generator_script_line_content(self, tmp_path):
+        script = tmp_path / 'gen.txt'
+        script.write_text('gen_a 1\ngen_random 1000 50\ngen_b 2\n')
+        metadata = _script_metadata(script, 2)
+
+        markup = get_generation_metadata_markup(metadata)
+
+        assert 'gen_random 1000 50' in markup
+        assert f'{script}:2' in markup
+        assert '→' in markup
+
+    def test_falls_back_to_location_when_file_missing(self, tmp_path):
+        script = tmp_path / 'missing.txt'  # never created
+        metadata = _script_metadata(script, 1)
+
+        markup = get_generation_metadata_markup(metadata)
+
+        assert f'{script}:1' in markup
+        assert '→' not in markup
+
+    def test_falls_back_to_location_when_line_out_of_range(self, tmp_path):
+        script = tmp_path / 'gen.txt'
+        script.write_text('gen_a 1\n')
+        metadata = _script_metadata(script, 5)
+
+        markup = get_generation_metadata_markup(metadata)
+
+        assert f'{script}:5' in markup
+        assert '→' not in markup
+
+    def test_truncates_multiline_input_block_to_first_line(self, tmp_path):
+        script = tmp_path / 'gen.txt'
+        script.write_text('@input {\n1 2 3\n4 5 6\n}\n')
+        metadata = _script_metadata(script, 1)
+
+        markup = get_generation_metadata_markup(metadata)
+
+        assert '@input {' in markup
+        assert '…' in markup
+
+    def test_reads_script_line_once_and_caches(self, tmp_path):
+        script = tmp_path / 'gen.txt'
+        script.write_text('gen_random 1000 50\n')
+        metadata = _script_metadata(script, 1)
+
+        original_read_text = pathlib.Path.read_text
+        reads = []
+
+        def counting_read_text(self, *args, **kwargs):
+            if self == script:
+                reads.append(self)
+            return original_read_text(self, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, 'read_text', counting_read_text):
+            first = get_generation_metadata_markup(metadata)
+            second = get_generation_metadata_markup(metadata)
+
+        assert first == second
+        assert 'gen_random 1000 50' in first
+        assert len(reads) == 1

@@ -21,16 +21,17 @@ from rbx.box.solutions import (
 )
 from rbx.box.ui.captured_log import LogDisplay, LogDisplayState
 from rbx.box.ui.screens.command import CommandScreen
+from rbx.box.ui.utils.run_ui import get_main_badge
 from rbx.grading.steps import Evaluation
 
 
 def _build_solution_selection_label(sol: Solution) -> Text:
-    main = package.get_main_solution()
-    outcome = sol.outcome if main is None or main.path != sol.path else 'MAIN'
-
-    style = sol.outcome.style()
     text = Text.from_markup(sol.href())
-    text.append(f' {outcome}', style=style)
+    badge = get_main_badge(sol)
+    if badge:
+        text.append_text(console.expand_markup(badge))
+    else:
+        text.append(f' {sol.outcome}', style=sol.outcome.style())
     return text
 
 

@@ -1,4 +1,5 @@
 import abc
+import functools
 import pathlib
 from typing import Iterable, List, Optional, Set
 
@@ -129,6 +130,36 @@ def get_testcase_metadata_markup(entry: GenerationTestcaseEntry) -> str:
     return '\n'.join(lines)
 
 
+@functools.lru_cache(maxsize=4096)
+def _read_generator_script_line(path: pathlib.Path, line: int) -> Optional[str]:
+    """Read the 1-based ``line`` from a generator script, for inline display.
+
+    Returns the stripped line content (suffixed with ``…`` when the line opens
+    a multi-line ``@input { … }`` block), or ``None`` when the file is missing
+    or the line is out of range -- callers then fall back to a location-only
+    rendering.
+
+    The result is cached so repeatedly repainting the run-explorer footer does
+    not re-open the file. The content reflects the file as it is *now*, which
+    may differ from what was generated at build time; that staleness is
+    acceptable.
+    """
+    try:
+        file_lines = path.read_text().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if line < 1 or line > len(file_lines):
+        return None
+    content = file_lines[line - 1].strip()
+    if not content:
+        return None
+    if content.endswith('{'):
+        # ``@input { … }`` block opener: the directive spans multiple lines and
+        # ``line`` points at its start, so flag that more content follows.
+        content = f'{content} …'
+    return content
+
+
 def get_generation_metadata_markup(metadata: GenerationMetadata) -> str:
     lines = []
     if metadata.copied_from is not None:
@@ -140,9 +171,12 @@ def get_generation_metadata_markup(metadata: GenerationMetadata) -> str:
             f'[bstatus]Gen. call:[/bstatus] {utils.escape_markup(str(metadata.generator_call))}'
         )
     if metadata.generator_script is not None:
-        lines.append(
-            f'[bstatus]Gen. script:[/bstatus] {utils.escape_markup(str(metadata.generator_script))}'
-        )
+        entry = metadata.generator_script
+        location = utils.escape_markup(str(entry))
+        content = _read_generator_script_line(entry.path, entry.line)
+        if content is not None:
+            location = f'{location} → {utils.escape_markup(content)}'
+        lines.append(f'[bstatus]Gen. script:[/bstatus] {location}')
     return '\n'.join(lines)
 
 
