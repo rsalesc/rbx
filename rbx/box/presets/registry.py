@@ -1,8 +1,6 @@
 import pathlib
 from typing import Optional
 
-import ruyaml
-
 from rbx import utils
 from rbx.box.presets.registry_schema import PresetRegistry, RegistryPreset
 from rbx.box.yaml_validation import load_yaml_model
@@ -51,11 +49,12 @@ def get_merged_registry() -> PresetRegistry:
 
 
 def _save_user_registry(reg: PresetRegistry) -> None:
-    path = user_registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    yaml = ruyaml.YAML(typ='rt')
-    with path.open('w') as f:
-        yaml.dump(reg.model_dump(mode='python'), f)
+    # Use the codebase's standard model->YAML helper so the user file is written
+    # the same way as every other rbx config (and gets the
+    # `# yaml-language-server` schema header for free). The user registry is
+    # machine-managed (add/rm only), so a full rewrite without comment
+    # preservation is the right behavior here.
+    utils.create_and_write(user_registry_path(), utils.model_to_yaml(reg))
 
 
 def add_to_user_registry(entry: RegistryPreset) -> None:
