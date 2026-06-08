@@ -19,6 +19,12 @@ app = typer.Typer(no_args_is_help=True)
 _RESOURCES_PKG = 'rbx.resources'
 _CONFIG_FILE_NAME = 'default_config.json'
 
+# Name of the per-problem and global rbx cache/build directory.
+CACHE_DIR_NAME = '.rbx'
+# Pre-#306 cache directory name. New code never writes here, but it is still
+# stripped when packaging/seeding so stale caches don't leak into outputs.
+LEGACY_CACHE_DIR_NAME = '.box'
+
 
 def format_vars(template: str, **kwargs) -> str:
     res = template

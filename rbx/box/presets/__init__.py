@@ -39,7 +39,7 @@ from rbx.box.presets.schema import (
     VariableExpansion,
 )
 from rbx.box.yaml_validation import load_yaml_model
-from rbx.config import get_default_app_path
+from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME, get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
 
 if TYPE_CHECKING:
@@ -48,6 +48,12 @@ if TYPE_CHECKING:
 app = typer.Typer(no_args_is_help=True)
 
 _MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
+
+# Cache/build artefacts ignored when globbing a package's source files. The
+# legacy cache dir is kept so stale caches don't leak into globbed output.
+_DEFAULT_GLOB_GITIGNORE = (
+    f'{CACHE_DIR_NAME}\n{LEGACY_CACHE_DIR_NAME}\nbuild\n.limits/local.yml\n'
+)
 
 
 def _expand_content(
@@ -230,7 +236,7 @@ def check_is_valid_package(root: pathlib.Path = pathlib.Path()):
 def _glob_while_ignoring(
     dir: pathlib.Path,
     glb: str,
-    extra_gitignore: Optional[str] = '.box\nbuild\n.limits/local.yml\n',
+    extra_gitignore: Optional[str] = _DEFAULT_GLOB_GITIGNORE,
     recursive: bool = False,
 ) -> Iterable[pathlib.Path]:
     from gitignore_parser import parse_gitignore, parse_gitignore_str
@@ -637,8 +643,11 @@ def get_preset_fetch_info_with_fallback(
 
 
 def clean_copied_package_dir(dest: pathlib.Path):
-    for box_dir in dest.rglob('.box'):
-        shutil.rmtree(str(box_dir), ignore_errors=True)
+    # Strip the current cache dir as well as the legacy one, so a stale cache
+    # left over from before #306 never leaks into a generated preset/package.
+    for cache_name in (CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME):
+        for cache_dir in dest.rglob(cache_name):
+            shutil.rmtree(str(cache_dir), ignore_errors=True)
     for lock in dest.rglob('.preset-lock.yml'):
         lock.unlink(missing_ok=True)
 

@@ -10,6 +10,7 @@ from rbx import testing_utils
 from rbx.box import package, setter_config
 from rbx.box.statements.latex import LatexResult
 from rbx.box.testing import testing_package
+from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME
 from rbx.utils import copytree_honoring_gitignore
 
 
@@ -49,7 +50,9 @@ def pkg_from_testdata(
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
     copytree_honoring_gitignore(
-        testdata, pkg_cleandir, extra_gitignore='.box\nbuild\n.limits/\n'
+        testdata,
+        pkg_cleandir,
+        extra_gitignore=f'{CACHE_DIR_NAME}\n{LEGACY_CACHE_DIR_NAME}\nbuild\n.limits/\n',
     )
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
@@ -65,7 +68,9 @@ def pkg_from_resources(
         raise ValueError('resource_pkg marker not found')
     testdata = resources_path / marker.args[0]
     copytree_honoring_gitignore(
-        testdata, pkg_cleandir, extra_gitignore='.box/\nbuild/\n'
+        testdata,
+        pkg_cleandir,
+        extra_gitignore=f'{CACHE_DIR_NAME}/\n{LEGACY_CACHE_DIR_NAME}/\nbuild/\n',
     )
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
@@ -103,7 +108,7 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
     cache_dir = tmp_path_factory.mktemp('cache')
     monkeysession.setattr(
         'rbx.box.global_package.get_global_cache_dir_path',
-        lambda: cache_dir / '.box',
+        lambda: cache_dir / CACHE_DIR_NAME,
     )
 
 
