@@ -53,6 +53,33 @@ async def test_yaml_error_on_screen_entry_opens_modal_and_keeps_app_alive():
         assert 'extra inputs' in _rich_log_text(app.screen)
 
 
+async def test_broken_screen_is_popped_so_user_can_dismiss_and_quit():
+    """After a screen-entry crash, the half-mounted screen is removed.
+
+    Otherwise dismissing the modal drops the user onto the wedged screen and
+    they cannot navigate or quit.
+    """
+    async with rbxApp().run_test() as pilot:
+        app = pilot.app
+        await app.push_screen(_CrashOnMountScreen())
+        await pilot.pause()
+
+        # The modal sits on a working screen, not the broken one.
+        assert isinstance(app.screen, ErrorModal)
+        assert not any(isinstance(s, _CrashOnMountScreen) for s in app.screen_stack)
+
+        # Dismissing returns to a working screen, app still alive.
+        await pilot.press('escape')
+        await pilot.pause()
+        assert app.is_running
+        assert not isinstance(app.screen, ErrorModal)
+
+        # And the user can actually quit from there.
+        await pilot.press('q')
+        await pilot.pause()
+        assert not app.is_running
+
+
 async def test_clean_fallback_shows_diagnostic_without_traceback():
     async with rbxApp().run_test() as pilot:
         app = pilot.app

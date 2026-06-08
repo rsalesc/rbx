@@ -48,6 +48,18 @@ class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
             # here; the few action-body loads are guarded at the call site.
             if self.is_running:
                 try:
+                    # A crash during a pushed screen's compose/on_mount leaves
+                    # that screen half-mounted on top of the stack; dismissing
+                    # the modal would drop the user onto that wedged screen.
+                    # Pop it first so they return to a working screen (e.g. the
+                    # menu) and can navigate/quit. Only escaped/screen-entry
+                    # errors reach here -- action/callback loads are caught at
+                    # their call site -- so the top screen is the broken one.
+                    if len(self.screen_stack) > 1:
+                        try:
+                            self.pop_screen()
+                        except Exception:
+                            pass
                     self.show_error(error)
                     return
                 except Exception:
