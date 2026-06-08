@@ -1,0 +1,207 @@
+"""Behavioral tests for ``RunTestExplorerScreen`` (issue #404).
+
+The run-mode test explorer used to pop a blocking modal for testcase metadata
+(``g``). It now docks a toggleable ``#test-metadata`` footer like the non-run
+``TestExplorerScreen``: ``m`` toggles that footer, ``r`` toggles the per-side
+run/eval metadata box, and ``g`` is unbound (no modal).
+
+These mount the screen bare by mocking ``find_problem_package_or_die`` (so
+``on_mount`` reports a non-COMMUNICATION package) over an in-memory skeleton,
+mirroring the fixture style in ``test_run_ui.py``.
+"""
+
+import contextlib
+import pathlib
+from unittest import mock
+
+from textual.widgets import OptionList
+
+from rbx.box.environment import VerificationLevel
+from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.schema import ExpectedOutcome, Solution, TaskType, Testcase
+from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
+from rbx.box.testcase_schema import TestcaseEntry
+from rbx.box.ui.widgets.rich_log_box import RichLogBox
+from rbx.grading.limits import Limits
+
+
+def _make_skeleton(tmp_path: pathlib.Path):
+    inputs_dir = tmp_path / 'tests'
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    input_path = inputs_dir / '1-gen-000.in'
+    input_path.write_text('')
+
+    entry = TestcaseEntry(group='main', index=0)
+    gen_entry = GenerationTestcaseEntry(
+        group_entry=entry,
+        subgroup_entry=entry,
+        metadata=GenerationMetadata(copied_to=Testcase(inputPath=input_path)),
+    )
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    sol_skel = SolutionSkeleton(**solution.model_dump(), runs_dir=tmp_path / 'runs')
+    skeleton = SolutionReportSkeleton(
+        solutions=[sol_skel],
+        entries=[gen_entry],
+        groups=[],
+        limits={'cpp': Limits(time=1000, memory=256, profile=None, isDoubleTL=False)},
+        compiled_solutions={'sol.cpp': 'digest'},
+        verification=VerificationLevel.FULL,
+    )
+    return skeleton, sol_skel, gen_entry
+
+
+@contextlib.contextmanager
+def _all(*patches):
+    with contextlib.ExitStack() as stack:
+        for patch in patches:
+            stack.enter_context(patch)
+        yield
+
+
+def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch):
+    """Mount ``RunTestExplorerScreen`` bare for behavioral key/footer tests.
+
+    ``on_mount`` and selection reach the real package and on-disk build layout
+    (``_is_interactive``, ``get_main_solution``, per-test verdict option labels,
+    and package-build-relative prefix paths), none of which exists outside a
+    built package. We stub those data-loading collaborators -- the package as a
+    plain BATCH task with no main solution, a single test row, and tmp prefix
+    paths -- leaving the footer/keybinding behavior under test untouched.
+    """
+    from rbx.box.ui.screens import run_test_explorer
+
+    # FileLog renders paths relative to cwd, so the synthetic tmp paths must
+    # live under it.
+    monkeypatch.chdir(tmp_path)
+    skeleton, solution, gen_entry = _make_skeleton(tmp_path)
+
+    pkg = mock.Mock()
+    pkg.type = TaskType.BATCH
+    run_prefix = tmp_path / 'runs' / 'main' / '1-gen-000'
+    build_prefix = tmp_path / 'tests' / '1-gen-000'
+    patches = _all(
+        mock.patch.object(
+            run_test_explorer.package,
+            'find_problem_package_or_die',
+            return_value=pkg,
+        ),
+        mock.patch.object(
+            run_test_explorer.package, 'get_main_solution', return_value=None
+        ),
+        mock.patch.object(
+            run_test_explorer,
+            'get_entries_options',
+            return_value=(['main/0'], [gen_entry]),
+        ),
+        mock.patch.object(
+            run_test_explorer.SolutionReportSkeleton,
+            'get_solution_entry_prefix',
+            return_value=run_prefix,
+        ),
+        mock.patch.object(TestcaseEntry, 'get_prefix_path', return_value=build_prefix),
+    )
+    screen = run_test_explorer.RunTestExplorerScreen(skeleton, solution)
+    return screen, patches
+
+
+async def test_metadata_footer_hidden_by_default(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    screen, patches = _mounted_run_test_explorer(tmp_path, monkeypatch)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            metadata = screen.query_one('#test-metadata', RichLogBox)
+            assert metadata.display is False
+
+
+async def test_m_toggles_metadata_footer(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    screen, patches = _mounted_run_test_explorer(tmp_path, monkeypatch)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            metadata = screen.query_one('#test-metadata', RichLogBox)
+            assert metadata.display is False
+
+            await pilot.press('m')
+            await pilot.pause()
+            assert metadata.display is True
+
+            await pilot.press('m')
+            await pilot.pause()
+            assert metadata.display is False
+
+
+async def test_metadata_footer_shows_selected_test_metadata(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    screen, patches = _mounted_run_test_explorer(tmp_path, monkeypatch)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            # Make the footer visible so its content is rendered, then select
+            # the (only) test to populate it.
+            await pilot.press('m')
+            option_list = screen.query_one('#test-list', OptionList)
+            option_list.highlighted = None
+            await pilot.pause()
+            option_list.highlighted = 0
+            await pilot.pause()
+
+            metadata = screen.query_one('#test-metadata', RichLogBox)
+            text = '\n'.join(strip.text for strip in metadata.lines)
+            # Testcase generation metadata leads with "<group> / <index>".
+            assert 'main' in text
+
+
+async def test_r_toggles_run_metadata_box(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    screen, patches = _mounted_run_test_explorer(tmp_path, monkeypatch)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            run_metadata = screen.query_one(
+                '#test-box-1 #test-box-metadata', RichLogBox
+            )
+            assert run_metadata.display is False
+
+            await pilot.press('r')
+            await pilot.pause()
+            assert run_metadata.display is True
+
+            await pilot.press('r')
+            await pilot.pause()
+            assert run_metadata.display is False
+
+
+async def test_g_does_not_open_modal(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    screen, patches = _mounted_run_test_explorer(tmp_path, monkeypatch)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            # Select a test: the old modal action only fired when a test was
+            # highlighted, so we must highlight one for this to be meaningful.
+            screen.query_one('#test-list', OptionList).highlighted = 0
+            await pilot.pause()
+            assert pilot.app.screen is screen
+
+            await pilot.press('g')
+            await pilot.pause()
+
+            # `g` is unbound now: no modal should be pushed on top of the screen.
+            assert pilot.app.screen is screen
