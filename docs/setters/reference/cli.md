@@ -537,9 +537,31 @@ rbx download [OPTIONS]
 
 ---
 
+### lib (library)
+
+Download preset-declared libraries (omit NAME for all).
+
+**Usage:**
+```bash
+rbx download lib <NAME> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `NAME` | Library name; omit to (re)fetch all declared libraries. | No |
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--into` | TEXT | Path (relative to the package root) where the file should be placed. Parent directories are created automatically. If omitted, the file is written to the current directory. | - |
+
+
+---
+
 ### testlib
 
-Download the latest testlib.h
+Download the preset-declared testlib library.
 
 **Usage:**
 ```bash
@@ -555,7 +577,7 @@ rbx download testlib [OPTIONS]
 
 ### jngen
 
-Download the latest jngen.h
+Download the preset-declared jngen library.
 
 **Usage:**
 ```bash
@@ -571,7 +593,7 @@ rbx download jngen [OPTIONS]
 
 ### tgen
 
-Download the latest tgen.h
+Download the preset-declared tgen library.
 
 **Usage:**
 ```bash
@@ -1111,6 +1133,29 @@ rbx testcases info <PATTERN> [OPTIONS]
 | Name | Description | Required |
 | :--- | :--- | :--- |
 | `PATTERN` | Testcases to detail, as a pattern. Might be a group, or a specific test in the format [group]/[index]. | No |
+
+
+---
+
+### promote
+
+Promote generated tests into a manual test group.
+
+**Usage:**
+```bash
+rbx testcases promote <SELECTORS> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `SELECTORS` | Tests to promote, as [group]/[index] selectors. If omitted, tests are selected interactively. | No |
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--group`, `-G` | TEXT | Destination manual test group. | - |
+| `--name`, `-n` | TEXT | Filename stem for the promoted test. Only meaningful when promoting exactly one test. | - |
 
 
 ---

@@ -1,3 +1,4 @@
+import importlib.resources
 import pathlib
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -5,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from rbx import console, utils
 from rbx.box import package_utils, presets
 from rbx.box.fields import Primitive
+from rbx.box.presets.schema import Libraries, Library
 from rbx.box.schema import (
     CheckerTest,
     CodeItem,
@@ -67,7 +69,53 @@ class TestingPackage(TestingShared):
             preset_path.mkdir(parents=True, exist_ok=True)
         else:
             preset_path = presets.get_active_preset_path(self.root)
-        return TestingPreset(preset_path)
+        testing_preset = TestingPreset(preset_path)
+        self._declare_standard_libraries(testing_preset)
+        return testing_preset
+
+    def _declare_standard_libraries(self, testing_preset: TestingPreset) -> None:
+        """Make testlib/jngen/tgen available to compiled test code via the
+        always_include library mechanism, replacing the removed hardcoded
+        auto-injection. Headers are copied from the bundled offline copies (no
+        network) into `.local.rbx/libs/<name>/` so they do NOT appear at a
+        source-resolvable path (keeping the dependency scanner / package
+        contents unperturbed); `always_include` injects them into `__internal__/`
+        at compile time exactly as the real mechanism does.
+
+        NOTE: this reads `rbx/resources/predownloaded/{testlib,jngen,tgen}.h`,
+        which therefore must remain bundled as test fixtures even after the
+        runtime offline fallback is removed.
+        """
+        specs = [('testlib', 'testlib.h'), ('jngen', 'jngen.h'), ('tgen', 'tgen.h')]
+        new_libs = []
+        for name, filename in specs:
+            dest = pathlib.Path('.local.rbx') / 'libs' / name / filename
+            target = self.root / dest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with importlib.resources.as_file(
+                importlib.resources.files('rbx')
+                / 'resources'
+                / 'predownloaded'
+                / filename
+            ) as src:
+                target.write_bytes(pathlib.Path(src).read_bytes())
+            new_libs.append(
+                Library(
+                    name=name,
+                    source=str(target.resolve()),
+                    path=pathlib.Path(filename),
+                    dest=dest,
+                    always_include=True,
+                )
+            )
+        # Assign the WHOLE `libraries` field (not a nested attribute) so Pydantic
+        # marks it set; otherwise model_to_yaml(exclude_unset=True) would drop the
+        # block and get_declared_libraries() would read an empty list.
+        current = testing_preset.yml.libraries
+        testing_preset.yml.libraries = Libraries(
+            problem=current.problem + new_libs, contest=current.contest
+        )
+        testing_preset.save()
 
     def print_tree(self):
         print_directory_tree(self.root)

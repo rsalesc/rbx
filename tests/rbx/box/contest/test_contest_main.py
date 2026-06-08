@@ -282,6 +282,31 @@ class TestContestAddVariant:
         # contest.rbx.yml (the dispatcher sentinel) is untouched.
         assert (tmp_path / 'contest.rbx.yml').read_text() == 'use_variants: true\n'
 
+    def test_add_variant_skips_library_materialization(
+        self, runner, tmp_path, monkeypatch
+    ):
+        # add_variant installs the contest into a throwaway scratch dir only to
+        # read its templated contest.rbx.yml, so it must NOT fetch/materialize
+        # the preset's libraries. Declaring a library with a bogus source (which
+        # would raise on fetch, offline) proves the scratch install skips it.
+        monkeypatch.chdir(tmp_path)
+        _write_dispatcher(tmp_path)
+        preset_dir = _make_minimal_preset(tmp_path / '_src_preset')
+        (preset_dir / 'preset.rbx.yml').write_text(
+            (preset_dir / 'preset.rbx.yml').read_text() + 'libraries:\n'
+            '  contest:\n'
+            '    - name: bogus\n'
+            '      source: "not a valid source"\n'
+            '      dest: bogus.h\n'
+        )
+
+        result = runner.invoke(
+            contest_main.app, ['add_variant', 'div3', '--preset', str(preset_dir)]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / 'contest.div3.rbx.yml').exists()
+
     def test_invalid_scaffold_rolls_back(self, runner, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         _write_dispatcher(tmp_path)

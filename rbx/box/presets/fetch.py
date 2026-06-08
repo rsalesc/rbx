@@ -1,6 +1,6 @@
 import pathlib
 import re
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -121,5 +121,58 @@ def get_preset_fetch_info(
         res = extract(uri)
         if res is not None:
             return res
+
+    return None
+
+
+class LibraryFetchInfo(BaseModel):
+    # One of: 'github' | 'git' | 'raw' | 'local'.
+    kind: Literal['github', 'git', 'raw', 'local']
+    # For github/git/raw: the URL to fetch from. For local: the filesystem path.
+    fetch_uri: str
+
+    def is_github(self) -> bool:
+        return self.kind == 'github'
+
+    def is_git_url(self) -> bool:
+        return self.kind == 'git'
+
+    def is_raw_url(self) -> bool:
+        return self.kind == 'raw'
+
+    def is_local(self) -> bool:
+        return self.kind == 'local'
+
+
+def get_library_fetch_info(source: str) -> Optional['LibraryFetchInfo']:
+    # 1) Any http(s) URL is classified WITHOUT delegating to the tool-tag path.
+    if re.match(r'^https?://', source):
+        if 'github.com' in source:
+            info = get_preset_fetch_info(source)
+            if info is not None and info.fetch_uri:
+                return LibraryFetchInfo(kind='github', fetch_uri=info.fetch_uri)
+            return None
+        if source.endswith('.git'):
+            return LibraryFetchInfo(kind='git', fetch_uri=source)
+        return LibraryFetchInfo(kind='raw', fetch_uri=source)
+
+    # 2) Existing local filesystem path.
+    try:
+        if pathlib.Path(source).exists():
+            return LibraryFetchInfo(kind='local', fetch_uri=source)
+    except OSError:
+        pass
+
+    # 3) Short owner/repo GitHub form (must contain a '/'). We require the slash
+    #    so a bare token never reaches get_preset_fetch_info's tool-tag branch
+    #    (which performs a network call).
+    if '/' in source:
+        info = get_preset_fetch_info(source)
+        if (
+            info is not None
+            and info.is_remote()
+            and 'github.com' in (info.fetch_uri or '')
+        ):
+            return LibraryFetchInfo(kind='github', fetch_uri=info.fetch_uri)
 
     return None

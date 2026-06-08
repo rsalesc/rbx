@@ -17,7 +17,7 @@ from rich.text import Text
 from rbx import utils
 from rbx.box import safeeval
 from rbx.box.exception import RbxException
-from rbx.config import get_bits_stdcpp, get_jngen, get_testlib, get_tgen
+from rbx.config import get_bits_stdcpp
 from rbx.console import console
 from rbx.grading import grading_context
 from rbx.grading.judge.cacher import FileCacher
@@ -408,18 +408,6 @@ def _process_fifos(artifacts: GradingArtifacts, sandbox: SandboxBase):
             sandbox.create_symlink(fifo.path, fifo.symlink, override=True)
         else:
             sandbox.create_fifo(fifo.path, override=True)
-
-
-def testlib_grading_input() -> GradingFileInput:
-    return GradingFileInput(src=get_testlib(), dest=pathlib.Path('testlib.h'))
-
-
-def jngen_grading_input() -> GradingFileInput:
-    return GradingFileInput(src=get_jngen(), dest=pathlib.Path('jngen.h'))
-
-
-def tgen_grading_input() -> GradingFileInput:
-    return GradingFileInput(src=get_tgen(), dest=pathlib.Path('tgen.h'))
 
 
 def _expand_part(part: str, sandbox: SandboxBase) -> List[str]:

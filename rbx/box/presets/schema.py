@@ -35,6 +35,49 @@ class Tracking(BaseModel):
     contest: List[TrackedAsset] = []
 
 
+class Library(BaseModel):
+    # Logical name of the library. Used as the cache key and as the argument to
+    # `rbx download <name>`.
+    name: str = NameField()
+
+    # Source of the library, using the same URI grammar as preset `uri`
+    # (owner/repo, @gh/owner/repo, a full GitHub/git URL, a raw download URL, or
+    # a local path). Resolved by `get_library_fetch_info`.
+    source: str
+
+    # Path of the file or directory to take from the source repo. Omit for a
+    # raw-URL source (the URL already points at the file).
+    path: Optional[pathlib.Path] = None
+
+    # Version to fetch: a commit prefix, a tag/release/branch, or 'latest'.
+    version: str = 'latest'
+
+    # Where the library is materialized inside the problem/contest package.
+    dest: pathlib.Path
+
+    # When true, the materialized file lives in .local.rbx/libs/<name>/ and
+    # `dest` is a relative symlink into it; otherwise `dest` is a real copy.
+    symlink: bool = False
+
+    # When true, the library is also injected into the reserved __internal__/
+    # dir at compile time (exposed via -I__internal__), so any source can
+    # include it without it resolving relative to the includer.
+    always_include: bool = False
+
+    # How the library is spelled in an #include when always_include is set.
+    # Defaults to the basename of `path` (or `dest`). Use for nested names like
+    # `bits/stdc++.h`.
+    include_as: Optional[pathlib.Path] = None
+
+
+class Libraries(BaseModel):
+    # Problem libraries, materialized into every problem package.
+    problem: List[Library] = []
+
+    # Contest libraries, materialized into every contest package.
+    contest: List[Library] = []
+
+
 class ReplacementMode(AutoEnum):
     PROMPT = alias('prompt')  # type: ignore
     """Replace the needle with an user provided string."""
@@ -97,6 +140,10 @@ class Preset(BaseModel):
 
     # Configures how variables should be expanded in the preset.
     expansion: Expansion = Field(default_factory=Expansion)
+
+    # Configures third-party libraries (testlib, jngen, etc.) that should be
+    # fetched, cached, and materialized into the package.
+    libraries: Libraries = Field(default_factory=Libraries)
 
     @field_validator('min_version')
     @classmethod

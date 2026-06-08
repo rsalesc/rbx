@@ -189,7 +189,10 @@ def add_variant(
                 scratch / '.local.rbx',
                 ensure_contest=True,
             )
-        presets.install_contest(scratch, fetch_info)
+        # Only the templated contest.rbx.yml is read out of the scratch dir, so
+        # skip fetching/materializing libraries (avoids needless network work
+        # and failures for a discarded scratch package).
+        presets.install_contest(scratch, fetch_info, materialize=False)
         template_text = (scratch / 'contest.rbx.yml').read_text()
 
     ru = ruyaml.YAML()

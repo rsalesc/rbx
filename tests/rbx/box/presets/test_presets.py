@@ -20,6 +20,74 @@ from rbx.box.presets.lock_schema import LockedAsset, SymlinkInfo
 from rbx.box.presets.schema import TrackedAsset
 from rbx.box.testing.testing_preset import TestingPreset
 
+
+def test_preset_parses_libraries_block():
+    from rbx.box.presets.schema import Preset
+
+    preset = Preset.model_validate(
+        {
+            'name': 'sample',
+            'uri': 'owner/repo',
+            'libraries': {
+                'problem': [
+                    {
+                        'name': 'testlib',
+                        'source': 'MikeMirzayanov/testlib',
+                        'path': 'testlib.h',
+                        'version': 'master',
+                        'dest': 'testlib.h',
+                        'always_include': True,
+                    }
+                ]
+            },
+        }
+    )
+
+    lib = preset.libraries.problem[0]
+    assert lib.name == 'testlib'
+    assert lib.source == 'MikeMirzayanov/testlib'
+    assert str(lib.path) == 'testlib.h'
+    assert lib.version == 'master'
+    assert str(lib.dest) == 'testlib.h'
+    assert lib.always_include is True
+    assert lib.symlink is False
+    assert lib.include_as is None
+    # Defaults: no libraries block => empty lists.
+    assert Preset(name='xyz', uri='owner/repo').libraries.problem == []
+
+
+def test_materialize_libraries_local_source(tmp_path, monkeypatch):
+    from rbx.box import presets
+    from rbx.box.presets import library_fetch
+    from rbx.box.presets.schema import Preset
+
+    # Keep the global cache inside tmp_path so the test stays offline & isolated.
+    monkeypatch.setattr(library_fetch, 'get_app_path', lambda: tmp_path / 'app')
+
+    src = tmp_path / 'src.h'
+    src.write_text('// header')
+
+    preset = Preset(
+        name='sample',
+        uri='owner/repo',
+        libraries={
+            'problem': [{'name': 'lib', 'source': str(src), 'dest': 'libs/lib.h'}],
+            'contest': [{'name': 'clib', 'source': str(src), 'dest': 'clib.h'}],
+        },
+    )
+
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+
+    presets.materialize_libraries(preset, pkg, is_contest=False)
+    assert (pkg / 'libs' / 'lib.h').read_text() == '// header'
+    # Only problem libraries materialized when is_contest=False.
+    assert not (pkg / 'clib.h').exists()
+
+    presets.materialize_libraries(preset, pkg, is_contest=True)
+    assert (pkg / 'clib.h').read_text() == '// header'
+
+
 # ===================
 # Reusable Fixtures
 # ===================

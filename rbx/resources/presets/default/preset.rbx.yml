@@ -17,3 +17,23 @@ tracking:
     - path: "documents/template.rbx.tex"
     - path: "documents/contest.rbx.tex"
       symlink: true
+libraries:
+  problem:
+    - name: "testlib"
+      source: "MikeMirzayanov/testlib"
+      path: "testlib.h"
+      version: "latest"
+      dest: "testlib.h"
+      always_include: true
+    - name: "jngen"
+      source: "ifsmirnov/jngen"
+      path: "jngen.h"
+      version: "latest"
+      dest: "jngen.h"
+      always_include: true
+    - name: "tgen"
+      source: "brunomaletta/tgen"
+      path: "single_include/tgen.h"
+      version: "latest"
+      dest: "tgen.h"
+      always_include: true

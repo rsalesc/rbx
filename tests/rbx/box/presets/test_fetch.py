@@ -1,7 +1,66 @@
 import pathlib
 
 from rbx import utils
-from rbx.box.presets.fetch import PresetFetchInfo, get_preset_fetch_info
+from rbx.box import git_utils
+from rbx.box.presets.fetch import (
+    PresetFetchInfo,
+    get_library_fetch_info,
+    get_preset_fetch_info,
+)
+
+
+def test_library_fetch_info_github_short():
+    info = get_library_fetch_info('MikeMirzayanov/testlib')
+    assert info is not None
+    assert info.fetch_uri == 'https://github.com/MikeMirzayanov/testlib'
+    assert info.is_github()
+    assert not info.is_raw_url()
+
+
+def test_library_fetch_info_github_full_url():
+    info = get_library_fetch_info('https://github.com/MikeMirzayanov/testlib')
+    assert info is not None
+    assert info.is_github()
+    assert info.fetch_uri == 'https://github.com/MikeMirzayanov/testlib'
+
+
+def test_library_fetch_info_raw_url():
+    info = get_library_fetch_info('https://example.com/headers/foo.h')
+    assert info is not None
+    assert info.is_raw_url()
+    assert info.fetch_uri == 'https://example.com/headers/foo.h'
+
+
+def test_library_fetch_info_git_url():
+    info = get_library_fetch_info('https://gitlab.com/u/r.git')
+    assert info is not None
+    assert info.is_git_url()
+    assert info.fetch_uri == 'https://gitlab.com/u/r.git'
+
+
+def test_library_fetch_info_local(tmp_path):
+    (tmp_path / 'lib.h').write_text('x')
+    info = get_library_fetch_info(str(tmp_path / 'lib.h'))
+    assert info is not None
+    assert info.is_local()
+    assert info.fetch_uri == str(tmp_path / 'lib.h')
+
+
+def test_library_fetch_info_invalid_returns_none():
+    assert get_library_fetch_info('not a valid source !!!') is None
+
+
+def test_library_fetch_info_bare_token_never_hits_network(monkeypatch):
+    # The whole point of the resolver ordering: a bare token (no scheme, no '/',
+    # not an existing path) must resolve without ever reaching the tool-tag
+    # branch of get_preset_fetch_info, which performs a `git ls-remote`.
+    def _boom(*args, **kwargs):
+        raise AssertionError('latest_remote_tag must not be called')
+
+    monkeypatch.setattr(git_utils, 'latest_remote_tag', _boom)
+
+    assert get_library_fetch_info('testlib') is None
+    assert get_library_fetch_info('not-a-real-lib') is None
 
 
 class TestPresetFetchInfo:
