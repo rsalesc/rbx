@@ -229,6 +229,15 @@ def create_and_write(path: pathlib.Path, *args, **kwargs):
     path.write_text(*args, **kwargs)
 
 
+def is_interactive_tty() -> bool:
+    """Whether both stdin and stdout are attached to a terminal.
+
+    Named ``_tty`` to avoid ambiguity with interactive (communication)
+    problems elsewhere in the codebase.
+    """
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 def highlight_str(s: str) -> text.Text:
     txt = text.Text(s)
     JSONHighlighter().highlight(txt)

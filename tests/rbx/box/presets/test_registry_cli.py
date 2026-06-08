@@ -85,7 +85,7 @@ class TestOfferToRegister:
     ):
         from types import SimpleNamespace
 
-        monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: True)
+        monkeypatch.setattr(presets.utils, 'is_interactive_tty', lambda: True)
         # Confirm "yes".
         monkeypatch.setattr(
             presets.questionary,
@@ -117,7 +117,7 @@ class TestOfferToRegister:
         presets.preset_registry.add_to_user_registry(
             RegistryPreset(name='newp', uri='o/r', description='d')
         )
-        monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: True)
+        monkeypatch.setattr(presets.utils, 'is_interactive_tty', lambda: True)
 
         called = {'confirm': False}
 
@@ -132,6 +132,6 @@ class TestOfferToRegister:
     def test_skips_when_non_interactive(self, isolated_app_dir, tmp_path, monkeypatch):
         from types import SimpleNamespace
 
-        monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: False)
+        monkeypatch.setattr(presets.utils, 'is_interactive_tty', lambda: False)
         presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'), tmp_path)
         assert presets.preset_registry.get_user_registry().presets == []

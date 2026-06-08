@@ -621,7 +621,7 @@ def get_preset_fetch_info_with_fallback(
         return None
 
     # No active preset: choose from the registry.
-    if not preset_registry.is_interactive():
+    if not utils.is_interactive_tty():
         console.console.print(
             '[error]No preset selected and no active preset found.[/error]'
         )
@@ -1118,7 +1118,7 @@ def maybe_offer_to_register(
 
     if fetch_info is None or not getattr(fetch_info, 'uri', None):
         return
-    if not preset_registry.is_interactive():
+    if not utils.is_interactive_tty():
         return
     if preset_registry.find_in_registry(fetch_info.uri) is not None:
         return

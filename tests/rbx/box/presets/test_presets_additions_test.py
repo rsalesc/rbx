@@ -22,13 +22,14 @@ class TestGetPresetFetchInfoWithFallback:
         assert presets.get_preset_fetch_info_with_fallback(None) is None
 
     def test_none_uri_interactive_uses_picker(self, monkeypatch):
+        from rbx import utils
         from rbx.box.presets import registry
         from rbx.box.presets.registry_schema import RegistryPreset
 
         monkeypatch.setattr(
             presets, 'get_active_preset_or_null', lambda root=Path(): None
         )
-        monkeypatch.setattr(registry, 'is_interactive', lambda: True)
+        monkeypatch.setattr(utils, 'is_interactive_tty', lambda: True)
         monkeypatch.setattr(
             registry,
             'pick_preset',
@@ -43,12 +44,12 @@ class TestGetPresetFetchInfoWithFallback:
     def test_none_uri_non_interactive_errors(self, monkeypatch):
         import click
 
-        from rbx.box.presets import registry
+        from rbx import utils
 
         monkeypatch.setattr(
             presets, 'get_active_preset_or_null', lambda root=Path(): None
         )
-        monkeypatch.setattr(registry, 'is_interactive', lambda: False)
+        monkeypatch.setattr(utils, 'is_interactive_tty', lambda: False)
         with pytest.raises(click.exceptions.Exit):
             presets.get_preset_fetch_info_with_fallback(None)
 

@@ -1,5 +1,4 @@
 import pathlib
-import sys
 from typing import Optional
 
 import questionary
@@ -88,10 +87,6 @@ def find_in_registry(uri_or_name: str) -> Optional[RegistryPreset]:
         if p.name == uri_or_name or p.uri == uri_or_name:
             return p
     return None
-
-
-def is_interactive() -> bool:
-    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def pick_preset() -> RegistryPreset:
