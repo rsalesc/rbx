@@ -14,6 +14,7 @@ import yaml
 from rbx import console, utils
 from rbx.box import cd, git_utils
 from rbx.box.git_utils import latest_remote_tag
+from rbx.box.presets import registry as preset_registry
 from rbx.box.presets.fetch import (
     PresetFetchInfo,
     get_preset_fetch_info,
@@ -31,8 +32,6 @@ from rbx.config import get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
 
 app = typer.Typer(no_args_is_help=True)
-
-_FALLBACK_PRESET_NAME = 'default'
 
 _MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
 
@@ -601,18 +600,26 @@ def get_preset_fetch_info_with_fallback(
     uri: Optional[str],
     local: bool = False,
 ) -> Optional[PresetFetchInfo]:
-    if uri is None:
-        # Use active preset if any, otherwise use the default preset.
-        if get_active_preset_or_null() is not None:
-            return None
-        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_NAME, local=local)
-        if default_preset is None:
-            console.console.print(
-                '[error]Internal error: could not find [item]default[/item] preset.[/error]'
-            )
-            raise typer.Exit(1)
-        return default_preset
-    return get_preset_fetch_info(uri, local=local)
+    if uri is not None:
+        return get_preset_fetch_info(uri, local=local)
+
+    # No explicit preset: prefer the active preset in the cwd.
+    if get_active_preset_or_null() is not None:
+        return None
+
+    # No active preset: choose from the registry.
+    if not preset_registry.is_interactive():
+        console.console.print(
+            '[error]No preset selected and no active preset found.[/error]'
+        )
+        console.console.print(
+            'Pass [item]--preset <name-or-uri>[/item] (e.g. [item]--preset default[/item]) '
+            'or run interactively to pick from the registry.'
+        )
+        raise typer.Exit(1)
+
+    chosen = preset_registry.pick_preset()
+    return get_preset_fetch_info(chosen.uri, local=local)
 
 
 def clean_copied_package_dir(dest: pathlib.Path):
