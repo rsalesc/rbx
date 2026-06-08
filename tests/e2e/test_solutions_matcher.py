@@ -22,6 +22,7 @@ from rbx.box.solutions import (
     SolutionSkeleton,
 )
 from rbx.box.testcase_schema import TestcaseEntry
+from rbx.config import CACHE_DIR_NAME
 from rbx.grading.steps import (
     CheckerResult,
     Evaluation,
@@ -58,7 +59,7 @@ def _make_fake_runs_dir(
     ``verdicts`` shape: ``{solution_path: {group_name: [outcome_per_idx, ...]}}``.
     All solutions must share the same group structure.
     """
-    runs_dir = package_root / '.rbx' / 'runs'
+    runs_dir = package_root / CACHE_DIR_NAME / 'runs'
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     sol_paths = list(verdicts.keys())

@@ -3,6 +3,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from rbx.config import CACHE_DIR_NAME
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.sandbox import SandboxBase
@@ -12,7 +13,7 @@ from rbx.grading.judge.storage import FilesystemStorage, Storage
 
 @pytest.fixture
 def storage(request, cleandir: pathlib.Path) -> Iterator[Storage]:
-    storage_path = cleandir / '.rbx' / '.storage'
+    storage_path = cleandir / CACHE_DIR_NAME / '.storage'
     yield FilesystemStorage(storage_path)
 
 
@@ -30,4 +31,4 @@ def sandbox(request, file_cacher: FileCacher) -> Iterator[SandboxBase]:
 def dependency_cache(
     request, cleandir: pathlib.Path, file_cacher: FileCacher
 ) -> Iterator[DependencyCache]:
-    yield DependencyCache(cleandir / '.rbx', file_cacher)
+    yield DependencyCache(cleandir / CACHE_DIR_NAME, file_cacher)

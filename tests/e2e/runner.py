@@ -31,7 +31,7 @@ from typer.testing import CliRunner
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from rbx.box.contest import contest_state
-from rbx.config import get_default_app_path
+from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME, get_default_app_path
 from tests.e2e.assertions import (
     AssertionContext,
     check_file_contains,
@@ -66,8 +66,8 @@ def _strip_ansi(text: str) -> str:
 # Note: ``.local.rbx`` is intentionally NOT excluded -- a fixture may commit a
 # minimal local preset there (e.g. so ``contest add_variant`` resolves offline).
 COPY_IGNORE_PATTERNS = (
-    '.rbx',
-    '.box',
+    CACHE_DIR_NAME,
+    LEGACY_CACHE_DIR_NAME,
     'build',
     '.limits',
     '__pycache__',

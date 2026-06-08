@@ -23,6 +23,7 @@ from rbx.box.solutions import (
     get_worst_outcome,
 )
 from rbx.box.testcase_schema import TestcaseEntry
+from rbx.config import CACHE_DIR_NAME
 from rbx.grading.steps import Evaluation
 from tests.e2e.spec import (
     SolutionMatcher,
@@ -175,7 +176,7 @@ def _load_skeleton(package_root: pathlib.Path) -> SolutionReportSkeleton:
     Note: ``.rbx/runs/.irun/`` is the interactive-debug scratch space and is
     never read here; we only ever read the top-level ``skeleton.yml``.
     """
-    skeleton_path = package_root / '.rbx' / 'runs' / 'skeleton.yml'
+    skeleton_path = package_root / CACHE_DIR_NAME / 'runs' / 'skeleton.yml'
     if not skeleton_path.is_file():
         raise AssertionError(
             f'no run results found at {skeleton_path}; did the scenario run '

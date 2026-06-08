@@ -10,6 +10,7 @@ import pathlib
 
 import pytest
 
+from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME
 from tests.e2e.runner import seed_package_from_preset
 from tests.e2e.spec import Scenario
 
@@ -42,8 +43,8 @@ def test_seed_package_from_preset_overlays_real_files(tmp_path: pathlib.Path):
     assert not icpc.is_symlink()
 
     # Build cruft was skipped.
-    assert not (dest / '.rbx').exists()
-    assert not (dest / '.box').exists()
+    assert not (dest / CACHE_DIR_NAME).exists()
+    assert not (dest / LEGACY_CACHE_DIR_NAME).exists()
     assert not (dest / 'build').exists()
 
     # The fixture file survived the overlay.

@@ -19,6 +19,7 @@ from rbx.box import presets
 from rbx.box.presets.lock_schema import LockedAsset, SymlinkInfo
 from rbx.box.presets.schema import TrackedAsset
 from rbx.box.testing.testing_preset import TestingPreset
+from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME
 
 
 def test_preset_parses_libraries_block():
@@ -571,14 +572,14 @@ class TestPresetInstallation:
         # Create directories that should be cleaned
         (dst / 'build').mkdir(parents=True)
         (dst / '.local.rbx').mkdir(parents=True)
-        (dst / 'problem' / '.rbx').mkdir(parents=True)
+        (dst / 'problem' / CACHE_DIR_NAME).mkdir(parents=True)
 
         presets.install_preset_from_dir(simple_preset_testdata, dst, update=True)  # noqa: SLF001
 
         # Verify cleanup
         assert not (dst / 'build').exists()
         assert not (dst / '.local.rbx').exists()
-        assert not (dst / 'problem' / '.rbx').exists()
+        assert not (dst / 'problem' / CACHE_DIR_NAME).exists()
 
     def test_install_problem_package(self, tmp_path, simple_preset_testdata):
         """Should install problem package files correctly."""
@@ -864,12 +865,12 @@ class TestCleanupFunctions:
     def test_clean_copied_package_dir(self, tmp_path):
         """Should remove .rbx cache directories (and legacy .box) and lock files."""
         # Create files to be cleaned
-        (tmp_path / '.rbx').mkdir()
-        (tmp_path / 'nested' / '.rbx').mkdir(parents=True)
+        (tmp_path / CACHE_DIR_NAME).mkdir()
+        (tmp_path / 'nested' / CACHE_DIR_NAME).mkdir(parents=True)
         # Legacy cache dirs left over from before #306 must still be stripped so
         # they never leak into a generated preset/package.
-        (tmp_path / '.box').mkdir()
-        (tmp_path / 'nested' / '.box').mkdir(parents=True)
+        (tmp_path / LEGACY_CACHE_DIR_NAME).mkdir()
+        (tmp_path / 'nested' / LEGACY_CACHE_DIR_NAME).mkdir(parents=True)
         (tmp_path / '.preset-lock.yml').touch()
         (tmp_path / 'nested' / '.preset-lock.yml').touch()
 
@@ -879,10 +880,10 @@ class TestCleanupFunctions:
         presets.clean_copied_package_dir(tmp_path)
 
         # Verify cleanup
-        assert not (tmp_path / '.rbx').exists()
-        assert not (tmp_path / 'nested' / '.rbx').exists()
-        assert not (tmp_path / '.box').exists()
-        assert not (tmp_path / 'nested' / '.box').exists()
+        assert not (tmp_path / CACHE_DIR_NAME).exists()
+        assert not (tmp_path / 'nested' / CACHE_DIR_NAME).exists()
+        assert not (tmp_path / LEGACY_CACHE_DIR_NAME).exists()
+        assert not (tmp_path / 'nested' / LEGACY_CACHE_DIR_NAME).exists()
         assert not (tmp_path / '.preset-lock.yml').exists()
         assert not (tmp_path / 'nested' / '.preset-lock.yml').exists()
         assert (tmp_path / 'keep.txt').exists()
@@ -892,7 +893,7 @@ class TestCleanupFunctions:
         # Create directories
         (tmp_path / 'build').mkdir()
         (tmp_path / '.local.rbx').mkdir()
-        (tmp_path / '.rbx').mkdir()
+        (tmp_path / CACHE_DIR_NAME).mkdir()
         (tmp_path / 'contest.rbx.yml').touch()
 
         presets.clean_copied_contest_dir(tmp_path)
@@ -900,21 +901,21 @@ class TestCleanupFunctions:
         # Verify cleanup
         assert not (tmp_path / 'build').exists()
         assert not (tmp_path / '.local.rbx').exists()
-        assert not (tmp_path / '.rbx').exists()
+        assert not (tmp_path / CACHE_DIR_NAME).exists()
         assert (tmp_path / 'contest.rbx.yml').exists()
 
     def test_clean_copied_problem_dir(self, tmp_path):
         """Should clean problem-specific directories."""
         # Create directories
         (tmp_path / 'build').mkdir()
-        (tmp_path / '.rbx').mkdir()
+        (tmp_path / CACHE_DIR_NAME).mkdir()
         (tmp_path / 'main.cpp').touch()
 
         presets.clean_copied_problem_dir(tmp_path)
 
         # Verify cleanup
         assert not (tmp_path / 'build').exists()
-        assert not (tmp_path / '.rbx').exists()
+        assert not (tmp_path / CACHE_DIR_NAME).exists()
         assert (tmp_path / 'main.cpp').exists()
 
 

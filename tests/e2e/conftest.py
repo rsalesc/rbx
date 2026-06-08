@@ -25,6 +25,7 @@ import pytest
 
 from rbx.box import setter_config
 from rbx.box.statements.latex import LatexResult
+from rbx.config import CACHE_DIR_NAME
 from tests.e2e.runner import E2EScenarioItem
 from tests.e2e.spec import load_spec
 
@@ -55,7 +56,7 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
     cache_dir = tmp_path_factory.mktemp('cache')
     monkeysession.setattr(
         'rbx.box.global_package.get_global_cache_dir_path',
-        lambda: cache_dir / '.rbx',
+        lambda: cache_dir / CACHE_DIR_NAME,
     )
 
 
