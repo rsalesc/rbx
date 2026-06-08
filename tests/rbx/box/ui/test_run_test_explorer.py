@@ -17,12 +17,28 @@ from unittest import mock
 from textual.widgets import OptionList
 
 from rbx.box.environment import VerificationLevel
-from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
-from rbx.box.schema import ExpectedOutcome, Solution, TaskType, Testcase
+from rbx.box.generation_schema import (
+    GenerationMetadata,
+    GenerationTestcaseEntry,
+)
+from rbx.box.schema import (
+    ExpectedOutcome,
+    ScoreType,
+    Solution,
+    TaskType,
+    Testcase,
+)
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.grading.limits import Limits
+from rbx.grading.steps import (
+    CheckerResult,
+    Evaluation,
+    Outcome,
+    TestcaseIO,
+    TestcaseLog,
+)
 
 
 def _make_skeleton(tmp_path: pathlib.Path):
@@ -105,6 +121,128 @@ def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch, main_solutio
     )
     screen = run_test_explorer.RunTestExplorerScreen(skeleton, solution)
     return screen, patches
+
+
+def _gen_entry(
+    group,
+    index,
+    *,
+    generator_call=None,
+    content=None,
+    script=None,
+    copied_from=None,
+):
+    te = TestcaseEntry(group=group, index=index)
+    md = GenerationMetadata(
+        copied_to=Testcase(inputPath=pathlib.Path(f'{group}-{index}.in')),
+        generator_call=generator_call,
+        content=content,
+        generator_script=script,
+        copied_from=copied_from,
+    )
+    return GenerationTestcaseEntry(group_entry=te, subgroup_entry=te, metadata=md)
+
+
+def _eval(outcome):
+    return Evaluation(
+        result=CheckerResult(outcome=outcome),
+        log=TestcaseLog(),
+        testcase=TestcaseIO(index=0),
+    )
+
+
+def _make_multi_skeleton(tmp_path, entries):
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    sol_skel = SolutionSkeleton(**solution.model_dump(), runs_dir=tmp_path / 'runs')
+    skeleton = SolutionReportSkeleton(
+        solutions=[sol_skel],
+        entries=entries,
+        groups=[],
+        limits={'cpp': Limits(time=1000, memory=256, profile=None, isDoubleTL=False)},
+        compiled_solutions={'sol.cpp': 'digest'},
+        verification=VerificationLevel.FULL,
+    )
+    return skeleton, sol_skel
+
+
+def _mounted_filterable(tmp_path, monkeypatch, entries, outcomes):
+    """Mount the screen with REAL ``get_entries_options`` filtering.
+
+    ``outcomes`` is a list aligned with ``entries`` (an ``Outcome`` or ``None``
+    per entry); it drives the precomputed outcome map the failing-only predicate
+    consults. ``get_solution_entry_prefix`` is stubbed so the detail pane never
+    reads missing files when a row is highlighted.
+    """
+    from rbx.box.ui.screens import run_test_explorer
+
+    monkeypatch.chdir(tmp_path)
+    skeleton, solution = _make_multi_skeleton(tmp_path, entries)
+
+    pkg = mock.Mock()
+    pkg.type = TaskType.BATCH
+    evals = [(_eval(o) if o is not None else None) for o in outcomes]
+    patches = _all(
+        mock.patch.object(
+            run_test_explorer.package,
+            'find_problem_package_or_die',
+            return_value=pkg,
+        ),
+        mock.patch.object(
+            run_test_explorer.package, 'get_main_solution', return_value=None
+        ),
+        mock.patch.object(
+            run_test_explorer.package, 'get_scoring', return_value=ScoreType.BINARY
+        ),
+        mock.patch.object(run_test_explorer, 'get_solution_evals', return_value=evals),
+        mock.patch.object(
+            run_test_explorer.SolutionReportSkeleton,
+            'get_solution_entry_prefix',
+            return_value=tmp_path / 'runs' / 'prefix',
+        ),
+        mock.patch.object(
+            TestcaseEntry, 'get_prefix_path', return_value=tmp_path / 'tests' / 'prefix'
+        ),
+    )
+    screen = run_test_explorer.RunTestExplorerScreen(skeleton, solution)
+    return screen, patches
+
+
+def _row_texts(screen):
+    option_list = screen.query_one('#test-list', OptionList)
+    return [
+        str(option_list.get_option_at_index(i).prompt)
+        for i in range(option_list.option_count)
+    ]
+
+
+async def test_f_filters_to_failing_tests_and_drops_ac_and_empty_headers(
+    tmp_path, monkeypatch
+):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [_gen_entry('g1', 0), _gen_entry('g1', 1), _gen_entry('g2', 0)]
+    outcomes = [Outcome.ACCEPTED, Outcome.WRONG_ANSWER, Outcome.ACCEPTED]
+    screen, patches = _mounted_filterable(tmp_path, monkeypatch, entries, outcomes)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            await pilot.press('f')
+            await pilot.pause()
+
+            texts = ' '.join(_row_texts(screen))
+            # Only the WA test in g1 survives; g2 (all AC) header is gone.
+            assert 'g1/1' in texts
+            assert 'g1/0' not in texts
+            assert 'g2' not in texts
+            assert 'failing only' in str(screen.query_one('#test-list').border_title)
+
+            await pilot.press('f')  # toggle back
+            await pilot.pause()
+            texts = ' '.join(_row_texts(screen))
+            assert 'g1/0' in texts and 'g2/0' in texts
+            assert str(screen.query_one('#test-list').border_title) == 'Tests'
 
 
 async def test_metadata_footer_hidden_by_default(tmp_path, monkeypatch):
