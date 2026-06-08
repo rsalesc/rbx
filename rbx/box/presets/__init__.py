@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
+import pydantic
 import questionary
 import ruyaml
 import typer
@@ -1148,7 +1149,8 @@ def create(
     name: Annotated[
         str,
         typer.Option(
-            help='The name of the preset to create. This will also be the name of the folder.',
+            help='The name of the preset to create. This will also be the name of the folder. '
+            'A relative path may be given, in which case the preset name is its basename.',
             prompt='What is the name of your new preset?',
         ),
     ],
@@ -1173,10 +1175,27 @@ def create(
         ),
     ] = False,
 ):
-    console.console.print(f'Creating new preset [item]{name}[/item]...')
+    dest_path = pathlib.Path(name)
+
+    # The preset name is the basename of the destination folder, even when a
+    # relative path is given (e.g. `presets/my-preset` -> `my-preset`).
+    preset_name = dest_path.stem
+    try:
+        utils.validate_field(Preset, 'name', preset_name)
+    except pydantic.ValidationError:
+        console.console.print(
+            f'[error]Invalid preset name [item]{preset_name}[/item], '
+            f'derived from [item]{name}[/item].[/error]'
+        )
+        console.console.print(
+            '[error]A preset name must be 3-32 characters long and contain only '
+            'letters, digits, dashes and underscores.[/error]'
+        )
+        raise typer.Exit(1) from None
+
+    console.console.print(f'Creating new preset [item]{preset_name}[/item]...')
 
     fetch_info = get_preset_fetch_info_with_fallback(from_preset, local=local)
-    dest_path = pathlib.Path(name)
     if dest_path.exists():
         console.console.print(
             f'[error]Directory [item]{dest_path}[/item] already exists.[/error]'
@@ -1186,7 +1205,7 @@ def create(
     install_preset(dest_path, fetch_info)
 
     ru, preset = get_ruyaml(dest_path)
-    preset['name'] = name
+    preset['name'] = preset_name
     preset['uri'] = uri
     utils.save_ruyaml(dest_path / 'preset.rbx.yml', ru, preset)
 
