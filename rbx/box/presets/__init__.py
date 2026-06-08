@@ -1047,19 +1047,64 @@ def install_preset(
         _install_preset_from_fetch_info(fetch_info, dest_pkg)
 
 
-def _peek_preset_metadata(uri: str, local: bool = False) -> 'RegistryPreset':
-    from rbx.box.presets.registry_schema import RegistryPreset
+def _read_preset_for_peek(uri: str, local: bool = False) -> Preset:
+    """Lightweight read of a preset's metadata for the registry.
 
+    Reads only the preset's ``preset.rbx.yml`` (for its name + description)
+    without installing it or running any install-time prompts: a direct read
+    for local-path and bundled presets, and a shallow clone for remotes.
+    """
+    # Local directory passed directly.
+    try:
+        local_path = pathlib.Path(uri)
+        if (local_path / 'preset.rbx.yml').is_file():
+            return get_preset_yaml(local_path)
+    except OSError:
+        pass
+
+    # Bundled preset shipped with rbx (e.g. `default`). Read it directly so a
+    # `registry add default` needs no network and no install-time prompts.
+    bundled = get_default_app_path() / 'presets' / uri
+    if (bundled / 'preset.rbx.yml').is_file():
+        return get_preset_yaml(bundled)
+
+    if local:
+        console.console.print(
+            f'[error]Local preset [item]{uri}[/item] not found in rbx resources.[/error]'
+        )
+        raise typer.Exit(1)
+
+    # Remote preset: resolve and shallow-clone just to read preset.rbx.yml.
     fetch_info = get_preset_fetch_info(uri, local=local)
-    if fetch_info is None:
+    if fetch_info is None or fetch_info.fetch_uri is None:
         console.console.print(
             f'[error]Could not resolve preset URI [item]{uri}[/item].[/error]'
         )
         raise typer.Exit(1)
+
+    import git
+
     with tempfile.TemporaryDirectory() as tmp:
-        scratch = pathlib.Path(tmp) / 'preset'
-        _install_preset_from_fetch_info(fetch_info, scratch)
-        preset = get_preset_yaml(scratch)
+        console.console.print(
+            f'Fetching preset metadata from [item]{fetch_info.fetch_uri}[/item]...'
+        )
+        try:
+            git.Repo.clone_from(fetch_info.fetch_uri, tmp, depth=1)
+        except Exception as e:
+            console.console.print(
+                f'[error]Could not fetch preset from [item]{fetch_info.fetch_uri}[/item].[/error]'
+            )
+            raise typer.Exit(1) from e
+        pd = pathlib.Path(tmp)
+        if fetch_info.inner_dir:
+            pd = pd / fetch_info.inner_dir
+        return get_preset_yaml(pd)
+
+
+def _peek_preset_metadata(uri: str, local: bool = False) -> 'RegistryPreset':
+    from rbx.box.presets.registry_schema import RegistryPreset
+
+    preset = _read_preset_for_peek(uri, local=local)
     return RegistryPreset(name=preset.name, uri=uri, description=preset.description)
 
 
@@ -1371,10 +1416,16 @@ def registry_rm(
             f'[success]Removed preset [item]{name}[/item] from the registry.[/success]'
         )
         return
-    console.console.print(
-        f'[error]Preset [item]{name}[/item] is not in the user registry '
-        f'(built-in presets cannot be removed).[/error]'
-    )
+    # Not in the user registry: tailor the message for a built-in vs an unknown.
+    builtin_names = {p.name for p in preset_registry.get_builtin_registry().presets}
+    if name in builtin_names:
+        console.console.print(
+            f'[error]Preset [item]{name}[/item] is a built-in preset and cannot be removed.[/error]'
+        )
+    else:
+        console.console.print(
+            f'[error]Preset [item]{name}[/item] is not in the user registry.[/error]'
+        )
     raise typer.Exit(1)
 
 
