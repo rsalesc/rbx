@@ -69,7 +69,8 @@ def create(
     path: Annotated[
         str,
         typer.Option(
-            help='Path where to create the contest.',
+            help='Path (relative to the current directory) where to create the contest '
+            '(e.g. "contests/ioi2024").',
             prompt='Where should the contest be created, relative to the current directory? (e.g. "contests/ioi2024")',
         ),
     ],
@@ -242,7 +243,9 @@ def add(
     path: Annotated[
         str,
         typer.Option(
-            help='Path where to create the problem. Name part of the path will be used as the problem name.',
+            help='Path (relative to the contest root) where to create the problem. '
+            'The name part of the path will be used as the problem name '
+            '(e.g. "problems/choco" creates a problem named "choco" in that directory).',
             prompt='Where should the problem be created, relative to the contest root? (e.g. problems/choco will create a problem named "choco" in this directory)',
         ),
     ],
