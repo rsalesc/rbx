@@ -77,6 +77,31 @@ and `buildDir` is now respected.
 Both call sites run under the `@within_contest` decorator (cwd = contest root),
 so `find_contest()` resolves.
 
+### Change 3 — other contest sites that hardcoded `build`
+
+A thorough sweep found three more contest sites that hardcoded `build` and so
+ignored a custom `buildDir`. All are routed through the configurable build dir:
+
+- `rbx/box/packaging/contest_main.py` — the contest package **output dir** (where
+  the final contest `.zip` is written) was `pathlib.Path('build')`; now
+  `contest_package.get_contest_build_path()`.
+- `rbx/box/stats.py` — `_get_build_path` returned `root / 'build'` for contests
+  (the `rbx stats` build-size report); now `root / environment.get_build_dir()`.
+  Resolved against the package root directly (not via `find_contest`) to avoid
+  contest-variant lookups in a read-only reporting path.
+- `rbx/box/cli.py` — `rbx clear` cleaned a hardcoded `build`; the contest branch
+  now also cleans `get_contest_build_path()` so a custom `buildDir` is removed.
+
+**Deliberately left as-is** (default-name only, special context):
+
+- `rbx/box/presets/__init__.py` — preset-tree cleanup deletes `dest / 'build'`. It
+  runs on a freshly *copied* tree before any environment is active, so resolving a
+  custom `buildDir` there is awkward, and preset source trees should not carry
+  build artifacts. A custom-`buildDir` preset that ships stale artifacts is a deep
+  edge case left for a follow-up if it ever matters.
+- `rbx/box/testing/testing_package.py` — a test-only helper that builds expected
+  paths under the default `build`; tests run with the default environment.
+
 ### No migration
 
 `build/` is gitignored and fully regenerable, so no on-disk migration is needed —
