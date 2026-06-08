@@ -354,6 +354,89 @@ async def test_numeric_query_matches_group_index(tmp_path, monkeypatch):
             assert 'g1/0' not in texts
 
 
+async def test_enter_commits_goto_restores_list_and_keeps_match(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [
+        _gen_entry('g1', 0, generator_call=GeneratorCall(name='gen_small', args='1')),
+        _gen_entry('g1', 1, generator_call=GeneratorCall(name='gen_huge', args='9')),
+    ]
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED, Outcome.ACCEPTED]
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('slash')
+            screen.query_one('#test-search', Input).value = 'huge'
+            await pilot.pause()
+            await pilot.press('enter')
+            await pilot.pause()
+
+            search = screen.query_one('#test-search', Input)
+            option_list = screen.query_one('#test-list', OptionList)
+            assert search.display is False
+            # Full list restored (both rows present)...
+            assert 'g1/0' in ' '.join(_row_texts(screen))
+            # ...and the matched test (g1/1) is highlighted.
+            assert option_list.highlighted is not None
+            prompt = str(
+                option_list.get_option_at_index(option_list.highlighted).prompt
+            )
+            assert 'g1/1' in prompt
+            assert option_list.has_focus
+
+
+async def test_escape_restores_list_without_jumping(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [_gen_entry('g1', 0), _gen_entry('g1', 1)]
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED, Outcome.ACCEPTED]
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('slash')
+            screen.query_one('#test-search', Input).value = '1'
+            await pilot.pause()
+            await pilot.press('escape')
+            await pilot.pause()
+
+            search = screen.query_one('#test-search', Input)
+            assert search.display is False
+            assert search.value == ''
+            assert 'g1/0' in ' '.join(_row_texts(screen))
+            assert str(screen.query_one('#test-list').border_title) == 'Tests'
+
+
+async def test_search_and_failing_only_compose(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [
+        _gen_entry('g1', 0, generator_call=GeneratorCall(name='gen_x', args='1')),
+        _gen_entry('g1', 1, generator_call=GeneratorCall(name='gen_x', args='2')),
+    ]
+    # index 0 AC, index 1 WA -> failing-only keeps index 1; both match 'gen_x'.
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED, Outcome.WRONG_ANSWER]
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('f')
+            await pilot.press('slash')
+            screen.query_one('#test-search', Input).value = 'gen_x'
+            await pilot.pause()
+
+            texts = ' '.join(_row_texts(screen))
+            assert 'g1/1' in texts
+            assert 'g1/0' not in texts  # filtered by failing-only despite matching
+
+
 async def test_metadata_footer_hidden_by_default(tmp_path, monkeypatch):
     from rbx.box.ui.main import rbxApp
 

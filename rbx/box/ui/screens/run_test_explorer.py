@@ -45,6 +45,7 @@ class RunTestExplorerScreen(Screen):
         Binding('V', 'open_output_visualizer', 'Open output visualization', show=False),
         Binding('f', 'toggle_failing_only', 'Failing only', show=False),
         Binding('slash', 'focus_search', 'Search', show=False),
+        Binding('escape', 'cancel_search', 'Cancel search', show=False),
     ]
 
     side_by_side: reactive[bool] = reactive(False)
@@ -279,11 +280,57 @@ class RunTestExplorerScreen(Screen):
         search.focus()
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != 'test-search':
+        # Only live-filter while the box is visible. Closing the box clears its
+        # value, which posts a Changed asynchronously; the hidden-box guard keeps
+        # that late event from clobbering a committed goto highlight.
+        if event.input.id != 'test-search' or not event.input.display:
             return
         self._search_query = event.value
         self._rebuild_options()
         self._highlight_best_match()
+
+    def _highlighted_entry(self) -> Optional[GenerationTestcaseEntry]:
+        option_list = self.query_one('#test-list', OptionList)
+        index = option_list.highlighted
+        if index is None or index >= len(self._option_entries):
+            return None
+        return self._option_entries[index]
+
+    def _option_index_of(self, target: GenerationTestcaseEntry) -> Optional[int]:
+        for i, entry in enumerate(self._option_entries):
+            if entry is target:
+                return i
+        return None
+
+    def _close_search(self) -> None:
+        search = self.query_one('#test-search', Input)
+        # Hide first so the Changed posted by clearing the value is ignored.
+        search.display = False
+        search.value = ''
+        self._search_query = ''
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != 'test-search':
+            return
+        event.stop()
+        # Goto: jump to the matched test in the restored (non-search) list.
+        target = self._highlighted_entry()
+        self._close_search()
+        self._rebuild_options()
+        option_list = self.query_one('#test-list', OptionList)
+        if target is not None:
+            index = self._option_index_of(target)
+            if index is not None:
+                option_list.highlighted = index
+        option_list.focus()
+
+    def action_cancel_search(self) -> None:
+        search = self.query_one('#test-search', Input)
+        if not (search.display or search.has_focus):
+            return
+        self._close_search()
+        self._rebuild_options()
+        self.query_one('#test-list', OptionList).focus()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()
