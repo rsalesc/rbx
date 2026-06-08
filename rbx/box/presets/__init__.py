@@ -656,12 +656,14 @@ def get_preset_build_dir(env_path: Optional[pathlib.Path]) -> pathlib.Path:
     """Resolve the buildDir configured by a preset's env.rbx.yml.
 
     Used when stripping build artifacts from a copied preset/package so a
-    custom buildDir (not just the default 'build') is removed and never leaks
-    into the generated tree. Only the buildDir field is read, so a stub or
-    partially-specified env still resolves; a missing/unset value falls back to
-    the default 'build'.
+    custom buildDir is removed and never leaks into the generated tree. Only the
+    buildDir field is read, so a stub or partially-specified env still resolves;
+    a missing/unset value falls back to the env schema's default buildDir.
     """
-    default = pathlib.Path('build')
+    # Lazy import: rbx.box.environment imports this module.
+    from rbx.box.environment import Environment
+
+    default = Environment.model_fields['buildDir'].default
     if env_path is None or not env_path.is_file():
         return default
     data = yaml.safe_load(env_path.read_text())
