@@ -113,6 +113,27 @@ class TestCopyTreeNormalizingGitdir:
         assert (dst / '.git' / 'config').is_dir()
 
 
+class TestPresetDescription:
+    def test_preset_description_defaults_to_empty(self):
+        from rbx.box.presets.schema import Preset
+
+        p = Preset(name='abc', uri='owner/repo')
+        assert p.description == ''
+
+    def test_preset_description_roundtrips(self):
+        from rbx.box.presets.schema import Preset
+
+        p = Preset(name='abc', uri='owner/repo', description='Hello')
+        assert p.description == 'Hello'
+
+    def test_default_preset_has_description(self):
+        from rbx.box.presets import get_preset_yaml
+        from rbx.config import get_default_app_path
+
+        preset = get_preset_yaml(get_default_app_path() / 'presets' / 'default')
+        assert preset.description.strip() != ''
+
+
 class TestCopyLocalPreset:
     def test_adds_submodule_when_remote_and_user_accepts(self, tmp_path, monkeypatch):
         preset_repo_path = tmp_path / 'preset'

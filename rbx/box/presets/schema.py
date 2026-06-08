@@ -116,6 +116,11 @@ class Preset(BaseModel):
     # Name of the preset, or a GitHub repository containing it.
     name: str = NameField()
 
+    # Human-readable description of the preset, shown in the preset registry
+    # picker. This is the canonical home of the description; the registry keeps
+    # a denormalized copy for display.
+    description: str = Field(default='')
+
     # URI of the preset to be fetched. Uniquely identifies the preset.
     # Should usually be a GitHub repository.
     uri: str
