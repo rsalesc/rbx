@@ -4,7 +4,17 @@ import os
 import pathlib
 import shutil
 import tempfile
-from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import questionary
 import ruyaml
@@ -30,6 +40,9 @@ from rbx.box.presets.schema import (
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
+
+if TYPE_CHECKING:
+    from rbx.box.presets.registry_schema import RegistryPreset
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -1034,6 +1047,22 @@ def install_preset(
         _install_preset_from_fetch_info(fetch_info, dest_pkg)
 
 
+def _peek_preset_metadata(uri: str, local: bool = False) -> 'RegistryPreset':
+    from rbx.box.presets.registry_schema import RegistryPreset
+
+    fetch_info = get_preset_fetch_info(uri, local=local)
+    if fetch_info is None:
+        console.console.print(
+            f'[error]Could not resolve preset URI [item]{uri}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = pathlib.Path(tmp) / 'preset'
+        _install_preset_from_fetch_info(fetch_info, scratch)
+        preset = get_preset_yaml(scratch)
+    return RegistryPreset(name=preset.name, uri=uri, description=preset.description)
+
+
 def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
     if not (root / 'preset.rbx.yml').is_file():
         console.console.print(
@@ -1290,6 +1319,63 @@ def ls():
     console.console.print(f'Preset: [item]{preset.name}[/item]')
     console.console.print(f'Path: {preset_path}')
     console.console.print(f'URI: {preset.uri}')
+
+
+registry_app = typer.Typer(no_args_is_help=True)
+app.add_typer(registry_app, name='registry', help='Manage the preset registry.')
+
+
+@registry_app.command('ls', help='List presets available in the registry.')
+def registry_ls():
+    merged = preset_registry.get_merged_registry()
+    user_names = {p.name for p in preset_registry.get_user_registry().presets}
+    if not merged.presets:
+        console.console.print('No presets in the registry.')
+        return
+    from rich.table import Table
+
+    table = Table('Name', 'Description', 'URI', 'Source')
+    for p in merged.presets:
+        source = 'user' if p.name in user_names else 'built-in'
+        table.add_row(p.name, p.description, p.uri, source)
+    console.console.print(table)
+
+
+@registry_app.command('add', help='Add a preset to the user registry.')
+def registry_add(
+    uri: Annotated[
+        str,
+        typer.Argument(
+            help='URI of the preset to register (owner/repo, URL, or path).'
+        ),
+    ],
+    local: Annotated[
+        bool,
+        typer.Option('--local', help='Resolve the preset from the local rbx version.'),
+    ] = False,
+):
+    entry = _peek_preset_metadata(uri, local=local)
+    preset_registry.add_to_user_registry(entry)
+    console.console.print(
+        f'[success]Registered preset [item]{entry.name}[/item] '
+        f'([item]{entry.uri}[/item]).[/success]'
+    )
+
+
+@registry_app.command('rm', help='Remove a preset from the user registry.')
+def registry_rm(
+    name: Annotated[str, typer.Argument(help='Name of the preset to remove.')],
+):
+    if preset_registry.remove_from_user_registry(name):
+        console.console.print(
+            f'[success]Removed preset [item]{name}[/item] from the registry.[/success]'
+        )
+        return
+    console.console.print(
+        f'[error]Preset [item]{name}[/item] is not in the user registry '
+        f'(built-in presets cannot be removed).[/error]'
+    )
+    raise typer.Exit(1)
 
 
 @app.callback()
