@@ -300,6 +300,47 @@ class TestFindContestYamlVariantAware:
             cp_module.find_contest_yaml.cache_clear()
 
 
+class TestContestBuildPaths:
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.get_contest_build_path.cache_clear()
+        cp_module.get_contest_statements_build_path.cache_clear()
+        yield
+        cp_module.find_contest_yaml.cache_clear()
+        cp_module.get_contest_build_path.cache_clear()
+        cp_module.get_contest_statements_build_path.cache_clear()
+
+    def test_build_path_uses_default_build_dir(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+
+        assert cp_module.get_contest_build_path(tmp_path) == tmp_path / 'build'
+
+    def test_statements_build_path_under_build(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+
+        assert (
+            cp_module.get_contest_statements_build_path(tmp_path)
+            == tmp_path / 'build' / 'statements'
+        )
+
+    def test_build_path_honors_custom_build_dir(self, tmp_path: pathlib.Path):
+        from unittest import mock
+
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+
+        with mock.patch.object(
+            cp_module.environment, 'get_build_dir', return_value=pathlib.Path('out')
+        ):
+            cp_module.get_contest_build_path.cache_clear()
+            cp_module.get_contest_statements_build_path.cache_clear()
+            assert cp_module.get_contest_build_path(tmp_path) == tmp_path / 'out'
+            assert (
+                cp_module.get_contest_statements_build_path(tmp_path)
+                == tmp_path / 'out' / 'statements'
+            )
+
+
 class TestFindContestPackageOrDieDispatcher:
     def test_die_lists_available_variants(self, tmp_path, capsys):
         (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
