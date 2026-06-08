@@ -798,7 +798,7 @@ def create(
             help='Name of the problem to create, which will be used as the name of the new folder. '
             'A path relative to the current directory may be given (e.g. "problems/my-problem"), '
             'in which case the problem name is the basename ("my-problem").',
-            prompt='What should the name of the problem be?',
+            prompt='What should the problem be named? You may also give a path relative to the current directory (e.g. "problems/my-problem" creates a problem named "my-problem" in that directory)',
         ),
     ],
     preset: Annotated[
