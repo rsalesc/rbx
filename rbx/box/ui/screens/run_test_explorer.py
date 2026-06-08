@@ -1,13 +1,12 @@
 import pathlib
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.fuzzy import Matcher
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, OptionList
+from textual.widgets import Footer, Header, OptionList
 
 from rbx import console
 from rbx.box import package, visualizers
@@ -18,6 +17,7 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     get_testcase_metadata_markup,
 )
+from rbx.box.ui.screens.test_list_search import EntryPredicate, TestListSearchMixin
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
     get_run_testcase_metadata_markup,
@@ -31,7 +31,7 @@ from rbx.box.ui.widgets.two_sided_test_output_box import TwoSidedTestBoxWidget
 from rbx.grading.steps import Outcome
 
 
-class RunTestExplorerScreen(Screen):
+class RunTestExplorerScreen(TestListSearchMixin, Screen):
     BINDING_GROUP_TITLE = 'Run Test Explorer'
     BINDINGS = [
         ('q', 'app.pop_screen', 'Quit'),
@@ -44,8 +44,6 @@ class RunTestExplorerScreen(Screen):
         Binding('v', 'open_visualizer', 'Open visualization', show=False),
         Binding('V', 'open_output_visualizer', 'Open output visualization', show=False),
         Binding('f', 'toggle_failing_only', 'Failing only', show=False),
-        Binding('slash', 'focus_search', 'Search', show=False),
-        Binding('escape', 'cancel_search', 'Cancel search', show=False),
     ]
 
     side_by_side: reactive[bool] = reactive(False)
@@ -76,7 +74,7 @@ class RunTestExplorerScreen(Screen):
         yield Footer()
         with Horizontal(id='test-explorer'):
             with Vertical(id='test-list-container'):
-                yield Input(id='test-search', placeholder='Search tests…')
+                yield self._search_input()
                 yield OptionList(id='test-list')
             with Vertical(id='test-details'):
                 yield RichLogBox(id='test-box-warning')
@@ -96,9 +94,7 @@ class RunTestExplorerScreen(Screen):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
 
-        search = self.query_one('#test-search', Input)
-        search.display = False
-        search.border_title = 'Search'
+        self._init_search_box()
 
         warning_box = self.query_one('#test-box-warning', RichLogBox)
         warning_box.markup = True
@@ -182,89 +178,33 @@ class RunTestExplorerScreen(Screen):
             'highlighted',
             self._update_selected_test,
         )
-        self._rebuild_options()
+        self.rebuild_test_list()
 
     def _entry_outcome(self, entry: GenerationTestcaseEntry) -> Optional[Outcome]:
         return self._outcomes.get((entry.group_entry.group, entry.group_entry.index))
 
-    def _search_text(self, entry: GenerationTestcaseEntry) -> str:
-        md = entry.metadata
-        parts = [f'{entry.group_entry.group}/{entry.group_entry.index}']
-        if md.generator_call is not None:
-            parts.append(str(md.generator_call))
-        if md.copied_from is not None:
-            parts.append(str(md.copied_from.inputPath))
-        if md.content is not None:
-            parts.append(md.content)
-        if md.generator_script is not None:
-            parts.append(str(md.generator_script))
-        return ' '.join(parts)
-
-    def _build_predicate(self):
-        failing = self.failing_only
-        query = self._search_query.strip()
-        if not failing and not query:
-            return None
-
-        numeric = int(query) if query.isdigit() else None
-        matcher = Matcher(query) if (query and numeric is None) else None
-
-        def predicate(entry: GenerationTestcaseEntry) -> bool:
-            # Keep non-AC; a missing eval (incomplete run) is treated as not-AC.
-            if failing and self._entry_outcome(entry) == Outcome.ACCEPTED:
-                return False
-            if numeric is not None:
-                return entry.group_entry.index == numeric
-            if matcher is not None:
-                return matcher.match(self._search_text(entry)) > 0
-            return True
-
-        return predicate
-
-    def _list_title(self) -> str:
-        bits = []
-        if self.failing_only:
-            bits.append('failing only')
-        if self._search_query.strip():
-            bits.append('search')
-        return 'Tests' + (f' ({", ".join(bits)})' if bits else '')
-
-    def _rebuild_options(self) -> None:
-        options, self._option_entries = get_entries_options(
+    def _compute_options(
+        self, predicate: Optional[EntryPredicate]
+    ) -> Tuple[List[Any], List[Optional[GenerationTestcaseEntry]]]:
+        return get_entries_options(
             self.skeleton.entries,
             skeleton=self.skeleton,
             solution=self.solution,
-            predicate=self._build_predicate(),
+            predicate=predicate,
         )
-        option_list = self.query_one('#test-list', OptionList)
-        option_list.clear_options()
-        option_list.add_options(options)
-        self.query_one('#test-list').border_title = self._list_title()
 
-    def _first_selectable_index(self) -> Optional[int]:
-        for i, entry in enumerate(self._option_entries):
-            if entry is not None:
-                return i
-        return None
+    def _extra_predicate(self) -> Optional[EntryPredicate]:
+        if not self.failing_only:
+            return None
 
-    def _highlight_best_match(self) -> None:
-        option_list = self.query_one('#test-list', OptionList)
-        query = self._search_query.strip()
-        best_index = None
-        if query and not query.isdigit():
-            matcher = Matcher(query)
-            best_score = 0.0
-            for i, entry in enumerate(self._option_entries):
-                if entry is None:
-                    continue
-                score = matcher.match(self._search_text(entry))
-                if score > best_score:
-                    best_score = score
-                    best_index = i
-        if best_index is None:
-            best_index = self._first_selectable_index()
-        if best_index is not None:
-            option_list.highlighted = best_index
+        def predicate(entry: GenerationTestcaseEntry) -> bool:
+            # Keep non-AC; a missing eval (incomplete run) is treated as not-AC.
+            return self._entry_outcome(entry) != Outcome.ACCEPTED
+
+        return predicate
+
+    def _extra_filter_labels(self) -> List[str]:
+        return ['failing only'] if self.failing_only else []
 
     def action_toggle_failing_only(self) -> None:
         self.failing_only = not self.failing_only
@@ -272,65 +212,7 @@ class RunTestExplorerScreen(Screen):
     def watch_failing_only(self, value: bool) -> None:
         if not self.is_mounted:
             return
-        self._rebuild_options()
-
-    def action_focus_search(self) -> None:
-        search = self.query_one('#test-search', Input)
-        search.display = True
-        search.focus()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        # Only live-filter while the box is visible. Closing the box clears its
-        # value, which posts a Changed asynchronously; the hidden-box guard keeps
-        # that late event from clobbering a committed goto highlight.
-        if event.input.id != 'test-search' or not event.input.display:
-            return
-        self._search_query = event.value
-        self._rebuild_options()
-        self._highlight_best_match()
-
-    def _highlighted_entry(self) -> Optional[GenerationTestcaseEntry]:
-        option_list = self.query_one('#test-list', OptionList)
-        index = option_list.highlighted
-        if index is None or index >= len(self._option_entries):
-            return None
-        return self._option_entries[index]
-
-    def _option_index_of(self, target: GenerationTestcaseEntry) -> Optional[int]:
-        for i, entry in enumerate(self._option_entries):
-            if entry is target:
-                return i
-        return None
-
-    def _close_search(self) -> None:
-        search = self.query_one('#test-search', Input)
-        # Hide first so the Changed posted by clearing the value is ignored.
-        search.display = False
-        search.value = ''
-        self._search_query = ''
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != 'test-search':
-            return
-        event.stop()
-        # Goto: jump to the matched test in the restored (non-search) list.
-        target = self._highlighted_entry()
-        self._close_search()
-        self._rebuild_options()
-        option_list = self.query_one('#test-list', OptionList)
-        if target is not None:
-            index = self._option_index_of(target)
-            if index is not None:
-                option_list.highlighted = index
-        option_list.focus()
-
-    def action_cancel_search(self) -> None:
-        search = self.query_one('#test-search', Input)
-        if not (search.display or search.has_focus):
-            return
-        self._close_search()
-        self._rebuild_options()
-        self.query_one('#test-list', OptionList).focus()
+        self.rebuild_test_list()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()
