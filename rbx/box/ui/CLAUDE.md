@@ -21,7 +21,8 @@ rbxApp (main menu: OptionList)
            |-- (select solution) -> RunTestExplorerScreen
            |        |-- (select testcase) -> updates FileLog + TwoSidedTestBoxWidget
            |        |-- [s] -> toggle side-by-side comparison
-           |        |-- [g] -> RichLogModal (testcase metadata)
+           |        |-- [m] -> toggle docked testcase-metadata footer
+           |        |-- [r] -> toggle run/eval metadata box
            |        |-- [v/V] -> input/output visualizer
            |
            |-- [s] "Compare with" -> SelectorScreen (modal) -> side-by-side mode
@@ -41,7 +42,6 @@ rbxApp (main menu: OptionList)
 | `DifferScreen` | `differ.py` | Side-by-side file diff |
 | `ReviewScreen` | `review.py` | Code review confirm/reject (y/n keybindings) |
 | `SelectorScreen` | `selector.py` | Generic modal list selector, returns index |
-| `RichLogModal` | `rich_log_modal.py` | Modal popup for rich markup text |
 | `ErrorScreen` | `error.py` | Simple error display |
 
 ## Key Widgets (`widgets/`)

@@ -17,7 +17,6 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     get_testcase_metadata_markup,
 )
-from rbx.box.ui.screens.rich_log_modal import RichLogModal
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
     get_run_testcase_metadata_markup,
@@ -35,9 +34,9 @@ class RunTestExplorerScreen(Screen):
         Binding('1', 'show_output', 'Show output', show=False),
         Binding('2', 'show_stderr', 'Show stderr', show=False),
         Binding('3', 'show_log', 'Show log', show=False),
-        Binding('m', 'toggle_metadata', 'Toggle metadata', show=False),
+        Binding('m', 'toggle_test_metadata', 'Toggle metadata', show=False),
+        Binding('r', 'toggle_metadata', 'Toggle run metadata', show=False),
         Binding('s', 'toggle_side_by_side', 'Toggle sxs', show=False),
-        Binding('g', 'toggle_test_metadata', 'Toggle test metadata', show=False),
         Binding('v', 'open_visualizer', 'Open visualization', show=False),
         Binding('V', 'open_output_visualizer', 'Open output visualization', show=False),
     ]
@@ -72,6 +71,7 @@ class RunTestExplorerScreen(Screen):
                 yield RichLogBox(id='test-box-warning')
                 yield FileLog(id='test-input')
                 yield TwoSidedTestBoxWidget(id='test-output')
+                yield RichLogBox(id='test-metadata')
 
     async def on_mount(self):
         self.title = str(self.solution.path)
@@ -96,6 +96,13 @@ class RunTestExplorerScreen(Screen):
         # Ensure the output is show, even for interactive tests
         self.action_show_output()
 
+        metadata = self.query_one('#test-metadata', RichLogBox)
+        metadata.display = False
+        metadata.border_title = 'Metadata'
+        metadata.wrap = True
+        metadata.markup = True
+        metadata.clear().write('No test selected')
+
         await self._update_tests()
 
     def _is_interactive(self) -> bool:
@@ -115,16 +122,21 @@ class RunTestExplorerScreen(Screen):
     def _update_selected_test(self, index: Optional[int]):
         input = self.query_one('#test-input', FileLog)
         output = self.query_one('#test-output', TwoSidedTestBoxWidget)
+        metadata = self.query_one('#test-metadata', RichLogBox)
 
         if index is None:
             input.path = None
             output.reset()
+            metadata.clear().write('No test selected')
             return
         entry = self._option_entries[index]
         if entry is None:
             return
         input.path = entry.metadata.copied_to.inputPath
         output.data = self._get_rendering_data(self.solution, entry)
+
+        metadata.clear()
+        metadata.write(console.expand_markup(get_testcase_metadata_markup(entry)))
 
         if self.diff_solution is not None:
             self.diff_with_data = self._get_rendering_data(self.diff_solution, entry)
@@ -198,18 +210,8 @@ class RunTestExplorerScreen(Screen):
         widget.diff_with_data = diff_with_data
 
     def action_toggle_test_metadata(self):
-        option_list = self.query_one('#test-list', OptionList)
-        if option_list.highlighted is None:
-            return
-        entry = self._option_entries[option_list.highlighted]
-        if entry is None:
-            return
-        self.app.push_screen(
-            RichLogModal(
-                console.expand_markup(get_testcase_metadata_markup(entry)),
-                title='Testcase metadata',
-            )
-        )
+        metadata = self.query_one('#test-metadata', RichLogBox)
+        metadata.display = not metadata.display
 
     async def action_open_visualizer(self):
         # TODO: should we figure out a way to pass output here too?

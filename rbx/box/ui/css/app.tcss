@@ -118,17 +118,6 @@ TestExplorerScreen, RunTestExplorerScreen {
         }
 }
 
-#rich-dialog {
-        max-width: 80;
-        height: auto;
-        max-height: 5;
-
-        RichLog {
-                border: solid $accent;
-                padding: 0 1;
-        }
-}
-
 #selector-dialog {
         max-width: 80;
         height: auto;
