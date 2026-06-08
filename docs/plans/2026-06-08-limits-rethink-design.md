@@ -63,8 +63,12 @@ as-is (a deliberate scope cut — see "Out of scope").
 
 ### 3. `rbx/box/tasks.py` — `get_limits_for_language`
 
-- When applying `timelimit_override`, set both `time` and `configuredTime` to the
-  override (the override is the effective declared TL for that run).
+- `timelimit_override` affects **only** the enforced `time`; `configuredTime`
+  stays the declared profile TL. The old `get_solution_limits_from_disk`
+  re-resolved the profile and ignored the override entirely, so the displayed TL
+  must too. Critically, time-limit estimation runs with `timelimit_override=-1`
+  (the "unlimited" sentinel, `timing.py`); writing that into `configuredTime`
+  would leak `-1 ms` into the timing report (caught in adversarial review).
 - When nulling `time` (`use_timelimit=False` or `time <= 0`), leave
   `configuredTime` intact, so enforcement-off runs still know their declared TL.
 
