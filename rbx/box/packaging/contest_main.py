@@ -79,7 +79,10 @@ async def run_contest_packager(
         limits_info.use_profile(contest_packager_cls.name()),
     ):
         result_path = packager.package(
-            built_packages, pathlib.Path('build'), pathlib.Path(td), built_statements
+            built_packages,
+            contest_package.get_contest_build_path(),
+            pathlib.Path(td),
+            built_statements,
         )
 
     console.console.print(

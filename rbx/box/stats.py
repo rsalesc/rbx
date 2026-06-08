@@ -2,6 +2,7 @@ import pathlib
 from typing import Iterable, List, Tuple
 
 from rbx import console
+from rbx.box import environment
 from rbx.box.cd import (
     find_all_ancestor_packages,
     is_contest_package,
@@ -59,9 +60,11 @@ def get_cache_size(root: pathlib.Path = pathlib.Path()) -> int:
 
 
 def _get_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    if not is_problem_package(root):
-        return root / 'build'
-    return get_build_path(root)
+    if is_problem_package(root):
+        return get_build_path(root)
+    # Contests (and other packages) honor the same configurable buildDir; resolve
+    # it against the package root directly to avoid contest-variant lookups here.
+    return root / environment.get_build_dir()
 
 
 def get_build_size(root: pathlib.Path = pathlib.Path()) -> int:
