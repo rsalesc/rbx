@@ -162,8 +162,9 @@ Per-language built-in linters, configured under `EnvironmentLanguage.linters` in
 - `asset_kind.py` -- `AssetKind` enum + `infer_asset_kind(code)`.
 - `runner.py` -- `run_linters()` (routes WARNINGs to the warning stack, ERRORs to a `RbxException`) and the pure `run_linters_for_messages()`. `is_linter_suppressed(name, source)` lets a file opt out of a linter via a `// <name>-linter: disable` comment directive (e.g. `// testlib-linter: disable`).
 - `cpp/testlib.py` -- first linter (tree-sitter-cpp); `TestlibLinter` (`name='testlib'`, generators only) flags calls passing 2+ side-effecting arguments (e.g. `f(rnd.next(), rnd.next())`).
+- `cpp/rbx_header.py` -- `RbxHeaderLinter` (`name='rbx-header'`, generators only, ERROR severity) flags a direct `#include "rbx.h"` / `<rbx.h>`. Reading constraints via `getVar` in a generator makes its tests change silently when a constraint changes (#386). Disable per-include with `// rbx-header-linter: disable` on the include line, or remove `rbx-header` from a language's `linters` in `env.rbx.yml`. Enabled for `cpp` by default in the bundled preset env.
 
-Lazy imports break the `code` ↔ `linters.runner` cycle; `__init__.py` imports `cpp.testlib` so it self-registers.
+Lazy imports break the `code` ↔ `linters.runner` cycle; `__init__.py` imports `cpp.testlib` and `cpp.rbx_header` so they self-register.
 
 ## Global State (`global_package.py`)
 

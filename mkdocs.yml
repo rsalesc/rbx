@@ -62,6 +62,7 @@ nav:
           - "setters/reference/environment/index.md"
           - "Schema": "setters/reference/environment/schema.md"
   - "Troubleshooting":
+      - "Generators and rbx.h": "generators-and-rbx-h.md"
       - "cpp-on-macos.md"
       - "stack-limit.md"
       - "intro/windows-git.md"
