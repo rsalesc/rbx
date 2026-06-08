@@ -10,7 +10,11 @@ import typer
 from rbx import console
 from rbx.box import cd, limits_info, naming, package_utils
 from rbx.box.contest import statement_overriding
-from rbx.box.contest.contest_package import get_problems
+from rbx.box.contest.contest_package import (
+    get_contest_build_path,
+    get_contest_statements_build_path,
+    get_problems,
+)
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
 from rbx.box.fields import Primitive
 from rbx.box.formatting import href
@@ -381,7 +385,7 @@ async def build_statement_rooted(
 
 
 def get_statement_build_dir(statement: ContestStatement) -> pathlib.Path:
-    return pathlib.Path('build') / 'statement_build' / statement.name
+    return get_contest_statements_build_path() / statement.name
 
 
 async def build_statement(
@@ -407,7 +411,7 @@ async def build_statement(
         install_tex=install_tex,
     )
 
-    statement_path = (pathlib.Path('build') / statement.name).with_suffix(
+    statement_path = (get_contest_build_path() / statement.name).with_suffix(
         last_output.get_file_suffix()
     )
     active_profile = limits_info.get_active_profile()

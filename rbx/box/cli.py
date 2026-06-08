@@ -36,7 +36,7 @@ from rbx.box import (
 )
 from rbx.box.contest import contest_state
 from rbx.box.contest import main as contest
-from rbx.box.contest.contest_package import find_contest_yaml
+from rbx.box.contest.contest_package import find_contest_yaml, get_contest_build_path
 from rbx.box.environment import VerificationLevel, get_app_environment_path
 from rbx.box.generation_schema import get_parsed_entry
 from rbx.box.header import generate_header
@@ -1373,6 +1373,7 @@ def _clear_package_cache():
         _clean(package.get_problem_cache_path())
 
     if cd.is_contest_package():
+        _clean(get_contest_build_path())
         console.console.print(
             '[warning]If you want to clear the problem caches of all problems in the contest, '
             'run [item]rbx contest each clean[/item].[/warning]'

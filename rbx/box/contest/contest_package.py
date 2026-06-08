@@ -6,7 +6,7 @@ import ruyaml
 import typer
 
 from rbx import console, utils
-from rbx.box import cd
+from rbx.box import cd, environment
 from rbx.box.contest.contest_state import is_valid_variant_id
 from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die
@@ -207,6 +207,18 @@ def find_contest(
     if found is None:
         _die_no_contest(root)
     return found.parent
+
+
+@functools.cache
+def get_contest_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    return find_contest(root) / environment.get_build_dir()
+
+
+@functools.cache
+def get_contest_statements_build_path(
+    root: pathlib.Path = pathlib.Path(),
+) -> pathlib.Path:
+    return get_contest_build_path(root) / 'statements'
 
 
 def within_contest(func):

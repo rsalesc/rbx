@@ -652,15 +652,40 @@ def clean_copied_package_dir(dest: pathlib.Path):
         lock.unlink(missing_ok=True)
 
 
-def clean_copied_contest_dir(dest: pathlib.Path, delete_local_rbx: bool = True):
-    shutil.rmtree(str(dest / 'build'), ignore_errors=True)
+def get_preset_build_dir(env_path: Optional[pathlib.Path]) -> pathlib.Path:
+    """Resolve the buildDir configured by a preset's env.rbx.yml.
+
+    Used when stripping build artifacts from a copied preset/package so a
+    custom buildDir is removed and never leaks into the generated tree. Only the
+    buildDir field is read, so a stub or partially-specified env still resolves;
+    a missing/unset value falls back to the env schema's default buildDir.
+    """
+    # Lazy import: rbx.box.environment imports this module.
+    from rbx.box.environment import Environment
+
+    default = Environment.model_fields['buildDir'].default
+    if env_path is None or not env_path.is_file():
+        return default
+    data = yaml.safe_load(env_path.read_text())
+    build_dir = data.get('buildDir') if isinstance(data, dict) else None
+    return pathlib.Path(build_dir) if build_dir else default
+
+
+def clean_copied_contest_dir(
+    dest: pathlib.Path,
+    delete_local_rbx: bool = True,
+    build_dir: pathlib.Path = pathlib.Path('build'),
+):
+    shutil.rmtree(str(dest / build_dir), ignore_errors=True)
     if delete_local_rbx:
         shutil.rmtree(str(dest / '.local.rbx'), ignore_errors=True)
     clean_copied_package_dir(dest)
 
 
-def clean_copied_problem_dir(dest: pathlib.Path):
-    shutil.rmtree(str(dest / 'build'), ignore_errors=True)
+def clean_copied_problem_dir(
+    dest: pathlib.Path, build_dir: pathlib.Path = pathlib.Path('build')
+):
+    shutil.rmtree(str(dest / build_dir), ignore_errors=True)
     clean_copied_package_dir(dest)
 
 
@@ -702,14 +727,18 @@ def install_preset_from_dir(
         (dest / 'preset.rbx.yml').write_text(utils.model_to_yaml(preset))
 
     # Clean up all cache and left over directories before copying
-    # to avoid conflicts.
-    shutil.rmtree(str(dest / 'build'), ignore_errors=True)
+    # to avoid conflicts. Resolve the build dir from the preset's own env so a
+    # custom buildDir is stripped instead of the default 'build'.
+    build_dir = get_preset_build_dir(
+        dest / preset.env if preset.env is not None else None
+    )
+    shutil.rmtree(str(dest / build_dir), ignore_errors=True)
     shutil.rmtree(str(dest / '.local.rbx'), ignore_errors=True)
 
     if preset.contest is not None:
-        clean_copied_contest_dir(dest / preset.contest)
+        clean_copied_contest_dir(dest / preset.contest, build_dir=build_dir)
     if preset.problem is not None:
-        clean_copied_problem_dir(dest / preset.problem)
+        clean_copied_problem_dir(dest / preset.problem, build_dir=build_dir)
 
     clean_copied_package_dir(dest)
 
@@ -1002,7 +1031,11 @@ def install_contest(
         preset.tracking.contest,
         expansions=expansions,
     )
-    clean_copied_contest_dir(dest_pkg, delete_local_rbx=False)
+    clean_copied_contest_dir(
+        dest_pkg,
+        delete_local_rbx=False,
+        build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
+    )
     if materialize:
         materialize_libraries(preset, dest_pkg, is_contest=True)
 
@@ -1038,7 +1071,10 @@ def install_problem(
         preset.tracking.problem,
         expansions=expansions,
     )
-    clean_copied_problem_dir(dest_pkg)
+    clean_copied_problem_dir(
+        dest_pkg,
+        build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
+    )
     if materialize:
         materialize_libraries(preset, dest_pkg, is_contest=False)
 
