@@ -1,7 +1,11 @@
 import pathlib
+import sys
 from typing import Optional
 
-from rbx import utils
+import questionary
+import typer
+
+from rbx import console, utils
 from rbx.box.presets.registry_schema import PresetRegistry, RegistryPreset
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_default_app_path
@@ -79,3 +83,32 @@ def find_in_registry(uri_or_name: str) -> Optional[RegistryPreset]:
         if p.name == uri_or_name or p.uri == uri_or_name:
             return p
     return None
+
+
+def is_interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def pick_preset() -> RegistryPreset:
+    reg = get_merged_registry()
+    if not reg.presets:
+        console.console.print('[error]No presets available in the registry.[/error]')
+        raise typer.Exit(1)
+
+    by_name = {p.name: p for p in reg.presets}
+    choices = [
+        questionary.Choice(
+            title=f'{p.name} — {p.description}' if p.description else p.name,
+            value=p.name,
+        )
+        for p in reg.presets
+    ]
+    default_value = 'default' if 'default' in by_name else reg.presets[0].name
+    answer = questionary.select(
+        'Which preset do you want to use?',
+        choices=choices,
+        default=default_value,
+    ).ask()
+    if answer is None:
+        raise typer.Exit(1)
+    return by_name[answer]

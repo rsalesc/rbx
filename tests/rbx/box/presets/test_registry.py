@@ -114,3 +114,50 @@ class TestRegistryMergeAndMutate:
         entries = [p for p in registry.get_user_registry().presets if p.name == 'foo']
         assert len(entries) == 1
         assert entries[0].uri == 'b'
+
+
+class TestPicker:
+    def test_pick_returns_selected_entry(self, monkeypatch):
+        from rbx.box.presets import registry
+        from rbx.box.presets.registry_schema import PresetRegistry, RegistryPreset
+
+        entry = RegistryPreset(name='default', uri='default', description='d')
+        monkeypatch.setattr(
+            registry,
+            'get_merged_registry',
+            lambda: PresetRegistry(presets=[entry]),
+        )
+
+        class FakeSelect:
+            def ask(self_inner):
+                return 'default'
+
+        monkeypatch.setattr(
+            registry.questionary, 'select', lambda *a, **k: FakeSelect()
+        )
+        chosen = registry.pick_preset()
+        assert chosen is entry
+
+    def test_pick_raises_exit_on_cancel(self, monkeypatch):
+        import click
+
+        from rbx.box.presets import registry
+        from rbx.box.presets.registry_schema import PresetRegistry, RegistryPreset
+
+        monkeypatch.setattr(
+            registry,
+            'get_merged_registry',
+            lambda: PresetRegistry(
+                presets=[RegistryPreset(name='default', uri='default')]
+            ),
+        )
+
+        class FakeSelect:
+            def ask(self_inner):
+                return None  # user hit Ctrl-C
+
+        monkeypatch.setattr(
+            registry.questionary, 'select', lambda *a, **k: FakeSelect()
+        )
+        with pytest.raises(click.exceptions.Exit):
+            registry.pick_preset()
