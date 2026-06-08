@@ -340,6 +340,18 @@ class TestContestBuildPaths:
                 == tmp_path / 'out' / 'statements'
             )
 
+    def test_statement_build_dir_uses_statements_folder(self, tmp_path: pathlib.Path):
+        from rbx.box.contest import build_contest_statements
+        from rbx.box.contest.schema import ContestStatement
+
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        statement = ContestStatement(name='main')
+
+        with cp_module.cd.new_package_cd(tmp_path):
+            result = build_contest_statements.get_statement_build_dir(statement)
+
+        assert result == tmp_path / 'build' / 'statements' / 'main'
+
 
 class TestFindContestPackageOrDieDispatcher:
     def test_die_lists_available_variants(self, tmp_path, capsys):
