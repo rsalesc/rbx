@@ -17,6 +17,12 @@ import typer
 
 from rbx import console
 
+# Polygon truncates the ``comment`` field of FAILED responses (e.g. server-side
+# compilation errors) to this many characters. The limit is on the message
+# portion, after Polygon's own ``<field>: `` label, and is enforced server-side,
+# so rbx cannot recover the rest -- it can only warn and point at the UI (#389).
+COMMENT_LENGTH_LIMIT = 255
+
 
 class Polygon:
     """ """
