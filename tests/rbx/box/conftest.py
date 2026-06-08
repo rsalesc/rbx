@@ -49,7 +49,7 @@ def pkg_from_testdata(
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
     copytree_honoring_gitignore(
-        testdata, pkg_cleandir, extra_gitignore='.box\nbuild\n.limits/\n'
+        testdata, pkg_cleandir, extra_gitignore='.rbx\n.box\nbuild\n.limits/\n'
     )
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
@@ -65,7 +65,7 @@ def pkg_from_resources(
         raise ValueError('resource_pkg marker not found')
     testdata = resources_path / marker.args[0]
     copytree_honoring_gitignore(
-        testdata, pkg_cleandir, extra_gitignore='.box/\nbuild/\n'
+        testdata, pkg_cleandir, extra_gitignore='.rbx/\n.box/\nbuild/\n'
     )
     with pkg_cder(pkg_cleandir.absolute()):
         testing_utils.clear_all_functools_cache()
@@ -103,7 +103,7 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
     cache_dir = tmp_path_factory.mktemp('cache')
     monkeysession.setattr(
         'rbx.box.global_package.get_global_cache_dir_path',
-        lambda: cache_dir / '.box',
+        lambda: cache_dir / '.rbx',
     )
 
 

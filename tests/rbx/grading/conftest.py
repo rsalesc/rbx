@@ -12,7 +12,7 @@ from rbx.grading.judge.storage import FilesystemStorage, Storage
 
 @pytest.fixture
 def storage(request, cleandir: pathlib.Path) -> Iterator[Storage]:
-    storage_path = cleandir / '.box' / '.storage'
+    storage_path = cleandir / '.rbx' / '.storage'
     yield FilesystemStorage(storage_path)
 
 
@@ -30,4 +30,4 @@ def sandbox(request, file_cacher: FileCacher) -> Iterator[SandboxBase]:
 def dependency_cache(
     request, cleandir: pathlib.Path, file_cacher: FileCacher
 ) -> Iterator[DependencyCache]:
-    yield DependencyCache(cleandir / '.box', file_cacher)
+    yield DependencyCache(cleandir / '.rbx', file_cacher)

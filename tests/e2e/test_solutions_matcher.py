@@ -1,6 +1,6 @@
 """Unit tests for ``check_solutions``.
 
-These tests build a fake on-disk ``.box/runs/`` tree (skeleton.yml +
+These tests build a fake on-disk ``.rbx/runs/`` tree (skeleton.yml +
 ``.eval`` files) using the real Pydantic models, so the matcher exercises
 the same load path as production code.
 """
@@ -53,12 +53,12 @@ def _make_fake_runs_dir(
     package_root: pathlib.Path,
     verdicts: Dict[str, Dict[str, List[Outcome]]],
 ) -> None:
-    """Build ``<package_root>/.box/runs/`` with a valid skeleton + .eval set.
+    """Build ``<package_root>/.rbx/runs/`` with a valid skeleton + .eval set.
 
     ``verdicts`` shape: ``{solution_path: {group_name: [outcome_per_idx, ...]}}``.
     All solutions must share the same group structure.
     """
-    runs_dir = package_root / '.box' / 'runs'
+    runs_dir = package_root / '.rbx' / 'runs'
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     sol_paths = list(verdicts.keys())

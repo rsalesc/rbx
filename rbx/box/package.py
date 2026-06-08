@@ -40,7 +40,7 @@ from rbx.box.schema import (
 )
 from rbx.box.statements.schema import Statement
 from rbx.box.yaml_validation import load_yaml_model
-from rbx.config import get_builtin_checker
+from rbx.config import CACHE_DIR_NAME, get_builtin_checker
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.lock import make_async_file_lock
@@ -137,7 +137,7 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
 
 @functools.cache
 def get_problem_cache_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    return find_problem(root) / '.box'
+    return find_problem(root) / CACHE_DIR_NAME
 
 
 @functools.cache
@@ -608,7 +608,7 @@ def get_merged_capture_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path
 
 @functools.cache
 def is_cache_valid(root: pathlib.Path = pathlib.Path()):
-    cache_dir = find_problem(root) / '.box'
+    cache_dir = get_problem_cache_path(root)
     return global_package.is_cache_valid(cache_dir)
 
 

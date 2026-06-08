@@ -12,7 +12,7 @@ session-scoped autouse fixtures that those conftests provide:
   real ``~/.local/share/rbx/`` is never touched.
 - ``precompilation_should_use_tmp_cache`` redirects the global precompilation
   cache to a tmpdir, so compiled artefacts do not accumulate in the user's
-  global ``.box`` cache.
+  global ``.rbx`` cache.
 - ``mock_setter_config`` writes a permissive setter config inside the
   redirected app path so checks (e.g. stack-size) do not query the host.
 - ``mock_pdflatex`` short-circuits the LaTeX build so statement scenarios
@@ -55,7 +55,7 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
     cache_dir = tmp_path_factory.mktemp('cache')
     monkeysession.setattr(
         'rbx.box.global_package.get_global_cache_dir_path',
-        lambda: cache_dir / '.box',
+        lambda: cache_dir / '.rbx',
     )
 
 

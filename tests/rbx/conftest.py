@@ -51,7 +51,9 @@ def cleandir_with_testdata(
     if marker is None:
         raise ValueError('test_pkg marker not found')
     testdata = testdata_path / marker.args[0]
-    copytree_honoring_gitignore(testdata, cleandir, extra_gitignore='.box/\nbuild/\n')
+    copytree_honoring_gitignore(
+        testdata, cleandir, extra_gitignore='.rbx/\n.box/\nbuild/\n'
+    )
     yield cleandir
 
 

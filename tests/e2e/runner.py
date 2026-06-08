@@ -5,7 +5,7 @@ Each :class:`E2EScenarioItem` represents a single scenario from an
 directory (the directory containing ``e2e.rbx.yml``) is copied to a fresh
 temporary directory before the scenario runs, and all CLI invocations execute
 with that temporary directory as the cwd. This ensures the on-disk source
-tree is never mutated by ``rbx`` commands (which create ``.box/``, ``build/``
+tree is never mutated by ``rbx`` commands (which create ``.rbx/``, ``build/``
 and other artefacts).
 
 We intentionally do not use :class:`TestingPackage` here because its
@@ -66,6 +66,7 @@ def _strip_ansi(text: str) -> str:
 # Note: ``.local.rbx`` is intentionally NOT excluded -- a fixture may commit a
 # minimal local preset there (e.g. so ``contest add_variant`` resolves offline).
 COPY_IGNORE_PATTERNS = (
+    '.rbx',
     '.box',
     'build',
     '.limits',
@@ -84,7 +85,7 @@ def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
     same location ``rbx`` itself resolves presets from) and copies it into
     ``dest``, dereferencing symlinks (so statement assets like
     ``documents/icpc.sty`` land as regular files) and skipping build cruft
-    (``.box``, ``build``, ...). ``dest`` is an existing package directory (the
+    (``.rbx``, ``build``, ...). ``dest`` is an existing package directory (the
     overlay target); any files already present (e.g. the fixture's own
     ``e2e.rbx.yml``) are preserved unless the preset overwrites them.
     """

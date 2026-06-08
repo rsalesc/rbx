@@ -38,7 +38,7 @@ no marker filter, will pick up e2e tests like any other test.
    uv run rbx build
    ```
    Then remove the generated artefacts. `tests/e2e/testdata/.gitignore`
-   already covers `*/.box/`, `*/build/`, `*/rbx.h`, and friends, so a
+   already covers `*/.rbx/`, `*/build/`, `*/rbx.h`, and friends, so a
    `git status` after building should be clean.
 3. Author `tests/e2e/testdata/<name>/e2e.rbx.yml` with at least one
    scenario (see [Schema reference](#schema-reference) and
@@ -185,7 +185,7 @@ single (multiline) regex rather than repeating the key.
 
 #### `solutions`
 
-Per-solution verdict map. Reads `.box/runs/skeleton.yml` and the
+Per-solution verdict map. Reads `.rbx/runs/skeleton.yml` and the
 sibling `.eval` files, so the scenario must run `rbx run` (or
 equivalent) before the assertion fires.
 
@@ -337,7 +337,7 @@ uv run pytest tests/e2e/testdata/<pkg>/ -v --basetemp=/tmp/e2e-debug
 ```
 
 Each scenario then lives under
-`/tmp/e2e-debug/.../rbx-e2e-<...>/` and its `.box/`, `build/`, etc. can
+`/tmp/e2e-debug/.../rbx-e2e-<...>/` and its `.rbx/`, `build/`, etc. can
 be inspected directly.
 
 ## Marker passthrough

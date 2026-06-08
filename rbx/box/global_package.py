@@ -4,7 +4,7 @@ import pathlib
 import shutil
 from typing import Iterator, Type
 
-from rbx.config import get_app_path
+from rbx.config import CACHE_DIR_NAME, get_app_path
 from rbx.grading.caching import DependencyCache
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.sandbox import SandboxBase
@@ -32,7 +32,7 @@ def is_cache_valid(cache_dir: pathlib.Path) -> bool:
 
 
 def get_global_cache_dir_path() -> pathlib.Path:
-    return get_app_path() / '.box'
+    return get_app_path() / CACHE_DIR_NAME
 
 
 @functools.cache

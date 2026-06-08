@@ -42,6 +42,7 @@ def test_seed_package_from_preset_overlays_real_files(tmp_path: pathlib.Path):
     assert not icpc.is_symlink()
 
     # Build cruft was skipped.
+    assert not (dest / '.rbx').exists()
     assert not (dest / '.box').exists()
     assert not (dest / 'build').exists()
 

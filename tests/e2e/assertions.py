@@ -170,12 +170,12 @@ def check_zip_file_contains(ctx: AssertionContext, matcher: ZipFileMatcher) -> N
 
 
 def _load_skeleton(package_root: pathlib.Path) -> SolutionReportSkeleton:
-    """Load ``<package_root>/.box/runs/skeleton.yml``.
+    """Load ``<package_root>/.rbx/runs/skeleton.yml``.
 
-    Note: ``.box/runs/.irun/`` is the interactive-debug scratch space and is
+    Note: ``.rbx/runs/.irun/`` is the interactive-debug scratch space and is
     never read here; we only ever read the top-level ``skeleton.yml``.
     """
-    skeleton_path = package_root / '.box' / 'runs' / 'skeleton.yml'
+    skeleton_path = package_root / '.rbx' / 'runs' / 'skeleton.yml'
     if not skeleton_path.is_file():
         raise AssertionError(
             f'no run results found at {skeleton_path}; did the scenario run '
