@@ -4,7 +4,17 @@ import os
 import pathlib
 import shutil
 import tempfile
-from typing import Annotated, Iterable, List, Optional, Sequence, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import pydantic
 import questionary
@@ -15,6 +25,7 @@ import yaml
 from rbx import console, utils
 from rbx.box import cd, git_utils
 from rbx.box.git_utils import latest_remote_tag
+from rbx.box.presets import registry as preset_registry
 from rbx.box.presets.fetch import (
     PresetFetchInfo,
     get_preset_fetch_info,
@@ -31,9 +42,10 @@ from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_default_app_path
 from rbx.grading.judge.digester import digest_cooperatively
 
-app = typer.Typer(no_args_is_help=True)
+if TYPE_CHECKING:
+    from rbx.box.presets.registry_schema import RegistryPreset
 
-_FALLBACK_PRESET_NAME = 'default'
+app = typer.Typer(no_args_is_help=True)
 
 _MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
 
@@ -602,18 +614,26 @@ def get_preset_fetch_info_with_fallback(
     uri: Optional[str],
     local: bool = False,
 ) -> Optional[PresetFetchInfo]:
-    if uri is None:
-        # Use active preset if any, otherwise use the default preset.
-        if get_active_preset_or_null() is not None:
-            return None
-        default_preset = get_preset_fetch_info(_FALLBACK_PRESET_NAME, local=local)
-        if default_preset is None:
-            console.console.print(
-                '[error]Internal error: could not find [item]default[/item] preset.[/error]'
-            )
-            raise typer.Exit(1)
-        return default_preset
-    return get_preset_fetch_info(uri, local=local)
+    if uri is not None:
+        return get_preset_fetch_info(uri, local=local)
+
+    # No explicit preset: prefer the active preset in the cwd.
+    if get_active_preset_or_null() is not None:
+        return None
+
+    # No active preset: choose from the registry.
+    if not utils.is_interactive_tty():
+        console.console.print(
+            '[error]No preset selected and no active preset found.[/error]'
+        )
+        console.console.print(
+            'Pass [item]--preset <name-or-uri>[/item] (e.g. [item]--preset default[/item]) '
+            'or run interactively to pick from the registry.'
+        )
+        raise typer.Exit(1)
+
+    chosen = preset_registry.pick_preset()
+    return get_preset_fetch_info(chosen.uri, local=local)
 
 
 def clean_copied_package_dir(dest: pathlib.Path):
@@ -1028,6 +1048,102 @@ def install_preset(
         _install_preset_from_fetch_info(fetch_info, dest_pkg)
 
 
+def _read_preset_for_peek(uri: str, local: bool = False) -> Preset:
+    """Lightweight read of a preset's metadata for the registry.
+
+    Reads only the preset's ``preset.rbx.yml`` (for its name + description)
+    without installing it or running any install-time prompts: a direct read
+    for local-path and bundled presets, and a shallow clone for remotes.
+    """
+    # Local directory passed directly.
+    try:
+        local_path = pathlib.Path(uri)
+        if (local_path / 'preset.rbx.yml').is_file():
+            return get_preset_yaml(local_path)
+    except OSError:
+        pass
+
+    # Bundled preset shipped with rbx (e.g. `default`). Read it directly so a
+    # `registry add default` needs no network and no install-time prompts.
+    bundled = get_default_app_path() / 'presets' / uri
+    if (bundled / 'preset.rbx.yml').is_file():
+        return get_preset_yaml(bundled)
+
+    if local:
+        console.console.print(
+            f'[error]Local preset [item]{uri}[/item] not found in rbx resources.[/error]'
+        )
+        raise typer.Exit(1)
+
+    # Remote preset: resolve and shallow-clone just to read preset.rbx.yml.
+    fetch_info = get_preset_fetch_info(uri, local=local)
+    if fetch_info is None or fetch_info.fetch_uri is None:
+        console.console.print(
+            f'[error]Could not resolve preset URI [item]{uri}[/item].[/error]'
+        )
+        raise typer.Exit(1)
+
+    import git
+
+    with tempfile.TemporaryDirectory() as tmp:
+        console.console.print(
+            f'Fetching preset metadata from [item]{fetch_info.fetch_uri}[/item]...'
+        )
+        try:
+            git.Repo.clone_from(fetch_info.fetch_uri, tmp, depth=1)
+        except Exception as e:
+            console.console.print(
+                f'[error]Could not fetch preset from [item]{fetch_info.fetch_uri}[/item].[/error]'
+            )
+            raise typer.Exit(1) from e
+        pd = pathlib.Path(tmp)
+        if fetch_info.inner_dir:
+            pd = pd / fetch_info.inner_dir
+        return get_preset_yaml(pd)
+
+
+def _peek_preset_metadata(uri: str, local: bool = False) -> 'RegistryPreset':
+    from rbx.box.presets.registry_schema import RegistryPreset
+
+    preset = _read_preset_for_peek(uri, local=local)
+    return RegistryPreset(name=preset.name, uri=uri, description=preset.description)
+
+
+def maybe_offer_to_register(
+    fetch_info: Optional[PresetFetchInfo], package_dir: pathlib.Path
+) -> None:
+    """After a user creates a package with an explicit ``--preset`` URI, offer
+    to add it to the user registry. Interactive-only, and only when the preset
+    is not already known to the registry."""
+    from rbx.box.presets.registry_schema import RegistryPreset
+
+    if fetch_info is None or not getattr(fetch_info, 'uri', None):
+        return
+    if not utils.is_interactive_tty():
+        return
+    if preset_registry.find_in_registry(fetch_info.uri) is not None:
+        return
+    if not questionary.confirm(
+        f'Register preset "{fetch_info.uri}" so it shows up in the picker next time?',
+        default=False,
+    ).ask():
+        return
+    # Read the just-installed preset from its .local.rbx copy instead of
+    # re-fetching it from the network.
+    preset_path = find_local_preset(package_dir)
+    if preset_path is not None:
+        preset = get_preset_yaml(preset_path)
+        entry = RegistryPreset(
+            name=preset.name, uri=fetch_info.uri, description=preset.description
+        )
+    else:
+        entry = _peek_preset_metadata(fetch_info.uri)
+    preset_registry.add_to_user_registry(entry)
+    console.console.print(
+        f'[success]Registered preset [item]{entry.name}[/item].[/success]'
+    )
+
+
 def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
     if not (root / 'preset.rbx.yml').is_file():
         console.console.print(
@@ -1302,6 +1418,69 @@ def ls():
     console.console.print(f'Preset: [item]{preset.name}[/item]')
     console.console.print(f'Path: {preset_path}')
     console.console.print(f'URI: {preset.uri}')
+
+
+registry_app = typer.Typer(no_args_is_help=True)
+app.add_typer(registry_app, name='registry', help='Manage the preset registry.')
+
+
+@registry_app.command('ls', help='List presets available in the registry.')
+def registry_ls():
+    merged = preset_registry.get_merged_registry()
+    user_names = {p.name for p in preset_registry.get_user_registry().presets}
+    if not merged.presets:
+        console.console.print('No presets in the registry.')
+        return
+    from rich.table import Table
+
+    table = Table('Name', 'Description', 'URI', 'Source')
+    for p in merged.presets:
+        source = 'user' if p.name in user_names else 'built-in'
+        table.add_row(p.name, p.description, p.uri, source)
+    console.console.print(table)
+
+
+@registry_app.command('add', help='Add a preset to the user registry.')
+def registry_add(
+    uri: Annotated[
+        str,
+        typer.Argument(
+            help='URI of the preset to register (owner/repo, URL, or path).'
+        ),
+    ],
+    local: Annotated[
+        bool,
+        typer.Option('--local', help='Resolve the preset from the local rbx version.'),
+    ] = False,
+):
+    entry = _peek_preset_metadata(uri, local=local)
+    preset_registry.add_to_user_registry(entry)
+    console.console.print(
+        f'[success]Registered preset [item]{entry.name}[/item] '
+        f'([item]{entry.uri}[/item]).[/success]'
+    )
+
+
+@registry_app.command('rm', help='Remove a preset from the user registry.')
+def registry_rm(
+    name: Annotated[str, typer.Argument(help='Name of the preset to remove.')],
+):
+    if preset_registry.remove_from_user_registry(name):
+        console.console.print(
+            f'[success]Removed preset [item]{name}[/item] from the registry.[/success]'
+        )
+        return
+    # Not in the user registry: tailor the message for a built-in vs an unknown.
+    builtin_names = {p.name for p in preset_registry.get_builtin_registry().presets}
+    if name in builtin_names:
+        console.console.print(
+            f'[error]Preset [item]{name}[/item] is a built-in preset and cannot be removed.[/error]'
+        )
+    else:
+        console.console.print(
+            f'[error]Preset [item]{name}[/item] is not in the user registry.[/error]'
+        )
+    raise typer.Exit(1)
 
 
 @app.callback()

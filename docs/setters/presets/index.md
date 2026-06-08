@@ -126,6 +126,9 @@ It can usually be broken down into a few sections, documented below for the defa
 # The name of the preset.
 name: "default"
 
+# A human-readable description, shown when picking a preset from the registry.
+description: "rbx's default preset: ICPC-style problem/contest with testlib, jngen and tgen."
+
 # The URI of the preset. Usually, refers to a GitHub repository.
 # Here, refers to the "rbx/resources/presets/default" folder inside
 # the "rsalesc/rbx" repository.
@@ -327,6 +330,54 @@ want to sync with the preset, you can do so by running `rbx presets sync` inside
 
 This will sync all packages that use this preset with its newest changes. In other words, it will create missing
 symlinks, and ask you if normal tracked files should be overridden or not.
+
+## The preset registry
+
+When you run a create command without an explicit `-p/--preset` and there is no
+active preset in the current directory, {{rbx}} lets you pick one from a
+**registry** of known presets:
+
+```bash
+# No -p and no active preset: rbx shows an interactive picker of registered presets.
+rbx create my-problem
+```
+
+In a non-interactive context (no TTY, e.g. CI or scripts), there is nothing to
+pick from interactively, so {{rbx}} asks you to be explicit instead:
+
+```bash
+rbx create my-problem --preset default
+```
+
+The registry is the merge of two files:
+
+- a **built-in** registry shipped with {{rbx}} (currently just the `default`
+  preset);
+- a **user** registry stored in your {{rbx}} app directory
+  (`presets/registry.yml`), initially empty.
+
+If a user entry and a built-in entry share the same name, the user entry wins.
+Each registry entry stores a `name`, a `uri` (resolved the same way as a
+preset's `uri` — `owner/repo`, a full URL, a local path, etc.), and a
+`description` copied from the preset so the picker can show it.
+
+You manage your user registry with the `rbx presets registry` commands:
+
+```bash
+# List every preset in the registry (built-in + user).
+rbx presets registry ls
+
+# Register a preset by URI, so it shows up in the picker next time.
+rbx presets registry add <your-organization>/<your-preset-name>
+
+# Remove a preset from your user registry (built-in presets can't be removed).
+rbx presets registry rm <your-preset-name>
+```
+
+You don't have to register a preset to use it — passing `-p <uri>` always works
+ad hoc. And when you create a package from a remote preset (`-p owner/repo` or a
+preset URL) that isn't registered yet, {{rbx}} offers to add it to your user
+registry for you.
 
 ## Sharing a preset publicly
 

@@ -113,6 +113,9 @@ def create(
         # fix_package()
         presets.generate_lock()
 
+    if preset is not None:
+        presets.maybe_offer_to_register(fetch_info, dest_path)
+
 
 @app.command('init, i', help='Initialize a new contest in the current directory.')
 def init(
@@ -135,6 +138,9 @@ def init(
     contest_utils.clear_all_caches()
     # fix_package()
     presets.generate_lock()
+
+    if preset is not None:
+        presets.maybe_offer_to_register(fetch_info, pathlib.Path.cwd())
 
 
 @app.command('add_variant, av', help='Scaffold a new contest variant file.')

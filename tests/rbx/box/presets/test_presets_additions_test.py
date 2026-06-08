@@ -8,34 +8,48 @@ from rbx.box import presets
 
 
 class TestGetPresetFetchInfoWithFallback:
-    def test_none_uri_uses_default_when_no_active_preset(self, monkeypatch):
+    def test_explicit_uri_resolves(self, monkeypatch):
+        dummy = SimpleNamespace(name='p', uri='o/r')
         monkeypatch.setattr(
-            presets, 'get_active_preset_or_null', lambda root=Path(): None
+            presets, 'get_preset_fetch_info', lambda uri, local=False: dummy
         )
-        # Stub default preset fetch info
-        dummy = SimpleNamespace(name='default', fetch_uri='https://example/repo.git')
-        monkeypatch.setattr(
-            presets, 'get_preset_fetch_info', lambda name, local=False: dummy
-        )
-
-        res = presets.get_preset_fetch_info_with_fallback(None)
-        assert res is dummy
+        assert presets.get_preset_fetch_info_with_fallback('o/r') is dummy
 
     def test_none_uri_returns_none_when_active_preset_exists(self, monkeypatch):
         monkeypatch.setattr(
             presets, 'get_active_preset_or_null', lambda root=Path(): SimpleNamespace()
         )
-
         assert presets.get_preset_fetch_info_with_fallback(None) is None
 
-    def test_missing_default_preset_errors(self, monkeypatch):
+    def test_none_uri_interactive_uses_picker(self, monkeypatch):
+        from rbx import utils
+        from rbx.box.presets import registry
+        from rbx.box.presets.registry_schema import RegistryPreset
+
         monkeypatch.setattr(
             presets, 'get_active_preset_or_null', lambda root=Path(): None
         )
+        monkeypatch.setattr(utils, 'is_interactive_tty', lambda: True)
         monkeypatch.setattr(
-            presets, 'get_preset_fetch_info', lambda name, local=False: None
+            registry,
+            'pick_preset',
+            lambda: RegistryPreset(name='default', uri='default'),
         )
+        dummy = SimpleNamespace(name='default', uri='default')
+        monkeypatch.setattr(
+            presets, 'get_preset_fetch_info', lambda uri, local=False: dummy
+        )
+        assert presets.get_preset_fetch_info_with_fallback(None) is dummy
 
+    def test_none_uri_non_interactive_errors(self, monkeypatch):
+        import click
+
+        from rbx import utils
+
+        monkeypatch.setattr(
+            presets, 'get_active_preset_or_null', lambda root=Path(): None
+        )
+        monkeypatch.setattr(utils, 'is_interactive_tty', lambda: False)
         with pytest.raises(click.exceptions.Exit):
             presets.get_preset_fetch_info_with_fallback(None)
 
@@ -111,6 +125,27 @@ class TestCopyTreeNormalizingGitdir:
         # .git should be materialized as a directory copied from gitdir_real
         assert (dst / '.git').is_dir()
         assert (dst / '.git' / 'config').is_dir()
+
+
+class TestPresetDescription:
+    def test_preset_description_defaults_to_empty(self):
+        from rbx.box.presets.schema import Preset
+
+        p = Preset(name='abc', uri='owner/repo')
+        assert p.description == ''
+
+    def test_preset_description_roundtrips(self):
+        from rbx.box.presets.schema import Preset
+
+        p = Preset(name='abc', uri='owner/repo', description='Hello')
+        assert p.description == 'Hello'
+
+    def test_default_preset_has_description(self):
+        from rbx.box.presets import get_preset_yaml
+        from rbx.config import get_default_app_path
+
+        preset = get_preset_yaml(get_default_app_path() / 'presets' / 'default')
+        assert preset.description.strip() != ''
 
 
 class TestCopyLocalPreset:

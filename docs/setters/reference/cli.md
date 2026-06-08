@@ -720,6 +720,70 @@ rbx presets ls [OPTIONS]
 
 ---
 
+### registry
+
+Manage the preset registry.
+
+**Usage:**
+```bash
+rbx presets registry [OPTIONS]
+```
+
+
+---
+
+#### ls
+
+List presets available in the registry.
+
+**Usage:**
+```bash
+rbx presets registry ls [OPTIONS]
+```
+
+
+---
+
+#### add
+
+Add a preset to the user registry.
+
+**Usage:**
+```bash
+rbx presets registry add <URI> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `URI` | URI of the preset to register (owner/repo, URL, or path). | Yes |
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--local` | BOOLEAN | Resolve the preset from the local rbx version. | `False` |
+
+
+---
+
+#### rm
+
+Remove a preset from the user registry.
+
+**Usage:**
+```bash
+rbx presets registry rm <NAME> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `NAME` | Name of the preset to remove. | Yes |
+
+
+---
+
 ## package (pkg)
 
 Build problem packages (sub-command).

@@ -1,0 +1,5 @@
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/PresetRegistry.json
+presets:
+  - name: "default"
+    uri: "default"
+    description: "rbx's default preset: ICPC-style problem/contest with testlib, jngen and tgen."
