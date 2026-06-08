@@ -1108,6 +1108,28 @@ def _peek_preset_metadata(uri: str, local: bool = False) -> 'RegistryPreset':
     return RegistryPreset(name=preset.name, uri=uri, description=preset.description)
 
 
+def maybe_offer_to_register(fetch_info: Optional[PresetFetchInfo]) -> None:
+    """After a user creates a package with an explicit ``--preset`` URI, offer
+    to add it to the user registry. Interactive-only, and only when the preset
+    is not already known to the registry."""
+    if fetch_info is None or not getattr(fetch_info, 'uri', None):
+        return
+    if not preset_registry.is_interactive():
+        return
+    if preset_registry.find_in_registry(fetch_info.uri) is not None:
+        return
+    if not questionary.confirm(
+        f'Register preset "{fetch_info.uri}" so it shows up in the picker next time?',
+        default=False,
+    ).ask():
+        return
+    entry = _peek_preset_metadata(fetch_info.uri)
+    preset_registry.add_to_user_registry(entry)
+    console.console.print(
+        f'[success]Registered preset [item]{entry.name}[/item].[/success]'
+    )
+
+
 def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml.Any]:
     if not (root / 'preset.rbx.yml').is_file():
         console.console.print(

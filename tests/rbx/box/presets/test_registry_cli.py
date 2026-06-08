@@ -77,3 +77,52 @@ class TestRegistryRm:
         result = runner.invoke(presets.app, ['registry', 'rm', 'default'])
         assert result.exit_code != 0
         assert 'built-in' in result.stdout
+
+
+class TestOfferToRegister:
+    def test_offers_and_registers_when_confirmed(self, isolated_app_dir, monkeypatch):
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: True)
+        # Confirm "yes".
+        monkeypatch.setattr(
+            presets.questionary,
+            'confirm',
+            lambda *a, **k: SimpleNamespace(ask=lambda: True),
+        )
+        meta = RegistryPreset(name='newp', uri='o/r', description='d')
+        monkeypatch.setattr(
+            presets, '_peek_preset_metadata', lambda uri, local=False: meta
+        )
+
+        fetch_info = SimpleNamespace(uri='o/r')
+        presets.maybe_offer_to_register(fetch_info)
+        assert any(
+            p.name == 'newp'
+            for p in presets.preset_registry.get_user_registry().presets
+        )
+
+    def test_skips_when_already_registered(self, isolated_app_dir, monkeypatch):
+        from types import SimpleNamespace
+
+        presets.preset_registry.add_to_user_registry(
+            RegistryPreset(name='newp', uri='o/r', description='d')
+        )
+        monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: True)
+
+        called = {'confirm': False}
+
+        def _confirm(*a, **k):
+            called['confirm'] = True
+            return SimpleNamespace(ask=lambda: True)
+
+        monkeypatch.setattr(presets.questionary, 'confirm', _confirm)
+        presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'))
+        assert called['confirm'] is False  # already known -> no prompt
+
+    def test_skips_when_non_interactive(self, isolated_app_dir, monkeypatch):
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: False)
+        presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'))
+        assert presets.preset_registry.get_user_registry().presets == []

@@ -52,3 +52,6 @@ def create(
     # fix_package(dest_path)
 
     presets.generate_lock(dest_path)
+
+    if preset is not None:
+        presets.maybe_offer_to_register(fetch_info)
