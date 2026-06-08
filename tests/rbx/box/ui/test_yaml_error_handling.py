@@ -8,6 +8,7 @@ app alive, falling back to a clean diagnostic-only exit if the modal cannot be
 shown.
 """
 
+import rich.text
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Label, RichLog
@@ -48,3 +49,26 @@ async def test_yaml_error_on_screen_entry_opens_modal_and_keeps_app_alive():
         assert app.is_running
         assert isinstance(app.screen, ErrorModal)
         assert 'extra inputs' in _rich_log_text(app.screen)
+
+
+async def test_clean_fallback_shows_diagnostic_without_traceback():
+    async with rbxApp().run_test() as pilot:
+        app = pilot.app
+
+        # Force the modal path to fail so the clean-exit fallback runs.
+        def _boom(_exc):
+            raise RuntimeError('cannot push modal')
+
+        app.show_error = _boom  # type: ignore[method-assign]
+
+        app._handle_exception(_exc('problem.rbx.yml: bad value at line 12'))  # noqa: SLF001
+        await pilot.pause()
+
+        # The sole exit renderable is the pretty diagnostic as plain rich Text,
+        # NOT a Rich Traceback / Segments dump.
+        assert app._exit_renderables  # noqa: SLF001
+        rendered = app._exit_renderables[-1]  # noqa: SLF001
+        assert isinstance(rendered, rich.text.Text)
+        assert 'bad value at line 12' in rendered.plain
+        # App is exiting with code 1 rather than crashing.
+        assert app._return_code == 1  # noqa: SLF001

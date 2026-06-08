@@ -56,8 +56,7 @@ class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
             # traceback, and never re-raised (so the top-level CLI handler in
             # rbx/box/main.py cannot double-print it).
             self._exit_renderables.clear()
-            self._exit_renderables.append(self._error_content(error))
-            self.exit(1)
+            self.exit(return_code=1, message=self._error_content(error))
             return
 
         # Default behavior (Rich traceback + return code 1)
