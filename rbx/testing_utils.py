@@ -38,7 +38,6 @@ def clear_all_functools_cache():
         package,
         presets,
         setter_config,
-        testcase_extractors,
         visualizers,
     )
     from rbx.box.contest import contest_package
@@ -55,7 +54,6 @@ def clear_all_functools_cache():
         setter_config,
         presets,
         grading_steps,
-        testcase_extractors,
     ]
 
     for pkg in pkgs:
