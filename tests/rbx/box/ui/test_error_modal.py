@@ -8,7 +8,7 @@ scrollable ErrorModal that preserves the formatted message.
 
 from unittest import mock
 
-from textual.widgets import RichLog
+from textual.widgets import Label, RichLog
 
 from rbx.box.exception import RbxException
 from rbx.box.ui.main import rbxApp
@@ -20,6 +20,19 @@ def _exc(text: str) -> RbxException:
     exc = RbxException()
     exc.print(text)
     return exc
+
+
+async def test_error_modal_shows_close_hint():
+    async with rbxApp().run_test() as pilot:
+        app = pilot.app
+        app.show_error(_exc('boom'))
+        await pilot.pause()
+
+        assert isinstance(app.screen, ErrorModal)
+        hint = str(app.screen.query_one('#error-hints', Label).content).lower()
+        # The user is told how to dismiss the modal.
+        assert 'close' in hint
+        assert 'q' in hint and 'esc' in hint
 
 
 def _rich_log_text(modal: ErrorModal) -> str:
