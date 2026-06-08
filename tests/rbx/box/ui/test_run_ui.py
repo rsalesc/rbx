@@ -7,11 +7,12 @@ through subgroups.
 """
 
 import pathlib
+from unittest import mock
 
 from rbx import utils
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
-from rbx.box.schema import ExpectedOutcome, Solution, Testcase
+from rbx.box.schema import ExpectedOutcome, ScoreType, Solution, Testcase
 from rbx.box.solutions import (
     SolutionReportSkeleton,
     SolutionSkeleton,
@@ -19,8 +20,11 @@ from rbx.box.solutions import (
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
+    get_main_badge,
     get_solution_eval,
     get_solution_evals,
+    get_solution_markup,
+    is_main_solution,
 )
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
@@ -183,3 +187,85 @@ def test_get_solution_evals_finds_all_for_subgroup_stems(tmp_path):
         Outcome.WRONG_ANSWER,
     ]
     assert all(e is not None for e in evals)
+
+
+def _solution(path: str, outcome=ExpectedOutcome.ACCEPTED) -> Solution:
+    return Solution(path=pathlib.Path(path), outcome=outcome)
+
+
+def test_is_main_solution_true_for_the_main_solution():
+    sol = _solution('sol.cpp')
+    with mock.patch('rbx.box.package.get_main_solution', return_value=sol):
+        assert is_main_solution(sol) is True
+
+
+def test_is_main_solution_false_for_a_different_solution():
+    main = _solution('main.cpp')
+    other = _solution('other.cpp')
+    with mock.patch('rbx.box.package.get_main_solution', return_value=main):
+        assert is_main_solution(other) is False
+
+
+def test_is_main_solution_false_when_there_is_no_main():
+    sol = _solution('sol.cpp')
+    with mock.patch('rbx.box.package.get_main_solution', return_value=None):
+        assert is_main_solution(sol) is False
+
+
+def test_get_main_badge_marks_only_the_main_solution():
+    main = _solution('main.cpp')
+    other = _solution('other.cpp')
+    with mock.patch('rbx.box.package.get_main_solution', return_value=main):
+        assert 'MAIN' in get_main_badge(main)
+        assert get_main_badge(other) == ''
+
+
+def test_get_solution_markup_marks_the_main_solution(tmp_path):
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
+    )
+    sol = skeleton.solutions[0]
+    with (
+        mock.patch('rbx.box.package.get_main_solution', return_value=sol),
+        mock.patch('rbx.box.package.get_scoring', return_value=ScoreType.BINARY),
+    ):
+        markup = get_solution_markup(skeleton, sol)
+    assert 'MAIN' in markup
+
+
+def test_get_solution_markup_omits_badge_for_non_main_solution(tmp_path):
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
+    )
+    sol = skeleton.solutions[0]
+    with (
+        mock.patch(
+            'rbx.box.package.get_main_solution', return_value=_solution('other.cpp')
+        ),
+        mock.patch('rbx.box.package.get_scoring', return_value=ScoreType.BINARY),
+    ):
+        markup = get_solution_markup(skeleton, sol)
+    assert 'MAIN' not in markup
+
+
+def test_solution_selection_label_marks_main_with_badge_not_outcome():
+    from rbx.box.ui.screens.run import _build_solution_selection_label
+
+    main = _solution('main.cpp')
+    with mock.patch('rbx.box.package.get_main_solution', return_value=main):
+        label = _build_solution_selection_label(main).plain
+    assert 'MAIN' in label
+    # The main solution shows the badge in place of its raw outcome name.
+    assert 'ACCEPTED' not in label
+
+
+def test_solution_selection_label_shows_outcome_for_non_main():
+    from rbx.box.ui.screens.run import _build_solution_selection_label
+
+    other = _solution('other.cpp', outcome=ExpectedOutcome.WRONG_ANSWER)
+    with mock.patch(
+        'rbx.box.package.get_main_solution', return_value=_solution('main.cpp')
+    ):
+        label = _build_solution_selection_label(other).plain
+    assert 'MAIN' not in label
+    assert 'WRONG_ANSWER' in label

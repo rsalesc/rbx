@@ -58,7 +58,7 @@ def _all(*patches):
         yield
 
 
-def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch):
+def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch, main_solution=None):
     """Mount ``RunTestExplorerScreen`` bare for behavioral key/footer tests.
 
     ``on_mount`` and selection reach the real package and on-disk build layout
@@ -67,6 +67,9 @@ def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch):
     built package. We stub those data-loading collaborators -- the package as a
     plain BATCH task with no main solution, a single test row, and tmp prefix
     paths -- leaving the footer/keybinding behavior under test untouched.
+
+    ``main_solution`` overrides the stubbed ``get_main_solution`` so the MAIN
+    title marker can be exercised.
     """
     from rbx.box.ui.screens import run_test_explorer
 
@@ -86,7 +89,7 @@ def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch):
             return_value=pkg,
         ),
         mock.patch.object(
-            run_test_explorer.package, 'get_main_solution', return_value=None
+            run_test_explorer.package, 'get_main_solution', return_value=main_solution
         ),
         mock.patch.object(
             run_test_explorer,
@@ -205,3 +208,37 @@ async def test_g_does_not_open_modal(tmp_path, monkeypatch):
 
             # `g` is unbound now: no modal should be pushed on top of the screen.
             assert pilot.app.screen is screen
+
+
+async def test_title_is_prefixed_with_main_marker_for_main_solution(
+    tmp_path, monkeypatch
+):
+    from rbx.box.ui.main import rbxApp
+
+    # ``is_main_solution`` matches on path; the mounted screen's solution is
+    # ``sol.cpp``.
+    main = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    screen, patches = _mounted_run_test_explorer(
+        tmp_path, monkeypatch, main_solution=main
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            assert screen.title.startswith('[MAIN]')
+            assert 'sol.cpp' in screen.title
+
+
+async def test_title_has_no_main_marker_for_non_main_solution(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    # No main solution -> no marker.
+    screen, patches = _mounted_run_test_explorer(tmp_path, monkeypatch)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            assert '[MAIN]' not in screen.title
+            assert screen.title == 'sol.cpp'

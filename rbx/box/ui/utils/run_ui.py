@@ -8,6 +8,7 @@ from textual.widgets.option_list import Option
 from rbx import console, utils
 from rbx.box import package, solutions
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.schema import Solution
 from rbx.box.solutions import (
     SolutionOutcomeReport,
     SolutionReportSkeleton,
@@ -16,6 +17,25 @@ from rbx.box.solutions import (
 )
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation
+
+
+def is_main_solution(solution: Solution) -> bool:
+    """Whether ``solution`` is the package's MAIN solution.
+
+    The MAIN solution is the first solution with ``outcome: accepted``
+    (``package.get_main_solution()``).
+    """
+    main = package.get_main_solution()
+    return main is not None and main.path == solution.path
+
+
+def get_main_badge(solution: Solution) -> str:
+    """Rich markup marking the MAIN solution, or '' for any other solution.
+
+    The returned badge carries a leading space, so it can be appended directly
+    after a solution label.
+    """
+    return ' [success]MAIN[/success]' if is_main_solution(solution) else ''
 
 
 def has_run() -> bool:
@@ -161,7 +181,7 @@ def get_solution_outcome_report(
 def get_solution_markup(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton
 ) -> str:
-    header = solution.display()
+    header = solution.display() + get_main_badge(solution)
 
     evals = get_solution_evals_or_null(skeleton, solution)
     report = _get_solution_outcome_report_from_evals(skeleton, solution, evals or [])

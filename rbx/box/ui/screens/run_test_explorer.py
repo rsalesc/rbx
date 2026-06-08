@@ -20,6 +20,7 @@ from rbx.box.testcase_extractors import (
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
     get_run_testcase_metadata_markup,
+    is_main_solution,
 )
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
@@ -75,6 +76,9 @@ class RunTestExplorerScreen(Screen):
 
     async def on_mount(self):
         self.title = str(self.solution.path)
+
+        if is_main_solution(self.solution):
+            self.title = f'[MAIN] {self.title}'
 
         if self.diff_solution is not None:
             self.title = f'{self.title} vs. {self.diff_solution.path}'
