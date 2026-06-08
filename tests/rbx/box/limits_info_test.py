@@ -544,6 +544,32 @@ class TestGetLimits:
         assert result.profile == 'test'
         assert not result.isDoubleTL
 
+    def test_get_limits_sets_configured_time_to_resolved_time(
+        self, pkg_cder, tmp_path, sample_limits_profile, mock_package_with_limits
+    ):
+        """get_limits records the declared TL in configuredTime alongside time."""
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+        limits_dir = test_dir / '.limits'
+        limits_dir.mkdir()
+
+        profile_path = limits_dir / 'test.yml'
+        profile_path.write_text(sample_limits_profile.model_dump_json())
+
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.package.find_problem_package_or_die',
+                return_value=mock_package_with_limits,
+            ),
+        ):
+            result = limits_info.get_limits(
+                language='cpp', profile='test', verification=VerificationLevel.NONE
+            )
+
+        assert result.time == 1500
+        assert result.configuredTime == result.time
+
     def test_get_limits_with_verification_full(
         self, pkg_cder, tmp_path, sample_limits_profile, mock_package_with_limits
     ):

@@ -97,8 +97,13 @@ def _get_limits_from_profile(
     root: pathlib.Path,
 ) -> Limits:
     limits_profile = _expand_limits_profile(limits_profile, root=root)
+    time = limits_profile.timelimit_for_language(language)
     return Limits(
-        time=limits_profile.timelimit_for_language(language),
+        time=time,
+        # The declared TL is preserved here so it survives later enforcement
+        # nulling (see ``get_limits_for_language``) and stays available to
+        # display/reporting.
+        configuredTime=time,
         memory=limits_profile.memorylimit_for_language(language),
         output=limits_profile.outputLimit,
         isDoubleTL=verification.value >= VerificationLevel.FULL.value,

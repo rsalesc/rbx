@@ -206,6 +206,23 @@ def mock_binary_scoring():
         yield
 
 
+def test_get_solution_limits_display_time_recovers_declared_tl(tmp_path, mock_skeleton):
+    """The timing report's no-eval fallback reads the declared TL via
+    display_time(), so it no longer needs to re-resolve the profile from disk
+    even when the enforced TL is nulled (#351)."""
+    solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution])
+    # Enforced TL stripped (no limit applied for this run) but the declared TL
+    # is still known.
+    skeleton.limits['cpp'] = Limits(time=None, configuredTime=2000)
+
+    limits = skeleton.get_solution_limits(solution)
+
+    assert limits.time is None
+    assert limits.display_time() == 2000
+    assert not hasattr(skeleton, 'get_solution_limits_from_disk')
+
+
 def test_solution_outcome_report_ac_expects_ac(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):

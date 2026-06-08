@@ -66,7 +66,12 @@ def get_limits_for_language(
         verification=verification,
     )
     if timelimit_override is not None:
+        # The override is the declared TL for this run, for both enforcement and
+        # display.
         limits.time = timelimit_override
+        limits.configuredTime = timelimit_override
+    # Null only the *enforced* TL; ``configuredTime`` keeps the declared value so
+    # reporting can show it even when no limit is enforced for this run.
     if limits.time is not None and (not use_timelimit or limits.time <= 0):
         limits.time = None
     return limits
