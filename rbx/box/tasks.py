@@ -66,7 +66,13 @@ def get_limits_for_language(
         verification=verification,
     )
     if timelimit_override is not None:
+        # The override only affects the *enforced* TL. ``configuredTime`` stays
+        # the declared profile TL so reporting shows the real limit -- the
+        # override may be the ``-1`` "unlimited" sentinel used during time-limit
+        # estimation (see timing.py), which must never leak into the display.
         limits.time = timelimit_override
+    # Null only the *enforced* TL; ``configuredTime`` keeps the declared value so
+    # reporting can show it even when no limit is enforced for this run.
     if limits.time is not None and (not use_timelimit or limits.time <= 0):
         limits.time = None
     return limits

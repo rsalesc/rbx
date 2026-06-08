@@ -7,6 +7,13 @@ class Limits(BaseModel):
     time: Optional[int] = Field(
         default=None, description='Value to override time limit with, in milliseconds.'
     )
+    configuredTime: Optional[int] = Field(
+        default=None,
+        description='The declared time limit, in milliseconds, regardless of '
+        'whether it is enforced for a given run. ``time`` is nulled to signal '
+        '"do not enforce a TL", which loses the declared value; this preserves '
+        'it for display/reporting.',
+    )
     memory: Optional[int] = Field(
         default=None, description='Value to override memory limit with, in MB.'
     )
@@ -27,4 +34,16 @@ class Limits(BaseModel):
             return None
         if self.isDoubleTL:
             return self.time * 2
+        return self.time
+
+    def display_time(self) -> Optional[int]:
+        """The declared time limit to show in reports, independent of whether it
+        is enforced for a given run.
+
+        Prefers ``configuredTime`` (set even when ``time`` is nulled to disable
+        enforcement) and falls back to the enforced ``time`` for limits that
+        predate the field or were built without it.
+        """
+        if self.configuredTime is not None:
+            return self.configuredTime
         return self.time

@@ -327,3 +327,54 @@ sys.exit(0)
             SandboxBase.EXIT_OK,
             SandboxBase.EXIT_NONZERO_RETURN,
         ]
+
+
+class TestGetLimitsForLanguage:
+    """Test get_limits_for_language and how it populates configuredTime."""
+
+    def test_enforced_and_configured_time_match_by_default(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        limits = tasks.get_limits_for_language(
+            'cpp', VerificationLevel.NONE, timelimit_override=None
+        )
+        assert limits.time == 1000  # testing_pkg timeLimit
+        assert limits.configuredTime == 1000
+
+    def test_disabling_enforcement_keeps_configured_time(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        # use_timelimit=False nulls the enforced TL but must keep the declared
+        # one so reporting can still show it without re-reading from disk.
+        limits = tasks.get_limits_for_language(
+            'cpp', VerificationLevel.NONE, timelimit_override=None, use_timelimit=False
+        )
+        assert limits.time is None
+        assert limits.configuredTime == 1000
+        assert limits.display_time() == 1000
+
+    def test_timelimit_override_sets_enforced_time_but_keeps_declared(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        # The override only changes the *enforced* TL. configuredTime stays the
+        # declared profile TL, so reporting shows the real limit (matching the
+        # old re-resolve-from-disk behavior, which ignored the override).
+        limits = tasks.get_limits_for_language(
+            'cpp', VerificationLevel.NONE, timelimit_override=500
+        )
+        assert limits.time == 500
+        assert limits.configuredTime == 1000
+
+    def test_unlimited_override_does_not_leak_into_displayed_limit(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        # Regression for #351 adversarial review: time-limit estimation runs with
+        # the timelimit_override=-1 "unlimited" sentinel. It must null the
+        # enforced TL without leaking -1 into the displayed/declared limit (the
+        # old disk-reload re-resolved the real profile TL).
+        limits = tasks.get_limits_for_language(
+            'cpp', VerificationLevel.NONE, timelimit_override=-1
+        )
+        assert limits.time is None
+        assert limits.configuredTime == 1000
+        assert limits.display_time() == 1000

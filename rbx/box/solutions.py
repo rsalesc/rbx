@@ -139,14 +139,6 @@ class SolutionReportSkeleton(BaseModel):
             return limits_info.get_package_limits(self.verification)
         return self.limits[lang]
 
-    def get_solution_limits_from_disk(self, solution: Solution) -> Limits:
-        lang = code.find_language_name(solution)
-        return limits_info.get_limits(
-            language=lang,
-            profile=self.get_solution_limits(solution).profile,
-            verification=self.verification,
-        )
-
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
         if not groups:
@@ -1801,12 +1793,15 @@ async def _print_timing(
             tl = min(tls)
             expanded_tl = min(expanded_tls)
         else:
+            # No measured runs to read the enforced TL from: fall back to the
+            # solution's declared time limit. ``display_time`` keeps this value
+            # even when the limit would not be enforced for a run, so there is no
+            # need to re-resolve the profile from disk.
             limits = skeleton.get_solution_limits(solution)
-            if limits.time is None:
-                limits = skeleton.get_solution_limits_from_disk(solution)
-            assert limits.time is not None
-            tl = limits.time
-            expanded_tl = limits.time
+            display_tl = limits.display_time()
+            assert display_tl is not None
+            tl = display_tl
+            expanded_tl = display_tl
             if limits.isDoubleTL:
                 expanded_tl = expanded_tl * 2
         all_tls.add(tl)
