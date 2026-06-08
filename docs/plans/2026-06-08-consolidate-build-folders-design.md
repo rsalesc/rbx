@@ -92,13 +92,25 @@ ignored a custom `buildDir`. All are routed through the configurable build dir:
 - `rbx/box/cli.py` — `rbx clear` cleaned a hardcoded `build`; the contest branch
   now also cleans `get_contest_build_path()` so a custom `buildDir` is removed.
 
-**Deliberately left as-is** (default-name only, special context):
+### Change 4 — preset-tree cleanup honors the preset's own buildDir
 
-- `rbx/box/presets/__init__.py` — preset-tree cleanup deletes `dest / 'build'`. It
-  runs on a freshly *copied* tree before any environment is active, so resolving a
-  custom `buildDir` there is awkward, and preset source trees should not carry
-  build artifacts. A custom-`buildDir` preset that ships stale artifacts is a deep
-  edge case left for a follow-up if it ever matters.
+When a preset (or a problem/contest created from one) is copied, build artifacts
+are stripped so they don't leak into the generated tree. This used the hardcoded
+`build`. It must instead use the **preset's own** `env.rbx.yml` `buildDir` (not the
+user's active environment), so a preset with a custom `buildDir` is cleaned
+correctly. `rbx/box/presets/__init__.py`:
+
+- New `get_preset_build_dir(env_path)` reads just the `buildDir` field from the
+  preset's `env.rbx.yml` via raw YAML (robust to stub/partial envs — the preset
+  env is not always a fully-valid `Environment`), falling back to `build`.
+- `clean_copied_contest_dir` / `clean_copied_problem_dir` gain a `build_dir`
+  parameter (default `build`, so existing callers/tests are unaffected).
+- `install_preset_from_dir` resolves the build dir from `dest / preset.env`;
+  `install_contest` / `install_problem` resolve it from
+  `get_preset_environment_path(dest_pkg)`.
+
+**Deliberately left as-is**:
+
 - `rbx/box/testing/testing_package.py` — a test-only helper that builds expected
   paths under the default `build`; tests run with the default environment.
 

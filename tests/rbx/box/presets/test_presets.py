@@ -8,6 +8,7 @@ This module tests preset management functionality including:
 - Lock file generation and syncing
 """
 
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Iterator, Optional
@@ -581,6 +582,29 @@ class TestPresetInstallation:
         assert not (dst / '.local.rbx').exists()
         assert not (dst / 'problem' / CACHE_DIR_NAME).exists()
 
+    def test_install_preset_cleans_custom_build_dir(
+        self, tmp_path, simple_preset_testdata
+    ):
+        """A preset whose env sets a custom buildDir must have THAT dir stripped."""
+        # Copy the preset and point its env at a custom buildDir.
+        src = tmp_path / 'src'
+        shutil.copytree(simple_preset_testdata, src)
+        env_path = src / 'env.rbx.yml'
+        env_path.write_text(env_path.read_text() + '\nbuildDir: out\n')
+
+        dst = tmp_path / 'installed'
+        dst.mkdir()
+        # Stale custom-buildDir artifacts at the root and each package.
+        (dst / 'out').mkdir()
+        (dst / 'problem' / 'out').mkdir(parents=True)
+        (dst / 'contest' / 'out').mkdir(parents=True)
+
+        presets.install_preset_from_dir(src, dst, update=True)
+
+        assert not (dst / 'out').exists()
+        assert not (dst / 'problem' / 'out').exists()
+        assert not (dst / 'contest' / 'out').exists()
+
     def test_install_problem_package(self, tmp_path, simple_preset_testdata):
         """Should install problem package files correctly."""
         package_dir = tmp_path / 'package'
@@ -917,6 +941,44 @@ class TestCleanupFunctions:
         assert not (tmp_path / 'build').exists()
         assert not (tmp_path / CACHE_DIR_NAME).exists()
         assert (tmp_path / 'main.cpp').exists()
+
+    def test_clean_copied_problem_dir_custom_build_dir(self, tmp_path):
+        """Should clean the configured build dir, not the hardcoded 'build'."""
+        (tmp_path / 'out' / 'tests').mkdir(parents=True)
+        (tmp_path / 'main.cpp').touch()
+
+        presets.clean_copied_problem_dir(tmp_path, build_dir=Path('out'))
+
+        assert not (tmp_path / 'out').exists()
+        assert (tmp_path / 'main.cpp').exists()
+
+    def test_clean_copied_contest_dir_custom_build_dir(self, tmp_path):
+        """Should clean the configured build dir, not the hardcoded 'build'."""
+        (tmp_path / 'out' / 'statements').mkdir(parents=True)
+        (tmp_path / 'contest.rbx.yml').touch()
+
+        presets.clean_copied_contest_dir(tmp_path, build_dir=Path('out'))
+
+        assert not (tmp_path / 'out').exists()
+        assert (tmp_path / 'contest.rbx.yml').exists()
+
+
+class TestPresetBuildDir:
+    """Resolution of a preset's configured buildDir from its env.rbx.yml."""
+
+    def test_reads_custom_build_dir_from_env(self, tmp_path):
+        (tmp_path / 'env.rbx.yml').write_text('buildDir: out\n')
+
+        assert presets.get_preset_build_dir(tmp_path / 'env.rbx.yml') == Path('out')
+
+    def test_defaults_to_build_when_unset(self, tmp_path):
+        (tmp_path / 'env.rbx.yml').write_text('languages: []\n')
+
+        assert presets.get_preset_build_dir(tmp_path / 'env.rbx.yml') == Path('build')
+
+    def test_defaults_to_build_when_no_env(self, tmp_path):
+        assert presets.get_preset_build_dir(None) == Path('build')
+        assert presets.get_preset_build_dir(tmp_path / 'missing.yml') == Path('build')
 
 
 # ==========================
