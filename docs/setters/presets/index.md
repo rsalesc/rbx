@@ -375,8 +375,9 @@ rbx presets registry rm <your-preset-name>
 ```
 
 You don't have to register a preset to use it — passing `-p <uri>` always works
-ad hoc. But when you create a package with a `-p <uri>` that isn't registered
-yet, {{rbx}} offers to add it to your user registry for you.
+ad hoc. And when you create a package from a remote preset (`-p owner/repo` or a
+preset URL) that isn't registered yet, {{rbx}} offers to add it to your user
+registry for you.
 
 ## Sharing a preset publicly
 

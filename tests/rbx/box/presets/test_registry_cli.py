@@ -80,7 +80,9 @@ class TestRegistryRm:
 
 
 class TestOfferToRegister:
-    def test_offers_and_registers_when_confirmed(self, isolated_app_dir, monkeypatch):
+    def test_offers_and_registers_when_confirmed(
+        self, isolated_app_dir, tmp_path, monkeypatch
+    ):
         from types import SimpleNamespace
 
         monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: True)
@@ -90,19 +92,26 @@ class TestOfferToRegister:
             'confirm',
             lambda *a, **k: SimpleNamespace(ask=lambda: True),
         )
-        meta = RegistryPreset(name='newp', uri='o/r', description='d')
+        # The just-installed preset is read locally (no re-fetch).
+        monkeypatch.setattr(presets, 'find_local_preset', lambda d: d)
         monkeypatch.setattr(
-            presets, '_peek_preset_metadata', lambda uri, local=False: meta
+            presets,
+            'get_preset_yaml',
+            lambda d: SimpleNamespace(name='newp', description='d'),
         )
 
         fetch_info = SimpleNamespace(uri='o/r')
-        presets.maybe_offer_to_register(fetch_info)
-        assert any(
-            p.name == 'newp'
-            for p in presets.preset_registry.get_user_registry().presets
-        )
+        presets.maybe_offer_to_register(fetch_info, tmp_path)
+        entries = {
+            p.name: p for p in presets.preset_registry.get_user_registry().presets
+        }
+        assert 'newp' in entries
+        assert entries['newp'].uri == 'o/r'
+        assert entries['newp'].description == 'd'
 
-    def test_skips_when_already_registered(self, isolated_app_dir, monkeypatch):
+    def test_skips_when_already_registered(
+        self, isolated_app_dir, tmp_path, monkeypatch
+    ):
         from types import SimpleNamespace
 
         presets.preset_registry.add_to_user_registry(
@@ -117,12 +126,12 @@ class TestOfferToRegister:
             return SimpleNamespace(ask=lambda: True)
 
         monkeypatch.setattr(presets.questionary, 'confirm', _confirm)
-        presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'))
+        presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'), tmp_path)
         assert called['confirm'] is False  # already known -> no prompt
 
-    def test_skips_when_non_interactive(self, isolated_app_dir, monkeypatch):
+    def test_skips_when_non_interactive(self, isolated_app_dir, tmp_path, monkeypatch):
         from types import SimpleNamespace
 
         monkeypatch.setattr(presets.preset_registry, 'is_interactive', lambda: False)
-        presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'))
+        presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'), tmp_path)
         assert presets.preset_registry.get_user_registry().presets == []

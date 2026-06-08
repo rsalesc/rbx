@@ -1108,10 +1108,14 @@ def _peek_preset_metadata(uri: str, local: bool = False) -> 'RegistryPreset':
     return RegistryPreset(name=preset.name, uri=uri, description=preset.description)
 
 
-def maybe_offer_to_register(fetch_info: Optional[PresetFetchInfo]) -> None:
+def maybe_offer_to_register(
+    fetch_info: Optional[PresetFetchInfo], package_dir: pathlib.Path
+) -> None:
     """After a user creates a package with an explicit ``--preset`` URI, offer
     to add it to the user registry. Interactive-only, and only when the preset
     is not already known to the registry."""
+    from rbx.box.presets.registry_schema import RegistryPreset
+
     if fetch_info is None or not getattr(fetch_info, 'uri', None):
         return
     if not preset_registry.is_interactive():
@@ -1123,7 +1127,16 @@ def maybe_offer_to_register(fetch_info: Optional[PresetFetchInfo]) -> None:
         default=False,
     ).ask():
         return
-    entry = _peek_preset_metadata(fetch_info.uri)
+    # Read the just-installed preset from its .local.rbx copy instead of
+    # re-fetching it from the network.
+    preset_path = find_local_preset(package_dir)
+    if preset_path is not None:
+        preset = get_preset_yaml(preset_path)
+        entry = RegistryPreset(
+            name=preset.name, uri=fetch_info.uri, description=preset.description
+        )
+    else:
+        entry = _peek_preset_metadata(fetch_info.uri)
     preset_registry.add_to_user_registry(entry)
     console.console.print(
         f'[success]Registered preset [item]{entry.name}[/item].[/success]'

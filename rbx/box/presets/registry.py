@@ -3,6 +3,7 @@ import sys
 from typing import Optional
 
 import questionary
+import ruyaml
 import typer
 
 from rbx import console, utils
@@ -19,18 +20,22 @@ def user_registry_path() -> pathlib.Path:
     return utils.get_app_path() / 'presets' / 'registry.yml'
 
 
-def get_builtin_registry() -> PresetRegistry:
-    path = builtin_registry_path()
+def _load_registry_file(path: pathlib.Path) -> PresetRegistry:
     if not path.is_file():
         return PresetRegistry()
+    # A hand-edited file that is empty or contains only the schema comment
+    # parses to None; treat it as an empty registry rather than crashing.
+    if ruyaml.YAML(typ='rt').load(path.read_text()) is None:
+        return PresetRegistry()
     return load_yaml_model(path, PresetRegistry)
+
+
+def get_builtin_registry() -> PresetRegistry:
+    return _load_registry_file(builtin_registry_path())
 
 
 def get_user_registry() -> PresetRegistry:
-    path = user_registry_path()
-    if not path.is_file():
-        return PresetRegistry()
-    return load_yaml_model(path, PresetRegistry)
+    return _load_registry_file(user_registry_path())
 
 
 def get_merged_registry() -> PresetRegistry:

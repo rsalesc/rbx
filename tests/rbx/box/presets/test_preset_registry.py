@@ -27,6 +27,19 @@ class TestBuiltinRegistry:
         names = {p.name for p in reg.presets}
         assert 'default' in names
 
+    def test_comment_only_user_file_is_treated_as_empty(self, monkeypatch, tmp_path):
+        from rbx import utils
+        from rbx.box.presets import registry
+
+        monkeypatch.setattr(utils, 'get_app_path', lambda: tmp_path)
+        path = tmp_path / 'presets' / 'registry.yml'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # A hand-edited file with only the schema comment parses to None.
+        path.write_text(
+            '# yaml-language-server: $schema=https://example/PresetRegistry.json\n'
+        )
+        assert registry.get_user_registry().presets == []
+
     def test_builtin_default_entry_has_description(self):
         from rbx.box.presets import registry
 

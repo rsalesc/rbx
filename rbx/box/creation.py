@@ -54,4 +54,4 @@ def create(
     presets.generate_lock(dest_path)
 
     if preset is not None:
-        presets.maybe_offer_to_register(fetch_info)
+        presets.maybe_offer_to_register(fetch_info, dest_path)
