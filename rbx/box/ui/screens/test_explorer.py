@@ -157,4 +157,4 @@ class TestExplorerScreen(Screen):
                 )
             )
         except RbxException as e:
-            self.app.notify(e.plain(), severity='error', markup=False)
+            self.app.show_error(e)  # type: ignore[attr-defined]

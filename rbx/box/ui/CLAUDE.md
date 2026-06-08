@@ -42,7 +42,8 @@ rbxApp (main menu: OptionList)
 | `DifferScreen` | `differ.py` | Side-by-side file diff |
 | `ReviewScreen` | `review.py` | Code review confirm/reject (y/n keybindings) |
 | `SelectorScreen` | `selector.py` | Generic modal list selector, returns index |
-| `ErrorScreen` | `error.py` | Simple error display |
+| `ErrorScreen` | `error.py` | Simple full-screen text display (used for empty-states like "No runs found") |
+| `ErrorModal` | `error_modal.py` | Dismissible, scrollable modal showing a formatted `RbxException` (compile/runtime output); opened via `rbxBaseApp.show_error`. `q`/`esc` close |
 
 ## Key Widgets (`widgets/`)
 
@@ -80,6 +81,8 @@ Helper functions that load run results from disk:
 - **`@work(exclusive=True)`** -- `FileLog` and `InteractionBox` use this for cancellable async file loading.
 - **`self.watch(widget, 'index', callback)`** -- Test explorer screens watch `ListView.index` to react to selection changes.
 - **CSS** in `css/app.tcss` uses Textual's TCSS syntax with `$`-prefixed theme variables.
+- **Surfacing exceptions** -- `rbxBaseApp.show_error(exc)` (`main.py`) pushes an `ErrorModal` rendering `exc.from_ansi()` (formatting preserved, scrollable, not truncated). Use it instead of `notify(e.plain(), severity='error')` for `RbxException`s that may carry long output; the visualizer actions in `test_explorer.py`/`run_test_explorer.py` do (#380). Short one-line validation messages ("No test selected") stay toasts. Screens call it as `self.app.show_error(e)  # type: ignore[attr-defined]`.
+- **YAML/config error safety net** -- `rbxBaseApp._handle_exception` (`main.py`) intercepts `RbxException` (e.g. invalid `problem.rbx.yml`/`env.rbx.yml` from `load_yaml_model`): if the app is running it shows the error via `show_error` (ErrorModal) and keeps the TUI alive; otherwise it exits cleanly via `exit(return_code=1, message=exc.from_ansi())` (no Rich traceback, not re-raised, so the top-level CLI handler in `rbx/box/main.py` can't double-print). This recovers screen-entry crashes (`compose`/`on_mount` of a pushed screen — e.g. `RunScreen.compose`, `TestExplorerScreen.on_mount`). The explorer screens need no per-call guard: their loads run at mount and `find_problem_package` is `@functools.cache`d (later action loads hit the cache; a failed first load re-parses on retry since exceptions aren't cached). Loads whose *first* execution is in an action/watcher body cannot recover from `_handle_exception` (verified: the app goes half-dead), so they catch `RbxException` at the call site and call `self.app.show_error(e)` directly — currently only `limits_editor._load_profile_detail_from`.
 
 ## Keybindings
 

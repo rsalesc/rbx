@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from rbx import console, utils
 from rbx.box.formatting import href
 from rbx.box.schema import CodeItem
+from rbx.config import CACHE_DIR_NAME
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.steps import GradingFileOutput, PreprocessLog
 
@@ -65,7 +66,7 @@ def _get_warning_stack(root: pathlib.Path) -> WarningStack:
 
 @functools.cache
 def _get_cache_dir(root: pathlib.Path) -> pathlib.Path:
-    dir = root / '.box'
+    dir = root / CACHE_DIR_NAME
     dir.mkdir(parents=True, exist_ok=True)
     return dir
 

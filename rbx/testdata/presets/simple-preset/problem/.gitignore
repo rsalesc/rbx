@@ -1,4 +1,4 @@
 build/
 *.o
 *.exe
-.box/
+.rbx/

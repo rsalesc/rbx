@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Optional, Set
 
 import rich
+import rich.markup
 import rich.progress
 import typer
 
@@ -49,6 +50,26 @@ ParamChoices = Literal['statements', 'solutions', 'tests', 'files']
 ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
 MAX_WORKERS = 4
 _RAW_TEST_SIZE_LIMIT = 1024 * 1024
+
+
+def _format_request_failed_comment(comment: str) -> str:
+    """Prepare a Polygon FAILED ``comment`` for safe Rich rendering.
+
+    Compiler output routinely contains ``[...]`` (e.g. ``[with _Tp = int]``), so it
+    must be escaped or Rich would interpret it as markup and silently drop those
+    segments. When the comment reaches Polygon's server-side length cap it was
+    almost certainly truncated, so we append a hint pointing at the Polygon UI,
+    which holds the full compilation log (#389).
+    """
+    rendered = rich.markup.escape(comment)
+    if len(comment) >= api.COMMENT_LENGTH_LIMIT:
+        rendered += (
+            f'\n[warning]Note: Polygon truncates error messages to '
+            f'{api.COMMENT_LENGTH_LIMIT} characters, so this one is likely cut off. '
+            f'Open the problem in the Polygon UI to see the full compilation log.'
+            f'[/warning]'
+        )
+    return rendered
 
 
 def _get_polygon_api() -> api.Polygon:
@@ -369,7 +390,7 @@ def _upload_generator(
         )
     except api.PolygonRequestFailedException as e:
         console.console.print(
-            f'[error]Failed to upload generator {generator.href()}:[/error]\n{e.comment}'
+            f'[error]Failed to upload generator {generator.href()}:[/error]\n{_format_request_failed_comment(e.comment)}'
         )
         raise typer.Exit(1) from None
 
@@ -440,7 +461,9 @@ def _upload_testcases(problem: api.Problem, ns: flattening.FlatNamespace):
                 )
             except api.PolygonRequestFailedException as e:
                 if 'already used in non-script' in e.comment.lower():
-                    console.console.print(f'[error]{e.comment}[/error]')
+                    console.console.print(
+                        f'[error]{_format_request_failed_comment(e.comment)}[/error]'
+                    )
                     console.console.print(
                         '[error]Please remove the conflicting manual tests on the Polygon UI and try again.[/error]'
                     )
@@ -511,7 +534,7 @@ def _upload_solutions(problem: api.Problem, ns: flattening.FlatNamespace):
                 future.result()
             except api.PolygonRequestFailedException as e:
                 console.console.print(
-                    f'[error]Failed to upload solution {solution.href()}:[/error]\n{e.comment}'
+                    f'[error]Failed to upload solution {solution.href()}:[/error]\n{_format_request_failed_comment(e.comment)}'
                 )
 
     def delete_solution(solution: api.Solution):
@@ -537,7 +560,7 @@ def _upload_solutions(problem: api.Problem, ns: flattening.FlatNamespace):
                 future.result()
             except api.PolygonRequestFailedException as e:
                 console.console.print(
-                    f'[error]Failed to delete solution [item]{solution.name}[/item]:[/error]\n{e.comment}'  # pyright: ignore[reportAttributeAccessIssue]
+                    f'[error]Failed to delete solution [item]{solution.name}[/item]:[/error]\n{_format_request_failed_comment(e.comment)}'  # pyright: ignore[reportAttributeAccessIssue]
                 )
 
 
