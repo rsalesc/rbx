@@ -24,6 +24,11 @@
 # checked out is used instead. The branch is never checked out — we only look
 # up the existing worktree that already has it.
 #
+# A <name> that is a GitHub pull request URL (…/pull/N) is resolved, via the gh
+# CLI, to the PR's head branch and then to the worktree that has it checked out
+# — paste a PR URL to jump into the worktree you're reviewing. Requires gh, and
+# the PR's branch must be checked out in a local worktree.
+#
 # For the activation to persist in your current shell you must SOURCE this
 # script:  `source ./activate-venv.sh my-feature`. When run directly it
 # instead drops you into a new sub-shell with the venv activated.
@@ -54,6 +59,8 @@ Usage: source ./activate-venv.sh [-b] [<name>]
               or a path to a worktree relative to the root repo (e.g.
               .claude/worktrees/foo) or absolute; a "worktree-" prefixed name
               that matches no directory is resolved as a branch (see -b)
+  <pr-url>    a GitHub pull request URL (…/pull/N); uses the worktree that has
+              the PR's head branch checked out (needs gh)
   -b <name>   treat <name> as a git branch and use its checked-out worktree
 EOF
 }
@@ -82,8 +89,9 @@ fi
 _av_root="$(cd "$(dirname "$_av_self")" >/dev/null 2>&1 && pwd)"
 
 # --- resolve the target worktree directory ----------------------------------
-_av_wt=""        # resolved worktree path, once known
-_av_branch=""    # set when <name> should be resolved via git branch lookup
+_av_wt=""          # resolved worktree path, once known
+_av_branch=""      # set when <name> should be resolved via git branch lookup
+_av_branch_from="" # human description of where the branch came from, if indirect
 if [ "$_av_by_branch" -eq 1 ]; then
   _av_branch="$_av_name"
 elif [ -z "$_av_name" ]; then
@@ -91,6 +99,21 @@ elif [ -z "$_av_name" ]; then
   _av_wt="$_av_root"
 else
   case "$_av_name" in
+    *://*/pull/*)
+      # A GitHub pull request URL: resolve its head branch via gh, then treat it
+      # like a branch (it must be checked out in a local worktree). The branch is
+      # only looked up, never checked out.
+      if ! command -v gh >/dev/null 2>&1; then
+        echo "activate-venv: gh (GitHub CLI) is required to resolve a pull request URL" >&2
+        return 1 2>/dev/null || exit 1
+      fi
+      _av_branch="$(gh pr view "$_av_name" --json headRefName -q .headRefName)"
+      if [ -z "$_av_branch" ]; then
+        echo "activate-venv: could not resolve a head branch for pull request '$_av_name' (check the URL and 'gh auth status')" >&2
+        return 1 2>/dev/null || exit 1
+      fi
+      _av_branch_from="pull request $_av_name"
+      ;;
     */*)
       # A path to a worktree: relative to the root repo, or absolute.
       case "$_av_name" in
@@ -132,7 +155,7 @@ if [ -n "$_av_branch" ]; then
     /^branch /   { ref = substr($0, 8)
                    if (ref == "refs/heads/" b) { print path; exit } }')"
   if [ -z "$_av_wt" ]; then
-    echo "activate-venv: no worktree found with branch '$_av_branch'" >&2
+    echo "activate-venv: no worktree found with branch '$_av_branch'${_av_branch_from:+ (from $_av_branch_from)}" >&2
     return 1 2>/dev/null || exit 1
   fi
 fi
