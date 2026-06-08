@@ -14,15 +14,17 @@ import contextlib
 import pathlib
 from unittest import mock
 
-from textual.widgets import OptionList
+from textual.widgets import Input, OptionList
 
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import (
     GenerationMetadata,
     GenerationTestcaseEntry,
+    GeneratorScriptEntry,
 )
 from rbx.box.schema import (
     ExpectedOutcome,
+    GeneratorCall,
     ScoreType,
     Solution,
     TaskType,
@@ -176,6 +178,12 @@ def _mounted_filterable(tmp_path, monkeypatch, entries, outcomes):
     from rbx.box.ui.screens import run_test_explorer
 
     monkeypatch.chdir(tmp_path)
+    # FileLog renders the input path relative to cwd, so make each entry's input
+    # an absolute file under tmp_path.
+    for entry in entries:
+        abs_input = tmp_path / entry.metadata.copied_to.inputPath.name
+        abs_input.write_text('')
+        entry.metadata.copied_to.inputPath = abs_input
     skeleton, solution = _make_multi_skeleton(tmp_path, entries)
 
     pkg = mock.Mock()
@@ -243,6 +251,107 @@ async def test_f_filters_to_failing_tests_and_drops_ac_and_empty_headers(
             texts = ' '.join(_row_texts(screen))
             assert 'g1/0' in texts and 'g2/0' in texts
             assert str(screen.query_one('#test-list').border_title) == 'Tests'
+
+
+async def test_slash_opens_and_focuses_search_box(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [_gen_entry('g1', 0)]
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED]
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            search = screen.query_one('#test-search', Input)
+            assert search.display is False
+
+            await pilot.press('slash')
+            await pilot.pause()
+            assert search.display is True
+            assert search.has_focus
+
+
+async def test_search_filters_by_generator_call_and_highlights_best(
+    tmp_path, monkeypatch
+):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [
+        _gen_entry('g1', 0, generator_call=GeneratorCall(name='gen_small', args='1')),
+        _gen_entry('g1', 1, generator_call=GeneratorCall(name='gen_huge', args='999')),
+    ]
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED, Outcome.ACCEPTED]
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            await pilot.press('slash')
+            search = screen.query_one('#test-search', Input)
+            search.value = 'huge'
+            await pilot.pause()
+
+            texts = ' '.join(_row_texts(screen))
+            assert 'g1/1' in texts
+            assert 'g1/0' not in texts
+
+
+async def test_search_matches_inline_content_and_script_location(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [
+        _gen_entry('g1', 0, content='alpha beta gamma'),
+        _gen_entry(
+            'g1',
+            1,
+            script=GeneratorScriptEntry(path=pathlib.Path('gen.txt'), line=42),
+        ),
+    ]
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED, Outcome.ACCEPTED]
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('slash')
+            search = screen.query_one('#test-search', Input)
+
+            search.value = 'gamma'
+            await pilot.pause()
+            assert 'g1/0' in ' '.join(_row_texts(screen))
+            assert 'g1/1' not in ' '.join(_row_texts(screen))
+
+            search.value = 'gen.txt'
+            await pilot.pause()
+            assert 'g1/1' in ' '.join(_row_texts(screen))
+            assert 'g1/0' not in ' '.join(_row_texts(screen))
+
+
+async def test_numeric_query_matches_group_index(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [_gen_entry('g1', 0), _gen_entry('g1', 1), _gen_entry('g2', 1)]
+    screen, patches = _mounted_filterable(
+        tmp_path, monkeypatch, entries, [Outcome.ACCEPTED] * 3
+    )
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('slash')
+            search = screen.query_one('#test-search', Input)
+            search.value = '1'
+            await pilot.pause()
+
+            texts = ' '.join(_row_texts(screen))
+            assert 'g1/1' in texts and 'g2/1' in texts
+            assert 'g1/0' not in texts
 
 
 async def test_metadata_footer_hidden_by_default(tmp_path, monkeypatch):

@@ -4,9 +4,10 @@ from typing import List, Optional
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.fuzzy import Matcher
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.widgets import Footer, Header, OptionList
+from textual.widgets import Footer, Header, Input, OptionList
 
 from rbx import console
 from rbx.box import package, visualizers
@@ -43,6 +44,7 @@ class RunTestExplorerScreen(Screen):
         Binding('v', 'open_visualizer', 'Open visualization', show=False),
         Binding('V', 'open_output_visualizer', 'Open output visualization', show=False),
         Binding('f', 'toggle_failing_only', 'Failing only', show=False),
+        Binding('slash', 'focus_search', 'Search', show=False),
     ]
 
     side_by_side: reactive[bool] = reactive(False)
@@ -73,6 +75,7 @@ class RunTestExplorerScreen(Screen):
         yield Footer()
         with Horizontal(id='test-explorer'):
             with Vertical(id='test-list-container'):
+                yield Input(id='test-search', placeholder='Search tests…')
                 yield OptionList(id='test-list')
             with Vertical(id='test-details'):
                 yield RichLogBox(id='test-box-warning')
@@ -91,6 +94,10 @@ class RunTestExplorerScreen(Screen):
 
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
+
+        search = self.query_one('#test-search', Input)
+        search.display = False
+        search.border_title = 'Search'
 
         warning_box = self.query_one('#test-box-warning', RichLogBox)
         warning_box.markup = True
@@ -124,6 +131,9 @@ class RunTestExplorerScreen(Screen):
         }
 
         await self._update_tests()
+        # The search box is the first focusable child; keep initial focus on the
+        # list so key bindings (m/r/f/…) reach the screen, not the hidden Input.
+        self.query_one('#test-list', OptionList).focus()
 
     def _is_interactive(self) -> bool:
         return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
@@ -176,14 +186,37 @@ class RunTestExplorerScreen(Screen):
     def _entry_outcome(self, entry: GenerationTestcaseEntry) -> Optional[Outcome]:
         return self._outcomes.get((entry.group_entry.group, entry.group_entry.index))
 
+    def _search_text(self, entry: GenerationTestcaseEntry) -> str:
+        md = entry.metadata
+        parts = [f'{entry.group_entry.group}/{entry.group_entry.index}']
+        if md.generator_call is not None:
+            parts.append(str(md.generator_call))
+        if md.copied_from is not None:
+            parts.append(str(md.copied_from.inputPath))
+        if md.content is not None:
+            parts.append(md.content)
+        if md.generator_script is not None:
+            parts.append(str(md.generator_script))
+        return ' '.join(parts)
+
     def _build_predicate(self):
         failing = self.failing_only
-        if not failing:
+        query = self._search_query.strip()
+        if not failing and not query:
             return None
+
+        numeric = int(query) if query.isdigit() else None
+        matcher = Matcher(query) if (query and numeric is None) else None
 
         def predicate(entry: GenerationTestcaseEntry) -> bool:
             # Keep non-AC; a missing eval (incomplete run) is treated as not-AC.
-            return self._entry_outcome(entry) != Outcome.ACCEPTED
+            if failing and self._entry_outcome(entry) == Outcome.ACCEPTED:
+                return False
+            if numeric is not None:
+                return entry.group_entry.index == numeric
+            if matcher is not None:
+                return matcher.match(self._search_text(entry)) > 0
+            return True
 
         return predicate
 
@@ -207,6 +240,31 @@ class RunTestExplorerScreen(Screen):
         option_list.add_options(options)
         self.query_one('#test-list').border_title = self._list_title()
 
+    def _first_selectable_index(self) -> Optional[int]:
+        for i, entry in enumerate(self._option_entries):
+            if entry is not None:
+                return i
+        return None
+
+    def _highlight_best_match(self) -> None:
+        option_list = self.query_one('#test-list', OptionList)
+        query = self._search_query.strip()
+        best_index = None
+        if query and not query.isdigit():
+            matcher = Matcher(query)
+            best_score = 0.0
+            for i, entry in enumerate(self._option_entries):
+                if entry is None:
+                    continue
+                score = matcher.match(self._search_text(entry))
+                if score > best_score:
+                    best_score = score
+                    best_index = i
+        if best_index is None:
+            best_index = self._first_selectable_index()
+        if best_index is not None:
+            option_list.highlighted = best_index
+
     def action_toggle_failing_only(self) -> None:
         self.failing_only = not self.failing_only
 
@@ -214,6 +272,18 @@ class RunTestExplorerScreen(Screen):
         if not self.is_mounted:
             return
         self._rebuild_options()
+
+    def action_focus_search(self) -> None:
+        search = self.query_one('#test-search', Input)
+        search.display = True
+        search.focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != 'test-search':
+            return
+        self._search_query = event.value
+        self._rebuild_options()
+        self._highlight_best_match()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()
