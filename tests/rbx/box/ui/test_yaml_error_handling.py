@@ -8,6 +8,8 @@ app alive, falling back to a clean diagnostic-only exit if the modal cannot be
 shown.
 """
 
+from unittest import mock
+
 import rich.text
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -72,3 +74,40 @@ async def test_clean_fallback_shows_diagnostic_without_traceback():
         assert 'bad value at line 12' in rendered.plain
         # App is exiting with code 1 rather than crashing.
         assert app._return_code == 1  # noqa: SLF001
+
+
+async def test_limits_editor_profile_load_error_opens_modal():
+    """A non-mount config load (limits editor) is caught at the call site.
+
+    LimitsEditorScreen loads the package in a profile-selection callback, not
+    at mount, so it cannot rely on the _handle_exception safety net. It catches
+    the RbxException and routes it to the same ErrorModal.
+    """
+    from rbx.box.schema import LimitsProfile
+    from rbx.box.ui.screens import limits_editor
+
+    with (
+        mock.patch.object(
+            limits_editor.limits_info,
+            'get_available_profile_names',
+            return_value=[],
+        ),
+        mock.patch.object(
+            limits_editor.package,
+            'find_problem_package_or_die',
+            side_effect=_exc('problem.rbx.yml: invalid limits'),
+        ),
+    ):
+        async with rbxApp().run_test() as pilot:
+            app = pilot.app
+            screen = limits_editor.LimitsEditorScreen()
+            await app.push_screen(screen)
+            await pilot.pause()
+
+            # Rendering a profile detail form triggers the package load.
+            await screen._load_profile_detail_from(LimitsProfile())  # noqa: SLF001
+            await pilot.pause()
+
+            assert app.is_running
+            assert isinstance(app.screen, ErrorModal)
+            assert 'invalid limits' in _rich_log_text(app.screen)

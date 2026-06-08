@@ -19,6 +19,7 @@ from textual.widgets import (
 
 from rbx import utils
 from rbx.box import environment, limits_info, package
+from rbx.box.exception import RbxException
 from rbx.box.schema import LimitModifiers, LimitsProfile
 
 
@@ -344,6 +345,11 @@ class LimitsEditorScreen(Screen):
 
             # --- Save button ---
             await detail.mount(Button('Save', id='save-btn', variant='primary'))
+        except RbxException as e:
+            # This screen loads the package/env from a profile-selection
+            # callback (not at mount), so a bad problem/env YAML here cannot
+            # rely on the _handle_exception safety net. Surface it in the modal.
+            self.app.show_error(e)  # type: ignore[attr-defined]
         finally:
             self._is_rendering = False
 
