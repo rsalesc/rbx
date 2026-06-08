@@ -41,19 +41,42 @@ class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
             self.exit(error.exit_code)
             return
 
+        if isinstance(error, RbxException):
+            # Recoverable user-config error (e.g. invalid problem/env YAML).
+            # Keep the TUI alive and show it in a dismissible modal. Verified:
+            # screen-entry crashes (a pushed screen's compose/on_mount) recover
+            # here; the few action-body loads are guarded at the call site.
+            if self.is_running:
+                try:
+                    self.show_error(error)
+                    return
+                except Exception:
+                    pass  # fall through to the clean exit below
+            # Clean fallback: show ONLY the pretty diagnostic -- never a Python
+            # traceback, and never re-raised (so the top-level CLI handler in
+            # rbx/box/main.py cannot double-print it).
+            self._exit_renderables.clear()
+            self._exit_renderables.append(self._error_content(error))
+            self.exit(1)
+            return
+
         # Default behavior (Rich traceback + return code 1)
         return super()._handle_exception(error)
+
+    def _error_content(self, exc: RbxException) -> rich.text.Text:
+        content = exc.from_ansi()
+        if not content.plain.strip():
+            content = rich.text.Text('An unexpected error occurred.')
+        return content
 
     def show_error(self, exc: RbxException) -> None:
         """Surface an RbxException in a dismissible, scrollable modal.
 
         Preferred over a toast notification for errors that carry long,
-        formatted output (e.g. a visualizer's compile/runtime failure).
+        formatted output (e.g. a visualizer's compile/runtime failure, or an
+        invalid problem/env YAML).
         """
-        content = exc.from_ansi()
-        if not content.plain.strip():
-            content = rich.text.Text('An unexpected error occurred.')
-        self.push_screen(ErrorModal(content, title='Error'))
+        self.push_screen(ErrorModal(self._error_content(exc), title='Error'))
 
 
 class rbxApp(rbxBaseApp):
