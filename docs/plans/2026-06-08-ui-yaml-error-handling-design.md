@@ -100,10 +100,19 @@ def _handle_exception(self, error: Exception) -> None:
 ### 2. Local hardening for the "dies" case
 
 An `RbxException` raised **directly in an action body** is unrecoverable from
-`_handle_exception` (verified). The relevant sites are the lazy package loads
-reachable from a key action mid-session — chiefly the `_is_interactive()`
-helpers and the limits-editor callbacks. Wrap each so the exception is caught
-before it escapes, mirroring the visualizer pattern:
+`_handle_exception` (verified). Crucially, `find_problem_package` is
+`@functools.cache`d and does **not** cache exceptions: the main explorer
+screens (`test_explorer`, `run_test_explorer`, `run`) all load the package at
+`compose`/`on_mount`, so (a) a broken YAML there is caught by the safety net,
+and (b) later action loads return the cached package and never re-raise; a
+failed first load re-parses on retry. That leaves **only one** real "dies"
+site: `LimitsEditorScreen._render_detail_form`, reached from the
+profile-selection watcher (not from mount), which loads both the package
+(`find_problem_package_or_die`) and the environment (`get_environment`).
+
+Wrap that method so the exception is caught before it escapes, mirroring the
+visualizer pattern (both loads live in the same method, so one `except`
+suffices):
 
 ```python
 def _is_interactive(self) -> bool:
@@ -114,17 +123,14 @@ def _is_interactive(self) -> bool:
         return False
 ```
 
-Sites to harden (verify exact set during implementation):
-- `rbx/box/ui/screens/test_explorer.py` — `_is_interactive()` and the package
-  load in `_update_selected_test`/metadata paths reached from actions.
-- `rbx/box/ui/screens/run_test_explorer.py` — `_is_interactive()` and the
-  action-reachable package load.
-- `rbx/box/ui/screens/limits_editor.py` — the `find_problem_package_or_die()` /
-  `environment.get_environment()` loads in `_on_profile_selected` / save / mount
-  callbacks.
+Site to harden:
+- `rbx/box/ui/screens/limits_editor.py` — `_render_detail_form`, which holds the
+  `find_problem_package_or_die()` (~line 192) and `environment.get_environment()`
+  (~line 264) loads reached from `_on_profile_selected`.
 
-Loads that live in `compose`/`on_mount` (e.g. `run.py:116`) need **no** wrap —
-the safety net covers them — but wrapping is harmless where ergonomic.
+The explorer screens (`test_explorer`, `run_test_explorer`) and `run.py` need
+**no** wrap: their package loads live in `compose`/`on_mount`, covered by the
+safety net, and the cache makes subsequent action loads non-raising.
 
 ## Testing
 
