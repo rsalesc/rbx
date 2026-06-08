@@ -32,13 +32,6 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
     primary = language_extension.primary_language
     if primary:
         return typing.cast(BocaLanguage, primary)
-    env = get_environment()
-    if (
-        env.extensions is not None
-        and env.extensions.boca is not None
-        and rbx_language.lower() in env.extensions.boca.languages
-    ):
-        return typing.cast(BocaLanguage, rbx_language.lower())
     if rbx_language.lower() in typing.get_args(BocaLanguage):
         return typing.cast(BocaLanguage, rbx_language.lower())
     raise ValueError(f'No Boca language found for Rbx language {rbx_language}')
@@ -47,7 +40,7 @@ def get_boca_language_from_rbx_language(rbx_language: str) -> BocaLanguage:
 def get_boca_template_name(boca_language: BocaLanguage) -> str:
     """Return the on-disk BOCA template dir name (under rbx/resources/packagers/boca/)
     to source per-language scripts from when emitting `boca_language`. Falls back to
-    `boca_language` itself when no rbx language declares it (zero-config / env-level
+    `boca_language` itself when no rbx language declares it (zero-config name-fallback
     path)."""
     rbx_language_name = get_rbx_language_from_boca_language(boca_language)
     rbx_language = next(
@@ -68,15 +61,11 @@ def get_boca_template_name(boca_language: BocaLanguage) -> str:
 
 def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
     """Return the ordered, deduplicated set of BOCA languages to emit per-language
-    script dirs for. Computed as a union across two passes:
+    script dirs for. For each rbx language in env.languages:
 
-    1. Per-rbx-language pass — for each language in env.languages:
-       - If the boca extension's resolved_languages is non-empty, contribute
-         every entry.
-       - Otherwise (zero-config name fallback): if the rbx language name is itself
-         a BocaLanguage literal, contribute it.
-    2. Env-level pass — append every entry from extensions.boca.languages
-       (back-compat for envs that still set the legacy allowlist).
+    - If the boca extension's resolved_languages is non-empty, contribute every entry.
+    - Otherwise (zero-config name fallback): if the rbx language name is itself a
+      BocaLanguage literal, contribute it.
 
     Order is preserved: entries appear in the order first seen.
     """
@@ -95,9 +84,5 @@ def get_emitted_boca_languages() -> typing.List[BocaLanguage]:
         elif language.name in boca_literals:
             # Name-fallback safety net for zero-config users.
             seen.setdefault(language.name, None)
-
-    if env.extensions is not None and env.extensions.boca is not None:
-        for boca_lang in env.extensions.boca.languages:
-            seen.setdefault(boca_lang, None)
 
     return typing.cast(typing.List[BocaLanguage], list(seen.keys()))

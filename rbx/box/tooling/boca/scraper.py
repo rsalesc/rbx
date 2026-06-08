@@ -17,10 +17,10 @@ from throttlex import Throttler
 from rbx import console, utils
 from rbx.box import naming
 from rbx.box.environment import (
-    get_environment,
     get_language_or_nil,
 )
 from rbx.box.packaging.boca.boca_language_utils import (
+    get_emitted_boca_languages,
     get_rbx_language_from_boca_language,
 )
 from rbx.box.tooling.boca.debug_utils import pretty_print_request_data
@@ -116,9 +116,8 @@ class BocaDetailedRun(BocaRun):
 
 
 def get_boca_languages() -> List[BocaLanguage]:
-    env = get_environment()
     res = []
-    for bocaLanguage in env.extensions.boca.languages:
+    for bocaLanguage in get_emitted_boca_languages():
         rbxLanguage = get_rbx_language_from_boca_language(bocaLanguage)
         rbxLanguage = get_language_or_nil(rbxLanguage)
         if rbxLanguage is None:

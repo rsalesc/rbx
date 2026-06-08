@@ -18,7 +18,7 @@ def _env_aliasing_cpp_to_cc_and_cpp():
     cpp_lang = mock.MagicMock()
     cpp_lang.name = 'cpp'
     cpp_lang.get_extension_or_default.return_value = BocaLanguageExtension(
-        languages=['cc', 'cpp']
+        languages=['cc', 'cpp'], template='cc'
     )
     env = mock.MagicMock()
     env.languages = [cpp_lang]

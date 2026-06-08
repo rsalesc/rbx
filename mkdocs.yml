@@ -65,6 +65,7 @@ nav:
       - "cpp-on-macos.md"
       - "stack-limit.md"
       - "intro/windows-git.md"
+      - "Migrating to rbx v1": "migrating-to-v1.md"
 theme:
   name: material
   custom_dir: docs/templates
