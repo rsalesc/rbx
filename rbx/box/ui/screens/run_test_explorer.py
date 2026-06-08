@@ -222,7 +222,7 @@ class RunTestExplorerScreen(Screen):
                 Testcase(inputPath=input_path)
             )
         except RbxException as e:
-            self.app.notify(e.plain(), severity='error', markup=False)
+            self.app.show_error(e)  # type: ignore[attr-defined]
 
     async def action_open_output_visualizer(self):
         input_path = self.query_one('#test-input', FileLog).path
@@ -245,4 +245,4 @@ class RunTestExplorerScreen(Screen):
                 answer_path=answer_path,
             )
         except RbxException as e:
-            self.app.notify(e.plain(), severity='error', markup=False)
+            self.app.show_error(e)  # type: ignore[attr-defined]

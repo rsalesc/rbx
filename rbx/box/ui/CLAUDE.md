@@ -42,7 +42,8 @@ rbxApp (main menu: OptionList)
 | `ReviewScreen` | `review.py` | Code review confirm/reject (y/n keybindings) |
 | `SelectorScreen` | `selector.py` | Generic modal list selector, returns index |
 | `RichLogModal` | `rich_log_modal.py` | Modal popup for rich markup text |
-| `ErrorScreen` | `error.py` | Simple error display |
+| `ErrorScreen` | `error.py` | Simple full-screen text display (used for empty-states like "No runs found") |
+| `ErrorModal` | `error_modal.py` | Dismissible, scrollable modal showing a formatted `RbxException` (compile/runtime output); opened via `rbxBaseApp.show_error`. `q`/`esc` close |
 
 ## Key Widgets (`widgets/`)
 
@@ -80,6 +81,7 @@ Helper functions that load run results from disk:
 - **`@work(exclusive=True)`** -- `FileLog` and `InteractionBox` use this for cancellable async file loading.
 - **`self.watch(widget, 'index', callback)`** -- Test explorer screens watch `ListView.index` to react to selection changes.
 - **CSS** in `css/app.tcss` uses Textual's TCSS syntax with `$`-prefixed theme variables.
+- **Surfacing exceptions** -- `rbxBaseApp.show_error(exc)` (`main.py`) pushes an `ErrorModal` rendering `exc.from_ansi()` (formatting preserved, scrollable, not truncated). Use it instead of `notify(e.plain(), severity='error')` for `RbxException`s that may carry long output; the visualizer actions in `test_explorer.py`/`run_test_explorer.py` do (#380). Short one-line validation messages ("No test selected") stay toasts. Screens call it as `self.app.show_error(e)  # type: ignore[attr-defined]`.
 
 ## Keybindings
 

@@ -1,6 +1,7 @@
 import pathlib
 from typing import Type
 
+import rich.text
 import typer
 from rich.segment import Segments
 from textual.app import App, ComposeResult
@@ -10,8 +11,10 @@ from textual.widgets import Footer, Header, OptionList
 
 from rbx import console
 from rbx.box import remote
+from rbx.box.exception import RbxException
 from rbx.box.ui.help_panel import HelpPanelMixin
 from rbx.box.ui.screens.differ import DifferScreen
+from rbx.box.ui.screens.error_modal import ErrorModal
 from rbx.box.ui.screens.limits_editor import LimitsEditorScreen
 from rbx.box.ui.screens.run_explorer import RunExplorerScreen
 from rbx.box.ui.screens.test_explorer import TestExplorerScreen
@@ -40,6 +43,17 @@ class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
 
         # Default behavior (Rich traceback + return code 1)
         return super()._handle_exception(error)
+
+    def show_error(self, exc: RbxException) -> None:
+        """Surface an RbxException in a dismissible, scrollable modal.
+
+        Preferred over a toast notification for errors that carry long,
+        formatted output (e.g. a visualizer's compile/runtime failure).
+        """
+        content = exc.from_ansi()
+        if not content.plain.strip():
+            content = rich.text.Text('An unexpected error occurred.')
+        self.push_screen(ErrorModal(content, title='Error'))
 
 
 class rbxApp(rbxBaseApp):
