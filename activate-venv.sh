@@ -11,12 +11,18 @@
 #
 # A bare <name> is a worktree directory name; it is looked up under
 # .worktrees/<name> and then .claude/worktrees/<name> (first match wins).
+# As a convenience, a bare <name> that starts with "worktree-" and doesn't
+# match a directory is treated as a branch (see -b): harness-created worktrees
+# live under .claude/worktrees/<name> but their branch is "worktree-<name>", so
+# passing the branch name (e.g. worktree-issue-535-preset-registry) activates
+# that worktree directly.
 #
 # A <name> that contains a slash is treated as a path to a worktree,
 # relative to the root repo (e.g. .claude/worktrees/foo) or absolute.
 #
-# With -b, <name> is a git branch; the worktree that currently has that
-# branch checked out is used instead.
+# With -b, <name> is a git branch; the worktree that currently has that branch
+# checked out is used instead. The branch is never checked out — we only look
+# up the existing worktree that already has it.
 #
 # For the activation to persist in your current shell you must SOURCE this
 # script:  `source ./activate-venv.sh my-feature`. When run directly it
@@ -46,7 +52,8 @@ Usage: source ./activate-venv.sh [-b] [<name>]
   (no name)   use the root repository's venv
   <name>      worktree directory name (under .worktrees or .claude/worktrees),
               or a path to a worktree relative to the root repo (e.g.
-              .claude/worktrees/foo) or absolute
+              .claude/worktrees/foo) or absolute; a "worktree-" prefixed name
+              that matches no directory is resolved as a branch (see -b)
   -b <name>   treat <name> as a git branch and use its checked-out worktree
 EOF
 }
@@ -75,17 +82,10 @@ fi
 _av_root="$(cd "$(dirname "$_av_self")" >/dev/null 2>&1 && pwd)"
 
 # --- resolve the target worktree directory ----------------------------------
-_av_wt=""
+_av_wt=""        # resolved worktree path, once known
+_av_branch=""    # set when <name> should be resolved via git branch lookup
 if [ "$_av_by_branch" -eq 1 ]; then
-  # Find the worktree whose checked-out branch matches <name>.
-  _av_wt="$(git -C "$_av_root" worktree list --porcelain 2>/dev/null | awk -v b="$_av_name" '
-    /^worktree / { path = substr($0, 10); next }
-    /^branch /   { ref = substr($0, 8)
-                   if (ref == "refs/heads/" b) { print path; exit } }')"
-  if [ -z "$_av_wt" ]; then
-    echo "activate-venv: no worktree found with branch '$_av_name'" >&2
-    return 1 2>/dev/null || exit 1
-  fi
+  _av_branch="$_av_name"
 elif [ -z "$_av_name" ]; then
   # No name: use the root repository this script lives in.
   _av_wt="$_av_root"
@@ -110,12 +110,31 @@ else
           break
         fi
       done
+      # No directory matched. A "worktree-<name>" branch (what the harness names
+      # its worktree branches) maps to the worktree dir <name>, so resolve it as
+      # a branch and activate that existing worktree directly.
       if [ -z "$_av_wt" ]; then
-        echo "activate-venv: no worktree named '$_av_name' under .worktrees or .claude/worktrees" >&2
-        return 1 2>/dev/null || exit 1
+        case "$_av_name" in
+          worktree-*) _av_branch="$_av_name" ;;
+          *) echo "activate-venv: no worktree named '$_av_name' under .worktrees or .claude/worktrees" >&2
+             return 1 2>/dev/null || exit 1 ;;
+        esac
       fi
       ;;
   esac
+fi
+
+# Resolve a branch name to the worktree that currently has it checked out. This
+# only reads the worktree list; it never checks the branch out anywhere.
+if [ -n "$_av_branch" ]; then
+  _av_wt="$(git -C "$_av_root" worktree list --porcelain 2>/dev/null | awk -v b="$_av_branch" '
+    /^worktree / { path = substr($0, 10); next }
+    /^branch /   { ref = substr($0, 8)
+                   if (ref == "refs/heads/" b) { print path; exit } }')"
+  if [ -z "$_av_wt" ]; then
+    echo "activate-venv: no worktree found with branch '$_av_branch'" >&2
+    return 1 2>/dev/null || exit 1
+  fi
 fi
 
 # --- locate and run the activation script -----------------------------------
