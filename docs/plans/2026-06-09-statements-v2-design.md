@@ -309,6 +309,15 @@ relative → TeX stays portable; they are simply anchored differently (root for
 verbatim I/O, import-base for LaTeX content). This must be validated by a spike
 before the builder contract is locked.
 
+> **✅ Validated (S1, #557).** The spike at
+> `docs/plans/spikes/2026-06-09-statements-v2-path-resolution/` compiles the full
+> contest→problem→sample overlay end-to-end on the first `pdflatex` pass, zero
+> warnings. Confirmed: nested `\subimport` (3 levels), `import.sty` auto-rebases
+> `\includegraphics` to the import base at every depth (**no `\graphicspath` /
+> `TEXINPUTS` needed**), same-named assets across problems don't collide, and
+> `\VerbatimInput` requires **root-relative** I/O paths (proven by a negative
+> control). No design change required — see the spike README for details.
+
 ### 6.5 Properties bought
 
 - **Portable, self-contained TeX** — no absolute/temp paths leak in; `tar` the
