@@ -1,6 +1,6 @@
 import collections
 import typing
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from textual.visual import VisualType
 from textual.widgets.option_list import Option
@@ -94,6 +94,7 @@ def get_entries_options(
     entries: List[GenerationTestcaseEntry],
     skeleton: Optional[SolutionReportSkeleton] = None,
     solution: Optional[SolutionSkeleton] = None,
+    predicate: Optional[Callable[[GenerationTestcaseEntry], bool]] = None,
 ) -> Tuple[
     List[Union[VisualType, Option, None]], List[Optional[GenerationTestcaseEntry]]
 ]:
@@ -120,7 +121,15 @@ def get_entries_options(
 
     total_got_score = 0
     max_score = 0
-    for group, entries in entries_per_group.items():
+    for group, group_entries in entries_per_group.items():
+        visible_entries = [
+            entry for entry in group_entries if predicate is None or predicate(entry)
+        ]
+        if not visible_entries:
+            # Filtered to empty: drop the header AND its divider, and do not
+            # count this group toward the POINTS total.
+            continue
+
         score_str = ''
         if skeleton is not None:
             group_skeleton = skeleton.find_group_skeleton(group)
@@ -137,7 +146,7 @@ def get_entries_options(
         _add(
             Option(console.expand_markup(f'[b]{group}[/b] {score_str}'), disabled=True)
         )
-        for entry in entries:
+        for entry in visible_entries:
             if solution is not None and skeleton is not None:
                 _add(
                     console.expand_markup(

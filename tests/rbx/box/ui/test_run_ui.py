@@ -171,6 +171,86 @@ def test_entries_options_align_with_optionlist_indices():
     assert selectable_entries == entries
 
 
+def test_predicate_filters_entries_and_keeps_alignment_across_groups():
+    """#464: expanded_entries stays aligned with OptionList indices after filtering."""
+    from textual.widgets import OptionList
+
+    entries = [
+        _entry('group-a', 0),
+        _entry('group-a', 1),
+        _entry('group-b', 0),
+        _entry('group-b', 1),
+    ]
+    # Keep only index 1 of every group.
+    keep = {
+        (e.group_entry.group, e.group_entry.index) for e in (entries[1], entries[3])
+    }
+    options, expanded_entries = get_entries_options(
+        entries,
+        predicate=lambda e: (e.group_entry.group, e.group_entry.index) in keep,
+    )
+
+    option_list = OptionList(*options)
+    assert len(expanded_entries) == option_list.option_count
+
+    selectable = [
+        expanded_entries[i]
+        for i in range(option_list.option_count)
+        if not option_list.get_option_at_index(i).disabled
+    ]
+    assert selectable == [entries[1], entries[3]]
+
+
+def test_predicate_emptying_a_group_drops_its_header_and_divider():
+    from textual.widgets import OptionList
+
+    entries = [_entry('group-a', 0), _entry('group-b', 0)]
+    # Drop group-b entirely.
+    options, expanded_entries = get_entries_options(
+        entries, predicate=lambda e: e.group_entry.group == 'group-a'
+    )
+    option_list = OptionList(*options)
+    header_texts = [
+        option_list.get_option_at_index(i).prompt
+        for i in range(option_list.option_count)
+        if option_list.get_option_at_index(i).disabled
+    ]
+    rendered = ' '.join(str(t) for t in header_texts)
+    assert 'group-a' in rendered
+    assert 'group-b' not in rendered
+    # No divider/entry slot leaked for the dropped group.
+    assert all(e is None or e.group_entry.group == 'group-a' for e in expanded_entries)
+
+
+def test_predicate_recomputes_points_total_over_visible_groups(tmp_path):
+    from rbx.box.solutions import GroupSkeleton
+
+    entries = [_entry('g1', 0), _entry('g2', 0)]
+    skeleton = _make_skeleton(tmp_path / 'runs', tmp_path / 'tests', stems=['g1-0'])
+    skeleton.groups = [
+        GroupSkeleton(name='g1', score=50, deps=[], testcases=[]),
+        GroupSkeleton(name='g2', score=50, deps=[], testcases=[]),
+    ]
+    sol = skeleton.solutions[0]
+
+    fake_report = mock.Mock()
+    fake_report.gotScorePerGroup = {'g1': 50, 'g2': 50}
+    with mock.patch(
+        'rbx.box.ui.utils.run_ui.get_solution_outcome_report', return_value=fake_report
+    ):
+        options, _ = get_entries_options(
+            entries,
+            skeleton=skeleton,
+            solution=sol,
+            predicate=lambda e: e.group_entry.group == 'g1',
+        )
+
+    texts = ' '.join(str(o.prompt) for o in options if hasattr(o, 'prompt'))
+    # TOTAL reflects only the visible group's score (50/50), not 100.
+    assert 'TOTAL' in texts
+    assert '100' not in texts
+
+
 def test_get_solution_evals_finds_all_for_subgroup_stems(tmp_path):
     skeleton = _make_skeleton(
         tmp_path / 'runs',

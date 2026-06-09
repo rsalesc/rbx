@@ -15,11 +15,14 @@ Three Textual `App` classes in `main.py`:
 rbxApp (main menu: OptionList)
   |-- [1] TestExplorerScreen -- browse built testcases
   |        |-- (select testcase) -> updates FileLog + TestBoxWidget inline
+  |        |-- [/] -> fuzzy search box / goto (TestListSearchMixin)
   |        |-- [v] -> opens external visualizer
   |
   |-- [2] RunExplorerScreen -- browse past `rbx run` results
            |-- (select solution) -> RunTestExplorerScreen
            |        |-- (select testcase) -> updates FileLog + TwoSidedTestBoxWidget
+           |        |-- [f] -> toggle failing-only filter
+           |        |-- [/] -> fuzzy search box / goto (TestListSearchMixin)
            |        |-- [s] -> toggle side-by-side comparison
            |        |-- [m] -> toggle docked testcase-metadata footer
            |        |-- [r] -> toggle run/eval metadata box
@@ -87,6 +90,10 @@ Helper functions that load run results from disk:
 ## Keybindings
 
 Vim navigation lives in `vim_nav.py` (`VimNavMixin`, mixed into `rbxBaseApp` in `main.py`, ahead of `App` in the MRO). It registers app-level `h/j/k/l` bindings that dispatch to the focused widget's existing `cursor_*` action, falling back to `scroll_*`: `j`/`k` move down/up everywhere; `h`/`l` move left/right only where horizontal movement exists (e.g. `DataTable` cells, scroll viewers). `check_action` disables the keys while an `Input`/`TextArea` is focused, so typing is never hijacked. The mixin subclasses `DOMNode` so Textual merges its `BINDINGS`.
+
+## Test-list filtering & search (`screens/test_list_search.py`)
+
+`TestListSearchMixin` (a `DOMNode` subclass, mixed in *before* `Screen`) gives the two test-list explorers — `TestExplorerScreen` (built tests) and `RunTestExplorerScreen` (run results) — a shared `/` fuzzy search box (`#test-search` `Input`) that live-filters `#test-list` and doubles as a goto: Enter commits the jump (restores the list, keeps the match highlighted, focuses the list), Esc restores without jumping. Matching uses `textual.fuzzy.Matcher` over `group/index` + generator call + copied-from path + inline `@input` content + generator-script location; a purely numeric query matches the group index. A host screen plugs in by yielding `self._search_input()` in `compose`, calling `self._init_search_box()` in `on_mount`, and implementing `_compute_options(predicate)` (its own `get_entries_options` call). Optional hooks `_extra_predicate()` / `_extra_filter_labels()` AND an extra filter into the search — `RunTestExplorerScreen` uses them for its `f` failing-only toggle (eval outcome ≠ `ACCEPTED`; a missing eval counts as not-AC). All filtering routes through `get_entries_options(..., predicate=...)` (`run_ui.py`), which keeps `options`/`expanded_entries` index-aligned and drops emptied group headers (the #464 invariant). `on_input_changed` ignores events while the box is hidden, because closing the box clears its value and Textual posts that `Changed` asynchronously — otherwise it would clobber a committed goto. Pressing Up/Down while the search box is focused (`on_key`) jumps focus into `#test-list` and moves the selection, so you can type a query and arrow straight into the results (arrows are non-printable, so this never disturbs typing). Initial focus is pinned to `#test-list` so feature keys reach the screen while the box is hidden; `vim_nav`/help-panel `check_action` guards stop `/`, `f`, `h/j/k/l`, `?` from firing while the `Input` is focused.
 
 The help panel lives in `help_panel.py` (`HelpPanelMixin`, also a `DOMNode` subclass, mixed into `rbxBaseApp` in `main.py` alongside `VimNavMixin`). `?` (`question_mark`) toggles `RbxHelpPanel` via `action_toggle_help_panel`, which mounts the panel on the active screen or removes it if already present. `RbxHelpPanel` is a thin `KeyPanel` subclass whose `_TitledBindingsTable` renders only binding groups that declare a `BINDING_GROUP_TITLE` — so the obvious built-in navigation Textual's stock panel would dump (the focused widget's arrow/page keys, the screen's tab/copy) is filtered out, leaving just our titled sections. `check_action` disables `?` while an `Input`/`TextArea` is focused, so it types literally. Primary screens keep `q` visible (a plain tuple) but set their other feature bindings to `Binding(..., show=False)`, so the footer stays slim (`? Help` + `q`) while the panel lists every active binding in that section (including the hidden vim `h/j/k/l`, which live under the app-level `Global` title set on `rbxBaseApp`). Each screen sets `BINDING_GROUP_TITLE` for a readable section header; a screen without one contributes nothing to the panel. Transient modals are intentionally left untouched. `rbxCommandApp` keeps its bespoke `HelpModal` and hides the inherited `?` footer entry (`show=False`) until #483 unifies them.
 

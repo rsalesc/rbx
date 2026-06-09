@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,18 +17,21 @@ from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     get_testcase_metadata_markup,
 )
+from rbx.box.ui.screens.test_list_search import EntryPredicate, TestListSearchMixin
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
     get_run_testcase_metadata_markup,
+    get_solution_evals,
     is_main_solution,
 )
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.box.ui.widgets.test_output_box import TestcaseRenderingData
 from rbx.box.ui.widgets.two_sided_test_output_box import TwoSidedTestBoxWidget
+from rbx.grading.steps import Outcome
 
 
-class RunTestExplorerScreen(Screen):
+class RunTestExplorerScreen(TestListSearchMixin, Screen):
     BINDING_GROUP_TITLE = 'Run Test Explorer'
     BINDINGS = [
         ('q', 'app.pop_screen', 'Quit'),
@@ -40,9 +43,11 @@ class RunTestExplorerScreen(Screen):
         Binding('s', 'toggle_side_by_side', 'Toggle sxs', show=False),
         Binding('v', 'open_visualizer', 'Open visualization', show=False),
         Binding('V', 'open_output_visualizer', 'Open output visualization', show=False),
+        Binding('f', 'toggle_failing_only', 'Failing only', show=False),
     ]
 
     side_by_side: reactive[bool] = reactive(False)
+    failing_only: reactive[bool] = reactive(False)
     diff_with_data: reactive[Optional[TestcaseRenderingData]] = reactive(
         default=None,
     )
@@ -61,12 +66,15 @@ class RunTestExplorerScreen(Screen):
         self.diff_solution = diff_solution
         self.set_reactive(RunTestExplorerScreen.side_by_side, diff_solution is not None)
         self._option_entries = []
+        self._search_query: str = ''
+        self._outcomes: dict = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
         with Horizontal(id='test-explorer'):
             with Vertical(id='test-list-container'):
+                yield self._search_input()
                 yield OptionList(id='test-list')
             with Vertical(id='test-details'):
                 yield RichLogBox(id='test-box-warning')
@@ -85,6 +93,8 @@ class RunTestExplorerScreen(Screen):
 
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
+
+        self._init_search_box()
 
         warning_box = self.query_one('#test-box-warning', RichLogBox)
         warning_box.markup = True
@@ -107,7 +117,20 @@ class RunTestExplorerScreen(Screen):
         metadata.markup = True
         metadata.clear().write('No test selected')
 
+        # Precompute each entry's outcome once so filtering/searching never
+        # re-reads ``.eval`` files on every keystroke.
+        evals = get_solution_evals(self.skeleton, self.solution)
+        self._outcomes = {
+            (entry.group_entry.group, entry.group_entry.index): (
+                eval.result.outcome if eval is not None else None
+            )
+            for entry, eval in zip(self.skeleton.entries, evals)
+        }
+
         await self._update_tests()
+        # The search box is the first focusable child; keep initial focus on the
+        # list so key bindings (m/r/f/…) reach the screen, not the hidden Input.
+        self.query_one('#test-list', OptionList).focus()
 
     def _is_interactive(self) -> bool:
         return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
@@ -155,14 +178,41 @@ class RunTestExplorerScreen(Screen):
             'highlighted',
             self._update_selected_test,
         )
+        self.rebuild_test_list()
 
-        options, self._option_entries = get_entries_options(
-            self.skeleton.entries, skeleton=self.skeleton, solution=self.solution
+    def _entry_outcome(self, entry: GenerationTestcaseEntry) -> Optional[Outcome]:
+        return self._outcomes.get((entry.group_entry.group, entry.group_entry.index))
+
+    def _compute_options(
+        self, predicate: Optional[EntryPredicate]
+    ) -> Tuple[List[Any], List[Optional[GenerationTestcaseEntry]]]:
+        return get_entries_options(
+            self.skeleton.entries,
+            skeleton=self.skeleton,
+            solution=self.solution,
+            predicate=predicate,
         )
 
-        option_list = self.query_one('#test-list', OptionList)
-        option_list.clear_options()
-        option_list.add_options(options)
+    def _extra_predicate(self) -> Optional[EntryPredicate]:
+        if not self.failing_only:
+            return None
+
+        def predicate(entry: GenerationTestcaseEntry) -> bool:
+            # Keep non-AC; a missing eval (incomplete run) is treated as not-AC.
+            return self._entry_outcome(entry) != Outcome.ACCEPTED
+
+        return predicate
+
+    def _extra_filter_labels(self) -> List[str]:
+        return ['failing only'] if self.failing_only else []
+
+    def action_toggle_failing_only(self) -> None:
+        self.failing_only = not self.failing_only
+
+    def watch_failing_only(self, value: bool) -> None:
+        if not self.is_mounted:
+            return
+        self.rebuild_test_list()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()

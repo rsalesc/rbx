@@ -99,6 +99,11 @@ TestExplorerScreen, RunTestExplorerScreen {
                 width: 1fr;
                 height: 1fr;
         }
+        #test-search {
+                display: none;
+                width: 1fr;
+                border: solid $accent;
+        }
         TestBoxWidget, TwoSidedTestBoxWidget {
                 height: 1fr;
                 #test-box-1 {

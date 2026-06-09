@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -15,13 +15,14 @@ from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_groups,
     get_testcase_metadata_markup,
 )
+from rbx.box.ui.screens.test_list_search import EntryPredicate, TestListSearchMixin
 from rbx.box.ui.utils.run_ui import get_entries_options
 from rbx.box.ui.widgets.file_log import FileLog
 from rbx.box.ui.widgets.rich_log_box import RichLogBox
 from rbx.box.ui.widgets.test_output_box import TestBoxWidget, TestcaseRenderingData
 
 
-class TestExplorerScreen(Screen):
+class TestExplorerScreen(TestListSearchMixin, Screen):
     BINDING_GROUP_TITLE = 'Test Explorer'
     BINDINGS = [
         ('q', 'app.pop_screen', 'Quit'),
@@ -37,12 +38,14 @@ class TestExplorerScreen(Screen):
     def __init__(self):
         super().__init__()
         self._option_entries = []
+        self._entries: List[GenerationTestcaseEntry] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
         with Horizontal(id='test-explorer'):
             with Vertical(id='test-list-container'):
+                yield self._search_input()
                 yield OptionList(id='test-list')
             with Vertical(id='test-details'):
                 yield RichLogBox(id='test-box-warning')
@@ -53,6 +56,8 @@ class TestExplorerScreen(Screen):
     async def on_mount(self):
         self.query_one('#test-list').border_title = 'Tests'
         self.query_one('#test-input').border_title = 'Input'
+
+        self._init_search_box()
 
         warning_box = self.query_one('#test-box-warning', RichLogBox)
         warning_box.markup = True
@@ -78,6 +83,9 @@ class TestExplorerScreen(Screen):
         metadata.markup = True
         metadata.clear().write('No test selected')
         await self._update_tests()
+        # The search box is the first focusable child; keep initial focus on the
+        # list so key bindings reach the screen, not the hidden Input.
+        self.query_one('#test-list', OptionList).focus()
 
     def action_toggle_metadata(self):
         metadata = self.query_one('#test-metadata', RichLogBox)
@@ -116,12 +124,13 @@ class TestExplorerScreen(Screen):
             self._update_selected_test,
         )
 
-        entries = await extract_generation_testcases_from_groups()
-        options, self._option_entries = get_entries_options(entries)
+        self._entries = await extract_generation_testcases_from_groups()
+        self.rebuild_test_list()
 
-        option_list = self.query_one('#test-list', OptionList)
-        option_list.clear_options()
-        option_list.add_options(options)
+    def _compute_options(
+        self, predicate: Optional[EntryPredicate]
+    ) -> Tuple[List[Any], List[Optional[GenerationTestcaseEntry]]]:
+        return get_entries_options(self._entries, predicate=predicate)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         event.stop()
