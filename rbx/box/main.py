@@ -10,13 +10,6 @@ import typer
 from rich.console import Console
 from types import FrameType
 
-from rbx.box import git_utils
-
-
-def _check_completions():
-    if os.environ.get('_TYPER_COMPLETE_ARGS'):
-        sys.exit(0)
-
 
 # TODO: do not install this handler when in dev mode
 def _install_no_exception_handlers():
@@ -73,6 +66,13 @@ def run_app_cli():
 
 
 def app():
+    from rbx.box.completion import entry
+
+    if entry.handle_completion():
+        return
+
+    from rbx.box import git_utils
+
     if not git_utils.check_symlinks(pathlib.Path.cwd()):
         from rbx import console
         from rbx.box.formatting import ref
@@ -89,7 +89,6 @@ def app():
         )
         console.console.print()
 
-    # _check_completions()
     _install_no_exception_handlers()
     from rbx.box.exception import RbxException
 

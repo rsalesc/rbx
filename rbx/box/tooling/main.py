@@ -29,7 +29,12 @@ async def convert(
     output: Annotated[str, typer.Option('-o', '--output', help='The output path.')],
     language: Annotated[
         Optional[str],
-        typer.Option('--language', '-l', help='The main language of the problem.'),
+        typer.Option(
+            '--language',
+            '-l',
+            help='The main language of the problem.',
+            autocompletion=annotations._adapt('language'),  # noqa: SLF001
+        ),
     ] = None,
 ):
     from rbx.box.tooling import converter

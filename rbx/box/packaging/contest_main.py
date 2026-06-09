@@ -100,6 +100,7 @@ async def polygon(
         '--language',
         '-l',
         help='If set, will use the given language as the main language.',
+        autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
 ):
     from rbx.box.packaging.polygon.packager import (

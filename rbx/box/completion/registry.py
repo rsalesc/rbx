@@ -1,0 +1,76 @@
+import importlib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+from click.shell_completion import CompletionItem
+
+
+@dataclass
+class CompletionContext:
+    """Context handed to a dynamic completer at `<tab>` time.
+
+    `option_values` is keyed by each option's FIRST registered name (its canonical
+    id), NOT by whichever alias the user actually typed. So an option declared as
+    `--language`/`--lang` is always recorded under `--language` even if `--lang`
+    was on the command line. Look up values by the first name, e.g.
+    `ctx.option_values.get('--language')`.
+    """
+
+    args: List[str]
+    command: Tuple[str, ...]
+    option_values: Dict[str, str]
+    package_root: Optional[Path]
+
+
+Completer = Callable[[CompletionContext, str], List[CompletionItem]]
+
+# key -> either a dotted path 'module:function' (string => lazy import) or the
+# already-resolved completer callable (registered in-process via the decorator).
+_REGISTRY: Dict[str, Union[str, Completer]] = {}
+# id(function) -> key, for the generator's reverse lookup
+_REVERSE: Dict[int, str] = {}
+
+
+def register_completer_path(key: str, dotted: str) -> None:
+    _REGISTRY[key] = dotted
+
+
+def register_all(mapping: Dict[str, str]) -> None:
+    """Register many key->dotted-path entries (used to seed the registry from the
+    committed spec's COMPLETERS table on the fast path). Does not clobber entries
+    already registered (e.g. live callables registered in-process)."""
+    for key, dotted in mapping.items():
+        _REGISTRY.setdefault(key, dotted)
+
+
+def register_completer(key: str) -> Callable[[Completer], Completer]:
+    def deco(fn: Completer) -> Completer:
+        qualname = fn.__qualname__
+        if '<locals>' in qualname:
+            # Defined inside a function (e.g. a test) -> not importable; keep the live object.
+            _REGISTRY[key] = fn
+        else:
+            # Module-level -> store an importable dotted path so load_completer is lazy
+            # and import-order independent.
+            _REGISTRY[key] = f'{fn.__module__}:{qualname}'
+        _REVERSE[id(fn)] = key
+        return fn
+
+    return deco
+
+
+def key_for_function(fn: Completer) -> Optional[str]:
+    return _REVERSE.get(id(fn))
+
+
+def load_completer(key: str) -> Completer:
+    target = _REGISTRY[key]
+    if not isinstance(target, str):
+        return target
+    module_name, _, qualname = target.partition(':')
+    module = importlib.import_module(module_name)
+    obj = module
+    for part in qualname.split('.'):
+        obj = getattr(obj, part)
+    return obj  # type: ignore[return-value]

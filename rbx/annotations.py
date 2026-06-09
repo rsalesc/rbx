@@ -1,14 +1,9 @@
-import importlib.resources
-import pathlib
 import re
 from typing import Any, Dict, List, Optional
 
 import typer
 import typer.core
 from typing_extensions import Annotated
-
-from rbx import config
-from rbx.config import get_config
 
 
 class _PackagePathMarker:
@@ -18,39 +13,36 @@ class _PackagePathMarker:
 PackagePath = _PackagePathMarker()
 
 
-def _get_language_options():
-    return sorted(get_config().languages.keys())
+def _adapt(key: str):
+    """Typer autocompletion callback that delegates to the registry completer `key`.
+
+    Builds the same CompletionContext the fast engine builds, so real-Typer and
+    fast-path completions agree. Returns plain string values (Typer wraps them).
+    """
+
+    def _cb(incomplete: str = ''):
+        from rbx.box.completion import (
+            completers,  # noqa: F401  (registers keys)
+            context,
+        )
+        from rbx.box.completion.registry import CompletionContext, load_completer
+
+        ctx = CompletionContext(
+            args=[],
+            command=(),
+            option_values={},
+            package_root=context.find_package_root(),
+        )
+        return [item.value for item in load_completer(key)(ctx, incomplete)]
+
+    _cb._completer_key = key  # noqa: SLF001  read by the spec generator to recover the key
+    return _cb
 
 
 def _get_language_default():
+    from rbx.config import get_config
+
     return get_config().defaultLanguage
-
-
-def _get_problem_options():
-    options = set()
-    # all_problems = metadata.find_problems()
-    # for problem in all_problems:
-    #     options.add(problem.code)
-    #     options.update(problem.aliases)
-    return sorted(options)
-
-
-def _list_files(path: pathlib.Path) -> List[str]:
-    if not path.is_dir():
-        return []
-    return [file.name for file in path.iterdir() if file.is_file()]
-
-
-def _get_checker_options():
-    options = set()
-    with importlib.resources.as_file(
-        importlib.resources.files('rbx') / 'resources' / 'checkers'
-    ) as file:
-        options.update(_list_files(file))
-
-    options.update(_list_files(config.get_app_path() / 'checkers'))
-    options.remove('boilerplate.cpp')
-    return sorted(options)
 
 
 Timelimit = Annotated[
@@ -90,7 +82,7 @@ Language = Annotated[
         help='Language to use.',
         prompt='Language',
         default_factory=_get_language_default,
-        autocompletion=_get_language_options,
+        autocompletion=_adapt('language'),
     ),
 ]
 LanguageWithDefault = Annotated[
@@ -100,13 +92,13 @@ LanguageWithDefault = Annotated[
         '--lang',
         '-l',
         help='Language to use.',
-        autocompletion=_get_language_options,
+        autocompletion=_adapt('language'),
     ),
 ]
-Problem = Annotated[str, typer.Argument(autocompletion=_get_problem_options)]
+Problem = Annotated[str, typer.Argument(autocompletion=_adapt('problem'))]
 
 ProblemOption = Annotated[
-    Optional[str], typer.Option('--problem', '-p', autocompletion=_get_problem_options)
+    Optional[str], typer.Option('--problem', '-p', autocompletion=_adapt('problem'))
 ]
 
 TestcaseIndex = Annotated[Optional[int], typer.Option('--index', '--idx', '-i')]
@@ -114,7 +106,7 @@ TestcaseIndex = Annotated[Optional[int], typer.Option('--index', '--idx', '-i')]
 Checker = Annotated[
     str,
     typer.Argument(
-        autocompletion=_get_checker_options, help='Path to a testlib checker file.'
+        autocompletion=_adapt('checker'), help='Path to a testlib checker file.'
     ),
 ]
 
