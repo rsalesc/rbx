@@ -326,3 +326,46 @@ Each phase ends with the benchmark table + green differential test.
   extraction).
 - Pushing below ~40–60ms (would require slimming `config`/interpreter startup;
   revisit only if the benchmark says it's needed).
+
+## Implementation notes (as-built)
+
+Empirical findings from building the engine that differed from / refined the
+design above:
+
+- **Reuse Click's NATIVE ShellComplete classes, not Typer's.** The design said
+  "reuse Click's per-shell formatters" generically; in practice the engine must
+  bind `click.shell_completion.BashComplete`/`ZshComplete`/`FishComplete`
+  **directly by name** and avoid `completion_init()`. The real CLI dispatches
+  completion before `completion_init` runs (it only fires while building the
+  `--install/--show-completion` params), so the live CLI emits Click-native
+  output (`bash: plain,ui`; `zsh: plain\nui\n<help>`). Calling `completion_init()`
+  registers Typer's enhanced classes with a different output format and would
+  break byte-parity; binding the native class by name also stays faithful when
+  tests import the heavy app and pollute the global `get_completion_class`
+  registry.
+- **Command names are stored RAW (comma-joined), not pre-split into
+  `name`+`aliases`.** The spec keeps `'name': 'package, pkg'` verbatim; the engine
+  splits on `', '` for descent and prefix-filters the raw string (so prefix `pkg`
+  matches nothing — matching Typer). Children are kept in **registration order**,
+  not sorted: ambiguous aliases (`t` → `time` because `time, t` registers before
+  `testcases, tc, t`) resolve to the first match in Click's `AliasGroup`, so the
+  engine must descend in the same order.
+- **The generator must reconstruct several things Click materializes lazily.**
+  Click's auto `--help` is **not** in `cmd.params` (it is created at
+  parse/completion time), so `generate.py` asks `cmd.get_help_option()` and adds
+  it explicitly. Boolean flags declared `--check/--no-check` carry the negation in
+  `secondary_opts`, which Click completes too, so both forms go into `names`.
+  Hidden commands (`diff`, `serve`) are skipped to match Click hiding them from
+  completion.
+- **`rich_help_panel` can be a `typer.models.DefaultPlaceholder`,** not a bare
+  `str`/`None`. Such an object does not `repr` to valid Python and would break the
+  serialized spec's round-trip, so `_panel()` unwraps it (duck-typed, to avoid
+  importing typer).
+- **The `rbx/annotations.py` `Language`/`Checker`/`Problem` annotations were
+  vestigial** — defined but unused by the live commands, and `--language` options
+  were declared inline and wired to no completer. As the demonstrated hook,
+  `--language` is now routed through the `language` completer via
+  `annotations._adapt('language')`; `checker`/`problem` are registered and ready
+  to wire via the same recipe.
+- **Final measured result: ~545ms → ~86ms (~9x).** 499-case differential parity
+  against real Typer; import-firewall enforced in CI; drift-gated spec.
