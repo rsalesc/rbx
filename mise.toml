@@ -65,3 +65,7 @@ run = "mise run build && uv publish"
 [tasks.bench-completion]
 description = "Benchmark shell completion latency"
 run = "python scripts/bench_completion.py"
+
+[tasks.gen-completion-spec]
+description = "Regenerate the committed completion spec from the Typer app"
+run = "python -m rbx.box.completion.serialize"

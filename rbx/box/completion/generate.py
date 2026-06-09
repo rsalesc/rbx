@@ -119,11 +119,26 @@ def _param_spec(param: click.Parameter) -> Dict[str, Any]:
     }
 
 
+def _panel(cmd: click.Command) -> Optional[str]:
+    """Return the rich help panel as a plain ``Optional[str]``.
+
+    Typer's click conversion can leave ``rich_help_panel`` as a
+    ``typer.models.DefaultPlaceholder`` (whose ``.value`` is the real default,
+    usually ``None``) rather than a bare string/``None``. Such an object does not
+    ``repr`` to valid Python, which would break the serialized spec's round-trip,
+    so we unwrap it here (duck-typed to avoid importing typer).
+    """
+    panel = getattr(cmd, 'rich_help_panel', None)
+    if panel is not None and not isinstance(panel, str) and hasattr(panel, 'value'):
+        panel = panel.value
+    return panel if isinstance(panel, str) else None
+
+
 def build_spec(cmd: click.Command, name: Optional[str] = None) -> Dict[str, Any]:
     node: Dict[str, Any] = {
         'name': name if name is not None else (cmd.name or ''),
         'help': cmd.get_short_help_str() or None,
-        'panel': getattr(cmd, 'rich_help_panel', None),
+        'panel': _panel(cmd),
         'is_group': isinstance(cmd, click.Group),
         'params': [
             _param_spec(p) for p in cmd.params if not getattr(p, 'hidden', False)
