@@ -29,7 +29,14 @@ def register_completer_path(key: str, dotted: str) -> None:
 
 def register_completer(key: str) -> Callable[[Completer], Completer]:
     def deco(fn: Completer) -> Completer:
-        _REGISTRY[key] = fn
+        qualname = fn.__qualname__
+        if '<locals>' in qualname:
+            # Defined inside a function (e.g. a test) -> not importable; keep the live object.
+            _REGISTRY[key] = fn
+        else:
+            # Module-level -> store an importable dotted path so load_completer is lazy
+            # and import-order independent.
+            _REGISTRY[key] = f'{fn.__module__}:{qualname}'
         _REVERSE[id(fn)] = key
         return fn
 
