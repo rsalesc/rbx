@@ -42,7 +42,12 @@ def has_run() -> bool:
     return (package.get_problem_runs_dir() / 'skeleton.yml').is_file()
 
 
-def get_skeleton() -> SolutionReportSkeleton:
+def get_skeleton() -> Optional[SolutionReportSkeleton]:
+    # No past `rbx run` means no skeleton.yml on disk. Return None so callers
+    # (the run explorer) can surface a friendly empty-state instead of crashing
+    # on a FileNotFoundError (#554).
+    if not has_run():
+        return None
     skeleton_path = package.get_problem_runs_dir() / 'skeleton.yml'
     return utils.model_from_yaml(
         SolutionReportSkeleton,

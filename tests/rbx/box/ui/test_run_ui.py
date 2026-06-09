@@ -21,9 +21,11 @@ from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
     get_main_badge,
+    get_skeleton,
     get_solution_eval,
     get_solution_evals,
     get_solution_markup,
+    has_run,
     is_main_solution,
 )
 from rbx.grading.limits import Limits
@@ -349,3 +351,27 @@ def test_solution_selection_label_shows_outcome_for_non_main():
         label = _build_solution_selection_label(other).plain
     assert 'MAIN' not in label
     assert 'WRONG_ANSWER' in label
+
+
+def test_get_skeleton_returns_none_when_no_run(tmp_path):
+    """Regression for #554: a missing skeleton.yml must not raise.
+
+    Without a past ``rbx run`` there is no ``skeleton.yml`` on disk.
+    ``get_skeleton`` used to call ``read_text`` unconditionally and raise
+    ``FileNotFoundError``, crashing the run explorer. It now returns ``None``.
+    """
+    runs_dir = tmp_path / 'runs'
+    runs_dir.mkdir()
+    with mock.patch('rbx.box.package.get_problem_runs_dir', return_value=runs_dir):
+        assert has_run() is False
+        assert get_skeleton() is None
+
+
+def test_get_skeleton_loads_skeleton_when_present(tmp_path):
+    runs_dir = tmp_path / 'runs'
+    runs_dir.mkdir()
+    skeleton = _make_skeleton(runs_dir, tmp_path / 'tests', stems=['1-gen-000'])
+    (runs_dir / 'skeleton.yml').write_text(utils.model_to_yaml(skeleton))
+    with mock.patch('rbx.box.package.get_problem_runs_dir', return_value=runs_dir):
+        assert has_run() is True
+        assert get_skeleton() == skeleton
