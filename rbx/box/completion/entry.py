@@ -7,6 +7,23 @@ import os
 import sys
 
 COMPLETE_VAR = '_RBX_COMPLETE'
+_INSTRUCTIONS = ('complete', 'source')
+
+
+def _parse_instruction(value: str):
+    """Split the `_RBX_COMPLETE` value into (instruction, shell).
+
+    Accepts BOTH orderings used in the wild: Typer's `complete_bash` /
+    `source_zsh` (instruction first) and Click's `bash_complete` / `zsh_source`
+    (shell first). This lets completion work regardless of which shell source
+    script is installed -- including the one our own `source` instruction emits.
+    """
+    parts = value.split('_')
+    if parts and parts[0] in _INSTRUCTIONS:
+        return parts[0], '_'.join(parts[1:])
+    if parts and parts[-1] in _INSTRUCTIONS:
+        return parts[-1], '_'.join(parts[:-1])
+    return parts[0] if parts else '', ''
 
 
 def handle_completion() -> bool:
@@ -20,7 +37,7 @@ def handle_completion() -> bool:
     if not instruction:
         return False
     try:
-        kind, _, shell = instruction.partition('_')
+        kind, shell = _parse_instruction(instruction)
         from rbx.box.completion import engine
 
         if kind == 'complete':
