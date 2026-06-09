@@ -77,6 +77,68 @@ def _value_items(
     return FILE  # 'none'/unknown -> shell default file completion
 
 
+def _completion_class(shell: str):
+    """Return the Click ShellComplete class for `shell` (or None if unknown).
+
+    We deliberately use Click's *native* completion classes. The real `rbx` CLI
+    dispatches completion via `typer.completion.shell_complete`, which calls
+    `click.shell_completion.get_completion_class(shell)` -- and at that point
+    Typer's enhanced classes have NOT been registered (`completion_init` only
+    runs while building the `--install/--show-completion` params, which the
+    completion dispatch short-circuits before reaching). So the real CLI emits
+    Click-native output (bash: ``plain,ui``; zsh: ``plain\nui\n<help>``). To be
+    byte-compatible we must match that, i.e. NOT call `completion_init()`.
+
+    We resolve the native classes by name rather than via the global
+    `get_completion_class` registry: importing the heavy app elsewhere (e.g. in
+    tests) calls `completion_init()`, which overwrites that registry with
+    Typer's enhanced classes whose output format differs. Binding the native
+    class directly keeps us faithful to the real dispatch regardless of any such
+    global pollution.
+    """
+    import click.shell_completion
+
+    native = {
+        'bash': click.shell_completion.BashComplete,
+        'zsh': click.shell_completion.ZshComplete,
+        'fish': click.shell_completion.FishComplete,
+    }
+    cls = native.get(shell)
+    if cls is not None:
+        return cls
+    # Shells Click does not define natively (e.g. powershell/pwsh): fall back to
+    # whatever is registered.
+    return click.shell_completion.get_completion_class(shell)
+
+
+def complete_to_string(shell: str, spec) -> str:
+    """Render completions for `shell` by reusing Click's formatter, but
+    resolving against the static spec instead of the live app."""
+    import click
+
+    base = _completion_class(shell)
+    if base is None:
+        return 'file,\n'  # unknown shell: best-effort, let the shell default-complete
+
+    class _Fast(base):  # type: ignore[misc, valid-type]
+        def get_completions(self, args, incomplete):
+            return resolve(spec, args, incomplete)
+
+    comp = _Fast(click.Command('rbx'), {}, 'rbx', '_RBX_COMPLETE')
+    return comp.complete()
+
+
+def source_to_string(shell: str) -> str:
+    """Render the shell completion install script (the `source_<shell>` instruction)."""
+    import click
+
+    base = _completion_class(shell)
+    if base is None:
+        return ''
+    comp = base(click.Command('rbx'), {}, 'rbx', '_RBX_COMPLETE')
+    return comp.source()
+
+
 def resolve(
     spec: Dict[str, Any], args: List[str], incomplete: str
 ) -> List[CompletionItem]:
