@@ -305,7 +305,9 @@ class TestGetTitle:
             memoryLimit=256,
             titles={'en': 'English Title'},
         )
-        statement = Statement(name='statement', language='en', title='Custom Title')
+        statement = Statement(
+            file=pathlib.Path('s.rbx.tex'), language='en', title='Custom Title'
+        )
 
         assert (
             naming.get_problem_title('en', statement=statement, pkg=pkg)
@@ -319,7 +321,7 @@ class TestGetTitle:
             memoryLimit=256,
             titles={'en': 'English Title'},
         )
-        statement = Statement(name='statement', language='en')
+        statement = Statement(file=pathlib.Path('s.rbx.tex'), language='en')
 
         assert (
             naming.get_problem_title('en', statement=statement, pkg=pkg)
@@ -360,7 +362,9 @@ class TestGetTitle:
             memoryLimit=256,
             titles={'en': 'English Title'},
         )
-        statement = Statement(name='statement', language='en', title='Custom Title')
+        statement = Statement(
+            file=pathlib.Path('s.rbx.tex'), language='en', title='Custom Title'
+        )
 
         assert (
             naming.get_problem_title(lang=None, statement=statement, pkg=pkg)
@@ -375,7 +379,7 @@ class TestGetTitle:
             memoryLimit=256,
             titles={'en': 'English Title'},
         )
-        statement = Statement(name='statement', language='en')
+        statement = Statement(file=pathlib.Path('s.rbx.tex'), language='en')
 
         assert (
             naming.get_problem_title(lang=None, statement=statement, pkg=pkg)
@@ -425,7 +429,9 @@ class TestGetTitle:
             memoryLimit=256,
             titles={'en': 'English Title', 'pt': 'Título'},
         )
-        statement = Statement(name='statement', language='en', title='Custom Title')
+        statement = Statement(
+            file=pathlib.Path('s.rbx.tex'), language='en', title='Custom Title'
+        )
 
         assert (
             naming.get_problem_title(

@@ -1,5 +1,4 @@
 import pathlib
-import shutil
 import typing
 from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple
 
@@ -7,21 +6,13 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import environment, limits_info, naming, package
-from rbx.box.contest import statement_overriding
+from rbx.box import environment, package
 from rbx.box.contest.schema import ContestStatement
-from rbx.box.formatting import href
-from rbx.box.schema import Package, expand_any_vars
-from rbx.box.statements import statement_utils
+from rbx.box.schema import Package
 from rbx.box.statements.builders import (
     BUILDER_LIST,
-    PROBLEM_BUILDER_LIST,
     StatementBuilder,
-    StatementBuilderContext,
-    StatementBuilderProblem,
     StatementCodeLanguage,
-    TeX2PDFBuilder,
-    prepare_assets,
 )
 from rbx.box.statements.schema import (
     ConversionStep,
@@ -29,10 +20,18 @@ from rbx.box.statements.schema import (
     Statement,
     StatementType,
 )
-from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
-from rbx.box.testcase_sample_utils import build_samples, get_statement_samples
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+
+# statements v2: the standalone build pipeline (resolver -> overlay stager ->
+# builders) is rebuilt in #560-#566 (S4-S9). Until then these orchestration
+# entry points are intentionally stubbed; the pure conversion-step helpers below
+# are kept because the v2 builders reuse them. See
+# docs/plans/2026-06-09-statements-v2-design.md §7.
+_V2_PENDING = (
+    'statements v2: the standalone build pipeline is not wired yet; it lands in '
+    '#565 (S9). See docs/plans/2026-06-09-statements-v2-design.md.'
+)
 
 
 def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
@@ -171,28 +170,13 @@ def _get_overridden_configuration_list(
 def get_statement_dir(
     statement: Statement, builder_name: Optional[str] = None
 ) -> pathlib.Path:
-    dir = package.get_statements_build_path() / statement.name
-    if builder_name is not None:
-        dir = dir / builder_name
-    dir.mkdir(exist_ok=True, parents=True)
-    return dir
-
-
-def _clean_statement_dir(statement: Statement):
-    dir = get_statement_dir(statement)
-    shutil.rmtree(dir, ignore_errors=True)
+    raise NotImplementedError(_V2_PENDING)
 
 
 def get_produced_tikz_pdfs(
     statement: Statement,
 ) -> Iterable[Tuple[pathlib.Path, pathlib.Path]]:
-    dir = get_statement_dir(statement, builder_name=TeX2PDFBuilder.name())
-    pdfs = (dir / EXTERNALIZATION_DIR).glob('**/*.pdf')
-
-    for pdf_path in pdfs:
-        concat_path = dir / pdf_path
-        relative_path = pdf_path.relative_to(dir)
-        yield concat_path, relative_path
+    raise NotImplementedError(_V2_PENDING)
 
 
 def get_builders(
@@ -250,110 +234,17 @@ async def build_statement_bytes(
     custom_vars: Optional[Dict[str, Any]] = None,
     inherited_from: Optional['ContestStatement'] = None,
 ) -> Tuple[bytes, StatementType]:
-    overridden_params = overridden_params or {}
-    overridden_assets = overridden_assets or []
-
-    if not statement.path.is_file():
-        console.console.print(
-            f'[error]Statement file [item]{statement.path}[/item] does not exist.[/error]'
-        )
-        raise typer.Exit(1)
-    builders = get_builders(
-        str(statement.path),
-        statement.steps,
-        _get_overridden_configuration_list(statement.configure, overridden_params),
-        statement.type,
-        output_type,
-        builder_list=PROBLEM_BUILDER_LIST,
-    )
-    last_output = statement.type
-    last_content = statement.path.read_bytes()
-    _clean_statement_dir(statement)
-    for bdr, params in builders:
-        builder_dir = get_statement_dir(statement, bdr.name())
-
-        # Inject assets from the problem statement.
-        assets = statement_utils.get_relative_assets(statement.path, statement.assets)
-
-        context_params = params
-        injection_root = pathlib.Path()
-        if bdr.name() in overridden_params:
-            context_params = merge_conversion_steps(
-                params, overridden_params[bdr.name()]
-            )
-            injection_root = overridden_params_root
-
-        # Inject assets from the builder, using either the overridden root or the
-        # statement root. The overridden root is used when the builder configuration
-        # is overridden from the contest statement.
-        assets.extend(bdr.inject_assets(injection_root, context_params))
-
-        # Inject assets from the contest statement.
-        assets.extend(overridden_assets)
-
-        prepare_assets(assets, pathlib.Path(builder_dir))
-        samples = (
-            await get_statement_samples(
-                explanation_suffix=bdr.explanation_suffix(),
-            )
-            if use_samples
-            else []
-        )
-        output = bdr.build(
-            input=last_content,
-            context=StatementBuilderContext(
-                lang=statement.language,
-                languages=get_environment_languages_for_statement(),
-                params=context_params,
-                root=pathlib.Path(builder_dir),
-                contest=statement_overriding.get_statement_builder_contest_for_problem(
-                    language=statement.language,
-                    inherited_from=inherited_from,
-                    # Do not override contest-level vars.
-                ),
-            ),
-            item=StatementBuilderProblem(
-                limits=limits_info.get_limits_profile(
-                    profile=limits_info.get_active_profile()
-                ),
-                profiles=limits_info.get_available_limits_profiles(),
-                package=pkg,
-                statement=statement,
-                samples=samples,
-                short_name=short_name,
-                vars={
-                    **pkg.expanded_vars,
-                    **statement.expanded_vars,
-                    **(custom_vars or {}),
-                },
-            ),
-            verbose=False,
-        )
-        last_output = bdr.output_type()
-        last_content = output
-
-    return last_content, last_output
+    raise NotImplementedError(_V2_PENDING)
 
 
 def get_statement_build_path(
     statement: Statement, output_type: StatementType, profile: Optional[str] = None
 ) -> pathlib.Path:
-    path = (package.get_build_path() / statement.name).with_suffix(
-        output_type.get_file_suffix()
-    )
-    if (
-        profile is not None
-        and limits_info.get_saved_limits_profile(profile) is not None
-    ):
-        path = path.with_stem(f'{path.stem}-{profile}')
-    return path
+    raise NotImplementedError(_V2_PENDING)
 
 
 def needs_samples(statement: Statement) -> bool:
-    if statement.inheritFromContest:
-        overrides = statement_overriding.get_inheritance_overrides(statement)
-        return statement.samples and overrides.samples
-    return statement.samples
+    raise NotImplementedError(_V2_PENDING)
 
 
 async def build_statement(
@@ -364,33 +255,7 @@ async def build_statement(
     custom_vars: Optional[Dict[str, Any]] = None,
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
 ) -> pathlib.Path:
-    override_kwargs: Dict[str, Any] = {'custom_vars': custom_vars or {}}
-    if statement.inheritFromContest:
-        overrides = statement_overriding.get_inheritance_overrides(statement)
-        override_kwargs.update(overrides.to_kwargs(custom_vars or {}))
-    if extra_mergeable_params:
-        override_kwargs['overridden_params'] = merge_conversion_configuration_maps(
-            override_kwargs.get('overridden_params', {}),
-            {step.type: step for step in extra_mergeable_params},
-        )
-    last_content, last_output = await build_statement_bytes(
-        statement,
-        pkg,
-        output_type=output_type,
-        use_samples=use_samples,
-        short_name=naming.get_problem_shortname(),
-        **override_kwargs,
-    )
-    active_profile = limits_info.get_active_profile()
-    statement_path = get_statement_build_path(statement, output_type, active_profile)
-    statement_path.parent.mkdir(parents=True, exist_ok=True)
-    statement_path.write_bytes(last_content)
-    console.console.print(
-        f'Statement [item]{statement.name}[/item] built successfully for language '
-        f'[item]{statement.language}[/item] at '
-        f'{href(statement_path)}'
-    )
-    return statement_path
+    raise NotImplementedError(_V2_PENDING)
 
 
 async def execute_build_on_statements(
@@ -403,33 +268,7 @@ async def execute_build_on_statements(
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
     skip_building: bool = False,
 ) -> List[pathlib.Path]:
-    pkg = package.find_problem_package_or_die()
-    samples = samples and any(needs_samples(st) for st in statements)
-
-    # At most run the validators, only in samples.
-    if samples:
-        if not await build_samples(
-            verification, validate, check_outputs_only=skip_building
-        ):
-            # TODO: add contest-level statement error
-            console.console.print(
-                '[error]Failed to build statements with samples, aborting.[/error]'
-            )
-            raise typer.Exit(1)
-
-    res = []
-    for statement in statements:
-        res.append(
-            await build_statement(
-                statement,
-                pkg,
-                output_type=output,
-                use_samples=samples,
-                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
-                extra_mergeable_params=extra_mergeable_params,
-            )
-        )
-    return res
+    raise NotImplementedError(_V2_PENDING)
 
 
 async def execute_build(
@@ -442,37 +281,7 @@ async def execute_build(
     validate: bool = True,
     profile: Optional[str] = None,
 ) -> None:
-    if profile is not None:
-        limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
-
-    with limits_info.use_profile(profile, when=lambda: profile is not None):
-        pkg = package.find_problem_package_or_die()
-        candidate_languages = set(languages or [])
-        candidate_names = set(names or [])
-
-        def should_process(st: Statement) -> bool:
-            if candidate_languages and st.language not in candidate_languages:
-                return False
-            if candidate_names and st.name not in candidate_names:
-                return False
-            return True
-
-        valid_statements = [st for st in pkg.expanded_statements if should_process(st)]
-
-        if not valid_statements:
-            console.console.print(
-                '[error]No statement found according to the specified criteria.[/error]',
-            )
-            raise typer.Exit(1)
-
-        await execute_build_on_statements(
-            valid_statements,
-            verification,
-            output=output,
-            samples=samples,
-            vars=vars,
-            validate=validate,
-        )
+    raise NotImplementedError(_V2_PENDING)
 
 
 @app.command('build, b', help='Build statements.')

@@ -14,17 +14,14 @@ from pydantic import (
 from rbx.box.fields import (
     FNameField,
     NameField,
-    Primitive,
     RecVars,
     Vars,
     expand_vars,
 )
-from rbx.box.statements.expander import expand_statements
+from rbx.box.statements.expander import expand_contest_statements
 from rbx.box.statements.schema import (
-    ConversionStep,
-    Joiner,
-    StatementLanguage,
-    StatementType,
+    DOCUMENT_TYPES,
+    BaseStatement,
 )
 
 Alias = Annotated[str, NameField()]
@@ -34,49 +31,24 @@ def ShortNameField(**kwargs):
     return Field(pattern=r'^[A-Z]+[0-9]*$', min_length=1, max_length=4, **kwargs)
 
 
-def is_unique_by_name(statements: List['ContestStatement']) -> List['ContestStatement']:
-    names = {st.name for st in statements}
+def is_unique_by_name(statements: List[BaseStatement]) -> List[BaseStatement]:
+    names = {st.name for st in statements}  # type: ignore[attr-defined]
     if len(names) != len(statements):
         raise ValueError('Statement names must be unique.')
     return statements
 
 
-class ProblemStatementOverride(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+class ContestStatement(BaseStatement):
+    """A contest-level statement. Owns the templates used to render problems both
+    standalone and inside the contest join (design §3.2)."""
 
-    configure: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
-        default=[],
-        description="""
-Configure how certain conversion steps should happen when applied to the statement file.
-
-Different from the `steps` field, this does not force the steps to happen, but rather only
-configure them in case they are applied.
-""",
+    name: str = FNameField(
+        description='Name of this statement. Unique within the contest.'
     )
-
-    vars: Dict[str, Primitive] = Field(
-        default={},
-        description='Variables to be merged into the problem statement vars.',
-    )
-
-
-class ContestStatement(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-
-    name: str = FNameField(description='Name of this statement.')
 
     extends: Optional[str] = FNameField(
-        default=None, description='Name of the statement to inherit from.'
-    )
-
-    language: StatementLanguage = Field(
-        default='en', description='Language code for this statement (ISO 639-1).'
-    )
-
-    title: str = Field(
-        default='',
-        description='Title of the contest in this language.'
-        'Will override the `titles` field of the contest.',
+        default=None,
+        description='Name of the contest statement to inherit the build recipe from.',
     )
 
     location: Optional[str] = Field(
@@ -87,88 +59,74 @@ class ContestStatement(BaseModel):
         default=None, description='Date of the contest in this language.'
     )
 
-    path: pathlib.Path = Field(
-        default_factory=pathlib.Path,
-        description='Path to the input statement file.',
-    )
-
-    type: StatementType = Field(
-        default=StatementType.rbxTeX, description='Type of the input statement file.'
-    )
-
-    joiner: Optional[Joiner] = Field(
+    standaloneProblemTemplate: Optional[pathlib.Path] = Field(
         default=None,
-        description="""
-Joiner to be used to build the statement.
-
-This determines how problem statements will be joined into a single contest statement.""",
+        description='Template applied to build a problem-level statement as a '
+        'standalone document (`rbx st b`). rbx* types only.',
     )
 
-    steps: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
-        default=[],
-        description="""
-Describes a sequence of conversion steps that should be applied to the statement file
-of this contest.
-
-Usually, it is not necessary to specify these, as they can be inferred from the
-input statement type and the output statement type, but you can use this to force
-certain conversion steps to happen.
-""",
-    )
-
-    configure: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
-        default=[],
-        description="""
-Configure how certain conversion steps should happen when applied to the statement file of
-this contest.
-
-Different from the `steps` field, this does not force the steps to happen, but rather only
-configure them in case they are applied.
-""",
-    )
-
-    assets: List[str] = Field(
-        default=[],
-        description="""
-Assets relative to the contest directory that should be included while building
-the statement. Files will be included in the same folder as the statement file.
-Can be glob pattern as well, such as `imgs/*.png`.
-""",
-    )
-
-    override: Optional[ProblemStatementOverride] = Field(
+    contestProblemTemplate: Optional[pathlib.Path] = Field(
         default=None,
-        description='Override configuration for problem statements that are joined into this contest statement.',
+        description='Template applied to build the problem fragment that gets '
+        'imported into the contest statement (`rbx contest st b`). rbx* types only.',
     )
 
-    inheritOverride: Optional[ProblemStatementOverride] = Field(
-        default=None,
-        description='Override configuration for problem statements that inherit from this contest statement.',
-    )
-
-    match: Optional[str] = FNameField(
-        default=None,
-        description="""
-        Name of the problem-level statement to match this statement against.
-
-        If not specified, will match against the first statement of the same language.
-        """,
-    )
-
-    # Vars to be re-used in the statement.
-    #   - It will be available as \VAR{vars} variable in the contest-level box statement.
-    vars: RecVars = Field(
-        default={}, description='Variables to be re-used across the package.'
-    )
-
-    samples: bool = Field(
-        default=True,
-        description='Whether to build the statement with samples.',
-    )
+    @model_validator(mode='after')
+    def _rbx_only_fields(self):
+        # `variant`, `params` and the two templates are meaningful only for the
+        # joinable rbx* types (design §3.2/§3.3).
+        if not self.type.is_rbx():
+            offenders = []
+            if 'variant' in self.model_fields_set:
+                offenders.append('variant')
+            if self.params:
+                offenders.append('params')
+            if self.standaloneProblemTemplate is not None:
+                offenders.append('standaloneProblemTemplate')
+            if self.contestProblemTemplate is not None:
+                offenders.append('contestProblemTemplate')
+            if offenders:
+                raise ValueError(
+                    f'Fields {offenders} are only allowed for rbx* statement types '
+                    f"(rbxtex/rbxmd); statement '{self.name}' has type {self.type}."
+                )
+        return self
 
     @property
     def expanded_vars(self) -> Vars:
-        return expand_vars(self.vars)
+        # Backwards-compatible alias; a contest statement's own params.
+        return expand_vars(self.params)
+
+
+class Document(BaseStatement):
+    """A contest-level document (infosheet, etc.). Shares the statement model but
+    NEVER joins on problems, so it is restricted to non-rbx types (design §3.2)."""
+
+    name: str = FNameField(
+        description='Name of this document. Unique within the contest.'
+    )
+
+    extends: Optional[str] = FNameField(
+        default=None,
+        description='Name of the document to inherit the build recipe from.',
+    )
+
+    location: Optional[str] = Field(default=None, description='Location, per language.')
+    date: Optional[str] = Field(default=None, description='Date, per language.')
+
+    @model_validator(mode='after')
+    def _non_rbx_type(self):
+        # A child document inherits its `type` from the one it extends, so defer
+        # the check when the type was not declared explicitly here.
+        if 'type' not in self.model_fields_set and self.extends is not None:
+            return self
+        if self.type not in DOCUMENT_TYPES:
+            raise ValueError(
+                f"Documents never join on problems, so document '{self.name}' cannot "
+                f'use the rbx* type {self.type}. Use one of '
+                f'{[t.get_file_suffix() for t in DOCUMENT_TYPES]}.'
+            )
+        return self
 
 
 class ContestProblem(BaseModel):
@@ -293,7 +251,15 @@ class Contest(BaseModel):
         # Maintenance contract: keep this tuple in sync with Contest's non-dispatcher
         # fields. `use_variants` is the only field allowed alongside dispatcher mode.
         if self.use_variants:
-            for field in ('name', 'titles', 'problems', 'statements', 'vars'):
+            for field in (
+                'name',
+                'titles',
+                'problems',
+                'statements',
+                'tutorials',
+                'documents',
+                'vars',
+            ):
                 value = getattr(self, field)
                 if value:
                     raise ValueError(
@@ -334,6 +300,23 @@ class Contest(BaseModel):
         description='Configure statements in this contest, per language.',
     )
 
+    tutorials: Annotated[
+        List[ContestStatement],
+        AfterValidator(is_unique_by_name),
+    ] = Field(
+        default=[],
+        description='Configure tutorials (editorials) in this contest, per language.',
+    )
+
+    documents: Annotated[
+        List[Document],
+        AfterValidator(is_unique_by_name),
+    ] = Field(
+        default=[],
+        description='Configure standalone documents (infosheets, etc.) for this '
+        'contest. Documents never join on problems.',
+    )
+
     # Vars to be re-used in the statements.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
     vars: RecVars = Field(
@@ -342,7 +325,15 @@ class Contest(BaseModel):
 
     @property
     def expanded_statements(self) -> List[ContestStatement]:
-        return expand_statements(self.statements)
+        return expand_contest_statements(self.statements)
+
+    @property
+    def expanded_tutorials(self) -> List[ContestStatement]:
+        return expand_contest_statements(self.tutorials)
+
+    @property
+    def expanded_documents(self) -> List[Document]:
+        return expand_contest_statements(self.documents)
 
     @property
     def expanded_vars(self) -> Vars:
