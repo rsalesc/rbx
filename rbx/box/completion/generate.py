@@ -12,8 +12,8 @@ Spec schema (minimal -- exactly these keys):
       'help': Optional[str],
       'panel': Optional[str],     # rich_help_panel
       'is_group': bool,
-      'children': list[Command],  # only when is_group; sorted by name
-      'params': list[Param],
+      'children': list[Command],  # only when is_group; in registration order
+      'params': list[Param],      # includes Click's auto '--help' flag
     }
     Param = {
       'kind': 'option' | 'argument',
@@ -110,9 +110,12 @@ def _value_spec(param: click.Parameter) -> Dict[str, Any]:
 def _param_spec(param: click.Parameter) -> Dict[str, Any]:
     is_opt = isinstance(param, click.Option)
     is_flag = bool(getattr(param, 'is_flag', False))
+    # Boolean flags declared as ``--check/--no-check`` carry the negation form in
+    # ``secondary_opts``; Click completes BOTH, so include them in the names.
+    names = list(param.opts) + list(getattr(param, 'secondary_opts', []))
     return {
         'kind': 'option' if is_opt else 'argument',
-        'names': list(param.opts) if is_opt else [],
+        'names': names if is_opt else [],
         'takes_value': not is_flag,
         'help': getattr(param, 'help', None) if is_opt else None,
         'value': {'kind': 'none'} if is_flag else _value_spec(param),
@@ -134,25 +137,50 @@ def _panel(cmd: click.Command) -> Optional[str]:
     return panel if isinstance(panel, str) else None
 
 
+def _help_param(cmd: click.Command) -> Optional[Dict[str, Any]]:
+    """Spec entry for Click's auto-generated ``--help`` flag, if the command has
+    one. Click materializes this option only at parse/completion time (it is NOT
+    in ``cmd.params``), yet its native completion offers it, so the static spec
+    must carry it to match. We ask Click for the real option to stay faithful to
+    ``add_help_option`` / ``help_option_names``."""
+    ctx = click.Context(cmd)
+    help_option = cmd.get_help_option(ctx)
+    if help_option is None or getattr(help_option, 'hidden', False):
+        return None
+    return {
+        'kind': 'option',
+        'names': list(help_option.opts) + list(help_option.secondary_opts),
+        'takes_value': False,
+        'help': getattr(help_option, 'help', None),
+        'value': {'kind': 'none'},
+    }
+
+
 def build_spec(cmd: click.Command, name: Optional[str] = None) -> Dict[str, Any]:
+    params = [_param_spec(p) for p in cmd.params if not getattr(p, 'hidden', False)]
+    help_param = _help_param(cmd)
+    if help_param is not None:
+        params.append(help_param)
     node: Dict[str, Any] = {
         'name': name if name is not None else (cmd.name or ''),
         'help': cmd.get_short_help_str() or None,
         'panel': _panel(cmd),
         'is_group': isinstance(cmd, click.Group),
-        'params': [
-            _param_spec(p) for p in cmd.params if not getattr(p, 'hidden', False)
-        ],
+        'params': params,
     }
     if isinstance(cmd, click.Group):
         # Iterate the raw command dict so comma-joined names (e.g. 'package, pkg')
         # are captured verbatim; the engine splits them on ', ' for descent.
         # Skip hidden commands -- Click's completion hides them too, so including
         # them would make the engine offer commands the real CLI never completes.
-        children = [
+        #
+        # Preserve INSERTION order (do not sort): for ambiguous aliases (e.g. the
+        # token 't' registered by both 'time, t' and 'testcases, tc, t'), Click's
+        # AliasGroup resolves to the FIRST command in registration order, so the
+        # engine must descend in the same order to stay faithful.
+        node['children'] = [
             build_spec(sub, name=raw)
             for raw, sub in cmd.commands.items()
             if not getattr(sub, 'hidden', False)
         ]
-        node['children'] = sorted(children, key=lambda c: c['name'])
     return node

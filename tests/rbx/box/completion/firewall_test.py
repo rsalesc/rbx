@@ -1,8 +1,6 @@
 import subprocess
 import sys
 
-import pytest
-
 DENYLIST = [
     'textual',
     'mechanize',
@@ -43,10 +41,6 @@ def _modules_after_completion() -> set:
     return set(mods.splitlines())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='completion still imports the full CLI until the fast path lands',
-)
 def test_completion_path_imports_nothing_heavy():
     mods = _modules_after_completion()
     leaked = [m for m in DENYLIST if any(x == m or x.startswith(m + '.') for x in mods)]

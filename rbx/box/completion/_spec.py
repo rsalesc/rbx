@@ -4,6 +4,73 @@
 SPEC = {
     'children': [
         {
+            'help': 'Show an UI for exploring testcases of the...',
+            'is_group': False,
+            'name': 'ui',
+            'panel': None,
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'help': 'Run a command in the context of a problem...',
+            'is_group': False,
+            'name': 'on',
+            'panel': None,
+            'params': [
+                {
+                    'help': None,
+                    'kind': 'argument',
+                    'names': [],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Run a command for each problem in the...',
+            'is_group': False,
+            'name': 'each',
+            'panel': None,
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'help': 'Open problem.rbx.yml in your default editor.',
+            'is_group': False,
+            'name': 'edit, e',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
             'help': 'Build all tests for the problem.',
             'is_group': False,
             'name': 'build, b',
@@ -19,40 +86,39 @@ SPEC = {
                 {
                     'help': 'Whether to validate outputs for tests.',
                     'kind': 'option',
-                    'names': ['--validate'],
+                    'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
                 {
                     'help': 'Whether to build visualizations for inputs/outputs of tests.',
                     'kind': 'option',
-                    'names': ['--visualize'],
+                    'names': ['--visualize', '--no-visualize'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
             ],
         },
         {
-            'help': 'Clears cache and build directories.',
+            'help': 'Build and run solution(s).',
             'is_group': False,
-            'name': 'clear, clean',
-            'panel': 'Management',
-            'params': [
-                {
-                    'help': None,
-                    'kind': 'option',
-                    'names': ['--global', '-g'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                }
-            ],
-        },
-        {
-            'help': 'Compile an asset given its path.',
-            'is_group': False,
-            'name': 'compile',
+            'name': 'run, r',
             'panel': 'Testing',
             'params': [
+                {
+                    'help': 'Verification level to use when building package.',
+                    'kind': 'option',
+                    'names': ['--verification-level', '--verification', '-v'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
                 {
                     'help': None,
                     'kind': 'argument',
@@ -61,651 +127,175 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Whether to compile the asset with sanitizers enabled.',
+                    'help': 'Include only solutions whose expected outcomes intersect with '
+                    'this.',
+                    'kind': 'option',
+                    'names': ['--outcome', '-o'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Include only solutions whose tags intersect with this.',
+                    'kind': 'option',
+                    'names': ['--tag'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to not build outputs for tests and run checker.',
+                    'kind': 'option',
+                    'names': ['--check', '--no-check'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to not validate outputs for tests.',
+                    'kind': 'option',
+                    'names': ['--validate', '--no-validate'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to print a detailed view of the tests using tables.',
+                    'kind': 'option',
+                    'names': ['--detailed', '-d'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to compile the solutions with sanitizers enabled.',
                     'kind': 'option',
                     'names': ['--sanitized', '-s'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Whether to compile the asset with warnings enabled.',
+                    'help': 'Whether to pick solutions interactively.',
                     'kind': 'option',
-                    'names': ['--warnings', '-w'],
+                    'names': ['--choice', '--choose', '-c'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Whether to compile all assets.',
+                    'help': 'Capture the run report and copy it to the clipboard. Pass a '
+                    'format: --share png or --share text.',
                     'kind': 'option',
-                    'names': ['--all', '-a'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-            ],
-        },
-        {
-            'children': [
-                {
-                    'help': 'Open the setter config in an editor.',
-                    'is_group': False,
-                    'name': 'edit',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Pretty print the config file.',
-                    'is_group': False,
-                    'name': 'list, ls',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Show the path to the setter config.',
-                    'is_group': False,
-                    'name': 'path',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Reset the config file to the default one.',
-                    'is_group': False,
-                    'name': 'reset',
-                    'panel': None,
-                    'params': [],
-                },
-            ],
-            'help': 'Manage setter configuration (sub-command).',
-            'is_group': True,
-            'name': 'config, cfg',
-            'panel': 'Configuration',
-            'params': [],
-        },
-        {
-            'children': [
-                {
-                    'help': 'Add new problem to contest.',
-                    'is_group': False,
-                    'name': 'add, a',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Path (relative to the contest root) where to '
-                            'create the problem. The name part of the path '
-                            'will be used as the problem name (e.g. '
-                            '"problems/choco" creates a problem named "choco" '
-                            'in that directory).',
-                            'kind': 'option',
-                            'names': ['--path'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Short name of the problem. Will be used as the '
-                            'identifier in the contest.',
-                            'kind': 'option',
-                            'names': ['--short-name'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Preset to use when creating the problem. If not '
-                            'specified, the active preset will be used.',
-                            'kind': 'option',
-                            'names': ['--preset'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Scaffold a new contest variant file.',
-                    'is_group': False,
-                    'name': 'add_variant, av',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Preset to scaffold the variant from. Defaults to '
-                            'the active preset in the current directory, then '
-                            'the default preset.',
-                            'kind': 'option',
-                            'names': ['--preset', '-p'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Create a new contest package.',
-                    'is_group': False,
-                    'name': 'create, c',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Path (relative to the current directory) where '
-                            'to create the contest (e.g. "contests/ioi2024").',
-                            'kind': 'option',
-                            'names': ['--path'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Which preset to use to create this package. Can '
-                            'be a named of an already installed preset, or an '
-                            'URI, in which case the preset will be '
-                            'downloaded.\n'
-                            'If not provided, the default preset will be '
-                            'used, or the active preset if any.',
-                            'kind': 'option',
-                            'names': ['--preset', '-p'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to use a preset from the local version '
-                            'of rbx, instead of the global one (not '
-                            'recommended).',
-                            'kind': 'option',
-                            'names': ['--local'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Run a command for each problem in the...',
-                    'is_group': False,
-                    'name': 'each',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Open contest.rbx.yml in your default editor.',
-                    'is_group': False,
-                    'name': 'edit, e',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Initialize a new contest in the current...',
-                    'is_group': False,
-                    'name': 'init, i',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Which preset to use to create this package. Can '
-                            'be a named of an already installed preset, or an '
-                            'URI, in which case the preset will be '
-                            'downloaded.\n'
-                            'If not provided, the default preset will be '
-                            'used, or the active preset if any.',
-                            'kind': 'option',
-                            'names': ['--preset', '-p'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'help': 'List all contests in the current directory.',
-                    'is_group': False,
-                    'name': 'list, ls',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Run a command in the problem (or in a set...',
-                    'is_group': False,
-                    'name': 'on',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'children': [
-                        {
-                            'help': 'Build a contest package for BOCA.',
-                            'is_group': False,
-                            'name': 'boca',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': 'Verification level to use when '
-                                    'building package.',
-                                    'kind': 'option',
-                                    'names': [
-                                        '--verification-level',
-                                        '--verification',
-                                        '-v',
-                                    ],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                }
-                            ],
-                        },
-                        {
-                            'help': 'Build a contest package for PKG.',
-                            'is_group': False,
-                            'name': 'pkg',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': 'Verification level to use when '
-                                    'building package.',
-                                    'kind': 'option',
-                                    'names': [
-                                        '--verification-level',
-                                        '--verification',
-                                        '-v',
-                                    ],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                }
-                            ],
-                        },
-                        {
-                            'help': 'Build a contest package for Polygon.',
-                            'is_group': False,
-                            'name': 'polygon',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': 'Verification level to use when '
-                                    'building package.',
-                                    'kind': 'option',
-                                    'names': [
-                                        '--verification-level',
-                                        '--verification',
-                                        '-v',
-                                    ],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'If set, will use the given '
-                                    'language as the main language.',
-                                    'kind': 'option',
-                                    'names': ['--language', '-l'],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                            ],
-                        },
-                    ],
-                    'help': 'Build contest-level packages.',
-                    'is_group': True,
-                    'name': 'package, pkg',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Remove problem from contest.',
-                    'is_group': False,
-                    'name': 'remove, r',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'children': [
-                        {
-                            'help': 'Build statements.',
-                            'is_group': False,
-                            'name': 'build, b',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': 'Verification level to use when '
-                                    'building package.',
-                                    'kind': 'option',
-                                    'names': [
-                                        '--verification-level',
-                                        '--verification',
-                                        '-v',
-                                    ],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': None,
-                                    'kind': 'argument',
-                                    'names': [],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Languages to build statements for. '
-                                    'If not specified, build statements '
-                                    'for all available languages.',
-                                    'kind': 'option',
-                                    'names': ['--languages'],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Whether to validate outputs for '
-                                    'testcases or not.',
-                                    'kind': 'option',
-                                    'names': ['--validate'],
-                                    'takes_value': False,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Output type to be generated.',
-                                    'kind': 'option',
-                                    'names': ['--output'],
-                                    'takes_value': True,
-                                    'value': {
-                                        'choices': [
-                                            'rbxTeX',
-                                            'rbxMarkdown',
-                                            'TeX',
-                                            'JinjaTeX',
-                                            'PDF',
-                                        ],
-                                        'kind': 'choice',
-                                    },
-                                },
-                                {
-                                    'help': 'Whether to build the statement '
-                                    'with samples or not.',
-                                    'kind': 'option',
-                                    'names': ['--samples'],
-                                    'takes_value': False,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Variables to be used in the statements.',
-                                    'kind': 'option',
-                                    'names': ['--vars'],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Whether to install missing LaTeX '
-                                    'packages.',
-                                    'kind': 'option',
-                                    'names': ['--install-tex'],
-                                    'takes_value': False,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Timing profile to render '
-                                    'statements against. Problems '
-                                    'missing this profile are skipped '
-                                    'with a warning.',
-                                    'kind': 'option',
-                                    'names': ['-p', '--profile'],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                            ],
-                        }
-                    ],
-                    'help': 'Manage contest-level statements.',
-                    'is_group': True,
-                    'name': 'statements, st',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Print a summary of the contest.',
-                    'is_group': False,
-                    'name': 'summary, sum',
-                    'panel': None,
-                    'params': [],
-                },
-            ],
-            'help': 'Manage contests (sub-command).',
-            'is_group': True,
-            'name': 'contest',
-            'panel': 'Management',
-            'params': [
-                {
-                    'help': 'Select a contest variant by id.',
-                    'kind': 'option',
-                    'names': ['-C', '--contest'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                }
-            ],
-        },
-        {
-            'help': 'Create a new problem package.',
-            'is_group': False,
-            'name': 'create, c',
-            'panel': 'Management',
-            'params': [
-                {
-                    'help': 'Name of the problem to create, which will be used as the name '
-                    'of the new folder. A path relative to the current directory '
-                    'may be given (e.g. "problems/my-problem"), in which case the '
-                    'problem name is the basename ("my-problem").',
-                    'kind': 'option',
-                    'names': ['--name'],
+                    'names': ['--share'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Preset to use when creating the problem.',
+                    'help': 'Show this message and exit.',
                     'kind': 'option',
-                    'names': ['--preset'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to use a preset from the local version of rbx, instead '
-                    'of the global one (not recommended).',
-                    'kind': 'option',
-                    'names': ['--local'],
+                    'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
             ],
         },
         {
-            'children': [
-                {
-                    'help': 'Download a built-in checker from testlib...',
-                    'is_group': False,
-                    'name': 'checker',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'help': 'Download the preset-declared jngen library.',
-                    'is_group': False,
-                    'name': 'jngen',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Path (relative to the package root) where the '
-                            'file should be placed. Parent directories are '
-                            'created automatically. If omitted, the file is '
-                            'written to the current directory.',
-                            'kind': 'option',
-                            'names': ['--into'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'help': 'Download preset-declared libraries (omit...',
-                    'is_group': False,
-                    'name': 'lib, library',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Path (relative to the package root) where the '
-                            'file should be placed. Parent directories are '
-                            'created automatically. If omitted, the file is '
-                            'written to the current directory.',
-                            'kind': 'option',
-                            'names': ['--into'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Download a remote code.',
-                    'is_group': False,
-                    'name': 'remote, r',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to not build outputs for tests and run '
-                            'checker.',
-                            'kind': 'option',
-                            'names': ['-o', '--output'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Download the preset-declared testlib library.',
-                    'is_group': False,
-                    'name': 'testlib',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Path (relative to the package root) where the '
-                            'file should be placed. Parent directories are '
-                            'created automatically. If omitted, the file is '
-                            'written to the current directory.',
-                            'kind': 'option',
-                            'names': ['--into'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'help': 'Download the preset-declared tgen library.',
-                    'is_group': False,
-                    'name': 'tgen',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Path (relative to the package root) where the '
-                            'file should be placed. Parent directories are '
-                            'created automatically. If omitted, the file is '
-                            'written to the current directory.',
-                            'kind': 'option',
-                            'names': ['--into'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-            ],
-            'help': 'Download an asset from supported...',
-            'is_group': True,
-            'name': 'download, down',
-            'panel': 'Management',
-            'params': [],
-        },
-        {
-            'help': 'Run a command for each problem in the...',
+            'help': 'Print a summary of the problem.',
             'is_group': False,
-            'name': 'each',
-            'panel': None,
-            'params': [],
-        },
-        {
-            'help': 'Open problem.rbx.yml in your default editor.',
-            'is_group': False,
-            'name': 'edit, e',
-            'panel': 'Configuration',
-            'params': [],
-        },
-        {
-            'help': 'Set or show the current box environment.',
-            'is_group': False,
-            'name': 'environment, env',
-            'panel': 'Configuration',
+            'name': 'summary, sum',
+            'panel': 'Testing',
             'params': [
                 {
-                    'help': None,
-                    'kind': 'argument',
-                    'names': [],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to install this environment from the given file.',
+                    'help': 'Whether to print a detailed view of the tests using tables.',
                     'kind': 'option',
-                    'names': ['--install', '-i'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-            ],
-        },
-        {
-            'help': 'Format files of the current package.',
-            'is_group': False,
-            'name': 'fix',
-            'panel': 'Management',
-            'params': [
-                {
-                    'help': None,
-                    'kind': 'option',
-                    'names': ['--print-diff', '-p'],
+                    'names': ['--detailed', '-d'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
-                }
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
             ],
         },
         {
-            'help': 'Generate the rbx.h header file.',
+            'help': 'Estimate a time limit for the problem...',
             'is_group': False,
-            'name': 'header',
-            'panel': 'Configuration',
-            'params': [],
+            'name': 'time, t',
+            'panel': 'Testing',
+            'params': [
+                {
+                    'help': 'Whether to not build outputs for tests and run checker.',
+                    'kind': 'option',
+                    'names': ['--check', '--no-check'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to not validate outputs for tests.',
+                    'kind': 'option',
+                    'names': ['--validate', '--no-validate'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to print a detailed view of the tests using tables.',
+                    'kind': 'option',
+                    'names': ['--detailed', '-d'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Strategy to use for time limit estimation (estimate, inherit, '
+                    'estimate_custom, custom).',
+                    'kind': 'option',
+                    'names': ['--strategy', '-s'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to automatically estimate the time limit.',
+                    'kind': 'option',
+                    'names': ['--auto', '-a'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Number of runs to perform for each solution. Zero means the '
+                    'config default.',
+                    'kind': 'option',
+                    'names': ['--runs', '-r'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Profile to use for time limit estimation.',
+                    'kind': 'option',
+                    'names': ['--profile', '-p'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Integrate the given limits profile into the package.',
+                    'kind': 'option',
+                    'names': ['--integrate', '-i'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Capture the time report (run report + limits table) and copy '
+                    'it to the clipboard. Pass a format: --share png or --share '
+                    'text.',
+                    'kind': 'option',
+                    'names': ['--share'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
         },
         {
             'help': 'Build and run solution(s) by passing...',
@@ -745,14 +335,14 @@ SPEC = {
                 {
                     'help': 'Whether to not build outputs for tests and run checker.',
                     'kind': 'option',
-                    'names': ['--check'],
+                    'names': ['--check', '--no-check'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
                 {
                     'help': 'Whether to validate inputs.',
                     'kind': 'option',
-                    'names': ['--validate'],
+                    'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
@@ -815,511 +405,53 @@ SPEC = {
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
             ],
         },
         {
-            'help': 'List the languages available in this...',
+            'help': 'Create a new problem package.',
             'is_group': False,
-            'name': 'languages',
-            'panel': 'Configuration',
-            'params': [],
-        },
-        {
-            'help': 'Run a command in the context of a problem...',
-            'is_group': False,
-            'name': 'on',
-            'panel': None,
-            'params': [
-                {
-                    'help': None,
-                    'kind': 'argument',
-                    'names': [],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                }
-            ],
-        },
-        {
-            'children': [
-                {
-                    'help': 'Build a package for BOCA.',
-                    'is_group': False,
-                    'name': 'boca',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Verification level to use when building package.',
-                            'kind': 'option',
-                            'names': ['--verification-level', '--verification', '-v'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'If set, will upload the package to BOCA.',
-                            'kind': 'option',
-                            'names': ['--upload', '-u'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'If set, will use the given language as the main '
-                            'language. Leave unset if you want to use the '
-                            'language of the topmost statement.',
-                            'kind': 'option',
-                            'names': ['--language', '-l'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Build a package for MOJ.',
-                    'is_group': False,
-                    'name': 'moj',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Verification level to use when building package.',
-                            'kind': 'option',
-                            'names': ['--verification-level', '--verification', '-v'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Build a package for BOCA instead of MOJ.',
-                            'kind': 'option',
-                            'names': ['--for-boca'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Build a package for PKG.',
-                    'is_group': False,
-                    'name': 'pkg',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Verification level to use when building package.',
-                            'kind': 'option',
-                            'names': ['--verification-level', '--verification', '-v'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        }
-                    ],
-                },
-                {
-                    'help': 'Build a package for Polygon.',
-                    'is_group': False,
-                    'name': 'polygon',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Verification level to use when building package.',
-                            'kind': 'option',
-                            'names': ['--verification-level', '--verification', '-v'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'If set, will upload the package to Polygon.',
-                            'kind': 'option',
-                            'names': ['--upload', '-u'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'If set, will use the given language as the main '
-                            'language. Leave unset if your problem has no '
-                            'statements.',
-                            'kind': 'option',
-                            'names': ['--language', '-l'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'If set, will force the main statement to be '
-                            'uploaded in English.',
-                            'kind': 'option',
-                            'names': ['--upload-as-english'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Only upload the following types of assets to '
-                            'Polygon.',
-                            'kind': 'option',
-                            'names': ['--upload-only'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Skip uploading the following types of assets to '
-                            'Polygon.',
-                            'kind': 'option',
-                            'names': ['--upload-skip'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Upload built test inputs directly instead of '
-                            'relying on Polygon-side generators. Skips '
-                            'generator uploads and clears the test script. '
-                            'All test inputs must be < 1 MiB. Forces a full '
-                            'local build. Requires --upload.',
-                            'kind': 'option',
-                            'names': ['--upload-tests-raw'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'If set, will validate the statement for Polygon.',
-                            'kind': 'option',
-                            'names': ['--validate-statement'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-            ],
-            'help': 'Build problem packages (sub-command).',
-            'is_group': True,
-            'name': 'package, pkg',
-            'panel': 'Deploying',
-            'params': [],
-        },
-        {
-            'children': [
-                {
-                    'help': 'Create a new preset.',
-                    'is_group': False,
-                    'name': 'create',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'The name of the preset to create. This will also '
-                            'be the name of the folder. A relative path may '
-                            'be given, in which case the preset name is its '
-                            'basename.',
-                            'kind': 'option',
-                            'names': ['--name'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'The URI of the new preset.',
-                            'kind': 'option',
-                            'names': ['--uri'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'The URI of the preset to init the new preset '
-                            'from.',
-                            'kind': 'option',
-                            'names': ['--preset', '-p'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to fetch the init preset from the local '
-                            'version of rbx, instead of the remote one (not '
-                            'recommended).',
-                            'kind': 'option',
-                            'names': ['--local'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'List details about the active preset.',
-                    'is_group': False,
-                    'name': 'ls',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'children': [
-                        {
-                            'help': 'Add a preset to the user registry.',
-                            'is_group': False,
-                            'name': 'add',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': None,
-                                    'kind': 'argument',
-                                    'names': [],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                },
-                                {
-                                    'help': 'Resolve the preset from the local '
-                                    'rbx version.',
-                                    'kind': 'option',
-                                    'names': ['--local'],
-                                    'takes_value': False,
-                                    'value': {'kind': 'none'},
-                                },
-                            ],
-                        },
-                        {
-                            'help': 'List presets available in the registry.',
-                            'is_group': False,
-                            'name': 'ls',
-                            'panel': None,
-                            'params': [],
-                        },
-                        {
-                            'help': 'Remove a preset from the user registry.',
-                            'is_group': False,
-                            'name': 'rm',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': None,
-                                    'kind': 'argument',
-                                    'names': [],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                }
-                            ],
-                        },
-                    ],
-                    'help': 'Manage the preset registry.',
-                    'is_group': True,
-                    'name': 'registry',
-                    'panel': None,
-                    'params': [],
-                },
-                {
-                    'help': 'Sync current package assets with those...',
-                    'is_group': False,
-                    'name': 'sync',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Whether to fetch an up-to-date version of the '
-                            'installed preset from remote, if available.',
-                            'kind': 'option',
-                            'names': ['--update', '-u'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to forcefully overwrite the local assets '
-                            'with the preset assets, even if they have been '
-                            'modified.',
-                            'kind': 'option',
-                            'names': ['--force', '-f'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to update all symlinks in the preset to '
-                            'point to their right targets.',
-                            'kind': 'option',
-                            'names': ['--symlinks', '-s'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                },
-                {
-                    'help': 'Update preset of current package',
-                    'is_group': False,
-                    'name': 'update',
-                    'panel': None,
-                    'params': [],
-                },
-            ],
-            'help': 'Manage presets (sub-command).',
-            'is_group': True,
-            'name': 'presets',
-            'panel': 'Configuration',
-            'params': [],
-        },
-        {
-            'help': 'Build and run solution(s).',
-            'is_group': False,
-            'name': 'run, r',
-            'panel': 'Testing',
-            'params': [
-                {
-                    'help': 'Verification level to use when building package.',
-                    'kind': 'option',
-                    'names': ['--verification-level', '--verification', '-v'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': None,
-                    'kind': 'argument',
-                    'names': [],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Include only solutions whose expected outcomes intersect with '
-                    'this.',
-                    'kind': 'option',
-                    'names': ['--outcome', '-o'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Include only solutions whose tags intersect with this.',
-                    'kind': 'option',
-                    'names': ['--tag'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to not build outputs for tests and run checker.',
-                    'kind': 'option',
-                    'names': ['--check'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to not validate outputs for tests.',
-                    'kind': 'option',
-                    'names': ['--validate'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to print a detailed view of the tests using tables.',
-                    'kind': 'option',
-                    'names': ['--detailed', '-d'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to compile the solutions with sanitizers enabled.',
-                    'kind': 'option',
-                    'names': ['--sanitized', '-s'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to pick solutions interactively.',
-                    'kind': 'option',
-                    'names': ['--choice', '--choose', '-c'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Capture the run report and copy it to the clipboard. Pass a '
-                    'format: --share png or --share text.',
-                    'kind': 'option',
-                    'names': ['--share'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-            ],
-        },
-        {
-            'children': [
-                {
-                    'help': 'Build statements.',
-                    'is_group': False,
-                    'name': 'build, b',
-                    'panel': None,
-                    'params': [
-                        {
-                            'help': 'Verification level to use when building package.',
-                            'kind': 'option',
-                            'names': ['--verification-level', '--verification', '-v'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Languages to build statements for. If not '
-                            'specified, build statements for all available '
-                            'languages.',
-                            'kind': 'option',
-                            'names': ['--languages'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Output type to be generated.',
-                            'kind': 'option',
-                            'names': ['--output'],
-                            'takes_value': True,
-                            'value': {
-                                'choices': [
-                                    'rbxTeX',
-                                    'rbxMarkdown',
-                                    'TeX',
-                                    'JinjaTeX',
-                                    'PDF',
-                                ],
-                                'kind': 'choice',
-                            },
-                        },
-                        {
-                            'help': 'Whether to build the statement with samples or '
-                            'not.',
-                            'kind': 'option',
-                            'names': ['--samples'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Variables to be used in the statements.',
-                            'kind': 'option',
-                            'names': ['--vars'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to validate outputs for testcases or not.',
-                            'kind': 'option',
-                            'names': ['--validate'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Timing profile to render the statement against. '
-                            'Must exist in this problem.',
-                            'kind': 'option',
-                            'names': ['-p', '--profile'],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                    ],
-                }
-            ],
-            'help': 'Manage statements (sub-command).',
-            'is_group': True,
-            'name': 'statements, st',
-            'panel': 'Deploying',
-            'params': [],
-        },
-        {
-            'help': 'Show stats about current and related...',
-            'is_group': False,
-            'name': 'stats',
+            'name': 'create, c',
             'panel': 'Management',
             'params': [
                 {
-                    'help': 'Show stats about all reachable packages.',
+                    'help': 'Name of the problem to create, which will be used as the name '
+                    'of the new folder. A path relative to the current directory '
+                    'may be given (e.g. "problems/my-problem"), in which case the '
+                    'problem name is the basename ("my-problem").',
                     'kind': 'option',
-                    'names': ['--transitive', '-t'],
+                    'names': ['--name'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Preset to use when creating the problem.',
+                    'kind': 'option',
+                    'names': ['--preset'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to use a preset from the local version of rbx, instead '
+                    'of the global one (not recommended).',
+                    'kind': 'option',
+                    'names': ['--local'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
-                }
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
             ],
         },
         {
@@ -1431,7 +563,7 @@ SPEC = {
                 {
                     'help': 'Whether to validate inputs.',
                     'kind': 'option',
-                    'names': ['--validate'],
+                    'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
@@ -1442,18 +574,307 @@ SPEC = {
                     'takes_value': True,
                     'value': {'kind': 'none'},
                 },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
             ],
         },
         {
-            'help': 'Print a summary of the problem.',
+            'help': 'Compile an asset given its path.',
             'is_group': False,
-            'name': 'summary, sum',
+            'name': 'compile',
             'panel': 'Testing',
             'params': [
                 {
-                    'help': 'Whether to print a detailed view of the tests using tables.',
+                    'help': None,
+                    'kind': 'argument',
+                    'names': [],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to compile the asset with sanitizers enabled.',
                     'kind': 'option',
-                    'names': ['--detailed', '-d'],
+                    'names': ['--sanitized', '-s'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to compile the asset with warnings enabled.',
+                    'kind': 'option',
+                    'names': ['--warnings', '-w'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to compile all assets.',
+                    'kind': 'option',
+                    'names': ['--all', '-a'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Run the validator in a one-off fashion,...',
+            'is_group': False,
+            'name': 'validate',
+            'panel': 'Testing',
+            'params': [
+                {
+                    'help': 'Path to the testcase to validate.',
+                    'kind': 'option',
+                    'names': ['--path', '-p'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Run unit tests for the validator and checker.',
+            'is_group': False,
+            'name': 'unit',
+            'panel': 'Testing',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'help': 'Generate the rbx.h header file.',
+            'is_group': False,
+            'name': 'header',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'help': 'Set or show the current box environment.',
+            'is_group': False,
+            'name': 'environment, env',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': None,
+                    'kind': 'argument',
+                    'names': [],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to install this environment from the given file.',
+                    'kind': 'option',
+                    'names': ['--install', '-i'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'List the languages available in this...',
+            'is_group': False,
+            'name': 'languages',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'help': 'Show stats about current and related...',
+            'is_group': False,
+            'name': 'stats',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Show stats about all reachable packages.',
+                    'kind': 'option',
+                    'names': ['--transitive', '-t'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Format files of the current package.',
+            'is_group': False,
+            'name': 'fix',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': None,
+                    'kind': 'option',
+                    'names': ['--print-diff', '-p'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Run the wizard.',
+            'is_group': False,
+            'name': 'wizard',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'help': 'Clears cache and build directories.',
+            'is_group': False,
+            'name': 'clear, clean',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': None,
+                    'kind': 'option',
+                    'names': ['--global', '-g'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'children': [
+                {
+                    'help': 'Show the path to the setter config.',
+                    'is_group': False,
+                    'name': 'path',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Pretty print the config file.',
+                    'is_group': False,
+                    'name': 'list, ls',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Open the setter config in an editor.',
+                    'is_group': False,
+                    'name': 'edit',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Reset the config file to the default one.',
+                    'is_group': False,
+                    'name': 'reset',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+            ],
+            'help': 'Manage setter configuration (sub-command).',
+            'is_group': True,
+            'name': 'config, cfg',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 }
@@ -1461,6 +882,1222 @@ SPEC = {
         },
         {
             'children': [
+                {
+                    'help': 'Build statements.',
+                    'is_group': False,
+                    'name': 'build, b',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Languages to build statements for. If not '
+                            'specified, build statements for all available '
+                            'languages.',
+                            'kind': 'option',
+                            'names': ['--languages'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Output type to be generated.',
+                            'kind': 'option',
+                            'names': ['--output'],
+                            'takes_value': True,
+                            'value': {
+                                'choices': [
+                                    'rbxTeX',
+                                    'rbxMarkdown',
+                                    'TeX',
+                                    'JinjaTeX',
+                                    'PDF',
+                                ],
+                                'kind': 'choice',
+                            },
+                        },
+                        {
+                            'help': 'Whether to build the statement with samples or '
+                            'not.',
+                            'kind': 'option',
+                            'names': ['--samples', '--no-samples'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Variables to be used in the statements.',
+                            'kind': 'option',
+                            'names': ['--vars'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to validate outputs for testcases or not.',
+                            'kind': 'option',
+                            'names': ['--validate', '--no-validate'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Timing profile to render the statement against. '
+                            'Must exist in this problem.',
+                            'kind': 'option',
+                            'names': ['-p', '--profile'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                }
+            ],
+            'help': 'Manage statements (sub-command).',
+            'is_group': True,
+            'name': 'statements, st',
+            'panel': 'Deploying',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
+                    'help': 'Download preset-declared libraries (omit...',
+                    'is_group': False,
+                    'name': 'lib, library',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Path (relative to the package root) where the '
+                            'file should be placed. Parent directories are '
+                            'created automatically. If omitted, the file is '
+                            'written to the current directory.',
+                            'kind': 'option',
+                            'names': ['--into'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Download the preset-declared testlib library.',
+                    'is_group': False,
+                    'name': 'testlib',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path (relative to the package root) where the '
+                            'file should be placed. Parent directories are '
+                            'created automatically. If omitted, the file is '
+                            'written to the current directory.',
+                            'kind': 'option',
+                            'names': ['--into'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Download the preset-declared jngen library.',
+                    'is_group': False,
+                    'name': 'jngen',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path (relative to the package root) where the '
+                            'file should be placed. Parent directories are '
+                            'created automatically. If omitted, the file is '
+                            'written to the current directory.',
+                            'kind': 'option',
+                            'names': ['--into'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Download the preset-declared tgen library.',
+                    'is_group': False,
+                    'name': 'tgen',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path (relative to the package root) where the '
+                            'file should be placed. Parent directories are '
+                            'created automatically. If omitted, the file is '
+                            'written to the current directory.',
+                            'kind': 'option',
+                            'names': ['--into'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Download a built-in checker from testlib...',
+                    'is_group': False,
+                    'name': 'checker',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Download a remote code.',
+                    'is_group': False,
+                    'name': 'remote, r',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to not build outputs for tests and run '
+                            'checker.',
+                            'kind': 'option',
+                            'names': ['-o', '--output'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+            ],
+            'help': 'Download an asset from supported...',
+            'is_group': True,
+            'name': 'download, down',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
+                    'help': 'Create a new preset.',
+                    'is_group': False,
+                    'name': 'create',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'The name of the preset to create. This will also '
+                            'be the name of the folder. A relative path may '
+                            'be given, in which case the preset name is its '
+                            'basename.',
+                            'kind': 'option',
+                            'names': ['--name'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'The URI of the new preset.',
+                            'kind': 'option',
+                            'names': ['--uri'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'The URI of the preset to init the new preset '
+                            'from.',
+                            'kind': 'option',
+                            'names': ['--preset', '-p'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to fetch the init preset from the local '
+                            'version of rbx, instead of the remote one (not '
+                            'recommended).',
+                            'kind': 'option',
+                            'names': ['--local'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Update preset of current package',
+                    'is_group': False,
+                    'name': 'update',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Sync current package assets with those...',
+                    'is_group': False,
+                    'name': 'sync',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Whether to fetch an up-to-date version of the '
+                            'installed preset from remote, if available.',
+                            'kind': 'option',
+                            'names': ['--update', '-u'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to forcefully overwrite the local assets '
+                            'with the preset assets, even if they have been '
+                            'modified.',
+                            'kind': 'option',
+                            'names': ['--force', '-f'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to update all symlinks in the preset to '
+                            'point to their right targets.',
+                            'kind': 'option',
+                            'names': ['--symlinks', '-s'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'List details about the active preset.',
+                    'is_group': False,
+                    'name': 'ls',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'children': [
+                        {
+                            'help': 'List presets available in the registry.',
+                            'is_group': False,
+                            'name': 'ls',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                }
+                            ],
+                        },
+                        {
+                            'help': 'Add a preset to the user registry.',
+                            'is_group': False,
+                            'name': 'add',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': None,
+                                    'kind': 'argument',
+                                    'names': [],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Resolve the preset from the local '
+                                    'rbx version.',
+                                    'kind': 'option',
+                                    'names': ['--local'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
+                        {
+                            'help': 'Remove a preset from the user registry.',
+                            'is_group': False,
+                            'name': 'rm',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': None,
+                                    'kind': 'argument',
+                                    'names': [],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
+                    ],
+                    'help': 'Manage the preset registry.',
+                    'is_group': True,
+                    'name': 'registry',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+            ],
+            'help': 'Manage presets (sub-command).',
+            'is_group': True,
+            'name': 'presets',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
+                    'help': 'Build a package for Polygon.',
+                    'is_group': False,
+                    'name': 'polygon',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'If set, will upload the package to Polygon.',
+                            'kind': 'option',
+                            'names': ['--upload', '-u'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'If set, will use the given language as the main '
+                            'language. Leave unset if your problem has no '
+                            'statements.',
+                            'kind': 'option',
+                            'names': ['--language', '-l'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'If set, will force the main statement to be '
+                            'uploaded in English.',
+                            'kind': 'option',
+                            'names': ['--upload-as-english'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Only upload the following types of assets to '
+                            'Polygon.',
+                            'kind': 'option',
+                            'names': ['--upload-only'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Skip uploading the following types of assets to '
+                            'Polygon.',
+                            'kind': 'option',
+                            'names': ['--upload-skip'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Upload built test inputs directly instead of '
+                            'relying on Polygon-side generators. Skips '
+                            'generator uploads and clears the test script. '
+                            'All test inputs must be < 1 MiB. Forces a full '
+                            'local build. Requires --upload.',
+                            'kind': 'option',
+                            'names': ['--upload-tests-raw'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'If set, will validate the statement for Polygon.',
+                            'kind': 'option',
+                            'names': ['--validate-statement'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Build a package for BOCA.',
+                    'is_group': False,
+                    'name': 'boca',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'If set, will upload the package to BOCA.',
+                            'kind': 'option',
+                            'names': ['--upload', '-u'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'If set, will use the given language as the main '
+                            'language. Leave unset if you want to use the '
+                            'language of the topmost statement.',
+                            'kind': 'option',
+                            'names': ['--language', '-l'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Build a package for MOJ.',
+                    'is_group': False,
+                    'name': 'moj',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Build a package for BOCA instead of MOJ.',
+                            'kind': 'option',
+                            'names': ['--for-boca', '--no-for-boca'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Build a package for PKG.',
+                    'is_group': False,
+                    'name': 'pkg',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+            ],
+            'help': 'Build problem packages (sub-command).',
+            'is_group': True,
+            'name': 'package, pkg',
+            'panel': 'Deploying',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
+                    'help': 'Create a new contest package.',
+                    'is_group': False,
+                    'name': 'create, c',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path (relative to the current directory) where '
+                            'to create the contest (e.g. "contests/ioi2024").',
+                            'kind': 'option',
+                            'names': ['--path'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Which preset to use to create this package. Can '
+                            'be a named of an already installed preset, or an '
+                            'URI, in which case the preset will be '
+                            'downloaded.\n'
+                            'If not provided, the default preset will be '
+                            'used, or the active preset if any.',
+                            'kind': 'option',
+                            'names': ['--preset', '-p'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to use a preset from the local version '
+                            'of rbx, instead of the global one (not '
+                            'recommended).',
+                            'kind': 'option',
+                            'names': ['--local'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Initialize a new contest in the current...',
+                    'is_group': False,
+                    'name': 'init, i',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Which preset to use to create this package. Can '
+                            'be a named of an already installed preset, or an '
+                            'URI, in which case the preset will be '
+                            'downloaded.\n'
+                            'If not provided, the default preset will be '
+                            'used, or the active preset if any.',
+                            'kind': 'option',
+                            'names': ['--preset', '-p'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Scaffold a new contest variant file.',
+                    'is_group': False,
+                    'name': 'add_variant, av',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Preset to scaffold the variant from. Defaults to '
+                            'the active preset in the current directory, then '
+                            'the default preset.',
+                            'kind': 'option',
+                            'names': ['--preset', '-p'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Open contest.rbx.yml in your default editor.',
+                    'is_group': False,
+                    'name': 'edit, e',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Add new problem to contest.',
+                    'is_group': False,
+                    'name': 'add, a',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path (relative to the contest root) where to '
+                            'create the problem. The name part of the path '
+                            'will be used as the problem name (e.g. '
+                            '"problems/choco" creates a problem named "choco" '
+                            'in that directory).',
+                            'kind': 'option',
+                            'names': ['--path'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Short name of the problem. Will be used as the '
+                            'identifier in the contest.',
+                            'kind': 'option',
+                            'names': ['--short-name'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Preset to use when creating the problem. If not '
+                            'specified, the active preset will be used.',
+                            'kind': 'option',
+                            'names': ['--preset'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Remove problem from contest.',
+                    'is_group': False,
+                    'name': 'remove, r',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Run a command for each problem in the...',
+                    'is_group': False,
+                    'name': 'each',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Run a command in the problem (or in a set...',
+                    'is_group': False,
+                    'name': 'on',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Print a summary of the contest.',
+                    'is_group': False,
+                    'name': 'summary, sum',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'List all contests in the current directory.',
+                    'is_group': False,
+                    'name': 'list, ls',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'children': [
+                        {
+                            'help': 'Build statements.',
+                            'is_group': False,
+                            'name': 'build, b',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Verification level to use when '
+                                    'building package.',
+                                    'kind': 'option',
+                                    'names': [
+                                        '--verification-level',
+                                        '--verification',
+                                        '-v',
+                                    ],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': None,
+                                    'kind': 'argument',
+                                    'names': [],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Languages to build statements for. '
+                                    'If not specified, build statements '
+                                    'for all available languages.',
+                                    'kind': 'option',
+                                    'names': ['--languages'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Whether to validate outputs for '
+                                    'testcases or not.',
+                                    'kind': 'option',
+                                    'names': ['--validate', '--no-validate'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Output type to be generated.',
+                                    'kind': 'option',
+                                    'names': ['--output'],
+                                    'takes_value': True,
+                                    'value': {
+                                        'choices': [
+                                            'rbxTeX',
+                                            'rbxMarkdown',
+                                            'TeX',
+                                            'JinjaTeX',
+                                            'PDF',
+                                        ],
+                                        'kind': 'choice',
+                                    },
+                                },
+                                {
+                                    'help': 'Whether to build the statement '
+                                    'with samples or not.',
+                                    'kind': 'option',
+                                    'names': ['--samples', '--no-samples'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Variables to be used in the statements.',
+                                    'kind': 'option',
+                                    'names': ['--vars'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Whether to install missing LaTeX '
+                                    'packages.',
+                                    'kind': 'option',
+                                    'names': ['--install-tex', '--no-install-tex'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Timing profile to render '
+                                    'statements against. Problems '
+                                    'missing this profile are skipped '
+                                    'with a warning.',
+                                    'kind': 'option',
+                                    'names': ['-p', '--profile'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        }
+                    ],
+                    'help': 'Manage contest-level statements.',
+                    'is_group': True,
+                    'name': 'statements, st',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'children': [
+                        {
+                            'help': 'Build a contest package for Polygon.',
+                            'is_group': False,
+                            'name': 'polygon',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Verification level to use when '
+                                    'building package.',
+                                    'kind': 'option',
+                                    'names': [
+                                        '--verification-level',
+                                        '--verification',
+                                        '-v',
+                                    ],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'If set, will use the given '
+                                    'language as the main language.',
+                                    'kind': 'option',
+                                    'names': ['--language', '-l'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
+                        {
+                            'help': 'Build a contest package for BOCA.',
+                            'is_group': False,
+                            'name': 'boca',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Verification level to use when '
+                                    'building package.',
+                                    'kind': 'option',
+                                    'names': [
+                                        '--verification-level',
+                                        '--verification',
+                                        '-v',
+                                    ],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
+                        {
+                            'help': 'Build a contest package for PKG.',
+                            'is_group': False,
+                            'name': 'pkg',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Verification level to use when '
+                                    'building package.',
+                                    'kind': 'option',
+                                    'names': [
+                                        '--verification-level',
+                                        '--verification',
+                                        '-v',
+                                    ],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
+                    ],
+                    'help': 'Build contest-level packages.',
+                    'is_group': True,
+                    'name': 'package, pkg',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+            ],
+            'help': 'Manage contests (sub-command).',
+            'is_group': True,
+            'name': 'contest',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Select a contest variant by id.',
+                    'kind': 'option',
+                    'names': ['-C', '--contest'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'children': [
+                {
+                    'help': 'View a testcase in your default editor.',
+                    'is_group': False,
+                    'name': 'view, v',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to open only the input file in the '
+                            'editor.',
+                            'kind': 'option',
+                            'names': ['--input', '-i'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to open only the output file in the '
+                            'editor.',
+                            'kind': 'option',
+                            'names': ['--output', '-o'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
                 {
                     'help': 'Show information about testcases.',
                     'is_group': False,
@@ -1473,7 +2110,14 @@ SPEC = {
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
-                        }
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
                     ],
                 },
                 {
@@ -1504,34 +2148,10 @@ SPEC = {
                             'takes_value': True,
                             'value': {'kind': 'none'},
                         },
-                    ],
-                },
-                {
-                    'help': 'View a testcase in your default editor.',
-                    'is_group': False,
-                    'name': 'view, v',
-                    'panel': None,
-                    'params': [
                         {
-                            'help': None,
-                            'kind': 'argument',
-                            'names': [],
-                            'takes_value': True,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to open only the input file in the '
-                            'editor.',
+                            'help': 'Show this message and exit.',
                             'kind': 'option',
-                            'names': ['--input', '-i'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
-                            'help': 'Whether to open only the output file in the '
-                            'editor.',
-                            'kind': 'option',
-                            'names': ['--output', '-o'],
+                            'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         },
@@ -1542,124 +2162,18 @@ SPEC = {
             'is_group': True,
             'name': 'testcases, tc, t',
             'panel': 'Management',
-            'params': [],
-        },
-        {
-            'help': 'Estimate a time limit for the problem...',
-            'is_group': False,
-            'name': 'time, t',
-            'panel': 'Testing',
             'params': [
                 {
-                    'help': 'Whether to not build outputs for tests and run checker.',
+                    'help': 'Show this message and exit.',
                     'kind': 'option',
-                    'names': ['--check'],
+                    'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to not validate outputs for tests.',
-                    'kind': 'option',
-                    'names': ['--validate'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to print a detailed view of the tests using tables.',
-                    'kind': 'option',
-                    'names': ['--detailed', '-d'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Strategy to use for time limit estimation (estimate, inherit, '
-                    'estimate_custom, custom).',
-                    'kind': 'option',
-                    'names': ['--strategy', '-s'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Whether to automatically estimate the time limit.',
-                    'kind': 'option',
-                    'names': ['--auto', '-a'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Number of runs to perform for each solution. Zero means the '
-                    'config default.',
-                    'kind': 'option',
-                    'names': ['--runs', '-r'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Profile to use for time limit estimation.',
-                    'kind': 'option',
-                    'names': ['--profile', '-p'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Integrate the given limits profile into the package.',
-                    'kind': 'option',
-                    'names': ['--integrate', '-i'],
-                    'takes_value': False,
-                    'value': {'kind': 'none'},
-                },
-                {
-                    'help': 'Capture the time report (run report + limits table) and copy '
-                    'it to the clipboard. Pass a format: --share png or --share '
-                    'text.',
-                    'kind': 'option',
-                    'names': ['--share'],
-                    'takes_value': True,
-                    'value': {'kind': 'none'},
-                },
+                }
             ],
         },
         {
             'children': [
-                {
-                    'children': [
-                        {
-                            'help': 'Scrape runs from BOCA.',
-                            'is_group': False,
-                            'name': 'scrape',
-                            'panel': None,
-                            'params': [],
-                        },
-                        {
-                            'help': 'Submit solutions to BOCA.',
-                            'is_group': False,
-                            'name': 'submit',
-                            'panel': None,
-                            'params': [],
-                        },
-                        {
-                            'help': 'Open Textual UI to visualize BOCA...',
-                            'is_group': False,
-                            'name': 'view',
-                            'panel': None,
-                            'params': [
-                                {
-                                    'help': 'Contest identifier to load (stored '
-                                    'under app data).',
-                                    'kind': 'option',
-                                    'names': ['--contest-id', '-c'],
-                                    'takes_value': True,
-                                    'value': {'kind': 'none'},
-                                }
-                            ],
-                        },
-                    ],
-                    'help': None,
-                    'is_group': True,
-                    'name': 'boca',
-                    'panel': None,
-                    'params': [],
-                },
                 {
                     'help': None,
                     'is_group': False,
@@ -1701,6 +2215,83 @@ SPEC = {
                             'takes_value': True,
                             'value': {'kind': 'none'},
                         },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'children': [
+                        {
+                            'help': 'Scrape runs from BOCA.',
+                            'is_group': False,
+                            'name': 'scrape',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                }
+                            ],
+                        },
+                        {
+                            'help': 'Open Textual UI to visualize BOCA...',
+                            'is_group': False,
+                            'name': 'view',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Contest identifier to load (stored '
+                                    'under app data).',
+                                    'kind': 'option',
+                                    'names': ['--contest-id', '-c'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
+                        {
+                            'help': 'Submit solutions to BOCA.',
+                            'is_group': False,
+                            'name': 'submit',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                }
+                            ],
+                        },
+                    ],
+                    'help': None,
+                    'is_group': True,
+                    'name': 'boca',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
                     ],
                 },
             ],
@@ -1708,43 +2299,15 @@ SPEC = {
             'is_group': True,
             'name': 'tool, tooling',
             'panel': 'Misc',
-            'params': [],
-        },
-        {
-            'help': 'Show an UI for exploring testcases of the...',
-            'is_group': False,
-            'name': 'ui',
-            'panel': None,
-            'params': [],
-        },
-        {
-            'help': 'Run unit tests for the validator and checker.',
-            'is_group': False,
-            'name': 'unit',
-            'panel': 'Testing',
-            'params': [],
-        },
-        {
-            'help': 'Run the validator in a one-off fashion,...',
-            'is_group': False,
-            'name': 'validate',
-            'panel': 'Testing',
             'params': [
                 {
-                    'help': 'Path to the testcase to validate.',
+                    'help': 'Show this message and exit.',
                     'kind': 'option',
-                    'names': ['--path', '-p'],
-                    'takes_value': True,
+                    'names': ['--help'],
+                    'takes_value': False,
                     'value': {'kind': 'none'},
                 }
             ],
-        },
-        {
-            'help': 'Run the wizard.',
-            'is_group': False,
-            'name': 'wizard',
-            'panel': 'Management',
-            'params': [],
         },
     ],
     'help': None,
@@ -1809,6 +2372,13 @@ SPEC = {
             'help': None,
             'kind': 'option',
             'names': ['--version', '-v'],
+            'takes_value': False,
+            'value': {'kind': 'none'},
+        },
+        {
+            'help': 'Show this message and exit.',
+            'kind': 'option',
+            'names': ['--help'],
             'takes_value': False,
             'value': {'kind': 'none'},
         },
