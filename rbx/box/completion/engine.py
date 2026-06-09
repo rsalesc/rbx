@@ -19,6 +19,27 @@ def _match_names(raw_name: str) -> List[str]:
     return [s.strip() for s in raw_name.split(',')]
 
 
+def _command_name_items(node: Dict[str, Any], incomplete: str) -> List[CompletionItem]:
+    """Completions for a subcommand position.
+
+    Unlike Typer (which offers the raw ``'name, alias'`` string as a single
+    candidate), we offer each name/alias as its OWN candidate, prefix-filtered.
+    So a typed prefix completes to a single concrete name (`pa` -> `package`,
+    `pkg` -> `pkg`) instead of inserting the unusable comma-joined string, while
+    an ambiguous prefix still lists every matching name. Names are deduped in
+    registration order, so an alias shared by two commands (e.g. `t` ->
+    `time`/`testcases`) maps to the same command the descent resolves it to.
+    """
+    out: List[CompletionItem] = []
+    seen: Set[str] = set()
+    for child in node.get('children', []):
+        for name in _match_names(child['name']):
+            if name.startswith(incomplete) and name not in seen:
+                seen.add(name)
+                out.append(CompletionItem(name, help=child.get('help')))
+    return out
+
+
 def _find_child(node: Dict[str, Any], token: str) -> Optional[Dict[str, Any]]:
     for c in node.get('children', []):
         if token in _match_names(c['name']):
@@ -188,11 +209,7 @@ def resolve(
                 ]
             return out
         if node.get('is_group'):
-            return [
-                CompletionItem(c['name'], help=c.get('help'))
-                for c in node['children']
-                if c['name'].startswith(incomplete)
-            ]
+            return _command_name_items(node, incomplete)
         arguments = [p for p in node['params'] if p['kind'] == 'argument']
         if positional < len(arguments):
             return _value_items(arguments[positional]['value'], ctx, incomplete)

@@ -108,8 +108,14 @@ CI if the committed module is stale.
   `completion_init()` would change the output format and break byte-parity. (It
   also avoids global-registry pollution when tests import the heavy app.)
 - Command names are stored **raw**, comma-joined (`'package, pkg'`); the engine
-  splits on `', '` for descent and prefix-filters the raw string (so a prefix of
-  `pkg` matches nothing, matching Typer).
+  splits on `', '` both for descent AND for completion. Subcommand completion
+  (`_command_name_items`) offers each name/alias as its OWN prefix-filtered
+  candidate (deduped in registration order), so a typed prefix completes to a
+  single concrete name (`pa` → `package`, `pkg` → `pkg`) instead of inserting the
+  unusable `'package, pkg'` string. This is a deliberate divergence from Typer
+  (which offers the raw joined string); `differential_test.py` checks command
+  names against a spec-derived expectation and keeps strict Typer-parity only for
+  option names and values.
 - Children are kept in **registration order** (not sorted): for ambiguous aliases
   (`t` registered by both `time, t` and `testcases, tc, t`), Click's `AliasGroup`
   resolves to the first match, so the engine must descend in the same order.

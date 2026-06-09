@@ -11,24 +11,38 @@ def _values(items):
 
 
 # ---------------------------------------------------------------------------
-# A) Mini-differential against the real committed spec (values only).
+# A) Command-name completion offers each alias as its own candidate (so a typed
+#    prefix completes to a single concrete name, never the raw 'name, alias').
 # ---------------------------------------------------------------------------
 
 
-def test_root_command_names_include_known_groups():
+def test_root_command_names_split_aliases():
     values = _values(resolve(SPEC, [], ''))
-    assert 'build, b' in values
-    assert 'package, pkg' in values
+    # Canonical names AND their aliases appear as separate candidates...
+    assert 'build' in values
+    assert 'b' in values
+    assert 'package' in values
+    assert 'pkg' in values
+    # ...and the unusable comma-joined string is never emitted.
+    assert 'build, b' not in values
+    assert 'package, pkg' not in values
 
 
-def test_root_prefix_pac_matches_package_group():
-    assert _values(resolve(SPEC, [], 'pac')) == ['package, pkg']
+def test_root_prefix_pac_completes_to_single_name():
+    assert _values(resolve(SPEC, [], 'pac')) == ['package']
 
 
-def test_root_prefix_pkg_matches_nothing():
-    # The raw name 'package, pkg' does not START with 'pkg', so prefix filter
-    # on the raw string yields nothing -- matching Typer.
-    assert _values(resolve(SPEC, [], 'pkg')) == []
+def test_root_prefix_pkg_completes_via_alias():
+    # An improvement over Typer: Typer offered the raw 'package, pkg', so a 'pkg'
+    # prefix matched nothing; we complete the alias to a single concrete name.
+    assert _values(resolve(SPEC, [], 'pkg')) == ['pkg']
+
+
+def test_ambiguous_alias_dedups_to_first_in_registration_order():
+    # 't' is registered by both 'time, t' and 'testcases, tc, t'; descent resolves
+    # it to the first (time), so the completion list must contain 't' exactly once.
+    values = _values(resolve(SPEC, [], 't'))
+    assert values.count('t') == 1
 
 
 def test_package_group_children_via_canonical_and_alias():
@@ -45,26 +59,15 @@ def test_package_polygon_option_name_completion():
 
 
 # ---------------------------------------------------------------------------
-# B) Direct cross-check against the golden Typer oracle (non-empty cases).
+# B) Option/value completion still matches the golden Typer oracle exactly.
+#    (Command-name completion intentionally diverges -- see differential_test.)
 # ---------------------------------------------------------------------------
 
 
-def _assert_matches_golden(args, incomplete):
-    ours = sorted(i.value for i in resolve(SPEC, args, incomplete))
-    golden = sorted(i.value for i in typer_completions(args, incomplete))
-    assert ours == golden
-
-
-def test_golden_parity_root_prefix():
-    _assert_matches_golden([], 'pac')
-
-
-def test_golden_parity_package_children():
-    _assert_matches_golden(['package'], '')
-
-
 def test_golden_parity_package_polygon_option():
-    _assert_matches_golden(['package', 'polygon'], '--la')
+    ours = sorted(i.value for i in resolve(SPEC, ['package', 'polygon'], '--la'))
+    golden = sorted(i.value for i in typer_completions(['package', 'polygon'], '--la'))
+    assert ours == golden
 
 
 # ---------------------------------------------------------------------------

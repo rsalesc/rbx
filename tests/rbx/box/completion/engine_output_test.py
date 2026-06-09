@@ -66,7 +66,10 @@ def test_root_bash_output_shape_and_known_entries(monkeypatch):
     for line in lines:
         assert _BASH_LINE.match(line), f'unexpected bash line format: {line!r}'
     assert 'plain,ui' in lines
-    assert 'plain,package, pkg' in lines
+    # Aliased commands are emitted as separate candidates, never comma-joined.
+    assert 'plain,package' in lines
+    assert 'plain,pkg' in lines
+    assert 'plain,package, pkg' not in lines
 
 
 def test_unknown_shell_emits_file_directive():
@@ -79,14 +82,22 @@ def test_unknown_shell_emits_file_directive():
 # ---------------------------------------------------------------------------
 
 
-def test_bash_parity_root(monkeypatch):
+def test_root_command_names_are_split_not_comma_joined(monkeypatch):
+    # The root has aliased commands ('build, b', ...). We intentionally diverge
+    # from the real CLI here: each alias is its own candidate. Assert the real
+    # CLI's comma-joined names, once split, are all present in our output.
     monkeypatch.setenv('_RBX_COMPLETE', 'complete_bash')
     monkeypatch.setenv('_TYPER_COMPLETE_ARGS', 'rbx ')
     monkeypatch.setenv('COMP_WORDS', 'rbx ')
     monkeypatch.setenv('COMP_CWORD', '1')
     fast = _bash_lines(complete_to_string('bash', _spec.SPEC))
-    real = _real_bash('rbx ', 1)
-    assert fast == real
+    assert 'plain,build, b' not in fast  # never the raw joined form
+    expected_split = set()
+    for line in _real_bash('rbx ', 1):
+        value = line.split(',', 1)[1]
+        for name in value.split(','):
+            expected_split.add('plain,' + name.strip())
+    assert expected_split <= fast
 
 
 def test_bash_parity_package_subcommand(monkeypatch):
@@ -104,10 +115,13 @@ def test_bash_parity_package_subcommand(monkeypatch):
 @pytest.mark.parametrize(
     'comp_words,cword',
     [
-        ('rbx ', 1),
-        ('rbx package ', 2),
+        # Positions where the engine does NOT intentionally diverge from Typer:
+        # alias-free subcommands, option names, and option values.
+        ('rbx package ', 2),  # package's children have no aliases
         ('rbx package pol', 2),
-        ('rbx pkg ', 2),
+        ('rbx pkg ', 2),  # descend via the 'pkg' alias, then alias-free children
+        ('rbx package polygon --la', 3),  # option-name completion
+        ('rbx tool convert --language ', 4),  # value completion (dynamic completer)
     ],
 )
 def test_bash_parity_various_positions(monkeypatch, comp_words, cword):
