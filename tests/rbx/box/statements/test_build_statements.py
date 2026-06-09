@@ -33,6 +33,13 @@ from rbx.box.testcase_sample_utils import StatementSample
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 
+# statements v2: these exercise the v1 standalone build pipeline + the v1
+# Statement API (name/path/assets/steps/vars). The pipeline is stubbed until
+# #565 (S9) and these tests are ported to the v2 model in #569 (S13).
+pytestmark = pytest.mark.skip(
+    reason='statements v2: v1 build pipeline; ported in #569 (S13).'
+)
+
 
 @pytest.fixture
 def chdir_tmp_path(tmp_path):

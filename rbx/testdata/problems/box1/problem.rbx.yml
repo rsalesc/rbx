@@ -38,8 +38,7 @@ solutions:
   - path: "ole.cpp"
     outcome: "ole"
 statements:
-  - name: "statement-en"
+  - language: "en"
     title: "New Problem"
-    path: "dummy.pdf"
-    type: "PDF"
-    language: "en"
+    file: "dummy.pdf"
+    type: "pdf"

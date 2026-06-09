@@ -1,0 +1,16 @@
+% Problem A fragment (design §6.2). Subimported by contest.tex with
+% base = .problems/A/statements/.  This file is a FRAGMENT (no preamble).
+\section*{Problem A}
+
+% (1) \includegraphics with a BASE-RELATIVE name. The import package must
+%     rebase graphics search to this fragment's folder so "fig" = A's fig.png.
+\noindent Figure (problem-A asset, base-relative):\par
+\includegraphics[width=3cm]{fig}
+
+% (2) Sample I/O via \VerbatimInput (inside \example). VerbatimInput ignores the
+%     import base, so paths are ROOT-RELATIVE (design §6.4).
+\example{.problems/A/statements/.samples/000/in}{.problems/A/statements/.samples/000/out}
+
+% (3) Nested \subimport: rebase from this fragment's base INTO the sample folder.
+%     Proves contest -> problem -> sample nesting.
+\subimport{.samples/000/}{explanation}

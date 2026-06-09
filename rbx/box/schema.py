@@ -14,8 +14,8 @@ from rbx import utils
 from rbx.autoenum import AutoEnum, alias
 from rbx.box.fields import NameField, Primitive, RecVars, Vars, expand_vars
 from rbx.box.formatting import href
-from rbx.box.statements.expander import expand_statements
-from rbx.box.statements.schema import Statement
+from rbx.box.statements.expander import expand_problem_statements
+from rbx.box.statements.schema import Statement, is_unique_problem_statements
 from rbx.grading.steps import Outcome
 
 
@@ -57,13 +57,6 @@ def convert_to_primitive(value: Any) -> Primitive:
 def expand_any_vars(vars: Dict[str, Any]) -> Dict[str, Primitive]:
     converted_vars = {key: convert_to_primitive(value) for key, value in vars.items()}
     return expand_vars(typing.cast(RecVars, converted_vars))
-
-
-def is_unique_by_name(statements: List['Statement']) -> List['Statement']:
-    names = {st.name for st in statements}
-    if len(names) != len(statements):
-        raise ValueError('Statement names must be unique.')
-    return statements
 
 
 def is_unique_testcase_group_names(
@@ -974,8 +967,13 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 
     statements: Annotated[
         List[Statement],
-        AfterValidator(is_unique_by_name),
+        AfterValidator(is_unique_problem_statements),
     ] = Field(default=[], description='Statements for the problem.')
+
+    tutorials: Annotated[
+        List[Statement],
+        AfterValidator(is_unique_problem_statements),
+    ] = Field(default=[], description='Tutorials (editorials) for the problem.')
 
     # Vars to be re-used across the package.
     #   - It will be passed as --key=value arguments to the validator.
@@ -991,7 +989,11 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 
     @property
     def expanded_statements(self) -> List[Statement]:
-        return expand_statements(self.statements)
+        return expand_problem_statements(self.statements)
+
+    @property
+    def expanded_tutorials(self) -> List[Statement]:
+        return expand_problem_statements(self.tutorials)
 
     @property
     def expanded_vars(self) -> Vars:

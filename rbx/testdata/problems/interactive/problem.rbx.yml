@@ -72,23 +72,17 @@ solutions:
   - path: "sols/ac.kt"
     outcome: AC
 statements:
-  - name: "statement-en"
+  - language: "en"
     title: "Guess The Number"
-    path: "statement/statement.rbx.tex"
+    file: "statement/statement.rbx.tex"
     type: "rbxTeX"
-    language: "en"
-    assets:
-      - "statement/icpc.sty"
-    configure:
-      - type: "rbx-tex"
-        template: "statement/template.rbx.tex"
-    vars:
+    params:
       show_limits: true
-  - name: "statement-pdf-en"
+  - language: "en"
+    variant: "pdf"
     title: "New Problem"
-    path: "dummy.pdf"
-    type: "PDF"
-    language: "en"
+    file: "dummy.pdf"
+    type: "pdf"
 vars:
   N:
     min: 1

@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import pathlib
 from enum import Enum
-from typing import Annotated, List, Literal, Optional, Union
+from typing import Annotated, List, Literal, Optional, Tuple, Union
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import FNameField, RecVars, Vars, expand_vars
+from rbx.box.fields import RecVars, Vars, expand_vars
 from rbx.box.lang import is_valid_lang_code
+
+# Sentinel variant used when a statement does not declare one. The pair
+# (language, variant) is the join key between a problem statement and the
+# contest statement that imports it (design §3.1).
+DEFAULT_VARIANT = 'default'
 
 
 def validate_statement_language(lang: str):
@@ -23,6 +34,11 @@ StatementLanguage = Annotated[str, AfterValidator(validate_statement_language)]
 
 
 ### Conversion types
+#
+# NOTE (statements v2): conversion steps are no longer part of the user-facing
+# schema (`steps`/`configure` were removed from the statement models). These
+# types are retained only as the *internal* vocabulary the builders use; the
+# builder rework lands in #564 (S8). Do not reintroduce them as YAML fields.
 class ConversionType(str, Enum):
     rbxToTex = 'rbx-tex'
     """Conversion from rbxTeX to LaTeX."""
@@ -113,8 +129,14 @@ class StatementType(AutoEnum):
     TeX = alias('tex')  # type: ignore
     """Statement written in pure LaTeX format."""
 
+    Markdown = alias('md', 'markdown')  # type: ignore
+    """Statement written in pure Markdown format."""
+
     JinjaTeX = alias('jinja-tex')  # type: ignore
     """Statement written in LaTeX format with Jinja2 expressions."""
+
+    JinjaMarkdown = alias('jinja-md', 'jinja-markdown')  # type: ignore
+    """Statement written in Markdown format with Jinja2 expressions."""
 
     PDF = alias('pdf')  # type: ignore
     """Statement is a PDF."""
@@ -122,86 +144,88 @@ class StatementType(AutoEnum):
     def get_file_suffix(self) -> str:
         if self == StatementType.TeX:
             return '.tex'
+        if self == StatementType.Markdown:
+            return '.md'
         if self == StatementType.rbxTeX:
             return '.rbx.tex'
         if self == StatementType.rbxMarkdown:
             return '.rbx.md'
         if self == StatementType.JinjaTeX:
             return '.jinja.tex'
+        if self == StatementType.JinjaMarkdown:
+            return '.jinja.md'
         if self == StatementType.PDF:
             return '.pdf'
         raise ValueError(f'Unknown statement type: {self}')
 
+    def is_rbx(self) -> bool:
+        """rbx* types are the only ones that can JOIN problems into a contest."""
+        return self in (StatementType.rbxTeX, StatementType.rbxMarkdown)
 
-class Statement(BaseModel):
+
+# The types a `documents` entry may use: anything that never joins on problems.
+DOCUMENT_TYPES = (
+    StatementType.JinjaTeX,
+    StatementType.JinjaMarkdown,
+    StatementType.TeX,
+    StatementType.Markdown,
+    StatementType.PDF,
+)
+
+
+class StatementVariantRef(BaseModel):
+    """A problem-statement `extends` target referenced by (language, variant).
+
+    A bare string `extends: en` is shorthand for `{language: en}` with the
+    default variant (design §5).
+    """
+
     model_config = ConfigDict(extra='forbid')
 
-    name: str = FNameField(description='Name of this statement.')
+    language: StatementLanguage
+    variant: str = Field(default=DEFAULT_VARIANT)
 
-    inheritFromContest: bool = Field(
-        default=False,
-        description='Whether the configuration for this statement should be inherited from the contest. '
-        "When this field is set to true, the statement for this problem can only be built if it's within "
-        'a contest and there is a contest statement matching it.',
-    )
 
-    extends: Optional[str] = FNameField(
-        default=None,
-        description='Name of the statement that this statement extends.',
-    )
+# A problem statement extends either a language (string) or a (language, variant) pair.
+ProblemStatementExtends = Union[str, StatementVariantRef]
+
+
+class BaseStatement(BaseModel):
+    """Fields shared by problem statements, contest statements and documents
+    (design §2.5, "one shared schema")."""
+
+    model_config = ConfigDict(extra='forbid')
 
     language: StatementLanguage = Field(
         default='en', description='Language code of this statement (ISO 639-1).'
     )
 
-    title: Optional[str] = Field(
-        default=None,
-        description='Title of the problem, as it appears in the statement. '
-        'Can be left unset if the problem has no title or if title comes '
-        'from the `titles` field of the package.',
+    variant: str = Field(
+        default=DEFAULT_VARIANT,
+        description='Optional discriminator between formats of the same language. '
+        'Together with `language` it forms the join key with contest statements.',
     )
 
-    path: pathlib.Path = Field(
-        default_factory=pathlib.Path, description='Path to the input statement file.'
+    title: Optional[str] = Field(
+        default=None,
+        description='Title as it appears in the statement. Can be left unset to '
+        'fall back to the package/contest title.',
+    )
+
+    file: Optional[pathlib.Path] = Field(
+        default=None,
+        description='Path to the input statement file. Required unless this '
+        'statement `extends` another one to inherit its file.',
     )
 
     type: StatementType = Field(
         default=StatementType.rbxTeX, description='Type of the input statement file.'
     )
 
-    steps: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
-        default=[],
-        description="""
-Describes a sequence of conversion steps that should be applied to the statement file.
-
-Usually, it is not necessary to specify these, as they can be inferred from the
-input statement type and the output statement type, but you can use this to force
-certain conversion steps to happen.
-""",
-    )
-
-    configure: List[Annotated[ConversionStep, Field(discriminator='type')]] = Field(
-        default=[],
-        description="""
-Configure how certain conversion steps should happen when applied to the statement file.
-
-Different from the `steps` field, this does not force the steps to happen, but rather only
-configure them in case they are applied.
-""",
-    )
-
-    assets: List[str] = Field(
-        default=[],
-        description="""
-Assets relative to the package directory that should be included while building
-the statement. Files will be included in the same folder as the statement file, preserving
-their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
-""",
-    )
-
-    vars: RecVars = Field(
+    params: RecVars = Field(
         default={},
-        description='Variables to be used in the statement.',
+        description="This statement's own parameters, exposed to the template as "
+        'the `params` namespace (kept separate from problem/contest `vars`).',
     )
 
     samples: bool = Field(
@@ -210,5 +234,38 @@ their relativeness. Can be glob pattern as well, such as `imgs/*.png`.
     )
 
     @property
-    def expanded_vars(self) -> Vars:
-        return expand_vars(self.vars)
+    def expanded_params(self) -> Vars:
+        return expand_vars(self.params)
+
+
+class Statement(BaseStatement):
+    """A problem-level statement. Identified by (language, variant) — it has no
+    `name` (design §3.1)."""
+
+    extends: Optional[ProblemStatementExtends] = Field(
+        default=None,
+        description='Another problem statement to inherit the build recipe from, '
+        'referenced by language (`extends: en`) or by '
+        '`{language, variant}`.',
+    )
+
+    @model_validator(mode='after')
+    def _require_file_or_extends(self):
+        if self.file is None and self.extends is None:
+            raise ValueError(
+                'A statement must specify a `file` unless it `extends` another statement.'
+            )
+        return self
+
+    @property
+    def key(self) -> Tuple[str, str]:
+        return (self.language, self.variant)
+
+
+def is_unique_problem_statements(statements: List[Statement]) -> List[Statement]:
+    keys = [(st.language, st.variant) for st in statements]
+    if len(set(keys)) != len(keys):
+        raise ValueError(
+            'Statement (language, variant) pairs must be unique within a problem.'
+        )
+    return statements
