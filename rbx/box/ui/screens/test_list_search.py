@@ -16,6 +16,7 @@ merges its ``BINDINGS`` into the host screen.
 
 from typing import Any, Callable, List, Optional, Tuple
 
+from textual import events
 from textual.binding import Binding
 from textual.dom import DOMNode
 from textual.fuzzy import Matcher
@@ -177,6 +178,24 @@ class TestListSearchMixin(DOMNode):
         self._search_query = ''
 
     # --- Actions + events ----------------------------------------------------
+
+    def on_key(self, event: events.Key) -> None:
+        # Up/Down while typing jumps focus into the list and moves the selection,
+        # so you can type a query and arrow straight into the results. Arrow keys
+        # are not printable, so this never interferes with typing.
+        if event.key not in ('up', 'down'):
+            return
+        search = self.query_one('#test-search', Input)
+        if not search.has_focus:
+            return
+        event.stop()
+        event.prevent_default()
+        option_list = self.query_one('#test-list', OptionList)
+        option_list.focus()
+        if event.key == 'down':
+            option_list.action_cursor_down()
+        else:
+            option_list.action_cursor_up()
 
     def action_focus_search(self) -> None:
         search = self.query_one('#test-search', Input)

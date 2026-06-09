@@ -166,6 +166,63 @@ async def test_enter_commits_goto_restores_list_and_keeps_match(tmp_path, monkey
             assert option_list.has_focus
 
 
+async def test_arrow_down_from_search_focuses_list_and_moves(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    # All three match the query, so the list stays multi-row and the best match
+    # (the first row) is highlighted.
+    entries = [
+        _built_entry(tmp_path, 'g1', 0, content='match'),
+        _built_entry(tmp_path, 'g1', 1, content='match'),
+        _built_entry(tmp_path, 'g1', 2, content='match'),
+    ]
+    screen, patches = _mounted_test_explorer(tmp_path, monkeypatch, entries)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('slash')
+            search = screen.query_one('#test-search', Input)
+            search.value = 'match'
+            await pilot.pause()
+            assert search.has_focus
+
+            option_list = screen.query_one('#test-list', OptionList)
+            before = option_list.highlighted
+            await pilot.press('down')
+            await pilot.pause()
+
+            assert option_list.has_focus
+            assert search.has_focus is False
+            assert option_list.highlighted == before + 1
+
+
+async def test_arrow_up_from_search_focuses_list(tmp_path, monkeypatch):
+    from rbx.box.ui.main import rbxApp
+
+    entries = [
+        _built_entry(tmp_path, 'g1', 0, content='match'),
+        _built_entry(tmp_path, 'g1', 1, content='match'),
+    ]
+    screen, patches = _mounted_test_explorer(tmp_path, monkeypatch, entries)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+            await pilot.press('slash')
+            search = screen.query_one('#test-search', Input)
+            search.value = 'match'
+            await pilot.pause()
+
+            option_list = screen.query_one('#test-list', OptionList)
+            await pilot.press('up')
+            await pilot.pause()
+
+            # Focus transfers to the list (Up from the top match clamps in place).
+            assert option_list.has_focus
+            assert option_list.highlighted is not None
+
+
 async def test_escape_restores_list_without_jumping(tmp_path, monkeypatch):
     from rbx.box.ui.main import rbxApp
 
