@@ -7,6 +7,7 @@ from rbx import annotations, console
 from rbx.box import cd, environment, limits_info, package_utils
 from rbx.box.contest.build_contest_statements import (
     StatementBuildIssue,
+    build_document,
     build_statement,
 )
 from rbx.box.contest.contest_package import (
@@ -158,10 +159,27 @@ async def build(
                 )
             )
 
+    # Documents (infosheets etc.) are emitted without joining on problems.
+    built_documents = []
+    valid_documents = [doc for doc in contest.expanded_documents if should_process(doc)]
+    for document in valid_documents:
+        built_documents.append(
+            await build_document(
+                document,
+                contest,
+                output_type=output,
+                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
+            )
+        )
+
     console.console.rule(title='Built statements')
     for statement, built_path in zip(valid_statements, built_statements):
         console.console.print(
             f'[item]{statement.name} {statement.language}[/item] -> {href(built_path)}'
+        )
+    for document, built_path in zip(valid_documents, built_documents):
+        console.console.print(
+            f'[item]{document.name} {document.language}[/item] (document) -> {href(built_path)}'
         )
 
 

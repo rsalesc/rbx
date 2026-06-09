@@ -1,0 +1,13 @@
+\section*{Problem \VAR{problem.short_name}. \VAR{problem.title | escape}}
+
+\VAR{problem.blocks.legend}
+
+%- if problem.samples
+  \subsection*{Examples}
+  %- for sample in problem.samples
+    \example{\VAR{sample.input}}{\VAR{sample.output if sample.output is not none else ''}}
+    %- if sample.explanation_file is not none
+      \subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}
+    %- endif
+  %- endfor
+%- endif

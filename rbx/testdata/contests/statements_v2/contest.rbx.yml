@@ -1,0 +1,21 @@
+---
+name: 'sv2'
+titles:
+  en: 'Statements v2 Contest'
+vars:
+  year: 2026
+problems:
+  - short_name: 'A'
+  - short_name: 'B'
+statements:
+  - name: 'main-en'
+    language: 'en'
+    file: 'statements/contest.rbx.tex'
+    type: 'rbxTeX'
+    standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
+    contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'
+documents:
+  - name: 'info-en'
+    language: 'en'
+    file: 'statements/info.jinja.tex'
+    type: 'jinja-tex'
