@@ -28,6 +28,7 @@ async def polygon(
         '-l',
         help='If set, will use the given language as the main language. '
         'Leave unset if your problem has no statements.',
+        autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
     upload_as_english: bool = typer.Option(
         False,
@@ -113,6 +114,7 @@ async def boca(
         '-l',
         help='If set, will use the given language as the main language. '
         'Leave unset if you want to use the language of the topmost statement.',
+        autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
 ):
     from rbx.box.packaging.boca.packager import BocaPackager

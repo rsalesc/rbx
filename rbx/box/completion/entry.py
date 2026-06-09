@@ -24,8 +24,9 @@ def handle_completion() -> bool:
         from rbx.box.completion import engine
 
         if kind == 'complete':
-            from rbx.box.completion import _spec
+            from rbx.box.completion import _spec, registry
 
+            registry.register_all(_spec.COMPLETERS)
             sys.stdout.write(engine.complete_to_string(shell, _spec.SPEC))
         elif kind == 'source':
             sys.stdout.write(engine.source_to_string(shell))

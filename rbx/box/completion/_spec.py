@@ -1406,7 +1406,7 @@ SPEC = {
                             'kind': 'option',
                             'names': ['--language', '-l'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {'completer': 'language', 'kind': 'completer'},
                         },
                         {
                             'help': 'If set, will force the main statement to be '
@@ -1486,7 +1486,7 @@ SPEC = {
                             'kind': 'option',
                             'names': ['--language', '-l'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {'completer': 'language', 'kind': 'completer'},
                         },
                         {
                             'help': 'Show this message and exit.',
@@ -1956,7 +1956,10 @@ SPEC = {
                                     'kind': 'option',
                                     'names': ['--language', '-l'],
                                     'takes_value': True,
-                                    'value': {'kind': 'none'},
+                                    'value': {
+                                        'completer': 'language',
+                                        'kind': 'completer',
+                                    },
                                 },
                                 {
                                     'help': 'Show this message and exit.',
@@ -2213,7 +2216,7 @@ SPEC = {
                             'kind': 'option',
                             'names': ['--language', '-l'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {'completer': 'language', 'kind': 'completer'},
                         },
                         {
                             'help': 'Show this message and exit.',
@@ -2385,4 +2388,4 @@ SPEC = {
     ],
 }
 
-COMPLETERS = {}
+COMPLETERS = {'language': 'rbx.box.completion.completers:complete_language'}

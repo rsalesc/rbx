@@ -27,6 +27,14 @@ def register_completer_path(key: str, dotted: str) -> None:
     _REGISTRY[key] = dotted
 
 
+def register_all(mapping: Dict[str, str]) -> None:
+    """Register many key->dotted-path entries (used to seed the registry from the
+    committed spec's COMPLETERS table on the fast path). Does not clobber entries
+    already registered (e.g. live callables registered in-process)."""
+    for key, dotted in mapping.items():
+        _REGISTRY.setdefault(key, dotted)
+
+
 def register_completer(key: str) -> Callable[[Completer], Completer]:
     def deco(fn: Completer) -> Completer:
         qualname = fn.__qualname__
