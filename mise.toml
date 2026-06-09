@@ -61,3 +61,7 @@ run = "rm -rf dist/ && uv build"
 [tasks.publish]
 description = "Build and publish to PyPI"
 run = "mise run build && uv publish"
+
+[tasks.bench-completion]
+description = "Benchmark shell completion latency"
+run = "python scripts/bench_completion.py"
