@@ -524,28 +524,6 @@ SPEC = {
             ],
         },
         {
-            'help': None,
-            'is_group': False,
-            'name': 'diff',
-            'panel': None,
-            'params': [
-                {
-                    'help': None,
-                    'kind': 'argument',
-                    'names': [],
-                    'takes_value': True,
-                    'value': {'kind': 'path', 'path': 'file'},
-                },
-                {
-                    'help': None,
-                    'kind': 'argument',
-                    'names': [],
-                    'takes_value': True,
-                    'value': {'kind': 'path', 'path': 'file'},
-                },
-            ],
-        },
-        {
             'children': [
                 {
                     'help': 'Download a built-in checker from testlib...',
@@ -1056,13 +1034,6 @@ SPEC = {
                     ],
                 },
                 {
-                    'help': 'Generate a lock for this package, based on...',
-                    'is_group': False,
-                    'name': 'lock',
-                    'panel': None,
-                    'params': [],
-                },
-                {
                     'help': 'List details about the active preset.',
                     'is_group': False,
                     'name': 'ls',
@@ -1250,7 +1221,6 @@ SPEC = {
                 },
             ],
         },
-        {'help': None, 'is_group': False, 'name': 'serve', 'panel': None, 'params': []},
         {
             'children': [
                 {

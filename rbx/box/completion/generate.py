@@ -147,6 +147,12 @@ def build_spec(cmd: click.Command, name: Optional[str] = None) -> Dict[str, Any]
     if isinstance(cmd, click.Group):
         # Iterate the raw command dict so comma-joined names (e.g. 'package, pkg')
         # are captured verbatim; the engine splits them on ', ' for descent.
-        children = [build_spec(sub, name=raw) for raw, sub in cmd.commands.items()]
+        # Skip hidden commands -- Click's completion hides them too, so including
+        # them would make the engine offer commands the real CLI never completes.
+        children = [
+            build_spec(sub, name=raw)
+            for raw, sub in cmd.commands.items()
+            if not getattr(sub, 'hidden', False)
+        ]
         node['children'] = sorted(children, key=lambda c: c['name'])
     return node
