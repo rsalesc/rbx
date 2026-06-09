@@ -1,0 +1,49 @@
+"""Dynamic completers. MUST stay light — do not import the heavy app here."""
+
+import importlib.resources
+from pathlib import Path
+from typing import List
+
+from click.shell_completion import CompletionItem
+
+from rbx.box.completion import peek
+from rbx.box.completion.registry import CompletionContext, register_completer
+
+
+def _items(values) -> List[CompletionItem]:
+    return [CompletionItem(v) for v in sorted(values)]
+
+
+@register_completer('language')
+def complete_language(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    from rbx.config import get_config  # local import keeps module light
+
+    return _items(get_config().languages.keys())
+
+
+@register_completer('checker')
+def complete_checker(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    from rbx import config
+
+    names = set()
+    with importlib.resources.as_file(
+        importlib.resources.files('rbx') / 'resources' / 'checkers'
+    ) as d:
+        names.update(p.name for p in d.iterdir() if p.is_file())
+    app_checkers = config.get_app_path() / 'checkers'
+    if app_checkers.is_dir():
+        names.update(p.name for p in app_checkers.iterdir() if p.is_file())
+    names.discard('boilerplate.cpp')
+    return _items(names)
+
+
+@register_completer('problem')
+def complete_problem(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    root = ctx.package_root
+    if root is None:
+        return []
+    data = peek.peek(Path(root) / 'contest.rbx.yml')
+    shorts = {
+        p.get('short_name') for p in data.get('problems', []) if isinstance(p, dict)
+    }
+    return _items(s for s in shorts if s)

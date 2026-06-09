@@ -40,6 +40,7 @@ def clear_all_functools_cache():
         setter_config,
         visualizers,
     )
+    from rbx.box.completion import peek
     from rbx.box.contest import contest_package
     from rbx.grading import steps as grading_steps
 
@@ -54,6 +55,7 @@ def clear_all_functools_cache():
         setter_config,
         presets,
         grading_steps,
+        peek,
     ]
 
     for pkg in pkgs:
