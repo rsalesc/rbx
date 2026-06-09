@@ -1,6 +1,7 @@
 """Static-spec completion resolver. Light imports only -- never the heavy app."""
 
-from typing import Any, Dict, List, Optional, Tuple
+import os
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from click.shell_completion import CompletionItem
 
@@ -12,6 +13,9 @@ DIR = [CompletionItem('', type='dir')]
 
 
 def _match_names(raw_name: str) -> List[str]:
+    # AliasGroup splits the registered name on the regex `', ?'`; for the canonical
+    # `'a, b'` spelling, `split(',') + strip()` is equivalent (and also tolerates a
+    # bare `','` separator), so descent stays faithful to AliasGroup resolution.
     return [s.strip() for s in raw_name.split(',')]
 
 
@@ -32,13 +36,16 @@ def _find_option(node: Dict[str, Any], token: str) -> Optional[Dict[str, Any]]:
 
 def _walk(
     spec: Dict[str, Any], args: List[str]
-) -> Tuple[Dict[str, Any], list, dict, Optional[Dict[str, Any]], int]:
+) -> Tuple[Dict[str, Any], list, dict, Optional[Dict[str, Any]], int, Set[str]]:
     node = spec
     command: list = []
     option_values: dict = {}
     pending: Optional[Dict[str, Any]] = None
     positional = 0
     no_more_opts = False
+    # Canonical names of every option already supplied. Click does not re-offer a
+    # non-`multiple` option that was already given, so we mirror that filtering.
+    seen_options: Set[str] = set()
     for tok in args:
         if pending is not None:
             option_values[pending['names'][0]] = tok
@@ -49,11 +56,16 @@ def _walk(
             continue
         if not no_more_opts and tok.startswith('-') and tok != '-':
             opt = _find_option(node, tok)
-            if opt is not None and opt['takes_value']:
-                if '=' in tok:
-                    option_values[opt['names'][0]] = tok.split('=', 1)[1]
-                else:
-                    pending = opt
+            if opt is not None:
+                # Record by canonical id for BOTH flags and value-taking options:
+                # `_find_option` matches any alias (and strips `=val`), so keying on
+                # `names[0]` identifies the option regardless of which alias was typed.
+                seen_options.add(opt['names'][0])
+                if opt['takes_value']:
+                    if '=' in tok:
+                        option_values[opt['names'][0]] = tok.split('=', 1)[1]
+                    else:
+                        pending = opt
             continue
         child = _find_child(node, tok) if node.get('is_group') else None
         if child is not None:
@@ -61,7 +73,7 @@ def _walk(
             command.append(_match_names(child['name'])[0])
         else:
             positional += 1
-    return node, command, option_values, pending, positional
+    return node, command, option_values, pending, positional, seen_options
 
 
 def _value_items(
@@ -143,7 +155,9 @@ def resolve(
     spec: Dict[str, Any], args: List[str], incomplete: str
 ) -> List[CompletionItem]:
     try:
-        node, command, option_values, pending, positional = _walk(spec, list(args))
+        node, command, option_values, pending, positional, seen_options = _walk(
+            spec, list(args)
+        )
         ctx = CompletionContext(
             args=list(args),
             command=tuple(command),
@@ -152,10 +166,20 @@ def resolve(
         )
         if pending is not None:
             return _value_items(pending['value'], ctx, incomplete)
+        if incomplete.startswith('-') and '=' in incomplete:
+            # Click special-cases `--opt=partial`: complete the option's VALUE, not
+            # an option name. The value to complete is the part AFTER `=`.
+            name, _, partial = incomplete.partition('=')
+            opt = _find_option(node, name)
+            if opt is not None and opt['takes_value']:
+                return _value_items(opt['value'], ctx, partial)
         if incomplete.startswith('-'):
             out: List[CompletionItem] = []
             for p in node['params']:
                 if p['kind'] != 'option':
+                    continue
+                # Click does not re-offer a non-`multiple` option already supplied.
+                if not p.get('multiple', False) and p['names'][0] in seen_options:
                     continue
                 out += [
                     CompletionItem(n, help=p.get('help'))
@@ -174,4 +198,6 @@ def resolve(
             return _value_items(arguments[positional]['value'], ctx, incomplete)
         return FILE
     except Exception:
+        if os.environ.get('_RBX_COMPLETE_DEBUG'):
+            raise
         return FILE

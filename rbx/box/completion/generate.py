@@ -19,6 +19,7 @@ Spec schema (minimal -- exactly these keys):
       'kind': 'option' | 'argument',
       'names': list[str],         # option opts; [] for positional argument
       'takes_value': bool,        # False for boolean flags
+      'multiple': bool,           # True if the option may be repeated (Click re-offers it)
       'help': Optional[str],
       'value': dict,              # {'kind': 'choice'|'completer'|'path'|'none', ...}
     }
@@ -117,6 +118,7 @@ def _param_spec(param: click.Parameter) -> Dict[str, Any]:
         'kind': 'option' if is_opt else 'argument',
         'names': names if is_opt else [],
         'takes_value': not is_flag,
+        'multiple': bool(getattr(param, 'multiple', False)),
         'help': getattr(param, 'help', None) if is_opt else None,
         'value': {'kind': 'none'} if is_flag else _value_spec(param),
     }
@@ -151,6 +153,7 @@ def _help_param(cmd: click.Command) -> Optional[Dict[str, Any]]:
         'kind': 'option',
         'names': list(help_option.opts) + list(help_option.secondary_opts),
         'takes_value': False,
+        'multiple': False,
         'help': getattr(help_option, 'help', None),
         'value': {'kind': 'none'},
     }

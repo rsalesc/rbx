@@ -8,6 +8,15 @@ from click.shell_completion import CompletionItem
 
 @dataclass
 class CompletionContext:
+    """Context handed to a dynamic completer at `<tab>` time.
+
+    `option_values` is keyed by each option's FIRST registered name (its canonical
+    id), NOT by whichever alias the user actually typed. So an option declared as
+    `--language`/`--lang` is always recorded under `--language` even if `--lang`
+    was on the command line. Look up values by the first name, e.g.
+    `ctx.option_values.get('--language')`.
+    """
+
     args: List[str]
     command: Tuple[str, ...]
     option_values: Dict[str, str]

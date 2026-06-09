@@ -12,6 +12,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -27,6 +28,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'argument',
+                    'multiple': False,
                     'names': [],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -34,6 +36,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -49,6 +52,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -64,6 +68,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -79,6 +84,7 @@ SPEC = {
                 {
                     'help': 'Verification level to use when building package.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -86,6 +92,7 @@ SPEC = {
                 {
                     'help': 'Whether to validate outputs for tests.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -93,6 +100,7 @@ SPEC = {
                 {
                     'help': 'Whether to build visualizations for inputs/outputs of tests.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--visualize', '--no-visualize'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -100,6 +108,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -115,6 +124,7 @@ SPEC = {
                 {
                     'help': 'Verification level to use when building package.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -122,6 +132,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'argument',
+                    'multiple': False,
                     'names': [],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -130,6 +141,7 @@ SPEC = {
                     'help': 'Include only solutions whose expected outcomes intersect with '
                     'this.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--outcome', '-o'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -137,6 +149,7 @@ SPEC = {
                 {
                     'help': 'Include only solutions whose tags intersect with this.',
                     'kind': 'option',
+                    'multiple': True,
                     'names': ['--tag'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -144,6 +157,7 @@ SPEC = {
                 {
                     'help': 'Whether to not build outputs for tests and run checker.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--check', '--no-check'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -151,6 +165,7 @@ SPEC = {
                 {
                     'help': 'Whether to not validate outputs for tests.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -158,6 +173,7 @@ SPEC = {
                 {
                     'help': 'Whether to print a detailed view of the tests using tables.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--detailed', '-d'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -165,6 +181,7 @@ SPEC = {
                 {
                     'help': 'Whether to compile the solutions with sanitizers enabled.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--sanitized', '-s'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -172,6 +189,7 @@ SPEC = {
                 {
                     'help': 'Whether to pick solutions interactively.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--choice', '--choose', '-c'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -180,6 +198,7 @@ SPEC = {
                     'help': 'Capture the run report and copy it to the clipboard. Pass a '
                     'format: --share png or --share text.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--share'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -187,6 +206,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -202,6 +222,7 @@ SPEC = {
                 {
                     'help': 'Whether to print a detailed view of the tests using tables.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--detailed', '-d'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -209,6 +230,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -224,6 +246,7 @@ SPEC = {
                 {
                     'help': 'Whether to not build outputs for tests and run checker.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--check', '--no-check'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -231,6 +254,7 @@ SPEC = {
                 {
                     'help': 'Whether to not validate outputs for tests.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -238,6 +262,7 @@ SPEC = {
                 {
                     'help': 'Whether to print a detailed view of the tests using tables.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--detailed', '-d'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -246,6 +271,7 @@ SPEC = {
                     'help': 'Strategy to use for time limit estimation (estimate, inherit, '
                     'estimate_custom, custom).',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--strategy', '-s'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -253,6 +279,7 @@ SPEC = {
                 {
                     'help': 'Whether to automatically estimate the time limit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--auto', '-a'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -261,6 +288,7 @@ SPEC = {
                     'help': 'Number of runs to perform for each solution. Zero means the '
                     'config default.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--runs', '-r'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -268,6 +296,7 @@ SPEC = {
                 {
                     'help': 'Profile to use for time limit estimation.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--profile', '-p'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -275,6 +304,7 @@ SPEC = {
                 {
                     'help': 'Integrate the given limits profile into the package.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--integrate', '-i'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -284,6 +314,7 @@ SPEC = {
                     'it to the clipboard. Pass a format: --share png or --share '
                     'text.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--share'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -291,6 +322,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -306,6 +338,7 @@ SPEC = {
                 {
                     'help': 'Verification level to use when building package.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -313,6 +346,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'argument',
+                    'multiple': False,
                     'names': [],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -321,6 +355,7 @@ SPEC = {
                     'help': 'Include only solutions whose expected outcomes intersect with '
                     'this.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--outcome', '-o'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -328,6 +363,7 @@ SPEC = {
                 {
                     'help': 'Include only solutions whose tags intersect with this.',
                     'kind': 'option',
+                    'multiple': True,
                     'names': ['--tag'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -335,6 +371,7 @@ SPEC = {
                 {
                     'help': 'Whether to not build outputs for tests and run checker.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--check', '--no-check'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -342,6 +379,7 @@ SPEC = {
                 {
                     'help': 'Whether to validate inputs.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -349,6 +387,7 @@ SPEC = {
                 {
                     'help': 'Generator call to use to generate a single test for execution.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--generator', '-g'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -357,6 +396,7 @@ SPEC = {
                     'help': 'Testcase to run, in the format "[group]/[index]". If not '
                     'specified, will run interactively.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--testcase', '--test', '-tc', '-t'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -364,6 +404,7 @@ SPEC = {
                 {
                     'help': 'Whether to ask user for custom output.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--output', '-O'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -371,6 +412,7 @@ SPEC = {
                 {
                     'help': 'Whether to generate visualizations for inputs and outputs.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--visualize'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -378,6 +420,7 @@ SPEC = {
                 {
                     'help': 'Whether to print outputs to terminal.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--print', '-p'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -387,6 +430,7 @@ SPEC = {
                     '(colored distinctly). Requires -p. Default: stderr is shown in '
                     'a separate section.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--merge-stderr', '-e'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -394,6 +438,7 @@ SPEC = {
                 {
                     'help': 'Whether to compile the solutions with sanitizers enabled.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--sanitized', '-s'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -401,6 +446,7 @@ SPEC = {
                 {
                     'help': 'Whether to pick solutions interactively.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--choice', '--choose', '-c'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -408,6 +454,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -426,6 +473,7 @@ SPEC = {
                     'may be given (e.g. "problems/my-problem"), in which case the '
                     'problem name is the basename ("my-problem").',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--name'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -433,6 +481,7 @@ SPEC = {
                 {
                     'help': 'Preset to use when creating the problem.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--preset'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -441,6 +490,7 @@ SPEC = {
                     'help': 'Whether to use a preset from the local version of rbx, instead '
                     'of the global one (not recommended).',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--local'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -448,6 +498,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -463,6 +514,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'argument',
+                    'multiple': False,
                     'names': [],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -470,6 +522,7 @@ SPEC = {
                 {
                     'help': 'Generator call to use to generate a single test for execution.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--generator', '-g'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -477,6 +530,7 @@ SPEC = {
                 {
                     'help': 'Run a stress with this finder expression.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--finder', '-f'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -484,6 +538,7 @@ SPEC = {
                 {
                     'help': 'For how many seconds to run the stress test.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--timeout', '--time', '-t'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -491,6 +546,7 @@ SPEC = {
                 {
                     'help': 'How many breaking tests to look for.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--findings', '-n'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -498,6 +554,7 @@ SPEC = {
                 {
                     'help': 'Whether to print verbose output for checkers and finders.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['-v', '--verbose'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -505,6 +562,7 @@ SPEC = {
                 {
                     'help': 'Whether to compile the solutions with sanitizers enabled.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--sanitized', '-s'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -512,6 +570,7 @@ SPEC = {
                 {
                     'help': 'Optional description of the stress test.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--description', '-d'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -519,6 +578,7 @@ SPEC = {
                 {
                     'help': 'Whether to skip invalid testcases.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--skip-invalid', '--skip'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -526,6 +586,7 @@ SPEC = {
                 {
                     'help': 'Custom timelimit for the stress test.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--timelimit', '-T'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -533,6 +594,7 @@ SPEC = {
                 {
                     'help': 'Whether to use 2*TL as the timelimit for the stress test.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--double-tl'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -542,6 +604,7 @@ SPEC = {
                     'limit of the solution executions and focus on finding the '
                     'testcases that make them the slowest.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--slowest'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -549,6 +612,7 @@ SPEC = {
                 {
                     'help': 'Whether to fuzz generator calls from all testgroups.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--fuzz'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -556,6 +620,7 @@ SPEC = {
                 {
                     'help': 'Testgroups to fuzz generator calls from.',
                     'kind': 'option',
+                    'multiple': True,
                     'names': ['--fuzz-on'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -563,6 +628,7 @@ SPEC = {
                 {
                     'help': 'Whether to validate inputs.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -570,6 +636,7 @@ SPEC = {
                 {
                     'help': 'Reference solution to use for the stress test.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--reference', '-r'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -577,6 +644,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -592,6 +660,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'argument',
+                    'multiple': False,
                     'names': [],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -599,6 +668,7 @@ SPEC = {
                 {
                     'help': 'Whether to compile the asset with sanitizers enabled.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--sanitized', '-s'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -606,6 +676,7 @@ SPEC = {
                 {
                     'help': 'Whether to compile the asset with warnings enabled.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--warnings', '-w'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -613,6 +684,7 @@ SPEC = {
                 {
                     'help': 'Whether to compile all assets.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--all', '-a'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -620,6 +692,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -635,6 +708,7 @@ SPEC = {
                 {
                     'help': 'Path to the testcase to validate.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--path', '-p'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -642,6 +716,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -657,6 +732,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -672,6 +748,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -687,6 +764,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'argument',
+                    'multiple': False,
                     'names': [],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -694,6 +772,7 @@ SPEC = {
                 {
                     'help': 'Whether to install this environment from the given file.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--install', '-i'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -701,6 +780,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -716,6 +796,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -731,6 +812,7 @@ SPEC = {
                 {
                     'help': 'Show stats about all reachable packages.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--transitive', '-t'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -738,6 +820,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -753,6 +836,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--print-diff', '-p'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -760,6 +844,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -775,6 +860,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -790,6 +876,7 @@ SPEC = {
                 {
                     'help': None,
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--global', '-g'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -797,6 +884,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -814,6 +902,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -829,6 +918,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -844,6 +934,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -859,6 +950,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -874,6 +966,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -891,6 +984,7 @@ SPEC = {
                         {
                             'help': 'Verification level to use when building package.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -898,6 +992,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -907,6 +1002,7 @@ SPEC = {
                             'specified, build statements for all available '
                             'languages.',
                             'kind': 'option',
+                            'multiple': True,
                             'names': ['--languages'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -914,6 +1010,7 @@ SPEC = {
                         {
                             'help': 'Output type to be generated.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--output'],
                             'takes_value': True,
                             'value': {
@@ -931,6 +1028,7 @@ SPEC = {
                             'help': 'Whether to build the statement with samples or '
                             'not.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--samples', '--no-samples'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -938,6 +1036,7 @@ SPEC = {
                         {
                             'help': 'Variables to be used in the statements.',
                             'kind': 'option',
+                            'multiple': True,
                             'names': ['--vars'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -945,6 +1044,7 @@ SPEC = {
                         {
                             'help': 'Whether to validate outputs for testcases or not.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--validate', '--no-validate'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -953,6 +1053,7 @@ SPEC = {
                             'help': 'Timing profile to render the statement against. '
                             'Must exist in this problem.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['-p', '--profile'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -960,6 +1061,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -975,6 +1077,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -992,6 +1095,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1002,6 +1106,7 @@ SPEC = {
                             'created automatically. If omitted, the file is '
                             'written to the current directory.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--into'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1009,6 +1114,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1027,6 +1133,7 @@ SPEC = {
                             'created automatically. If omitted, the file is '
                             'written to the current directory.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--into'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1034,6 +1141,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1052,6 +1160,7 @@ SPEC = {
                             'created automatically. If omitted, the file is '
                             'written to the current directory.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--into'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1059,6 +1168,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1077,6 +1187,7 @@ SPEC = {
                             'created automatically. If omitted, the file is '
                             'written to the current directory.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--into'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1084,6 +1195,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1099,6 +1211,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1106,6 +1219,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1121,6 +1235,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1129,6 +1244,7 @@ SPEC = {
                             'help': 'Whether to not build outputs for tests and run '
                             'checker.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['-o', '--output'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1136,6 +1252,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1151,6 +1268,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -1171,6 +1289,7 @@ SPEC = {
                             'be given, in which case the preset name is its '
                             'basename.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--name'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1178,6 +1297,7 @@ SPEC = {
                         {
                             'help': 'The URI of the new preset.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--uri'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1186,6 +1306,7 @@ SPEC = {
                             'help': 'The URI of the preset to init the new preset '
                             'from.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--preset', '-p'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1195,6 +1316,7 @@ SPEC = {
                             'version of rbx, instead of the remote one (not '
                             'recommended).',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--local'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1202,6 +1324,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1217,6 +1340,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1233,6 +1357,7 @@ SPEC = {
                             'help': 'Whether to fetch an up-to-date version of the '
                             'installed preset from remote, if available.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--update', '-u'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1242,6 +1367,7 @@ SPEC = {
                             'with the preset assets, even if they have been '
                             'modified.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--force', '-f'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1250,6 +1376,7 @@ SPEC = {
                             'help': 'Whether to update all symlinks in the preset to '
                             'point to their right targets.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--symlinks', '-s'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1257,6 +1384,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1272,6 +1400,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1289,6 +1418,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1304,6 +1434,7 @@ SPEC = {
                                 {
                                     'help': None,
                                     'kind': 'argument',
+                                    'multiple': False,
                                     'names': [],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -1312,6 +1443,7 @@ SPEC = {
                                     'help': 'Resolve the preset from the local '
                                     'rbx version.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--local'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1319,6 +1451,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1334,6 +1467,7 @@ SPEC = {
                                 {
                                     'help': None,
                                     'kind': 'argument',
+                                    'multiple': False,
                                     'names': [],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -1341,6 +1475,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1356,6 +1491,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1371,6 +1507,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -1388,6 +1525,7 @@ SPEC = {
                         {
                             'help': 'Verification level to use when building package.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1395,6 +1533,7 @@ SPEC = {
                         {
                             'help': 'If set, will upload the package to Polygon.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--upload', '-u'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1404,6 +1543,7 @@ SPEC = {
                             'language. Leave unset if your problem has no '
                             'statements.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--language', '-l'],
                             'takes_value': True,
                             'value': {'completer': 'language', 'kind': 'completer'},
@@ -1412,6 +1552,7 @@ SPEC = {
                             'help': 'If set, will force the main statement to be '
                             'uploaded in English.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--upload-as-english'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1420,6 +1561,7 @@ SPEC = {
                             'help': 'Only upload the following types of assets to '
                             'Polygon.',
                             'kind': 'option',
+                            'multiple': True,
                             'names': ['--upload-only'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1428,6 +1570,7 @@ SPEC = {
                             'help': 'Skip uploading the following types of assets to '
                             'Polygon.',
                             'kind': 'option',
+                            'multiple': True,
                             'names': ['--upload-skip'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1439,6 +1582,7 @@ SPEC = {
                             'All test inputs must be < 1 MiB. Forces a full '
                             'local build. Requires --upload.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--upload-tests-raw'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1446,6 +1590,7 @@ SPEC = {
                         {
                             'help': 'If set, will validate the statement for Polygon.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--validate-statement'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1453,6 +1598,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1468,6 +1614,7 @@ SPEC = {
                         {
                             'help': 'Verification level to use when building package.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1475,6 +1622,7 @@ SPEC = {
                         {
                             'help': 'If set, will upload the package to BOCA.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--upload', '-u'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1484,6 +1632,7 @@ SPEC = {
                             'language. Leave unset if you want to use the '
                             'language of the topmost statement.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--language', '-l'],
                             'takes_value': True,
                             'value': {'completer': 'language', 'kind': 'completer'},
@@ -1491,6 +1640,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1506,6 +1656,7 @@ SPEC = {
                         {
                             'help': 'Verification level to use when building package.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1513,6 +1664,7 @@ SPEC = {
                         {
                             'help': 'Build a package for BOCA instead of MOJ.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--for-boca', '--no-for-boca'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1520,6 +1672,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1535,6 +1688,7 @@ SPEC = {
                         {
                             'help': 'Verification level to use when building package.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1542,6 +1696,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1557,6 +1712,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -1575,6 +1731,7 @@ SPEC = {
                             'help': 'Path (relative to the current directory) where '
                             'to create the contest (e.g. "contests/ioi2024").',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--path'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1587,6 +1744,7 @@ SPEC = {
                             'If not provided, the default preset will be '
                             'used, or the active preset if any.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--preset', '-p'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1596,6 +1754,7 @@ SPEC = {
                             'of rbx, instead of the global one (not '
                             'recommended).',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--local'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1603,6 +1762,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1623,6 +1783,7 @@ SPEC = {
                             'If not provided, the default preset will be '
                             'used, or the active preset if any.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--preset', '-p'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1630,6 +1791,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1645,6 +1807,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1654,6 +1817,7 @@ SPEC = {
                             'the active preset in the current directory, then '
                             'the default preset.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--preset', '-p'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1661,6 +1825,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1676,6 +1841,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1695,6 +1861,7 @@ SPEC = {
                             '"problems/choco" creates a problem named "choco" '
                             'in that directory).',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--path'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1703,6 +1870,7 @@ SPEC = {
                             'help': 'Short name of the problem. Will be used as the '
                             'identifier in the contest.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--short-name'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1711,6 +1879,7 @@ SPEC = {
                             'help': 'Preset to use when creating the problem. If not '
                             'specified, the active preset will be used.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--preset'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1718,6 +1887,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1733,6 +1903,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1740,6 +1911,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1755,6 +1927,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1770,6 +1943,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -1777,6 +1951,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1792,6 +1967,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1807,6 +1983,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1825,6 +2002,7 @@ SPEC = {
                                     'help': 'Verification level to use when '
                                     'building package.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': [
                                         '--verification-level',
                                         '--verification',
@@ -1836,6 +2014,7 @@ SPEC = {
                                 {
                                     'help': None,
                                     'kind': 'argument',
+                                    'multiple': False,
                                     'names': [],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -1845,6 +2024,7 @@ SPEC = {
                                     'If not specified, build statements '
                                     'for all available languages.',
                                     'kind': 'option',
+                                    'multiple': True,
                                     'names': ['--languages'],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -1853,6 +2033,7 @@ SPEC = {
                                     'help': 'Whether to validate outputs for '
                                     'testcases or not.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--validate', '--no-validate'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1860,6 +2041,7 @@ SPEC = {
                                 {
                                     'help': 'Output type to be generated.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--output'],
                                     'takes_value': True,
                                     'value': {
@@ -1877,6 +2059,7 @@ SPEC = {
                                     'help': 'Whether to build the statement '
                                     'with samples or not.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--samples', '--no-samples'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1884,6 +2067,7 @@ SPEC = {
                                 {
                                     'help': 'Variables to be used in the statements.',
                                     'kind': 'option',
+                                    'multiple': True,
                                     'names': ['--vars'],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -1892,6 +2076,7 @@ SPEC = {
                                     'help': 'Whether to install missing LaTeX '
                                     'packages.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--install-tex', '--no-install-tex'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1902,6 +2087,7 @@ SPEC = {
                                     'missing this profile are skipped '
                                     'with a warning.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['-p', '--profile'],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -1909,6 +2095,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1924,6 +2111,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -1942,6 +2130,7 @@ SPEC = {
                                     'help': 'Verification level to use when '
                                     'building package.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': [
                                         '--verification-level',
                                         '--verification',
@@ -1954,6 +2143,7 @@ SPEC = {
                                     'help': 'If set, will use the given '
                                     'language as the main language.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--language', '-l'],
                                     'takes_value': True,
                                     'value': {
@@ -1964,6 +2154,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -1980,6 +2171,7 @@ SPEC = {
                                     'help': 'Verification level to use when '
                                     'building package.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': [
                                         '--verification-level',
                                         '--verification',
@@ -1991,6 +2183,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -2007,6 +2200,7 @@ SPEC = {
                                     'help': 'Verification level to use when '
                                     'building package.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': [
                                         '--verification-level',
                                         '--verification',
@@ -2018,6 +2212,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -2033,6 +2228,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2048,6 +2244,7 @@ SPEC = {
                 {
                     'help': 'Select a contest variant by id.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['-C', '--contest'],
                     'takes_value': True,
                     'value': {'kind': 'none'},
@@ -2055,6 +2252,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -2072,6 +2270,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2080,6 +2279,7 @@ SPEC = {
                             'help': 'Whether to open only the input file in the '
                             'editor.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--input', '-i'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2088,6 +2288,7 @@ SPEC = {
                             'help': 'Whether to open only the output file in the '
                             'editor.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--output', '-o'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2095,6 +2296,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2110,6 +2312,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2117,6 +2320,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2132,6 +2336,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2139,6 +2344,7 @@ SPEC = {
                         {
                             'help': 'Destination manual test group.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--group', '-G'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2147,6 +2353,7 @@ SPEC = {
                             'help': 'Filename stem for the promoted test. Only '
                             'meaningful when promoting exactly one test.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--name', '-n'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2154,6 +2361,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2169,6 +2377,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -2186,6 +2395,7 @@ SPEC = {
                         {
                             'help': None,
                             'kind': 'argument',
+                            'multiple': False,
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'path', 'path': 'file'},
@@ -2193,6 +2403,7 @@ SPEC = {
                         {
                             'help': 'The format to convert from.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['-s', '--source'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2200,6 +2411,7 @@ SPEC = {
                         {
                             'help': 'The format to convert to.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['-d', '--dest'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2207,6 +2419,7 @@ SPEC = {
                         {
                             'help': 'The output path.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['-o', '--output'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
@@ -2214,6 +2427,7 @@ SPEC = {
                         {
                             'help': 'The main language of the problem.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--language', '-l'],
                             'takes_value': True,
                             'value': {'completer': 'language', 'kind': 'completer'},
@@ -2221,6 +2435,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2238,6 +2453,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -2254,6 +2470,7 @@ SPEC = {
                                     'help': 'Contest identifier to load (stored '
                                     'under app data).',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--contest-id', '-c'],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
@@ -2261,6 +2478,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -2276,6 +2494,7 @@ SPEC = {
                                 {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
+                                    'multiple': False,
                                     'names': ['--help'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
@@ -2291,6 +2510,7 @@ SPEC = {
                         {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
+                            'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
@@ -2306,6 +2526,7 @@ SPEC = {
                 {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
+                    'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
@@ -2321,6 +2542,7 @@ SPEC = {
         {
             'help': 'Which degree of caching to use.',
             'kind': 'option',
+            'multiple': False,
             'names': ['-c', '--cache'],
             'takes_value': True,
             'value': {
@@ -2338,6 +2560,7 @@ SPEC = {
             'you want to run the solutions with sanitizers enabled, use the "-s" flag in '
             'the corresponding run command.',
             'kind': 'option',
+            'multiple': False,
             'names': ['--sanitized', '-s'],
             'takes_value': False,
             'value': {'kind': 'none'},
@@ -2345,6 +2568,7 @@ SPEC = {
         {
             'help': 'Whether to save extra logs and outputs from interactive solutions.',
             'kind': 'option',
+            'multiple': False,
             'names': ['--capture', '-cp'],
             'takes_value': False,
             'value': {'kind': 'none'},
@@ -2352,6 +2576,7 @@ SPEC = {
         {
             'help': 'Which timing profile to use when running solutions.',
             'kind': 'option',
+            'multiple': False,
             'names': ['-p', '--profile'],
             'takes_value': True,
             'value': {'kind': 'none'},
@@ -2359,6 +2584,7 @@ SPEC = {
         {
             'help': 'Whether to profile (capture performance statistics) of the execution.',
             'kind': 'option',
+            'multiple': False,
             'names': ['--profiling'],
             'takes_value': False,
             'value': {'kind': 'none'},
@@ -2367,6 +2593,7 @@ SPEC = {
             'help': 'Select a contest variant by id (when contest.rbx.yml has use_variants: '
             'true). Defaults to the RBX_CONTEST env var.',
             'kind': 'option',
+            'multiple': False,
             'names': ['-C', '--contest'],
             'takes_value': True,
             'value': {'kind': 'none'},
@@ -2374,6 +2601,7 @@ SPEC = {
         {
             'help': None,
             'kind': 'option',
+            'multiple': False,
             'names': ['--version', '-v'],
             'takes_value': False,
             'value': {'kind': 'none'},
@@ -2381,6 +2609,7 @@ SPEC = {
         {
             'help': 'Show this message and exit.',
             'kind': 'option',
+            'multiple': False,
             'names': ['--help'],
             'takes_value': False,
             'value': {'kind': 'none'},
