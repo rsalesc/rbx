@@ -51,8 +51,9 @@ CI if the committed module is stale.
   Click's **native** ShellComplete classes by name.
 - `registry.py` — `register_completer` / `register_completer_path` / `register_all`
   / `load_completer` / `key_for_function`, and the `CompletionContext` dataclass.
-- `completers.py` — the dynamic completers (`language`, `checker`, `problem`).
-  Must stay light: heavy imports are local to each function.
+- `completers.py` — the dynamic completers (`language`, `checker`, `problem`,
+  `solutions`, `outcome`, `verification_level`, `profile`, `testgroup`,
+  `contest_variant`). Must stay light: heavy imports are local to each function.
 - `peek.py` — `peek(path)`: cheap, tolerant, mtime-cached `yaml.safe_load` of
   package YAML (no pydantic, no full load).
 - `context.py` — `find_package_root()`: cheap upward walk for
@@ -123,5 +124,26 @@ CI if the committed module is stale.
   handled in `generate.py`: hidden commands are skipped; Click's auto `--help`
   (not in `cmd.params`) is added explicitly; boolean `secondary_opts` (`--no-*`)
   are included.
-- Today only `--language` is wired to a dynamic completer (the demonstrated
-  hook). `checker`/`problem` are registered and ready; wire more via the recipe.
+- Wired completers (issue #575): `language` (`--language`), `solutions`
+  (`run`/`irun` positional, `stress --finder`/`--reference`), `outcome`
+  (`run`/`irun --outcome`), `testgroup` (`irun --testcase`, `stress --fuzz-on`),
+  `verification_level` (the shared `VerificationParam`, i.e. every `-v`),
+  `profile` (global `--profile`, `time --profile`, statement builds),
+  `contest_variant` (`-C/--contest`), `problem` (`on` positional). `checker` is
+  registered but not currently attached to a live CLI param, so it is absent from
+  the committed `COMPLETERS` until something wires it. Wire more via the recipe.
+- **File-union** lets a value position offer dynamic candidates AND hand off to
+  the shell's default file completion. Tag the callback with
+  `annotations._adapt(key, file=True)`; the generator records a `'file'` key on
+  the value spec, the engine appends a `FILE` directive after the dynamic items
+  (`_value_items`), and a **variadic** last argument (`nargs == -1`, recorded as
+  `'variadic': True`) keeps re-offering its completer past its position
+  (`resolve`). `differential_test.py` can't compare these against Typer (its
+  callback contract can't emit a file directive), so `_cursor_value` **exempts**
+  file-union positions: it asserts the dynamic part matches Typer exactly AND that
+  exactly one shell directive is appended.
+- `outcome` and `verification_level` are **hardcoded tables** in `completers.py`
+  (`_OUTCOME_TABLE`, `_VERIFICATION_TABLE`) to keep the completer light (no enum
+  import). `enum_consistency_test.py` (allowed to import the heavy app) pins each
+  table to its source enum (`ExpectedOutcome` / `VerificationLevel`) — exactly one
+  token per member — so a new enum member fails CI until the table is updated.
