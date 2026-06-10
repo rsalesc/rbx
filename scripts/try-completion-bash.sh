@@ -19,14 +19,17 @@ else
 fi
 _rbx_try_bin="$_rbx_try_dir/.venv/bin/rbx"
 # `source` is a special builtin, so `RBX_BIN=... source ...` (or a previous
-# source) leaves RBX_BIN set in the shell -- a value left over from sourcing a
-# DIFFERENT worktree's script would shadow this one. Default to this worktree's
-# binary, and if an inherited RBX_BIN points at another worktree, treat it as
-# stale and recompute. A genuine override outside any worktree is still honored.
+# source of THIS or another checkout's script) leaves RBX_BIN set in the shell --
+# an inherited value then silently shadows the binary you mean to test (e.g. the
+# main checkout's `.venv/bin/rbx` shadowing this worktree's build). Every
+# try-completion script sets RBX_BIN to some `<checkout>/.venv/bin/rbx`, so when
+# THIS checkout has its own built binary, treat any inherited value of that shape
+# that isn't ours as stale and prefer ours. A genuine custom override -- a path
+# that is NOT a `.venv/bin/rbx` -- is still honored.
 if [ -z "${RBX_BIN:-}" ]; then
     RBX_BIN="$_rbx_try_bin"
-elif [[ "$RBX_BIN" == *"/.claude/worktrees/"* && "$RBX_BIN" != "$_rbx_try_bin" ]]; then
-    echo "note: ignoring stale RBX_BIN from another worktree ($RBX_BIN)" >&2
+elif [[ -x "$_rbx_try_bin" && "$RBX_BIN" != "$_rbx_try_bin" && "$RBX_BIN" == *"/.venv/bin/rbx" ]]; then
+    echo "note: ignoring stale RBX_BIN ($RBX_BIN); using this checkout's binary" >&2
     RBX_BIN="$_rbx_try_bin"
 fi
 

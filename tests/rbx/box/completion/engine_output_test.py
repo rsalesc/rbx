@@ -66,9 +66,10 @@ def test_root_bash_output_shape_and_known_entries(monkeypatch):
     for line in lines:
         assert _BASH_LINE.match(line), f'unexpected bash line format: {line!r}'
     assert 'plain,ui' in lines
-    # Aliased commands are emitted as separate candidates, never comma-joined.
+    # Aliased commands are deduped to ONE candidate (the canonical name) at a broad
+    # prefix -- `package`, not also `pkg` -- and never the comma-joined string.
     assert 'plain,package' in lines
-    assert 'plain,pkg' in lines
+    assert 'plain,pkg' not in lines
     assert 'plain,package, pkg' not in lines
 
 
@@ -82,22 +83,28 @@ def test_unknown_shell_emits_file_directive():
 # ---------------------------------------------------------------------------
 
 
-def test_root_command_names_are_split_not_comma_joined(monkeypatch):
+def test_root_command_names_are_deduped_not_comma_joined(monkeypatch):
     # The root has aliased commands ('build, b', ...). We intentionally diverge
-    # from the real CLI here: each alias is its own candidate. Assert the real
-    # CLI's comma-joined names, once split, are all present in our output.
+    # from the real CLI: each command contributes ONE deduped candidate (the
+    # canonical name), never the raw comma-joined string. Assert every name we
+    # offer is a REAL Typer command name (we never invent one) -- though we offer
+    # fewer (deduped) than Typer's full alias set.
     monkeypatch.setenv('_RBX_COMPLETE', 'complete_bash')
     monkeypatch.setenv('_TYPER_COMPLETE_ARGS', 'rbx ')
     monkeypatch.setenv('COMP_WORDS', 'rbx ')
     monkeypatch.setenv('COMP_CWORD', '1')
     fast = _bash_lines(complete_to_string('bash', _spec.SPEC))
     assert 'plain,build, b' not in fast  # never the raw joined form
-    expected_split = set()
+    real_names = set()
     for line in _real_bash('rbx ', 1):
         value = line.split(',', 1)[1]
         for name in value.split(','):
-            expected_split.add('plain,' + name.strip())
-    assert expected_split <= fast
+            real_names.add('plain,' + name.strip())
+    fast_names = {line for line in fast if line.startswith('plain,')}
+    assert fast_names <= real_names, f'invented names: {fast_names - real_names}'
+    # The canonical full names are present; the short aliases are deduped away.
+    assert 'plain,build' in fast_names
+    assert 'plain,b' not in fast_names
 
 
 def test_bash_parity_package_subcommand(monkeypatch):
