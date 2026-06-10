@@ -79,7 +79,18 @@ The build is a pipeline of small, unit-tested pieces:
   `build_statement` stages chrome, renders each problem's `contestProblemTemplate`
   into `.problems/<SHORT>/statement.tex` (a *fragment*), then renders the contest
   `file` which `\subimport`s each via the import handles; compiles from the root.
-  `build_document` emits documents without joining.
+  `build_document` emits documents without joining their statements/samples, but
+  passes a **metadata-only** `problems` list (via `_collect_problem_metadata`:
+  title/short_name/limits/profiles/groups, no blocks/samples/import handles) so a
+  Jinja document can render e.g. an info sheet's per-problem limits table.
+- **Tutorials (editorials)** are the parallel `tutorials` section (design §3),
+  built by the same code via a `StatementKind` arg threaded through
+  `build_statement` / `execute_build` (problem) and `build_statement` (contest):
+  it selects `expanded_tutorials` over `expanded_statements` on both sides and the
+  `tutorial-<lang>` output prefix. The CLI exposes them as a parallel `tutorials,
+  tut` app — `rbx tut b` / `rbx contest tut b` (`tutorials_app` in
+  `build_statements.py` / `contest/statements.py`); `documents` build only under
+  the statements command.
 
 ## Path resolution (design §6) — the contract proved by the spike (#557)
 
@@ -113,7 +124,7 @@ them. `build_statements.get_statement_dir` / `get_produced_tikz_pdfs` /
 | `vars` | problem/package vars (problem) or contest vars (contest) | all renders |
 | `contest` | `title`, `location`, `date`, `contest.vars` | always |
 | `problem` | `title`, `short_name`, `limits`, `profiles`, `groups`, `samples`, `blocks`, `import_dir`, `import_file` | problem renders |
-| `problems` | list of the above | contest join |
+| `problems` | list of the above (full) for a contest join; **metadata only** (title/short_name/limits/profiles/groups) for a document | contest join; documents |
 | `lang`, `languages`, `keyed_languages` | env languages | all renders |
 
 Per-sample handles: `sample.input`/`output` (root-relative), `sample.dir` +

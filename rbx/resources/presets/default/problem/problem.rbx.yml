@@ -9,7 +9,7 @@ checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download ch
 validator: {path: "validator.cpp"}
 testcases:
   - name: "samples"
-    testcaseGlob: "documents/samples/*.in" # Pattern for the sample inputs.
+    testcaseGlob: "statement/samples/*.in" # Pattern for the sample inputs.
   - name: "testplan"
     generatorScript:
       path: "tests/testplan.txt" # Static generator script (testplan).
@@ -29,19 +29,15 @@ solutions:
   - path: "sols/fail-*.*"
     outcome: "INCORRECT"
 statements:
-  - name: "statement-en"
-    path: "documents/statement.rbx.tex" # Open this file to edit your statement.
+  - language: "en"
+    file: "statement/statement.rbx.tex" # Open this file to edit your statement.
     type: "rbxTeX"
-    language: "en"
-    assets: # Define assets for the statement.
-      - "documents/icpc.sty"
-      - "documents/*.png"
-    configure:
-      - type: "rbx-tex" # Convert rbxTeX to TeX
-        template: "documents/template.rbx.tex"
-    vars:
-      # Set to false to hide time limits and memory limits in the problem statement.
-      show_limits: true
+    params:
+      show_limits: true # Set to false to hide the time/memory limits.
+tutorials:
+  - language: "en"
+    file: "statement/editorial.rbx.tex" # Open this file to edit your editorial.
+    type: "rbxTeX"
 # Variables usable in the validator, checker, interactor, stress tests and statement.
 vars:
   # Author name to be displayed in the editorial.

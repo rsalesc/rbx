@@ -128,8 +128,15 @@ Today everything collapses into one merged `vars`. v2 keeps them **separate**:
 | `vars` | the **problem/package** vars | problem renders |
 | `contest` | `title`, `location`, `date`, `contest.vars` | always (contest required) |
 | `problem` | `title`, `short_name`, `limits`, `groups`, `samples` | problem renders |
-| `problems` | list of the above | contest join only |
+| `problems` | list of the above | contest join; documents (metadata only) |
 | `lang`, `languages`, `keyed_languages` | environment languages | all renders |
+
+> **Update (S11):** `documents` also receive the `problems` list, but **metadata
+> only** — `title` / `short_name` / `limits` / `profiles` / `groups`, with no
+> `blocks`, `samples`, or `\subimport` handles. A document never imports a
+> problem's statement or samples, but it may read their metadata (e.g. an info
+> sheet's per-problem limits table). The original "contest join only" wording
+> was relaxed here.
 
 A template reads `\VAR{params.show_limits}` (statement), `\VAR{vars.author}`
 (problem), `\VAR{contest.title}` — three distinct, non-colliding sources. This is
@@ -368,14 +375,16 @@ LaTeX Jinja env, TikZ externalization, demacro.
   `build/statement-<lang>[-<variant>].pdf`.
 - `rbx contest st b` — joinable contest statements → contest PDF; plus
   `documents` emitted without joining.
-- `tutorials` / `documents` — parallel commands reusing the same engine. Exact
-  spelling is cosmetic and can be settled during implementation.
+- `rbx tut b [names]` / `rbx contest tut b` — the **tutorials** (editorials)
+  channel, a parallel `tutorials, tut` command app reusing the very same engine
+  (a `StatementKind` selects the `tutorials` list on both problem and contest,
+  and the `tutorial-<lang>...pdf` output prefix). `documents` are emitted only by
+  the statements command, never the tutorials one.
 
 ## 8. Out of scope / deferred
 
 - **Default-template fallback** so contest-less problems build (initially it
   errors).
-- CLI command spelling for tutorials/documents.
 
 ## 9. Work breakdown (implementation issues)
 

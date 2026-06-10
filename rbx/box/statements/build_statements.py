@@ -24,11 +24,16 @@ from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
     Statement,
+    StatementKind,
     StatementType,
 )
 from rbx.box.testcase_sample_utils import build_samples, get_statement_samples
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+# Parallel app for the `tutorials` section (editorials), mounted as `tutorials,
+# tut`. It reuses the very same engine as `statements` — only the section read
+# and the output filename prefix differ (StatementKind).
+tutorials_app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
 # statements v2: the Polygon export path (S12, #568) still consumes the v1
 # per-builder build dirs / TikZ artifacts. Those entry points stay stubbed until
@@ -284,15 +289,19 @@ def _variant_suffix(statement: Statement) -> str:
 
 
 def get_statement_build_path(
-    statement: Statement, output_type: StatementType, profile: Optional[str] = None
+    statement: Statement,
+    output_type: StatementType,
+    profile: Optional[str] = None,
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> pathlib.Path:
     """The *final* output path for a built standalone statement, e.g.
-    ``build/statement-en[-<variant>][-<profile>].pdf`` (design §7.2).
+    ``build/statement-en[-<variant>][-<profile>].pdf`` (design §7.2), or
+    ``build/tutorial-en...pdf`` for a tutorial.
 
     This sits at the package build root (``get_build_path()``), NOT under the
     statements scratch dir — it is the artifact a user opens.
     """
-    name = f'statement-{statement.language}{_variant_suffix(statement)}'
+    name = f'{kind.singular}-{statement.language}{_variant_suffix(statement)}'
     path = (package.get_build_path() / name).with_suffix(output_type.get_file_suffix())
     if (
         profile is not None
@@ -385,6 +394,7 @@ async def build_statement(
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> pathlib.Path:
     """Build one problem statement standalone and return its output path.
 
@@ -412,11 +422,11 @@ async def build_statement(
         _require_file(statement)
         assert statement.file is not None
         out_path = get_statement_build_path(
-            statement, StatementType.PDF, limits_info.get_active_profile()
+            statement, StatementType.PDF, limits_info.get_active_profile(), kind
         )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(statement.file, out_path)
-        _report_built(statement, out_path)
+        _report_built(statement, out_path, kind)
         return out_path
 
     _require_file(statement)
@@ -427,8 +437,13 @@ async def build_statement(
 
     if statement.type.is_rbx():
         contest = resolver.require_contest_for_problem()
+        contest_candidates = (
+            contest.expanded_tutorials
+            if kind == StatementKind.TUTORIALS
+            else contest.expanded_statements
+        )
         contest_statement = resolver.select_standalone_contest_statement(
-            statement, contest.expanded_statements
+            statement, contest_candidates
         )
         contest_root = contest_package.find_contest()
         assert contest_statement.file is not None
@@ -503,18 +518,22 @@ async def build_statement(
         demacro=demacro,
     )
     out_path = get_statement_build_path(
-        statement, output_type, limits_info.get_active_profile()
+        statement, output_type, limits_info.get_active_profile(), kind
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(output_bytes)
-    _report_built(statement, out_path)
+    _report_built(statement, out_path, kind)
     return out_path
 
 
-def _report_built(statement: Statement, path: pathlib.Path) -> None:
+def _report_built(
+    statement: Statement,
+    path: pathlib.Path,
+    kind: StatementKind = StatementKind.STATEMENTS,
+) -> None:
     """Print the success line with a clickable link to the built statement."""
     console.console.print(
-        f'Statement for language [item]{statement.language}[/item]'
+        f'{kind.singular.capitalize()} for language [item]{statement.language}[/item]'
         f'{_variant_suffix(statement)} built successfully at {href(path)}'
     )
 
@@ -528,6 +547,7 @@ async def execute_build_on_statements(
     validate: bool = True,
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
     skip_building: bool = False,
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> List[pathlib.Path]:
     """Build samples once (if any statement needs them) then build each statement.
 
@@ -559,6 +579,7 @@ async def execute_build_on_statements(
                 use_samples=samples,
                 custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
                 extra_mergeable_params=extra_mergeable_params,
+                kind=kind,
             )
         )
     return res
@@ -573,13 +594,15 @@ async def execute_build(
     vars: Optional[List[str]] = None,
     validate: bool = True,
     profile: Optional[str] = None,
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> None:
-    """Select and build this problem's statements (the ``rbx st b`` body).
+    """Select and build this problem's statements or tutorials (the ``rbx st b``
+    / ``rbx tut b`` body).
 
-    Filters ``pkg.expanded_statements`` by ``languages`` and ``names`` (which, in
-    v2, match the statement *variant* since problem statements have no name),
-    optionally under a timing ``profile``, and delegates to
-    :func:`execute_build_on_statements`. Errors if nothing matches.
+    Filters this problem's ``statements`` or ``tutorials`` (per ``kind``) by
+    ``languages`` and ``names`` (which, in v2, match the *variant* since problem
+    statements have no name), optionally under a timing ``profile``, and
+    delegates to :func:`execute_build_on_statements`. Errors if nothing matches.
     """
     if profile is not None:
         limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
@@ -596,11 +619,17 @@ async def execute_build(
                 return False
             return True
 
-        valid_statements = [st for st in pkg.expanded_statements if should_process(st)]
+        all_statements = (
+            pkg.expanded_tutorials
+            if kind == StatementKind.TUTORIALS
+            else pkg.expanded_statements
+        )
+        valid_statements = [st for st in all_statements if should_process(st)]
 
         if not valid_statements:
             console.console.print(
-                '[error]No statement found according to the specified criteria.[/error]',
+                f'[error]No {kind.singular} found according to the specified '
+                'criteria.[/error]',
             )
             raise typer.Exit(1)
 
@@ -611,6 +640,7 @@ async def execute_build(
             samples=samples,
             vars=vars,
             validate=validate,
+            kind=kind,
         )
 
 
@@ -682,4 +712,75 @@ async def build(
 
 @app.callback()
 def callback():
+    pass
+
+
+@tutorials_app.command('build, b', help='Build tutorials (editorials).')
+@package.within_problem
+@syncer.sync
+async def build_tutorials(
+    verification: environment.VerificationParam,
+    names: Annotated[
+        Optional[List[str]],
+        typer.Argument(
+            help='Variants of tutorials to build.',
+        ),
+    ] = None,
+    languages: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            help='Languages to build tutorials for. If not specified, build tutorials for all available languages.',
+        ),
+    ] = None,
+    output: Annotated[
+        StatementType,
+        typer.Option(
+            case_sensitive=False,
+            help='Output type to be generated.',
+        ),
+    ] = StatementType.PDF,
+    samples: Annotated[
+        bool,
+        typer.Option(help='Whether to build the tutorial with samples or not.'),
+    ] = True,
+    vars: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            '--vars',
+            help='Variables to be used in the tutorials.',
+        ),
+    ] = None,
+    validate: Annotated[
+        bool,
+        typer.Option(help='Whether to validate outputs for testcases or not.'),
+    ] = True,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            '-p',
+            '--profile',
+            help='Timing profile to render the tutorial against. Must exist in this problem.',
+        ),
+    ] = None,
+):
+    """``rbx tut b`` — build this problem's tutorials (editorials), standalone.
+
+    Same engine as ``rbx st b`` (it borrows the contest tutorial's
+    ``standaloneProblemTemplate``); writes ``build/tutorial-<lang>[-<variant>].pdf``.
+    """
+    await execute_build(
+        verification,
+        names,
+        languages,
+        output,
+        samples,
+        vars,
+        validate,
+        profile=profile,
+        kind=StatementKind.TUTORIALS,
+    )
+
+
+@tutorials_app.callback()
+def tutorials_callback():
     pass

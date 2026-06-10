@@ -42,7 +42,7 @@ from rbx.box.statements.context import (
     contest_jinja_kwargs,
 )
 from rbx.box.statements.overlay import problem_overlay_dir
-from rbx.box.statements.schema import BaseStatement, StatementType
+from rbx.box.statements.schema import BaseStatement, StatementKind, StatementType
 from rbx.box.testcase_sample_utils import get_statement_samples
 
 
@@ -103,6 +103,49 @@ def _problems_to_build(
     return [p for p in contest.problems if p.short_name in wanted]
 
 
+def _collect_problem_metadata(
+    contest: Contest,
+    problems: List[ContestProblem],
+    *,
+    lang: str,
+    custom_vars: Dict[str, Any],
+) -> List[ProblemRenderContext]:
+    """Per-problem *metadata* for the ``problems`` namespace of a contest
+    document or non-joining contest statement.
+
+    Documents never join problem statement content or samples, but they may
+    still read problem metadata — e.g. an info sheet's per-problem limits table.
+    This loads each problem package and resolves its title/limits/profiles/
+    groups (under the active timing profile) without rendering any statement or
+    staging any sample. A problem that fails to load is skipped with a warning
+    rather than failing the whole document.
+    """
+    ctxs: List[ProblemRenderContext] = []
+    for problem in problems:
+        try:
+            with cd.new_package_cd(problem.get_path()):
+                package_utils.clear_package_cache()
+                pkg = package.find_problem_package_or_die()
+                ctxs.append(
+                    ProblemRenderContext(
+                        title=naming.get_problem_title(lang, None, pkg),
+                        vars={**pkg.expanded_vars, **custom_vars},
+                        short_name=problem.short_name,
+                        limits=limits_info.get_limits_profile(
+                            profile=limits_info.get_active_profile()
+                        ),
+                        profiles=limits_info.get_available_limits_profiles(),
+                        groups={g.name: g for g in pkg.testcases},
+                    )
+                )
+        except (typer.Exit, RbxException) as exc:
+            console.console.print(
+                f'[warning]Skipping problem [item]{problem.short_name}[/item] in '
+                f'document metadata: {exc}[/warning]'
+            )
+    return ctxs
+
+
 async def build_statement(
     statement: ContestStatement,
     contest: Contest,
@@ -111,8 +154,9 @@ async def build_statement(
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
     install_tex: bool = False,
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> pathlib.Path:
-    """Build one contest statement and return its output path.
+    """Build one contest statement (or tutorial) and return its output path.
 
     For an *rbx* statement this assembles the join overlay (design §6.2): contest
     chrome at the root, each problem staged isolated under ``.problems/<SHORT>/``
@@ -137,8 +181,11 @@ async def build_statement(
     contest_root = find_contest()
 
     if not statement.type.is_rbx():
-        # A non-rbx contest statement is emitted like a document (no join).
-        return _emit_simple(statement, contest, output_type, custom_vars)
+        # A non-rbx contest statement is emitted like a document (no join), but
+        # may still read problem metadata (see _emit_simple).
+        return _emit_simple(
+            statement, contest, output_type, custom_vars, problems_of_interest
+        )
 
     assert statement.file is not None
     overlay_root = _fresh_dir(get_statement_build_dir(statement))
@@ -158,7 +205,7 @@ async def build_statement(
     problem_ctxs: List[ProblemRenderContext] = []
     for problem in _problems_to_build(contest, problems_of_interest):
         console.console.print(
-            f'Building statement for problem [item]{problem.short_name}[/item]...'
+            f'Building {kind.singular} for problem [item]{problem.short_name}[/item]...'
         )
         try:
             problem_ctx = await _render_problem_fragment_async(
@@ -172,6 +219,7 @@ async def build_statement(
                 languages,
                 use_samples,
                 custom_vars,
+                kind,
             )
         except (typer.Exit, RbxException):
             # Hard config/abort errors (e.g. a missing matching statement, or
@@ -227,6 +275,7 @@ async def _render_problem_fragment_async(
     languages,
     use_samples: bool,
     custom_vars: Dict[str, Any],
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> Optional[ProblemRenderContext]:
     """Stage + render one problem's fragment for the join.
 
@@ -241,8 +290,13 @@ async def _render_problem_fragment_async(
     with cd.new_package_cd(problem.get_path()):
         package_utils.clear_package_cache()
         pkg = package.find_problem_package_or_die()
+        problem_candidates = (
+            pkg.expanded_tutorials
+            if kind == StatementKind.TUTORIALS
+            else pkg.expanded_statements
+        )
         problem_statement = resolver.select_problem_statement(
-            contest_statement, pkg.expanded_statements, problem.short_name
+            contest_statement, problem_candidates, problem.short_name
         )
 
         assert problem_statement.file is not None
@@ -324,8 +378,14 @@ def _emit_simple(
     contest: Contest,
     output_type: StatementType,
     custom_vars: Dict[str, Any],
+    problems_of_interest: Optional[List[ContestProblem]] = None,
 ) -> pathlib.Path:
-    """Emit a non-joining contest statement/document (jinja or static)."""
+    """Emit a non-joining contest statement/document (jinja or static).
+
+    Such a document does not import any problem statement or sample, but a Jinja
+    document may still iterate the ``problems`` namespace for problem *metadata*
+    (e.g. a limits table); ``problems_of_interest`` bounds which problems that
+    list covers (default: all contest problems)."""
     name: str = statement.name  # type: ignore[attr-defined]
     assert statement.file is not None
     languages = get_environment_languages_for_statement()
@@ -346,11 +406,17 @@ def _emit_simple(
     )
 
     if statement.type in (StatementType.JinjaTeX, StatementType.JinjaMarkdown):
+        problem_ctxs = _collect_problem_metadata(
+            contest,
+            _problems_to_build(contest, problems_of_interest),
+            lang=statement.language,
+            custom_vars=custom_vars,
+        )
         kwargs = contest_jinja_kwargs(
             lang=statement.language,
             languages=languages,
             contest=contest_ctx,
-            problems=[],
+            problems=problem_ctxs,
         )
         content = render.render_jinja_document(overlay_root, source_rel, kwargs)
     else:
@@ -378,13 +444,19 @@ def _emit_simple(
 async def build_document(
     document: Document,
     contest: Contest,
+    problems_of_interest: Optional[List[ContestProblem]] = None,
     output_type: Optional[StatementType] = None,
     custom_vars: Optional[Dict[str, Any]] = None,
 ) -> pathlib.Path:
     """Build a contest document (infosheet etc.) and return its output path.
 
-    Documents never join on problems; this renders the Jinja (or copies the
-    static) source against the contest context and emits it (default ``PDF``).
+    Documents never join problem statement content or samples; this renders the
+    Jinja (or copies the static) source against the contest context and emits it
+    (default ``PDF``). A Jinja document may still read problem *metadata* via the
+    ``problems`` namespace — e.g. an info sheet's limits table —
+    ``problems_of_interest`` bounding the covered problems (default: all).
     """
     output_type = output_type or StatementType.PDF
-    return _emit_simple(document, contest, output_type, custom_vars or {})
+    return _emit_simple(
+        document, contest, output_type, custom_vars or {}, problems_of_interest
+    )

@@ -4,40 +4,33 @@
 name: "new-contest"
 titles:
   en: "New contest"
+# The contest owns the statement templates and chrome (under statements/).
 statements:
+  # Task sheet (built with `rbx st b` / `rbx contest st b`).
   - name: "statement-en"
     language: "en"
-    path: "documents/contest.rbx.tex"
-    type: JinjaTeX
-    assets:
-      - "documents/icpc.sty"
-      - "documents/*.png"
-      - "documents/instructions.tex"
-    joiner: {type: "tex2pdf"}
-    override:
-      configure:
-        - type: "rbx-tex" # Convert rbxTeX to TeX
-          template: "documents/template.rbx.tex"
-      vars:
-        # Turn into false to hide time limits and memory limits in the problem statement.
-        # Useful for ICPC-style contests where you distribute a separate info sheet.
-        show_limits: true
+    file: "statements/contest.rbx.tex"
+    type: "rbxTeX"
+    standaloneProblemTemplate: "statements/problem.rbx.tex"
+    contestProblemTemplate: "statements/problem-fragment.rbx.tex"
+# Tutorials are the editorials channel (built with `rbx tut b` / `rbx contest tut b`).
+tutorials:
+  # Solutions sheet, joining each problem's editorial.
   - name: "editorial-en"
-    extends: "statement-en"
-    override:
-      vars:
-        # Whether to show the problem statement in the editorial.
-        show_problem: false
-        show_limits: true
-        editorial: true
-    vars:
-      # Whether to render an "EDITORIAL" watermark.
-      watermark: false
-      editorial: true
+    language: "en"
+    file: "statements/editorial-sheet.rbx.tex"
+    type: "rbxTeX"
+    standaloneProblemTemplate: "statements/editorial-standalone.rbx.tex"
+    contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
+    params:
+      watermark: true
+# Documents don't join problem statements, but can read problem metadata.
+documents:
+  # Information sheet: a per-problem limits table.
   - name: "info-en"
-    extends: "statement-en"
-    path: "documents/info.rbx.tex"
-    joiner: null
+    language: "en"
+    file: "statements/info.jinja.tex"
+    type: "jinja-tex"
 vars:
   year: 2025
   date: "2025-06-21"
