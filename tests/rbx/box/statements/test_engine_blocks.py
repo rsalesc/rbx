@@ -5,7 +5,7 @@ import pytest
 from rbx import utils
 from rbx.box import cd, package, package_utils
 from rbx.box.statements import build_statements
-from rbx.box.statements.builders import StatementBlocks
+from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import (
     ConversionType,
     StatementType,

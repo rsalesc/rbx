@@ -18,16 +18,14 @@ The contest joining document is rendered by :func:`render_contest_document`.
 """
 
 import pathlib
+import re
 import typing
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, TypeVar
+
+from pydantic import BaseModel, Field
 
 from rbx import console
 from rbx.box.statements import texsoup_utils
-from rbx.box.statements.builders import (
-    StatementBlocks,
-    render_jinja,
-    render_jinja_blocks,
-)
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -36,8 +34,96 @@ from rbx.box.statements.context import (
     problem_jinja_kwargs,
 )
 from rbx.box.statements.demacro_utils import collect_macro_definitions
+from rbx.box.statements.latex_jinja import (
+    render_latex_template,
+    render_latex_template_blocks,
+    render_markdown_template_blocks,
+)
 
 Mode = Literal['latex', 'markdown']
+
+
+class StatementBlocks(BaseModel):
+    """The named rbxTeX blocks extracted from a statement file (legend / input /
+    output / ...), plus any per-sample ``explanation_<i>`` blocks keyed by index."""
+
+    blocks: Dict[str, str] = Field(default_factory=dict)
+    explanations: Dict[int, str] = Field(default_factory=dict)
+
+
+def render_jinja(root: pathlib.Path, content: bytes, **kwargs) -> bytes:
+    """Render ``content`` as a LaTeX-flavored Jinja template rooted at ``root``."""
+    temp_file = '__input__.tex'
+    temp_path = root / temp_file
+    temp_path.write_bytes(content)
+
+    result: str = render_latex_template(
+        str(root),
+        temp_file,
+        kwargs,
+    )
+    return result.encode()
+
+
+def render_jinja_blocks(
+    root: pathlib.Path,
+    content: bytes,
+    mode: Mode = 'latex',
+    **kwargs,
+) -> StatementBlocks:
+    """Render ``content`` and collect its ``%- block <name>`` chunks, splitting
+    out per-sample ``explanation_<i>`` blocks into :attr:`StatementBlocks.explanations`."""
+    if mode == 'latex':
+        temp_file = '__input__.tex'
+        renderer = render_latex_template_blocks
+    elif mode == 'markdown':
+        temp_file = '__input__.md'
+        renderer = render_markdown_template_blocks
+    else:
+        raise ValueError(f'Invalid mode: {mode}')
+
+    temp_path = root / temp_file
+    temp_path.write_bytes(content)
+
+    result: Dict[str, str] = renderer(
+        str(root),
+        temp_file,
+        kwargs,
+    )
+
+    pattern = re.compile(r'explanation_(\d+)')
+    explanation_keys = []
+    for key in result:
+        if match := pattern.match(key):
+            explanation_keys.append((key, int(match.group(1))))
+
+    explanations = {value: result[key] for key, value in explanation_keys}
+    return StatementBlocks(blocks=result, explanations=explanations)
+
+
+VarBlock = TypeVar('VarBlock')
+
+
+def externalize_blocks(blocks: Dict[VarBlock, str]) -> Dict[VarBlock, str]:
+    """Label each block's TikZ pictures so ``\\tikzexternalize`` emits one PDF per
+    figure (forced on by the Polygon export path)."""
+    res = {}
+    for key in blocks:
+        tex_node = texsoup_utils.parse_latex(blocks[key])
+        texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=str(key))
+        res[key] = str(tex_node)
+    return res
+
+
+def substitute_externalized_blocks(blocks: Dict[Any, str]) -> Dict[Any, str]:
+    """Replace each block's labeled TikZ pictures with ``\\includegraphics`` of the
+    externalized PDF — the inverse of :func:`externalize_blocks`."""
+    res = {}
+    for key in blocks:
+        tex_node = texsoup_utils.parse_latex(blocks[key])
+        texsoup_utils.replace_labeled_tikz_nodes(tex_node)
+        res[key] = str(tex_node)
+    return res
 
 
 def extract_blocks(

@@ -1,6 +1,5 @@
 import pathlib
 import shutil
-import typing
 from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple
 
 import syncer
@@ -12,16 +11,14 @@ from rbx.box.contest import contest_package
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements import engine, overlay, render, resolver
-from rbx.box.statements.builders import (
-    BUILDER_LIST,
-    StatementBuilder,
+from rbx.box.statements.context import (
+    ContestRenderContext,
+    ProblemRenderContext,
     StatementCodeLanguage,
 )
-from rbx.box.statements.context import ContestRenderContext, ProblemRenderContext
 from rbx.box.statements.schema import (
     DEFAULT_VARIANT,
     ConversionStep,
-    ConversionType,
     Statement,
     StatementKind,
     StatementType,
@@ -62,178 +59,6 @@ def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
         )
 
     return res
-
-
-def get_builder(
-    name: ConversionType, builder_list: List[StatementBuilder]
-) -> StatementBuilder:
-    """Look up the (legacy v1) builder for a conversion type, or exit. Kept for
-    the deferred Polygon export path; the v2 build uses ``render.py`` directly."""
-    candidates = [builder for builder in builder_list if builder.name() == name]
-    if not candidates:
-        console.console.print(
-            f'[error]No statement builder found with name [name]{name}[/name][/error]'
-        )
-        raise typer.Exit(1)
-    return candidates[0]
-
-
-def get_implicit_builders(
-    input_type: StatementType, output_type: StatementType
-) -> Optional[List[StatementBuilder]]:
-    """Shortest chain of (legacy v1) builders converting ``input_type`` to
-    ``output_type``, or None if unreachable.
-
-    A BFS over ``BUILDER_LIST`` treating each builder as an edge
-    ``input_type -> output_type``; ``par`` maps a reached type to the builder
-    that produced it, then the chain is walked back from ``output_type``. Legacy
-    v1 machinery kept for the deferred Polygon path.
-    """
-    par: Dict[StatementType, Optional[StatementBuilder]] = {input_type: None}
-
-    def _iterate() -> bool:
-        nonlocal par
-        for bdr in BUILDER_LIST:
-            u = bdr.input_type()
-            if u not in par:
-                continue
-            v = bdr.output_type()
-            if v in par:
-                continue
-            par[v] = bdr
-            return True
-        return False
-
-    while _iterate() and output_type not in par:
-        pass
-
-    if output_type not in par:
-        return None
-
-    res = []
-    cur = output_type
-    while par[cur] is not None:
-        res.append(par[cur])
-        cur = typing.cast(StatementBuilder, par[cur]).input_type()
-
-    return list(reversed(res))
-
-
-def _try_implicit_builders(
-    statement_id: str, input_type: StatementType, output_type: StatementType
-) -> List[StatementBuilder]:
-    """Like :func:`get_implicit_builders` but exits with an error message when no
-    conversion chain exists (legacy v1 path)."""
-    implicit_builders = get_implicit_builders(input_type, output_type)
-    if implicit_builders is None:
-        console.console.print(
-            f'[error]Cannot implicitly convert statement [item]{statement_id}[/item] '
-            f'from [item]{input_type}[/item] '
-            f'to specified output type [item]{output_type}[/item].[/error]'
-        )
-        raise typer.Exit(1)
-    console.console.print(
-        'Implicitly adding statement builders to convert statement '
-        f'from [item]{input_type}[/item] to [item]{output_type}[/item]...'
-    )
-    return implicit_builders
-
-
-def _get_configured_params_for(
-    configure: List[ConversionStep], conversion_type: ConversionType
-) -> Optional[ConversionStep]:
-    for step in configure:
-        if step.type == conversion_type:
-            return step
-    return None
-
-
-def merge_conversion_steps(lhs: ConversionStep, rhs: ConversionStep) -> ConversionStep:
-    """Overlay the explicitly-set fields of ``rhs`` onto ``lhs`` (same type)."""
-    assert lhs.type == rhs.type
-    return lhs.model_copy(update=rhs.model_dump(exclude_unset=True), deep=True)
-
-
-def merge_conversion_configurations(
-    configure: Iterable[ConversionStep],
-) -> List[ConversionStep]:
-    """Collapse a list of conversion steps to one per type, later steps
-    overlaying earlier ones via :func:`merge_conversion_steps`."""
-    mapping = {}
-    for step in configure:
-        if step.type not in mapping:
-            mapping[step.type] = step
-            continue
-        mapping[step.type] = merge_conversion_steps(mapping[step.type], step)
-    return list(mapping.values())
-
-
-def merge_conversion_configuration_maps(
-    lhs: Dict[ConversionType, ConversionStep],
-    rhs: Dict[ConversionType, ConversionStep],
-) -> Dict[ConversionType, ConversionStep]:
-    """Merge two type-keyed conversion-step maps, ``rhs`` overlaying ``lhs``."""
-    consolidated = merge_conversion_configurations(
-        list(lhs.values()) + list(rhs.values())
-    )
-    return {step.type: step for step in consolidated}
-
-
-def _get_overridden_configuration_list(
-    configure: List[ConversionStep],
-    overridden_params: Dict[ConversionType, ConversionStep],
-) -> List[ConversionStep]:
-    return merge_conversion_configurations(configure + list(overridden_params.values()))
-
-
-def get_builders(
-    statement_id: str,
-    steps: List[ConversionStep],
-    configure: List[ConversionStep],
-    input_type: StatementType,
-    output_type: Optional[StatementType],
-    builder_list: List[StatementBuilder] = BUILDER_LIST,
-) -> List[Tuple[StatementBuilder, ConversionStep]]:
-    """Resolve the ordered ``(builder, params)`` pipeline that turns
-    ``input_type`` into ``output_type`` (legacy v1 path).
-
-    Walks the explicit ``steps``, inserting implicit conversion builders
-    (:func:`get_implicit_builders`) wherever consecutive types don't line up,
-    then appends implicit builders to reach ``output_type``. Finally each step's
-    params are overridden by any matching entry in ``configure``. ``statement_id``
-    is only used for error messages. Kept for the deferred Polygon export path.
-    """
-    last_output = input_type
-    builders: List[Tuple[StatementBuilder, ConversionStep]] = []
-
-    for step in steps:
-        builder = get_builder(step.type, builder_list=builder_list)
-        if builder.input_type() != last_output:
-            implicit_builders = _try_implicit_builders(
-                statement_id, last_output, builder.input_type()
-            )
-            builders.extend(
-                (builder, builder.default_params()) for builder in implicit_builders
-            )
-        builders.append((builder, step))
-        last_output = builder.output_type()
-
-    if output_type is not None and last_output != output_type:
-        implicit_builders = _try_implicit_builders(
-            statement_id, last_output, output_type
-        )
-        builders.extend(
-            (builder, builder.default_params()) for builder in implicit_builders
-        )
-
-    def reconfigure(params: ConversionStep) -> ConversionStep:
-        new_params = _get_configured_params_for(configure, params.type)
-        return new_params or params
-
-    reconfigured_builders = [
-        (builder, reconfigure(params)) for builder, params in builders
-    ]
-    return reconfigured_builders
 
 
 # --- Polygon export path (S12, #568). ---
