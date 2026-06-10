@@ -39,6 +39,12 @@ class VerificationLevel(Enum):
     FULL = 4
 
 
+def _verification_autocompletion():
+    from rbx import annotations
+
+    return annotations._adapt('verification_level')  # noqa: SLF001
+
+
 VerificationParam = Annotated[
     int,
     typer.Option(
@@ -47,6 +53,7 @@ VerificationParam = Annotated[
         '-v',
         help='Verification level to use when building package.',
         default_factory=lambda: VerificationLevel.FULL.value,
+        autocompletion=_verification_autocompletion(),
     ),
 ]
 
