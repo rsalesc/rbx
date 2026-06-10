@@ -59,6 +59,18 @@ async def test_documents_emitted_without_joining(cleandir_with_testdata):
 
 
 @pytest.mark.test_pkg('contests/statements_v2')
+async def test_documents_can_read_problem_metadata(cleandir_with_testdata):
+    await _run(output=StatementType.TeX)
+
+    info = (cleandir_with_testdata / 'build' / 'info-en.tex').read_text()
+    # A document never imports problem statements or samples, but it CAN read
+    # per-problem metadata (here, limits) via the `problems` namespace.
+    assert 'Limits for A: 1000 ms.' in info
+    assert 'Limits for B: 2000 ms.' in info
+    assert '\\subimport' not in info
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
 async def test_contest_build_pdf_with_mocked_pdflatex(cleandir_with_testdata):
     await _run(output=StatementType.PDF)
     assert (cleandir_with_testdata / 'build' / 'main-en.pdf').is_file()

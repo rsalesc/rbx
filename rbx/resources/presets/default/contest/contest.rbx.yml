@@ -26,15 +26,15 @@ statements:
     params:
       # Render a diagonal "EDITORIAL" watermark (this statement's own param).
       watermark: true
-  # Information sheet: a per-problem limits table. It joins on problem metadata
-  # only (see the note in info.rbx.tex), so it has no standalone template and an
-  # empty problem fragment, and does not need samples.
+# Documents never import problem statements or samples, but a Jinja document
+# can still read problem metadata via the `problems` namespace.
+documents:
+  # Information sheet: a per-problem limits table built purely from each
+  # problem's metadata (short name + limits).
   - name: "info-en"
     language: "en"
-    file: "statements/info.rbx.tex"
-    type: "rbxTeX"
-    contestProblemTemplate: "statements/info-fragment.rbx.tex"
-    samples: false
+    file: "statements/info.jinja.tex"
+    type: "jinja-tex"
 vars:
   year: 2025
   date: "2025-06-21"

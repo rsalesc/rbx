@@ -1,12 +1,8 @@
-%% Information sheet — a single-page limits table over every problem.
+%% Information sheet — a single-page per-problem limits table.
 %%
-%% NOTE (statements v2): an info sheet needs per-problem data (limits), and the
-%% `documents` section never receives the `problems` list. So this is modelled
-%% as an rbx contest *statement* that joins on problem *metadata*: it iterates
-%% `problems` for the table but does NOT `\subimport` their bodies. Its
-%% `contestProblemTemplate` (`info-fragment.rbx.tex`) is therefore intentionally
-%% empty, and it carries no `standaloneProblemTemplate` so it is never a
-%% standalone candidate.
+%% This is a contest `documents` entry: documents never import problem
+%% statements or samples, but they CAN read problem metadata. Here it iterates
+%% the `problems` namespace purely for each problem's short name and limits.
 \documentclass[a4paper,11pt]{article}
 
 \def\lang{\VAR{lang}}

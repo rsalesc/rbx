@@ -128,8 +128,15 @@ Today everything collapses into one merged `vars`. v2 keeps them **separate**:
 | `vars` | the **problem/package** vars | problem renders |
 | `contest` | `title`, `location`, `date`, `contest.vars` | always (contest required) |
 | `problem` | `title`, `short_name`, `limits`, `groups`, `samples` | problem renders |
-| `problems` | list of the above | contest join only |
+| `problems` | list of the above | contest join; documents (metadata only) |
 | `lang`, `languages`, `keyed_languages` | environment languages | all renders |
+
+> **Update (S11):** `documents` also receive the `problems` list, but **metadata
+> only** — `title` / `short_name` / `limits` / `profiles` / `groups`, with no
+> `blocks`, `samples`, or `\subimport` handles. A document never imports a
+> problem's statement or samples, but it may read their metadata (e.g. an info
+> sheet's per-problem limits table). The original "contest join only" wording
+> was relaxed here.
 
 A template reads `\VAR{params.show_limits}` (statement), `\VAR{vars.author}`
 (problem), `\VAR{contest.title}` — three distinct, non-colliding sources. This is

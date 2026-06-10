@@ -142,6 +142,8 @@ async def build(
         problems_of_interest = eligible_problems
 
     built_statements = []
+    built_documents = []
+    valid_documents = [doc for doc in contest.expanded_documents if should_process(doc)]
 
     with limits_info.use_profile(profile, when=lambda: profile is not None):
         for statement in valid_statements:
@@ -159,18 +161,22 @@ async def build(
                 )
             )
 
-    # Documents (infosheets etc.) are emitted without joining on problems.
-    built_documents = []
-    valid_documents = [doc for doc in contest.expanded_documents if should_process(doc)]
-    for document in valid_documents:
-        built_documents.append(
-            await build_document(
-                document,
-                contest,
-                output_type=output,
-                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
+        # Documents (infosheets etc.) don't join problem statements or samples,
+        # but may read problem metadata (e.g. an info sheet's limits table), so
+        # pass the eligible problems and resolve their limits under the active
+        # profile (hence inside the use_profile block).
+        for document in valid_documents:
+            built_documents.append(
+                await build_document(
+                    document,
+                    contest,
+                    problems_of_interest=eligible_problems,
+                    output_type=output,
+                    custom_vars=expand_any_vars(
+                        annotations.parse_dictionary_items(vars)
+                    ),
+                )
             )
-        )
 
     console.console.rule(title='Built statements')
     for statement, built_path in zip(valid_statements, built_statements):
