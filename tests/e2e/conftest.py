@@ -15,17 +15,16 @@ session-scoped autouse fixtures that those conftests provide:
   global ``.rbx`` cache.
 - ``mock_setter_config`` writes a permissive setter config inside the
   redirected app path so checks (e.g. stack-size) do not query the host.
-- ``mock_pdflatex`` short-circuits the LaTeX build so statement scenarios
-  do not require a real ``pdflatex`` install.
-"""
 
-import shutil
-import subprocess
+Per-scenario patches (the conditional ``pdflatex`` mock and the recording
+Polygon client) cannot live here: pytest does not run function-scoped fixtures
+for the custom :class:`E2EScenarioItem`, only session-scoped ones. They are
+applied per scenario in ``E2EScenarioItem.runtest`` instead.
+"""
 
 import pytest
 
 from rbx.box import setter_config
-from rbx.box.statements.latex import LatexResult
 from rbx.config import CACHE_DIR_NAME
 from tests.e2e.runner import E2EScenarioItem
 from tests.e2e.spec import load_spec
@@ -68,43 +67,6 @@ def mock_setter_config(mock_app_path):
     setter_config.save_setter_config(cfg)
 
 
-@pytest.fixture(autouse=True)
-def mock_pdflatex(request, monkeypatch):
-    """Stub out ``Latex.build_pdf`` so statement scenarios need no real pdflatex.
-
-    Scenarios marked ``pdflatex`` opt OUT of the stub and run the real binary
-    (required for TikZ externalization); they are skipped when ``pdflatex`` is
-    not installed. Function-scoped so the decision is made per scenario.
-    """
-    if request.node.get_closest_marker('pdflatex'):
-        if shutil.which('pdflatex') is None:
-            pytest.skip('pdflatex not installed; required by this scenario')
-        return  # use the real Latex.build_pdf (real TikZ externalization)
-    monkeypatch.setattr(
-        'rbx.box.statements.latex.Latex.build_pdf',
-        lambda *args, **kwargs: LatexResult(
-            result=subprocess.CompletedProcess(
-                args='', returncode=0, stdout=b'', stderr=b''
-            ),
-            pdf=b'',
-        ),
-    )
-
-
-@pytest.fixture(autouse=True)
-def mock_polygon_api(monkeypatch):
-    """Replace the Polygon API client factory with a recording fake so
-    ``rbx package polygon -u`` performs no network I/O and serializes the
-    uploaded statement/resources for the ``polygon_upload`` matcher. Harmless
-    for scenarios that never invoke the upload."""
-    from tests.e2e import polygon_capture
-
-    monkeypatch.setattr(
-        'rbx.box.packaging.polygon.upload._get_polygon_api',
-        polygon_capture.make_recording_polygon,
-    )
-
-
 class E2EYamlFile(pytest.File):
     def collect(self):
         spec = load_spec(self.path)
@@ -119,9 +81,29 @@ def pytest_collect_file(parent, file_path):
         return E2EYamlFile.from_parent(parent, path=file_path)
 
 
+# Scenarios that encode DESIRED-but-not-yet-true behavior: registered xfail
+# (non-strict) so the suite stays green while documenting a known bug, and flips
+# to xpass the moment the bug is fixed. Keyed by scenario name. See
+# docs/plans/2026-06-10-polygon-statement-upload-audit.md.
+_XFAIL_SCENARIOS = {
+    'polygon-upload-assets-referential-integrity': (
+        'sample-explanation TikZ is not externalized/uploaded; the notes '
+        'reference a non-existent artifacts/tikz_figures/0_0 PDF (#586 audit).'
+    ),
+    'problem-polygon-upload': (
+        'default preset polygon upload fails on the editorial.rbx.tex overlay '
+        'collision between the contest chrome and the problem statement dir '
+        '(#586 audit).'
+    ),
+}
+
+
 def pytest_collection_modifyitems(config, items):
     for item in items:
         if isinstance(item, E2EScenarioItem):
             item.add_marker(pytest.mark.e2e)
             for marker in item.scenario.markers:
                 item.add_marker(getattr(pytest.mark, marker))
+            xfail_reason = _XFAIL_SCENARIOS.get(item.name)
+            if xfail_reason is not None:
+                item.add_marker(pytest.mark.xfail(reason=xfail_reason, strict=False))

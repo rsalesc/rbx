@@ -159,7 +159,10 @@ def check_polygon_upload(ctx: AssertionContext, matcher: PolygonUploadMatcher) -
     """
     cap = ctx.package_root / matcher.dir
     if not cap.is_dir():
-        raise AssertionError(f'polygon capture dir not found: {matcher.dir}')
+        raise AssertionError(
+            f'polygon capture dir not found: {matcher.dir} '
+            f'(no statement upload was captured under {ctx.package_root})'
+        )
 
     resources_json = cap / 'resources.json'
     uploaded = (
