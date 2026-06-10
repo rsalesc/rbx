@@ -109,7 +109,7 @@ Then regenerate and commit: `mise run gen-completion-spec` → commit `_spec.py`
 | `--testcase/-t` | `irun` | `_adapt('testgroup')` |
 | `--fuzz-on` | `stress` | `_adapt('testgroup')` |
 | `--finder`, `--reference` | `stress` | `_adapt('solutions', file=True)` |
-| `--verification-level` | shared `VerificationParam` (9 sites) | `_adapt('verification_level')` |
+| `--verification-level` | shared `VerificationParam` (all `-v` sites) | `_adapt('verification_level')` |
 | `--profile` | 4 sites | `_adapt('profile')` |
 | `-C/--contest` | `cli.py` + `contest/main.py` callbacks | `_adapt('contest_variant')` |
 | `on` first arg | `cli.py` + `contest/main.py` | wrap bare `str` → `Argument(autocompletion=_adapt('problem'))` |
