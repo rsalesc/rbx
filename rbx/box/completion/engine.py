@@ -166,6 +166,61 @@ def complete_to_string(shell: str, spec) -> str:
     return comp.complete()
 
 
+# Reordered zsh completion function: identical to Click's native template except
+# the file/dir handoff (`_path_files`) is deferred until AFTER the dynamic
+# candidates are described. In a file-union position (e.g. `rbx run`), this makes
+# the solutions/`@`-prefixes rank ahead of the directory listing in the zsh menu
+# instead of being buried under it (issue #575). Placeholders match Click's
+# `.source()` (`prog_name`, `complete_func`, `complete_var`).
+_ZSH_SOURCE_TEMPLATE = """#compdef %(prog_name)s
+
+%(complete_func)s() {
+    local -a completions
+    local -a completions_with_descriptions
+    local -a response
+    local want_files want_dirs
+    (( ! $+commands[%(prog_name)s] )) && return 1
+
+    response=("${(@f)$(env COMP_WORDS="${words[*]}" COMP_CWORD=$((CURRENT-1)) %(complete_var)s=zsh_complete %(prog_name)s)}")
+
+    for type key descr in ${response}; do
+        if [[ "$type" == "plain" ]]; then
+            if [[ "$descr" == "_" ]]; then
+                completions+=("$key")
+            else
+                completions_with_descriptions+=("$key":"$descr")
+            fi
+        elif [[ "$type" == "dir" ]]; then
+            want_dirs=1
+        elif [[ "$type" == "file" ]]; then
+            want_files=1
+        fi
+    done
+
+    # Offer dynamic candidates (e.g. solutions) BEFORE handing off to file
+    # completion, so they rank ahead of the directory listing in the menu.
+    if [ -n "$completions_with_descriptions" ]; then
+        _describe -V unsorted completions_with_descriptions -U
+    fi
+
+    if [ -n "$completions" ]; then
+        compadd -U -V unsorted -a completions
+    fi
+
+    [[ -n "$want_dirs" ]] && _path_files -/
+    [[ -n "$want_files" ]] && _path_files -f
+}
+
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    # autoload from fpath, call function directly
+    %(complete_func)s "$@"
+else
+    # eval/source/. command, register function for later
+    compdef %(complete_func)s %(prog_name)s
+fi
+"""
+
+
 def source_to_string(shell: str) -> str:
     """Render the shell completion install script (the `source_<shell>` instruction)."""
     import click
@@ -174,6 +229,10 @@ def source_to_string(shell: str) -> str:
     if base is None:
         return ''
     comp = base(click.Command('rbx'), {}, 'rbx', '_RBX_COMPLETE')
+    if shell == 'zsh':
+        # Use our reordered template (solutions before file completion); everything
+        # else is Click's native source.
+        comp.source_template = _ZSH_SOURCE_TEMPLATE
     return comp.source()
 
 

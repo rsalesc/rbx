@@ -30,6 +30,7 @@ fi
 
 _rbx_fast_completion() {
     local -a completions completions_with_descriptions response
+    local want_files want_dirs
     response=("${(@f)$(
         env COMP_WORDS="${words[*]}" COMP_CWORD=$((CURRENT - 1)) \
             _RBX_COMPLETE=complete_zsh "$RBX_BIN" 2>/dev/null
@@ -45,18 +46,22 @@ _rbx_fast_completion() {
                 completions_with_descriptions+=("$key":"$descr")
             fi
         elif [[ "$type" == "dir" ]]; then
-            _path_files -/
+            want_dirs=1
         elif [[ "$type" == "file" ]]; then
-            _path_files -f
+            want_files=1
         fi
     done
 
+    # Describe dynamic candidates (e.g. solutions) BEFORE handing off to file
+    # completion so they rank ahead of the directory listing (file-union, #575).
     if [ -n "$completions_with_descriptions" ]; then
         _describe -V unsorted completions_with_descriptions -U
     fi
     if [ -n "$completions" ]; then
         compadd -U -V unsorted -a completions
     fi
+    [[ -n "$want_dirs" ]] && _path_files -/
+    [[ -n "$want_files" ]] && _path_files -f
 }
 
 compdef _rbx_fast_completion rbx

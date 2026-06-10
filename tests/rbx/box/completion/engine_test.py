@@ -231,3 +231,18 @@ def test_variadic_argument_reoffered_on_later_positionals():
     # the completer is still offered.
     items = resolve(spec, ['a', 'b'], '')
     assert _values(items) == ['from-fixture']
+
+
+def test_zsh_source_describes_candidates_before_file_completion():
+    # File-union: dynamic candidates (e.g. solutions) must be described BEFORE the
+    # `_path_files` handoff so they rank ahead of the directory listing in the
+    # zsh menu (issue #575 follow-up: "solutions first").
+    from rbx.box.completion.engine import source_to_string
+
+    src = source_to_string('zsh')
+    assert '_describe' in src and '_path_files' in src
+    assert src.index('_describe') < src.index('_path_files'), (
+        'zsh source must _describe candidates before _path_files'
+    )
+    # The file/dir handoff is deferred via flags rather than called in the parse loop.
+    assert 'want_files' in src
