@@ -368,6 +368,7 @@ def each(ctx: typer.Context) -> None:
             argv=argv,
             placeholder_prefix=placeholder_prefix,
             name=naming.get_contest_problem_label(problem),
+            labels=naming.get_contest_problem_labels(problem),
             cwd=str(problem.get_path()),
         )
         for problem in contest.problems
@@ -410,6 +411,7 @@ def on(
             argv=argv,
             placeholder_prefix=placeholder_prefix,
             name=naming.get_contest_problem_label(p),
+            labels=naming.get_contest_problem_labels(p),
             cwd=str(p.get_path()),
         )
         for p in problems_of_interest

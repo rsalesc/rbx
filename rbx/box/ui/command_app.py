@@ -2,7 +2,7 @@ import dataclasses
 import enum
 import shlex
 from time import monotonic
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from textual import events, on
 from textual.app import ComposeResult
@@ -15,6 +15,7 @@ from textual.selection import Selection
 from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select
 
+from rbx.box.setter_config import ProblemLabelMode
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
@@ -204,6 +205,9 @@ class CommandEntry:
     cwd: Optional[str] = None
     prefix: Optional[str] = None
     placeholder_prefix: Optional[str] = None
+    # Precomputed sidebar labels per ProblemLabelMode, so the UI can swap them
+    # live without reloading problem packages. None for non-contest entries.
+    labels: Optional[Dict[ProblemLabelMode, str]] = None
 
     @property
     def display_name(self) -> str:
