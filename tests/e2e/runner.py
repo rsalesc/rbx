@@ -83,9 +83,8 @@ def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
 
     Resolves ``presets/<preset_name>/problem`` under the rbx resources path (the
     same location ``rbx`` itself resolves presets from) and copies it into
-    ``dest``, dereferencing symlinks (so statement assets like
-    ``documents/icpc.sty`` land as regular files) and skipping build cruft
-    (``.rbx``, ``build``, ...). ``dest`` is an existing package directory (the
+    ``dest``, dereferencing any symlinks into regular files and skipping build
+    cruft (``.rbx``, ``build``, ...). ``dest`` is an existing package directory (the
     overlay target); any files already present (e.g. the fixture's own
     ``e2e.rbx.yml``) are preserved unless the preset overwrites them.
     """

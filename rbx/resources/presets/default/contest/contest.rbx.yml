@@ -4,40 +4,37 @@
 name: "new-contest"
 titles:
   en: "New contest"
+# Statements v2: the contest owns the LaTeX templates and chrome (everything
+# under the directory of each statement `file`, here `statements/`, is available
+# at build time). Each statement joins problems by (language, variant); `name`
+# must be unique, but the (language, variant) pair need not be.
 statements:
+  # Task sheet. The only statement carrying a `standaloneProblemTemplate`, so
+  # `rbx st b` inside a problem resolves to it unambiguously.
   - name: "statement-en"
     language: "en"
-    path: "documents/contest.rbx.tex"
-    type: JinjaTeX
-    assets:
-      - "documents/icpc.sty"
-      - "documents/*.png"
-      - "documents/instructions.tex"
-    joiner: {type: "tex2pdf"}
-    override:
-      configure:
-        - type: "rbx-tex" # Convert rbxTeX to TeX
-          template: "documents/template.rbx.tex"
-      vars:
-        # Turn into false to hide time limits and memory limits in the problem statement.
-        # Useful for ICPC-style contests where you distribute a separate info sheet.
-        show_limits: true
+    file: "statements/contest.rbx.tex"          # the joined task sheet
+    type: "rbxTeX"
+    standaloneProblemTemplate: "statements/problem.rbx.tex"          # `rbx st b`
+    contestProblemTemplate: "statements/problem-fragment.rbx.tex"    # joined
+  # Solutions sheet: same problems, rendered with the editorial template.
   - name: "editorial-en"
-    extends: "statement-en"
-    override:
-      vars:
-        # Whether to show the problem statement in the editorial.
-        show_problem: false
-        show_limits: true
-        editorial: true
-    vars:
-      # Whether to render an "EDITORIAL" watermark.
-      watermark: false
-      editorial: true
+    language: "en"
+    file: "statements/editorial.rbx.tex"
+    type: "rbxTeX"
+    contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
+    params:
+      # Render a diagonal "EDITORIAL" watermark (this statement's own param).
+      watermark: true
+  # Information sheet: a per-problem limits table. It joins on problem metadata
+  # only (see the note in info.rbx.tex), so it has no standalone template and an
+  # empty problem fragment, and does not need samples.
   - name: "info-en"
-    extends: "statement-en"
-    path: "documents/info.rbx.tex"
-    joiner: null
+    language: "en"
+    file: "statements/info.rbx.tex"
+    type: "rbxTeX"
+    contestProblemTemplate: "statements/info-fragment.rbx.tex"
+    samples: false
 vars:
   year: 2025
   date: "2025-06-21"

@@ -1,25 +1,19 @@
-\documentclass[a4paper,11pt]{article}
-
-\def\lang{\VAR{lang}}
-\usepackage{icpc}
-
-%- if problem.blocks.preamble is defined
-	\VAR{problem.blocks.preamble}
-%- endif
-
-\begin{document}
-
+%% Shared problem body, included by both `problem.rbx.tex` (the standalone,
+%% full-document template) and `problem-fragment.rbx.tex` (the fragment that is
+%% `\subimport`-ed into the contest task sheet). Keeping it in one place means
+%% the standalone PDF and the joined contest PDF always render a problem the
+%% same way. Edit the look of every problem here.
 \includeProblem
 %- if problem.short_name is defined
 	[\VAR{problem.short_name}]
 %- endif
 {\VAR{problem.title | escape}}{
 
-%- if problem.vars.show_limits is truthy
+%- if params.show_limits is truthy
 	\includeLimits
 		{\VAR{problem.limits.timeLimit} ms}
 		{\VAR{problem.limits.memoryLimit} MiB}
-		{\VAR{problem.vars.author if problem.vars.author is truthy and problem.vars.editorial is truthy else ''}}
+		{}
 %- else
 	\vspace{0.55cm}
 %- endif
@@ -52,11 +46,15 @@
 					\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
 				%- endfor
 			%- else
-				\example{\VAR{sample.inputPath}}
-					{\VAR{sample.outputPath if sample.outputPath is not none else ''}}
+				%% `sample.input`/`sample.output` are root-relative paths to the
+				%% generated I/O (read verbatim by `\VerbatimInput` inside `\example`).
+				\example{\VAR{sample.input}}
+					{\VAR{sample.output if sample.output is not none else ''}}
 			%- endif
-			%- if sample.explanation is not none
-				\explanation{\VAR{sample.explanation}}
+			%- if sample.explanation_file is not none
+				%% The explanation lives in its own sample folder and is pulled in
+				%% with `\subimport` so it can carry its own figures.
+				\explanation{\subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}}
 			%- endif
 		%- endfor
 	%- endif
@@ -66,9 +64,3 @@
 		\VAR{problem.blocks.notes}
 	%- endif
 }
-
-%- if problem.blocks.editorial is nonnull and problem.vars.editorial is truthy
-\subsection*{\strSolution}
-\VAR{problem.blocks.editorial}
-%- endif
-\end{document}

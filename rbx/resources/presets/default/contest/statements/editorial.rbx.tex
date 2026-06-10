@@ -1,0 +1,35 @@
+%% Editorial (solutions) sheet — joins the problems just like the task sheet,
+%% but renders each problem with `editorial-fragment.rbx.tex` (which shows the
+%% problem's `editorial` block) and stamps an EDITORIAL watermark.
+%%
+%% `watermark` is this contest statement's own param (`params` namespace).
+\documentclass[a4paper,11pt]{article}
+
+\def\lang{\VAR{lang}}
+\usepackage{icpc}
+\usepackage{import}
+
+\def\Year{\VAR{vars.year}}
+\def\Title{\VAR{contest.title}}
+\def\Date{\VAR{vars.date}}
+
+%- if params.watermark is truthy
+	\AddToHook{shipout/foreground}{
+		\begin{tikzpicture}[overlay, remember picture]
+			\node[text=gray, rotate=45, scale=8, opacity=0.3]
+				at (0.5\paperwidth,-0.6\paperheight) {EDITORIAL};
+		\end{tikzpicture}
+	}
+%- endif
+
+\begin{document}
+
+\InsertEditorialTitlePage
+
+%- for problem in problems
+	\stepcounter{problemcounter}
+	\subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
+%- endfor
+
+\label{lastpage}
+\end{document}

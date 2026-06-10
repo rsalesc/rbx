@@ -561,7 +561,8 @@ def test_collect_from_default_icpc_preset_does_not_crash():
         / 'resources'
         / 'presets'
         / 'default'
-        / 'shared'
+        / 'contest'
+        / 'statements'
         / 'icpc.sty'
     )
     defs = collect_macro_definitions(sty)

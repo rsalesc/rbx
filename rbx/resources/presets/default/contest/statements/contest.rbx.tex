@@ -1,0 +1,28 @@
+%% Contest task sheet (the joining document).
+%%
+%% `rbx contest st b` renders each problem with `problem-fragment.rbx.tex` into
+%% its own isolated folder, then `\subimport`s each one here via the
+%% `problem.import_dir` / `problem.import_file` handles. Everything resolves by
+%% relative paths, so the generated TeX is self-contained.
+\documentclass[a4paper,11pt]{article}
+
+\def\lang{\VAR{lang}}
+\usepackage{icpc}
+\usepackage{import}
+
+\def\Year{\VAR{vars.year}}
+\def\Title{\VAR{contest.title}}
+\def\Date{\VAR{vars.date}}
+
+\begin{document}
+
+\InsertTitlePage
+\input{instructions.tex}
+
+%- for problem in problems
+	\stepcounter{problemcounter}
+	\subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
+%- endfor
+
+\label{lastpage}
+\end{document}

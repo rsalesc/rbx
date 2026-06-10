@@ -1,9 +1,17 @@
-\documentclass[a4paper, 11pt]{article}
+%% Information sheet — a single-page limits table over every problem.
+%%
+%% NOTE (statements v2): an info sheet needs per-problem data (limits), and the
+%% `documents` section never receives the `problems` list. So this is modelled
+%% as an rbx contest *statement* that joins on problem *metadata*: it iterates
+%% `problems` for the table but does NOT `\subimport` their bodies. Its
+%% `contestProblemTemplate` (`info-fragment.rbx.tex`) is therefore intentionally
+%% empty, and it carries no `standaloneProblemTemplate` so it is never a
+%% standalone candidate.
+\documentclass[a4paper,11pt]{article}
 
 \def\lang{\VAR{lang}}
 \usepackage{icpc}
 
-%\pagestyle{myheadings}
 \markright{\VAR{contest.title}}
 
 \begin{document}
@@ -23,15 +31,12 @@
 
 \vspace{2cm}
 
-%\subsection*{\strLimits}
-
 \begin{center}
 \begin{tabular}{c|ccc|c}
 & \multicolumn{3}{c|}{{\strTimeLimit} (ms)} & \multirow{2}{*}{{\strMemoryLimit} (MiB)} \\
-%\cline{2-4}
 {\sf \strProblem} & {\sf C/C++} &{\sf Java} & {\sf Python3} & \\
 \hline
-%- for problem in problems:
+%- for problem in problems
 \VAR{problem.short_name}
 & \VAR{problem.limits.timelimit_for_language('cpp')}
 & \VAR{problem.limits.timelimit_for_language('java')}

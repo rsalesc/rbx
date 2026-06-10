@@ -10,14 +10,12 @@ env: "env.rbx.yml"
 tracking:
   problem:
     - path: ".gitignore"
-    - path: "documents/icpc.sty"
-    - path: "documents/template.rbx.tex"
   contest:
+    # The contest owns the statement chrome/templates (statements v2). Track the
+    # shared LaTeX style so preset updates can refresh it; the templates
+    # themselves are left untracked so user edits survive.
     - path: ".gitignore"
-    - path: "documents/icpc.sty"
-    - path: "documents/template.rbx.tex"
-    - path: "documents/contest.rbx.tex"
-      symlink: true
+    - path: "statements/icpc.sty"
 libraries:
   problem:
     - name: "testlib"

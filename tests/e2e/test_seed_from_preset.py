@@ -35,12 +35,14 @@ def test_seed_package_from_preset_overlays_real_files(tmp_path: pathlib.Path):
 
     # Sources from the preset package landed.
     assert (dest / 'sols' / 'main.cpp').is_file()
-    assert (dest / 'documents' / 'statement.rbx.tex').is_file()
+    # Statements v2: the problem statement lives under statement/, and the
+    # contest (not the problem) owns the LaTeX chrome, so the problem package
+    # carries no icpc.sty / template symlinks at all.
+    assert (dest / 'statement' / 'statement.rbx.tex').is_file()
+    assert (dest / 'statement' / 'samples' / '000.in').is_file()
 
-    # Symlinked statement assets were dereferenced into regular files.
-    icpc = dest / 'documents' / 'icpc.sty'
-    assert icpc.is_file()
-    assert not icpc.is_symlink()
+    # The seed overlay never leaves symlinks behind (they are dereferenced).
+    assert not any(p.is_symlink() for p in dest.rglob('*'))
 
     # Build cruft was skipped.
     assert not (dest / CACHE_DIR_NAME).exists()
