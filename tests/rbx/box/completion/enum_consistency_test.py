@@ -18,3 +18,15 @@ def test_verification_table_matches_verification_level_enum():
     table = dict(completers._VERIFICATION_TABLE)  # noqa: SLF001
     expected = {str(level.value): level.name for level in VerificationLevel}
     assert table == expected
+
+
+def test_solution_prefixes_cover_registered_expanders():
+    # If an expander is added/removed in remote.py, this fails so _SOLUTION_PREFIXES
+    # (the @-prefixes the solutions completer offers) gets revisited.
+    from rbx.box.remote import REGISTERED_EXPANDERS
+
+    expander_names = {type(e).__name__ for e in REGISTERED_EXPANDERS}
+    assert expander_names == {'MainExpander', 'BocaExpander'}
+
+    prefixes = {p for p, _ in completers._SOLUTION_PREFIXES}  # noqa: SLF001
+    assert prefixes == {'@main', '@boca/'}

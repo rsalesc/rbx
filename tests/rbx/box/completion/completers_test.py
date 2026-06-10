@@ -120,3 +120,20 @@ def test_problem_completer_includes_aliases(tmp_path):
         i.value for i in completers.complete_problem(_ctx(package_root=tmp_path), '')
     }
     assert {'A', 'B', 'apple', 'alpha'} <= values
+
+
+def test_testgroup_completer_tolerates_scalar_testcases_field(tmp_path):
+    # Malformed YAML where `testcases` is a scalar, not a list: must not raise.
+    (tmp_path / 'problem.rbx.yml').write_text('testcases: 5\n')
+    assert completers.complete_testgroup(_ctx(package_root=tmp_path), '') == []
+
+
+def test_problem_completer_tolerates_scalar_aliases_field(tmp_path):
+    # A scalar `aliases` must not leak its characters as completions.
+    (tmp_path / 'contest.rbx.yml').write_text(
+        'problems:\n  - short_name: A\n    aliases: notalist\n'
+    )
+    values = {
+        i.value for i in completers.complete_problem(_ctx(package_root=tmp_path), '')
+    }
+    assert values == {'A'}

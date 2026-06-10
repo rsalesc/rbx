@@ -14,6 +14,16 @@ def _items(values) -> List[CompletionItem]:
     return [CompletionItem(v) for v in sorted(values)]
 
 
+def _peek_list(root: Path, filename: str, key: str) -> list:
+    """A top-level list field from a package YAML, tolerant of malformed input.
+
+    `peek` already swallows IO/parse errors; this additionally coerces a
+    missing/None/scalar field to `[]` so callers never iterate a non-list.
+    """
+    value = peek.peek(root / filename).get(key)
+    return value if isinstance(value, list) else []
+
+
 @register_completer('language')
 def complete_language(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
     from rbx.config import get_config  # local import keeps module light
@@ -42,22 +52,23 @@ def complete_problem(ctx: CompletionContext, incomplete: str) -> List[Completion
     root = ctx.package_root
     if root is None:
         return []
-    data = peek.peek(Path(root) / 'contest.rbx.yml')
     names = set()
-    for p in data.get('problems', []):
+    for p in _peek_list(Path(root), 'contest.rbx.yml', 'problems'):
         if not isinstance(p, dict):
             continue
         if p.get('short_name'):
             names.add(p['short_name'])
-        for alias in p.get('aliases', []) or []:
-            if alias:
-                names.add(alias)
+        aliases = p.get('aliases')
+        if isinstance(aliases, list):
+            for alias in aliases:
+                if alias:
+                    names.add(alias)
     return _items(names)
 
 
-# Built-in solution-path expanders (kept in sync with rbx/box/remote.py via
-# enum_consistency_test.py). @boca needs a run id we cannot enumerate, so we
-# offer only the prefix.
+# Built-in solution-path expanders, mirroring rbx/box/remote.py's
+# REGISTERED_EXPANDERS (guarded by enum_consistency_test.py). @boca needs a run
+# id we cannot enumerate, so we offer only the prefix.
 _SOLUTION_PREFIXES = (
     ('@main', 'first accepted solution'),
     ('@boca/', 'download a BOCA submission, e.g. @boca/123'),
@@ -69,8 +80,7 @@ def complete_solutions(ctx: CompletionContext, incomplete: str) -> List[Completi
     items: List[CompletionItem] = []
     root = ctx.package_root
     if root is not None:
-        data = peek.peek(Path(root) / 'problem.rbx.yml')
-        for sol in data.get('solutions', []):
+        for sol in _peek_list(Path(root), 'problem.rbx.yml', 'solutions'):
             if isinstance(sol, dict) and sol.get('path'):
                 outcome = sol.get('outcome')
                 help_text = str(outcome) if outcome is not None else None
@@ -86,7 +96,7 @@ _OUTCOME_TABLE = (
     ('ac', 'accepted'),
     ('ac/tle', 'accepted or time limit exceeded'),
     ('wa', 'wrong answer'),
-    ('incorrect', 'any incorrect verdict (WA/RTE/MLE/OLE/TLE)'),
+    ('incorrect', 'any incorrect (non-AC) verdict'),
     ('rte', 'runtime error'),
     ('tle', 'time limit exceeded'),
     ('mle', 'memory limit exceeded'),
@@ -136,8 +146,8 @@ def complete_testgroup(ctx: CompletionContext, incomplete: str) -> List[Completi
     root = ctx.package_root
     if root is None:
         return []
-    data = peek.peek(Path(root) / 'problem.rbx.yml')
-    names = {g.get('name') for g in data.get('testcases', []) if isinstance(g, dict)}
+    groups = _peek_list(Path(root), 'problem.rbx.yml', 'testcases')
+    names = {g.get('name') for g in groups if isinstance(g, dict)}
     return _items(n for n in names if n)
 
 
