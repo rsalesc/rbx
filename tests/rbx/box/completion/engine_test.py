@@ -186,3 +186,48 @@ def test_malformed_spec_swallows_exception_and_returns_file_directive():
     items = resolve({'name': 'broken'}, ['x'], '')
     assert len(items) == 1
     assert items[0].type == 'file'
+
+
+def test_completer_with_file_flag_appends_file_directive():
+    module_name = 'tests.rbx.box.completion._fixture_completer'
+    registry.register_completer_path('engine_fu', f'{module_name}:fixture_completer')
+    spec = _leaf(
+        [
+            {
+                'kind': 'argument',
+                'names': [],
+                'takes_value': True,
+                'help': None,
+                'variadic': True,
+                'value': {
+                    'kind': 'completer',
+                    'completer': 'engine_fu',
+                    'file': 'file',
+                },
+            }
+        ]
+    )
+    items = resolve(spec, [], '')
+    assert _values(items) == ['from-fixture', '']
+    assert items[-1].type == 'file'
+
+
+def test_variadic_argument_reoffered_on_later_positionals():
+    module_name = 'tests.rbx.box.completion._fixture_completer'
+    registry.register_completer_path('engine_fu2', f'{module_name}:fixture_completer')
+    spec = _leaf(
+        [
+            {
+                'kind': 'argument',
+                'names': [],
+                'takes_value': True,
+                'help': None,
+                'variadic': True,
+                'value': {'kind': 'completer', 'completer': 'engine_fu2'},
+            }
+        ]
+    )
+    # Two positionals already consumed, but the (only) argument is variadic, so
+    # the completer is still offered.
+    items = resolve(spec, ['a', 'b'], '')
+    assert _values(items) == ['from-fixture']

@@ -104,7 +104,13 @@ def _value_items(
     if kind == 'choice':
         return [CompletionItem(c) for c in value['choices'] if c.startswith(incomplete)]
     if kind == 'completer':
-        return list(load_completer(value['completer'])(ctx, incomplete))
+        items = list(load_completer(value['completer'])(ctx, incomplete))
+        file_flag = value.get('file')
+        if file_flag == 'dir':
+            items = items + DIR
+        elif file_flag == 'file':
+            items = items + FILE
+        return items
     if kind == 'path':
         return DIR if value.get('path') == 'dir' else FILE
     return FILE  # 'none'/unknown -> shell default file completion
@@ -213,6 +219,10 @@ def resolve(
         arguments = [p for p in node['params'] if p['kind'] == 'argument']
         if positional < len(arguments):
             return _value_items(arguments[positional]['value'], ctx, incomplete)
+        if arguments and arguments[-1].get('variadic'):
+            # A variadic last argument keeps consuming positionals, so the real CLI
+            # re-offers its completer at every position past it.
+            return _value_items(arguments[-1]['value'], ctx, incomplete)
         return FILE
     except Exception:
         if os.environ.get('_RBX_COMPLETE_DEBUG'):
