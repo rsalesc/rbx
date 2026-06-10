@@ -28,6 +28,8 @@ SCENARIOS = [
     ('rbx build --verification-level ', '3'),  # verification_level completer
     ('rbx time --profile ', '3'),  # profile completer
     ('rbx stress --finder ', '3'),  # solutions completer (file-union)
+    ('rbx -C ', '2'),  # contest_variant completer
+    ('rbx on ', '2'),  # problem completer
 ]
 
 

@@ -40,6 +40,9 @@ class VerificationLevel(Enum):
 
 
 def _verification_autocompletion():
+    # Indirect through a function so module load doesn't eagerly depend on
+    # rbx.annotations (keeps this module's import surface decoupled; the import
+    # is light either way).
     from rbx import annotations
 
     return annotations._adapt('verification_level')  # noqa: SLF001
