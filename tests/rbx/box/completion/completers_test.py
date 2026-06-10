@@ -64,3 +64,15 @@ def test_verification_level_completer_offers_int_values_with_names():
     by_value = {i.value: i.help for i in items}
     assert by_value['0'] == 'NONE'
     assert by_value['4'] == 'FULL'
+
+
+def test_profile_completer_lists_limits_files(tmp_path):
+    limits = tmp_path / '.limits'
+    limits.mkdir()
+    (limits / 'local.yml').write_text('')
+    (limits / 'codeforces.yml').write_text('')
+    (limits / 'notes.txt').write_text('')  # ignored
+    values = {
+        i.value for i in completers.complete_profile(_ctx(package_root=tmp_path), '')
+    }
+    assert values == {'local', 'codeforces'}

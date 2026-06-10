@@ -112,3 +112,14 @@ def complete_verification_level(
     ctx: CompletionContext, incomplete: str
 ) -> List[CompletionItem]:
     return [CompletionItem(v, help=h) for v, h in _VERIFICATION_TABLE]
+
+
+@register_completer('profile')
+def complete_profile(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    root = ctx.package_root
+    if root is None:
+        return []
+    limits_dir = Path(root) / '.limits'
+    if not limits_dir.is_dir():
+        return []
+    return _items(p.stem for p in limits_dir.glob('*.yml'))
