@@ -98,3 +98,40 @@ def test_real_app_captures_raw_alias_names_and_recurses():
     assert pkg['is_group'] is True
     # Recursion descends into the group's children.
     assert any(c['name'] == 'polygon' for c in pkg['children'])
+
+
+def test_variadic_argument_flagged():
+    from typing import List, Optional
+
+    app = typer.Typer()
+
+    @app.command()
+    def run(
+        names: Optional[List[str]] = typer.Argument(None),  # noqa: B008
+    ):
+        pass
+
+    spec = build_spec(_cli(app), name='run')
+    arg = next(p for p in spec['params'] if p['kind'] == 'argument')
+    assert arg['variadic'] is True
+
+
+def test_file_union_completer_value_flagged():
+    @registry.register_completer('gen_sol')
+    def _gen_sol(ctx, incomplete):
+        return []
+
+    cb = _gen_sol
+    cb._completer_file = 'file'  # noqa: SLF001  emulate _adapt(file=True)
+
+    app = typer.Typer()
+
+    @app.command()
+    def run(
+        sols: Annotated[str, typer.Argument(autocompletion=cb)] = '',
+    ):
+        pass
+
+    spec = build_spec(_cli(app), name='run')
+    arg = next(p for p in spec['params'] if p['kind'] == 'argument')
+    assert arg['value'] == {'kind': 'completer', 'completer': 'gen_sol', 'file': 'file'}

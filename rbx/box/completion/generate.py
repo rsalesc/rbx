@@ -22,6 +22,11 @@ Spec schema (minimal -- exactly these keys):
       'multiple': bool,           # True if the option may be repeated (Click re-offers it)
       'help': Optional[str],
       'value': dict,              # {'kind': 'choice'|'completer'|'path'|'none', ...}
+                                  # a 'completer' value may carry an optional
+                                  # 'file'/'dir' key (file-union: append a shell
+                                  # file/dir directive after the dynamic candidates)
+      'variadic': bool,           # OPTIONAL, arguments only: True when nargs == -1
+                                  # (the engine re-offers it past its position)
     }
 """
 
@@ -92,10 +97,25 @@ def _completer_key(param: click.Parameter) -> Optional[str]:
     raise UnregisteredCompleterError(f'completer for {param.name!r} is not registered')
 
 
+def _completer_file(param: click.Parameter) -> Optional[str]:
+    """Return the file-union flag ('file'/'dir') a completer callback was tagged
+    with via `_adapt(file=...)`, or None. Mirrors `_completer_key`'s candidate
+    probe so it survives Typer's wrapper chain."""
+    for fn in _completer_candidates(param):
+        flag = getattr(fn, '_completer_file', None)
+        if flag is not None:
+            return flag
+    return None
+
+
 def _value_spec(param: click.Parameter) -> Dict[str, Any]:
     key = _completer_key(param)
     if key is not None:
-        return {'kind': 'completer', 'completer': key}
+        spec: Dict[str, Any] = {'kind': 'completer', 'completer': key}
+        file_flag = _completer_file(param)
+        if file_flag is not None:
+            spec['file'] = file_flag
+        return spec
     t = param.type
     choices = getattr(t, 'choices', None)
     if choices:
@@ -114,7 +134,7 @@ def _param_spec(param: click.Parameter) -> Dict[str, Any]:
     # Boolean flags declared as ``--check/--no-check`` carry the negation form in
     # ``secondary_opts``; Click completes BOTH, so include them in the names.
     names = list(param.opts) + list(getattr(param, 'secondary_opts', []))
-    return {
+    spec: Dict[str, Any] = {
         'kind': 'option' if is_opt else 'argument',
         'names': names if is_opt else [],
         'takes_value': not is_flag,
@@ -122,6 +142,9 @@ def _param_spec(param: click.Parameter) -> Dict[str, Any]:
         'help': getattr(param, 'help', None) if is_opt else None,
         'value': {'kind': 'none'} if is_flag else _value_spec(param),
     }
+    if not is_opt and getattr(param, 'nargs', 1) == -1:
+        spec['variadic'] = True
+    return spec
 
 
 def _panel(cmd: click.Command) -> Optional[str]:

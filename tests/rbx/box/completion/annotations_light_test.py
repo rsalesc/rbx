@@ -16,3 +16,18 @@ def test_checker_adapter_lists_checkers():
     assert any(v.endswith('.cpp') for v in values)
     assert 'boilerplate.cpp' not in values
     assert cb._completer_key == 'checker'  # noqa: SLF001
+
+
+def test_adapt_file_flag_tags_callback():
+    from rbx import annotations
+
+    cb = annotations._adapt('solutions', file=True)  # noqa: SLF001
+    assert cb._completer_key == 'solutions'  # noqa: SLF001
+    assert cb._completer_file == 'file'  # noqa: SLF001
+
+
+def test_adapt_without_file_flag_has_no_file_attr():
+    from rbx import annotations
+
+    cb = annotations._adapt('language')  # noqa: SLF001
+    assert getattr(cb, '_completer_file', None) is None

@@ -72,6 +72,7 @@ async def build(
             '-p',
             '--profile',
             help='Timing profile to render statements against. Problems missing this profile are skipped with a warning.',
+            autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
 ):

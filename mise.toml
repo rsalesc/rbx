@@ -68,4 +68,6 @@ run = "python scripts/bench_completion.py"
 
 [tasks.gen-completion-spec]
 description = "Regenerate the committed completion spec from the Typer app"
-run = "python -m rbx.box.completion.serialize"
+# serialize writes raw pprint output; ruff-format it so the committed file is
+# textually reproducible (the drift test is dict-based, but this avoids churn).
+run = "python -m rbx.box.completion.serialize && ruff format rbx/box/completion/_spec.py"

@@ -186,3 +186,98 @@ def test_malformed_spec_swallows_exception_and_returns_file_directive():
     items = resolve({'name': 'broken'}, ['x'], '')
     assert len(items) == 1
     assert items[0].type == 'file'
+
+
+def test_completer_with_file_flag_appends_file_directive():
+    module_name = 'tests.rbx.box.completion._fixture_completer'
+    registry.register_completer_path('engine_fu', f'{module_name}:fixture_completer')
+    spec = _leaf(
+        [
+            {
+                'kind': 'argument',
+                'names': [],
+                'takes_value': True,
+                'help': None,
+                'variadic': True,
+                'value': {
+                    'kind': 'completer',
+                    'completer': 'engine_fu',
+                    'file': 'file',
+                },
+            }
+        ]
+    )
+    items = resolve(spec, [], '')
+    assert _values(items) == ['from-fixture', '']
+    assert items[-1].type == 'file'
+
+
+def test_variadic_argument_reoffered_on_later_positionals():
+    module_name = 'tests.rbx.box.completion._fixture_completer'
+    registry.register_completer_path('engine_fu2', f'{module_name}:fixture_completer')
+    spec = _leaf(
+        [
+            {
+                'kind': 'argument',
+                'names': [],
+                'takes_value': True,
+                'help': None,
+                'variadic': True,
+                'value': {'kind': 'completer', 'completer': 'engine_fu2'},
+            }
+        ]
+    )
+    # Two positionals already consumed, but the (only) argument is variadic, so
+    # the completer is still offered.
+    items = resolve(spec, ['a', 'b'], '')
+    assert _values(items) == ['from-fixture']
+
+
+def test_zsh_source_adds_candidates_before_file_completion():
+    # File-union: dynamic candidates (e.g. solutions) must be added BEFORE the
+    # `_path_files` handoff so they rank ahead of the directory listing in the
+    # zsh menu (issue #575 follow-up: "solutions first").
+    from rbx.box.completion.engine import source_to_string
+
+    src = source_to_string('zsh')
+    assert 'compadd' in src and '_path_files' in src
+    assert src.index('compadd') < src.index('_path_files'), (
+        'zsh source must add candidates before _path_files'
+    )
+    # The file/dir handoff is deferred via flags rather than called in the parse loop.
+    assert 'want_files' in src
+    # Described candidates use `compadd -d` (order-preserving), NOT `_describe`
+    # (which re-sorts items that share a description, e.g. several "ACCEPTED").
+    assert '_describe' not in src
+    assert '-d desc_displays' in src
+
+
+def test_completer_values_are_prefix_filtered_by_incomplete():
+    from click.shell_completion import CompletionItem
+
+    from rbx.box.completion.registry import register_completer
+
+    @register_completer('engine_prefix_demo')
+    def _c(ctx, incomplete):  # registered as a live object (defined in <locals>)
+        return [
+            CompletionItem('@main'),
+            CompletionItem('@boca/'),
+            CompletionItem('sols/a.cpp'),
+        ]
+
+    spec = _leaf(
+        [
+            {
+                'kind': 'argument',
+                'names': [],
+                'takes_value': True,
+                'help': None,
+                'value': {'kind': 'completer', 'completer': 'engine_prefix_demo'},
+            }
+        ]
+    )
+    # Empty incomplete -> all candidates, in order.
+    assert _values(resolve(spec, [], '')) == ['@main', '@boca/', 'sols/a.cpp']
+    # Typing a prefix narrows to the matching candidate(s).
+    assert _values(resolve(spec, [], '@m')) == ['@main']
+    assert _values(resolve(spec, [], 'sols/')) == ['sols/a.cpp']

@@ -104,7 +104,21 @@ def _value_items(
     if kind == 'choice':
         return [CompletionItem(c) for c in value['choices'] if c.startswith(incomplete)]
     if kind == 'completer':
-        return list(load_completer(value['completer'])(ctx, incomplete))
+        # Prefix-filter the dynamic candidates by the incomplete, exactly like
+        # Click/Typer do. The shell scripts add these with `-U` (no re-filtering),
+        # so without this, typing a prefix would offer everything and reset the
+        # word instead of narrowing. Filtering here keeps every shell consistent.
+        items = [
+            item
+            for item in load_completer(value['completer'])(ctx, incomplete)
+            if item.value.startswith(incomplete)
+        ]
+        # A file-union completer hands off to the shell's default file completion
+        # AFTER its dynamic candidates (e.g. `rbx run` solutions + arbitrary paths).
+        # The directive is appended unfiltered -- the shell matches files itself.
+        if value.get('file'):
+            items = items + FILE
+        return items
     if kind == 'path':
         return DIR if value.get('path') == 'dir' else FILE
     return FILE  # 'none'/unknown -> shell default file completion
@@ -161,6 +175,64 @@ def complete_to_string(shell: str, spec) -> str:
     return comp.complete()
 
 
+# Custom zsh completion function. Two deliberate departures from Click's native
+# template (issue #575):
+#   1. The file/dir handoff (`_path_files`) is deferred until AFTER the dynamic
+#      candidates are added, so in a file-union position (e.g. `rbx run`) the
+#      solutions/`@`-prefixes rank ahead of the directory listing.
+#   2. Described candidates are added via `compadd -d` (parallel display array)
+#      instead of `_describe`, which re-sorts items that share a description
+#      (e.g. several "ACCEPTED" solutions) alphabetically -- that reordering is
+#      what pushed `@boca` ahead of `@main`. `compadd -V` preserves the engine's
+#      insertion order (`@main`, then solutions, then `@boca`).
+# Placeholders match Click's `.source()` (`prog_name`, `complete_func`, `complete_var`).
+_ZSH_SOURCE_TEMPLATE = """#compdef %(prog_name)s
+
+%(complete_func)s() {
+    local -a completions
+    local -a desc_values desc_displays
+    local -a response
+    local want_files want_dirs
+    (( ! $+commands[%(prog_name)s] )) && return 1
+
+    response=("${(@f)$(env COMP_WORDS="${words[*]}" COMP_CWORD=$((CURRENT-1)) %(complete_var)s=zsh_complete %(prog_name)s)}")
+
+    for type key descr in ${response}; do
+        if [[ "$type" == "plain" ]]; then
+            if [[ "$descr" == "_" ]]; then
+                completions+=("$key")
+            else
+                desc_values+=("$key")
+                desc_displays+=("$key -- $descr")
+            fi
+        elif [[ "$type" == "dir" ]]; then
+            want_dirs=1
+        elif [[ "$type" == "file" ]]; then
+            want_files=1
+        fi
+    done
+
+    # Add dynamic candidates (preserving insertion order) BEFORE the file handoff.
+    if [ -n "$desc_values" ]; then
+        compadd -U -V unsorted -l -d desc_displays -a desc_values
+    fi
+    if [ -n "$completions" ]; then
+        compadd -U -V unsorted -a completions
+    fi
+    [[ -n "$want_dirs" ]] && _path_files -/
+    [[ -n "$want_files" ]] && _path_files -f
+}
+
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    # autoload from fpath, call function directly
+    %(complete_func)s "$@"
+else
+    # eval/source/. command, register function for later
+    compdef %(complete_func)s %(prog_name)s
+fi
+"""
+
+
 def source_to_string(shell: str) -> str:
     """Render the shell completion install script (the `source_<shell>` instruction)."""
     import click
@@ -169,6 +241,10 @@ def source_to_string(shell: str) -> str:
     if base is None:
         return ''
     comp = base(click.Command('rbx'), {}, 'rbx', '_RBX_COMPLETE')
+    if shell == 'zsh':
+        # Use our reordered template (solutions before file completion); everything
+        # else is Click's native source.
+        comp.source_template = _ZSH_SOURCE_TEMPLATE
     return comp.source()
 
 
@@ -213,6 +289,10 @@ def resolve(
         arguments = [p for p in node['params'] if p['kind'] == 'argument']
         if positional < len(arguments):
             return _value_items(arguments[positional]['value'], ctx, incomplete)
+        if arguments and arguments[-1].get('variadic'):
+            # A variadic last argument keeps consuming positionals, so the real CLI
+            # re-offers its completer at every position past it.
+            return _value_items(arguments[-1]['value'], ctx, incomplete)
         return FILE
     except Exception:
         if os.environ.get('_RBX_COMPLETE_DEBUG'):

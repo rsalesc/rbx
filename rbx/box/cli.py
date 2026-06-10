@@ -156,6 +156,7 @@ def main(
             '-p',
             '--profile',
             help='Which timing profile to use when running solutions.',
+            autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
     profiling: bool = typer.Option(
@@ -173,6 +174,7 @@ def main(
                 'use_variants: true). Defaults to the RBX_CONTEST env var.'
             ),
             envvar='RBX_CONTEST',
+            autocompletion=annotations._adapt('contest_variant'),  # noqa: SLF001
         ),
     ] = None,
     version: Annotated[
@@ -236,7 +238,13 @@ def ui():
     help='Run a command in the context of a problem (or a set of problems) of a contest.',
     context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
 )
-def on(ctx: typer.Context, problems: str) -> None:
+def on(
+    ctx: typer.Context,
+    problems: Annotated[
+        str,
+        typer.Argument(autocompletion=annotations._adapt('problem')),  # noqa: SLF001
+    ],
+) -> None:
     contest.on(ctx, problems)
 
 
@@ -314,7 +322,8 @@ async def run(
         Optional[List[str]],
         PackagePath,
         typer.Argument(
-            help='Path to solutions to run. If not specified, will run all solutions.'
+            help='Path to solutions to run. If not specified, will run all solutions.',
+            autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
         ),
     ] = None,
     outcome: Optional[str] = typer.Option(
@@ -322,6 +331,7 @@ async def run(
         '--outcome',
         '-o',
         help='Include only solutions whose expected outcomes intersect with this.',
+        autocompletion=annotations._adapt('outcome'),  # noqa: SLF001
     ),
     tags: Annotated[
         Optional[List[str]],
@@ -529,6 +539,7 @@ async def time(
         '--profile',
         '-p',
         help='Profile to use for time limit estimation.',
+        autocompletion=annotations._adapt('profile'),  # noqa: SLF001
     ),
     integrate: bool = typer.Option(
         False,
@@ -649,7 +660,8 @@ async def irun(
         Optional[List[str]],
         PackagePath,
         typer.Argument(
-            help='Path to solutions to run. If not specified, will run all solutions.'
+            help='Path to solutions to run. If not specified, will run all solutions.',
+            autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
         ),
     ] = None,
     outcome: Optional[str] = typer.Option(
@@ -657,6 +669,7 @@ async def irun(
         '--outcome',
         '-o',
         help='Include only solutions whose expected outcomes intersect with this.',
+        autocompletion=annotations._adapt('outcome'),  # noqa: SLF001
     ),
     tags: Annotated[
         Optional[List[str]],
@@ -686,6 +699,7 @@ async def irun(
         '-tc',
         '-t',
         help='Testcase to run, in the format "[group]/[index]". If not specified, will run interactively.',
+        autocompletion=annotations._adapt('testgroup'),  # noqa: SLF001
     ),
     output: bool = typer.Option(
         False,
@@ -852,6 +866,7 @@ async def stress(
             '--finder',
             '-f',
             help='Run a stress with this finder expression.',
+            autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
         ),
     ] = None,
     timeout: Annotated[
@@ -929,6 +944,7 @@ async def stress(
         typer.Option(
             '--fuzz-on',
             help='Testgroups to fuzz generator calls from.',
+            autocompletion=annotations._adapt('testgroup'),  # noqa: SLF001
         ),
     ] = None,
     validate: bool = typer.Option(
@@ -940,6 +956,7 @@ async def stress(
         '--reference',
         '-r',
         help='Reference solution to use for the stress test.',
+        autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
     ),
 ):
     if generator_args and (fuzz or fuzz_on):

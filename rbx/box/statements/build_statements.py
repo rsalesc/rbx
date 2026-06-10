@@ -659,6 +659,7 @@ async def build(
             '-p',
             '--profile',
             help='Timing profile to render the statement against. Must exist in this problem.',
+            autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
 ):

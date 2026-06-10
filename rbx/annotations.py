@@ -13,11 +13,16 @@ class _PackagePathMarker:
 PackagePath = _PackagePathMarker()
 
 
-def _adapt(key: str):
+def _adapt(key: str, *, file: bool = False):
     """Typer autocompletion callback that delegates to the registry completer `key`.
 
     Builds the same CompletionContext the fast engine builds, so real-Typer and
     fast-path completions agree. Returns plain string values (Typer wraps them).
+
+    When `file=True`, the param's value position should ALSO hand off to the
+    shell's default file completion after the dynamic candidates. Typer's callback
+    contract cannot emit a file directive, so we only TAG the callback here; the
+    spec generator records the flag and the fast engine appends the directive.
     """
 
     def _cb(incomplete: str = ''):
@@ -36,6 +41,8 @@ def _adapt(key: str):
         return [item.value for item in load_completer(key)(ctx, incomplete)]
 
     _cb._completer_key = key  # noqa: SLF001  read by the spec generator to recover the key
+    if file:
+        _cb._completer_file = 'file'  # noqa: SLF001  read by the spec generator
     return _cb
 
 
