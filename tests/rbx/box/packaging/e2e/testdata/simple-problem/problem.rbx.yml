@@ -18,5 +18,6 @@ testcases:
     testcaseGlob: tests/*.in
 
 statements:
-  - name: main
-    path: statements/statement.md
+  - language: en
+    file: statements/statement.md
+    type: md

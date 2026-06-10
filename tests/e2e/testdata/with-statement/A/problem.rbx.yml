@@ -19,10 +19,7 @@ testcases:
             args: 1 2
 
 statements:
-  - name: main
-    path: statement/statement.rbx.tex
+  - language: en
+    title: A Plus B
+    file: statement/statement.rbx.tex
     type: rbx-tex
-    language: en
-    configure:
-      - type: rbx-tex
-        template: statement/template.rbx.tex

@@ -1,0 +1,14 @@
+name: with-statement
+titles:
+  en: With Statement Contest
+
+problems:
+  - short_name: A
+
+statements:
+  - name: main-en
+    language: en
+    file: statements/contest.rbx.tex
+    type: rbx-tex
+    standaloneProblemTemplate: statements/problem-standalone.rbx.tex
+    contestProblemTemplate: statements/problem-in-contest.rbx.tex
