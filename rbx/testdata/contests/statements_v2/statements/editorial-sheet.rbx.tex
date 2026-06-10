@@ -1,0 +1,9 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{import}
+\begin{document}
+\begin{center}{\Large Editorial -- \VAR{contest.title | escape}}\end{center}
+%- for problem in problems
+  \subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
+  \clearpage
+%- endfor
+\end{document}

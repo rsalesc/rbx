@@ -14,6 +14,13 @@ statements:
     type: 'rbxTeX'
     standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
     contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'
+tutorials:
+  - name: 'editorial-en'
+    language: 'en'
+    file: 'statements/editorial-sheet.rbx.tex'
+    type: 'rbxTeX'
+    standaloneProblemTemplate: 'statements/editorial-standalone.rbx.tex'
+    contestProblemTemplate: 'statements/editorial-in-contest.rbx.tex'
 documents:
   - name: 'info-en'
     language: 'en'

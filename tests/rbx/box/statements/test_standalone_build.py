@@ -5,7 +5,7 @@ import pytest
 from rbx.box import cd, package_utils
 from rbx.box.statements import build_statements
 from rbx.box.statements.resolver import StatementResolverError
-from rbx.box.statements.schema import StatementType
+from rbx.box.statements.schema import StatementKind, StatementType
 
 
 @pytest.mark.test_pkg('contests/statements_v2')
@@ -61,6 +61,32 @@ async def test_standalone_overlay_merges_contest_chrome(cleandir_with_testdata):
         overlay_root = pathlib.Path('build') / 'statements' / 'st' / 'en-default'
         # Contest chrome (the templates) was merged into the problem overlay root.
         assert (overlay_root / 'problem-standalone.rbx.tex').is_file()
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_standalone_tutorial_builds_from_contest_template(
+    cleandir_with_testdata,
+):
+    # `rbx tut b` builds the problem's tutorial standalone, borrowing the contest
+    # tutorial's standaloneProblemTemplate, into build/tutorial-<lang>.tex.
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        await build_statements.execute_build(
+            verification=0,
+            samples=False,
+            validate=False,
+            output=StatementType.TeX,
+            kind=StatementKind.TUTORIALS,
+        )
+
+    out = cleandir_with_testdata / 'A' / 'build' / 'tutorial-en.tex'
+    text = out.read_text()
+    assert '\\documentclass' in text
+    # The editorial template + the tutorial file's own block (not the statement).
+    assert 'Editorial: Problem A' in text
+    assert 'Editorial for A, authored by Alice' in text
+    # The (separate) statement is not part of the tutorial.
+    assert 'belongs to' not in text
 
 
 @pytest.mark.test_pkg('problems/rooted-tree-detective')

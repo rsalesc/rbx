@@ -6,10 +6,25 @@ from rbx.box.contest import statements as contest_statements_cli
 from rbx.box.statements.schema import StatementType
 
 _build_async = inspect.unwrap(contest_statements_cli.build)
+_build_tut_async = inspect.unwrap(contest_statements_cli.build_tutorials)
 
 
 async def _run(output=StatementType.TeX):
     await _build_async(
+        verification=0,
+        names=None,
+        languages=None,
+        validate=False,
+        output=output,
+        samples=False,
+        vars=None,
+        install_tex=False,
+        profile=None,
+    )
+
+
+async def _run_tutorials(output=StatementType.TeX):
+    await _build_tut_async(
         verification=0,
         names=None,
         languages=None,
@@ -56,6 +71,26 @@ async def test_documents_emitted_without_joining(cleandir_with_testdata):
     assert 'info sheet' in info
     assert 'Statements v2 Contest' in info
     assert '\\subimport' not in info
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_contest_tutorials_join_each_problem(cleandir_with_testdata):
+    # `rbx contest tut b` joins the problems' tutorials (editorials), pulling
+    # from each problem's `tutorials` section, into the contest tutorial doc.
+    await _run_tutorials(output=StatementType.TeX)
+
+    sheet = (cleandir_with_testdata / 'build' / 'editorial-en.tex').read_text()
+    assert '\\subimport{.problems/A/}{statement}' in sheet
+    assert '\\subimport{.problems/B/}{statement}' in sheet
+
+    overlay = cleandir_with_testdata / 'build' / 'statements' / 'editorial-en'
+    frag_a = (overlay / '.problems' / 'A' / 'statement.tex').read_text()
+    # Fragment rendered the problem's TUTORIAL file (editorial), not its statement.
+    assert 'Editorial A. Problem A' in frag_a
+    assert 'Editorial for A, authored by Alice' in frag_a
+
+    # The statements channel is untouched by the tutorials build.
+    assert not (cleandir_with_testdata / 'build' / 'main-en.tex').is_file()
 
 
 @pytest.mark.test_pkg('contests/statements_v2')

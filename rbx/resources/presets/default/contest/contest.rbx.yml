@@ -6,18 +6,21 @@ titles:
   en: "New contest"
 # The contest owns the statement templates and chrome (under statements/).
 statements:
-  # Task sheet (the only statement that builds standalone with `rbx st b`).
+  # Task sheet (built with `rbx st b` / `rbx contest st b`).
   - name: "statement-en"
     language: "en"
     file: "statements/contest.rbx.tex"
     type: "rbxTeX"
     standaloneProblemTemplate: "statements/problem.rbx.tex"
     contestProblemTemplate: "statements/problem-fragment.rbx.tex"
-  # Solutions sheet.
+# Tutorials are the editorials channel (built with `rbx tut b` / `rbx contest tut b`).
+tutorials:
+  # Solutions sheet, joining each problem's editorial.
   - name: "editorial-en"
     language: "en"
     file: "statements/editorial-sheet.rbx.tex"
     type: "rbxTeX"
+    standaloneProblemTemplate: "statements/editorial-standalone.rbx.tex"
     contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
     params:
       watermark: true

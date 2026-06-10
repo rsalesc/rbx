@@ -34,6 +34,10 @@ statements:
     type: "rbxTeX"
     params:
       show_limits: true # Set to false to hide the time/memory limits.
+tutorials:
+  - language: "en"
+    file: "statement/editorial.rbx.tex" # Open this file to edit your editorial.
+    type: "rbxTeX"
 # Variables usable in the validator, checker, interactor, stress tests and statement.
 vars:
   # Author name to be displayed in the editorial.

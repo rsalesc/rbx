@@ -42,7 +42,7 @@ from rbx.box.statements.context import (
     contest_jinja_kwargs,
 )
 from rbx.box.statements.overlay import problem_overlay_dir
-from rbx.box.statements.schema import BaseStatement, StatementType
+from rbx.box.statements.schema import BaseStatement, StatementKind, StatementType
 from rbx.box.testcase_sample_utils import get_statement_samples
 
 
@@ -154,8 +154,9 @@ async def build_statement(
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
     install_tex: bool = False,
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> pathlib.Path:
-    """Build one contest statement and return its output path.
+    """Build one contest statement (or tutorial) and return its output path.
 
     For an *rbx* statement this assembles the join overlay (design §6.2): contest
     chrome at the root, each problem staged isolated under ``.problems/<SHORT>/``
@@ -204,7 +205,7 @@ async def build_statement(
     problem_ctxs: List[ProblemRenderContext] = []
     for problem in _problems_to_build(contest, problems_of_interest):
         console.console.print(
-            f'Building statement for problem [item]{problem.short_name}[/item]...'
+            f'Building {kind.singular} for problem [item]{problem.short_name}[/item]...'
         )
         try:
             problem_ctx = await _render_problem_fragment_async(
@@ -218,6 +219,7 @@ async def build_statement(
                 languages,
                 use_samples,
                 custom_vars,
+                kind,
             )
         except (typer.Exit, RbxException):
             # Hard config/abort errors (e.g. a missing matching statement, or
@@ -273,6 +275,7 @@ async def _render_problem_fragment_async(
     languages,
     use_samples: bool,
     custom_vars: Dict[str, Any],
+    kind: StatementKind = StatementKind.STATEMENTS,
 ) -> Optional[ProblemRenderContext]:
     """Stage + render one problem's fragment for the join.
 
@@ -287,8 +290,13 @@ async def _render_problem_fragment_async(
     with cd.new_package_cd(problem.get_path()):
         package_utils.clear_package_cache()
         pkg = package.find_problem_package_or_die()
+        problem_candidates = (
+            pkg.expanded_tutorials
+            if kind == StatementKind.TUTORIALS
+            else pkg.expanded_statements
+        )
         problem_statement = resolver.select_problem_statement(
-            contest_statement, pkg.expanded_statements, problem.short_name
+            contest_statement, problem_candidates, problem.short_name
         )
 
         assert problem_statement.file is not None

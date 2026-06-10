@@ -10,3 +10,8 @@ statements:
     type: 'rbxTeX'
     params:
       show_limits: true
+tutorials:
+  - language: 'en'
+    title: 'Problem A'
+    file: 'statement/editorial.rbx.tex'
+    type: 'rbxTeX'

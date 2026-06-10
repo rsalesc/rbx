@@ -1,26 +1,2 @@
-%% Per-problem fragment for the editorial sheet (statement + solution).
-\includeProblem
-%- if problem.short_name is defined
-	[\VAR{problem.short_name}]
-%- endif
-{\VAR{problem.title | escape}}{
-
-	%- if problem.blocks.macros is defined
-		\VAR{problem.blocks.macros}
-	%- endif
-
-	\VAR{problem.blocks.legend}
-
-	%- if problem.blocks.input is defined
-		\inputdesc{\VAR{problem.blocks.input}}
-	%- endif
-
-	%- if problem.blocks.output is defined
-		\outputdesc{\VAR{problem.blocks.output}}
-	%- endif
-}
-
-%- if problem.blocks.editorial is nonnull
-	\subsection*{\strSolution}
-	\VAR{problem.blocks.editorial}
-%- endif
+%% Per-problem fragment `\subimport`-ed into the editorial sheet.
+%- include "_editorial-body.rbx.tex"

@@ -73,6 +73,13 @@ app.add_typer(
     rich_help_panel='Deploying',
 )
 app.add_typer(
+    build_statements.tutorials_app,
+    name='tutorials, tut',
+    cls=annotations.AliasGroup,
+    help='Manage tutorials/editorials (sub-command).',
+    rich_help_panel='Deploying',
+)
+app.add_typer(
     download.app,
     name='download, down',
     cls=annotations.AliasGroup,

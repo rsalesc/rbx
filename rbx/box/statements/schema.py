@@ -173,6 +173,21 @@ DOCUMENT_TYPES = (
 )
 
 
+class StatementKind(str, Enum):
+    """Which parallel section a statement build operates on (design §3): the
+    primary ``statements`` or the ``tutorials`` (editorials). Both share the
+    same models, engine and build paths — the kind only selects which list to
+    read on the problem and the contest, and the output filename prefix."""
+
+    STATEMENTS = 'statements'
+    TUTORIALS = 'tutorials'
+
+    @property
+    def singular(self) -> str:
+        """Noun used in messages and output filenames (statement / tutorial)."""
+        return 'tutorial' if self == StatementKind.TUTORIALS else 'statement'
+
+
 class StatementVariantRef(BaseModel):
     """A problem-statement `extends` target referenced by (language, variant).
 

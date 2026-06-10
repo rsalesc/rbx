@@ -57,6 +57,12 @@ app.add_typer(
     help='Manage contest-level statements.',
 )
 app.add_typer(
+    statements.tutorials_app,
+    name='tutorials, tut',
+    cls=annotations.AliasGroup,
+    help='Manage contest-level tutorials/editorials.',
+)
+app.add_typer(
     packaging.app,
     name='package, pkg',
     cls=annotations.AliasGroup,

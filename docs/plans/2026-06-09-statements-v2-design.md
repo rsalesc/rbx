@@ -375,14 +375,16 @@ LaTeX Jinja env, TikZ externalization, demacro.
   `build/statement-<lang>[-<variant>].pdf`.
 - `rbx contest st b` — joinable contest statements → contest PDF; plus
   `documents` emitted without joining.
-- `tutorials` / `documents` — parallel commands reusing the same engine. Exact
-  spelling is cosmetic and can be settled during implementation.
+- `rbx tut b [names]` / `rbx contest tut b` — the **tutorials** (editorials)
+  channel, a parallel `tutorials, tut` command app reusing the very same engine
+  (a `StatementKind` selects the `tutorials` list on both problem and contest,
+  and the `tutorial-<lang>...pdf` output prefix). `documents` are emitted only by
+  the statements command, never the tutorials one.
 
 ## 8. Out of scope / deferred
 
 - **Default-template fallback** so contest-less problems build (initially it
   errors).
-- CLI command spelling for tutorials/documents.
 
 ## 9. Work breakdown (implementation issues)
 
