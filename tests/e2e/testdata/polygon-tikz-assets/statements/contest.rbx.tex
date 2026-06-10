@@ -1,0 +1,24 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{import}
+\usepackage{fancyvrb}
+\usepackage{graphicx}
+\usepackage{tikz}
+\newcommand{\example}[2]{%
+  \par\noindent\textbf{Input}\par
+  \VerbatimInput{#1}%
+  \par\noindent\textbf{Output}\par
+  \VerbatimInput{#2}%
+  \par
+}
+\begin{document}
+
+\begin{center}
+  {\Large \VAR{contest.title | escape}}
+\end{center}
+
+%- for problem in problems
+  \subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
+  \clearpage
+%- endfor
+
+\end{document}

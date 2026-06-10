@@ -1,0 +1,64 @@
+scenarios:
+  - name: polygon-upload-assets
+    markers: [pdflatex]
+    description: >
+      Grills the Polygon upload of statement assets: a TikZ picture and two
+      static images (root-level + nested) in the legend, plus a sample
+      explanation (inline explanation_0 block) that itself contains a TikZ
+      picture and a nested image. Encodes the CURRENT behavior (so the suite is
+      green and documents reality): the legend TikZ is externalized and
+      uploaded; both legend images upload (subdir remapped to __, root kept
+      as-is); the explanation merges into notes and its image is remapped and
+      uploaded -- BUT the explanation's TikZ is NOT externalized (notes reference
+      an artifacts/tikz_figures/0_0 PDF that is never produced or uploaded). See
+      docs/plans/2026-06-10-polygon-statement-upload-audit.md.
+    steps:
+      - cmd: build
+        cwd: A
+      - cmd: st b
+        cwd: A
+        expect:
+          files_exist:
+            - A/build/statement-en.pdf
+      - cmd: package polygon -u --upload-as-english --upload-only statements
+        cwd: A
+        expect:
+          stdout_contains: "uploaded successfully"
+          polygon_upload:
+            statements:
+              english:
+                name_contains: "TikZ Assets"
+                legend_contains:
+                  - "\\includegraphics{artifacts__tikz_figures__legend_0.pdf}"
+                  - "\\includegraphics{img__diagram.png}"
+                  - "\\includegraphics{pic}"
+                notes_contains:
+                  - "Explanation for example 1"
+                  - "\\includegraphics{figs__expl.png}"
+                  # BUG: the explanation TikZ references a PDF that is never
+                  # produced or uploaded (it is not externalized).
+                  - "\\includegraphics{artifacts/tikz_figures/0_0}"
+            resources_present:
+              - "artifacts__tikz_figures__legend_0.pdf"
+              - "img__diagram.png"
+              - "pic.png"
+              - "figs__expl.png"
+            resources_absent:
+              # BUG: the explanation TikZ was never externalized to a PDF.
+              - "artifacts__tikz_figures__0_0.pdf"
+              - "artifacts/tikz_figures/0_0.pdf"
+
+  - name: polygon-upload-assets-referential-integrity
+    markers: [pdflatex]
+    description: >
+      The DESIRED end state: every \includegraphics in the uploaded statement
+      resolves to an uploaded resource. Currently xfails (registered in
+      tests/e2e/conftest.py) because the sample explanation's TikZ is not
+      externalized/uploaded -- the notes reference an artifacts/tikz_figures/0_0
+      PDF that does not exist. Flips to xpass when that bug is fixed.
+    steps:
+      - cmd: package polygon -u --upload-as-english --upload-only statements
+        cwd: A
+        expect:
+          polygon_upload:
+            resources_referenced_consistent: true

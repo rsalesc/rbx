@@ -1,0 +1,20 @@
+name: tikz-assets
+timeLimit: 1000
+memoryLimit: 256
+
+checker:
+  path: wcmp.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+testcases:
+  - name: samples
+    testcaseGlob: statement/samples/*.in
+
+statements:
+  - language: en
+    title: TikZ Assets
+    file: statement/statement.rbx.tex
+    type: rbx-tex
