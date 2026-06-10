@@ -15,7 +15,7 @@ from textual.selection import Selection
 from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select
 
-from rbx.box.setter_config import ProblemLabelMode
+from rbx.box.setter_config import ProblemLabelMode, get_setter_config
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
@@ -363,6 +363,7 @@ class rbxCommandApp(rbxBaseApp):
         self.parallel = parallel
         self._tabs: List[TabState] = []
         self._active_tab: int = 0
+        self._label_mode: ProblemLabelMode = get_setter_config().ui.problem_label
         self._task_queue = TaskQueue(
             num_terminals=len(commands),
             parallel=parallel,
@@ -409,10 +410,15 @@ class rbxCommandApp(rbxBaseApp):
                         placeholder=self._get_input_placeholder(0),
                     )
 
+    def _entry_label(self, entry: CommandEntry) -> str:
+        if entry.labels:
+            return entry.labels.get(self._label_mode) or entry.display_name
+        return entry.display_name
+
     def _make_tab_label(self, index: int) -> str:
         tab = self._tabs[index]
         icon = _STATUS_MARKUP[tab.aggregate_status]
-        name = tab.entry.display_name
+        name = self._entry_label(tab.entry)
         return f'{icon} {name}'
 
     def _update_sidebar(self, index: int):
