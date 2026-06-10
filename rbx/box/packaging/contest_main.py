@@ -64,7 +64,7 @@ async def run_contest_packager(
             languages = packager.languages()
             for language in languages:
                 statement = packager.get_statement_for_language(language)
-                statement_path = build_contest_statements.build_statement(
+                statement_path = await build_contest_statements.build_statement(
                     statement, contest, output_type=statement_type
                 )
                 built_statements.append(

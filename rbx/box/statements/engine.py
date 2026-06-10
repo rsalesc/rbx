@@ -37,6 +37,12 @@ def _mode_for(statement_type: StatementType) -> str:
     return 'markdown' if statement_type == StatementType.rbxMarkdown else 'latex'
 
 
+def _md_to_latex(markdown: str) -> str:
+    import pypandoc
+
+    return pypandoc.convert_text(markdown, 'latex', 'markdown')
+
+
 def to_sample_source(sample: StatementSample) -> sample_staging.SampleSource:
     """Project the heavy ``StatementSample`` onto the lightweight staging input."""
     chunks: List = []
@@ -91,26 +97,37 @@ def render_problem_tex(
         mode=mode,
     )
 
-    # 2. Sample staging into <problem_root>/.samples/.
+    # 2. Sample staging into <problem_root>/.samples/. Explanations are always
+    #    `\subimport`-ed by a LaTeX template, so for rbxMarkdown we convert the
+    #    rendered explanation (block- or file-sourced) to LaTeX before staging.
     if use_samples and samples:
         kwargs = _problem_jinja_kwargs(
             lang=lang, languages=languages, problem=problem, contest=contest
         )
 
         def render_text(c: bytes, m: str) -> bytes:
-            return builders.render_jinja(problem_root, c, **kwargs)
+            rendered = builders.render_jinja(problem_root, c, **kwargs)
+            if m == 'markdown':
+                rendered = _md_to_latex(rendered.decode()).encode()
+            return rendered
 
         def render_blocks(c: bytes, m: str):
             return builders.render_jinja_blocks(
                 problem_root, c, mode=m, **kwargs
             ).blocks
 
+        explanation_blocks = blocks.explanations
+        if mode == 'markdown':
+            explanation_blocks = {
+                i: _md_to_latex(value) for i, value in explanation_blocks.items()
+            }
+
         sources = [to_sample_source(s) for s in samples]
         problem.samples = sample_staging.stage_samples(
             problem_root,
             root_prefix,
             sources,
-            explanation_blocks=blocks.explanations,
+            explanation_blocks=explanation_blocks,
             render_text=render_text,
             render_blocks=render_blocks,
             lang=lang,
@@ -120,11 +137,8 @@ def render_problem_tex(
     # rbxMarkdown: the extracted blocks are Markdown; convert them to LaTeX so the
     # (LaTeX) template can splice them in (mirrors the v1 rbxMarkdown->rbxTeX step).
     if mode == 'markdown':
-        import pypandoc
-
         problem.blocks = {
-            name: pypandoc.convert_text(value, 'latex', 'markdown')
-            for name, value in blocks.blocks.items()
+            name: _md_to_latex(value) for name, value in blocks.blocks.items()
         }
     else:
         problem.blocks = blocks.blocks
@@ -154,11 +168,28 @@ def relativize_template(
     """
     import shutil
 
+    from rbx.box.statements.overlay import OverlayCollisionError
+
     template_abs = utils.abspath(contest_root / template_path)
     chrome_abs = utils.abspath(chrome_dir)
     try:
         return str(template_abs.relative_to(chrome_abs))
     except ValueError:
+        # Template lives outside the contest statement-file dir, so it was not
+        # brought in by the chrome overlay. Stage it at the root by basename,
+        # erroring rather than silently clobbering an existing overlay asset.
         dest = overlay_root / template_abs.name
+        if dest.exists() and dest.read_bytes() != template_abs.read_bytes():
+            with OverlayCollisionError() as err:
+                err.print(
+                    f'[error]Template [item]{template_path}[/item] lives outside '
+                    f'the contest statement-file directory and its basename '
+                    f'[item]{template_abs.name}[/item] collides with an existing '
+                    f'overlay asset.[/error]'
+                )
+                err.print(
+                    '[warning]Move the template under the contest statement-file '
+                    'directory, or rename it.[/warning]'
+                )
         shutil.copyfile(template_abs, dest)
         return template_abs.name

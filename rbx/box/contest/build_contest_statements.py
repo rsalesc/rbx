@@ -28,6 +28,7 @@ from rbx.box.contest.contest_package import (
     get_contest_statements_build_path,
 )
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement, Document
+from rbx.box.exception import RbxException
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.sanitizers.issue_stack import Issue
@@ -141,6 +142,11 @@ async def build_statement(
                 use_samples,
                 custom_vars,
             )
+        except (typer.Exit, RbxException):
+            # Hard config/abort errors (e.g. a missing matching statement, or
+            # conflicting explanation files) must surface, not be downgraded to a
+            # per-problem skip.
+            raise
         except Exception as exc:
             console.console.print(
                 f'[error]Error building statement for problem '

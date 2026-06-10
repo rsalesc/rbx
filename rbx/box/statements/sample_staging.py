@@ -58,10 +58,6 @@ class SampleSource:
     )
 
 
-def _suffix_for_mode(mode: str) -> str:
-    return '.md' if mode == 'markdown' else '.tex'
-
-
 def _resolve_explanation(
     index: int,
     source: SampleSource,
@@ -112,7 +108,6 @@ def stage_samples(
     """
     explanation_blocks = explanation_blocks or {}
     render_text = render_text or render_explanation_text
-    suffix = _suffix_for_mode(mode)
     samples_root = problem_root / SAMPLES_DIRNAME
 
     handles: List[SampleHandle] = []
@@ -121,15 +116,6 @@ def stage_samples(
         folder = samples_root / folder_name
         folder.mkdir(parents=True, exist_ok=True)
         rel = f'{root_prefix}{SAMPLES_DIRNAME}/{folder_name}'
-
-        shutil.copyfile(source.input_path, folder / 'in')
-        handle = SampleHandle(index=index, input=f'{rel}/in')
-
-        if source.has_output and source.output_path is not None:
-            shutil.copyfile(source.output_path, folder / 'out')
-            handle.output = f'{rel}/out'
-        else:
-            handle.has_output = False
 
         explanation = _resolve_explanation(
             index,
@@ -140,14 +126,34 @@ def stage_samples(
             lang,
             mode,
         )
+
+        # Overlay the authored explanation's directory FIRST (for its figures);
+        # the staged I/O / chunks / explanation below then overwrite anything the
+        # mirror brought in (e.g. a source file literally named `in`/`out`), so
+        # the generated sample data is always authoritative.
+        if (
+            explanation is not None
+            and index not in explanation_blocks
+            and source.explanation_path is not None
+            and source.explanation_path.is_file()
+        ):
+            overlay.mirror_tree(source.explanation_path.parent, folder)
+
+        shutil.copyfile(source.input_path, folder / 'in')
+        handle = SampleHandle(index=index, input=f'{rel}/in')
+
+        if source.has_output and source.output_path is not None:
+            shutil.copyfile(source.output_path, folder / 'out')
+            handle.output = f'{rel}/out'
+        else:
+            handle.has_output = False
+
         if explanation is not None:
-            if (
-                index not in explanation_blocks
-                and source.explanation_path is not None
-                and source.explanation_path.is_file()
-            ):
-                overlay.mirror_tree(source.explanation_path.parent, folder)
-            (folder / f'explanation{suffix}').write_bytes(explanation)
+            # The explanation is always `\subimport`-ed by a LaTeX template (both
+            # the standalone and the contest-problem templates are LaTeX), so it
+            # is written as `.tex` regardless of the source format; rbxMarkdown
+            # explanations are converted upstream (see engine.render_problem_tex).
+            (folder / 'explanation.tex').write_bytes(explanation)
             handle.dir = f'{SAMPLES_DIRNAME}/{folder_name}/'
             handle.explanation_file = 'explanation'
 

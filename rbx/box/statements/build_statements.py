@@ -282,17 +282,33 @@ def _explanation_suffix(statement: Statement) -> str:
     return '.md' if statement.type == StatementType.rbxMarkdown else '.tex'
 
 
+def _externalize_demacro(
+    extra_mergeable_params: Optional[List[ConversionStep]],
+) -> Tuple[bool, bool]:
+    """Resolve TikZ-externalize / demacro from packager-supplied steps (design
+    §6 decision 6: these are export-time toggles, not user schema)."""
+    externalize = False
+    demacro = False
+    for step in extra_mergeable_params or []:
+        externalize = externalize or bool(getattr(step, 'externalize', False))
+        demacro = demacro or bool(getattr(step, 'demacro', False))
+    return externalize, demacro
+
+
 def _emit_output(
     root: pathlib.Path,
     tex: bytes,
     statement: Statement,
     output_type: StatementType,
+    *,
+    externalize: bool = False,
+    demacro: bool = False,
 ) -> bytes:
     """Take rendered TeX (or Markdown) and produce the requested output bytes."""
     if output_type == StatementType.PDF:
         if statement.type == StatementType.Markdown:
             return render.md_to_pdf(root, tex)
-        return render.compile_pdf(root, tex)
+        return render.compile_pdf(root, tex, externalize=externalize, demacro=demacro)
     if output_type in (StatementType.TeX, StatementType.Markdown):
         return tex
     console.console.print(
@@ -407,7 +423,15 @@ async def build_statement(
         overlay.mirror_tree(problem_dir, overlay_root)
         tex = statement.file.read_bytes()
 
-    output_bytes = _emit_output(overlay_root, tex, statement, output_type)
+    externalize, demacro = _externalize_demacro(extra_mergeable_params)
+    output_bytes = _emit_output(
+        overlay_root,
+        tex,
+        statement,
+        output_type,
+        externalize=externalize,
+        demacro=demacro,
+    )
     out_path = get_statement_build_path(
         statement, output_type, limits_info.get_active_profile()
     )

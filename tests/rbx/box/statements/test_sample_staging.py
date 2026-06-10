@@ -108,6 +108,53 @@ class TestExplanations:
         assert (folder / 'diagram.png').read_text() == 'PNG'
         assert handles[0].explanation_file == 'explanation'
 
+    def test_staged_io_wins_over_explanation_dir_mirror(self, tmp_path):
+        # The explanation's source dir happens to contain files named in/out;
+        # the generated sample I/O must remain authoritative (regression).
+        src = tmp_path / 'src'
+        _write(src / '000.in', 'REAL_INPUT')
+        _write(src / '000.out', 'REAL_OUTPUT')
+        _write(src / '000.tex', 'explanation body')
+        _write(src / 'in', 'BOGUS')
+        _write(src / 'out', 'BOGUS')
+        source = SampleSource(
+            input_path=src / '000.in',
+            output_path=src / '000.out',
+            has_output=True,
+            explanation_path=src / '000.tex',
+        )
+
+        root = tmp_path / 'overlay'
+        root.mkdir()
+        sample_staging.stage_samples(
+            problem_root=root,
+            root_prefix='',
+            sources=[source],
+            render_explanation_text=lambda content, mode: content,
+        )
+        folder = root / '.samples' / '000'
+        assert (folder / 'in').read_text() == 'REAL_INPUT'
+        assert (folder / 'out').read_text() == 'REAL_OUTPUT'
+
+    def test_explanation_written_as_tex_even_in_markdown_mode(self, tmp_path):
+        # Explanations are \subimport-ed by a LaTeX template regardless of the
+        # statement format, so the staged file is always explanation.tex.
+        src = tmp_path / 'src'
+        _write(src / '000.in')
+        source = SampleSource(input_path=src / '000.in')
+
+        root = tmp_path / 'overlay'
+        root.mkdir()
+        handles = sample_staging.stage_samples(
+            problem_root=root,
+            root_prefix='',
+            sources=[source],
+            explanation_blocks={0: 'already latex'},
+            mode='markdown',
+        )
+        assert (root / '.samples' / '000' / 'explanation.tex').is_file()
+        assert handles[0].explanation_file == 'explanation'
+
     def test_inline_block_takes_precedence_over_file(self, tmp_path):
         src = tmp_path / 'src'
         _write(src / '000.in')
