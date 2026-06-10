@@ -137,3 +137,37 @@ def test_problem_completer_tolerates_scalar_aliases_field(tmp_path):
         i.value for i in completers.complete_problem(_ctx(package_root=tmp_path), '')
     }
     assert values == {'A'}
+
+
+def test_solutions_completer_expands_globs_to_actual_files(tmp_path):
+    (tmp_path / 'problem.rbx.yml').write_text(
+        'solutions:\n  - path: sols/main*.*\n    outcome: ac\n'
+    )
+    sols = tmp_path / 'sols'
+    sols.mkdir()
+    (sols / 'main.cpp').write_text('')
+    (sols / 'main2.cpp').write_text('')
+    (sols / 'other.cpp').write_text('')  # not matched by the glob
+    items = completers.complete_solutions(_ctx(package_root=tmp_path), '')
+    by_value = {i.value: i for i in items}
+    assert 'sols/main.cpp' in by_value
+    assert 'sols/main2.cpp' in by_value
+    assert 'sols/other.cpp' not in by_value
+    assert 'sols/main*.*' not in by_value  # the glob itself is not offered
+    assert by_value['sols/main.cpp'].help == 'ac'  # outcome carries to each match
+
+
+def test_solutions_completer_orders_main_first_boca_last(tmp_path):
+    (tmp_path / 'problem.rbx.yml').write_text(
+        'solutions:\n  - path: sols/z.cpp\n  - path: sols/a.cpp\n'
+    )
+    sols = tmp_path / 'sols'
+    sols.mkdir()
+    (sols / 'z.cpp').write_text('')
+    (sols / 'a.cpp').write_text('')
+    values = [
+        i.value for i in completers.complete_solutions(_ctx(package_root=tmp_path), '')
+    ]
+    assert values[0] == '@main'
+    assert values[-1] == '@boca/'
+    assert set(values[1:-1]) == {'sols/z.cpp', 'sols/a.cpp'}

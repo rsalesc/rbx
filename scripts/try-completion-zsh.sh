@@ -41,7 +41,7 @@ if ! whence compdef >/dev/null 2>&1; then
 fi
 
 _rbx_fast_completion() {
-    local -a completions completions_with_descriptions response
+    local -a completions desc_values desc_displays response
     local want_files want_dirs
     response=("${(@f)$(
         env COMP_WORDS="${words[*]}" COMP_CWORD=$((CURRENT - 1)) \
@@ -55,7 +55,8 @@ _rbx_fast_completion() {
             if [[ "$descr" == "_" ]]; then
                 completions+=("$key")
             else
-                completions_with_descriptions+=("$key":"$descr")
+                desc_values+=("$key")
+                desc_displays+=("$key -- $descr")
             fi
         elif [[ "$type" == "dir" ]]; then
             want_dirs=1
@@ -64,10 +65,13 @@ _rbx_fast_completion() {
         fi
     done
 
-    # Describe dynamic candidates (e.g. solutions) BEFORE handing off to file
+    # Add dynamic candidates (e.g. solutions) BEFORE handing off to file
     # completion so they rank ahead of the directory listing (file-union, #575).
-    if [ -n "$completions_with_descriptions" ]; then
-        _describe -V unsorted completions_with_descriptions -U
+    # Use `compadd -d` (not _describe) so insertion order survives even when items
+    # share a description (several "ACCEPTED" solutions) -- @main stays first,
+    # @boca last.
+    if [ -n "$desc_values" ]; then
+        compadd -U -V unsorted -l -d desc_displays -a desc_values
     fi
     if [ -n "$completions" ]; then
         compadd -U -V unsorted -a completions

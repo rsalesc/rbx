@@ -68,24 +68,47 @@ def complete_problem(ctx: CompletionContext, incomplete: str) -> List[Completion
 
 # Built-in solution-path expanders, mirroring rbx/box/remote.py's
 # REGISTERED_EXPANDERS (guarded by enum_consistency_test.py). @boca needs a run
-# id we cannot enumerate, so we offer only the prefix.
-_SOLUTION_PREFIXES = (
-    ('@main', 'first accepted solution'),
-    ('@boca/', 'download a BOCA submission, e.g. @boca/123'),
-)
+# id we cannot enumerate, so we offer only the prefix. `@main` leads the list and
+# `@boca/` trails it (the order the engine emits, preserved by the shell scripts).
+_MAIN_PREFIX = ('@main', 'first accepted solution')
+_BOCA_PREFIX = ('@boca/', 'download a BOCA submission, e.g. @boca/123')
+_SOLUTION_PREFIXES = (_MAIN_PREFIX, _BOCA_PREFIX)
+
+
+def _expand_solution_paths(root: Path, sol: dict):
+    """Yield the concrete solution files a `solutions[]` entry refers to.
+
+    Mirrors rbx/box/package.py:get_globbed_code_items lightly: a `*` path is
+    globbed against the package root (like the real CLI), anything else is taken
+    verbatim. No language-extension filtering (that needs the heavy app)."""
+    path = str(sol['path'])
+    if '*' in path:
+        for f in sorted(root.glob(path)):
+            if f.is_file():
+                yield str(f.relative_to(root))
+    else:
+        yield path
 
 
 @register_completer('solutions')
 def complete_solutions(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
-    items: List[CompletionItem] = []
+    items: List[CompletionItem] = [
+        CompletionItem(_MAIN_PREFIX[0], help=_MAIN_PREFIX[1])
+    ]
     root = ctx.package_root
     if root is not None:
-        for sol in _peek_list(Path(root), 'problem.rbx.yml', 'solutions'):
-            if isinstance(sol, dict) and sol.get('path'):
-                outcome = sol.get('outcome')
-                help_text = str(outcome) if outcome is not None else None
-                items.append(CompletionItem(str(sol['path']), help=help_text))
-    items += [CompletionItem(v, help=h) for v, h in _SOLUTION_PREFIXES]
+        root = Path(root)
+        seen = set()
+        for sol in _peek_list(root, 'problem.rbx.yml', 'solutions'):
+            if not (isinstance(sol, dict) and sol.get('path')):
+                continue
+            outcome = sol.get('outcome')
+            help_text = str(outcome) if outcome is not None else None
+            for value in _expand_solution_paths(root, sol):
+                if value not in seen:
+                    seen.add(value)
+                    items.append(CompletionItem(value, help=help_text))
+    items.append(CompletionItem(_BOCA_PREFIX[0], help=_BOCA_PREFIX[1]))
     return items
 
 

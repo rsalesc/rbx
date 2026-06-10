@@ -104,9 +104,18 @@ def _value_items(
     if kind == 'choice':
         return [CompletionItem(c) for c in value['choices'] if c.startswith(incomplete)]
     if kind == 'completer':
-        items = list(load_completer(value['completer'])(ctx, incomplete))
+        # Prefix-filter the dynamic candidates by the incomplete, exactly like
+        # Click/Typer do. The shell scripts add these with `-U` (no re-filtering),
+        # so without this, typing a prefix would offer everything and reset the
+        # word instead of narrowing. Filtering here keeps every shell consistent.
+        items = [
+            item
+            for item in load_completer(value['completer'])(ctx, incomplete)
+            if item.value.startswith(incomplete)
+        ]
         # A file-union completer hands off to the shell's default file completion
         # AFTER its dynamic candidates (e.g. `rbx run` solutions + arbitrary paths).
+        # The directive is appended unfiltered -- the shell matches files itself.
         if value.get('file'):
             items = items + FILE
         return items
@@ -166,17 +175,22 @@ def complete_to_string(shell: str, spec) -> str:
     return comp.complete()
 
 
-# Reordered zsh completion function: identical to Click's native template except
-# the file/dir handoff (`_path_files`) is deferred until AFTER the dynamic
-# candidates are described. In a file-union position (e.g. `rbx run`), this makes
-# the solutions/`@`-prefixes rank ahead of the directory listing in the zsh menu
-# instead of being buried under it (issue #575). Placeholders match Click's
-# `.source()` (`prog_name`, `complete_func`, `complete_var`).
+# Custom zsh completion function. Two deliberate departures from Click's native
+# template (issue #575):
+#   1. The file/dir handoff (`_path_files`) is deferred until AFTER the dynamic
+#      candidates are added, so in a file-union position (e.g. `rbx run`) the
+#      solutions/`@`-prefixes rank ahead of the directory listing.
+#   2. Described candidates are added via `compadd -d` (parallel display array)
+#      instead of `_describe`, which re-sorts items that share a description
+#      (e.g. several "ACCEPTED" solutions) alphabetically -- that reordering is
+#      what pushed `@boca` ahead of `@main`. `compadd -V` preserves the engine's
+#      insertion order (`@main`, then solutions, then `@boca`).
+# Placeholders match Click's `.source()` (`prog_name`, `complete_func`, `complete_var`).
 _ZSH_SOURCE_TEMPLATE = """#compdef %(prog_name)s
 
 %(complete_func)s() {
     local -a completions
-    local -a completions_with_descriptions
+    local -a desc_values desc_displays
     local -a response
     local want_files want_dirs
     (( ! $+commands[%(prog_name)s] )) && return 1
@@ -188,7 +202,8 @@ _ZSH_SOURCE_TEMPLATE = """#compdef %(prog_name)s
             if [[ "$descr" == "_" ]]; then
                 completions+=("$key")
             else
-                completions_with_descriptions+=("$key":"$descr")
+                desc_values+=("$key")
+                desc_displays+=("$key -- $descr")
             fi
         elif [[ "$type" == "dir" ]]; then
             want_dirs=1
@@ -197,16 +212,13 @@ _ZSH_SOURCE_TEMPLATE = """#compdef %(prog_name)s
         fi
     done
 
-    # Offer dynamic candidates (e.g. solutions) BEFORE handing off to file
-    # completion, so they rank ahead of the directory listing in the menu.
-    if [ -n "$completions_with_descriptions" ]; then
-        _describe -V unsorted completions_with_descriptions -U
+    # Add dynamic candidates (preserving insertion order) BEFORE the file handoff.
+    if [ -n "$desc_values" ]; then
+        compadd -U -V unsorted -l -d desc_displays -a desc_values
     fi
-
     if [ -n "$completions" ]; then
         compadd -U -V unsorted -a completions
     fi
-
     [[ -n "$want_dirs" ]] && _path_files -/
     [[ -n "$want_files" ]] && _path_files -f
 }
