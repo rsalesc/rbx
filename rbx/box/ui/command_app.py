@@ -431,6 +431,18 @@ class rbxCommandApp(rbxBaseApp):
         label = item.query_one(Label)
         label.update(self._make_tab_label(index))
 
+    def _has_labels(self) -> bool:
+        return any(t.entry.labels for t in self._tabs)
+
+    def _sidebar_subtitle(self) -> str:
+        if self._has_labels():
+            return f'[b]l[/b] label: {self._label_mode.value}  [b]?[/b] help'
+        return _SIDEBAR_SUBTITLE
+
+    def _update_sidebar_subtitle(self) -> None:
+        sidebar = self.query_one('#command-list', ListView)
+        sidebar.border_subtitle = self._sidebar_subtitle()
+
     def _cycle_problem_label(self) -> None:
         modes = list(ProblemLabelMode)
         nxt = modes[(modes.index(self._label_mode) + 1) % len(modes)]
@@ -438,7 +450,7 @@ class rbxCommandApp(rbxBaseApp):
         set_problem_label(nxt)
         for i in range(len(self._tabs)):
             self._update_sidebar(i)
-        self.notify(f'Problem label: {nxt.value}')
+        self._update_sidebar_subtitle()
 
     def _get_select_options(self, tab_index: int) -> List[Tuple[str, int]]:
         return [
@@ -494,7 +506,7 @@ class rbxCommandApp(rbxBaseApp):
     def on_mount(self):
         sidebar = self.query_one('#command-list', ListView)
         sidebar.border_title = 'Commands'
-        sidebar.border_subtitle = _SIDEBAR_SUBTITLE
+        sidebar.border_subtitle = self._sidebar_subtitle()
 
         select = self.query_one('#command-select', Select)
         select.border_subtitle = _SELECT_SUBTITLE
@@ -636,7 +648,7 @@ class rbxCommandApp(rbxBaseApp):
             self._select_next_sub_command()
             return
 
-        if event.character == 'l' and any(t.entry.labels for t in self._tabs):
+        if event.character == 'l' and self._has_labels():
             event.stop()
             event.prevent_default()
             self._cycle_problem_label()

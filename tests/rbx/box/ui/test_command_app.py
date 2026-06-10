@@ -1,7 +1,7 @@
 """Tests for the rbx on / rbx each command app (rbx.box.ui.command_app)."""
 
 import pytest
-from textual.widgets import Label, ListItem
+from textual.widgets import Label, ListItem, ListView
 
 from rbx.box import setter_config
 from rbx.box.setter_config import ProblemLabelMode
@@ -36,6 +36,10 @@ def _sidebar_text(app, index: int) -> str:
     return str(label.render())
 
 
+def _sidebar_subtitle(app) -> str:
+    return str(app.query_one('#command-list', ListView).border_subtitle)
+
+
 def _persisted_mode() -> ProblemLabelMode:
     return setter_config.get_setter_config().ui.problem_label
 
@@ -44,8 +48,9 @@ async def test_sidebar_uses_configured_label_mode():
     app = rbxCommandApp([_labeled_entry()])
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Default mode is `name`.
+        # Default mode is `name`, shown both in the item and as a sidebar hint.
         assert 'A. two-sum' in _sidebar_text(app, 0)
+        assert 'label: name' in _sidebar_subtitle(app)
 
 
 async def test_l_cycles_and_persists_problem_label():
@@ -59,17 +64,20 @@ async def test_l_cycles_and_persists_problem_label():
         await pilot.pause()
         assert _persisted_mode() is ProblemLabelMode.TITLE
         assert 'A. Two Sum' in _sidebar_text(app, 0)
+        assert 'label: title' in _sidebar_subtitle(app)
 
         await pilot.press('l')
         await pilot.pause()
         assert _persisted_mode() is ProblemLabelMode.PATH
         assert 'A. probs/a' in _sidebar_text(app, 0)
+        assert 'label: path' in _sidebar_subtitle(app)
 
         # Wraps back to name.
         await pilot.press('l')
         await pilot.pause()
         assert _persisted_mode() is ProblemLabelMode.NAME
         assert 'A. two-sum' in _sidebar_text(app, 0)
+        assert 'label: name' in _sidebar_subtitle(app)
 
 
 async def test_l_is_inert_without_labels():
@@ -80,5 +88,7 @@ async def test_l_is_inert_without_labels():
 
         await pilot.press('l')
         await pilot.pause()
-        # No labels => the key falls through; the persisted config is unchanged.
+        # No labels => the key falls through; the persisted config is unchanged
+        # and the sidebar shows no label hint.
         assert _persisted_mode() is ProblemLabelMode.NAME
+        assert 'label:' not in _sidebar_subtitle(app)
