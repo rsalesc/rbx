@@ -101,3 +101,25 @@ async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdat
         blocks = sbu.get_processed_statement_blocks(st)
         assert '\\NN' not in blocks.blocks['notes']
         assert 'mathbb' in blocks.blocks['notes']
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_statement_asset_files_walks_source_dir(cleandir_with_testdata):
+    from rbx.box.packaging.polygon.upload import _statement_asset_files
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        st = package.find_problem_package_or_die().expanded_statements[0]
+        # Drop an image asset next to the statement source (the v2 asset scope is
+        # the whole statement-file directory).
+        (pathlib.Path('statement') / 'imgs').mkdir(parents=True, exist_ok=True)
+        (pathlib.Path('statement') / 'imgs' / 'fig.png').write_bytes(b'x')
+
+        assets = {
+            rel.as_posix(): abspath for abspath, rel in _statement_asset_files(st)
+        }
+        # The asset is enumerated relative to the statement directory ...
+        assert 'imgs/fig.png' in assets
+        assert assets['imgs/fig.png'].is_file()
+        # ... but the statement source file itself is not a resource.
+        assert 'statement.rbx.tex' not in assets
