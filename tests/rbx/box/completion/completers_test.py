@@ -57,3 +57,10 @@ def test_outcome_completer_offers_canonical_tokens():
     assert {'ac', 'wa', 'tle', 'any'} <= values
     helps = {i.value: i.help for i in completers.complete_outcome(_ctx(), '')}
     assert helps['ac']  # has descriptive help
+
+
+def test_verification_level_completer_offers_int_values_with_names():
+    items = completers.complete_verification_level(_ctx(), '')
+    by_value = {i.value: i.help for i in items}
+    assert by_value['0'] == 'NONE'
+    assert by_value['4'] == 'FULL'

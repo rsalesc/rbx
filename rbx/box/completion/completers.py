@@ -94,3 +94,21 @@ _OUTCOME_TABLE = (
 @register_completer('outcome')
 def complete_outcome(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
     return [CompletionItem(v, help=h) for v, h in _OUTCOME_TABLE]
+
+
+# (value, level name). Kept in sync with environment.VerificationLevel by
+# enum_consistency_test.py.
+_VERIFICATION_TABLE = (
+    ('0', 'NONE'),
+    ('1', 'VALIDATE'),
+    ('2', 'FAST_SOLUTIONS'),
+    ('3', 'ALL_SOLUTIONS'),
+    ('4', 'FULL'),
+)
+
+
+@register_completer('verification_level')
+def complete_verification_level(
+    ctx: CompletionContext, incomplete: str
+) -> List[CompletionItem]:
+    return [CompletionItem(v, help=h) for v, h in _VERIFICATION_TABLE]
