@@ -434,6 +434,9 @@ async def build_statement(
 
     overlay_root = _standalone_overlay_root(statement)
     problem_dir = utils.abspath(statement.file).parent
+    # Resolved up front: externalize drives per-block TikZ labeling during the
+    # render (engine), demacro drives macro extraction during the compile.
+    externalize, demacro = _externalize_demacro(extra_mergeable_params)
 
     if statement.type.is_rbx():
         contest = resolver.require_contest_for_problem()
@@ -501,6 +504,7 @@ async def build_statement(
             samples=samples,
             use_samples=use_samples,
             statement_type=statement.type,
+            externalize=externalize,
         )
     else:
         # Static tex / md: mirror the statement-dir subtree so assets resolve,
@@ -508,7 +512,6 @@ async def build_statement(
         overlay.mirror_tree(problem_dir, overlay_root)
         tex = statement.file.read_bytes()
 
-    externalize, demacro = _externalize_demacro(extra_mergeable_params)
     output_bytes = _emit_output(
         overlay_root,
         tex,
