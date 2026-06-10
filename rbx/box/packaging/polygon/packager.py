@@ -19,6 +19,12 @@ from rbx.box.packaging.packager import (
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
 from rbx.box.schema import TaskType
+from rbx.box.statements.schema import (
+    ConversionStep,
+    ConversionType,
+    TexToPDF,
+    rbxToTeX,
+)
 from rbx.config import get_testlib
 
 DAT_TEMPLATE = """
@@ -63,6 +69,15 @@ class PolygonPackager(BasePackager):
     @classmethod
     def task_types(cls) -> List[TaskType]:
         return [TaskType.BATCH, TaskType.COMMUNICATION]
+
+    def statement_export_params(self) -> List[ConversionStep]:
+        # Polygon consumes structured blocks, so TikZ is externalized (uploaded
+        # as PDF resources) and macros are extracted (to expand non-Polygon
+        # commands out of the blocks). Forced at export — not user schema.
+        return [
+            rbxToTeX(type=ConversionType.rbxToTex, externalize=True),
+            TexToPDF(type=ConversionType.TexToPDF, externalize=True, demacro=True),
+        ]
 
     def _validate(self):
         langs = self.languages()

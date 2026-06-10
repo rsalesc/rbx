@@ -28,51 +28,22 @@ def parse_latex(latex_code: str) -> TexNode:
 
 
 def inject_in_preamble(soup: TexNode, latex_code: str):
+    r"""Inject ``latex_code`` into the preamble, right after ``\documentclass``.
+
+    Uses :meth:`TexNode.replace_with` on the ``\documentclass`` node itself rather
+    than sibling-index insertion: TexSoup's ``parent.insert`` indexes the
+    *children* space (which excludes comments), so a leading comment line — as in
+    every default-preset template — offsets the index and drops the preamble
+    *before* ``\documentclass`` (``! LaTeX Error: \usepackage before
+    \documentclass``, #568). Replacing the node sidesteps the index math
+    entirely. When there is no ``\documentclass`` the code is prepended.
     """
-    Injects LaTeX code into the preamble (after documentclass).
-    """
-    new_nodes = TexSoup(latex_code)
     doc_class = soup.find('documentclass')
-
-    if doc_class:
-        # Insert after documentclass.
-        # We access the parent (usually root) and insert at the correct index.
-        parent = doc_class.parent
-
-        # Find index robustly to handle potential TexSoup node wrapper issues
-        index = -1
-        contents = list(parent.contents)
-        target_pos = getattr(doc_class, 'position', None)
-        doc_str = str(doc_class)
-
-        for i, child in enumerate(contents):
-            # Try identity first
-            if child is doc_class:
-                index = i
-                break
-            # Fallback to position matching
-            if target_pos is not None:
-                if getattr(child, 'position', None) == target_pos:
-                    index = i
-                    break
-            # Fallback to string matching (safe for documentclass as it's typically unique)
-            if str(child) == doc_str:
-                index = i
-                break
-
-        if index != -1:
-            # Insert the new nodes (unpacked)
-            for node in reversed(list(new_nodes.contents)):
-                # TexSoup requires nodes to be parentless or copied when inserting
-                if isinstance(node, TexNode):
-                    node = node.copy()
-                parent.insert(index + 1, node)
-        else:
-            # Fallback if we couldn't find the node in parent (shouldn't happen usually)
-            soup.insert(0, new_nodes)
+    if doc_class is not None:
+        combined = TexSoup(str(doc_class) + '\n' + latex_code)
+        doc_class.replace_with(*combined.contents)
     else:
-        # No documentclass found, insert at top
-        soup.insert(0, new_nodes)
+        soup.insert(0, TexSoup(latex_code))
 
 
 def inject_externalization_for_tikz(soup: TexNode):

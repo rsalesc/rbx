@@ -11,18 +11,23 @@ from rbx.box.exception import RbxException
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.statements import demacro_utils, polygon_utils
 from rbx.box.statements.build_statements import get_statement_dir
-from rbx.box.statements.builders import (
-    StatementBlocks,
-    TeX2PDFBuilder,
-    rbxTeXBuilder,
-)
+from rbx.box.statements.builders import StatementBlocks
 from rbx.box.statements.demacro_utils import MacroDefinitions
 from rbx.box.statements.schema import Statement, StatementType
 
 
+def _statement_label(statement: Statement) -> str:
+    """A human-readable id for a problem statement (which has no ``name`` in v2 —
+    it is identified by ``(language, variant)``)."""
+    return f'{statement.language}/{statement.variant}'
+
+
 def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
     assert statement.type == StatementType.rbxTeX
-    statement_dir = get_statement_dir(statement, builder_name=rbxTeXBuilder.name())
+    # The v2 overlay root is the single Polygon source dir; the substituted blocks
+    # (TikZ -> \includegraphics) live in blocks.sub.yml, written by the forced
+    # externalize build.
+    statement_dir = get_statement_dir(statement)
     substituted_blocks_path = statement_dir / 'blocks.sub.yml'
     if not substituted_blocks_path.is_file():
         console.console.print(
@@ -39,10 +44,9 @@ def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
 
 def get_processed_statement_blocks(statement: Statement) -> StatementBlocks:
     statement_blocks = get_substituted_statement_blocks(statement)
-    macros_file = (
-        get_statement_dir(statement, builder_name=TeX2PDFBuilder.name()) / 'macros.json'
-    )
-    statement_dir = get_statement_dir(statement, builder_name='polygon')
+    overlay_dir = get_statement_dir(statement)
+    macros_file = overlay_dir / 'macros.json'
+    statement_dir = overlay_dir / 'polygon'
     shutil.rmtree(statement_dir, ignore_errors=True)
     statement_dir.mkdir(parents=True, exist_ok=True)
 
@@ -155,7 +159,7 @@ def process_statements(
 def validate_statements(main_language: Optional[str], upload_as_english: bool):
     def validate_statement(statement: Statement, language: str, uploaded_language: str):
         console.console.print(
-            f'Validating statement [item]{statement.name}[/item] for language [item]{language}[/item]...'
+            f'Validating statement [item]{_statement_label(statement)}[/item] for language [item]{language}[/item]...'
         )
         blocks = get_processed_statement_blocks(statement)
 
@@ -177,7 +181,7 @@ def validate_statements(main_language: Optional[str], upload_as_english: bool):
 
         if errors:
             console.console.print(
-                f'[error]Polygon unsupported TeX constructs found in statement [item]{statement.name}[/item] for language [item]{language}[/item]:[/error]'
+                f'[error]Polygon unsupported TeX constructs found in statement [item]{_statement_label(statement)}[/item] for language [item]{language}[/item]:[/error]'
             )
             for block_name, block_errors in errors:
                 console.console.print(

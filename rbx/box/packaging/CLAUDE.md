@@ -54,7 +54,7 @@ Polygon (offline + upload) and BOCA/MOJ are **flat** judges: they compile each s
 - `upload_problem()` orchestrates: find/create problem, upload files, solutions, testcases, statements, commit
 - Uses `ThreadPoolExecutor(4)` for parallel solution uploads
 - Maps solutions to Polygon tags: MA (main accepted), OK, WA, TL, ML, RE, RJ
-- Statement upload: renders Jinja blocks to Polygon's structured format, uploads resources (images, TikZ PDFs)
+- Statement upload (statements v2, S12 #568): reads the per-statement block YAMLs (`blocks.sub.yml`) + `macros.json` + externalized TikZ PDFs straight from the v2 standalone overlay root (`build/statements/st/<lang>-<variant>/` = `build_statements.get_statement_dir`), which the packager populated by forcing externalize+demacro (`PolygonPackager.statement_export_params`). `statement_block_utils.get_processed_statement_blocks` does the macro-expand/filter → Polygon-TeX conversion; `upload.py` uploads the statement-dir assets + `get_produced_tikz_pdfs` as resources. Offline `problem.zip`/`contest.zip` statement embedding is a follow-up (#583)
 - API client in `polygon_api.py` with SHA-512 signed requests, env vars `POLYGON_API_KEY`/`POLYGON_API_SECRET`
 - `--upload-tests-raw` escape hatch: uploads built test inputs as raw files (1 MiB cap each), skips generator uploads, and clears the freemarker script. Use when Polygon-side generator compilation is failing.
 

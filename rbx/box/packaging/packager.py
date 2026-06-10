@@ -20,11 +20,8 @@ from rbx.box.statements.build_statements import (
 )
 from rbx.box.statements.schema import (
     ConversionStep,
-    ConversionType,
     Statement,
     StatementType,
-    TexToPDF,
-    rbxToTeX,
 )
 from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_groups,
@@ -85,6 +82,12 @@ class BasePackager(ABC):
 
     def statement_types(self) -> List[StatementType]:
         return [StatementType.PDF]
+
+    def statement_export_params(self) -> List[ConversionStep]:
+        """Packager-forced statement conversion toggles applied at export time
+        (design §2 decision 6: externalize/demacro are not user schema). Default
+        is none; the Polygon packager overrides this."""
+        return []
 
     @abstractmethod
     def package(
@@ -196,19 +199,6 @@ class ContestZipper(BaseContestPackager):
         return build_path / pathlib.Path(self.filename).with_suffix('.zip')
 
 
-def get_packager_extra_mergeable_params(
-    packager_cls: Type[BasePackager],
-) -> List[ConversionStep]:
-    res = []
-    if packager_cls.name() == 'polygon':
-        # TODO: migrate this into the packager class
-        res.append(rbxToTeX(type=ConversionType.rbxToTex, externalize=True))
-        res.append(
-            TexToPDF(type=ConversionType.TexToPDF, externalize=True, demacro=True)
-        )
-    return res
-
-
 async def run_packager(
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
@@ -260,9 +250,7 @@ async def run_packager(
                 tracked_statements,
                 verification,
                 output=statement_type,
-                extra_mergeable_params=get_packager_extra_mergeable_params(
-                    packager_cls
-                ),
+                extra_mergeable_params=packager.statement_export_params(),
                 # Skip building samples since they were already
                 # built by the packager.
                 skip_building=True,

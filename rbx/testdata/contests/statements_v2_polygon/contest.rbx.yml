@@ -1,0 +1,15 @@
+---
+name: 'sv2poly'
+titles:
+  en: 'Statements v2 Polygon Contest'
+vars:
+  year: 2026
+problems:
+  - short_name: 'A'
+statements:
+  - name: 'main-en'
+    language: 'en'
+    file: 'statements/contest.rbx.tex'
+    type: 'rbxTeX'
+    standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
+    contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'

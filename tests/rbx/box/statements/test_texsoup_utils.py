@@ -113,6 +113,24 @@ Hello
     assert s.strip().startswith(r'\usepackage{bar}')
 
 
+def test_inject_in_preamble_after_leading_comment():
+    # Preset templates start with a `%%` comment before \documentclass; the
+    # preamble must still land AFTER \documentclass (regression for the Polygon
+    # externalize path emitting "\usepackage before \documentclass", #568).
+    latex = r"""%% header comment
+\documentclass[a4paper,11pt]{article}
+\begin{document}
+Hello
+\end{document}"""
+    soup = TexSoup(latex)
+    inject_in_preamble(soup, r'\usepackage{foo}')
+
+    s = str(soup)
+    assert r'\documentclass[a4paper,11pt]{article}' in s
+    assert r'\usepackage{foo}' in s
+    assert s.index(r'\documentclass') < s.index(r'\usepackage{foo}')
+
+
 def test_inject_externalization_for_tikz():
     latex = r"""\documentclass{article}
 \begin{document}
@@ -124,6 +142,20 @@ def test_inject_externalization_for_tikz():
     assert r'\usepackage{tikz}' in s
     assert r'\usetikzlibrary{external}' in s
     assert r'\tikzexternalize[prefix=artifacts/tikz_figures/]' in s
+
+
+def test_inject_externalization_after_leading_comment():
+    # The full externalization preamble must follow \documentclass even when a
+    # comment leads the document (the default-preset template shape).
+    latex = r"""%% Standalone problem template.
+\documentclass[a4paper,11pt]{article}
+\begin{document}
+\end{document}"""
+    soup = TexSoup(latex)
+    inject_externalization_for_tikz(soup)
+
+    s = str(soup)
+    assert s.index(r'\documentclass') < s.index(r'\usepackage{tikz}')
 
 
 def test_get_top_level_tikz_nodes_flat():

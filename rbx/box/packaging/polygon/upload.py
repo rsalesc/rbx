@@ -1,7 +1,7 @@
 import asyncio
 import pathlib
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import rich
 import rich.markup
@@ -33,7 +33,6 @@ from rbx.box.statements.builders import (
     StatementSample,
 )
 from rbx.box.statements.schema import Statement
-from rbx.box.statements.statement_utils import get_relative_assets
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_sample_utils import get_statement_samples
 from rbx.box.testcase_utils import (
@@ -572,11 +571,35 @@ def _get_explanations(explanations: Dict[int, str]) -> str:
     return '\n\n'.join(entries)
 
 
+def _statement_asset_files(
+    statement: Statement,
+) -> List[Tuple[pathlib.Path, pathlib.Path]]:
+    """The statement's resource files: every file under the directory containing
+    its ``file`` (the v2 asset scope, design §3.1), except the statement source
+    itself, as ``(absolute_path, statement-dir-relative_path)`` pairs. The
+    relative path matches how blocks reference the asset, so the resource-key
+    remap in :func:`_upload_statement_resources` lines up."""
+    if statement.file is None:
+        return []
+    source = utils.abspath(statement.file)
+    base = source.parent
+    if not base.is_dir():
+        return []
+    res: List[Tuple[pathlib.Path, pathlib.Path]] = []
+    for path in sorted(base.rglob('*')):
+        if not path.is_file() or path == source:
+            continue
+        res.append((path, path.relative_to(base)))
+    return res
+
+
 def _upload_statement_resources(
     problem: api.Problem, statement: Statement
 ) -> Dict[str, str]:
     res: Dict[str, str] = {}
-    assets = get_relative_assets(statement.path, statement.assets)
+    # v2: assets are the statement-dir subtree (relative to the statement dir),
+    # plus the externalized TikZ figure PDFs (relative to the overlay root).
+    assets = _statement_asset_files(statement)
     assets.extend(get_produced_tikz_pdfs(statement))
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []

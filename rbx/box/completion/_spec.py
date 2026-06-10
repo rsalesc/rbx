@@ -1111,6 +1111,123 @@ SPEC = {
         {
             'children': [
                 {
+                    'help': 'Build tutorials (editorials).',
+                    'is_group': False,
+                    'name': 'build, b',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
+                        },
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                            'variadic': True,
+                        },
+                        {
+                            'help': 'Languages to build tutorials for. If not '
+                            'specified, build tutorials for all available '
+                            'languages.',
+                            'kind': 'option',
+                            'multiple': True,
+                            'names': ['--languages'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Output type to be generated.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--output'],
+                            'takes_value': True,
+                            'value': {
+                                'choices': [
+                                    'rbxTeX',
+                                    'rbxMarkdown',
+                                    'TeX',
+                                    'Markdown',
+                                    'JinjaTeX',
+                                    'JinjaMarkdown',
+                                    'PDF',
+                                ],
+                                'kind': 'choice',
+                            },
+                        },
+                        {
+                            'help': 'Whether to build the tutorial with samples or '
+                            'not.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--samples', '--no-samples'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Variables to be used in the tutorials.',
+                            'kind': 'option',
+                            'multiple': True,
+                            'names': ['--vars'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Whether to validate outputs for testcases or not.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--validate', '--no-validate'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Timing profile to render the tutorial against. '
+                            'Must exist in this problem.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['-p', '--profile'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                }
+            ],
+            'help': 'Manage tutorials/editorials (sub-command).',
+            'is_group': True,
+            'name': 'tutorials, tut',
+            'panel': 'Deploying',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
                     'help': 'Download preset-declared libraries (omit...',
                     'is_group': False,
                     'name': 'lib, library',
@@ -2151,6 +2268,140 @@ SPEC = {
                     'help': 'Manage contest-level statements.',
                     'is_group': True,
                     'name': 'statements, st',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'children': [
+                        {
+                            'help': 'Build tutorials (editorials).',
+                            'is_group': False,
+                            'name': 'build, b',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Verification level to use when '
+                                    'building package.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': [
+                                        '--verification-level',
+                                        '--verification',
+                                        '-v',
+                                    ],
+                                    'takes_value': True,
+                                    'value': {
+                                        'completer': 'verification_level',
+                                        'kind': 'completer',
+                                    },
+                                },
+                                {
+                                    'help': None,
+                                    'kind': 'argument',
+                                    'multiple': False,
+                                    'names': [],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                    'variadic': True,
+                                },
+                                {
+                                    'help': 'Languages to build tutorials for. '
+                                    'If not specified, build tutorials '
+                                    'for all available languages.',
+                                    'kind': 'option',
+                                    'multiple': True,
+                                    'names': ['--languages'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Whether to validate outputs for '
+                                    'testcases or not.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--validate', '--no-validate'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Output type to be generated.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--output'],
+                                    'takes_value': True,
+                                    'value': {
+                                        'choices': [
+                                            'rbxTeX',
+                                            'rbxMarkdown',
+                                            'TeX',
+                                            'Markdown',
+                                            'JinjaTeX',
+                                            'JinjaMarkdown',
+                                            'PDF',
+                                        ],
+                                        'kind': 'choice',
+                                    },
+                                },
+                                {
+                                    'help': 'Whether to build the tutorial with '
+                                    'samples or not.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--samples', '--no-samples'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Variables to be used in the tutorials.',
+                                    'kind': 'option',
+                                    'multiple': True,
+                                    'names': ['--vars'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Whether to install missing LaTeX '
+                                    'packages.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--install-tex', '--no-install-tex'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Timing profile to render tutorials '
+                                    'against. Problems missing this '
+                                    'profile are skipped with a '
+                                    'warning.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['-p', '--profile'],
+                                    'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        }
+                    ],
+                    'help': 'Manage contest-level tutorials/editorials.',
+                    'is_group': True,
+                    'name': 'tutorials, tut',
                     'panel': None,
                     'params': [
                         {

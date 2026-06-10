@@ -73,6 +73,7 @@ def render_problem_tex(
     samples: List[StatementSample],
     use_samples: bool,
     statement_type: StatementType,
+    externalize: bool = False,
 ) -> bytes:
     """Render one problem statement to TeX bytes.
 
@@ -82,6 +83,13 @@ def render_problem_tex(
     isolated ``.problems/<SHORT>/`` for a join). ``root_prefix`` is
     ``problem_root`` relative to the overlay root, anchoring root-relative sample
     I/O for ``\\VerbatimInput``.
+
+    ``blocks.yml`` (the raw extracted blocks) is always persisted to
+    ``problem_root`` as the Polygon source of truth. When ``externalize`` is set
+    (the Polygon export path), per-block TikZ figures are labeled before the
+    full-doc compile so ``\\tikzexternalize`` emits one PDF per figure, and
+    ``blocks.ext.yml`` (labeled) / ``blocks.sub.yml`` (TikZ replaced by
+    ``\\includegraphics``) are persisted too — replicating the v1 rbxTeX builder.
     """
     mode = _mode_for(statement_type)
 
@@ -96,10 +104,39 @@ def render_problem_tex(
         contest=contest,
         mode=mode,
     )
+    # Always persist the raw blocks — the Polygon source of truth (design §1).
+    _write_blocks(problem_root, 'blocks.yml', blocks)
+
+    # LaTeX-form blocks/explanations: the (LaTeX) template and the TikZ
+    # externalization operate on TeX, so rbxMarkdown blocks are converted first
+    # (mirrors the v1 rbxMarkdown->rbxTeX step).
+    latex_blocks = (
+        {name: _md_to_latex(value) for name, value in blocks.blocks.items()}
+        if mode == 'markdown'
+        else dict(blocks.blocks)
+    )
+    latex_explanations = (
+        {i: _md_to_latex(value) for i, value in blocks.explanations.items()}
+        if mode == 'markdown'
+        else dict(blocks.explanations)
+    )
+
+    # Per-block TikZ labeling must happen before the full-doc compile so the
+    # externalized PDF filenames match the labels the substitution rewrites to.
+    if externalize:
+        latex_blocks = builders.externalize_blocks(latex_blocks)
+        latex_explanations = builders.externalize_blocks(latex_explanations)
+        _write_blocks(
+            problem_root,
+            'blocks.ext.yml',
+            builders.StatementBlocks(
+                blocks=latex_blocks, explanations=latex_explanations
+            ),
+        )
 
     # 2. Sample staging into <problem_root>/.samples/. Explanations are always
-    #    `\subimport`-ed by a LaTeX template, so for rbxMarkdown we convert the
-    #    rendered explanation (block- or file-sourced) to LaTeX before staging.
+    #    `\subimport`-ed by a LaTeX template; they carry the externalization
+    #    labels (when externalizing) so their figures externalize too.
     if use_samples and samples:
         kwargs = _problem_jinja_kwargs(
             lang=lang, languages=languages, problem=problem, contest=contest
@@ -116,35 +153,22 @@ def render_problem_tex(
                 problem_root, c, mode=m, **kwargs
             ).blocks
 
-        explanation_blocks = blocks.explanations
-        if mode == 'markdown':
-            explanation_blocks = {
-                i: _md_to_latex(value) for i, value in explanation_blocks.items()
-            }
-
         sources = [to_sample_source(s) for s in samples]
         problem.samples = sample_staging.stage_samples(
             problem_root,
             root_prefix,
             sources,
-            explanation_blocks=explanation_blocks,
+            explanation_blocks=latex_explanations,
             render_text=render_text,
             render_blocks=render_blocks,
             lang=lang,
             mode=mode,
         )
 
-    # rbxMarkdown: the extracted blocks are Markdown; convert them to LaTeX so the
-    # (LaTeX) template can splice them in (mirrors the v1 rbxMarkdown->rbxTeX step).
-    if mode == 'markdown':
-        problem.blocks = {
-            name: _md_to_latex(value) for name, value in blocks.blocks.items()
-        }
-    else:
-        problem.blocks = blocks.blocks
+    problem.blocks = latex_blocks
 
     # 3. Render the template (loaded from render_root where it was staged).
-    return render.render_problem_document(
+    tex = render.render_problem_document(
         render_root,
         template_rel,
         lang=lang,
@@ -152,6 +176,30 @@ def render_problem_tex(
         problem=problem,
         contest=contest,
     )
+
+    # The substituted blocks (TikZ -> \includegraphics) are what Polygon uploads;
+    # persist them next to the figure PDFs the compile produces.
+    if externalize:
+        _write_blocks(
+            problem_root,
+            'blocks.sub.yml',
+            builders.StatementBlocks(
+                blocks=builders.substitute_externalized_blocks(latex_blocks),
+                explanations=builders.substitute_externalized_blocks(
+                    latex_explanations
+                ),
+            ),
+        )
+
+    return tex
+
+
+def _write_blocks(
+    root: pathlib.Path, name: str, blocks: builders.StatementBlocks
+) -> None:
+    """Persist a :class:`StatementBlocks` as YAML in ``root`` (the overlay /
+    problem root), the source of truth the Polygon export path reads."""
+    (root / name).write_text(utils.model_to_yaml(blocks))
 
 
 def relativize_template(

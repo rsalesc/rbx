@@ -107,14 +107,37 @@ The build is a pipeline of small, unit-tested pieces:
 - `latex_jinja.py` — the LaTeX-flavored Jinja2 env (`\VAR{}`, `%-`, `\BLOCK{}`),
   `JinjaDictWrapper`/`JinjaGroupsGetter`, strict undefined.
 
-## `builders.py` (legacy, kept for the deferred Polygon path)
+## `builders.py` (legacy helpers, kept; classes pending #580)
 
 The v1 `StatementBuilder` classes + `StatementBuilderProblem/Contest` and the
 low-level helpers (`render_jinja`, `render_jinja_blocks`, `StatementBlocks`, TikZ
-externalize helpers) live here. v2 `render.py` reuses the helpers; the builder
-*classes* remain only because the Polygon export path (S12, #568) still imports
-them. `build_statements.get_statement_dir` / `get_produced_tikz_pdfs` /
-`build_statement_bytes` stay stubbed (`NotImplementedError`) until S12.
+externalize helpers `externalize_blocks` / `substitute_externalized_blocks`) live
+here. v2 `render.py` and `engine.py` reuse the helpers (the Polygon export path
+calls the TikZ externalize/substitute helpers directly — see below); the builder
+*classes* are unused and slated for deletion in #580.
+
+## Polygon export (S12, #568) — `build_statements` + `polygon/statement_block_utils`
+
+The Polygon API upload (`rbx package polygon --upload` / `--validate-statement`)
+consumes the v2 overlay directly. The standalone overlay root
+(`build/statements/st/<lang>-<variant>/`) **is** the Polygon "statement dir":
+
+- The packager forces `externalize`+`demacro` via
+  `PolygonPackager.statement_export_params()`; `run_packager` builds every
+  statement with them before reading the artifacts.
+- `engine.render_problem_tex(externalize=...)` always writes `blocks.yml` (the
+  raw blocks — source of truth) and, when externalizing, labels per-block TikZ
+  before the compile (so `\tikzexternalize` emits one PDF per figure) and writes
+  `blocks.ext.yml` (labeled) / `blocks.sub.yml` (TikZ → `\includegraphics`).
+- `build_statements.get_statement_dir(statement)` returns that overlay root;
+  `get_produced_tikz_pdfs` globs its `artifacts/tikz_figures/*.pdf`.
+- `polygon/statement_block_utils.get_processed_statement_blocks` reads
+  `blocks.sub.yml` + `macros.json` from that single dir, expands/filters macros
+  and converts to Polygon TeX (`polygon_utils.py`). No per-builder subdirs, no
+  absolute/temp paths.
+
+The **offline** Polygon packager (embedding PDFs in `problem.zip` /
+`contest.zip`) is a separate follow-up (#583).
 
 ## Template context namespaces (design §4)
 
@@ -132,5 +155,6 @@ Per-sample handles: `sample.input`/`output` (root-relative), `sample.dir` +
 
 ## Polygon integration (`polygon_utils.py`)
 
-Helpers extracting statement sections for Polygon upload — consumed by the
-deferred S12 export path.
+Helpers extracting/validating statement sections for Polygon upload
+(`convert_to_polygon_tex`, `validate_polygon_tex`, `PolygonTeXConfig`) — consumed
+by the S12 export path (see "Polygon export" above).
