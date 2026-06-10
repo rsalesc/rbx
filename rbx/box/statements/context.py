@@ -73,6 +73,8 @@ class ContestRenderContext:
     blocks: Dict[str, str] = dataclasses.field(default_factory=dict)
 
     def namespace(self) -> Dict[str, Any]:
+        """The ``contest`` template namespace: ``title``/``vars`` (always) plus
+        ``location``/``date``/``blocks`` when present."""
         res: Dict[str, Any] = {
             'title': self.title,
             'vars': _wrap(self.vars, 'contest.vars'),
@@ -103,6 +105,10 @@ class ProblemRenderContext:
     blocks: Dict[str, str] = dataclasses.field(default_factory=dict)
 
     def namespace(self) -> Dict[str, Any]:
+        """The ``problem`` template namespace: title/limits/profiles/groups/
+        samples/blocks plus its own ``vars``/``params`` (aliased here so the join
+        document can reach a member problem's vars), and the
+        ``short_name``/``import_dir``/``import_file`` handles when set."""
         res: Dict[str, Any] = {
             'title': self.title,
             'limits': self.limits,

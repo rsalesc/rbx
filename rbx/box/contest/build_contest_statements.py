@@ -47,6 +47,9 @@ from rbx.box.testcase_sample_utils import get_statement_samples
 
 
 class StatementBuildIssue(Issue):
+    """An issue-stack entry flagging that a problem's statement failed to build,
+    surfaced in the contest build overview."""
+
     def __init__(self, problem: ContestProblem):
         self.problem = problem
 
@@ -58,14 +61,19 @@ class StatementBuildIssue(Issue):
 
 
 def get_statement_build_dir(statement: BaseStatement) -> pathlib.Path:
+    """The per-statement scratch overlay root under the contest's
+    ``build/statements`` dir (keyed by the contest statement/document name)."""
     return get_contest_statements_build_path() / statement.name  # type: ignore[attr-defined]
 
 
 def _explanation_suffix(statement_type: StatementType) -> str:
+    """The on-disk suffix of a sample's explanation file for this statement type."""
     return '.md' if statement_type == StatementType.rbxMarkdown else '.tex'
 
 
 def _contest_output_path(name: str, output_type: StatementType) -> pathlib.Path:
+    """The final output path for a contest statement/document at the contest
+    build root, e.g. ``build/<name>[-<profile>].pdf``."""
     path = (get_contest_build_path() / name).with_suffix(output_type.get_file_suffix())
     active_profile = limits_info.get_active_profile()
     if (
@@ -77,6 +85,7 @@ def _contest_output_path(name: str, output_type: StatementType) -> pathlib.Path:
 
 
 def _fresh_dir(path: pathlib.Path) -> pathlib.Path:
+    """Wipe and recreate ``path`` (a clean scratch overlay root)."""
     shutil.rmtree(path, ignore_errors=True)
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -85,6 +94,9 @@ def _fresh_dir(path: pathlib.Path) -> pathlib.Path:
 def _problems_to_build(
     contest: Contest, problems_of_interest: Optional[List[ContestProblem]]
 ) -> List[ContestProblem]:
+    """The contest problems to include in the join: all of them, or the subset in
+    ``problems_of_interest`` (e.g. those whose samples built, or that define the
+    selected timing profile) when provided."""
     if problems_of_interest is None:
         return list(contest.problems)
     wanted = {p.short_name for p in problems_of_interest}
@@ -100,6 +112,25 @@ async def build_statement(
     custom_vars: Optional[Dict[str, Any]] = None,
     install_tex: bool = False,
 ) -> pathlib.Path:
+    """Build one contest statement and return its output path.
+
+    For an *rbx* statement this assembles the join overlay (design §6.2): contest
+    chrome at the root, each problem staged isolated under ``.problems/<SHORT>/``
+    and rendered to a ``statement.tex`` *fragment* via the
+    ``contestProblemTemplate``, then the contest ``file`` template rendered with
+    the ``problems`` list ``\\subimport``-ing each fragment, compiled from the
+    root. A non-rbx contest statement is emitted like a document (no join).
+
+    Args:
+        statement: the (expanded) contest statement to build.
+        contest: the loaded contest package.
+        problems_of_interest: restrict the join to these problems (default: all);
+            see :func:`_problems_to_build`.
+        output_type: desired output (default ``PDF``).
+        use_samples: stage sample I/O (assumes samples were already built).
+        custom_vars: ``--vars`` overrides merged on top of each problem's vars.
+        install_tex: best-effort ``texliveonfly`` install before compiling.
+    """
     output_type = output_type or StatementType.PDF
     custom_vars = custom_vars or {}
     languages = get_environment_languages_for_statement()
@@ -197,6 +228,16 @@ async def _render_problem_fragment_async(
     use_samples: bool,
     custom_vars: Dict[str, Any],
 ) -> Optional[ProblemRenderContext]:
+    """Stage + render one problem's fragment for the join.
+
+    Runs inside the problem's directory (to resolve its package, samples and
+    limits), mirrors the problem statement-dir into ``.problems/<SHORT>/``,
+    renders the ``contestProblemTemplate`` fragment to
+    ``.problems/<SHORT>/statement.tex``, and returns the problem's render context
+    carrying the ``import_dir``/``import_file`` ``\\subimport`` handles for the
+    contest document. ``overlay_root``/``chrome_dir``/``contest_root`` are
+    absolute (computed at contest cwd) so they survive the ``cd``.
+    """
     with cd.new_package_cd(problem.get_path()):
         package_utils.clear_package_cache()
         pkg = package.find_problem_package_or_die()
@@ -265,6 +306,8 @@ async def _render_problem_fragment_async(
 def _finish(
     overlay_root: pathlib.Path, tex: bytes, output_type: StatementType
 ) -> bytes:
+    """Turn the rendered contest TeX into the requested output (compile to PDF, or
+    return the TeX as-is)."""
     if output_type == StatementType.PDF:
         return render.compile_pdf(overlay_root, tex)
     if output_type in (StatementType.TeX, StatementType.Markdown):
@@ -338,5 +381,10 @@ async def build_document(
     output_type: Optional[StatementType] = None,
     custom_vars: Optional[Dict[str, Any]] = None,
 ) -> pathlib.Path:
+    """Build a contest document (infosheet etc.) and return its output path.
+
+    Documents never join on problems; this renders the Jinja (or copies the
+    static) source against the contest context and emits it (default ``PDF``).
+    """
     output_type = output_type or StatementType.PDF
     return _emit_simple(document, contest, output_type, custom_vars or {})

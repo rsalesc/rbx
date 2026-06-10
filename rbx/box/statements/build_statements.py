@@ -40,6 +40,8 @@ _V2_POLYGON_PENDING = (
 
 
 def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
+    """The configured environment languages exposed to templates as ``languages``
+    (id, readable name, and the compile/run command shown in limit tables)."""
     env = environment.get_environment()
 
     res = []
@@ -69,6 +71,8 @@ def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
 def get_builder(
     name: ConversionType, builder_list: List[StatementBuilder]
 ) -> StatementBuilder:
+    """Look up the (legacy v1) builder for a conversion type, or exit. Kept for
+    the deferred Polygon export path; the v2 build uses ``render.py`` directly."""
     candidates = [builder for builder in builder_list if builder.name() == name]
     if not candidates:
         console.console.print(
@@ -81,6 +85,14 @@ def get_builder(
 def get_implicit_builders(
     input_type: StatementType, output_type: StatementType
 ) -> Optional[List[StatementBuilder]]:
+    """Shortest chain of (legacy v1) builders converting ``input_type`` to
+    ``output_type``, or None if unreachable.
+
+    A BFS over ``BUILDER_LIST`` treating each builder as an edge
+    ``input_type -> output_type``; ``par`` maps a reached type to the builder
+    that produced it, then the chain is walked back from ``output_type``. Legacy
+    v1 machinery kept for the deferred Polygon path.
+    """
     par: Dict[StatementType, Optional[StatementBuilder]] = {input_type: None}
 
     def _iterate() -> bool:
@@ -114,6 +126,8 @@ def get_implicit_builders(
 def _try_implicit_builders(
     statement_id: str, input_type: StatementType, output_type: StatementType
 ) -> List[StatementBuilder]:
+    """Like :func:`get_implicit_builders` but exits with an error message when no
+    conversion chain exists (legacy v1 path)."""
     implicit_builders = get_implicit_builders(input_type, output_type)
     if implicit_builders is None:
         console.console.print(
@@ -139,6 +153,7 @@ def _get_configured_params_for(
 
 
 def merge_conversion_steps(lhs: ConversionStep, rhs: ConversionStep) -> ConversionStep:
+    """Overlay the explicitly-set fields of ``rhs`` onto ``lhs`` (same type)."""
     assert lhs.type == rhs.type
     return lhs.model_copy(update=rhs.model_dump(exclude_unset=True), deep=True)
 
@@ -146,6 +161,8 @@ def merge_conversion_steps(lhs: ConversionStep, rhs: ConversionStep) -> Conversi
 def merge_conversion_configurations(
     configure: Iterable[ConversionStep],
 ) -> List[ConversionStep]:
+    """Collapse a list of conversion steps to one per type, later steps
+    overlaying earlier ones via :func:`merge_conversion_steps`."""
     mapping = {}
     for step in configure:
         if step.type not in mapping:
@@ -159,6 +176,7 @@ def merge_conversion_configuration_maps(
     lhs: Dict[ConversionType, ConversionStep],
     rhs: Dict[ConversionType, ConversionStep],
 ) -> Dict[ConversionType, ConversionStep]:
+    """Merge two type-keyed conversion-step maps, ``rhs`` overlaying ``lhs``."""
     consolidated = merge_conversion_configurations(
         list(lhs.values()) + list(rhs.values())
     )
@@ -180,6 +198,15 @@ def get_builders(
     output_type: Optional[StatementType],
     builder_list: List[StatementBuilder] = BUILDER_LIST,
 ) -> List[Tuple[StatementBuilder, ConversionStep]]:
+    """Resolve the ordered ``(builder, params)`` pipeline that turns
+    ``input_type`` into ``output_type`` (legacy v1 path).
+
+    Walks the explicit ``steps``, inserting implicit conversion builders
+    (:func:`get_implicit_builders`) wherever consecutive types don't line up,
+    then appends implicit builders to reach ``output_type``. Finally each step's
+    params are overridden by any matching entry in ``configure``. ``statement_id``
+    is only used for error messages. Kept for the deferred Polygon export path.
+    """
     last_output = input_type
     builders: List[Tuple[StatementBuilder, ConversionStep]] = []
 
@@ -219,12 +246,15 @@ def get_builders(
 def get_statement_dir(
     statement: Statement, builder_name: Optional[str] = None
 ) -> pathlib.Path:
+    """[deferred S12] The per-builder Polygon scratch dir. Stubbed until #568."""
     raise NotImplementedError(_V2_POLYGON_PENDING)
 
 
 def get_produced_tikz_pdfs(
     statement: Statement,
 ) -> Iterable[Tuple[pathlib.Path, pathlib.Path]]:
+    """[deferred S12] Externalized TikZ PDFs for Polygon resource upload. Stubbed
+    until #568."""
     raise NotImplementedError(_V2_POLYGON_PENDING)
 
 
@@ -240,6 +270,8 @@ async def build_statement_bytes(
     custom_vars: Optional[Dict[str, Any]] = None,
     inherited_from: Optional['ContestStatement'] = None,
 ) -> Tuple[bytes, StatementType]:
+    """[deferred S12] The v1 byte-level build the Polygon block extractor relied
+    on. Stubbed until #568; the v2 standalone build is :func:`build_statement`."""
     raise NotImplementedError(_V2_POLYGON_PENDING)
 
 
@@ -247,12 +279,19 @@ async def build_statement_bytes(
 
 
 def _variant_suffix(statement: Statement) -> str:
+    """The ``-<variant>`` filename suffix, empty for the default variant."""
     return '' if statement.variant == DEFAULT_VARIANT else f'-{statement.variant}'
 
 
 def get_statement_build_path(
     statement: Statement, output_type: StatementType, profile: Optional[str] = None
 ) -> pathlib.Path:
+    """The *final* output path for a built standalone statement, e.g.
+    ``build/statement-en[-<variant>][-<profile>].pdf`` (design §7.2).
+
+    This sits at the package build root (``get_build_path()``), NOT under the
+    statements scratch dir — it is the artifact a user opens.
+    """
     name = f'statement-{statement.language}{_variant_suffix(statement)}'
     path = (package.get_build_path() / name).with_suffix(output_type.get_file_suffix())
     if (
@@ -264,10 +303,21 @@ def get_statement_build_path(
 
 
 def needs_samples(statement: Statement) -> bool:
+    """Whether this statement should be built with sample I/O."""
     return statement.samples
 
 
-def _overlay_dir(statement: Statement) -> pathlib.Path:
+def _standalone_overlay_root(statement: Statement) -> pathlib.Path:
+    """The isolated *scratch* overlay root for this statement's standalone build.
+
+    ``package.get_statements_build_path()`` is the shared ``build/statements``
+    directory (it also holds e.g. interactive-sample chunk folders), so each
+    standalone build gets its own subtree under it, keyed by
+    ``(language, variant)``, to avoid clobbering other statements' overlays. The
+    merged contest-chrome + problem-dir overlay is staged here and ``pdflatex``
+    runs from it; it is wiped and recreated on every build. The final PDF is
+    copied out to :func:`get_statement_build_path`.
+    """
     root = (
         package.get_statements_build_path()
         / 'st'
@@ -279,6 +329,7 @@ def _overlay_dir(statement: Statement) -> pathlib.Path:
 
 
 def _explanation_suffix(statement: Statement) -> str:
+    """The on-disk suffix of a sample's explanation file for this statement type."""
     return '.md' if statement.type == StatementType.rbxMarkdown else '.tex'
 
 
@@ -319,6 +370,7 @@ def _emit_output(
 
 
 def _require_file(statement: Statement) -> None:
+    """Exit with an error if the statement's source ``file`` is missing."""
     if statement.file is None or not statement.file.is_file():
         console.console.print(
             f'[error]Statement file [item]{statement.file}[/item] does not exist.[/error]'
@@ -334,6 +386,24 @@ async def build_statement(
     custom_vars: Optional[Dict[str, Any]] = None,
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
 ) -> pathlib.Path:
+    """Build one problem statement standalone and return its output path.
+
+    For an *rbx* statement: resolve the owning contest and its
+    ``standaloneProblemTemplate`` (a contest is required), stage the merged
+    overlay (contest chrome + the problem statement-dir), render the template as
+    a full document, compile, and write ``build/statement-<lang>[-<variant>].pdf``.
+    Static ``pdf`` is copied as-is; static ``tex``/``md`` are staged and emitted
+    without a contest.
+
+    Args:
+        statement: the (expanded) problem statement to build.
+        pkg: the loaded problem package (source of ``vars``, limits, groups).
+        output_type: the desired output (``PDF``/``TeX``/``Markdown``).
+        use_samples: stage sample I/O (assumes samples were already built).
+        custom_vars: ``--vars`` overrides merged on top of the package vars.
+        extra_mergeable_params: packager-supplied export toggles
+            (TikZ-externalize / demacro); empty for non-Polygon builds.
+    """
     languages = get_environment_languages_for_statement()
     custom_vars = custom_vars or {}
 
@@ -352,7 +422,7 @@ async def build_statement(
     _require_file(statement)
     assert statement.file is not None
 
-    overlay_root = _overlay_dir(statement)
+    overlay_root = _standalone_overlay_root(statement)
     problem_dir = utils.abspath(statement.file).parent
 
     if statement.type.is_rbx():
@@ -442,6 +512,7 @@ async def build_statement(
 
 
 def _report_built(statement: Statement, path: pathlib.Path) -> None:
+    """Print the success line with a clickable link to the built statement."""
     console.console.print(
         f'Statement for language [item]{statement.language}[/item]'
         f'{_variant_suffix(statement)} built successfully at {href(path)}'
@@ -458,6 +529,14 @@ async def execute_build_on_statements(
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
     skip_building: bool = False,
 ) -> List[pathlib.Path]:
+    """Build samples once (if any statement needs them) then build each statement.
+
+    The shared entry point for both ``rbx st b`` and the packagers. ``vars`` are
+    raw ``key=value`` ``--vars`` strings. ``skip_building`` only checks/validates
+    pre-built samples instead of regenerating them (the packager builds them
+    first). ``extra_mergeable_params`` carries packager export toggles. Returns
+    the built output paths, one per statement.
+    """
     pkg = package.find_problem_package_or_die()
     samples = samples and any(needs_samples(st) for st in statements)
 
@@ -495,6 +574,13 @@ async def execute_build(
     validate: bool = True,
     profile: Optional[str] = None,
 ) -> None:
+    """Select and build this problem's statements (the ``rbx st b`` body).
+
+    Filters ``pkg.expanded_statements`` by ``languages`` and ``names`` (which, in
+    v2, match the statement *variant* since problem statements have no name),
+    optionally under a timing ``profile``, and delegates to
+    :func:`execute_build_on_statements`. Errors if nothing matches.
+    """
     if profile is not None:
         limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
 
@@ -576,6 +662,11 @@ async def build(
         ),
     ] = None,
 ):
+    """``rbx st b`` — build this problem's statements (standalone).
+
+    Thin Typer wrapper over :func:`execute_build`; see the option help above for
+    each argument.
+    """
     await execute_build(
         verification,
         names,
