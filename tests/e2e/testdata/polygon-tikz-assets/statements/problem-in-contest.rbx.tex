@@ -1,0 +1,14 @@
+\section*{Problem \VAR{problem.short_name}. \VAR{problem.title | escape}}
+
+\VAR{problem.blocks.legend}
+
+\textbf{Input.} \VAR{problem.blocks.input}
+
+\textbf{Output.} \VAR{problem.blocks.output}
+
+%- if problem.samples
+  \subsection*{Examples}
+  %- for sample in problem.samples
+    \example{\VAR{sample.input}}{\VAR{sample.output if sample.output is not none else ''}}
+  %- endfor
+%- endif

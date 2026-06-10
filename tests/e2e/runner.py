@@ -22,8 +22,10 @@ import pathlib
 import re
 import shlex
 import shutil
+import subprocess
 import tempfile
 import traceback
+from unittest import mock
 
 import pytest
 from typer.testing import CliRunner
@@ -31,12 +33,15 @@ from typer.testing import CliRunner
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from rbx.box.contest import contest_state
+from rbx.box.statements.latex import LatexResult
 from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME, get_default_app_path
+from tests.e2e import polygon_capture
 from tests.e2e.assertions import (
     AssertionContext,
     check_file_contains,
     check_files_absent,
     check_files_exist,
+    check_polygon_upload,
     check_solutions,
     check_stderr_contains,
     check_stdout_contains,
@@ -104,6 +109,39 @@ def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
     )
 
 
+def ensure_compilation_deps(pkg_dir: pathlib.Path) -> None:
+    """Provision the bundled ``testlib.h`` next to any source that includes it.
+
+    A package's checker/validator ``#include "testlib.h"``; in real usage
+    ``rbx create`` / ``rbx download`` place ``testlib.h`` in the package. Fixtures
+    do not commit it (it is a large, gitignored downloaded artefact), so without
+    this a fixture whose sources include testlib fails to compile offline. For
+    each directory holding a source that references ``testlib.h`` (and lacks one),
+    copy the bundled predownloaded ``testlib.h`` (no network). Targeted by an
+    include scan so testlib-free packages are untouched; called for every e2e
+    package, making them offline-deterministic.
+    """
+    from rbx.config import get_app_file
+
+    bundled = get_app_file(pathlib.Path('testlib.h'), predownloaded=True)
+    if not bundled.exists():
+        return
+    source_suffixes = {'.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.hh'}
+    needing_dirs = set()
+    for src in pkg_dir.rglob('*'):
+        if not src.is_file() or src.suffix not in source_suffixes:
+            continue
+        try:
+            if 'testlib.h' in src.read_text(errors='ignore'):
+                needing_dirs.add(src.parent)
+        except OSError:
+            continue
+    for directory in needing_dirs:
+        target = directory / 'testlib.h'
+        if not target.exists():
+            shutil.copyfile(bundled, target)
+
+
 # Field names on ``Expect`` paired with the assertion check they dispatch to.
 _GENERIC_CHECKS = (
     ('stdout_contains', check_stdout_contains),
@@ -118,6 +156,7 @@ _GENERIC_CHECKS = (
     ('zip_file_contains', check_zip_file_contains),
     ('solutions', check_solutions),
     ('tests', check_tests),
+    ('polygon_upload', check_polygon_upload),
 )
 
 
@@ -190,10 +229,19 @@ def run_step(
             f'{exc}'
         )
 
+    # Surface an uncaught command exception's message to stderr-based
+    # assertions. rbx prints some errors via a Console bound to the real stream
+    # (not captured by CliRunner) and raises an exception whose message carries
+    # the text; without this, ``stderr_contains`` could not match those errors
+    # (e.g. the statements-v2 overlay collision). ``typer.Exit``/``SystemExit``
+    # carry no message and are skipped.
+    stderr = _strip_ansi(result.stderr)
+    if result.exception is not None and not isinstance(result.exception, SystemExit):
+        stderr = f'{stderr}\n{_strip_ansi(str(result.exception))}'.strip()
     ctx = AssertionContext(
         package_root=cwd,
         stdout=_strip_ansi(result.stdout),
-        stderr=_strip_ansi(result.stderr),
+        stderr=stderr,
     )
     try:
         _run_generic_assertions(ctx, step.expect)
@@ -204,6 +252,45 @@ def run_step(
             f'stdout:\n{result.stdout}\n'
             f'stderr:\n{result.stderr}'
         ) from e
+
+
+def _stub_build_pdf(*args, **kwargs) -> LatexResult:
+    return LatexResult(
+        result=subprocess.CompletedProcess(
+            args='', returncode=0, stdout=b'', stderr=b''
+        ),
+        pdf=b'',
+    )
+
+
+@contextlib.contextmanager
+def _scenario_patches(scenario: Scenario):
+    """Per-scenario patches applied around a scenario's steps.
+
+    pytest does NOT run function-scoped fixtures for the custom
+    :class:`E2EScenarioItem`, so the conditional pdflatex mock and the recording
+    Polygon client live here rather than in conftest:
+
+    * ``_get_polygon_api`` is always replaced by the recording fake so
+      ``package polygon -u`` performs no network I/O and serializes uploads.
+    * ``Latex.build_pdf`` is stubbed to an empty PDF for normal scenarios;
+      scenarios marked ``pdflatex`` opt OUT (real binary, needed for TikZ
+      externalization) and are skipped when ``pdflatex`` is unavailable.
+    """
+    if 'pdflatex' in scenario.markers and shutil.which('pdflatex') is None:
+        pytest.skip('pdflatex not installed; required by this scenario')
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            mock.patch(
+                'rbx.box.packaging.polygon.upload._get_polygon_api',
+                polygon_capture.make_recording_polygon,
+            )
+        )
+        if 'pdflatex' not in scenario.markers:
+            stack.enter_context(
+                mock.patch('rbx.box.statements.latex.Latex.build_pdf', _stub_build_pdf)
+            )
+        yield
 
 
 class E2EScenarioItem(pytest.Item):
@@ -224,22 +311,31 @@ class E2EScenarioItem(pytest.Item):
             )
             if self.scenario.seed_from_preset:
                 seed_package_from_preset(self.scenario.seed_from_preset, pkg_dir)
+            ensure_compilation_deps(pkg_dir)
             # ``rbx`` CLI commands use ``syncer`` which calls
             # ``asyncio.get_event_loop()``; on Python 3.12+ that requires a
             # current loop to be set. Provision one for the duration of the
             # scenario.
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            # Snapshot contextvars that the CLI mutates, so a scenario that
-            # sets `-C <id>` does not leak its variant id into the next
-            # scenario run in the same process. Mirrors the autouse
-            # `_isolate_global_state` fixture in tests/rbx/conftest.py.
+            # Point the recording Polygon fake (installed by
+            # ``_scenario_patches``) at this scenario's package dir so
+            # ``package polygon -u`` writes its capture where the
+            # ``polygon_upload`` matcher reads it from.
+            polygon_capture.set_capture_dir(
+                pkg_dir / CACHE_DIR_NAME / 'polygon_capture'
+            )
             try:
                 testing_utils.clear_all_functools_cache()
-                with _snapshot_e2e_contextvars():
+                # Snapshot contextvars that the CLI mutates, so a scenario that
+                # sets `-C <id>` does not leak its variant id into the next
+                # scenario run in the same process. Mirrors the autouse
+                # `_isolate_global_state` fixture in tests/rbx/conftest.py.
+                with _scenario_patches(self.scenario), _snapshot_e2e_contextvars():
                     for step in self.scenario.steps:
                         run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
+                polygon_capture.reset_capture_dir()
                 testing_utils.clear_all_functools_cache()
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())

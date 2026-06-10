@@ -1,0 +1,33 @@
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Contest.json
+# Add problems by running `rbx contest add`
+name: "new-contest"
+titles:
+  en: "New contest"
+problems:
+  - short_name: A
+# Task sheet (built with `rbx contest st b`).
+statements:
+  - name: "statement-en"
+    language: "en"
+    file: "statements/problem-sheet.rbx.tex"
+    standaloneProblemTemplate: "statements/problem.rbx.tex"
+    contestProblemTemplate: "statements/problem-fragment.rbx.tex"
+# Tutorials are the editorials (built with `rbx contest tut b`).
+tutorials:
+  - name: "editorial-en"
+    language: "en"
+    file: "statements/editorial-sheet.rbx.tex"
+    standaloneProblemTemplate: "statements/editorial.rbx.tex"
+    contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
+    params:
+      watermark: true
+documents:
+  # Information sheet: a per-problem limits table.
+  - name: "info-en"
+    language: "en"
+    file: "statements/info.jinja.tex"
+    type: "JinjaTeX"
+vars:
+  year: 2025
+  date: "2025-06-21"

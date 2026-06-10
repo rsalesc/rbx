@@ -1,0 +1,14 @@
+name: polygon-tikz-assets
+titles:
+  en: TikZ Assets Contest
+
+problems:
+  - short_name: A
+
+statements:
+  - name: main-en
+    language: en
+    file: statements/contest.rbx.tex
+    type: rbx-tex
+    standaloneProblemTemplate: statements/problem-standalone.rbx.tex
+    contestProblemTemplate: statements/problem-in-contest.rbx.tex

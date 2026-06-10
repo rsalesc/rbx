@@ -13,8 +13,11 @@ For design rationale and migration history, see
 ## Running
 
 ```bash
-# All e2e scenarios.
+# All e2e scenarios EXCEPT those needing a real pdflatex.
 mise run test-e2e
+
+# Scenarios that need a real pdflatex (with TikZ) install -- run separately.
+mise run test-e2e-pdflatex
 
 # A single package.
 uv run pytest tests/e2e/testdata/<package>/ -v
@@ -24,8 +27,12 @@ uv run pytest 'tests/e2e/testdata/<pkg>/e2e.rbx.yml::<scenario>' -v
 ```
 
 `mise run test` runs everything *except* e2e (it filters with
-`-m 'not (e2e or slow or docker)'`). The default `pytest` invocation, with
-no marker filter, will pick up e2e tests like any other test.
+`-m 'not (e2e or slow or docker)'`). `mise run test-e2e` further excludes the
+`pdflatex` marker (`-m 'e2e and not docker and not pdflatex'`): those scenarios
+stub out `pdflatex` (returning an empty PDF), so they run anywhere. Scenarios
+marked `pdflatex` opt OUT of that stub and drive the real binary — needed for
+TikZ externalization in the Polygon statement-upload suites — so they live
+behind `mise run test-e2e-pdflatex` and are skipped when `pdflatex` is absent.
 
 ## Adding a new package
 
@@ -232,11 +239,47 @@ expect:
 to `true`: `rbx build` does not persist a per-testcase validation report
 on disk. Track [#418](https://github.com/rsalesc/robox.io/issues/418).
 
+#### `polygon_upload`
+
+Assertions about what `rbx package polygon -u` uploads. The runner installs a
+recording Polygon client (no network; see [`polygon_capture.py`](polygon_capture.py))
+that serializes every `save_statement` / `save_statement_resource` call to
+`.rbx/polygon_capture/` under the package root. The capture lives at the package
+(contest) root regardless of which subdirectory the upload ran in.
+
+```yaml
+expect:
+  polygon_upload:
+    dir: .rbx/polygon_capture        # optional, default; relative to package root
+    statements:
+      english:                       # uploaded-language key (code_to_langs result)
+        name_contains: "A plus B"
+        legend_contains: ["\\includegraphics{img__diagram.png}", "A"]
+        input_contains: "single line"
+        output_contains: "sum"
+        interaction_contains: "..."   # COMMUNICATION tasks only
+        notes_contains: ["Explanation for example 1"]
+    resources_present: ["img__diagram.png", "artifacts__tikz_figures__legend_0.pdf"]
+    resources_absent: ["secret.txt"]
+    resources_referenced_consistent: true
+```
+
+* `statements`: per uploaded-language map; each `*_contains` is a substring (or
+  list) that must appear in that field of the captured `save_statement` payload.
+* `resources_present` / `resources_absent`: uploaded statement-resource names
+  (normalized — subdir assets are `__`-joined, e.g. `img/diagram.png` →
+  `img__diagram.png`).
+* `resources_referenced_consistent`: parse every `\includegraphics{...}` across
+  all uploaded statement fields and assert each reference resolves to an uploaded
+  resource (matching the exact name or its extension-stripped stem). This is the
+  "do the uploaded assets make sense" check.
+
 ### `markers`
 
 Per-scenario list of pytest markers, applied on top of the implicit
-`e2e` marker. Whitelist: `slow`, `docker`. Anything else raises at
-parse time.
+`e2e` marker. Whitelist: `slow`, `docker`, `pdflatex`. Anything else raises at
+parse time. `pdflatex` opts the scenario into the real `pdflatex` binary (and
+is skipped if it is not installed); see [Running](#running).
 
 ```yaml
 scenarios:
@@ -362,9 +405,9 @@ uv run pytest tests/e2e/ -m 'e2e and not slow'
 uv run pytest tests/e2e/ -m 'docker'
 ```
 
-The marker whitelist is `{slow, docker}`. Adding a new entry to the
+The marker whitelist is `{slow, docker, pdflatex}`. Adding a new entry to the
 whitelist requires editing `_ALLOWED_MARKERS` in
-[`spec.py`](spec.py) and registering the marker in `pyproject.toml`.
+[`spec.py`](spec.py) and registering the marker in `pytest.ini`.
 
 ## Out of scope
 

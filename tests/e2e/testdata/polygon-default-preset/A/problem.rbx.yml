@@ -1,0 +1,48 @@
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Package.json
+name: "new-problem"
+timeLimit: 1000 # ms
+memoryLimit: 256 # MiB
+titles:
+  en: "New problem"
+checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
+validator: {path: "validator.cpp"}
+testcases:
+  - name: "samples"
+    testcaseGlob: "statement/samples/*.in" # Pattern for the sample inputs.
+  - name: "testplan"
+    generatorScript:
+      path: "tests/testplan.txt" # Static generator script (testplan).
+solutions:
+  - path: "sols/main*.*"
+    outcome: "ACCEPTED"
+  - path: "sols/ac-*.*"
+    outcome: "ACCEPTED"
+  - path: "sols/wa-*.*"
+    outcome: "WRONG_ANSWER"
+  - path: "sols/tle-*.*"
+    outcome: "TIME_LIMIT_EXCEEDED"
+  - path: "sols/mle-*.*"
+    outcome: "MEMORY_LIMIT_EXCEEDED"
+  - path: "sols/re-*.*"
+    outcome: "RUNTIME_ERROR"
+  - path: "sols/fail-*.*"
+    outcome: "INCORRECT"
+statements:
+  - language: "en"
+    file: "statement/statement.rbx.tex" # Open this file to edit your statement.
+    type: "rbxTeX"
+    params:
+      show_limits: true # Set to false to hide the time/memory limits.
+tutorials:
+  - language: "en"
+    file: "statement/editorial.rbx.tex" # Open this file to edit your editorial.
+    type: "rbxTeX"
+# Variables usable in the validator, checker, interactor, stress tests and statement.
+vars:
+  # Author name to be displayed in the editorial.
+  author: "John Doe"
+  # Constraints of the problem.
+  N:
+    min: 1
+    max: 1000000000

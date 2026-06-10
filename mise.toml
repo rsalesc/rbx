@@ -36,7 +36,11 @@ run = "pytest -m 'not (e2e or slow or docker)' --cov=rbx --cov-branch --cov-repo
 
 [tasks.test-e2e]
 description = "Run e2e tests"
-run = "pytest -m 'e2e and not docker'"
+run = "pytest -m 'e2e and not docker and not pdflatex'"
+
+[tasks.test-e2e-pdflatex]
+description = "Run e2e tests that need a real pdflatex (TikZ externalization)"
+run = "pytest -m 'e2e and pdflatex and not docker' -v"
 
 [tasks.test-slow]
 description = "Run slow tests"

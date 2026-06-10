@@ -1,0 +1,51 @@
+scenarios:
+  - name: contest-statement-build
+    markers: [pdflatex]
+    description: >
+      The default preset's contest statement (and info-sheet document) build with
+      a real pdflatex. Proves the bundled preset contest templates (icpc.sty,
+      problem sheet, info sheet) render end-to-end. Run at the contest root.
+    steps:
+      - cmd: contest st b
+        expect:
+          files_exist:
+            - build/statement-en.pdf
+            - build/info-en.pdf
+
+  - name: problem-polygon-upload-collision
+    markers: [pdflatex]
+    description: >
+      GRILL FINDING (#586): the default preset's Polygon statement upload is
+      broken out of the box. `rbx package polygon -u` builds the standalone
+      statement overlay, which merges the contest chrome (statements/, holding
+      `editorial.rbx.tex`) with the problem's statement dir (statement/, also
+      holding `editorial.rbx.tex`) -- an asset-name collision the statements-v2
+      overlay rejects, so the command fails before any upload. This scenario
+      encodes that CURRENT (broken) behavior; see
+      docs/plans/2026-06-10-polygon-statement-upload-audit.md. The companion
+      `problem-polygon-upload` scenario asserts the desired success and is
+      registered xfail until the collision is fixed.
+    steps:
+      - cmd: package polygon -u --upload-as-english
+        cwd: A
+        expect_exit: 1
+        expect:
+          stderr_contains:
+            - "Asset name collision"
+            - "editorial.rbx.tex"
+
+  - name: problem-polygon-upload
+    markers: [pdflatex]
+    description: >
+      The DESIRED end state: the default preset's problem uploads its statement
+      to Polygon successfully. Registered xfail (tests/e2e/conftest.py) until the
+      `editorial.rbx.tex` overlay collision above is fixed; flips to xpass then.
+    steps:
+      - cmd: package polygon -u --upload-as-english
+        cwd: A
+        expect:
+          stdout_contains: "uploaded successfully"
+          polygon_upload:
+            statements:
+              english:
+                legend_contains: ["A", "B"]
