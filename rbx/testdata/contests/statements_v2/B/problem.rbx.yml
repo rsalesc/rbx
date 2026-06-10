@@ -1,0 +1,12 @@
+name: 'problem-b'
+timeLimit: 2000
+memoryLimit: 256
+vars:
+  author: 'Bob'
+statements:
+  - language: 'en'
+    title: 'Problem B'
+    file: 'statement/statement.rbx.tex'
+    type: 'rbxTeX'
+    params:
+      show_limits: false

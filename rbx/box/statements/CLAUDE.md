@@ -1,135 +1,125 @@
 # Statements Module (`rbx/box/statements/`)
 
-Builds problem statements from LaTeX/Jinja templates into PDF, HTML, or Markdown.
+Builds problem & contest statements (and contest documents) from rbxTeX / LaTeX /
+Markdown / Jinja sources into PDF (primarily; TeX/MD too).
 
-## Pipeline Overview
+This module is **statements v2** (design: `docs/plans/2026-06-09-statements-v2-design.md`,
+issue #556). v2 simplified the YAML surface and reworked path resolution around a
+**temp-dir overlay** that every asset resolves into by a plain relative path, joined
+with `\subimport`. There is **no migration** from v1.
 
-```
-problem.rbx.yml (statements config)
-  |
-  v
-schema.py: Statement models define source path, type, conversion steps, vars
-  |
-  v
-expander.py: expand_statements() resolves wildcards and preset inheritance
-  |
-  v
-build_statements.py: execute_build_on_statements() orchestrates the build
-  |
-  +-- For each statement × language × output type:
-  |     1. Copy statement source to build directory
-  |     2. Apply conversion steps in sequence
-  |     3. Produce final output (PDF, HTML, Markdown)
-  |
-  v
-Output files in build directory
-```
+## Core decisions (design §2)
+
+- **A contest is required** to build an *rbx* problem statement: the contest owns
+  the templates. Static types (`tex`/`md`/`pdf`) build standalone without one.
+- **Namespaces don't merge:** `params` (statement's own), `vars` (problem/package
+  or contest), `contest.*` are separate template namespaces (§4).
+- **Path resolution = full overlay, everything relative.** No user TeX is parsed
+  or rewritten; the only injected construct is `\subimport`. pdflatex runs from
+  the overlay **root**, so the generated TeX is portable (§6).
 
 ## Schema (`schema.py`)
 
-### Core Types
+- **`StatementType`** (AutoEnum): `rbxTeX` (default), `rbxMarkdown`, `TeX`,
+  `Markdown`, `JinjaTeX`, `JinjaMarkdown`, `PDF`. `is_rbx()` → the joinable types.
+- **`BaseStatement`** — shared fields: `language`, `variant`, `title`, `file`,
+  `type`, `params` (own namespace), `samples`. `expanded_params` expands `params`.
+- **`Statement`** (problem) — no `name`; identified by `(language, variant)`
+  (unique within a problem). `extends` by language string or `{language, variant}`.
+- **`ContestStatement`** (contest) — adds `name` (unique), `location`, `date`,
+  `standaloneProblemTemplate`, `contestProblemTemplate` (rbx-only). `(language,
+  variant)` need not be unique. `extends` by `name`.
+- **`Document`** (contest) — like a contest statement but never joins; restricted
+  to `DOCUMENT_TYPES` (jinja/static).
 
-- **`StatementType`** -- Enum: `PDF`, `HTML`, `MARKDOWN`
-- **`StatementLanguage`** -- ISO 639-1 language code + display name
-- **`Statement`** -- Pydantic model: `name`, `path` (source file), `type` (PDF/HTML/MD), `language`, `title`, `vars`, `steps`, `configure`
-- **`ConversionStep`** -- Discriminated union (via `type` field):
-  - `rbxToTeX` -- Convert rbxTeX format to standard LaTeX (the main custom format)
-  - `TexToPDF` -- Compile LaTeX to PDF via `pdflatex`
-  - `TexToHTML` -- Convert LaTeX to HTML via `pandoc`
-  - `TexToMarkdown` -- Convert LaTeX to Markdown via `pandoc`
-  - `HtmlToPDF` -- Convert HTML to PDF (via browser/wkhtmltopdf)
-  - `MarkdownToHTML` -- Convert Markdown to HTML via `pandoc`
-  - `MarkdownToPDF` -- Convert Markdown to PDF via `pandoc`
-- **`Joiner`** -- Joins multiple problem statements for contest output
+`expander.py` resolves `extends` via an **allowlist merge** (only the build recipe
+— `type`/`file`/`params` + contest templates — never identity); topo sort with
+cycle/dangling errors. Problem: `Package.expanded_statements`/`expanded_tutorials`;
+contest: `Contest.expanded_statements`/`expanded_tutorials`/`expanded_documents`.
 
-### rbxTeX Format
+## v2 engine modules
 
-The main custom format. An rbxTeX file is a LaTeX file with Jinja2 template syntax:
-- `\VAR{variable}` -- Variable substitution (from `vars` in problem.rbx.yml)
-- `%- for`, `%- if`, `%- block` -- Jinja control flow using `%` line prefix
-- Sample I/O auto-insertion from built test cases
-- `\subimport` for composing multi-file statements
+The build is a pipeline of small, unit-tested pieces:
 
-### Conversion Steps
+- **`resolver.py`** (S7) — contest-aware resolution. `require_contest_for_problem`
+  (hard error outside a contest); `select_standalone_contest_statement` (the single
+  contest statement whose `(language, variant)` carries a `standaloneProblemTemplate`
+  — 0/>1 are errors); `select_problem_statement` (join match by `(language, variant)`
+  + matching rbx type).
+- **`overlay.py`** (S4) — the stager. `mirror_tree`/`merge_tree`;
+  `stage_standalone_overlay` (merged root, collision-detected);
+  `stage_join_problem` (isolated `.problems/<SHORT>/`); `stage_chrome` (contest
+  chrome at root). The *directory containing a statement `file`* is its asset scope.
+- **`context.py`** (S5) — namespaced Jinja kwargs. `ProblemRenderContext` /
+  `ContestRenderContext` / `SampleHandle`; `problem_jinja_kwargs` /
+  `contest_jinja_kwargs` build the `params`/`vars`/`contest`/`problem`/`problems`
+  namespaces + `problem.import_dir`/`import_file` join handles.
+- **`sample_staging.py`** (S6) — per-sample `.samples/<idx>/` folders: `in`/`out`
+  mirrored (root-relative for `\VerbatimInput`), explanation rendered to
+  `explanation.tex` with its source dir overlaid for figures (base-relative for
+  `\subimport`), interactive chunks. Input is the light `SampleSource`.
+- **`render.py`** (S8) — reuses the v1 primitives (block extraction, the LaTeX
+  Jinja env, the `tex→pdf` pdflatex loop) driven by the v2 context.
+  `extract_blocks`, `render_problem_document` (full doc OR fragment),
+  `render_contest_document` (join), `render_jinja_document`, `compile_pdf`,
+  `md_to_pdf`.
+- **`engine.py`** — `render_problem_tex` ties extraction → sample staging →
+  template render for one problem; shared by standalone and join so the same
+  problem rendering is valid in both contexts.
 
-Steps are applied in sequence. Default flow for rbxTeX:
-1. `rbxToTeX` -- Jinja rendering with variable substitution, sample I/O injection
-2. `TexToPDF` -- pdflatex compilation (with optional TikZ externalization)
+## Build entry points
 
-Each step has a `configure` list for step-specific parameters (e.g., `externalize: true` for TikZ extraction in Polygon upload).
+- **`build_statements.py`** (S9) — standalone `rbx st b`:
+  `execute_build` → `execute_build_on_statements` → `build_statement`. For an rbx
+  statement it resolves the contest, stages the merged overlay (contest chrome +
+  problem dir), renders the `standaloneProblemTemplate` (a *full* document),
+  compiles, and writes `build/statement-<lang>[-<variant>].pdf`. Static types are
+  emitted directly.
+- **`contest/build_contest_statements.py`** (S10) — `rbx contest st b`:
+  `build_statement` stages chrome, renders each problem's `contestProblemTemplate`
+  into `.problems/<SHORT>/statement.tex` (a *fragment*), then renders the contest
+  `file` which `\subimport`s each via the import handles; compiles from the root.
+  `build_document` emits documents without joining.
 
-## Build Pipeline (`build_statements.py`)
+## Path resolution (design §6) — the contract proved by the spike (#557)
 
-**`execute_build_on_statements()`** -- Main entry point, called from `packager.py` and `cli.py`.
+- `\subimport`, `\includegraphics`, `\input` are **import-base-relative**;
+  `import.sty` rebases them at every nesting depth (no `\graphicspath`).
+- `\VerbatimInput` (sample I/O) does **not** honor the import base → sample
+  `input`/`output` handles are **root-relative**; the explanation goes through
+  `\subimport` (base-relative). Both are relative → the overlay is portable.
 
-For each statement:
-1. Resolves the statement source path
-2. Creates a build directory
-3. Applies conversion steps sequentially via `builders.py`
-4. Returns `BuiltStatement` objects with paths to output files
+## LaTeX integration (unchanged)
 
-## Builders (`builders.py`)
+- `latex.py` — `Latex.build_pdf(temp_dir)` writes `statement.tex` and runs
+  `pdflatex` with `cwd=temp_dir` (= the overlay root); rerun loop for cross-refs.
+- `latex_jinja.py` — the LaTeX-flavored Jinja2 env (`\VAR{}`, `%-`, `\BLOCK{}`),
+  `JinjaDictWrapper`/`JinjaGroupsGetter`, strict undefined.
 
-Each conversion step has a corresponding builder function:
+## `builders.py` (legacy, kept for the deferred Polygon path)
 
-- **`_build_rbx_to_tex()`** -- The most complex builder:
-  1. Copies source and included files to build dir
-  2. Sets up Jinja environment via `latex_jinja.py` (`jinja2.Environment` with `\VAR{}` syntax, `%-` blocks, `\BLOCK{}`)
-  3. Injects variables: problem vars, samples, language strings
-  4. Renders the template
-  5. Processes `\subimport` directives for multi-file statements
+The v1 `StatementBuilder` classes + `StatementBuilderProblem/Contest` and the
+low-level helpers (`render_jinja`, `render_jinja_blocks`, `StatementBlocks`, TikZ
+externalize helpers) live here. v2 `render.py` reuses the helpers; the builder
+*classes* remain only because the Polygon export path (S12, #568) still imports
+them. `build_statements.get_statement_dir` / `get_produced_tikz_pdfs` /
+`build_statement_bytes` stay stubbed (`NotImplementedError`) until S12.
 
-- **`_build_tex_to_pdf()`** -- Calls `latex.py` to run `pdflatex` (with retry for cross-references)
-- **`_build_tex_to_html()`** / **`_build_tex_to_md()`** -- Uses `pypandoc` for conversion
-- **`_build_html_to_pdf()`** -- HTML to PDF conversion
-- **`_build_md_to_html()`** / **`_build_md_to_pdf()`** -- Markdown conversions via `pypandoc`
+## Template context namespaces (design §4)
 
-## LaTeX Integration
+| Name | Contents | Where |
+|---|---|---|
+| `params` | the statement's own params | all renders |
+| `vars` | problem/package vars (problem) or contest vars (contest) | all renders |
+| `contest` | `title`, `location`, `date`, `contest.vars` | always |
+| `problem` | `title`, `short_name`, `limits`, `profiles`, `groups`, `samples`, `blocks`, `import_dir`, `import_file` | problem renders |
+| `problems` | list of the above | contest join |
+| `lang`, `languages`, `keyed_languages` | env languages | all renders |
 
-### `latex.py`
-- `compile_latex()` -- Runs `pdflatex` with configurable options
-- Handles build retries for cross-references
-- Error extraction from LaTeX log files
+Per-sample handles: `sample.input`/`output` (root-relative), `sample.dir` +
+`sample.explanation_file` (base-relative `\subimport`), `sample.interaction.chunks`.
 
-### `latex_jinja.py`
-- Custom Jinja2 environment configured for LaTeX:
-  - Variable syntax: `\VAR{...}` instead of `{{ ... }}`
-  - Block syntax: `\BLOCK{...}` instead of `{% ... %}`
-  - Comment syntax: `\#{...}`
-  - Line statement prefix: `%-`
-  - Line comment prefix: `%#`
-- `get_latex_jinja_env()` factory function
+## Polygon integration (`polygon_utils.py`)
 
-## Expander (`expander.py`)
-
-`expand_statements()` processes the raw statement list from `problem.rbx.yml`:
-- Resolves wildcard paths to actual files
-- Applies preset-defined default statements
-- Handles statement overrides from contest config
-
-## Joiners (`joiners.py`)
-
-Joins multiple problem statements into a single contest document:
-- Produces combined PDFs for contest printing
-- Handles table of contents, page numbering
-
-## Statement Templates (`rbx/resources/templates/`)
-
-Bundled LaTeX templates:
-- `statements/` -- Default problem statement templates (ICPC style with `icpc.sty`)
-- `contest/` -- Contest-level templates (cover pages, info sheets with limits tables)
-- Templates use Jinja syntax: `\VAR{problem.title}`, `\VAR{problem.limits.timelimit_for_language('cpp')}`
-
-## Polygon Integration (`polygon_utils.py`)
-
-Helpers for extracting statement sections (legend, input, output, notes) for Polygon API upload. Parses LaTeX to extract named blocks.
-
-## Context Variables Available in Templates
-
-- `vars` -- User-defined variables from `problem.rbx.yml`
-- `lang` -- Current language code
-- `problem` -- Problem metadata (title, limits, etc.)
-- `problems` -- (Contest only) List of all problems
-- `contest` -- (Contest only) Contest metadata
-- `samples` -- Auto-generated sample I/O from built test cases
-- `problem.groups` -- Name-keyed accessor over `package.testcases`. Iteration yields `TestcaseGroup` objects in declaration order; lookup by name (`problem.groups.subtask1.score`, `problem.groups['subtask1']`) returns the group or `StrictChainableUndefined` on miss
+Helpers extracting statement sections for Polygon upload — consumed by the
+deferred S12 export path.
