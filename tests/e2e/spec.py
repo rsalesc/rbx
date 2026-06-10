@@ -109,6 +109,41 @@ class ZipFileMatcher(_Forbid):
     entries: Dict[str, str]
 
 
+class StatementExpect(_Forbid):
+    """Substring assertions on the fields of a single uploaded Polygon statement.
+
+    Each ``*_contains`` is a substring (or list of substrings) that must appear
+    in the corresponding field of the captured ``save_statement`` payload.
+    """
+
+    name_contains: Union[str, List[str], None] = None
+    legend_contains: Union[str, List[str], None] = None
+    input_contains: Union[str, List[str], None] = None
+    output_contains: Union[str, List[str], None] = None
+    interaction_contains: Union[str, List[str], None] = None
+    notes_contains: Union[str, List[str], None] = None
+
+
+class PolygonUploadMatcher(_Forbid):
+    """Assertions over the recording-fake capture written by ``package polygon -u``.
+
+    ``dir`` is the capture directory relative to the package root (default
+    ``.rbx/polygon_capture``; override when the upload ran in a subdirectory,
+    e.g. ``A/.rbx/polygon_capture``). ``statements`` maps an uploaded-language
+    key (e.g. ``english``) to per-field substring assertions.
+    ``resources_present``/``resources_absent`` assert (by normalized name) which
+    statement resources were / were not uploaded. ``resources_referenced_consistent``
+    parses every ``\\includegraphics{...}`` across all uploaded statement fields
+    and asserts each reference resolves to an uploaded resource.
+    """
+
+    dir: str = '.rbx/polygon_capture'
+    statements: Dict[str, StatementExpect] = Field(default_factory=dict)
+    resources_present: List[str] = Field(default_factory=list)
+    resources_absent: List[str] = Field(default_factory=list)
+    resources_referenced_consistent: Optional[bool] = None
+
+
 class Expect(_Forbid):
     stdout_contains: Union[str, List[str], None] = None
     stdout_not_contains: Union[str, List[str], None] = None
@@ -124,6 +159,7 @@ class Expect(_Forbid):
         Dict[str, Annotated[SolutionMatcher, BeforeValidator(_coerce_solution_matcher)]]
     ] = None
     tests: Optional[TestsMatcher] = None
+    polygon_upload: Optional[PolygonUploadMatcher] = None
 
 
 class Step(_Forbid):

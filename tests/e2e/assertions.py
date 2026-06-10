@@ -10,6 +10,7 @@ package/scenario prefix.
 
 import collections
 import fnmatch
+import json
 import pathlib
 import re
 import zipfile
@@ -26,11 +27,19 @@ from rbx.box.testcase_schema import TestcaseEntry
 from rbx.config import CACHE_DIR_NAME
 from rbx.grading.steps import Evaluation
 from tests.e2e.spec import (
+    PolygonUploadMatcher,
     SolutionMatcher,
     TestsMatcher,
     ZipFileMatcher,
     ZipMatcher,
 )
+
+# Matches a single ``\includegraphics{...}`` (optionally with ``[opts]``) and
+# captures the resource path argument.
+_INCLUDEGRAPHICS_RE = re.compile(r'\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}')
+
+# Statement fields the recording fake serializes (see tests/e2e/polygon_capture.py).
+_STATEMENT_FIELDS = ('name', 'legend', 'input', 'output', 'interaction', 'notes')
 
 
 @dataclass
@@ -138,6 +147,68 @@ def _match_text(label: str, text: str, needle: str) -> None:
             raise AssertionError(f'{label}: regex {needle} no match')
     elif needle not in text:
         raise AssertionError(f'{label}: missing {needle!r}')
+
+
+def check_polygon_upload(ctx: AssertionContext, matcher: PolygonUploadMatcher) -> None:
+    """Assert over the recording-fake capture written by ``rbx package polygon -u``.
+
+    Reads the capture directory (``matcher.dir`` relative to the package root)
+    produced by :mod:`tests.e2e.polygon_capture`: ``resources.json`` (uploaded
+    statement-resource names) and ``statements/<lang>.json`` (the captured
+    ``save_statement`` payloads). See :class:`PolygonUploadMatcher`.
+    """
+    cap = ctx.package_root / matcher.dir
+    if not cap.is_dir():
+        raise AssertionError(f'polygon capture dir not found: {matcher.dir}')
+
+    resources_json = cap / 'resources.json'
+    uploaded = (
+        set(json.loads(resources_json.read_text()))
+        if resources_json.is_file()
+        else set()
+    )
+
+    for name in matcher.resources_present:
+        if name not in uploaded:
+            raise AssertionError(
+                f'expected uploaded resource {name!r}; uploaded: {sorted(uploaded)}'
+            )
+    for name in matcher.resources_absent:
+        if name in uploaded:
+            raise AssertionError(f'resource {name!r} should NOT have been uploaded')
+
+    statements_dir = cap / 'statements'
+    for lang, expect in matcher.statements.items():
+        path = statements_dir / f'{lang}.json'
+        if not path.is_file():
+            present = sorted(p.stem for p in statements_dir.glob('*.json'))
+            raise AssertionError(
+                f'no statement uploaded for language {lang!r}; present: {present}'
+            )
+        data = json.loads(path.read_text())
+        for field in _STATEMENT_FIELDS:
+            for needle in _as_list(getattr(expect, f'{field}_contains')):
+                if needle not in (data.get(field) or ''):
+                    raise AssertionError(
+                        f'statement[{lang}].{field} missing {needle!r}; '
+                        f'got: {data.get(field)!r}'
+                    )
+
+    if matcher.resources_referenced_consistent:
+        # Stems of uploaded resources, so an extension-less reference
+        # (``\includegraphics{img__d}``) still matches ``img__d.png``.
+        stems = {n.rsplit('.', 1)[0] for n in uploaded}
+        for path in sorted(statements_dir.glob('*.json')):
+            data = json.loads(path.read_text())
+            for field in _STATEMENT_FIELDS:
+                text = data.get(field) or ''
+                for ref in _INCLUDEGRAPHICS_RE.findall(text):
+                    if ref not in uploaded and ref not in stems:
+                        raise AssertionError(
+                            f'statement[{path.stem}].{field} references '
+                            f'\\includegraphics{{{ref}}} but no matching resource '
+                            f'was uploaded; uploaded: {sorted(uploaded)}'
+                        )
 
 
 def _glob_in_zip(zip_path: pathlib.Path, pattern: str) -> bool:

@@ -37,6 +37,7 @@ from tests.e2e.assertions import (
     check_file_contains,
     check_files_absent,
     check_files_exist,
+    check_polygon_upload,
     check_solutions,
     check_stderr_contains,
     check_stdout_contains,
@@ -118,6 +119,7 @@ _GENERIC_CHECKS = (
     ('zip_file_contains', check_zip_file_contains),
     ('solutions', check_solutions),
     ('tests', check_tests),
+    ('polygon_upload', check_polygon_upload),
 )
 
 
