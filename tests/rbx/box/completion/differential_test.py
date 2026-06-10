@@ -15,14 +15,29 @@ def _pairs(items):
 def _is_command_name_position(args, incomplete):
     """True when the cursor completes a subcommand NAME (a group node, not an
     option or an option value). At those positions the engine intentionally
-    diverges from Typer (it splits 'name, alias' into separate candidates), so we
-    check it against a spec-derived expectation instead of the Typer oracle."""
+    diverges from Typer (it offers ONE deduped candidate per command, not Typer's
+    comma-joined string), so we check it against a spec-derived expectation
+    instead of the Typer oracle."""
     node, _command, _opts, pending, _positional, _seen = _walk(_spec.SPEC, list(args))
     return (
         pending is None
         and not incomplete.startswith('-')
         and bool(node.get('is_group'))
     )
+
+
+def _is_option_name_position(args, incomplete):
+    """True when the cursor completes an option NAME (not its value). Here the
+    engine intentionally dedupes aliases to ONE candidate per option."""
+    node, _command, _opts, pending, _positional, _seen = _walk(_spec.SPEC, list(args))
+    if pending is not None or not incomplete.startswith('-'):
+        return False
+    if '=' in incomplete:
+        name = incomplete.split('=', 1)[0]
+        for p in node['params']:
+            if p['kind'] == 'option' and name in p['names'] and p['takes_value']:
+                return False  # completing `--opt=<value>`, not a name
+    return True
 
 
 def _cursor_value(args, incomplete):
@@ -68,11 +83,11 @@ def test_engine_matches_typer(args, incomplete):
         return
 
     if _is_command_name_position(args, incomplete):
-        # Command-name completion: each alias is its own prefix-filtered candidate.
-        # `_command_name_items` IS the engine's own helper, so this asserts the
-        # node it resolved to yields exactly those names -- and, as a cross-check,
-        # that every name the real CLI would offer (its comma-joined values, split)
-        # is covered.
+        # Command-name completion: ONE deduped candidate per command (not one per
+        # alias). `_command_name_items` IS the engine's own helper, so this asserts
+        # the node it resolved to yields exactly those names. Cross-check against
+        # Typer: every name we offer is a REAL Typer command name (we never invent
+        # one), though we intentionally offer FEWER (deduped) than Typer's aliases.
         node, *_ = _walk(_spec.SPEC, list(args))
         expected = _pairs(_command_name_items(node, incomplete))
         assert ours == expected, f'args={args} inc={incomplete!r}: ours={ours}'
@@ -81,14 +96,44 @@ def test_engine_matches_typer(args, incomplete):
         for value, _t in _pairs(typer_completions(args, incomplete)):
             for name in _match_names(value):
                 if name.startswith(incomplete):
-                    typer_names.add((name, 'plain'))
-        assert typer_names <= set(ours), (
-            f'args={args} inc={incomplete!r}: missing Typer commands {typer_names - set(ours)}'
+                    typer_names.add(name)
+        ours_names = {v for v, _t in ours}
+        assert ours_names <= typer_names, (
+            f'args={args} inc={incomplete!r}: invented names {ours_names - typer_names}'
         )
         return
 
-    # Everywhere else (option names, option values, positional values) the engine
-    # must match Typer EXACTLY.
+    if _is_option_name_position(args, incomplete):
+        # Option-name completion: ONE deduped candidate per option (not Typer's
+        # every-alias). Verify against Typer that (a) we never invent a name,
+        # (b) every name starts with the incomplete, and (c) for each option Typer
+        # would offer we show EXACTLY one name -- its first matching (canonical)
+        # alias -- and none for options Typer drops (e.g. already-supplied).
+        node, *_ = _walk(_spec.SPEC, list(args))
+        gold = {v for v, _t in _pairs(typer_completions(args, incomplete))}
+        ours_vals = [v for v, _t in ours]
+        assert set(ours_vals) <= gold, (
+            f'args={args} inc={incomplete!r}: invented option names {set(ours_vals) - gold}'
+        )
+        assert all(v.startswith(incomplete) for v in ours_vals)
+        for p in node['params']:
+            if p['kind'] != 'option':
+                continue
+            p_gold = [n for n in p['names'] if n in gold]
+            p_ours = [v for v in ours_vals if v in p['names']]
+            if p_gold:
+                assert p_ours == [p_gold[0]], (
+                    f'args={args} inc={incomplete!r}: option {p["names"]} -> {p_ours}, '
+                    f'expected [{p_gold[0]!r}] (one deduped candidate)'
+                )
+            else:
+                assert not p_ours, (
+                    f'args={args} inc={incomplete!r}: option {p["names"]} shown but Typer drops it'
+                )
+        return
+
+    # Everywhere else (option values, positional values) the engine must match
+    # Typer EXACTLY (only NAME completion is deduped, never values).
     gold = _pairs(typer_completions(args, incomplete))
     if gold:
         assert ours == gold, f'args={args} inc={incomplete!r}: ours={ours} gold={gold}'

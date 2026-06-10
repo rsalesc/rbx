@@ -11,18 +11,20 @@ def _values(items):
 
 
 # ---------------------------------------------------------------------------
-# A) Command-name completion offers each alias as its own candidate (so a typed
-#    prefix completes to a single concrete name, never the raw 'name, alias').
+# A) Command-name completion offers ONE deduped candidate per command (never the
+#    raw 'name, alias'): a broad prefix yields the canonical name; a prefix typed
+#    toward a specific alias completes that alias.
 # ---------------------------------------------------------------------------
 
 
-def test_root_command_names_split_aliases():
+def test_root_command_names_dedupe_to_canonical():
     values = _values(resolve(SPEC, [], ''))
-    # Canonical names AND their aliases appear as separate candidates...
+    # The canonical names appear...
     assert 'build' in values
-    assert 'b' in values
     assert 'package' in values
-    assert 'pkg' in values
+    # ...but their short aliases are deduped away at a broad prefix...
+    assert 'b' not in values
+    assert 'pkg' not in values
     # ...and the unusable comma-joined string is never emitted.
     assert 'build, b' not in values
     assert 'package, pkg' not in values
@@ -33,16 +35,21 @@ def test_root_prefix_pac_completes_to_single_name():
 
 
 def test_root_prefix_pkg_completes_via_alias():
-    # An improvement over Typer: Typer offered the raw 'package, pkg', so a 'pkg'
-    # prefix matched nothing; we complete the alias to a single concrete name.
+    # Typing toward an alias still completes it: 'pkg' is not a prefix of the
+    # canonical 'package', so the matching alias 'pkg' is offered.
     assert _values(resolve(SPEC, [], 'pkg')) == ['pkg']
 
 
-def test_ambiguous_alias_dedups_to_first_in_registration_order():
-    # 't' is registered by both 'time, t' and 'testcases, tc, t'; descent resolves
-    # it to the first (time), so the completion list must contain 't' exactly once.
+def test_ambiguous_alias_dedups_per_command():
+    # 't' is registered by both 'time, t' and 'testcases, tc, t'. Each command
+    # contributes ONE candidate (its first name matching 't'): the canonical
+    # 'time'/'testcases'. The bare ambiguous alias 't' is never offered twice.
     values = _values(resolve(SPEC, [], 't'))
-    assert values.count('t') == 1
+    assert 'time' in values
+    assert 'testcases' in values
+    assert values.count('t') == 0
+    # No duplicates in the deduped list.
+    assert len(values) == len(set(values))
 
 
 def test_package_group_children_via_canonical_and_alias():
@@ -56,6 +63,35 @@ def test_package_group_children_via_canonical_and_alias():
 
 def test_package_polygon_option_name_completion():
     assert _values(resolve(SPEC, ['package', 'polygon'], '--la')) == ['--language']
+
+
+# ---------------------------------------------------------------------------
+# A') Option-name completion dedupes aliases the same way: ONE candidate per
+#     option at a broad prefix; the specific alias / `--no-` form completes when
+#     typed toward.
+# ---------------------------------------------------------------------------
+
+
+def test_option_names_dedupe_to_canonical():
+    # `rbx run -<tab>`: one candidate per option (its canonical long form), not
+    # one per alias spelling.
+    values = _values(resolve(SPEC, ['run'], '-'))
+    assert '--verification-level' in values  # canonical
+    assert '--verification' not in values  # alias deduped away
+    assert '-v' not in values  # short alias deduped away
+    assert len(values) == len(set(values))  # one entry per option
+
+
+def test_option_short_alias_completes_when_typed_toward():
+    assert _values(resolve(SPEC, ['run'], '-v')) == ['-v']
+
+
+def test_option_negation_form_completes_when_typed_toward():
+    # `--no-*` (secondary opts) are deduped at a broad prefix but still complete
+    # when the user types toward them.
+    values = _values(resolve(SPEC, ['run'], '--no-'))
+    assert '--no-check' in values
+    assert '--no-validate' in values
 
 
 # ---------------------------------------------------------------------------

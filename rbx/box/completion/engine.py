@@ -19,24 +19,36 @@ def _match_names(raw_name: str) -> List[str]:
     return [s.strip() for s in raw_name.split(',')]
 
 
+def _first_match(names: List[str], incomplete: str) -> Optional[str]:
+    """The first name (in declaration order) that the cursor could be completing.
+
+    This is how we collapse aliases to a SINGLE candidate per command/option: for
+    a broad prefix (`''`, `-`, `--`) it returns the canonical first-declared name
+    (the full `build` / `--verification-level` form); for a prefix typed toward a
+    specific alias or `--no-` form it returns that exact spelling (so `pkg`, `-v`,
+    `--no-check` still complete). Returns None when no alias matches.
+    """
+    return next((n for n in names if n.startswith(incomplete)), None)
+
+
 def _command_name_items(node: Dict[str, Any], incomplete: str) -> List[CompletionItem]:
     """Completions for a subcommand position.
 
-    Unlike Typer (which offers the raw ``'name, alias'`` string as a single
-    candidate), we offer each name/alias as its OWN candidate, prefix-filtered.
-    So a typed prefix completes to a single concrete name (`pa` -> `package`,
-    `pkg` -> `pkg`) instead of inserting the unusable comma-joined string, while
-    an ambiguous prefix still lists every matching name. Names are deduped in
-    registration order, so an alias shared by two commands (e.g. `t` ->
-    `time`/`testcases`) maps to the same command the descent resolves it to.
+    Each command contributes ONE candidate (not one per alias): the first of its
+    names that matches the incomplete (`_first_match`). So `rbx <tab>` lists the
+    canonical names only (`build`, `package`, …) instead of every alias
+    (`build b package pkg …`), while `pkg<tab>` still completes the `pkg` alias.
+    This is a deliberate divergence from Typer (which offers the raw
+    ``'name, alias'`` string); aliases sharing a representative are deduped in
+    registration order, matching how AliasGroup resolves an ambiguous prefix.
     """
     out: List[CompletionItem] = []
     seen: Set[str] = set()
     for child in node.get('children', []):
-        for name in _match_names(child['name']):
-            if name.startswith(incomplete) and name not in seen:
-                seen.add(name)
-                out.append(CompletionItem(name, help=child.get('help')))
+        name = _first_match(_match_names(child['name']), incomplete)
+        if name is not None and name not in seen:
+            seen.add(name)
+            out.append(CompletionItem(name, help=child.get('help')))
     return out
 
 
@@ -278,11 +290,12 @@ def resolve(
                 # Click does not re-offer a non-`multiple` option already supplied.
                 if not p.get('multiple', False) and p['names'][0] in seen_options:
                     continue
-                out += [
-                    CompletionItem(n, help=p.get('help'))
-                    for n in p['names']
-                    if n.startswith(incomplete)
-                ]
+                # ONE candidate per option (not one per alias): the first matching
+                # name. `-` shows the canonical `--verification-level`; `-v` still
+                # completes `-v`; `--no-check` still completes when typed toward.
+                name = _first_match(p['names'], incomplete)
+                if name is not None:
+                    out.append(CompletionItem(name, help=p.get('help')))
             return out
         if node.get('is_group'):
             return _command_name_items(node, incomplete)
