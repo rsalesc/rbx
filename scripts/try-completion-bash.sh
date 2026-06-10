@@ -11,13 +11,24 @@
 # Note: this only changes how <tab> COMPLETES `rbx`; actually running `rbx ...`
 # still uses whatever `rbx` is on your PATH.
 
-# Resolve the rbx binary to complete against (defaults to this worktree's venv build).
+# Resolve the rbx binary to complete against (defaults to THIS worktree's venv build).
 if [ -n "${BASH_SOURCE[0]:-}" ]; then
     _rbx_try_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 else
     _rbx_try_dir="$(pwd)"
 fi
-RBX_BIN="${RBX_BIN:-$_rbx_try_dir/.venv/bin/rbx}"
+_rbx_try_bin="$_rbx_try_dir/.venv/bin/rbx"
+# `source` is a special builtin, so `RBX_BIN=... source ...` (or a previous
+# source) leaves RBX_BIN set in the shell -- a value left over from sourcing a
+# DIFFERENT worktree's script would shadow this one. Default to this worktree's
+# binary, and if an inherited RBX_BIN points at another worktree, treat it as
+# stale and recompute. A genuine override outside any worktree is still honored.
+if [ -z "${RBX_BIN:-}" ]; then
+    RBX_BIN="$_rbx_try_bin"
+elif [[ "$RBX_BIN" == *"/.claude/worktrees/"* && "$RBX_BIN" != "$_rbx_try_bin" ]]; then
+    echo "note: ignoring stale RBX_BIN from another worktree ($RBX_BIN)" >&2
+    RBX_BIN="$_rbx_try_bin"
+fi
 
 if [ ! -x "$RBX_BIN" ]; then
     echo "rbx binary not found/executable at: $RBX_BIN" >&2
