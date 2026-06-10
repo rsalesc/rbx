@@ -4,33 +4,26 @@
 name: "new-contest"
 titles:
   en: "New contest"
-# Statements v2: the contest owns the LaTeX templates and chrome (everything
-# under the directory of each statement `file`, here `statements/`, is available
-# at build time). Each statement joins problems by (language, variant); `name`
-# must be unique, but the (language, variant) pair need not be.
+# The contest owns the statement templates and chrome (under statements/).
 statements:
-  # Task sheet. The only statement carrying a `standaloneProblemTemplate`, so
-  # `rbx st b` inside a problem resolves to it unambiguously.
+  # Task sheet (the only statement that builds standalone with `rbx st b`).
   - name: "statement-en"
     language: "en"
-    file: "statements/contest.rbx.tex"          # the joined task sheet
+    file: "statements/contest.rbx.tex"
     type: "rbxTeX"
-    standaloneProblemTemplate: "statements/problem.rbx.tex"          # `rbx st b`
-    contestProblemTemplate: "statements/problem-fragment.rbx.tex"    # joined
-  # Solutions sheet: same problems, rendered with the editorial template.
+    standaloneProblemTemplate: "statements/problem.rbx.tex"
+    contestProblemTemplate: "statements/problem-fragment.rbx.tex"
+  # Solutions sheet.
   - name: "editorial-en"
     language: "en"
-    file: "statements/editorial.rbx.tex"
+    file: "statements/editorial-sheet.rbx.tex"
     type: "rbxTeX"
     contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
     params:
-      # Render a diagonal "EDITORIAL" watermark (this statement's own param).
       watermark: true
-# Documents never import problem statements or samples, but a Jinja document
-# can still read problem metadata via the `problems` namespace.
+# Documents don't join problem statements, but can read problem metadata.
 documents:
-  # Information sheet: a per-problem limits table built purely from each
-  # problem's metadata (short name + limits).
+  # Information sheet: a per-problem limits table.
   - name: "info-en"
     language: "en"
     file: "statements/info.jinja.tex"

@@ -1,8 +1,4 @@
-%% Shared problem body, included by both `problem.rbx.tex` (the standalone,
-%% full-document template) and `problem-fragment.rbx.tex` (the fragment that is
-%% `\subimport`-ed into the contest task sheet). Keeping it in one place means
-%% the standalone PDF and the joined contest PDF always render a problem the
-%% same way. Edit the look of every problem here.
+%% Shared problem body, included by the standalone and in-contest templates.
 \includeProblem
 %- if problem.short_name is defined
 	[\VAR{problem.short_name}]
@@ -46,14 +42,10 @@
 					\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
 				%- endfor
 			%- else
-				%% `sample.input`/`sample.output` are root-relative paths to the
-				%% generated I/O (read verbatim by `\VerbatimInput` inside `\example`).
 				\example{\VAR{sample.input}}
 					{\VAR{sample.output if sample.output is not none else ''}}
 			%- endif
 			%- if sample.explanation_file is not none
-				%% The explanation lives in its own sample folder and is pulled in
-				%% with `\subimport` so it can carry its own figures.
 				\explanation{\subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}}
 			%- endif
 		%- endfor

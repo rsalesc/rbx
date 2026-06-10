@@ -1,9 +1,4 @@
-%% Contest task sheet (the joining document).
-%%
-%% `rbx contest st b` renders each problem with `problem-fragment.rbx.tex` into
-%% its own isolated folder, then `\subimport`s each one here via the
-%% `problem.import_dir` / `problem.import_file` handles. Everything resolves by
-%% relative paths, so the generated TeX is self-contained.
+%% Contest task sheet: joins every problem via \subimport.
 \documentclass[a4paper,11pt]{article}
 
 \def\lang{\VAR{lang}}

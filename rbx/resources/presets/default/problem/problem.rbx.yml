@@ -29,16 +29,11 @@ solutions:
   - path: "sols/fail-*.*"
     outcome: "INCORRECT"
 statements:
-  # A problem statement is built inside a contest (statements v2): the contest
-  # owns the LaTeX templates, and `rbx st b` borrows the matching one. Match is
-  # by (language, variant); `variant` defaults to "default".
   - language: "en"
     file: "statement/statement.rbx.tex" # Open this file to edit your statement.
     type: "rbxTeX"
     params:
-      # This statement's own params (the `params` namespace in templates).
-      # Set to false to hide the time/memory limits in the problem statement.
-      show_limits: true
+      show_limits: true # Set to false to hide the time/memory limits.
 # Variables usable in the validator, checker, interactor, stress tests and statement.
 vars:
   # Author name to be displayed in the editorial.
