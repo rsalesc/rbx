@@ -76,3 +76,13 @@ def test_profile_completer_lists_limits_files(tmp_path):
         i.value for i in completers.complete_profile(_ctx(package_root=tmp_path), '')
     }
     assert values == {'local', 'codeforces'}
+
+
+def test_testgroup_completer_lists_group_names(tmp_path):
+    (tmp_path / 'problem.rbx.yml').write_text(
+        'testcases:\n  - name: samples\n  - name: main\n  - name: edge\n'
+    )
+    values = {
+        i.value for i in completers.complete_testgroup(_ctx(package_root=tmp_path), '')
+    }
+    assert {'samples', 'main', 'edge'} <= values

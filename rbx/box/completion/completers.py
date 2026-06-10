@@ -123,3 +123,13 @@ def complete_profile(ctx: CompletionContext, incomplete: str) -> List[Completion
     if not limits_dir.is_dir():
         return []
     return _items(p.stem for p in limits_dir.glob('*.yml'))
+
+
+@register_completer('testgroup')
+def complete_testgroup(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    root = ctx.package_root
+    if root is None:
+        return []
+    data = peek.peek(Path(root) / 'problem.rbx.yml')
+    names = {g.get('name') for g in data.get('testcases', []) if isinstance(g, dict)}
+    return _items(n for n in names if n)
