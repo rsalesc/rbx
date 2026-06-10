@@ -57,6 +57,9 @@ def test_engine_matches_typer(args, incomplete):
         # that Typer's callback contract can never emit. Assert the dynamic part
         # matches Typer exactly and that the directive IS appended.
         gold = _pairs(typer_completions(args, incomplete))
+        # Stripping directives is safe because the dynamic completers only ever
+        # emit `plain` items with non-empty values -- never directive-shaped
+        # (empty value + file/dir type) candidates that this would mask.
         non_dir = [p for p in ours if p not in _DIRECTIVES]
         assert non_dir == gold, f'args={args} inc={incomplete!r}: {non_dir} vs {gold}'
         assert set(ours) & _DIRECTIVES, (

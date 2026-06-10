@@ -105,10 +105,9 @@ def _value_items(
         return [CompletionItem(c) for c in value['choices'] if c.startswith(incomplete)]
     if kind == 'completer':
         items = list(load_completer(value['completer'])(ctx, incomplete))
-        file_flag = value.get('file')
-        if file_flag == 'dir':
-            items = items + DIR
-        elif file_flag == 'file':
+        # A file-union completer hands off to the shell's default file completion
+        # AFTER its dynamic candidates (e.g. `rbx run` solutions + arbitrary paths).
+        if value.get('file'):
             items = items + FILE
         return items
     if kind == 'path':
