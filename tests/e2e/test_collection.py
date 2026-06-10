@@ -14,7 +14,11 @@ from tests.e2e.conftest import *
         },
     )
     result = pytester.runpytest('--collect-only', '-q')
-    result.stdout.fnmatch_lines(['*x/e2e.rbx.yml::a*', '*x/e2e.rbx.yml::b*'])
+    # Assert presence order-independently: pytest-randomly shuffles collection
+    # order, so a single ordered ``fnmatch_lines([a, b])`` is seed-flaky. Each
+    # single-pattern call scans the whole output, so order does not matter.
+    result.stdout.fnmatch_lines(['*x/e2e.rbx.yml::a*'])
+    result.stdout.fnmatch_lines(['*x/e2e.rbx.yml::b*'])
 
 
 def test_scenarios_are_marked_e2e(pytester):
