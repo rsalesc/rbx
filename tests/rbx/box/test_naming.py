@@ -14,6 +14,18 @@ from rbx.box.setter_config import ProblemLabelMode
 from rbx.box.statements.schema import Statement
 
 
+@pytest.fixture(autouse=True)
+def _default_label_mode():
+    # `mock_app_path` is session-scoped, so the persisted setter config leaks
+    # across tests. Pin the label mode to the default so these tests don't
+    # depend on whatever a prior test left behind.
+    with patch(
+        'rbx.box.naming.setter_config.get_setter_config',
+        return_value=setter_config.SetterConfig(),
+    ):
+        yield
+
+
 def _write_problem(folder: pathlib.Path, name: str) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / 'problem.rbx.yml').write_text(f'name: {name}\n')

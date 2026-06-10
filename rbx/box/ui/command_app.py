@@ -18,7 +18,7 @@ from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Se
 from rbx.box.setter_config import (
     ProblemLabelMode,
     get_setter_config,
-    save_setter_config,
+    set_problem_label,
 )
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
@@ -435,9 +435,7 @@ class rbxCommandApp(rbxBaseApp):
         modes = list(ProblemLabelMode)
         nxt = modes[(modes.index(self._label_mode) + 1) % len(modes)]
         self._label_mode = nxt
-        cfg = get_setter_config()
-        cfg.ui.problem_label = nxt
-        save_setter_config(cfg)
+        set_problem_label(nxt)
         for i in range(len(self._tabs)):
             self._update_sidebar(i)
         self.notify(f'Problem label: {nxt.value}')

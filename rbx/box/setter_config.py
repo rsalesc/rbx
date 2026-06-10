@@ -204,6 +204,19 @@ def save_setter_config(config: SetterConfig):
     get_setter_config.cache_clear()
 
 
+def set_problem_label(mode: ProblemLabelMode) -> None:
+    """Persist the command-app problem-label mode.
+
+    Reassigns the whole `ui` sub-model (instead of mutating
+    `cfg.ui.problem_label` in place) so the field is marked as set and survives
+    `model_to_yaml`'s `exclude_unset` — otherwise configs that predate the `ui`
+    field would silently drop the change.
+    """
+    cfg = get_setter_config()
+    cfg.ui = UIConfig(problem_label=mode)
+    save_setter_config(cfg)
+
+
 @app.command(help='Show the path to the setter config.')
 def path():
     print(get_setter_config_path())
