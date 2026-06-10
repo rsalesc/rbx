@@ -4,33 +4,28 @@
 name: "new-contest"
 titles:
   en: "New contest"
-# The contest owns the statement templates and chrome (under statements/).
+# Task sheet (built with `rbx contest st b`).
 statements:
-  # Task sheet (built with `rbx st b` / `rbx contest st b`).
   - name: "statement-en"
     language: "en"
-    file: "statements/contest.rbx.tex"
-    type: "rbxTeX"
+    file: "statements/problem-sheet.rbx.tex"
     standaloneProblemTemplate: "statements/problem.rbx.tex"
     contestProblemTemplate: "statements/problem-fragment.rbx.tex"
-# Tutorials are the editorials channel (built with `rbx tut b` / `rbx contest tut b`).
+# Tutorials are the editorials (built with `rbx contest tut b`).
 tutorials:
-  # Solutions sheet, joining each problem's editorial.
   - name: "editorial-en"
     language: "en"
     file: "statements/editorial-sheet.rbx.tex"
-    type: "rbxTeX"
-    standaloneProblemTemplate: "statements/editorial-standalone.rbx.tex"
+    standaloneProblemTemplate: "statements/editorial.rbx.tex"
     contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
     params:
       watermark: true
-# Documents don't join problem statements, but can read problem metadata.
 documents:
   # Information sheet: a per-problem limits table.
   - name: "info-en"
     language: "en"
     file: "statements/info.jinja.tex"
-    type: "jinja-tex"
+    type: "JinjaTeX"
 vars:
   year: 2025
   date: "2025-06-21"
