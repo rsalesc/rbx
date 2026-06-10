@@ -58,8 +58,11 @@ The build is a pipeline of small, unit-tested pieces:
   mirrored (root-relative for `\VerbatimInput`), explanation rendered to
   `explanation.tex` with its source dir overlaid for figures (base-relative for
   `\subimport`), interactive chunks. Input is the light `SampleSource`.
-- **`render.py`** (S8) — reuses the v1 primitives (block extraction, the LaTeX
-  Jinja env, the `tex→pdf` pdflatex loop) driven by the v2 context.
+- **`render.py`** (S8) — the low-level render primitives, driven by the v2
+  context. Owns the rbxTeX block-extraction helpers (`StatementBlocks`,
+  `render_jinja`, `render_jinja_blocks`) and the TikZ externalize/substitute
+  helpers (`externalize_blocks` / `substitute_externalized_blocks`) — these moved
+  here from the deleted `builders.py` (#580). Higher-level entry points:
   `extract_blocks`, `render_problem_document` (full doc OR fragment),
   `render_contest_document` (join), `render_jinja_document`, `compile_pdf`,
   `md_to_pdf`.
@@ -107,14 +110,24 @@ The build is a pipeline of small, unit-tested pieces:
 - `latex_jinja.py` — the LaTeX-flavored Jinja2 env (`\VAR{}`, `%-`, `\BLOCK{}`),
   `JinjaDictWrapper`/`JinjaGroupsGetter`, strict undefined.
 
-## `builders.py` (legacy helpers, kept; classes pending #580)
+## v1 removed (#580)
 
-The v1 `StatementBuilder` classes + `StatementBuilderProblem/Contest` and the
-low-level helpers (`render_jinja`, `render_jinja_blocks`, `StatementBlocks`, TikZ
-externalize helpers `externalize_blocks` / `substitute_externalized_blocks`) live
-here. v2 `render.py` and `engine.py` reuse the helpers (the Polygon export path
-calls the TikZ externalize/substitute helpers directly — see below); the builder
-*classes* are unused and slated for deletion in #580.
+The legacy v1 build machinery has been **deleted** now that v2 (incl. the Polygon
+export path, #568) owns every live build:
+
+- `builders.py` — the `StatementBuilder` classes + `StatementBuilderProblem/Contest`
+  and the v1 builder-chain. The handful of still-live low-level helpers
+  (`StatementBlocks`, `render_jinja`, `render_jinja_blocks`, `externalize_blocks`,
+  `substitute_externalized_blocks`) moved into `render.py`.
+- `joiners.py` — the v1 contest-join builders (v2 joins via `\subimport`).
+- `statement_utils.py` — `get_relative_assets` (the v2 overlay mirrors whole asset
+  dirs; no relative-asset enumeration needed).
+- `build_statements.py` lost its dead v1 builder-chain resolver (`get_builders`
+  et al.).
+- `schema.py` lost the dead conversion/joiner models (`JinjaTeX`, `rbxMarkdownToTeX`,
+  `JoinerType`, `JoinTexToPDF`, `Joiner`). The export-time vocabulary that survives
+  is `ConversionType` / `ConversionStep` / `rbxToTeX` / `TexToPDF` (the packager's
+  externalize/demacro toggles — design §2 decision 6).
 
 ## Polygon export (S12, #568) — `build_statements` + `polygon/statement_block_utils`
 

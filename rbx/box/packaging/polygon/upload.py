@@ -29,12 +29,9 @@ from rbx.box.schema import (
 )
 from rbx.box.solutions import get_best_interaction_file
 from rbx.box.statements.build_statements import get_produced_tikz_pdfs
-from rbx.box.statements.builders import (
-    StatementSample,
-)
 from rbx.box.statements.schema import Statement
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
-from rbx.box.testcase_sample_utils import get_statement_samples
+from rbx.box.testcase_sample_utils import StatementSample, get_statement_samples
 from rbx.box.testcase_utils import (
     TestcaseInteractionParsingError,
     get_alternate_interaction_texts,

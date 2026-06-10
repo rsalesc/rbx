@@ -20,7 +20,7 @@ import pathlib
 from typing import List
 
 from rbx import utils
-from rbx.box.statements import builders, render, sample_staging
+from rbx.box.statements import render, sample_staging
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -124,12 +124,12 @@ def render_problem_tex(
     # Per-block TikZ labeling must happen before the full-doc compile so the
     # externalized PDF filenames match the labels the substitution rewrites to.
     if externalize:
-        latex_blocks = builders.externalize_blocks(latex_blocks)
-        latex_explanations = builders.externalize_blocks(latex_explanations)
+        latex_blocks = render.externalize_blocks(latex_blocks)
+        latex_explanations = render.externalize_blocks(latex_explanations)
         _write_blocks(
             problem_root,
             'blocks.ext.yml',
-            builders.StatementBlocks(
+            render.StatementBlocks(
                 blocks=latex_blocks, explanations=latex_explanations
             ),
         )
@@ -143,15 +143,13 @@ def render_problem_tex(
         )
 
         def render_text(c: bytes, m: str) -> bytes:
-            rendered = builders.render_jinja(problem_root, c, **kwargs)
+            rendered = render.render_jinja(problem_root, c, **kwargs)
             if m == 'markdown':
                 rendered = _md_to_latex(rendered.decode()).encode()
             return rendered
 
         def render_blocks(c: bytes, m: str):
-            return builders.render_jinja_blocks(
-                problem_root, c, mode=m, **kwargs
-            ).blocks
+            return render.render_jinja_blocks(problem_root, c, mode=m, **kwargs).blocks
 
         sources = [to_sample_source(s) for s in samples]
         problem.samples = sample_staging.stage_samples(
@@ -183,11 +181,9 @@ def render_problem_tex(
         _write_blocks(
             problem_root,
             'blocks.sub.yml',
-            builders.StatementBlocks(
-                blocks=builders.substitute_externalized_blocks(latex_blocks),
-                explanations=builders.substitute_externalized_blocks(
-                    latex_explanations
-                ),
+            render.StatementBlocks(
+                blocks=render.substitute_externalized_blocks(latex_blocks),
+                explanations=render.substitute_externalized_blocks(latex_explanations),
             ),
         )
 
@@ -195,7 +191,7 @@ def render_problem_tex(
 
 
 def _write_blocks(
-    root: pathlib.Path, name: str, blocks: builders.StatementBlocks
+    root: pathlib.Path, name: str, blocks: render.StatementBlocks
 ) -> None:
     """Persist a :class:`StatementBlocks` as YAML in ``root`` (the overlay /
     problem root), the source of truth the Polygon export path reads."""

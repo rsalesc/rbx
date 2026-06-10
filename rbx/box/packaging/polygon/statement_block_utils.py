@@ -11,8 +11,8 @@ from rbx.box.exception import RbxException
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.statements import demacro_utils, polygon_utils
 from rbx.box.statements.build_statements import get_statement_dir
-from rbx.box.statements.builders import StatementBlocks
 from rbx.box.statements.demacro_utils import MacroDefinitions
+from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import Statement, StatementType
 
 

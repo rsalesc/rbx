@@ -36,9 +36,10 @@ StatementLanguage = Annotated[str, AfterValidator(validate_statement_language)]
 ### Conversion types
 #
 # NOTE (statements v2): conversion steps are no longer part of the user-facing
-# schema (`steps`/`configure` were removed from the statement models). These
-# types are retained only as the *internal* vocabulary the builders use; the
-# builder rework lands in #564 (S8). Do not reintroduce them as YAML fields.
+# schema (`steps`/`configure` were removed from the statement models). They
+# survive only as the *export-time* vocabulary the packagers use to force TikZ
+# externalization / demacro at Polygon export (design §2 decision 6, #568). Do
+# not reintroduce them as YAML fields.
 class ConversionType(str, Enum):
     rbxToTex = 'rbx-tex'
     """Conversion from rbxTeX to LaTeX."""
@@ -56,12 +57,6 @@ class ConversionType(str, Enum):
 
 
 ### Conversion nodes.
-class rbxMarkdownToTeX(BaseModel):
-    """Configures the conversion between rbxMarkdown and LaTeX."""
-
-    type: Literal[ConversionType.rbxMarkdownToTeX]
-
-
 class rbxToTeX(BaseModel):
     """Configures the conversion between rbxTeX and LaTeX."""
 
@@ -94,28 +89,7 @@ class TexToPDF(BaseModel):
     )
 
 
-class JinjaTeX(BaseModel):
-    type: Literal[ConversionType.JinjaTeX]
-
-
-### Joiner types.
-class JoinerType(str, Enum):
-    TexToPDF = 'tex2pdf'
-    """Join contest tex and problem texs to PDF using pdfLaTeX."""
-
-    def __repr__(self):
-        return str.__repr__(self.value)
-
-
-### Joiner nodes.
-class JoinTexToPDF(BaseModel):
-    """Configures the joining of contest and problem texes to PDF."""
-
-    type: Literal[JoinerType.TexToPDF]
-
-
-ConversionStep = Union[TexToPDF, JinjaTeX, rbxToTeX, rbxMarkdownToTeX]
-Joiner = JoinTexToPDF
+ConversionStep = Union[TexToPDF, rbxToTeX]
 
 
 ### Statement types
