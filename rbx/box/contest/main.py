@@ -42,6 +42,7 @@ def contest_main(
             '--contest',
             help='Select a contest variant by id.',
             envvar='RBX_CONTEST',
+            autocompletion=annotations._adapt('contest_variant'),  # noqa: SLF001
         ),
     ] = None,
 ):

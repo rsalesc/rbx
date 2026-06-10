@@ -156,6 +156,7 @@ def main(
             '-p',
             '--profile',
             help='Which timing profile to use when running solutions.',
+            autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
     profiling: bool = typer.Option(
@@ -173,6 +174,7 @@ def main(
                 'use_variants: true). Defaults to the RBX_CONTEST env var.'
             ),
             envvar='RBX_CONTEST',
+            autocompletion=annotations._adapt('contest_variant'),  # noqa: SLF001
         ),
     ] = None,
     version: Annotated[
@@ -531,6 +533,7 @@ async def time(
         '--profile',
         '-p',
         help='Profile to use for time limit estimation.',
+        autocompletion=annotations._adapt('profile'),  # noqa: SLF001
     ),
     integrate: bool = typer.Option(
         False,
