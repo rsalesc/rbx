@@ -238,7 +238,13 @@ def ui():
     help='Run a command in the context of a problem (or a set of problems) of a contest.',
     context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
 )
-def on(ctx: typer.Context, problems: str) -> None:
+def on(
+    ctx: typer.Context,
+    problems: Annotated[
+        str,
+        typer.Argument(autocompletion=annotations._adapt('problem')),  # noqa: SLF001
+    ],
+) -> None:
     contest.on(ctx, problems)
 
 

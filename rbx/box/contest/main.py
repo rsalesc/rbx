@@ -375,7 +375,13 @@ def each(ctx: typer.Context) -> None:
     context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
 )
 @within_contest
-def on(ctx: typer.Context, problems: str) -> None:
+def on(
+    ctx: typer.Context,
+    problems: Annotated[
+        str,
+        typer.Argument(autocompletion=annotations._adapt('problem')),  # noqa: SLF001
+    ],
+) -> None:
     problems_of_interest = contest_utils.get_problems_of_interest(problems)
 
     if not problems_of_interest:
