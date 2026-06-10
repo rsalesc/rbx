@@ -106,6 +106,39 @@ def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
     )
 
 
+def ensure_compilation_deps(pkg_dir: pathlib.Path) -> None:
+    """Provision the bundled ``testlib.h`` next to any source that includes it.
+
+    A package's checker/validator ``#include "testlib.h"``; in real usage
+    ``rbx create`` / ``rbx download`` place ``testlib.h`` in the package. Fixtures
+    do not commit it (it is a large, gitignored downloaded artefact), so without
+    this a fixture whose sources include testlib fails to compile offline. For
+    each directory holding a source that references ``testlib.h`` (and lacks one),
+    copy the bundled predownloaded ``testlib.h`` (no network). Targeted by an
+    include scan so testlib-free packages are untouched; called for every e2e
+    package, making them offline-deterministic.
+    """
+    from rbx.config import get_app_file
+
+    bundled = get_app_file(pathlib.Path('testlib.h'), predownloaded=True)
+    if not bundled.exists():
+        return
+    source_suffixes = {'.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.hh'}
+    needing_dirs = set()
+    for src in pkg_dir.rglob('*'):
+        if not src.is_file() or src.suffix not in source_suffixes:
+            continue
+        try:
+            if 'testlib.h' in src.read_text(errors='ignore'):
+                needing_dirs.add(src.parent)
+        except OSError:
+            continue
+    for directory in needing_dirs:
+        target = directory / 'testlib.h'
+        if not target.exists():
+            shutil.copyfile(bundled, target)
+
+
 # Field names on ``Expect`` paired with the assertion check they dispatch to.
 _GENERIC_CHECKS = (
     ('stdout_contains', check_stdout_contains),
@@ -227,6 +260,7 @@ class E2EScenarioItem(pytest.Item):
             )
             if self.scenario.seed_from_preset:
                 seed_package_from_preset(self.scenario.seed_from_preset, pkg_dir)
+            ensure_compilation_deps(pkg_dir)
             # ``rbx`` CLI commands use ``syncer`` which calls
             # ``asyncio.get_event_loop()``; on Python 3.12+ that requires a
             # current loop to be set. Provision one for the duration of the
