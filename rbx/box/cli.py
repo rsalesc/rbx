@@ -314,7 +314,8 @@ async def run(
         Optional[List[str]],
         PackagePath,
         typer.Argument(
-            help='Path to solutions to run. If not specified, will run all solutions.'
+            help='Path to solutions to run. If not specified, will run all solutions.',
+            autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
         ),
     ] = None,
     outcome: Optional[str] = typer.Option(
@@ -322,6 +323,7 @@ async def run(
         '--outcome',
         '-o',
         help='Include only solutions whose expected outcomes intersect with this.',
+        autocompletion=annotations._adapt('outcome'),  # noqa: SLF001
     ),
     tags: Annotated[
         Optional[List[str]],
@@ -649,7 +651,8 @@ async def irun(
         Optional[List[str]],
         PackagePath,
         typer.Argument(
-            help='Path to solutions to run. If not specified, will run all solutions.'
+            help='Path to solutions to run. If not specified, will run all solutions.',
+            autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
         ),
     ] = None,
     outcome: Optional[str] = typer.Option(
@@ -657,6 +660,7 @@ async def irun(
         '--outcome',
         '-o',
         help='Include only solutions whose expected outcomes intersect with this.',
+        autocompletion=annotations._adapt('outcome'),  # noqa: SLF001
     ),
     tags: Annotated[
         Optional[List[str]],
