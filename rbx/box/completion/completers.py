@@ -43,10 +43,16 @@ def complete_problem(ctx: CompletionContext, incomplete: str) -> List[Completion
     if root is None:
         return []
     data = peek.peek(Path(root) / 'contest.rbx.yml')
-    shorts = {
-        p.get('short_name') for p in data.get('problems', []) if isinstance(p, dict)
-    }
-    return _items(s for s in shorts if s)
+    names = set()
+    for p in data.get('problems', []):
+        if not isinstance(p, dict):
+            continue
+        if p.get('short_name'):
+            names.add(p['short_name'])
+        for alias in p.get('aliases', []) or []:
+            if alias:
+                names.add(alias)
+    return _items(names)
 
 
 # Built-in solution-path expanders (kept in sync with rbx/box/remote.py via

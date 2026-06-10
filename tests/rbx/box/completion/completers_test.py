@@ -110,3 +110,13 @@ def test_contest_variant_completer_walks_up_from_problem_dir(tmp_path):
         for i in completers.complete_contest_variant(_ctx(package_root=prob), '')
     }
     assert values == {'div1'}
+
+
+def test_problem_completer_includes_aliases(tmp_path):
+    (tmp_path / 'contest.rbx.yml').write_text(
+        'problems:\n  - short_name: A\n    aliases: [apple, alpha]\n  - short_name: B\n'
+    )
+    values = {
+        i.value for i in completers.complete_problem(_ctx(package_root=tmp_path), '')
+    }
+    assert {'A', 'B', 'apple', 'alpha'} <= values
