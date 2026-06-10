@@ -133,7 +133,7 @@ class Step(_Forbid):
     expect: Expect = Field(default_factory=Expect)
 
 
-_ALLOWED_MARKERS = frozenset({'slow', 'docker'})
+_ALLOWED_MARKERS = frozenset({'slow', 'docker', 'pdflatex'})
 
 
 class Scenario(_Forbid):
