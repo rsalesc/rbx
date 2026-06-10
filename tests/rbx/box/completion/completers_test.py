@@ -27,3 +27,26 @@ def test_problem_completer_reads_contest_problems(tmp_path):
         i.value for i in completers.complete_problem(_ctx(package_root=tmp_path), '')
     }
     assert {'A', 'B'} <= values
+
+
+def test_solutions_completer_lists_paths_with_outcome_help_and_prefixes(tmp_path):
+    (tmp_path / 'problem.rbx.yml').write_text(
+        'solutions:\n'
+        '  - path: sols/main.cpp\n'
+        '    outcome: ac\n'
+        '  - path: sols/wa.cpp\n'
+        '    outcome: wa\n'
+    )
+    items = completers.complete_solutions(_ctx(package_root=tmp_path), '')
+    by_value = {i.value: i for i in items}
+    assert 'sols/main.cpp' in by_value
+    assert by_value['sols/main.cpp'].help == 'ac'
+    assert '@main' in by_value
+    assert '@boca/' in by_value
+
+
+def test_solutions_completer_without_package_offers_prefixes(tmp_path):
+    values = {
+        i.value for i in completers.complete_solutions(_ctx(package_root=None), '')
+    }
+    assert {'@main', '@boca/'} <= values

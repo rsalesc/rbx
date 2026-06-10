@@ -47,3 +47,27 @@ def complete_problem(ctx: CompletionContext, incomplete: str) -> List[Completion
         p.get('short_name') for p in data.get('problems', []) if isinstance(p, dict)
     }
     return _items(s for s in shorts if s)
+
+
+# Built-in solution-path expanders (kept in sync with rbx/box/remote.py via
+# enum_consistency_test.py). @boca needs a run id we cannot enumerate, so we
+# offer only the prefix.
+_SOLUTION_PREFIXES = (
+    ('@main', 'first accepted solution'),
+    ('@boca/', 'download a BOCA submission, e.g. @boca/123'),
+)
+
+
+@register_completer('solutions')
+def complete_solutions(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    items: List[CompletionItem] = []
+    root = ctx.package_root
+    if root is not None:
+        data = peek.peek(Path(root) / 'problem.rbx.yml')
+        for sol in data.get('solutions', []):
+            if isinstance(sol, dict) and sol.get('path'):
+                outcome = sol.get('outcome')
+                help_text = str(outcome) if outcome is not None else None
+                items.append(CompletionItem(str(sol['path']), help=help_text))
+    items += [CompletionItem(v, help=h) for v, h in _SOLUTION_PREFIXES]
+    return items
