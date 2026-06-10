@@ -19,6 +19,7 @@ session-scoped autouse fixtures that those conftests provide:
   do not require a real ``pdflatex`` install.
 """
 
+import shutil
 import subprocess
 
 import pytest
@@ -67,9 +68,19 @@ def mock_setter_config(mock_app_path):
     setter_config.save_setter_config(cfg)
 
 
-@pytest.fixture(autouse=True, scope='session')
-def mock_pdflatex(monkeysession):
-    monkeysession.setattr(
+@pytest.fixture(autouse=True)
+def mock_pdflatex(request, monkeypatch):
+    """Stub out ``Latex.build_pdf`` so statement scenarios need no real pdflatex.
+
+    Scenarios marked ``pdflatex`` opt OUT of the stub and run the real binary
+    (required for TikZ externalization); they are skipped when ``pdflatex`` is
+    not installed. Function-scoped so the decision is made per scenario.
+    """
+    if request.node.get_closest_marker('pdflatex'):
+        if shutil.which('pdflatex') is None:
+            pytest.skip('pdflatex not installed; required by this scenario')
+        return  # use the real Latex.build_pdf (real TikZ externalization)
+    monkeypatch.setattr(
         'rbx.box.statements.latex.Latex.build_pdf',
         lambda *args, **kwargs: LatexResult(
             result=subprocess.CompletedProcess(
@@ -77,6 +88,20 @@ def mock_pdflatex(monkeysession):
             ),
             pdf=b'',
         ),
+    )
+
+
+@pytest.fixture(autouse=True)
+def mock_polygon_api(monkeypatch):
+    """Replace the Polygon API client factory with a recording fake so
+    ``rbx package polygon -u`` performs no network I/O and serializes the
+    uploaded statement/resources for the ``polygon_upload`` matcher. Harmless
+    for scenarios that never invoke the upload."""
+    from tests.e2e import polygon_capture
+
+    monkeypatch.setattr(
+        'rbx.box.packaging.polygon.upload._get_polygon_api',
+        polygon_capture.make_recording_polygon,
     )
 
 

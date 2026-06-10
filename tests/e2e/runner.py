@@ -32,6 +32,7 @@ from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from rbx.box.contest import contest_state
 from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME, get_default_app_path
+from tests.e2e import polygon_capture
 from tests.e2e.assertions import (
     AssertionContext,
     check_file_contains,
@@ -236,12 +237,20 @@ class E2EScenarioItem(pytest.Item):
             # sets `-C <id>` does not leak its variant id into the next
             # scenario run in the same process. Mirrors the autouse
             # `_isolate_global_state` fixture in tests/rbx/conftest.py.
+            # Point the recording Polygon fake (installed by the autouse
+            # ``mock_polygon_api`` fixture) at this scenario's package dir so
+            # ``package polygon -u`` writes its capture where the
+            # ``polygon_upload`` matcher reads it from.
+            polygon_capture.set_capture_dir(
+                pkg_dir / CACHE_DIR_NAME / 'polygon_capture'
+            )
             try:
                 testing_utils.clear_all_functools_cache()
                 with _snapshot_e2e_contextvars():
                     for step in self.scenario.steps:
                         run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
+                polygon_capture.reset_capture_dir()
                 testing_utils.clear_all_functools_cache()
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
