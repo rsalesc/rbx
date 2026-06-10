@@ -50,3 +50,12 @@ sanitizers:
   # This is useful when replacing compilers in OS such as Mac,
   # since GCC on Mac does not support sanitizers.
   command_substitutions: {}
+
+# How problems are labeled in the `rbx on` / `rbx each` command-app sidebar.
+# Press `l` in that UI to cycle this setting live.
+#
+# name:  problem name from problem.rbx.yml (default)
+# title: the problem's title, if it has exactly one; otherwise the name
+# path:  problem path relative to the contest
+ui:
+  problem_label: name

@@ -2,7 +2,7 @@ import dataclasses
 import enum
 import shlex
 from time import monotonic
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from textual import events, on
 from textual.app import ComposeResult
@@ -15,6 +15,11 @@ from textual.selection import Selection
 from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select
 
+from rbx.box.setter_config import (
+    ProblemLabelMode,
+    get_setter_config,
+    set_problem_label,
+)
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
@@ -152,6 +157,7 @@ class HelpModal(ModalScreen[None]):
                 '  [b]tab[/b]         Focus terminal\n'
                 '  [b]![/b]           Open shell input\n'
                 '  [b]\u2190 / \u2192[/b]       Previous / next sub-command\n'
+                '  [b]l[/b]           Cycle problem label (name/title/path)\n'
                 '  [b]?[/b]           Show this help\n'
                 '  [b]q[/b]           Quit',
                 markup=True,
@@ -204,6 +210,9 @@ class CommandEntry:
     cwd: Optional[str] = None
     prefix: Optional[str] = None
     placeholder_prefix: Optional[str] = None
+    # Precomputed sidebar labels per ProblemLabelMode, so the UI can swap them
+    # live without reloading problem packages. None for non-contest entries.
+    labels: Optional[Dict[ProblemLabelMode, str]] = None
 
     @property
     def display_name(self) -> str:
@@ -359,6 +368,7 @@ class rbxCommandApp(rbxBaseApp):
         self.parallel = parallel
         self._tabs: List[TabState] = []
         self._active_tab: int = 0
+        self._label_mode: ProblemLabelMode = get_setter_config().ui.problem_label
         self._task_queue = TaskQueue(
             num_terminals=len(commands),
             parallel=parallel,
@@ -405,16 +415,42 @@ class rbxCommandApp(rbxBaseApp):
                         placeholder=self._get_input_placeholder(0),
                     )
 
+    def _entry_label(self, entry: CommandEntry) -> str:
+        if entry.labels:
+            return entry.labels.get(self._label_mode) or entry.display_name
+        return entry.display_name
+
     def _make_tab_label(self, index: int) -> str:
         tab = self._tabs[index]
         icon = _STATUS_MARKUP[tab.aggregate_status]
-        name = tab.entry.display_name
+        name = self._entry_label(tab.entry)
         return f'{icon} {name}'
 
     def _update_sidebar(self, index: int):
         item = self.query_one(f'#cmd-item-{index}', ListItem)
         label = item.query_one(Label)
         label.update(self._make_tab_label(index))
+
+    def _has_labels(self) -> bool:
+        return any(t.entry.labels for t in self._tabs)
+
+    def _sidebar_subtitle(self) -> str:
+        if self._has_labels():
+            return f'[b]l[/b] label: {self._label_mode.value}  [b]?[/b] help'
+        return _SIDEBAR_SUBTITLE
+
+    def _update_sidebar_subtitle(self) -> None:
+        sidebar = self.query_one('#command-list', ListView)
+        sidebar.border_subtitle = self._sidebar_subtitle()
+
+    def _cycle_problem_label(self) -> None:
+        modes = list(ProblemLabelMode)
+        nxt = modes[(modes.index(self._label_mode) + 1) % len(modes)]
+        self._label_mode = nxt
+        set_problem_label(nxt)
+        for i in range(len(self._tabs)):
+            self._update_sidebar(i)
+        self._update_sidebar_subtitle()
 
     def _get_select_options(self, tab_index: int) -> List[Tuple[str, int]]:
         return [
@@ -470,7 +506,7 @@ class rbxCommandApp(rbxBaseApp):
     def on_mount(self):
         sidebar = self.query_one('#command-list', ListView)
         sidebar.border_title = 'Commands'
-        sidebar.border_subtitle = _SIDEBAR_SUBTITLE
+        sidebar.border_subtitle = self._sidebar_subtitle()
 
         select = self.query_one('#command-select', Select)
         select.border_subtitle = _SELECT_SUBTITLE
@@ -610,6 +646,12 @@ class rbxCommandApp(rbxBaseApp):
             event.stop()
             event.prevent_default()
             self._select_next_sub_command()
+            return
+
+        if event.character == 'l' and self._has_labels():
+            event.stop()
+            event.prevent_default()
+            self._cycle_problem_label()
             return
 
         if event.character == '?':

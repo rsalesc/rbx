@@ -1,9 +1,9 @@
 import pathlib
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import typer
 
-from rbx.box import package
+from rbx.box import package, setter_config
 from rbx.box.contest import contest_package, contest_state
 from rbx.box.contest.contest_package import discover_contest_variants
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement
@@ -174,17 +174,78 @@ def get_problem_name_with_contest_info() -> str:
     return f'{contest.name}-{short_name}-{problem.name}'
 
 
-def get_contest_problem_label(problem: ContestProblem) -> str:
-    """Human-readable label for a contest problem: '<short_name>. <name>'.
+def format_contest_problem_label(
+    short_name: str,
+    *,
+    name: Optional[str],
+    title: Optional[str],
+    path: Optional[pathlib.Path],
+    mode: setter_config.ProblemLabelMode,
+) -> str:
+    """Pure formatter: '<short_name>. <suffix>', or the bare short name.
 
-    Falls back to just the short name when the problem package cannot be
-    loaded (e.g. missing or broken problem.rbx.yml) or has no name, so
+    The suffix depends on `mode`. When the resolved suffix is empty (e.g. the
+    problem package could not be loaded), only the short name is returned, so
     callers keep working on a partially set-up contest.
     """
+    if mode is setter_config.ProblemLabelMode.PATH:
+        suffix = str(path) if path is not None else None
+    elif mode is setter_config.ProblemLabelMode.TITLE:
+        suffix = title or name
+    else:
+        suffix = name
+    if not suffix:
+        return short_name
+    return f'{short_name}. {suffix}'
+
+
+def _single_title(pkg: Package) -> Optional[str]:
+    """The problem's title when it has exactly one; otherwise None."""
+    if len(pkg.titles) == 1:
+        return next(iter(pkg.titles.values()))
+    return None
+
+
+def get_contest_problem_label(problem: ContestProblem) -> str:
+    """Human-readable label for a contest problem, honoring the configured mode.
+
+    See `setter_config.ProblemLabelMode`. Falls back to just the short name when
+    the problem package cannot be loaded (e.g. missing or broken
+    problem.rbx.yml) or the resolved suffix is empty.
+    """
+    mode = setter_config.get_setter_config().ui.problem_label
     pkg = package.find_problem_package(problem.get_path())
-    if pkg is not None and pkg.name:
-        return f'{problem.short_name}. {pkg.name}'
-    return problem.short_name
+    title = (
+        _single_title(pkg)
+        if pkg is not None and mode is setter_config.ProblemLabelMode.TITLE
+        else None
+    )
+    return format_contest_problem_label(
+        problem.short_name,
+        name=pkg.name if pkg is not None else None,
+        title=title,
+        path=problem.get_path(),
+        mode=mode,
+    )
+
+
+def get_contest_problem_labels(
+    problem: ContestProblem,
+) -> Dict[setter_config.ProblemLabelMode, str]:
+    """All label variants from a single package load, for the command-app UI."""
+    pkg = package.find_problem_package(problem.get_path())
+    name = pkg.name if pkg is not None else None
+    title = _single_title(pkg) if pkg is not None else None
+    return {
+        mode: format_contest_problem_label(
+            problem.short_name,
+            name=name,
+            title=title,
+            path=problem.get_path(),
+            mode=mode,
+        )
+        for mode in setter_config.ProblemLabelMode
+    }
 
 
 def get_problem_title(

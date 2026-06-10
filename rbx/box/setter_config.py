@@ -1,3 +1,4 @@
+import enum
 import functools
 import importlib.resources
 import pathlib
@@ -82,6 +83,27 @@ class JudgingConfig(BaseModel):
     )
 
 
+class ProblemLabelMode(str, enum.Enum):
+    """What to display after the short name in the contest command-app sidebar.
+
+    Iteration order defines the in-app cycle order.
+    """
+
+    NAME = 'name'
+    TITLE = 'title'
+    PATH = 'path'
+
+
+class UIConfig(BaseModel):
+    problem_label: ProblemLabelMode = Field(
+        default=ProblemLabelMode.NAME,
+        description='What to show after the short name in the `rbx on`/`rbx each` '
+        'sidebar: `name` (problem name), `title` (the single problem title, '
+        'falling back to the name), or `path` (problem path relative to the '
+        'contest). Press `l` in that UI to cycle this live.',
+    )
+
+
 class SetterConfig(BaseModel):
     sanitizers: SanitizersConfig = Field(
         default_factory=SanitizersConfig,
@@ -117,6 +139,10 @@ class SetterConfig(BaseModel):
     judging: JudgingConfig = Field(
         default_factory=JudgingConfig,
         description='Configuration for judging.',
+    )
+    ui: UIConfig = Field(
+        default_factory=UIConfig,
+        description='Configuration for the interactive UI.',
     )
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:
@@ -176,6 +202,19 @@ def save_setter_config(config: SetterConfig):
     config_path = get_setter_config_path()
     config_path.write_text(utils.model_to_yaml(config))
     get_setter_config.cache_clear()
+
+
+def set_problem_label(mode: ProblemLabelMode) -> None:
+    """Persist the command-app problem-label mode.
+
+    Reassigns the whole `ui` sub-model (instead of mutating
+    `cfg.ui.problem_label` in place) so the field is marked as set and survives
+    `model_to_yaml`'s `exclude_unset` — otherwise configs that predate the `ui`
+    field would silently drop the change.
+    """
+    cfg = get_setter_config()
+    cfg.ui = UIConfig(problem_label=mode)
+    save_setter_config(cfg)
 
 
 @app.command(help='Show the path to the setter config.')
