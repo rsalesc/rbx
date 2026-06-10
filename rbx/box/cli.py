@@ -690,6 +690,7 @@ async def irun(
         '-tc',
         '-t',
         help='Testcase to run, in the format "[group]/[index]". If not specified, will run interactively.',
+        autocompletion=annotations._adapt('testgroup'),  # noqa: SLF001
     ),
     output: bool = typer.Option(
         False,
@@ -856,6 +857,7 @@ async def stress(
             '--finder',
             '-f',
             help='Run a stress with this finder expression.',
+            autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
         ),
     ] = None,
     timeout: Annotated[
@@ -933,6 +935,7 @@ async def stress(
         typer.Option(
             '--fuzz-on',
             help='Testgroups to fuzz generator calls from.',
+            autocompletion=annotations._adapt('testgroup'),  # noqa: SLF001
         ),
     ] = None,
     validate: bool = typer.Option(
@@ -944,6 +947,7 @@ async def stress(
         '--reference',
         '-r',
         help='Reference solution to use for the stress test.',
+        autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
     ),
 ):
     if generator_args and (fuzz or fuzz_on):
