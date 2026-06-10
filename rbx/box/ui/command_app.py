@@ -15,7 +15,11 @@ from textual.selection import Selection
 from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select
 
-from rbx.box.setter_config import ProblemLabelMode, get_setter_config
+from rbx.box.setter_config import (
+    ProblemLabelMode,
+    get_setter_config,
+    save_setter_config,
+)
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
@@ -153,6 +157,7 @@ class HelpModal(ModalScreen[None]):
                 '  [b]tab[/b]         Focus terminal\n'
                 '  [b]![/b]           Open shell input\n'
                 '  [b]\u2190 / \u2192[/b]       Previous / next sub-command\n'
+                '  [b]l[/b]           Cycle problem label (name/title/path)\n'
                 '  [b]?[/b]           Show this help\n'
                 '  [b]q[/b]           Quit',
                 markup=True,
@@ -426,6 +431,17 @@ class rbxCommandApp(rbxBaseApp):
         label = item.query_one(Label)
         label.update(self._make_tab_label(index))
 
+    def _cycle_problem_label(self) -> None:
+        modes = list(ProblemLabelMode)
+        nxt = modes[(modes.index(self._label_mode) + 1) % len(modes)]
+        self._label_mode = nxt
+        cfg = get_setter_config()
+        cfg.ui.problem_label = nxt
+        save_setter_config(cfg)
+        for i in range(len(self._tabs)):
+            self._update_sidebar(i)
+        self.notify(f'Problem label: {nxt.value}')
+
     def _get_select_options(self, tab_index: int) -> List[Tuple[str, int]]:
         return [
             (f'{_STATUS_ICON[sub.status]} {sub.name}', i)
@@ -620,6 +636,12 @@ class rbxCommandApp(rbxBaseApp):
             event.stop()
             event.prevent_default()
             self._select_next_sub_command()
+            return
+
+        if event.character == 'l' and any(t.entry.labels for t in self._tabs):
+            event.stop()
+            event.prevent_default()
+            self._cycle_problem_label()
             return
 
         if event.character == '?':
