@@ -5,11 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from rbx.box import naming
+from rbx.box import naming, setter_config
 from rbx.box.contest import contest_package as cp_module
 from rbx.box.contest.contest_state import selected_variant_id_var
 from rbx.box.contest.schema import ContestProblem
 from rbx.box.schema import Package
+from rbx.box.setter_config import ProblemLabelMode
 from rbx.box.statements.schema import Statement
 
 
@@ -280,6 +281,149 @@ class TestGetContestProblemLabel:
 
         with patch('rbx.box.naming.package.find_problem_package', return_value=pkg):
             assert naming.get_contest_problem_label(problem) == 'C'
+
+
+class TestFormatContestProblemLabel:
+    def test_name_mode(self):
+        assert (
+            naming.format_contest_problem_label(
+                'A',
+                name='Two Sum',
+                title='T',
+                path=pathlib.Path('A'),
+                mode=ProblemLabelMode.NAME,
+            )
+            == 'A. Two Sum'
+        )
+
+    def test_title_mode_uses_title(self):
+        assert (
+            naming.format_contest_problem_label(
+                'A',
+                name='two-sum',
+                title='Two Sum',
+                path=pathlib.Path('A'),
+                mode=ProblemLabelMode.TITLE,
+            )
+            == 'A. Two Sum'
+        )
+
+    def test_title_mode_falls_back_to_name(self):
+        assert (
+            naming.format_contest_problem_label(
+                'A',
+                name='two-sum',
+                title=None,
+                path=pathlib.Path('A'),
+                mode=ProblemLabelMode.TITLE,
+            )
+            == 'A. two-sum'
+        )
+
+    def test_path_mode(self):
+        assert (
+            naming.format_contest_problem_label(
+                'A',
+                name='two-sum',
+                title='Two Sum',
+                path=pathlib.Path('probs/two-sum'),
+                mode=ProblemLabelMode.PATH,
+            )
+            == 'A. probs/two-sum'
+        )
+
+    def test_empty_suffix_falls_back_to_short_name(self):
+        assert (
+            naming.format_contest_problem_label(
+                'B',
+                name=None,
+                title=None,
+                path=None,
+                mode=ProblemLabelMode.NAME,
+            )
+            == 'B'
+        )
+
+
+class TestGetContestProblemLabels:
+    def test_returns_all_three_variants(self):
+        problem = ContestProblem(short_name='A', path=pathlib.Path('probs/two-sum'))
+        pkg = Package(
+            name='two-sum',
+            timeLimit=1000,
+            memoryLimit=256,
+            titles={'en': 'Two Sum'},
+        )
+        with patch('rbx.box.naming.package.find_problem_package', return_value=pkg):
+            labels = naming.get_contest_problem_labels(problem)
+        assert labels == {
+            ProblemLabelMode.NAME: 'A. two-sum',
+            ProblemLabelMode.TITLE: 'A. Two Sum',
+            ProblemLabelMode.PATH: 'A. probs/two-sum',
+        }
+
+    def test_missing_package_falls_back_to_short_name_for_name_and_title(self):
+        problem = ContestProblem(short_name='A', path=pathlib.Path('probs/two-sum'))
+        with patch('rbx.box.naming.package.find_problem_package', return_value=None):
+            labels = naming.get_contest_problem_labels(problem)
+        assert labels == {
+            ProblemLabelMode.NAME: 'A',
+            ProblemLabelMode.TITLE: 'A',
+            ProblemLabelMode.PATH: 'A. probs/two-sum',
+        }
+
+
+class TestGetContestProblemLabelHonorsConfig:
+    def _patch_mode(self, mode):
+        cfg = setter_config.SetterConfig()
+        cfg.ui.problem_label = mode
+        return patch('rbx.box.naming.setter_config.get_setter_config', return_value=cfg)
+
+    def test_title_mode_single_title(self):
+        problem = ContestProblem(short_name='A', path=pathlib.Path('a'))
+        pkg = Package(
+            name='two-sum',
+            timeLimit=1000,
+            memoryLimit=256,
+            titles={'en': 'Two Sum'},
+        )
+        with (
+            patch('rbx.box.naming.package.find_problem_package', return_value=pkg),
+            self._patch_mode(ProblemLabelMode.TITLE),
+        ):
+            assert naming.get_contest_problem_label(problem) == 'A. Two Sum'
+
+    def test_title_mode_multiple_titles_falls_back_to_name(self):
+        problem = ContestProblem(short_name='A', path=pathlib.Path('a'))
+        pkg = Package(
+            name='two-sum',
+            timeLimit=1000,
+            memoryLimit=256,
+            titles={'en': 'Two Sum', 'pt': 'Dois Numeros'},
+        )
+        with (
+            patch('rbx.box.naming.package.find_problem_package', return_value=pkg),
+            self._patch_mode(ProblemLabelMode.TITLE),
+        ):
+            assert naming.get_contest_problem_label(problem) == 'A. two-sum'
+
+    def test_title_mode_no_titles_falls_back_to_name(self):
+        problem = ContestProblem(short_name='A', path=pathlib.Path('a'))
+        pkg = Package(name='two-sum', timeLimit=1000, memoryLimit=256)
+        with (
+            patch('rbx.box.naming.package.find_problem_package', return_value=pkg),
+            self._patch_mode(ProblemLabelMode.TITLE),
+        ):
+            assert naming.get_contest_problem_label(problem) == 'A. two-sum'
+
+    def test_path_mode(self):
+        problem = ContestProblem(short_name='A', path=pathlib.Path('probs/a'))
+        pkg = Package(name='two-sum', timeLimit=1000, memoryLimit=256)
+        with (
+            patch('rbx.box.naming.package.find_problem_package', return_value=pkg),
+            self._patch_mode(ProblemLabelMode.PATH),
+        ):
+            assert naming.get_contest_problem_label(problem) == 'A. probs/a'
 
 
 class TestGetTitle:
