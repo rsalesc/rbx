@@ -31,7 +31,7 @@ SPEC = {
                     'multiple': False,
                     'names': [],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'problem', 'kind': 'completer'},
                 },
                 {
                     'help': 'Show this message and exit.',
@@ -87,7 +87,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'verification_level', 'kind': 'completer'},
                 },
                 {
                     'help': 'Whether to validate outputs for tests.',
@@ -127,7 +127,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'verification_level', 'kind': 'completer'},
                 },
                 {
                     'help': None,
@@ -135,7 +135,12 @@ SPEC = {
                     'multiple': False,
                     'names': [],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {
+                        'completer': 'solutions',
+                        'file': 'file',
+                        'kind': 'completer',
+                    },
+                    'variadic': True,
                 },
                 {
                     'help': 'Include only solutions whose expected outcomes intersect with '
@@ -144,7 +149,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--outcome', '-o'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'outcome', 'kind': 'completer'},
                 },
                 {
                     'help': 'Include only solutions whose tags intersect with this.',
@@ -299,7 +304,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--profile', '-p'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'profile', 'kind': 'completer'},
                 },
                 {
                     'help': 'Integrate the given limits profile into the package.',
@@ -341,7 +346,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'verification_level', 'kind': 'completer'},
                 },
                 {
                     'help': None,
@@ -349,7 +354,12 @@ SPEC = {
                     'multiple': False,
                     'names': [],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {
+                        'completer': 'solutions',
+                        'file': 'file',
+                        'kind': 'completer',
+                    },
+                    'variadic': True,
                 },
                 {
                     'help': 'Include only solutions whose expected outcomes intersect with '
@@ -358,7 +368,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--outcome', '-o'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'outcome', 'kind': 'completer'},
                 },
                 {
                     'help': 'Include only solutions whose tags intersect with this.',
@@ -399,7 +409,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['--testcase', '--test', '-tc', '-t'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'testgroup', 'kind': 'completer'},
                 },
                 {
                     'help': 'Whether to ask user for custom output.',
@@ -533,7 +543,11 @@ SPEC = {
                     'multiple': False,
                     'names': ['--finder', '-f'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {
+                        'completer': 'solutions',
+                        'file': 'file',
+                        'kind': 'completer',
+                    },
                 },
                 {
                     'help': 'For how many seconds to run the stress test.',
@@ -623,7 +637,7 @@ SPEC = {
                     'multiple': True,
                     'names': ['--fuzz-on'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'testgroup', 'kind': 'completer'},
                 },
                 {
                     'help': 'Whether to validate inputs.',
@@ -639,7 +653,11 @@ SPEC = {
                     'multiple': False,
                     'names': ['--reference', '-r'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {
+                        'completer': 'solutions',
+                        'file': 'file',
+                        'kind': 'completer',
+                    },
                 },
                 {
                     'help': 'Show this message and exit.',
@@ -987,7 +1005,10 @@ SPEC = {
                             'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
                         },
                         {
                             'help': None,
@@ -996,6 +1017,7 @@ SPEC = {
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
+                            'variadic': True,
                         },
                         {
                             'help': 'Languages to build statements for. If not '
@@ -1018,7 +1040,9 @@ SPEC = {
                                     'rbxTeX',
                                     'rbxMarkdown',
                                     'TeX',
+                                    'Markdown',
                                     'JinjaTeX',
+                                    'JinjaMarkdown',
                                     'PDF',
                                 ],
                                 'kind': 'choice',
@@ -1056,7 +1080,7 @@ SPEC = {
                             'multiple': False,
                             'names': ['-p', '--profile'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {'completer': 'profile', 'kind': 'completer'},
                         },
                         {
                             'help': 'Show this message and exit.',
@@ -1528,7 +1552,10 @@ SPEC = {
                             'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
                         },
                         {
                             'help': 'If set, will upload the package to Polygon.',
@@ -1617,7 +1644,10 @@ SPEC = {
                             'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
                         },
                         {
                             'help': 'If set, will upload the package to BOCA.',
@@ -1659,7 +1689,10 @@ SPEC = {
                             'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
                         },
                         {
                             'help': 'Build a package for BOCA instead of MOJ.',
@@ -1691,7 +1724,10 @@ SPEC = {
                             'multiple': False,
                             'names': ['--verification-level', '--verification', '-v'],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
                         },
                         {
                             'help': 'Show this message and exit.',
@@ -1946,7 +1982,7 @@ SPEC = {
                             'multiple': False,
                             'names': [],
                             'takes_value': True,
-                            'value': {'kind': 'none'},
+                            'value': {'completer': 'problem', 'kind': 'completer'},
                         },
                         {
                             'help': 'Show this message and exit.',
@@ -2009,7 +2045,10 @@ SPEC = {
                                         '-v',
                                     ],
                                     'takes_value': True,
-                                    'value': {'kind': 'none'},
+                                    'value': {
+                                        'completer': 'verification_level',
+                                        'kind': 'completer',
+                                    },
                                 },
                                 {
                                     'help': None,
@@ -2018,6 +2057,7 @@ SPEC = {
                                     'names': [],
                                     'takes_value': True,
                                     'value': {'kind': 'none'},
+                                    'variadic': True,
                                 },
                                 {
                                     'help': 'Languages to build statements for. '
@@ -2049,7 +2089,9 @@ SPEC = {
                                             'rbxTeX',
                                             'rbxMarkdown',
                                             'TeX',
+                                            'Markdown',
                                             'JinjaTeX',
+                                            'JinjaMarkdown',
                                             'PDF',
                                         ],
                                         'kind': 'choice',
@@ -2090,7 +2132,10 @@ SPEC = {
                                     'multiple': False,
                                     'names': ['-p', '--profile'],
                                     'takes_value': True,
-                                    'value': {'kind': 'none'},
+                                    'value': {
+                                        'completer': 'profile',
+                                        'kind': 'completer',
+                                    },
                                 },
                                 {
                                     'help': 'Show this message and exit.',
@@ -2137,7 +2182,10 @@ SPEC = {
                                         '-v',
                                     ],
                                     'takes_value': True,
-                                    'value': {'kind': 'none'},
+                                    'value': {
+                                        'completer': 'verification_level',
+                                        'kind': 'completer',
+                                    },
                                 },
                                 {
                                     'help': 'If set, will use the given '
@@ -2178,7 +2226,10 @@ SPEC = {
                                         '-v',
                                     ],
                                     'takes_value': True,
-                                    'value': {'kind': 'none'},
+                                    'value': {
+                                        'completer': 'verification_level',
+                                        'kind': 'completer',
+                                    },
                                 },
                                 {
                                     'help': 'Show this message and exit.',
@@ -2207,7 +2258,10 @@ SPEC = {
                                         '-v',
                                     ],
                                     'takes_value': True,
-                                    'value': {'kind': 'none'},
+                                    'value': {
+                                        'completer': 'verification_level',
+                                        'kind': 'completer',
+                                    },
                                 },
                                 {
                                     'help': 'Show this message and exit.',
@@ -2247,7 +2301,7 @@ SPEC = {
                     'multiple': False,
                     'names': ['-C', '--contest'],
                     'takes_value': True,
-                    'value': {'kind': 'none'},
+                    'value': {'completer': 'contest_variant', 'kind': 'completer'},
                 },
                 {
                     'help': 'Show this message and exit.',
@@ -2340,6 +2394,7 @@ SPEC = {
                             'names': [],
                             'takes_value': True,
                             'value': {'kind': 'none'},
+                            'variadic': True,
                         },
                         {
                             'help': 'Destination manual test group.',
@@ -2579,7 +2634,7 @@ SPEC = {
             'multiple': False,
             'names': ['-p', '--profile'],
             'takes_value': True,
-            'value': {'kind': 'none'},
+            'value': {'completer': 'profile', 'kind': 'completer'},
         },
         {
             'help': 'Whether to profile (capture performance statistics) of the execution.',
@@ -2596,7 +2651,7 @@ SPEC = {
             'multiple': False,
             'names': ['-C', '--contest'],
             'takes_value': True,
-            'value': {'kind': 'none'},
+            'value': {'completer': 'contest_variant', 'kind': 'completer'},
         },
         {
             'help': None,
@@ -2617,4 +2672,13 @@ SPEC = {
     ],
 }
 
-COMPLETERS = {'language': 'rbx.box.completion.completers:complete_language'}
+COMPLETERS = {
+    'contest_variant': 'rbx.box.completion.completers:complete_contest_variant',
+    'language': 'rbx.box.completion.completers:complete_language',
+    'outcome': 'rbx.box.completion.completers:complete_outcome',
+    'problem': 'rbx.box.completion.completers:complete_problem',
+    'profile': 'rbx.box.completion.completers:complete_profile',
+    'solutions': 'rbx.box.completion.completers:complete_solutions',
+    'testgroup': 'rbx.box.completion.completers:complete_testgroup',
+    'verification_level': 'rbx.box.completion.completers:complete_verification_level',
+}
