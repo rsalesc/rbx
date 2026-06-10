@@ -1,16 +1,35 @@
 scenarios:
   - name: build-statement
     description: >
-      Build the package and then build the rbxTeX statement. The
-      mock_pdflatex fixture short-circuits the actual pdflatex run
-      and yields an empty PDF, so we only assert the artefact path
-      exists -- contents are not verified.
+      Build the package and then build the standalone rbxTeX statement for
+      problem A. In v2 a problem statement borrows the contest's
+      standaloneProblemTemplate, so the problem lives under a contest. The
+      mock_pdflatex fixture short-circuits the actual pdflatex run and yields
+      an empty PDF, so we only assert the artefact path exists -- contents are
+      not verified.
     steps:
       - cmd: build
+        cwd: A
       - cmd: st b
+        cwd: A
         expect:
           files_exist:
-            - "build/main.pdf"
+            - "A/build/statement-en.pdf"
+
+  - name: build-contest-statement
+    description: >
+      Build the joined contest statement. The contest `file` template
+      \subimports problem A's fragment, which is rendered from the contest's
+      contestProblemTemplate. We emit TeX (no pdflatex) and assert the joined
+      document carries the contest title and the problem's legend, proving the
+      v2 contest-join overlay rendered problem A in-place.
+    steps:
+      - cmd: contest st b --output tex --no-samples
+        expect:
+          files_exist:
+            - "build/main-en.tex"
+          file_contains:
+            "build/main-en.tex": '/With Statement Contest[\s\S]*subimport/'
 
   - name: build-statement-missing-profile
     description: >
@@ -19,6 +38,7 @@ scenarios:
       defaults.
     steps:
       - cmd: st b -p does-not-exist
+        cwd: A
         expect_exit: 1
         expect:
           stdout_contains: "Limits profile"

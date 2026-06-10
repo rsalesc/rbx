@@ -70,8 +70,7 @@ solutions:
   - path: "sols/ac.kt"
     outcome: AC
 statements:
-  - name: "statement-en"
+  - language: "en"
     title: "New Problem"
-    path: "dummy.pdf"
+    file: "dummy.pdf"
     type: "PDF"
-    language: "en"
