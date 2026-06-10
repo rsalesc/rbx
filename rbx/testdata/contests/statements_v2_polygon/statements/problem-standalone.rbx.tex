@@ -1,0 +1,30 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{import}
+\usepackage{graphicx}
+\usepackage{fancyvrb}
+\usepackage{tikz}
+\newcommand{\example}[2]{%
+  \par\noindent\textbf{Input}\par
+  \VerbatimInput{#1}%
+  \par\noindent\textbf{Output}\par
+  \VerbatimInput{#2}%
+  \par
+}
+\begin{document}
+
+\section*{\VAR{problem.title | escape}}
+
+\VAR{problem.blocks.legend}
+
+\subsection*{Input}
+\VAR{problem.blocks.input}
+
+\subsection*{Output}
+\VAR{problem.blocks.output}
+
+%- if problem.blocks.notes is defined
+  \subsection*{Notes}
+  \VAR{problem.blocks.notes}
+%- endif
+
+\end{document}
