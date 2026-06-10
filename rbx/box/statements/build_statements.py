@@ -9,7 +9,6 @@ import typer
 from rbx import annotations, console, utils
 from rbx.box import environment, limits_info, naming, package
 from rbx.box.contest import contest_package
-from rbx.box.contest.schema import ContestStatement
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements import engine, overlay, render, resolver
@@ -34,14 +33,6 @@ app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 # tut`. It reuses the very same engine as `statements` — only the section read
 # and the output filename prefix differ (StatementKind).
 tutorials_app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
-
-# statements v2: the Polygon export path (S12, #568) still consumes the v1
-# per-builder build dirs / TikZ artifacts. Those entry points stay stubbed until
-# the packager is reworked; the standalone build (this module) is rebuilt below.
-_V2_POLYGON_PENDING = (
-    'statements v2: the Polygon export build path is not wired yet; it lands in '
-    '#568 (S12). See docs/plans/2026-06-09-statements-v2-design.md §7.'
-)
 
 
 def get_environment_languages_for_statement() -> List[StatementCodeLanguage]:
@@ -245,39 +236,35 @@ def get_builders(
     return reconfigured_builders
 
 
-# --- Polygon export path (deferred to S12); kept importable. ---
+# --- Polygon export path (S12, #568). ---
+#
+# The v2 standalone overlay root IS the Polygon "statement dir": after the
+# packager builds a statement with externalize+demacro forced, that single,
+# all-relative directory holds blocks.*.yml (the source of truth), macros.json,
+# and artifacts/tikz_figures/*.pdf. These readers point the Polygon block/TikZ
+# extraction at it — no per-builder subdirs, no absolute/temp paths (design §6.5).
 
 
-def get_statement_dir(
-    statement: Statement, builder_name: Optional[str] = None
-) -> pathlib.Path:
-    """[deferred S12] The per-builder Polygon scratch dir. Stubbed until #568."""
-    raise NotImplementedError(_V2_POLYGON_PENDING)
+def get_statement_dir(statement: Statement) -> pathlib.Path:
+    """The standalone overlay root for this problem statement — the Polygon
+    source dir holding ``blocks.*.yml``, ``macros.json`` and
+    ``artifacts/tikz_figures/*.pdf`` after a forced-externalize build."""
+    d = _standalone_overlay_path(statement)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def get_produced_tikz_pdfs(
     statement: Statement,
 ) -> Iterable[Tuple[pathlib.Path, pathlib.Path]]:
-    """[deferred S12] Externalized TikZ PDFs for Polygon resource upload. Stubbed
-    until #568."""
-    raise NotImplementedError(_V2_POLYGON_PENDING)
+    """The externalized per-block TikZ figure PDFs produced by the forced
+    externalize build, yielded as ``(absolute_path, overlay_relative_path)`` for
+    Polygon resource upload."""
+    from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
 
-
-async def build_statement_bytes(
-    statement: Statement,
-    pkg: Package,
-    output_type: Optional[StatementType] = None,
-    short_name: Optional[str] = None,
-    overridden_params_root: pathlib.Path = pathlib.Path(),
-    overridden_params: Optional[Dict[ConversionType, ConversionStep]] = None,
-    overridden_assets: Optional[List[Tuple[pathlib.Path, pathlib.Path]]] = None,
-    use_samples: bool = True,
-    custom_vars: Optional[Dict[str, Any]] = None,
-    inherited_from: Optional['ContestStatement'] = None,
-) -> Tuple[bytes, StatementType]:
-    """[deferred S12] The v1 byte-level build the Polygon block extractor relied
-    on. Stubbed until #568; the v2 standalone build is :func:`build_statement`."""
-    raise NotImplementedError(_V2_POLYGON_PENDING)
+    d = get_statement_dir(statement)
+    for pdf in sorted((d / EXTERNALIZATION_DIR).glob('**/*.pdf')):
+        yield pdf, pdf.relative_to(d)
 
 
 # --- v2 standalone build (S9). ---
@@ -316,6 +303,18 @@ def needs_samples(statement: Statement) -> bool:
     return statement.samples
 
 
+def _standalone_overlay_path(statement: Statement) -> pathlib.Path:
+    """The standalone overlay root path for this statement, keyed by
+    ``(language, variant)`` under the shared ``build/statements`` dir. Pure path
+    computation (no side effects) so the Polygon readers
+    (:func:`get_statement_dir`) can locate the artifacts a build left behind."""
+    return (
+        package.get_statements_build_path()
+        / 'st'
+        / f'{statement.language}-{statement.variant}'
+    )
+
+
 def _standalone_overlay_root(statement: Statement) -> pathlib.Path:
     """The isolated *scratch* overlay root for this statement's standalone build.
 
@@ -327,11 +326,7 @@ def _standalone_overlay_root(statement: Statement) -> pathlib.Path:
     runs from it; it is wiped and recreated on every build. The final PDF is
     copied out to :func:`get_statement_build_path`.
     """
-    root = (
-        package.get_statements_build_path()
-        / 'st'
-        / f'{statement.language}-{statement.variant}'
-    )
+    root = _standalone_overlay_path(statement)
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True, exist_ok=True)
     return root
