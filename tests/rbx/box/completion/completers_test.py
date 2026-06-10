@@ -86,3 +86,27 @@ def test_testgroup_completer_lists_group_names(tmp_path):
         i.value for i in completers.complete_testgroup(_ctx(package_root=tmp_path), '')
     }
     assert {'samples', 'main', 'edge'} <= values
+
+
+def test_contest_variant_completer_lists_sibling_ids(tmp_path):
+    (tmp_path / 'contest.rbx.yml').write_text('name: c\n')
+    (tmp_path / 'contest.div1.rbx.yml').write_text('name: d1\n')
+    (tmp_path / 'contest.div2.rbx.yml').write_text('name: d2\n')
+    values = {
+        i.value
+        for i in completers.complete_contest_variant(_ctx(package_root=tmp_path), '')
+    }
+    assert values == {'div1', 'div2'}
+
+
+def test_contest_variant_completer_walks_up_from_problem_dir(tmp_path):
+    (tmp_path / 'contest.rbx.yml').write_text('name: c\n')
+    (tmp_path / 'contest.div1.rbx.yml').write_text('name: d1\n')
+    prob = tmp_path / 'A'
+    prob.mkdir()
+    (prob / 'problem.rbx.yml').write_text('name: A\n')
+    values = {
+        i.value
+        for i in completers.complete_contest_variant(_ctx(package_root=prob), '')
+    }
+    assert values == {'div1'}

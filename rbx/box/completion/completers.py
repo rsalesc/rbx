@@ -2,7 +2,7 @@
 
 import importlib.resources
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from click.shell_completion import CompletionItem
 
@@ -133,3 +133,33 @@ def complete_testgroup(ctx: CompletionContext, incomplete: str) -> List[Completi
     data = peek.peek(Path(root) / 'problem.rbx.yml')
     names = {g.get('name') for g in data.get('testcases', []) if isinstance(g, dict)}
     return _items(n for n in names if n)
+
+
+_CONTEST_PREFIX = 'contest.'
+_CONTEST_SUFFIX = '.rbx.yml'
+
+
+def _find_contest_root(start: Optional[Path]) -> Optional[Path]:
+    """Nearest ancestor (incl. start) holding a contest.rbx.yml. Light, no load."""
+    if start is None:
+        return None
+    cur = Path(start)
+    for d in [cur, *cur.parents]:
+        if (d / 'contest.rbx.yml').exists():
+            return d
+    return None
+
+
+@register_completer('contest_variant')
+def complete_contest_variant(
+    ctx: CompletionContext, incomplete: str
+) -> List[CompletionItem]:
+    root = _find_contest_root(ctx.package_root)
+    if root is None:
+        return []
+    ids = []
+    for p in root.glob(f'{_CONTEST_PREFIX}*{_CONTEST_SUFFIX}'):
+        name = p.name[len(_CONTEST_PREFIX) : -len(_CONTEST_SUFFIX)]
+        if name:
+            ids.append(name)
+    return _items(ids)
