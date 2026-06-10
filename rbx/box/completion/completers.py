@@ -71,3 +71,26 @@ def complete_solutions(ctx: CompletionContext, incomplete: str) -> List[Completi
                 items.append(CompletionItem(str(sol['path']), help=help_text))
     items += [CompletionItem(v, help=h) for v, h in _SOLUTION_PREFIXES]
     return items
+
+
+# (token, human description). Kept complete vs ExpectedOutcome by
+# enum_consistency_test.py -- exactly one token per enum member.
+_OUTCOME_TABLE = (
+    ('any', 'matches any verdict'),
+    ('ac', 'accepted'),
+    ('ac/tle', 'accepted or time limit exceeded'),
+    ('wa', 'wrong answer'),
+    ('incorrect', 'any incorrect verdict (WA/RTE/MLE/OLE/TLE)'),
+    ('rte', 'runtime error'),
+    ('tle', 'time limit exceeded'),
+    ('mle', 'memory limit exceeded'),
+    ('ole', 'output limit exceeded'),
+    ('tle/rte', 'time limit exceeded or runtime error'),
+    ('jf', 'judge failed'),
+    ('ce', 'compilation error'),
+)
+
+
+@register_completer('outcome')
+def complete_outcome(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    return [CompletionItem(v, help=h) for v, h in _OUTCOME_TABLE]

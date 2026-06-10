@@ -50,3 +50,10 @@ def test_solutions_completer_without_package_offers_prefixes(tmp_path):
         i.value for i in completers.complete_solutions(_ctx(package_root=None), '')
     }
     assert {'@main', '@boca/'} <= values
+
+
+def test_outcome_completer_offers_canonical_tokens():
+    values = {i.value for i in completers.complete_outcome(_ctx(), '')}
+    assert {'ac', 'wa', 'tle', 'any'} <= values
+    helps = {i.value: i.help for i in completers.complete_outcome(_ctx(), '')}
+    assert helps['ac']  # has descriptive help
