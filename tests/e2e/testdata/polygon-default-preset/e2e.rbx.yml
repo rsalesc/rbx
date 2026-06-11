@@ -36,3 +36,4 @@ scenarios:
             statements:
               english:
                 legend_contains: ["A", "B"]
+                notes_contains: "In the first sample"
