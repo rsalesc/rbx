@@ -4,7 +4,7 @@ import pytest
 
 from rbx.box import cd, package_utils
 from rbx.box.statements import build_statements
-from rbx.box.statements.resolver import StatementResolverError
+from rbx.box.statements.overlay import OverlayCollisionError
 from rbx.box.statements.schema import StatementKind, StatementType
 
 
@@ -90,8 +90,14 @@ async def test_standalone_tutorial_builds_from_contest_template(
 
 
 @pytest.mark.test_pkg('problems/rooted-tree-detective')
-async def test_standalone_outside_contest_is_hard_error(pkg_from_testdata):
-    with pytest.raises(StatementResolverError):
+async def test_standalone_outside_contest_falls_back_to_bundled_default(
+    pkg_from_testdata,
+):
+    # Outside a contest, an rbx statement no longer hard-errors: it falls back to
+    # rbx's bundled default template (S15 / #571). This fixture ships its own
+    # `statement/icpc.sty`, which collides with the bundled chrome's `icpc.sty`,
+    # so the fallback surfaces a real overlay collision (not a resolver error).
+    with pytest.raises(OverlayCollisionError):
         await build_statements.execute_build(
             verification=0,
             samples=False,

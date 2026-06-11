@@ -7,7 +7,6 @@ import typer
 
 from rbx import annotations, console, utils
 from rbx.box import environment, limits_info, naming, package
-from rbx.box.contest import contest_package
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements import engine, overlay, render, resolver
@@ -259,16 +258,16 @@ async def build_statement(
     externalize, demacro = _externalize_demacro(extra_mergeable_params)
 
     if statement.type.is_rbx():
-        contest = resolver.require_contest_for_problem()
-        contest_candidates = (
-            contest.expanded_tutorials
-            if kind == StatementKind.TUTORIALS
-            else contest.expanded_statements
-        )
-        contest_statement = resolver.select_standalone_contest_statement(
-            statement, contest_candidates
-        )
-        contest_root = contest_package.find_contest()
+        res = resolver.resolve_standalone(statement, kind)
+        contest = res.contest
+        contest_statement = res.contest_statement
+        contest_root = res.contest_root
+        if res.is_fallback:
+            console.console.print(
+                '[warning]No contest statement provides a standalone template '
+                f'for {statement.language}/{statement.variant}; building with '
+                "rbx's bundled default template.[/warning]"
+            )
         assert contest_statement.file is not None
         chrome_dir = utils.abspath(contest_root / contest_statement.file).parent
 
@@ -295,10 +294,16 @@ async def build_statement(
             groups={g.name: g for g in pkg.testcases},
         )
         contest_ctx = ContestRenderContext(
-            title=naming.get_contest_title(
-                lang=statement.language, statement=contest_statement, contest=contest
+            title=(
+                naming.get_contest_title(
+                    lang=statement.language,
+                    statement=contest_statement,
+                    contest=contest,
+                )
+                if contest is not None
+                else ''
             ),
-            vars=contest.expanded_vars,
+            vars=contest.expanded_vars if contest is not None else {},
             params=contest_statement.expanded_vars,
             location=contest_statement.location,
             date=contest_statement.date,
