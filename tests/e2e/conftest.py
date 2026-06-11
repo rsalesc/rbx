@@ -88,12 +88,8 @@ def pytest_collect_file(parent, file_path):
 _XFAIL_SCENARIOS = {
     'polygon-upload-assets-referential-integrity': (
         'sample-explanation TikZ is not externalized/uploaded; the notes '
-        'reference a non-existent artifacts/tikz_figures/0_0 PDF (#586 audit).'
-    ),
-    'problem-polygon-upload': (
-        'default preset polygon upload fails on the editorial.rbx.tex overlay '
-        'collision between the contest chrome and the problem statement dir '
-        '(#586 audit).'
+        'reference a non-existent artifacts/tikz_figures/0_0 PDF (#586 audit, '
+        'tracked by #590).'
     ),
 }
 

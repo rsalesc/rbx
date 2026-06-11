@@ -1,7 +1,7 @@
 import dataclasses
 from typing import List, NamedTuple, Optional, Set, Tuple
 
-from TexSoup.data import TexCmd, TexNode, Token
+from TexSoup.data import BracketGroup, TexCmd, TexNode, Token
 
 from rbx.box.exception import RbxException
 from rbx.box.statements.texsoup_utils import (
@@ -494,9 +494,13 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
             transformed_args = []
             for arg in node.args:
                 t_arg = transform_nodes(arg.contents)
-                # BraceGroup might not have type, implies required
-                arg_type = getattr(arg, 'type', 'required')
-                if arg_type == 'optional':
+                # Optional arguments are TexSoup ``BracketGroup``s and must be
+                # re-emitted as ``[...]``; everything else (``BraceGroup``) is a
+                # mandatory ``{...}`` group. TexSoup arg objects carry no ``.type``
+                # attribute, so the previous ``getattr(arg, 'type', 'required')``
+                # always read 'required' and turned ``\includegraphics[opts]{f}``
+                # into ``\includegraphics{opts}{f}`` -- invalid LaTeX (#589 #3).
+                if isinstance(arg, BracketGroup):
                     transformed_args.append(f'[{t_arg}]')
                 else:
                     transformed_args.append(f'{{{t_arg}}}')

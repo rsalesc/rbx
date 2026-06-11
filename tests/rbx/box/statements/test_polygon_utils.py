@@ -170,6 +170,24 @@ def test_convert_to_polygon_tex_basic():
     assert convert_to_polygon_tex(r'\section{Title}') == r'\section{Title}'
 
 
+def test_convert_preserves_optional_arguments():
+    r"""Optional ``[...]`` arguments must survive the convert round-trip and not
+    be turned into a second mandatory ``{...}`` group (#589, finding #3)."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    # \includegraphics with an optional argument is the canonical case.
+    assert (
+        convert_to_polygon_tex(r'\includegraphics[width=1cm]{pic}')
+        == r'\includegraphics[width=1cm]{pic}'
+    )
+    # Option-less form is unchanged.
+    assert convert_to_polygon_tex(r'\includegraphics{pic}') == r'\includegraphics{pic}'
+    # Other commands with optional args are equally affected.
+    assert (
+        convert_to_polygon_tex(r'\href[color=red]{u}{t}') == r'\href[color=red]{u}{t}'
+    )
+
+
 def test_convert_preserves_escaped_dollar():
     r"""Escaped \$ must survive the convert round-trip."""
     from rbx.box.statements.polygon_utils import convert_to_polygon_tex

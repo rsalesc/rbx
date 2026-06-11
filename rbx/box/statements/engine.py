@@ -17,7 +17,7 @@ contexts, which is what makes the overlay portable (design §6.2).
 """
 
 import pathlib
-from typing import List
+from typing import Dict, List, Optional
 
 from rbx import utils
 from rbx.box.statements import render, sample_staging
@@ -41,6 +41,30 @@ def _md_to_latex(markdown: str) -> str:
     import pypandoc
 
     return pypandoc.convert_text(markdown, 'latex', 'markdown')
+
+
+def _resolve_file_explanation(
+    problem_root: pathlib.Path,
+    sample: StatementSample,
+    lang: str,
+    mode: str,
+    kwargs: dict,
+) -> Optional[str]:
+    """Render an authored *separate-file* sample explanation to mode-form text,
+    or ``None`` if the sample has no such file. Mirrors the file branch of
+    :func:`sample_staging._resolve_explanation` (Jinja render, language-block
+    selection for ``.rbx`` files) but returns the text so it can also feed the
+    Polygon ``notes`` — not only the compiled PDF (#589 finding #4)."""
+    path = sample.explanationPath
+    if path is None or not path.is_file():
+        return None
+    raw = path.read_bytes()
+    if sample.explanationFromBlocks:
+        blocks = render.render_jinja_blocks(
+            problem_root, raw, mode=mode, **kwargs
+        ).blocks
+        return blocks.get(lang)
+    return render.render_jinja(problem_root, raw, **kwargs).decode()
 
 
 def to_sample_source(sample: StatementSample) -> sample_staging.SampleSource:
@@ -121,16 +145,45 @@ def render_problem_tex(
         else dict(blocks.explanations)
     )
 
+    # Jinja kwargs for sample rendering. Computed once here (problem.samples /
+    # problem.blocks are populated further down, so this snapshot matches the one
+    # the staging closures would build) and reused for both the separate-file
+    # explanation resolution and sample staging.
+    kwargs = _problem_jinja_kwargs(
+        lang=lang, languages=languages, problem=problem, contest=contest
+    )
+
+    # #589 finding #4: fold *separate-file* sample explanations
+    # (``samples/<idx>.rbx.tex``) that have no inline ``explanation_<i>`` block
+    # into the explanations uploaded to Polygon ``notes``. Kept in a side map so
+    # sample staging / the PDF path is untouched (it still resolves these from
+    # disk, with the figure-dir overlay); only the uploaded blocks gain them.
+    file_latex_explanations: Dict[int, str] = {}
+    if use_samples and samples:
+        for index, sample in enumerate(samples):
+            if index in latex_explanations:
+                continue  # an inline explanation_<i> block takes precedence
+            resolved = _resolve_file_explanation(
+                problem_root, sample, lang, mode, kwargs
+            )
+            if resolved is None:
+                continue
+            file_latex_explanations[index] = (
+                _md_to_latex(resolved) if mode == 'markdown' else resolved
+            )
+
     # Per-block TikZ labeling must happen before the full-doc compile so the
     # externalized PDF filenames match the labels the substitution rewrites to.
     if externalize:
         latex_blocks = render.externalize_blocks(latex_blocks)
         latex_explanations = render.externalize_blocks(latex_explanations)
+        file_latex_explanations = render.externalize_blocks(file_latex_explanations)
         _write_blocks(
             problem_root,
             'blocks.ext.yml',
             render.StatementBlocks(
-                blocks=latex_blocks, explanations=latex_explanations
+                blocks=latex_blocks,
+                explanations={**file_latex_explanations, **latex_explanations},
             ),
         )
 
@@ -138,9 +191,6 @@ def render_problem_tex(
     #    `\subimport`-ed by a LaTeX template; they carry the externalization
     #    labels (when externalizing) so their figures externalize too.
     if use_samples and samples:
-        kwargs = _problem_jinja_kwargs(
-            lang=lang, languages=languages, problem=problem, contest=contest
-        )
 
         def render_text(c: bytes, m: str) -> bytes:
             rendered = render.render_jinja(problem_root, c, **kwargs)
@@ -183,7 +233,10 @@ def render_problem_tex(
             'blocks.sub.yml',
             render.StatementBlocks(
                 blocks=render.substitute_externalized_blocks(latex_blocks),
-                explanations=render.substitute_externalized_blocks(latex_explanations),
+                explanations={
+                    **render.substitute_externalized_blocks(file_latex_explanations),
+                    **render.substitute_externalized_blocks(latex_explanations),
+                },
             ),
         )
 

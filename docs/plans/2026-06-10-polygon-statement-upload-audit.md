@@ -204,3 +204,29 @@ build pass, surfacing the `st b` failure.
 5. **#5/#6** — scope uploaded resources to real assets; uniform, parser-based
    reference rewriting.
 6. **#7** — fix the pre-existing `default-preset` e2e fixture.
+
+## Resolution status (2026-06-11, #589)
+
+- **#1 — fixed.** Renamed the bundled contest editorial standalone template to
+  `editorial-standalone.rbx.tex` so it no longer shares a basename with the
+  problem's `statement/editorial.rbx.tex` (the overlay guard stays strict, by
+  design — two same-basename files in a user's own statement/chrome dirs still
+  collide and must be renamed). The `polygon-default-preset` e2e fixture mirrors
+  the rename; its `problem-polygon-upload` scenario flips from xfail to passing.
+- **#3 — fixed.** `convert_to_polygon_tex` now keys on TexSoup `BracketGroup` to
+  re-emit optional `[...]` arguments instead of reading a non-existent `.type`
+  attribute. Covered by a new unit test.
+- **#4 — fixed.** `engine.render_problem_tex` folds separate-file
+  `samples/<idx>.rbx.tex` explanations into the uploaded `blocks.sub.yml`
+  explanations (side map; the PDF/sample-staging path is untouched). The
+  `problem-polygon-upload` scenario asserts the explanation text now reaches
+  `notes`.
+- **#2 — deferred to #590.** The dedicated explanation-TikZ externalization pass
+  carries real mechanism risk and is tracked separately; the
+  `polygon-upload-assets-referential-integrity` e2e stays xfail.
+- **#5 / #6 / #7 — still open** (low severity / test-infra).
+- **New, unrelated:** a full `rbx package polygon -u` crashes in
+  `_collect_generators` (`asyncio.run()` inside the upload event loop). It was
+  masked by the #1 collision aborting earlier. The `problem-polygon-upload`
+  scenario is therefore scoped to `--upload-only statements`; the generator-path
+  bug is outside the statement-overlay fix and is tracked separately by #591.
