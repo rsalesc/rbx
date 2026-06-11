@@ -90,13 +90,17 @@ async def test_standalone_tutorial_builds_from_contest_template(
 
 
 @pytest.mark.test_pkg('problems/rooted-tree-detective')
-async def test_standalone_outside_contest_falls_back_to_bundled_default(
+async def test_standalone_outside_contest_stages_bundled_default_chrome(
     pkg_from_testdata,
 ):
-    # Outside a contest, an rbx statement no longer hard-errors: it falls back to
-    # rbx's bundled default template (S15 / #571). This fixture ships its own
-    # `statement/icpc.sty`, which collides with the bundled chrome's `icpc.sty`,
-    # so the fallback surfaces a real overlay collision (not a resolver error).
+    # Proves that building an rbx statement outside a contest no longer hard-errors
+    # in the resolver but instead stages the bundled default chrome (S15 / #571).
+    # The evidence is the collision itself: this fixture ships its own
+    # `statement/icpc.sty`, and the only way to get a collision on `icpc.sty` is
+    # for the fallback to have staged the bundled chrome's own `icpc.sty` overlay.
+    # So an `OverlayCollisionError` (not a `StatementResolverError`) means the
+    # contest-less fallback reached the staging step. The happy-path success build
+    # is covered separately by upcoming e2e fixtures.
     with pytest.raises(OverlayCollisionError):
         await build_statements.execute_build(
             verification=0,

@@ -12,8 +12,11 @@ unit-testable without a package on disk:
   statement from each problem, matched by ``(language, variant)`` and required
   to share the contest statement's rbx* type (design §3.2).
 
-Building a problem statement outside a contest is a hard error (design §2,
-decision 1); ``require_contest_for_problem`` enforces that.
+Building a problem statement outside a contest (or with no contest statement
+matching its ``(language, variant)``) is no longer a hard error: ``resolve_standalone``
+falls back to the bundled default chrome/template (design S15 / issue #571). An
+*unselected dispatcher* is still rejected — that is a 'forgot to select a contest'
+mistake, not a genuinely contest-less problem.
 """
 
 import dataclasses
@@ -222,28 +225,6 @@ def select_problem_statement(
                 f'match for the join.[/error]'
             )
     return statement
-
-
-def require_contest_for_problem() -> Contest:
-    """Return the contest the current problem belongs to, or hard-error.
-
-    Statements v2 requires a contest to build any problem statement (design §2,
-    decision 1). Gives a dispatcher-aware hint when the contest exists but no
-    variant is selected.
-    """
-    contest = contest_package.find_contest_package()
-    if contest is not None:
-        return contest
-
-    _raise_dispatcher_hint_if_unselected()
-
-    with StatementResolverError() as err:
-        err.print(
-            '[error]Building a problem statement requires a contest, but no '
-            'contest was found for this problem. Statements v2 cannot build a '
-            'problem statement standalone outside a contest.[/error]'
-        )
-    raise AssertionError('unreachable')  # pragma: no cover
 
 
 def find_contest_for_problem() -> Optional[Contest]:

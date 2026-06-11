@@ -41,11 +41,12 @@ contest: `Contest.expanded_statements`/`expanded_tutorials`/`expanded_documents`
 
 The build is a pipeline of small, unit-tested pieces:
 
-- **`resolver.py`** (S7) — contest-aware resolution. `require_contest_for_problem`
-  (hard error outside a contest); `select_standalone_contest_statement` (the single
-  contest statement whose `(language, variant)` carries a `standaloneProblemTemplate`
-  — 0/>1 are errors); `select_problem_statement` (join match by `(language, variant)`
-  + matching rbx type).
+- **`resolver.py`** (S7) — contest-aware resolution. `resolve_standalone` (picks the
+  single matching contest statement, or falls back to the bundled default chrome when
+  none matches / there is no contest — S15 / #571; an *unselected dispatcher* still
+  errors); `select_standalone_contest_statement` (the single contest statement whose
+  `(language, variant)` carries a `standaloneProblemTemplate` — 0/>1 are errors);
+  `select_problem_statement` (join match by `(language, variant)` + matching rbx type).
 - **`overlay.py`** (S4) — the stager. `mirror_tree`/`merge_tree`;
   `stage_standalone_overlay` (merged root, collision-detected);
   `stage_join_problem` (isolated `.problems/<SHORT>/`); `stage_chrome` (contest
