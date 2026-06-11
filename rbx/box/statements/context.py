@@ -7,7 +7,8 @@ distinct and unmerged:
 - ``vars`` — the problem/package vars (problem renders) or contest vars
   (contest renders).
 - ``contest`` — ``title`` / ``location`` / ``date`` / ``contest.vars`` (always
-  available — a contest is required).
+  present; populated with neutral empty defaults in the contest-less bundled-default
+  fallback — S15/#571).
 
 Plus per-iteration handles for the overlay join: ``problem.import_dir`` /
 ``problem.import_file`` (the ``\\subimport`` handle for a problem in the contest

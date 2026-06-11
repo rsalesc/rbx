@@ -217,12 +217,12 @@ async def build_statement(
 ) -> pathlib.Path:
     """Build one problem statement standalone and return its output path.
 
-    For an *rbx* statement: resolve the owning contest and its
-    ``standaloneProblemTemplate`` (a contest is required), stage the merged
-    overlay (contest chrome + the problem statement-dir), render the template as
-    a full document, compile, and write ``build/statement-<lang>[-<variant>].pdf``.
-    Static ``pdf`` is copied as-is; static ``tex``/``md`` are staged and emitted
-    without a contest.
+    For an *rbx* statement: resolve the ``standaloneProblemTemplate`` (from the
+    owning contest, or rbx's bundled default preset when there is no contest / no
+    matching standalone statement — S15/#571), stage the merged overlay (chrome +
+    the problem statement-dir), render the template as a full document, compile,
+    and write ``build/statement-<lang>[-<variant>].pdf``. Static ``pdf`` is copied
+    as-is; static ``tex``/``md`` are staged and emitted without a contest.
 
     Args:
         statement: the (expanded) problem statement to build.
@@ -594,7 +594,9 @@ async def build_tutorials(
     """``rbx tut b`` — build this problem's tutorials (editorials), standalone.
 
     Same engine as ``rbx st b`` (it borrows the contest tutorial's
-    ``standaloneProblemTemplate``); writes ``build/tutorial-<lang>[-<variant>].pdf``.
+    ``standaloneProblemTemplate``, or rbx's bundled default editorial when there is
+    no contest / no match — S15/#571); writes
+    ``build/tutorial-<lang>[-<variant>].pdf``.
     """
     await execute_build(
         verification,

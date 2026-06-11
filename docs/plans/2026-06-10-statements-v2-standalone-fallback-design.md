@@ -35,9 +35,11 @@ contest-less; this concerns only the *rbx* types.
 3. **Reuse the preset chrome as the bundled default.** The fallback points at the
    bundled preset's contest statement chrome
    (`rbx/resources/presets/default/contest/statements/`): `problem.rbx.tex`
-   (`standaloneProblemTemplate`), `editorial.rbx.tex` (tutorials), `icpc.sty`,
-   `logo.png`, the shared `_problem-body.rbx.tex` / `_editorial-body.rbx.tex`
-   partials. No new dedicated resource dir; no per-problem template override.
+   (`standaloneProblemTemplate`), `editorial-standalone.rbx.tex` (tutorials; renamed
+   from `editorial.rbx.tex` in #592 to avoid colliding with a problem's own
+   `editorial.rbx.tex`), `icpc.sty`, `logo.png`, the shared `_problem-body.rbx.tex` /
+   `_editorial-body.rbx.tex` partials. No new dedicated resource dir; no per-problem
+   template override.
 4. **Synthetic statement is derived from the preset model, not hardcoded.** Load the
    preset's `contest.rbx.yml` model and `model_copy` its first statement (or
    tutorial) with the problem's `(language, variant)`. No template filenames are
