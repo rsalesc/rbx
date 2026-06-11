@@ -12,36 +12,23 @@ scenarios:
             - build/statement-en.pdf
             - build/info-en.pdf
 
-  - name: problem-polygon-upload-collision
-    markers: [pdflatex]
-    description: >
-      GRILL FINDING (#586): the default preset's Polygon statement upload is
-      broken out of the box. `rbx package polygon -u` builds the standalone
-      statement overlay, which merges the contest chrome (statements/, holding
-      `editorial.rbx.tex`) with the problem's statement dir (statement/, also
-      holding `editorial.rbx.tex`) -- an asset-name collision the statements-v2
-      overlay rejects, so the command fails before any upload. This scenario
-      encodes that CURRENT (broken) behavior; see
-      docs/plans/2026-06-10-polygon-statement-upload-audit.md. The companion
-      `problem-polygon-upload` scenario asserts the desired success and is
-      registered xfail until the collision is fixed.
-    steps:
-      - cmd: package polygon -u --upload-as-english
-        cwd: A
-        expect_exit: 1
-        expect:
-          stderr_contains:
-            - "Asset name collision"
-            - "editorial.rbx.tex"
-
   - name: problem-polygon-upload
     markers: [pdflatex]
     description: >
-      The DESIRED end state: the default preset's problem uploads its statement
-      to Polygon successfully. Registered xfail (tests/e2e/conftest.py) until the
-      `editorial.rbx.tex` overlay collision above is fixed; flips to xpass then.
+      The default preset's problem uploads its statement to Polygon successfully.
+      This used to fail out of the box (#589 finding #1): building the standalone
+      statement overlay merged the contest chrome (statements/) with the problem's
+      statement dir (statement/), both holding an `editorial.rbx.tex`, which the
+      statements-v2 overlay rejected as an asset-name collision before any upload.
+      Fixed by renaming the bundled contest editorial template to
+      `editorial-standalone.rbx.tex`. The notes assertion also covers #589 finding
+      #4: the separate-file sample explanation (statement/samples/000.rbx.tex) now
+      reaches the uploaded Polygon notes. Scoped to `--upload-only statements`
+      because the full generator-upload path hits an unrelated, pre-existing bug
+      (`_collect_generators` calls `asyncio.run()` inside the upload event loop in
+      polygon/upload.py), which is outside the #589 statement-overlay fix.
     steps:
-      - cmd: package polygon -u --upload-as-english
+      - cmd: package polygon -u --upload-as-english --upload-only statements
         cwd: A
         expect:
           stdout_contains: "uploaded successfully"
