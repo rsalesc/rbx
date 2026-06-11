@@ -106,11 +106,13 @@ class StandaloneResolution:
     is_fallback: bool
 
 
-def _require_no_unselected_dispatcher() -> None:
-    """Hard-error (with the ``-C`` hint) when a contest root exists but is a
-    dispatcher with no explicit selection. That is a 'forgot to select a
-    contest' situation, not a genuinely contest-less problem, so we must NOT
-    fall back to the bundled default here (design S15, decision 2)."""
+def _raise_dispatcher_hint_if_unselected() -> None:
+    """Raise a ``StatementResolverError`` (with the ``-C`` hint) when a contest
+    root exists but is a dispatcher with no explicit selection. No-op otherwise.
+
+    That is a 'forgot to select a contest' situation, not a genuinely
+    contest-less problem, so callers must NOT fall back to the bundled default
+    when this raises (design S15, decision 2)."""
     contest_root = contest_package.find_contest_root()
     if contest_root is not None and contest_state.resolve_explicit_selection() is None:
         variants = contest_package.discover_contest_variants(contest_root)
@@ -137,6 +139,7 @@ def _bundled_default_statement(
         if kind == StatementKind.TUTORIALS
         else preset_contest.expanded_statements
     )
+    # The bundled preset always ships a first statement and tutorial (repo-guaranteed).
     src = src_list[0]
     synthetic = src.model_copy(
         update={'language': statement.language, 'variant': statement.variant}
@@ -177,7 +180,7 @@ def resolve_standalone(
         raise AssertionError('unreachable')  # pragma: no cover
 
     if contest is None:
-        _require_no_unselected_dispatcher()
+        _raise_dispatcher_hint_if_unselected()
     synthetic, preset_root = _bundled_default_statement(statement, kind)
     return StandaloneResolution(
         contest=contest,
@@ -232,18 +235,7 @@ def require_contest_for_problem() -> Contest:
     if contest is not None:
         return contest
 
-    contest_root = contest_package.find_contest_root()
-    if contest_root is not None and contest_state.resolve_explicit_selection() is None:
-        variants = contest_package.discover_contest_variants(contest_root)
-        available = sorted(v for v in variants if v is not None)
-        if available:
-            with StatementResolverError() as err:
-                err.print(
-                    '[error]Building a problem statement requires a contest, but '
-                    'the contest here is a dispatcher with no explicit selection. '
-                    f'Pass [item]-C <id>[/item] or set [item]RBX_CONTEST=<id>[/item]. '
-                    f'Available contests: [item]{available}[/item].[/error]'
-                )
+    _raise_dispatcher_hint_if_unselected()
 
     with StatementResolverError() as err:
         err.print(
