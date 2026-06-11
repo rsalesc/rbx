@@ -107,6 +107,13 @@ def get_resources_file(path: pathlib.Path) -> pathlib.Path:
     raise FileNotFoundError(f'File {path} not found in {_RESOURCES_PKG}.')
 
 
+def get_resources_dir(path: pathlib.Path) -> pathlib.Path:
+    dir_path = importlib.resources.files('rbx') / 'resources' / path  # type: ignore
+    if dir_path.is_dir():
+        return dir_path  # type: ignore
+    raise FileNotFoundError(f'Directory {path} not found in {_RESOURCES_PKG}.')
+
+
 def get_app_file(path: pathlib.Path, predownloaded: bool = False) -> pathlib.Path:
     file_path = get_app_path() / path
     if file_path.is_file():
