@@ -133,6 +133,22 @@ def _get_validator_name() -> str:
     return validator.path.with_stem('validator').name
 
 
+def _extracted_entries(
+    entries: Optional[List['GenerationTestcaseEntry']],
+) -> List['GenerationTestcaseEntry']:
+    """Return ``entries`` if already extracted, else extract them synchronously.
+
+    The synchronous ``asyncio.run`` fallback only works OUTSIDE a running event
+    loop -- it exists for sync callers such as the namespace-builder unit tests.
+    The async ``upload_problem`` path runs inside the event loop driven by
+    ``syncer``, so it MUST extract once via ``await`` and thread the result down,
+    never reaching this fallback (#591).
+    """
+    if entries is not None:
+        return entries
+    return asyncio.run(extract_generation_testcases_from_groups())
+
+
 def _collect_generators(
     entries: Optional[List['GenerationTestcaseEntry']] = None,
 ) -> List[Generator]:
@@ -143,8 +159,7 @@ def _collect_generators(
     namespace and the actual generator uploads agree on the set of generators.
     Pass already-extracted ``entries`` to avoid re-walking the testcase groups.
     """
-    if entries is None:
-        entries = asyncio.run(extract_generation_testcases_from_groups())
+    entries = _extracted_entries(entries)
     generators: Dict[str, Generator] = {}
     for entry in entries:
         if not entry.metadata.generator_call:
@@ -156,7 +171,9 @@ def _collect_generators(
     return [generators[k] for k in sorted(generators)]
 
 
-def _build_upload_namespace() -> flattening.FlatNamespace:
+def _build_upload_namespace(
+    entries: Optional[List['GenerationTestcaseEntry']] = None,
+) -> flattening.FlatNamespace:
     """Build a single flat namespace spanning every uploaded source.
 
     The checker/interactor/validator keep their special Polygon names via
@@ -164,6 +181,10 @@ def _build_upload_namespace() -> flattening.FlatNamespace:
     same-basename sources in different directories no longer collide (#527).
     ``enforce_stem_unique`` is required because Polygon compiles each source to a
     program named after its stem.
+
+    Pass already-extracted ``entries`` to thread them into ``_collect_generators``
+    (the async ``upload_problem`` caller must, to avoid ``asyncio.run`` inside the
+    running loop -- #591).
     """
     pkg = package.find_problem_package_or_die()
     sources: List[CodeItem] = []
@@ -184,7 +205,7 @@ def _build_upload_namespace() -> flattening.FlatNamespace:
         reserved[package.get_relative_source_path(validator)] = _get_validator_name()
 
     sources.extend(package.get_solutions())
-    sources.extend(_collect_generators())
+    sources.extend(_collect_generators(entries))
 
     return flattening.build_flat_namespace(
         sources, reserved=reserved, enforce_stem_unique=True
@@ -391,8 +412,12 @@ def _upload_generator(
         raise typer.Exit(1) from None
 
 
-def _upload_testcases(problem: api.Problem, ns: flattening.FlatNamespace):
-    entries = asyncio.run(extract_generation_testcases_from_groups())
+def _upload_testcases(
+    problem: api.Problem,
+    ns: flattening.FlatNamespace,
+    entries: Optional[List['GenerationTestcaseEntry']] = None,
+):
+    entries = _extracted_entries(entries)
     generators = _collect_generators(entries)
 
     if generators:
@@ -468,8 +493,11 @@ def _upload_testcases(problem: api.Problem, ns: flattening.FlatNamespace):
         progress.update(task_id, completed=len(entries))
 
 
-def _upload_testcases_raw(problem: api.Problem):
-    entries = asyncio.run(extract_generation_testcases_from_groups())
+def _upload_testcases_raw(
+    problem: api.Problem,
+    entries: Optional[List['GenerationTestcaseEntry']] = None,
+):
+    entries = _extracted_entries(entries)
 
     errors = _validate_raw_tests(entries)
     if errors:
@@ -718,10 +746,19 @@ async def upload_problem(
     # aborted by the flattening guardrail. Dependency headers are shared
     # resources, so ship them whenever any source that may ``#include`` them
     # (generators, solutions, checker/validator/interactor) is uploaded.
+    uploads_sources = bool(which_upload & {'files', 'solutions', 'tests'})
+
+    # Walk the testcase groups once here, on the async path, and thread the
+    # result into the sync upload helpers. Those helpers must not call
+    # asyncio.run() themselves -- this function already runs inside the event
+    # loop driven by ``syncer`` (#591). The namespace builder needs the entries
+    # for ``_collect_generators``, so they are required whenever sources upload.
+    entries: Optional[List[GenerationTestcaseEntry]] = (
+        await extract_generation_testcases_from_groups() if uploads_sources else None
+    )
+
     ns: Optional[flattening.FlatNamespace] = (
-        _build_upload_namespace()
-        if which_upload & {'files', 'solutions', 'tests'}
-        else None
+        _build_upload_namespace(entries) if uploads_sources else None
     )
     if ns is not None:
         _upload_dep_files(problem, ns)
@@ -745,9 +782,9 @@ async def upload_problem(
 
         if 'tests' in which_upload:
             if raw_tests:
-                _upload_testcases_raw(problem)
+                _upload_testcases_raw(problem, entries)
             else:
-                _upload_testcases(problem, ns)
+                _upload_testcases(problem, ns, entries)
 
     if 'statements' in which_upload:
         await _upload_statement(
