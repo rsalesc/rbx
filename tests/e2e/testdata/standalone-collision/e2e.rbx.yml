@@ -1,0 +1,14 @@
+scenarios:
+  - name: standalone-collision-errors
+    description: >
+      A problem-local asset (icpc.sty) sharing a basename with the bundled
+      default chrome collides when the contest-less overlay is staged; the
+      build must fail loudly (non-zero exit + actionable message) rather than
+      silently shadow the chrome. The strict overlay guard is intentional
+      (#571 / #592).
+    steps:
+      - cmd: build
+      - cmd: st b --output tex --no-samples
+        expect_exit: 1
+        expect:
+          stderr_contains: "Asset name collision while merging"
