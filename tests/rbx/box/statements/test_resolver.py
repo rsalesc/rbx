@@ -202,8 +202,11 @@ class TestResolveStandalone:
         ):
             res = resolver.resolve_standalone(st, StatementKind.TUTORIALS)
         assert res.is_fallback is True
+        # The preset's editorial standalone template is named distinctively (not
+        # `editorial.rbx.tex`) so it never collides with a problem's own editorial
+        # source in the merged overlay (see #592).
         assert res.contest_statement.standaloneProblemTemplate == pathlib.Path(
-            'statements/editorial.rbx.tex'
+            'statements/editorial-standalone.rbx.tex'
         )
 
     def test_contest_present_no_match_falls_back(self):

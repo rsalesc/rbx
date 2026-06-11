@@ -21,10 +21,10 @@ testcases:
 statements:
   - language: en
     title: A Plus B
-    file: statement/legend.rbx.tex
+    file: statement/statement.rbx.tex
     type: rbx-tex
 
 tutorials:
   - language: en
-    file: statement/tutorial.rbx.tex
+    file: statement/editorial.rbx.tex
     type: rbx-tex
