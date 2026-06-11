@@ -15,20 +15,26 @@ scenarios:
   - name: problem-polygon-upload
     markers: [pdflatex]
     description: >
-      The default preset's problem uploads its statement to Polygon successfully.
-      This used to fail out of the box (#589 finding #1): building the standalone
-      statement overlay merged the contest chrome (statements/) with the problem's
-      statement dir (statement/), both holding an `editorial.rbx.tex`, which the
-      statements-v2 overlay rejected as an asset-name collision before any upload.
-      Fixed by renaming the bundled contest editorial template to
+      The default preset's problem runs a FULL `package polygon -u` (every upload
+      category: files, solutions, tests/generators, statement) end-to-end against
+      the recording Polygon fake. This guards two regressions at once:
+
+      #589 finding #1 -- building the standalone statement overlay used to merge
+      the contest chrome (statements/) with the problem's statement dir
+      (statement/), both holding an `editorial.rbx.tex`, which the statements-v2
+      overlay rejected as an asset-name collision before any upload. Fixed by
+      renaming the bundled contest editorial template to
       `editorial-standalone.rbx.tex`. The notes assertion also covers #589 finding
-      #4: the separate-file sample explanation (statement/samples/000.rbx.tex) now
-      reaches the uploaded Polygon notes. Scoped to `--upload-only statements`
-      because the full generator-upload path hits an unrelated, pre-existing bug
-      (`_collect_generators` calls `asyncio.run()` inside the upload event loop in
-      polygon/upload.py), which is outside the #589 statement-overlay fix; see #591.
+      #4: the separate-file sample explanation reaches the uploaded Polygon notes.
+
+      #591 -- the full upload (with a generator in the testplan) reaches generator
+      collection, which crashed with `RuntimeError: asyncio.run() cannot be called
+      from a running event loop` because the sync upload helpers called
+      `asyncio.run()` from inside the upload event loop. Fixed by extracting the
+      testcase entries once on the async path and threading them down. Before the
+      fix the command exited 1 here and never printed "uploaded successfully".
     steps:
-      - cmd: package polygon -u --upload-as-english --upload-only statements
+      - cmd: package polygon -u --upload-as-english
         cwd: A
         expect:
           stdout_contains: "uploaded successfully"
