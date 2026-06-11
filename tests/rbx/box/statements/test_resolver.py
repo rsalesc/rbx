@@ -1,11 +1,12 @@
 import pathlib
+from unittest import mock
 
 import pytest
 
 from rbx.box.contest.schema import ContestStatement
 from rbx.box.statements import resolver
 from rbx.box.statements.resolver import StatementResolverError
-from rbx.box.statements.schema import Statement, StatementType
+from rbx.box.statements.schema import Statement, StatementKind, StatementType
 
 
 def _problem_statement(
@@ -124,3 +125,122 @@ class TestSelectProblemStatement:
         ]
         with pytest.raises(StatementResolverError):
             resolver.select_problem_statement(cs, problem_statements, 'A')
+
+
+class TestResolveStandalone:
+    def test_single_match_returns_real_resolution(self):
+        st = _problem_statement(language='en', variant='default')
+        contest = mock.Mock()
+        contest.expanded_statements = [
+            _contest_statement('main-en', language='en', variant='default'),
+            _contest_statement('main-pt', language='pt', variant='default'),
+        ]
+        with (
+            mock.patch.object(
+                resolver, 'find_contest_for_problem', return_value=contest
+            ),
+            mock.patch.object(
+                resolver.contest_package,
+                'find_contest',
+                return_value=pathlib.Path('/contest'),
+            ),
+        ):
+            res = resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+        assert res.is_fallback is False
+        assert res.contest is contest
+        assert res.contest_statement.name == 'main-en'
+        assert res.contest_root == pathlib.Path('/contest')
+
+    def test_multiple_candidates_still_errors(self):
+        st = _problem_statement(language='en', variant='default')
+        contest = mock.Mock()
+        contest.expanded_statements = [
+            _contest_statement('main-a', language='en', variant='default'),
+            _contest_statement('main-b', language='en', variant='default'),
+        ]
+        with mock.patch.object(
+            resolver, 'find_contest_for_problem', return_value=contest
+        ):
+            with pytest.raises(StatementResolverError):
+                resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+
+    def test_no_contest_falls_back_to_bundled_default(self):
+        st = _problem_statement(language='en', variant='default')
+        with (
+            mock.patch.object(resolver, 'find_contest_for_problem', return_value=None),
+            mock.patch.object(
+                resolver.contest_package, 'find_contest_root', return_value=None
+            ),
+        ):
+            res = resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+        assert res.is_fallback is True
+        assert res.contest is None
+        assert res.contest_statement.language == 'en'
+        assert res.contest_statement.variant == 'default'
+        assert res.contest_statement.standaloneProblemTemplate is not None
+        assert (res.contest_root / 'contest.rbx.yml').is_file()
+
+    def test_fallback_rebinds_non_english_language(self):
+        st = _problem_statement(language='pt', variant='short')
+        with (
+            mock.patch.object(resolver, 'find_contest_for_problem', return_value=None),
+            mock.patch.object(
+                resolver.contest_package, 'find_contest_root', return_value=None
+            ),
+        ):
+            res = resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+        assert res.contest_statement.language == 'pt'
+        assert res.contest_statement.variant == 'short'
+
+    def test_tutorials_kind_uses_preset_tutorial_template(self):
+        st = _problem_statement(language='en', variant='default')
+        with (
+            mock.patch.object(resolver, 'find_contest_for_problem', return_value=None),
+            mock.patch.object(
+                resolver.contest_package, 'find_contest_root', return_value=None
+            ),
+        ):
+            res = resolver.resolve_standalone(st, StatementKind.TUTORIALS)
+        assert res.is_fallback is True
+        # The preset's editorial standalone template is named distinctively (not
+        # `editorial.rbx.tex`) so it never collides with a problem's own editorial
+        # source in the merged overlay (see #592).
+        assert res.contest_statement.standaloneProblemTemplate == pathlib.Path(
+            'statements/editorial-standalone.rbx.tex'
+        )
+
+    def test_contest_present_no_match_falls_back(self):
+        st = _problem_statement(language='pt', variant='default')
+        contest = mock.Mock()
+        contest.expanded_statements = [
+            _contest_statement('main-en', language='en', variant='default'),
+        ]
+        with mock.patch.object(
+            resolver, 'find_contest_for_problem', return_value=contest
+        ):
+            res = resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+        assert res.is_fallback is True
+        assert res.contest is contest
+
+    def test_unselected_dispatcher_errors_with_hint(self):
+        st = _problem_statement(language='en', variant='default')
+        with (
+            mock.patch.object(resolver, 'find_contest_for_problem', return_value=None),
+            mock.patch.object(
+                resolver.contest_package,
+                'find_contest_root',
+                return_value=pathlib.Path('/contest'),
+            ),
+            mock.patch.object(
+                resolver.contest_state,
+                'resolve_explicit_selection',
+                return_value=None,
+            ),
+            mock.patch.object(
+                resolver.contest_package,
+                'discover_contest_variants',
+                return_value=['div1', 'div2'],
+            ),
+        ):
+            with pytest.raises(StatementResolverError):
+                resolver.resolve_standalone(st, StatementKind.STATEMENTS)

@@ -12,24 +12,47 @@ unit-testable without a package on disk:
   statement from each problem, matched by ``(language, variant)`` and required
   to share the contest statement's rbx* type (design §3.2).
 
-Building a problem statement outside a contest is a hard error (design §2,
-decision 1); ``require_contest_for_problem`` enforces that.
+Building a problem statement outside a contest (or with no contest statement
+matching its ``(language, variant)``) is no longer a hard error: ``resolve_standalone``
+falls back to the bundled default chrome/template (design S15 / issue #571). An
+*unselected dispatcher* is still rejected — that is a 'forgot to select a contest'
+mistake, not a genuinely contest-less problem.
 """
 
+import dataclasses
+import pathlib
 from typing import List, Optional
 
+from rbx import config
 from rbx.box.contest import contest_package, contest_state
 from rbx.box.contest.schema import Contest, ContestStatement
 from rbx.box.exception import RbxException
-from rbx.box.statements.schema import Statement
+from rbx.box.statements.schema import Statement, StatementKind
+from rbx.box.yaml_validation import load_yaml_model
 
 
 class StatementResolverError(RbxException):
     pass
 
 
+# The bundled default chrome reused for contest-less builds lives in the default
+# preset's contest dir (design S15, decision 3).
+_PRESET_CONTEST_RESOURCE = pathlib.Path('presets') / 'default' / 'contest'
+
+
 def _describe_key(language: str, variant: str) -> str:
     return f'{language}/{variant}'
+
+
+def _standalone_candidates(
+    statement: Statement, contest_statements: List[ContestStatement]
+) -> List[ContestStatement]:
+    return [
+        cs
+        for cs in contest_statements
+        if cs.standaloneProblemTemplate is not None
+        and (cs.language, cs.variant) == (statement.language, statement.variant)
+    ]
 
 
 def select_standalone_contest_statement(
@@ -42,12 +65,7 @@ def select_standalone_contest_statement(
     Candidates carry a ``standaloneProblemTemplate`` and match the problem
     statement on ``(language, variant)``. Exactly one is required.
     """
-    candidates = [
-        cs
-        for cs in contest_statements
-        if cs.standaloneProblemTemplate is not None
-        and (cs.language, cs.variant) == (statement.language, statement.variant)
-    ]
+    candidates = _standalone_candidates(statement, contest_statements)
     key = _describe_key(statement.language, statement.variant)
     if not candidates:
         with StatementResolverError() as err:
@@ -71,6 +89,108 @@ def select_standalone_contest_statement(
                 f'for this [item](language, variant)[/item].[/error]'
             )
     return candidates[0]
+
+
+@dataclasses.dataclass
+class StandaloneResolution:
+    """Resolved inputs for a standalone problem-statement build (design S15).
+
+    ``contest_statement`` is a real contest statement (single match) or a
+    synthetic one derived from the bundled default preset (fallback).
+    ``contest`` is the real owning contest when present (its metadata feeds the
+    ``contest.*`` namespace), ``None`` when there is no contest at all.
+    ``contest_root`` is the dir the template + chrome resolve against (the real
+    contest root, or the bundled preset contest dir).
+    """
+
+    contest: Optional[Contest]
+    contest_statement: ContestStatement
+    contest_root: pathlib.Path
+    is_fallback: bool
+
+
+def _raise_dispatcher_hint_if_unselected() -> None:
+    """Raise a ``StatementResolverError`` (with the ``-C`` hint) when a contest
+    root exists but is a dispatcher with no explicit selection. No-op otherwise.
+
+    That is a 'forgot to select a contest' situation, not a genuinely
+    contest-less problem, so callers must NOT fall back to the bundled default
+    when this raises (design S15, decision 2)."""
+    contest_root = contest_package.find_contest_root()
+    if contest_root is not None and contest_state.resolve_explicit_selection() is None:
+        variants = contest_package.discover_contest_variants(contest_root)
+        available = sorted(v for v in variants if v is not None)
+        if available:
+            with StatementResolverError() as err:
+                err.print(
+                    '[error]Building a problem statement requires a contest, but '
+                    'the contest here is a dispatcher with no explicit selection. '
+                    f'Pass [item]-C <id>[/item] or set [item]RBX_CONTEST=<id>[/item]. '
+                    f'Available contests: [item]{available}[/item].[/error]'
+                )
+
+
+def _bundled_default_statement(
+    statement: Statement, kind: StatementKind
+) -> tuple[ContestStatement, pathlib.Path]:
+    """Synthesize a contest statement from the bundled default preset, rebound to
+    the problem statement's ``(language, variant)`` so it matches any language."""
+    preset_root = config.get_resources_dir(_PRESET_CONTEST_RESOURCE)
+    preset_contest = load_yaml_model(preset_root / 'contest.rbx.yml', Contest)
+    src_list = (
+        preset_contest.expanded_tutorials
+        if kind == StatementKind.TUTORIALS
+        else preset_contest.expanded_statements
+    )
+    # The bundled preset always ships a first statement and tutorial (repo-guaranteed).
+    src = src_list[0]
+    synthetic = src.model_copy(
+        update={'language': statement.language, 'variant': statement.variant}
+    )
+    return synthetic, preset_root
+
+
+def resolve_standalone(
+    statement: Statement, kind: StatementKind
+) -> StandaloneResolution:
+    """Resolve the contest statement for a standalone problem-statement build.
+
+    Returns a real contest statement when exactly one matches the problem's
+    ``(language, variant)`` and carries a ``standaloneProblemTemplate``; on zero
+    matches falls back to the bundled default preset template (design S15 /
+    issue #571). ``>1`` matches and an unselected dispatcher both hard-error.
+    """
+    contest = find_contest_for_problem()
+    contest_statements: List[ContestStatement] = []
+    if contest is not None:
+        contest_statements = (
+            contest.expanded_tutorials
+            if kind == StatementKind.TUTORIALS
+            else contest.expanded_statements
+        )
+    candidates = _standalone_candidates(statement, contest_statements)
+
+    if len(candidates) == 1:
+        return StandaloneResolution(
+            contest=contest,
+            contest_statement=candidates[0],
+            contest_root=contest_package.find_contest(),
+            is_fallback=False,
+        )
+    if len(candidates) > 1:
+        # Reuse the ambiguity error message (raises).
+        select_standalone_contest_statement(statement, contest_statements)
+        raise AssertionError('unreachable')  # pragma: no cover
+
+    if contest is None:
+        _raise_dispatcher_hint_if_unselected()
+    synthetic, preset_root = _bundled_default_statement(statement, kind)
+    return StandaloneResolution(
+        contest=contest,
+        contest_statement=synthetic,
+        contest_root=preset_root,
+        is_fallback=True,
+    )
 
 
 def select_problem_statement(
@@ -105,39 +225,6 @@ def select_problem_statement(
                 f'match for the join.[/error]'
             )
     return statement
-
-
-def require_contest_for_problem() -> Contest:
-    """Return the contest the current problem belongs to, or hard-error.
-
-    Statements v2 requires a contest to build any problem statement (design §2,
-    decision 1). Gives a dispatcher-aware hint when the contest exists but no
-    variant is selected.
-    """
-    contest = contest_package.find_contest_package()
-    if contest is not None:
-        return contest
-
-    contest_root = contest_package.find_contest_root()
-    if contest_root is not None and contest_state.resolve_explicit_selection() is None:
-        variants = contest_package.discover_contest_variants(contest_root)
-        available = sorted(v for v in variants if v is not None)
-        if available:
-            with StatementResolverError() as err:
-                err.print(
-                    '[error]Building a problem statement requires a contest, but '
-                    'the contest here is a dispatcher with no explicit selection. '
-                    f'Pass [item]-C <id>[/item] or set [item]RBX_CONTEST=<id>[/item]. '
-                    f'Available contests: [item]{available}[/item].[/error]'
-                )
-
-    with StatementResolverError() as err:
-        err.print(
-            '[error]Building a problem statement requires a contest, but no '
-            'contest was found for this problem. Statements v2 cannot build a '
-            'problem statement standalone outside a contest.[/error]'
-        )
-    raise AssertionError('unreachable')  # pragma: no cover
 
 
 def find_contest_for_problem() -> Optional[Contest]:

@@ -10,8 +10,13 @@ with `\subimport`. There is **no migration** from v1.
 
 ## Core decisions (design §2)
 
-- **A contest is required** to build an *rbx* problem statement: the contest owns
-  the templates. Static types (`tex`/`md`/`pdf`) build standalone without one.
+- **The contest owns the *rbx* problem-statement templates**, but a contest is no
+  longer required (S15 / #571): outside a contest — or in one with no matching
+  standalone statement — the build falls back to rbx's **bundled default template**
+  (the default preset chrome), rebound to the problem's `(language, variant)`, with
+  a warning. An *unselected dispatcher* still errors (pass `-C <id>`); `>1` matching
+  standalone statements still errors. Static types (`tex`/`md`/`pdf`) always build
+  standalone.
 - **Namespaces don't merge:** `params` (statement's own), `vars` (problem/package
   or contest), `contest.*` are separate template namespaces (§4).
 - **Path resolution = full overlay, everything relative.** No user TeX is parsed
@@ -41,11 +46,12 @@ contest: `Contest.expanded_statements`/`expanded_tutorials`/`expanded_documents`
 
 The build is a pipeline of small, unit-tested pieces:
 
-- **`resolver.py`** (S7) — contest-aware resolution. `require_contest_for_problem`
-  (hard error outside a contest); `select_standalone_contest_statement` (the single
-  contest statement whose `(language, variant)` carries a `standaloneProblemTemplate`
-  — 0/>1 are errors); `select_problem_statement` (join match by `(language, variant)`
-  + matching rbx type).
+- **`resolver.py`** (S7) — contest-aware resolution. `resolve_standalone` (picks the
+  single matching contest statement, or falls back to the bundled default chrome when
+  none matches / there is no contest — S15 / #571; an *unselected dispatcher* still
+  errors); `select_standalone_contest_statement` (the single contest statement whose
+  `(language, variant)` carries a `standaloneProblemTemplate` — 0/>1 are errors);
+  `select_problem_statement` (join match by `(language, variant)` + matching rbx type).
 - **`overlay.py`** (S4) — the stager. `mirror_tree`/`merge_tree`;
   `stage_standalone_overlay` (merged root, collision-detected);
   `stage_join_problem` (isolated `.problems/<SHORT>/`); `stage_chrome` (contest

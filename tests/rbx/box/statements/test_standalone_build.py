@@ -4,7 +4,7 @@ import pytest
 
 from rbx.box import cd, package_utils
 from rbx.box.statements import build_statements
-from rbx.box.statements.resolver import StatementResolverError
+from rbx.box.statements.overlay import OverlayCollisionError
 from rbx.box.statements.schema import StatementKind, StatementType
 
 
@@ -90,8 +90,18 @@ async def test_standalone_tutorial_builds_from_contest_template(
 
 
 @pytest.mark.test_pkg('problems/rooted-tree-detective')
-async def test_standalone_outside_contest_is_hard_error(pkg_from_testdata):
-    with pytest.raises(StatementResolverError):
+async def test_standalone_outside_contest_stages_bundled_default_chrome(
+    pkg_from_testdata,
+):
+    # Proves that building an rbx statement outside a contest no longer hard-errors
+    # in the resolver but instead stages the bundled default chrome (S15 / #571).
+    # The evidence is the collision itself: this fixture ships its own
+    # `statement/icpc.sty`, and the only way to get a collision on `icpc.sty` is
+    # for the fallback to have staged the bundled chrome's own `icpc.sty` overlay.
+    # So an `OverlayCollisionError` (not a `StatementResolverError`) means the
+    # contest-less fallback reached the staging step. The happy-path success build
+    # is covered separately by upcoming e2e fixtures.
+    with pytest.raises(OverlayCollisionError):
         await build_statements.execute_build(
             verification=0,
             samples=False,
