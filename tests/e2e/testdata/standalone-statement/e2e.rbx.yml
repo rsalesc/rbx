@@ -1,0 +1,32 @@
+scenarios:
+  - name: standalone-statement-default
+    description: >
+      A problem with no contest builds its rbxTeX statement using rbx's bundled
+      default template (S15 / #571). We emit TeX (no pdflatex), assert the
+      artefact exists and carries the bundled body's \includeProblem macro, and
+      check the fallback warning is printed.
+    steps:
+      - cmd: build
+      - cmd: st b --output tex --no-samples
+        expect:
+          stdout_contains: "bundled default template"
+          files_exist:
+            - "build/statement-en.tex"
+          file_contains:
+            "build/statement-en.tex": 'includeProblem'
+
+  - name: standalone-tutorial-default
+    description: >
+      The same fallback applies to tutorials (rbx tut b) via the bundled
+      editorial template. We emit TeX and assert the artefact exists and carries
+      the bundled editorial body's \includeProblem macro plus the fallback
+      warning.
+    steps:
+      - cmd: build
+      - cmd: tut b --output tex --no-samples
+        expect:
+          stdout_contains: "bundled default template"
+          files_exist:
+            - "build/tutorial-en.tex"
+          file_contains:
+            "build/tutorial-en.tex": 'includeProblem'
