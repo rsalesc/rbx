@@ -26,7 +26,7 @@ scenarios:
       reaches the uploaded Polygon notes. Scoped to `--upload-only statements`
       because the full generator-upload path hits an unrelated, pre-existing bug
       (`_collect_generators` calls `asyncio.run()` inside the upload event loop in
-      polygon/upload.py), which is outside the #589 statement-overlay fix.
+      polygon/upload.py), which is outside the #589 statement-overlay fix; see #591.
     steps:
       - cmd: package polygon -u --upload-as-english --upload-only statements
         cwd: A

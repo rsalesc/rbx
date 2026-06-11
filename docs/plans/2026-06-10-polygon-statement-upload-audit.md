@@ -229,4 +229,4 @@ build pass, surfacing the `st b` failure.
   `_collect_generators` (`asyncio.run()` inside the upload event loop). It was
   masked by the #1 collision aborting earlier. The `problem-polygon-upload`
   scenario is therefore scoped to `--upload-only statements`; the generator-path
-  bug is outside the statement-overlay fix and needs its own change.
+  bug is outside the statement-overlay fix and is tracked separately by #591.
