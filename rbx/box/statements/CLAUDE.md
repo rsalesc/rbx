@@ -10,8 +10,13 @@ with `\subimport`. There is **no migration** from v1.
 
 ## Core decisions (design §2)
 
-- **A contest is required** to build an *rbx* problem statement: the contest owns
-  the templates. Static types (`tex`/`md`/`pdf`) build standalone without one.
+- **The contest owns the *rbx* problem-statement templates**, but a contest is no
+  longer required (S15 / #571): outside a contest — or in one with no matching
+  standalone statement — the build falls back to rbx's **bundled default template**
+  (the default preset chrome), rebound to the problem's `(language, variant)`, with
+  a warning. An *unselected dispatcher* still errors (pass `-C <id>`); `>1` matching
+  standalone statements still errors. Static types (`tex`/`md`/`pdf`) always build
+  standalone.
 - **Namespaces don't merge:** `params` (statement's own), `vars` (problem/package
   or contest), `contest.*` are separate template namespaces (§4).
 - **Path resolution = full overlay, everything relative.** No user TeX is parsed
