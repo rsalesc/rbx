@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import pathlib
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
@@ -7,6 +8,7 @@ import rich
 import rich.markup
 import rich.progress
 import typer
+from TexSoup.data import BraceGroup, BracketGroup
 
 from rbx import console, utils
 from rbx.box import header, naming, package
@@ -28,8 +30,13 @@ from rbx.box.schema import (
     Testcase,
 )
 from rbx.box.solutions import get_best_interaction_file
-from rbx.box.statements.build_statements import get_produced_tikz_pdfs
+from rbx.box.statements import sample_staging
+from rbx.box.statements.build_statements import (
+    get_produced_tikz_pdfs,
+    get_statement_dir,
+)
 from rbx.box.statements.schema import Statement
+from rbx.box.statements.texsoup_utils import parse_latex
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_sample_utils import StatementSample, get_statement_samples
 from rbx.box.testcase_utils import (
@@ -596,72 +603,188 @@ def _get_explanations(explanations: Dict[int, str]) -> str:
     return '\n\n'.join(entries)
 
 
-def _statement_asset_files(
-    statement: Statement,
-) -> List[Tuple[pathlib.Path, pathlib.Path]]:
-    """The statement's resource files: every file under the directory containing
-    its ``file`` (the v2 asset scope, design §3.1), except the statement source
-    itself, as ``(absolute_path, statement-dir-relative_path)`` pairs. The
-    relative path matches how blocks reference the asset, so the resource-key
-    remap in :func:`_upload_statement_resources` lines up."""
-    if statement.file is None:
-        return []
-    source = utils.abspath(statement.file)
-    base = source.parent
+# Statement-resource scoping (#595). Replaces the old "ship everything under the
+# statement dir" rule with explicit `assets` globs plus image/PDF runtime
+# defaults over the statement subtree and each staged sample subtree.
+_ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.pdf')
+
+
+def _flat_name(rel: pathlib.Path) -> str:
+    """The uploaded (flat) resource name for a relative asset path: subdir
+    separators become ``__`` and the extension is kept (``img/diagram.png`` ->
+    ``img__diagram.png``)."""
+    return str(rel).replace('/', '__')
+
+
+def _remap_key(rel: pathlib.Path) -> str:
+    """The reference key a block uses for an asset: its relative path WITHOUT the
+    extension (``\\includegraphics`` is conventionally extensionless)."""
+    return str(rel.with_suffix(''))
+
+
+def _resolve_asset_globs(root: pathlib.Path, globs: List[str]) -> List[pathlib.Path]:
+    """Absolute paths of files matching ``globs`` under ``root`` (``Path.glob``,
+    so ``**`` recurses). Files only; deduped; deterministically sorted."""
+    seen: Set[pathlib.Path] = set()
+    for glob in globs:
+        for path in root.glob(glob):
+            if path.is_file():
+                seen.add(utils.abspath(path))
+    return sorted(seen)
+
+
+def _image_files_under(base: pathlib.Path) -> List[pathlib.Path]:
+    """Image/PDF files anywhere under ``base`` (recursive), deterministically
+    sorted. Empty when ``base`` is not a directory."""
     if not base.is_dir():
         return []
-    res: List[Tuple[pathlib.Path, pathlib.Path]] = []
-    for path in sorted(base.rglob('*')):
-        if not path.is_file() or path == source:
+    return sorted(
+        path
+        for path in base.rglob('*')
+        if path.is_file() and path.suffix.lower() in _ASSET_EXTS
+    )
+
+
+def _strip_asset_ext(ref: str) -> str:
+    """Drop a trailing image/PDF extension from an ``\\includegraphics`` argument
+    so it lines up with a :func:`_remap_key` (which is extensionless)."""
+    path = pathlib.Path(ref)
+    return str(path.with_suffix('')) if path.suffix.lower() in _ASSET_EXTS else ref
+
+
+def _rewrite_includegraphics(block: str, remap: Dict[str, str]) -> str:
+    """Rewrite every ``\\includegraphics[opts]{ref}`` whose ``ref`` (with any
+    image/PDF extension stripped) is a key in ``remap`` to the mapped flat name,
+    preserving optional arguments and all surrounding text.
+
+    Parser-based (TexSoup) rather than a naive ``str.replace`` (audit finding
+    #6): order-independent, free of substring collisions, and — by stripping the
+    extension before lookup — it never produces a double extension
+    (``imgs__fig.png.png``)."""
+    if not remap:
+        return block
+    soup = parse_latex(block)
+    for node in list(soup.find_all('includegraphics')):
+        brace = next((arg for arg in node.args if isinstance(arg, BraceGroup)), None)
+        if brace is None:
             continue
-        res.append((path, path.relative_to(base)))
-    return res
+        target = remap.get(_strip_asset_ext(str(brace.string)))
+        if target is None:
+            continue
+        opts = ''.join(
+            f'[{arg.string}]' for arg in node.args if isinstance(arg, BracketGroup)
+        )
+        node.replace_with(*parse_latex(f'\\includegraphics{opts}{{{target}}}').contents)
+    return str(soup)
+
+
+@dataclasses.dataclass
+class _AssetRemaps:
+    """Per-channel reference remaps (asset-reference-without-extension -> uploaded
+    flat name). ``statement`` rewrites legend/input/output/the notes block;
+    ``samples`` holds a per-explanation-index remap for the sample explanations
+    (whose images are referenced sample-dir-relative)."""
+
+    statement: Dict[str, str]
+    samples: Dict[int, Dict[str, str]]
+
+
+def _collect_assets(
+    statement: Statement, explanation_indices: Set[int]
+) -> Tuple[Dict[str, pathlib.Path], _AssetRemaps]:
+    """Resolve the statement's resource set into three scopes (#595).
+
+    Returns ``(uploads, remaps)`` where ``uploads`` maps each uploaded flat name
+    to its absolute source path (deduped) and ``remaps`` carries the per-channel
+    reference rewrites. Scopes:
+
+    - **statement** — image/PDF under the statement dir, plus explicit ``assets``
+      globs that fall under it (any extension), plus the externalized TikZ figure
+      PDFs; referenced statement-dir-relative.
+    - **sample** — image/PDF under each staged ``.samples/<idx>/`` overlay folder;
+      referenced sample-dir-relative, uploaded under a ``sample_<idx>__`` prefix.
+    - **out-of-tree** — explicit ``assets`` globs outside the statement dir;
+      uploaded by flat name only (no auto-rewrite — referenced by that flat name).
+    """
+    pkg_root = utils.abspath(pathlib.Path())
+    statement_dir = (
+        utils.abspath(statement.file).parent if statement.file is not None else pkg_root
+    )
+    overlay = get_statement_dir(statement)
+
+    uploads: Dict[str, pathlib.Path] = {}
+    statement_remap: Dict[str, str] = {}
+
+    def _add_statement_scope(abs_path: pathlib.Path) -> None:
+        rel = abs_path.relative_to(statement_dir)
+        flat = _flat_name(rel)
+        uploads[flat] = abs_path
+        statement_remap[_remap_key(rel)] = flat
+
+    # 1. Statement-scope image/PDF defaults.
+    for abs_path in _image_files_under(statement_dir):
+        _add_statement_scope(abs_path)
+
+    # 1b/3. Explicit assets: under the statement dir -> statement-scope (any
+    #       extension); elsewhere -> out-of-tree (uploaded by flat name).
+    for abs_path in _resolve_asset_globs(pkg_root, statement.assets):
+        if abs_path.is_relative_to(statement_dir):
+            _add_statement_scope(abs_path)
+            continue
+        try:
+            rel = abs_path.relative_to(pkg_root)
+        except ValueError:
+            rel = pathlib.Path(abs_path.name)
+        uploads[_flat_name(rel)] = abs_path
+
+    # 2. Externalized TikZ figure PDFs (overlay-relative reference).
+    for abs_path, overlay_rel in get_produced_tikz_pdfs(statement):
+        flat = _flat_name(overlay_rel)
+        uploads[flat] = abs_path
+        statement_remap[_remap_key(overlay_rel)] = flat
+
+    # 4. Per-sample scope: image/PDF under each staged .samples/<idx>/.
+    sample_remaps: Dict[int, Dict[str, str]] = {}
+    for idx in sorted(explanation_indices):
+        base = overlay / sample_staging.SAMPLES_DIRNAME / f'{idx:03d}'
+        sample_remap: Dict[str, str] = {}
+        for abs_path in _image_files_under(base):
+            rel = abs_path.relative_to(base)
+            flat = f'sample_{idx}__{_flat_name(rel)}'
+            uploads[flat] = abs_path
+            sample_remap[_remap_key(rel)] = flat
+        if sample_remap:
+            sample_remaps[idx] = sample_remap
+
+    return uploads, _AssetRemaps(statement=statement_remap, samples=sample_remaps)
 
 
 def _upload_statement_resources(
-    problem: api.Problem, statement: Statement
-) -> Dict[str, str]:
-    res: Dict[str, str] = {}
-    # v2: assets are the statement-dir subtree (relative to the statement dir),
-    # plus the externalized TikZ figure PDFs (relative to the overlay root).
-    assets = _statement_asset_files(statement)
-    assets.extend(get_produced_tikz_pdfs(statement))
+    problem: api.Problem, statement: Statement, explanation_indices: Set[int]
+) -> _AssetRemaps:
+    uploads, remaps = _collect_assets(statement, explanation_indices)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
-        for asset, relative_asset in assets:
+        for flat_name, asset in sorted(uploads.items()):
             console.console.print(
-                f'Uploading statement resource [item]{relative_asset}[/item]...'
+                f'Uploading statement resource [item]{flat_name}[/item]...'
             )
             resource_bytes = asset.read_bytes()
             if len(resource_bytes) >= 1024 * 1024:  # >= 1mb
                 console.console.print(
-                    f'[error]Statement resource [item]{relative_asset}[/item] is too large to upload (more than 1MB).[/error]'
+                    f'[error]Statement resource [item]{flat_name}[/item] is too large to upload (more than 1MB).[/error]'
                 )
                 raise typer.Exit(1)
-            no_suffix_relative_asset = relative_asset.with_suffix('')
-            key_asset = (
-                None
-                if len(no_suffix_relative_asset.parents) <= 1
-                else str(no_suffix_relative_asset).replace('/', '__')
-                + relative_asset.suffix
-            )
-            if key_asset is not None:
-                res[str(relative_asset.with_suffix(''))] = key_asset
-            if key_asset is None:
-                key_asset = str(no_suffix_relative_asset) + relative_asset.suffix
-            console.console.print(
-                f'Uploading statement resource [item]{relative_asset}[/item] (normalized name: [item]{key_asset}[/item])...'
-            )
             futures.append(
                 executor.submit(
                     problem.save_statement_resource,
-                    name=key_asset,
+                    name=flat_name,
                     file=resource_bytes,
                 )
             )
-    for future in futures:
-        future.result()
-    return res
+        for future in futures:
+            future.result()
+    return remaps
 
 
 async def _upload_statement(
@@ -674,25 +797,31 @@ async def _upload_statement(
             f'Uploading statement for language [item]{language}[/item] (uploaded language: [item]{uploaded_language}[/item])...'
         )
         blocks = get_processed_statement_blocks(statement)
-        resources = _upload_statement_resources(problem, statement)
+        remaps = _upload_statement_resources(
+            problem, statement, set(blocks.explanations)
+        )
 
-        def _replace_resources(block: str, resources=resources) -> str:
-            for key, value in resources.items():
-                block = block.replace(key, value)
-            return block
-
-        def _get_block(block_name: str, blocks=blocks, resources=resources) -> str:
+        def _get_block(block_name: str, blocks=blocks, remaps=remaps) -> str:
             block = blocks.blocks.get(block_name) or ''
-            return _replace_resources(block, resources)
+            return _rewrite_includegraphics(block, remaps.statement)
 
-        def _get_notes_with_explanations(
-            blocks=blocks,
-        ) -> Optional[str]:
+        def _rewritten_explanations(blocks=blocks, remaps=remaps) -> Dict[int, str]:
+            # An explanation may reference a statement-scope asset (an inline
+            # block citing a statement-dir image) or its own sample-scope image;
+            # merge both remaps, the sample's winning on a key collision.
+            out: Dict[int, str] = {}
+            for idx, text in blocks.explanations.items():
+                merged = {**remaps.statement, **remaps.samples.get(idx, {})}
+                out[idx] = _rewrite_includegraphics(text, merged)
+            return out
+
+        def _get_notes_with_explanations(blocks=blocks) -> Optional[str]:
             notes = _get_block('notes')
-            if notes is None and not blocks.explanations:
+            explanations = _rewritten_explanations()
+            if not notes and not explanations:
                 return None
-            res = _replace_resources(_get_explanations(blocks.explanations))
-            if notes is not None:
+            res = _get_explanations(explanations)
+            if notes:
                 res = notes + '\n\n' + res
             return res
 
