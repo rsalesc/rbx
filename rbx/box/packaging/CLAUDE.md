@@ -73,6 +73,16 @@ Supports interactive problems with special `run` scripts.
 
 **`extension.py`** -- env-level `BocaExtension` (`flags`, `minRunningTime`, `preferContestLetter`, `usePypy`) and per-language `BocaLanguageExtension` (`languages` list + required `template`). Both `model_config = extra='forbid'`. rbx v1 (#471) removed the legacy singular `bocaLanguage`, the env-level `languages` allowlist, the implicit `template` fallback, and `maximumTimeError` (#494). Removed fields are kept as fields flagged `Annotated[..., Removed()]` + `Field(deprecated='<migration hint>')`: the shared `RejectsRemovedFields` base (in `rbx/utils.py`) reads the flag and raises that hint at env load, so the explanation lives on the field. `template` is required whenever `languages` is set (`model_validator`), and `resolved_languages`/`primary_language`/`resolved_template` read only the plural fields.
 
+### DOMjudge (`domjudge/`)
+
+**`DomjudgePackager`** -- ICPC problem package format + DOMjudge extensions (layout mirrors pol2dom). BATCH only (rbx COMMUNICATION pairs interactor+checker, which doesn't map onto DOMjudge's single output validator):
+- `domjudge-problem.ini` (short-name = contest letter or pkg name, name, exact fractional `timelimit` in seconds, contest `color` if any) + `problem.yaml` (memory MiB, output MiB, `validation`[, `validator_flags`])
+- `problem.pdf` -- main built statement; `data/sample/`, `data/secret/` -- per-dir `001.in/.ans` counters
+- Builtin checkers resolved to the bundled binaries map to DOMjudge's default validator (`wcmp`/`ncmp`/`yesno` no flags, `dcmp` -> `float_tolerance 1e-6`); anything else (including a same-named local file, which may be user-edited) ships flattened under `output_validators/` with `rbx.h` + a patched `testlib.h`
+- `testlib_patch.py` -- ports pol2dom's cn-xcpc-tools patch: rewrites `*_EXIT_CODE` defines (42/43), replaces `registerTestlibCmd`/`registerInteraction` (team output on stdin, feedback dir messages), drops `skipBom()`. Raises if an anchor is missing so testlib upgrades fail tests, not packages.
+- `submissions/{accepted,wrong_answer,time_limit_exceeded,run_time_error}/` from ExpectedOutcome (MLE -> run_time_error; ambiguous outcomes skipped)
+- Uses the `domjudge` limits profile when saved, else package limits (profile not required, unlike BOCA)
+
 ### MOJ (`moj/`)
 
 **`MojPackager`** (extends `BocaPackager`) -- Overrides BOCA methods for MOJ format:
@@ -100,6 +110,7 @@ Reverse operation: `PolygonImporter` imports from Polygon packages into rbx form
 |---------|----------|---------------|
 | `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip`, `--upload-tests-raw` |
 | `rbx package boca` | `BocaPackager` | `--upload`, `--language` |
+| `rbx package domjudge` | `DomjudgePackager` | `--language` |
 | `rbx package moj` | `MojPackager` | `--for-boca` |
 | `rbx package pkg` | `PkgPackager` | (none) |
 

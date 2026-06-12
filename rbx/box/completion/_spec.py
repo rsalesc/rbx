@@ -1795,6 +1795,43 @@ SPEC = {
                     ],
                 },
                 {
+                    'help': 'Build a package for DOMjudge.',
+                    'is_group': False,
+                    'name': 'domjudge',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Verification level to use when building package.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--verification-level', '--verification', '-v'],
+                            'takes_value': True,
+                            'value': {
+                                'completer': 'verification_level',
+                                'kind': 'completer',
+                            },
+                        },
+                        {
+                            'help': 'If set, will use the given language as the main '
+                            'language. Leave unset if you want to use the '
+                            'language of the topmost statement.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--language', '-l'],
+                            'takes_value': True,
+                            'value': {'completer': 'language', 'kind': 'completer'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
                     'help': 'Build a package for MOJ.',
                     'is_group': False,
                     'name': 'moj',
