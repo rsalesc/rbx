@@ -7,13 +7,21 @@ and limitations:
 +-----------------------+---------------------+-----------------------------------------------------------+
 |        Format         |   Target Systems    |                         Supports                          |
 +=======================+=====================+===========================================================+
-| ICPC                  | DOMjudge, Kattis    |                                                           |
+| ICPC                  | Kattis              |                                                           |
 | (coming soon)         |                     | :white_check_mark: Interactive problems (without checker) |
 |                       |                     | :white_check_mark: Batch problems                         |
 |                       |                     | :white_check_mark: Test grouping                          |
 |                       |                     | :white_check_mark: Limits per language                    |
 |                       |                     | :white_check_mark: Solution verification                  |
 |                       |                     | :white_check_mark: Package upload                         |
++-----------------------+---------------------+-----------------------------------------------------------+
+| [DOMjudge](domjudge.md) | DOMjudge          |                                                           |
+|                       |                     | :white_check_mark: Batch problems                         |
+|                       |                     | :white_check_mark: Solution verification                  |
+|                       |                     | :x: Interactive problems                                  |
+|                       |                     | :x: Test grouping                                         |
+|                       |                     | :x: Limits per language                                   |
+|                       |                     | :x: Package upload                                        |
 +-----------------------+---------------------+-----------------------------------------------------------+
 | [BOCA](boca.md)       | BOCA                |                                                           |
 |                       |                     | :white_check_mark: Interactive problems (with checker)    |

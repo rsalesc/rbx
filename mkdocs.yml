@@ -60,6 +60,7 @@ nav:
       - "Packaging":
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
+          - "DOMjudge": "setters/packaging/domjudge.md"
           - "MOJ": "setters/packaging/moj.md"
           - "Polygon": "setters/packaging/polygon.md"
       - "Presets":
