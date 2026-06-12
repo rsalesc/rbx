@@ -31,10 +31,11 @@ from rbx.box.statements.schema import (
 TypeVarT = TypeVar('TypeVarT', bound=BaseStatement)
 
 # Recipe fields shared by `extends` (besides `params`, handled specially).
-_PROBLEM_ALLOWLIST = ('type', 'file')
+_PROBLEM_ALLOWLIST = ('type', 'file', 'assets')
 _CONTEST_ALLOWLIST = (
     'type',
     'file',
+    'assets',
     'standaloneProblemTemplate',
     'contestProblemTemplate',
 )

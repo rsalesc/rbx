@@ -222,6 +222,14 @@ class BaseStatement(BaseModel):
         description='Whether to build the statement with samples.',
     )
 
+    assets: List[str] = Field(
+        default_factory=list,
+        description='Globs (relative to the package root) selecting files to ship '
+        'as statement resources (e.g. images/PDFs). Inherited via `extends`. At '
+        'build time the default image/PDF globs over the statement subtree and '
+        'each sample subtree are concatenated to this list.',
+    )
+
     @property
     def expanded_params(self) -> Vars:
         return expand_vars(self.params)

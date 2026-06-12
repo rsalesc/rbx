@@ -56,6 +56,30 @@ class TestProblemExpansion:
         assert pt.language == 'pt'
         assert pt.variant == 'default'
 
+    def test_assets_inherited_when_child_unset(self):
+        statements = [
+            Statement(
+                language='en',
+                file=pathlib.Path('statement.rbx.tex'),
+                assets=['a/**/*.png'],
+            ),
+            Statement(language='pt', extends='en'),
+        ]
+        result = expand_problem_statements(statements)
+        assert _by_key(result, 'pt').assets == ['a/**/*.png']
+
+    def test_child_assets_replace_parent(self):
+        statements = [
+            Statement(
+                language='en',
+                file=pathlib.Path('statement.rbx.tex'),
+                assets=['a/**/*.png'],
+            ),
+            Statement(language='pt', extends='en', assets=['b/*.pdf']),
+        ]
+        result = expand_problem_statements(statements)
+        assert _by_key(result, 'pt').assets == ['b/*.pdf']
+
     def test_extends_by_variant_dict(self):
         statements = [
             Statement(
