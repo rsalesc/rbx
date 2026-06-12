@@ -1,0 +1,29 @@
+name: external-assets
+timeLimit: 1000
+memoryLimit: 256
+
+checker:
+  path: wcmp.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+# Samples are manual testcases that live OUTSIDE the statement directory; their
+# explanations and explanation images live next to them (tests/samples/), the
+# layout #595 fixes for the Polygon upload.
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+
+statements:
+  - language: en
+    title: External Assets
+    file: statement/statement.rbx.tex
+    type: rbx-tex
+    # `assets` ships an in-statement figure (also covered by the image/PDF
+    # defaults — declared here as the worked example) plus an out-of-tree asset
+    # that the defaults would NOT pick up (referenced by its uploaded flat name).
+    assets:
+      - statement/figures/sample-figure.png
+      - extra/logo.png

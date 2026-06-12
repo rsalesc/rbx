@@ -1,0 +1,45 @@
+scenarios:
+  - name: polygon-explanation-external-assets
+    markers: [pdflatex]
+    description: >
+      #595: a manual sample, its separate-file explanation, and the explanation
+      image all live OUTSIDE the statement directory (tests/samples/). The
+      explanation image is staged into .samples/<idx>/ at build time, uploaded
+      under a per-sample flat name (sample_0__diagram.png), and the notes
+      reference is rewritten to resolve. The statement also declares its assets
+      explicitly: an in-statement figure (the worked example, referenced in the
+      legend) and an out-of-tree resource (extra/logo.png) that the image/PDF
+      defaults would not pick up. Asserts referential integrity and that sample
+      I/O sources are not shipped as statement resources (finding #5).
+    steps:
+      - cmd: build
+        cwd: A
+      - cmd: st b
+        cwd: A
+        expect:
+          files_exist:
+            - A/build/statement-en.pdf
+      - cmd: package polygon -u --upload-as-english --upload-only statements
+        cwd: A
+        expect:
+          stdout_contains: "uploaded successfully"
+          polygon_upload:
+            statements:
+              english:
+                legend_contains:
+                  # In-statement asset rewritten to its flat name.
+                  - "\\includegraphics{figures__sample-figure.png}"
+                notes_contains:
+                  - "Explanation for example 1"
+                  # External sample-explanation image, namespaced per sample.
+                  - "\\includegraphics{sample_0__diagram.png}"
+            resources_present:
+              - "figures__sample-figure.png"
+              - "sample_0__diagram.png"
+              - "extra__logo.png"
+            resources_absent:
+              # The external image is only shipped under its per-sample flat
+              # name, never bare; sample I/O is not a statement resource (#5).
+              - "diagram.png"
+              - "000.in"
+            resources_referenced_consistent: true
