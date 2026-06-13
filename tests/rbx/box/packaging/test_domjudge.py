@@ -3,6 +3,7 @@ import re
 import zipfile
 
 import pytest
+import typer
 import yaml
 
 from rbx.box import header
@@ -10,10 +11,9 @@ from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntr
 from rbx.box.packaging.domjudge.packager import DomjudgePackager
 from rbx.box.packaging.domjudge.testlib_patch import patch_testlib_for_domjudge
 from rbx.box.packaging.packager import BuiltStatement
-from rbx.box.schema import CodeItem, ExpectedOutcome, Testcase
+from rbx.box.schema import ExpectedOutcome, Testcase
 from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.testcase_schema import TestcaseEntry
-from rbx.config import get_builtin_checker
 from rbx.testing_utils import get_resources_path
 
 
@@ -78,7 +78,9 @@ def test_ini_contents(testing_pkg):
     assert not any(line.startswith('color') for line in lines)
 
 
-def test_problem_yaml_default_checker(testing_pkg):
+def test_problem_yaml_is_always_custom_validation(testing_pkg):
+    # The rbx checker is always shipped as a custom validator; DOMjudge's
+    # default output validators are never used (we honor the rbx checker).
     testing_pkg.yml.memoryLimit = 256
     testing_pkg.yml.outputLimit = 4 * 1024
     testing_pkg.save()
@@ -86,23 +88,12 @@ def test_problem_yaml_default_checker(testing_pkg):
     packager = DomjudgePackager(testcase_entries=[])
     data = yaml.safe_load(packager._get_problem_yaml())  # noqa: SLF001
 
-    assert data['validation'] == 'default'
+    assert data['validation'] == 'custom'
     assert 'validator_flags' not in data
     assert data['limits'] == {'memory': 256, 'output': 4}
 
 
-def test_problem_yaml_float_checker_maps_to_validator_flags(testing_pkg):
-    testing_pkg.yml.checker = CodeItem(path=get_builtin_checker('dcmp.cpp').absolute())
-    testing_pkg.save()
-
-    packager = DomjudgePackager(testcase_entries=[])
-    data = yaml.safe_load(packager._get_problem_yaml())  # noqa: SLF001
-
-    assert data['validation'] == 'default'
-    assert data['validator_flags'] == 'float_tolerance 1e-6'
-
-
-def test_problem_yaml_custom_checker(testing_pkg):
+def test_problem_yaml_custom_checker_is_also_custom(testing_pkg):
     testing_pkg.set_checker('chk.cpp').write_text(
         '#include "testlib.h"\nint main(){}\n'
     )
@@ -112,21 +103,20 @@ def test_problem_yaml_custom_checker(testing_pkg):
     data = yaml.safe_load(packager._get_problem_yaml())  # noqa: SLF001
 
     assert data['validation'] == 'custom'
-    assert 'validator_flags' not in data
 
 
-def test_local_copy_of_builtin_checker_is_custom(testing_pkg):
-    # A wcmp.cpp living in the package may have been edited by the user;
-    # it must not silently map to the default validator.
-    testing_pkg.set_checker('wcmp.cpp').write_text(
-        '#include "testlib.h"\nint main(){}\n'
-    )
+def test_output_validators_ship_builtin_checker(testing_pkg, tmp_path):
+    # With no checker configured, the default builtin (wcmp) is still shipped
+    # as the custom output validator rather than mapped to DOMjudge's default.
     testing_pkg.save()
+    header.generate_header()
 
     packager = DomjudgePackager(testcase_entries=[])
-    data = yaml.safe_load(packager._get_problem_yaml())  # noqa: SLF001
+    validators_dir = tmp_path / 'output_validators'
+    packager._write_output_validators(validators_dir)  # noqa: SLF001
 
-    assert data['validation'] == 'custom'
+    assert (validators_dir / 'checker.cpp').is_file()
+    assert (validators_dir / 'testlib.h').is_file()
 
 
 def test_output_validators_flatten(testing_pkg, tmp_path):
@@ -154,35 +144,91 @@ def test_output_validators_flatten(testing_pkg, tmp_path):
     assert 'define OK_EXIT_CODE 42' in testlib_text
 
 
-def test_submissions_mapping(testing_pkg, tmp_path):
-    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text('AC')
+def test_output_validators_reject_non_cpp_checker(testing_pkg, tmp_path):
+    testing_pkg.set_checker('chk.py').write_text('print("ok")\n')
+    testing_pkg.save()
+    header.generate_header()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    with pytest.raises(typer.Exit):
+        packager._write_output_validators(tmp_path / 'output_validators')  # noqa: SLF001
+
+
+def test_submissions_single_verdict_use_standard_dirs(testing_pkg, tmp_path):
+    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text('AC\n')
     testing_pkg.add_solution('sols/wa.cpp', ExpectedOutcome.WRONG_ANSWER).write_text(
-        'WA'
+        'WA\n'
     )
     testing_pkg.add_solution(
         'sols/tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED
-    ).write_text('TLE')
+    ).write_text('TLE\n')
     testing_pkg.add_solution('sols/rte.cpp', ExpectedOutcome.RUNTIME_ERROR).write_text(
-        'RTE'
+        'RTE\n'
     )
     testing_pkg.add_solution(
-        'sols/mle.cpp', ExpectedOutcome.MEMORY_LIMIT_EXCEEDED
-    ).write_text('MLE')
-    testing_pkg.add_solution('sols/any.cpp', ExpectedOutcome.ANY).write_text('ANY')
+        'sols/ole.cpp', ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED
+    ).write_text('OLE\n')
     testing_pkg.save()
 
     packager = DomjudgePackager(testcase_entries=[])
     submissions_dir = tmp_path / 'submissions'
     packager._write_submissions(submissions_dir)  # noqa: SLF001
 
-    assert (submissions_dir / 'accepted' / 'ac.cpp').read_text() == 'AC'
-    assert (submissions_dir / 'wrong_answer' / 'wa.cpp').read_text() == 'WA'
-    assert (submissions_dir / 'time_limit_exceeded' / 'tle.cpp').read_text() == 'TLE'
-    assert (submissions_dir / 'run_time_error' / 'rte.cpp').read_text() == 'RTE'
-    # DOMjudge reports MLE as RTE by default.
-    assert (submissions_dir / 'run_time_error' / 'mle.cpp').read_text() == 'MLE'
-    # Ambiguous outcomes are not packaged.
-    assert not list(submissions_dir.rglob('any.cpp'))
+    # Single-verdict outcomes go to standard dirs with no source annotation.
+    assert (submissions_dir / 'accepted' / 'ac.cpp').read_text() == 'AC\n'
+    assert (submissions_dir / 'wrong_answer' / 'wa.cpp').read_text() == 'WA\n'
+    assert (submissions_dir / 'time_limit_exceeded' / 'tle.cpp').read_text() == 'TLE\n'
+    assert (submissions_dir / 'run_time_error' / 'rte.cpp').read_text() == 'RTE\n'
+    # OLE has a DOMjudge extension directory.
+    assert (submissions_dir / 'output_limit' / 'ole.cpp').read_text() == 'OLE\n'
+    assert not (submissions_dir / 'mixed').exists()
+
+
+def test_submissions_ambiguous_outcomes_use_mixed_dir_with_annotation(
+    testing_pkg, tmp_path
+):
+    # No solution should ever vanish: ambiguous/multi-verdict outcomes ship to
+    # `mixed/` carrying an @EXPECTED_RESULTS@ annotation.
+    testing_pkg.add_solution(
+        'sols/mle.cpp', ExpectedOutcome.MEMORY_LIMIT_EXCEEDED
+    ).write_text('MLE')
+    testing_pkg.add_solution(
+        'sols/actle.cpp', ExpectedOutcome.ACCEPTED_OR_TLE
+    ).write_text('ACTLE')
+    testing_pkg.add_solution('sols/tlrte.cpp', ExpectedOutcome.TLE_OR_RTE).write_text(
+        'TLRTE'
+    )
+    testing_pkg.add_solution('sols/bad.cpp', ExpectedOutcome.INCORRECT).write_text(
+        'BAD'
+    )
+    testing_pkg.add_solution('sols/any.cpp', ExpectedOutcome.ANY).write_text('ANY')
+    testing_pkg.add_solution('sols/any.py', ExpectedOutcome.ANY).write_text('print(1)')
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    submissions_dir = tmp_path / 'submissions'
+    packager._write_submissions(submissions_dir)  # noqa: SLF001
+
+    mixed = submissions_dir / 'mixed'
+    # MLE has no DOMjudge verdict; it surfaces as RTE (sometimes TLE).
+    assert (
+        mixed / 'mle.cpp'
+    ).read_text() == 'MLE\n// @EXPECTED_RESULTS@: RUN-ERROR, TIMELIMIT\n'
+    assert (
+        mixed / 'actle.cpp'
+    ).read_text() == 'ACTLE\n// @EXPECTED_RESULTS@: CORRECT, TIMELIMIT\n'
+    assert (
+        mixed / 'tlrte.cpp'
+    ).read_text() == 'TLRTE\n// @EXPECTED_RESULTS@: TIMELIMIT, RUN-ERROR\n'
+    assert (
+        '@EXPECTED_RESULTS@: WRONG-ANSWER, RUN-ERROR' in (mixed / 'bad.cpp').read_text()
+    )
+    # C++ uses // comments; Python uses #.
+    assert (mixed / 'any.cpp').read_text().startswith('ANY\n// @EXPECTED_RESULTS@:')
+    assert (mixed / 'any.py').read_text() == (
+        'print(1)\n# @EXPECTED_RESULTS@: '
+        'CORRECT, WRONG-ANSWER, TIMELIMIT, RUN-ERROR, OUTPUT-LIMIT, NO-OUTPUT\n'
+    )
 
 
 def test_submissions_basename_collision(testing_pkg, tmp_path):
