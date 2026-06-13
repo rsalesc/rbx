@@ -46,21 +46,26 @@ modifiers are not emitted; the time limit is written with exact fractional secon
 
 ## Checkers
 
-DOMjudge output validators follow the Kattis protocol, which is different from
-testlib's. {{rbx}} handles the translation automatically:
+{{rbx}} **always ships your problem's checker** as a custom output validator
+(`validation: custom`), so DOMjudge judges with exactly the same checker {{rbx}} uses
+locally — it never falls back to DOMjudge's built-in default validators. The checker
+is shipped under `output_validators/` together with a `testlib.h` patched to speak the
+DOMjudge validator protocol (exit codes 42/43, team output on stdin, feedback
+directory), since that protocol differs from testlib's. This applies to the builtin
+checkers (`wcmp`, `ncmp`, …) as well as your own.
 
-- When your problem uses one of the builtin checkers with a default-validator
-  equivalent (`wcmp`, `ncmp`, `yesno`, `dcmp`), no checker is shipped and DOMjudge's
-  built-in default validator is used (with `float_tolerance 1e-6` for `dcmp`).
-- Any other (custom, testlib) checker is shipped under `output_validators/`, along
-  with a `testlib.h` patched to speak the DOMjudge validator protocol (exit codes
-  42/43, team output on stdin, feedback directory). Custom checkers must be written
-  in C++.
+Checkers must be written in C++ (testlib).
 
 ## Jury solutions
 
-Solutions are placed under `submissions/` according to their expected outcome, and
-DOMjudge judges them when the problem is imported:
+Every solution is placed under `submissions/` so DOMjudge judges it on import. **No
+solution is dropped** — each one carries a faithful expected verdict. DOMjudge derives
+the expected verdict from the submission directory name when that name is a verdict
+(the directories below), and from an `@EXPECTED_RESULTS@` annotation that {{rbx}} adds
+to the source otherwise. Mismatches are surfaced on DOMjudge's jury *Judging verifier*
+page; they never block the import.
+
+Single-verdict outcomes go to the matching directory (no annotation needed):
 
 | rbx outcome             | DOMjudge directory      |
 | ----------------------- | ----------------------- |
@@ -68,9 +73,23 @@ DOMjudge judges them when the problem is imported:
 | `wrong answer`          | `wrong_answer`          |
 | `time limit exceeded`   | `time_limit_exceeded`   |
 | `runtime error`         | `run_time_error`        |
-| `memory limit exceeded` | `run_time_error` (*)    |
+| `output limit exceeded` | `output_limit`          |
 
-(*) DOMjudge reports memory limit violations as runtime errors by default.
+Outcomes that allow more than one verdict go to `submissions/mixed/` with an
+`@EXPECTED_RESULTS@` annotation listing every acceptable verdict:
 
-Solutions with ambiguous expected outcomes (e.g. `accepted or tle`) are not included
-in the package.
+| rbx outcome             | `@EXPECTED_RESULTS@` tokens                            |
+| ----------------------- | ------------------------------------------------------ |
+| `memory limit exceeded` | `RUN-ERROR, TIMELIMIT` (*)                             |
+| `accepted or tle`       | `CORRECT, TIMELIMIT`                                   |
+| `tle or rte`            | `TIMELIMIT, RUN-ERROR`                                 |
+| `incorrect`             | every non-`CORRECT` verdict                            |
+| `any`                   | every verdict                                          |
+
+(*) DOMjudge has no memory-limit verdict — an over-memory run surfaces as a runtime
+error (sometimes a time limit). This is the one outcome that can't be expressed
+exactly.
+
+!!! note
+    Solutions in `submissions/mixed/` trigger a harmless "result does not match
+    directory" message on import; this is expected and does not block anything.

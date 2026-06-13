@@ -1,41 +1,80 @@
 import math
 import pathlib
 import shutil
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 import typer
 import yaml
 
 from rbx import console
-from rbx.box import header, limits_info, naming, package
+from rbx.box import code, environment, header, limits_info, naming, package
 from rbx.box.formatting import href
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging import flattening
 from rbx.box.packaging.domjudge.testlib_patch import patch_testlib_for_domjudge
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
-from rbx.box.schema import ExpectedOutcome, TaskType
+from rbx.box.schema import ExpectedOutcome, Solution, TaskType
 from rbx.box.statements.schema import Statement
-from rbx.config import get_builtin_checker, get_testlib
+from rbx.config import get_testlib
+from rbx.grading.language_kind import LanguageKind
 
-# Builtin checkers that match the semantics of DOMjudge's default output
-# validator (possibly modulo flags). Anything else ships as a custom validator.
-_DEFAULT_VALIDATION_CHECKERS = {
-    'wcmp.cpp': None,
-    'ncmp.cpp': None,
-    'yesno.cpp': None,
-    'dcmp.cpp': 'float_tolerance 1e-6',
+# DOMjudge `@EXPECTED_RESULTS@` verdict tokens (canonical hyphenated spelling).
+# See SubmissionService::PROBLEM_RESULT_REMAP in DOMjudge.
+_DJ_CORRECT = 'CORRECT'
+_DJ_WRONG_ANSWER = 'WRONG-ANSWER'
+_DJ_TIMELIMIT = 'TIMELIMIT'
+_DJ_RUN_ERROR = 'RUN-ERROR'
+_DJ_NO_OUTPUT = 'NO-OUTPUT'
+_DJ_OUTPUT_LIMIT = 'OUTPUT-LIMIT'
+
+# Every rbx outcome maps to the set of DOMjudge verdict tokens that satisfy it,
+# so no solution is ever dropped from the package. DOMjudge has no memory-limit
+# verdict (an over-memory run surfaces as RTE, sometimes TLE), so MLE is the one
+# lossy mapping; everything else is exact. `ANY` lists every runtime verdict
+# (anything but a compile error is acceptable).
+_EXPECTED_RESULTS: Dict[ExpectedOutcome, List[str]] = {
+    ExpectedOutcome.ACCEPTED: [_DJ_CORRECT],
+    ExpectedOutcome.WRONG_ANSWER: [_DJ_WRONG_ANSWER],
+    ExpectedOutcome.TIME_LIMIT_EXCEEDED: [_DJ_TIMELIMIT],
+    ExpectedOutcome.RUNTIME_ERROR: [_DJ_RUN_ERROR],
+    ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED: [_DJ_OUTPUT_LIMIT],
+    ExpectedOutcome.MEMORY_LIMIT_EXCEEDED: [_DJ_RUN_ERROR, _DJ_TIMELIMIT],
+    ExpectedOutcome.ACCEPTED_OR_TLE: [_DJ_CORRECT, _DJ_TIMELIMIT],
+    ExpectedOutcome.TLE_OR_RTE: [_DJ_TIMELIMIT, _DJ_RUN_ERROR],
+    ExpectedOutcome.INCORRECT: [
+        _DJ_WRONG_ANSWER,
+        _DJ_RUN_ERROR,
+        _DJ_TIMELIMIT,
+        _DJ_OUTPUT_LIMIT,
+        _DJ_NO_OUTPUT,
+    ],
+    ExpectedOutcome.ANY: [
+        _DJ_CORRECT,
+        _DJ_WRONG_ANSWER,
+        _DJ_TIMELIMIT,
+        _DJ_RUN_ERROR,
+        _DJ_OUTPUT_LIMIT,
+        _DJ_NO_OUTPUT,
+    ],
 }
 
-# DOMjudge reports MLE as RTE by default, hence the MLE mapping.
-_SUBMISSION_DIRS = {
-    ExpectedOutcome.ACCEPTED: 'accepted',
-    ExpectedOutcome.WRONG_ANSWER: 'wrong_answer',
-    ExpectedOutcome.TIME_LIMIT_EXCEEDED: 'time_limit_exceeded',
-    ExpectedOutcome.RUNTIME_ERROR: 'run_time_error',
-    ExpectedOutcome.MEMORY_LIMIT_EXCEEDED: 'run_time_error',
+# Single-verdict tokens that have a dedicated DOMjudge submission directory.
+# DOMjudge derives the expected verdict from the directory name, so dropping a
+# solution here needs no source annotation (and avoids a spurious import
+# warning). `output_limit` is a DOMjudge extension over the 4 ICPC-spec dirs.
+_STANDARD_DIRS: Dict[str, str] = {
+    _DJ_CORRECT: 'accepted',
+    _DJ_WRONG_ANSWER: 'wrong_answer',
+    _DJ_TIMELIMIT: 'time_limit_exceeded',
+    _DJ_RUN_ERROR: 'run_time_error',
+    _DJ_OUTPUT_LIMIT: 'output_limit',
 }
 
-_CPP_SUFFIXES = {'.cpp', '.cc', '.cxx', '.c++'}
+# Solutions whose expectation needs more than one verdict go here with an
+# `@EXPECTED_RESULTS@` annotation. The directory name is deliberately NOT a
+# verdict token: DOMjudge keeps the annotation verbatim (multiple acceptable
+# verdicts) instead of collapsing it to the directory's single verdict.
+_MIXED_DIR = 'mixed'
 
 
 def _fmt_seconds(ms: int) -> str:
@@ -117,46 +156,29 @@ class DomjudgePackager(BasePackager):
             lines.append(f'color = {color}')
         return '\n'.join(lines) + '\n'
 
-    def _resolve_validation(self) -> Tuple[str, Optional[str]]:
-        """Return (validation, validator_flags) for problem.yaml.
-
-        Maps to DOMjudge's default output validator only when the checker
-        resolves to one of rbx's bundled builtins; a same-named file inside the
-        package may have been edited by the user and ships as custom.
-        """
-        checker = package.get_checker_or_builtin()
-        checker_name = checker.path.name
-        if checker_name in _DEFAULT_VALIDATION_CHECKERS:
-            builtin_path = get_builtin_checker(checker_name)
-            if (
-                builtin_path.is_file()
-                and checker.path.is_file()
-                and checker.path.samefile(builtin_path)
-            ):
-                return 'default', _DEFAULT_VALIDATION_CHECKERS[checker_name]
-        return 'custom', None
-
     def _get_problem_yaml(self) -> str:
+        # The rbx checker is always shipped as a custom output validator (below),
+        # so DOMjudge judges with exactly the same checker rbx uses locally
+        # instead of approximating it with DOMjudge's default validator.
         pkg = package.find_problem_package_or_die()
         limits = limits_info.get_limits(profile=self.name())
         assert limits.memory is not None
         output_kb = limits.output if limits.output is not None else pkg.outputLimit
 
-        validation, validator_flags = self._resolve_validation()
         data = {
             'limits': {
                 'memory': limits.memory,
                 'output': math.ceil(output_kb / 1024),
             },
-            'validation': validation,
+            'validation': 'custom',
         }
-        if validator_flags is not None:
-            data['validator_flags'] = validator_flags
         return yaml.safe_dump(data, default_flow_style=False)
 
     def _write_output_validators(self, into_path: pathlib.Path):
         checker = package.get_checker_or_builtin()
-        if checker.path.suffix.lower() not in _CPP_SUFFIXES:
+        if LanguageKind.CPP not in environment.language_kinds(
+            code.find_language(checker)
+        ):
             console.console.print(
                 f'[error]DOMjudge packaging requires a C++ (testlib) checker, '
                 f'but found {href(checker.path)}.[/error]'
@@ -193,24 +215,47 @@ class DomjudgePackager(BasePackager):
             else:
                 (dest_path / f'{index:03d}.ans').touch()
 
+    def _expected_results(self, solution: Solution) -> List[str]:
+        return _EXPECTED_RESULTS.get(
+            solution.outcome, _EXPECTED_RESULTS[ExpectedOutcome.ANY]
+        )
+
+    def _comment_prefix(self, solution: Solution) -> str:
+        kinds = environment.language_kinds(code.find_language(solution))
+        return '#' if LanguageKind.PYTHON in kinds else '//'
+
     def _write_submissions(self, into_path: pathlib.Path):
+        # DOMjudge auto-judges these on import and surfaces any verdict mismatch
+        # on the jury "Judging verifier" page, so every rbx solution ships with a
+        # faithful expectation. Single-verdict outcomes use the matching standard
+        # directory; the rest go to `mixed/` with an `@EXPECTED_RESULTS@`
+        # annotation listing every acceptable verdict.
         used_names: Set[str] = set()
         for solution in package.get_solutions():
-            dirname = _SUBMISSION_DIRS.get(solution.outcome)
-            if dirname is None:
-                console.console.print(
-                    f'Skipping solution {href(solution.path)}: outcome '
-                    f'[item]{solution.outcome.name}[/item] has no DOMjudge '
-                    'submissions directory.'
-                )
-                continue
+            tokens = self._expected_results(solution)
+            standard_dir = _STANDARD_DIRS.get(tokens[0]) if len(tokens) == 1 else None
+
             name = solution.path.name
             if name in used_names:
                 name = '__'.join(solution.path.parts)
             used_names.add(name)
-            dest_path = into_path / dirname / name
+
+            if standard_dir is not None:
+                dest_path = into_path / standard_dir / name
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(solution.path), dest_path)
+                continue
+
+            dest_path = into_path / _MIXED_DIR / name
             dest_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(str(solution.path), dest_path)
+            source = solution.path.read_text()
+            if source and not source.endswith('\n'):
+                source += '\n'
+            annotation = (
+                f'{self._comment_prefix(solution)} '
+                f'@EXPECTED_RESULTS@: {", ".join(tokens)}\n'
+            )
+            dest_path.write_text(source + annotation)
 
     def package(
         self,
@@ -229,9 +274,8 @@ class DomjudgePackager(BasePackager):
 
         self._write_testcases(into_path / 'data')
 
-        validation, _ = self._resolve_validation()
-        if validation == 'custom':
-            self._write_output_validators(into_path / 'output_validators')
+        # The rbx checker is always shipped as a custom output validator.
+        self._write_output_validators(into_path / 'output_validators')
 
         self._write_submissions(into_path / 'submissions')
 
