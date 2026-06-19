@@ -48,10 +48,10 @@ class TestProblemStatement:
         assert st.params == {'show_limits': True}
 
     def test_rejects_removed_fields(self):
-        # name/assets/steps/configure/inheritFromContest/vars are gone (extra forbid).
+        # name/steps/configure/inheritFromContest/vars are gone (extra forbid).
+        # `assets` was reintroduced as a real field (#595).
         for bad in (
             'name',
-            'assets',
             'steps',
             'configure',
             'inheritFromContest',
@@ -68,7 +68,6 @@ class TestProblemStatement:
 def _sample_for(field: str):
     return {
         'name': 'main-en',
-        'assets': ['imgs/*.png'],
         'steps': [],
         'configure': [],
         'inheritFromContest': True,

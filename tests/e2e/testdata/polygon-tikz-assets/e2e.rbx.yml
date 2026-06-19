@@ -31,7 +31,10 @@ scenarios:
                 legend_contains:
                   - "\\includegraphics{artifacts__tikz_figures__legend_0.pdf}"
                   - "\\includegraphics{img__diagram.png}"
-                  - "\\includegraphics{pic}"
+                  # #595: the uniform remap now rewrites a root-level reference to
+                  # its flat name (was \includegraphics{pic}, relying on Polygon
+                  # resolving the bare stem).
+                  - "\\includegraphics{pic.png}"
                 notes_contains:
                   - "Explanation for example 1"
                   - "\\includegraphics{figs__expl.png}"
@@ -47,6 +50,9 @@ scenarios:
               # BUG: the explanation TikZ was never externalized to a PDF.
               - "artifacts__tikz_figures__0_0.pdf"
               - "artifacts/tikz_figures/0_0.pdf"
+              # #595: sample I/O sources are no longer shipped as statement
+              # resources (audit finding #5).
+              - "samples__000.in"
 
   - name: polygon-upload-assets-referential-integrity
     markers: [pdflatex]

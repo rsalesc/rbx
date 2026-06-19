@@ -28,7 +28,10 @@ with `\subimport`. There is **no migration** from v1.
 - **`StatementType`** (AutoEnum): `rbxTeX` (default), `rbxMarkdown`, `TeX`,
   `Markdown`, `JinjaTeX`, `JinjaMarkdown`, `PDF`. `is_rbx()` → the joinable types.
 - **`BaseStatement`** — shared fields: `language`, `variant`, `title`, `file`,
-  `type`, `params` (own namespace), `samples`. `expanded_params` expands `params`.
+  `type`, `params` (own namespace), `samples`, `assets`. `expanded_params`
+  expands `params`. `assets` (#595) is a list of package-root globs naming extra
+  statement resources (images/PDFs) to upload; inherited via `extends` (child
+  replaces parent), consumed only by the Polygon upload path so far.
 - **`Statement`** (problem) — no `name`; identified by `(language, variant)`
   (unique within a problem). `extends` by language string or `{language, variant}`.
 - **`ContestStatement`** (contest) — adds `name` (unique), `location`, `date`,
@@ -38,8 +41,8 @@ with `\subimport`. There is **no migration** from v1.
   to `DOCUMENT_TYPES` (jinja/static).
 
 `expander.py` resolves `extends` via an **allowlist merge** (only the build recipe
-— `type`/`file`/`params` + contest templates — never identity); topo sort with
-cycle/dangling errors. Problem: `Package.expanded_statements`/`expanded_tutorials`;
+— `type`/`file`/`assets`/`params` + contest templates — never identity); topo sort
+with cycle/dangling errors. Problem: `Package.expanded_statements`/`expanded_tutorials`;
 contest: `Contest.expanded_statements`/`expanded_tutorials`/`expanded_documents`.
 
 ## v2 engine modules
