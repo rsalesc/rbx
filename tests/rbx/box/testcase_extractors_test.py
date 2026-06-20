@@ -289,6 +289,41 @@ class TestRunTestcaseVisitor:
         assert [e.metadata.generator_call.args for e in sub2] == ['a', 'b']
         assert all(e.metadata.generator_script is not None for e in sub2)
 
+    async def test_shared_script_routes_distinct_testcases_to_subgroups(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A shared problem-level script routes path-qualified lines to the
+        matching subgroup only; untagged lines still flow to every subgroup."""
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        plan_path = testing_pkg.add_testplan('shared')
+        plan_path.write_text(
+            'gen1 shared\n'
+            '@testgroup main/sub1 {\n  gen1 s1\n}\n'
+            '@testgroup main/sub2 {\n  gen1 s2\n}\n'
+        )
+        testing_pkg.yml.generatorScript = GeneratorScript(path=plan_path)
+        testing_pkg.add_testgroup_with_subgroups(
+            'main', [{'name': 'sub1'}, {'name': 'sub2'}]
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        sub1 = [e for e in visited_entries if e.subgroup_entry.group == 'main/sub1']
+        sub2 = [e for e in visited_entries if e.subgroup_entry.group == 'main/sub2']
+
+        # Untagged line reaches both (back-compat); path line reaches one only.
+        assert [e.metadata.generator_call.args for e in sub1] == ['shared', 's1']
+        assert [e.metadata.generator_call.args for e in sub2] == ['shared', 's2']
+        # No sibling cross-contamination.
+        assert all(e.metadata.generator_call.args != 's2' for e in sub1)
+        assert all(e.metadata.generator_call.args != 's1' for e in sub2)
+
     async def test_empty_group_without_problem_level_generator_script_is_silent(
         self, testing_pkg: testing_package.TestingPackage
     ):

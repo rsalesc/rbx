@@ -302,9 +302,11 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                 effective_generator_script, subgroup.name
             )
 
-            # Run each line from generator script.
+            # Run each line from generator script. Pass the FULL subgroup path
+            # (e.g. `main/sub1`) so path-qualified @testgroup lines route to the
+            # matching subgroup; at the group level this equals `group_path`.
             for generation_input in _extract_script_lines(
-                script, effective_generator_script, group_path
+                script, effective_generator_script, subgroup_path
             ):
                 if generation_input.copied_from is not None:
                     metadata = GenerationMetadata(
