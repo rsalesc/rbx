@@ -12,9 +12,23 @@ from rbx.box.schema import GeneratorCall, GeneratorScript, Testcase
 from rbx.box.stressing import generator_script_parser
 
 
+def _group_matches(annotation: Optional[str], key: str) -> bool:
+    """Whether a line's @testgroup ``annotation`` applies to run-key ``key``.
+
+    Untagged lines (``None``) always match. Otherwise the annotation must equal
+    the key or be a path-prefix of it, so a parent-group tag flows into its
+    subgroups while a sibling subgroup's tag does not. ``key`` is the full
+    ``group`` or ``group/subgroup`` path the script is being run for.
+    """
+    if annotation is None:
+        return True
+    return key == annotation or key.startswith(annotation + '/')
+
+
 @dataclasses.dataclass
 class GeneratorScriptHandlerParams:
     script_entry: GeneratorScript
+    # Full ``group`` or ``group/subgroup`` path used as the filter key.
     group: Optional[str] = None
 
 
@@ -58,9 +72,7 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
             self.script, self.script_entry.path
         )
         if self.group is not None:
-            inputs = [
-                inp for inp in inputs if inp.group is None or inp.group == self.group
-            ]
+            inputs = [inp for inp in inputs if _group_matches(inp.group, self.group)]
         yield from inputs
 
     def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
