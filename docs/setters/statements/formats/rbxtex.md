@@ -167,9 +167,9 @@ the same sample):
     statement template must `\subimport` that explanation — the figure is only
     uploaded when the template actually renders it. The bundled default (and
     fallback) preset already subimports every explanation, so it works out of the
-    box. If you use a **custom** standalone template that omits the explanation
-    subimport, the figure won't be uploaded and the explanation will show a broken
-    image on Polygon.
+    box. If you use a **custom** template that omits the explanation subimport,
+    the figure won't be uploaded and the explanation will show a broken image on
+    Polygon.
 
 ## Example
 
