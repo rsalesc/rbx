@@ -97,7 +97,10 @@ def render_jinja_blocks(
         if match := pattern.match(key):
             explanation_keys.append((key, int(match.group(1))))
 
-    explanations = {value: result[key] for key, value in explanation_keys}
+    # Split per-sample explanations into the int-keyed `explanations` map and
+    # remove them from the named `blocks` so they are not double-labeled on
+    # externalize (the upload only reads `.explanations`).
+    explanations = {value: result.pop(key) for key, value in explanation_keys}
     return StatementBlocks(blocks=result, explanations=explanations)
 
 

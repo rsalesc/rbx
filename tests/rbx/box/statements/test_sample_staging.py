@@ -155,6 +155,53 @@ class TestExplanations:
         assert (root / '.samples' / '000' / 'explanation.tex').is_file()
         assert handles[0].explanation_file == 'explanation'
 
+    def test_extra_explanation_overrides_file_text_and_still_mirrors_dir(
+        self, tmp_path
+    ):
+        # A separate-file explanation: the staged text comes from
+        # `extra_explanations` (the engine's externalized copy), but the source
+        # directory is STILL mirrored so the explanation's own figures resolve.
+        src = tmp_path / 'src'
+        _write(src / '000.in')
+        _write(src / '000.tex', 'raw \\includegraphics{diagram}')
+        _write(src / 'diagram.png', 'PNG')
+        source = SampleSource(
+            input_path=src / '000.in',
+            explanation_path=src / '000.tex',
+        )
+
+        root = tmp_path / 'overlay'
+        root.mkdir()
+        handles = sample_staging.stage_samples(
+            problem_root=root,
+            root_prefix='',
+            sources=[source],
+            extra_explanations={0: 'labeled \\tikzsetnextfilename{0_0} text'},
+        )
+
+        explanation = root / '.samples' / '000' / 'explanation.tex'
+        assert explanation.read_text() == 'labeled \\tikzsetnextfilename{0_0} text'
+        # The source dir was still mirrored for the explanation's figures.
+        assert (root / '.samples' / '000' / 'diagram.png').read_text() == 'PNG'
+        assert handles[0].explanation_file == 'explanation'
+
+    def test_inline_block_still_wins_over_extra_explanation(self, tmp_path):
+        # An inline explanation_<i> block takes precedence over extra_explanations.
+        src = tmp_path / 'src'
+        _write(src / '000.in')
+        source = SampleSource(input_path=src / '000.in')
+
+        root = tmp_path / 'overlay'
+        root.mkdir()
+        sample_staging.stage_samples(
+            problem_root=root,
+            root_prefix='',
+            sources=[source],
+            explanation_blocks={0: 'INLINE'},
+            extra_explanations={0: 'EXTRA'},
+        )
+        assert (root / '.samples' / '000' / 'explanation.tex').read_text() == 'INLINE'
+
     def test_inline_block_takes_precedence_over_file(self, tmp_path):
         src = tmp_path / 'src'
         _write(src / '000.in')

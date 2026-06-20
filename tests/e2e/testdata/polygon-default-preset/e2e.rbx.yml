@@ -17,7 +17,7 @@ scenarios:
     description: >
       The default preset's problem runs a FULL `package polygon -u` (every upload
       category: files, solutions, tests/generators, statement) end-to-end against
-      the recording Polygon fake. This guards two regressions at once:
+      the recording Polygon fake. This guards three regressions at once:
 
       #589 finding #1 -- building the standalone statement overlay used to merge
       the contest chrome (statements/) with the problem's statement dir
@@ -33,6 +33,12 @@ scenarios:
       `asyncio.run()` from inside the upload event loop. Fixed by extracting the
       testcase entries once on the async path and threading them down. Before the
       fix the command exited 1 here and never printed "uploaded successfully".
+
+      #590 -- the separate-file sample explanation contains TikZ; the standalone
+      template subimports it so the figure externalizes to the `0_0` label the
+      uploaded notes reference (resources_present + resources_referenced_consistent
+      assert it resolves). Before the fix the figure was staged unlabeled and
+      produced under an auto-name, leaving a dangling reference.
     steps:
       - cmd: package polygon -u --upload-as-english
         cwd: A
@@ -43,3 +49,9 @@ scenarios:
               english:
                 legend_contains: ["A", "B"]
                 notes_contains: "In the first sample"
+            resources_present:
+              # #590: the separate-file sample explanation contains TikZ, so the
+              # standalone template subimports it and externalizes the figure to
+              # the 0_0 label the uploaded notes reference.
+              - "artifacts__tikz_figures__0_0.pdf"
+            resources_referenced_consistent: true

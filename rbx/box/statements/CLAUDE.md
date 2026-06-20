@@ -158,6 +158,20 @@ consumes the v2 overlay directly. The standalone overlay root
   and converts to Polygon TeX (`polygon_utils.py`). No per-builder subdirs, no
   absolute/temp paths.
 
+**Template contract (#590):** TikZ externalization depends on the statement
+template. A block's or explanation's TikZ (or static image) is uploaded to
+Polygon only if the template renders/`\subimport`s it. Body blocks
+(legend/input/output/interaction/notes) render directly into the body, so their
+figures always externalize; sample explanations externalize only when the
+template `\subimport`s them. The bundled default/fallback preset
+(`_problem-body.rbx.tex`) renders all blocks and subimports every explanation, so
+default and contest-less-fallback uploads are referentially complete. Custom
+standalone templates that omit an explanation subimport ship a dangling reference
+by design — there is no runtime guard. Both separate-file
+(`samples/<idx>.rbx.tex`) and inline (`explanation_<i>`) explanations are staged
+carrying their `i_0` externalization label, so either source produces the figure
+the upload references.
+
 The **offline** Polygon packager (embedding PDFs in `problem.zip` /
 `contest.zip`) is a separate follow-up (#583).
 

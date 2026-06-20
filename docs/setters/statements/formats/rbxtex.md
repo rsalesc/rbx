@@ -161,6 +161,16 @@ the same sample):
     file has no block for the statement's language, no explanation is shown for
     that sample in that language (and {{rbx}} warns you).
 
+!!! note "Sample-explanation figures on {{polygon}}"
+    If a sample explanation contains a figure (TikZ or an image) and you want it
+    to show up when uploading to {{polygon}} (`rbx package polygon -u`), your
+    statement template must `\subimport` that explanation — the figure is only
+    uploaded when the template actually renders it. The bundled default (and
+    fallback) preset already subimports every explanation, so it works out of the
+    box. If you use a **custom** template that omits the explanation subimport,
+    the figure won't be uploaded and the explanation will show a broken image on
+    Polygon.
+
 ## Example
 
 Here is a barebones example of a problem statement written in rbxTeX.
