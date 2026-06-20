@@ -85,13 +85,7 @@ def pytest_collect_file(parent, file_path):
 # (non-strict) so the suite stays green while documenting a known bug, and flips
 # to xpass the moment the bug is fixed. Keyed by scenario name. See
 # docs/plans/2026-06-10-polygon-statement-upload-audit.md.
-_XFAIL_SCENARIOS = {
-    'polygon-upload-assets-referential-integrity': (
-        'sample-explanation TikZ is not externalized/uploaded; the notes '
-        'reference a non-existent artifacts/tikz_figures/0_0 PDF (#586 audit, '
-        'tracked by #590).'
-    ),
-}
+_XFAIL_SCENARIOS = {}
 
 
 def pytest_collection_modifyitems(config, items):

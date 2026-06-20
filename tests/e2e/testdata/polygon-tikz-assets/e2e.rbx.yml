@@ -5,12 +5,12 @@ scenarios:
       Grills the Polygon upload of statement assets: a TikZ picture and two
       static images (root-level + nested) in the legend, plus a sample
       explanation (inline explanation_0 block) that itself contains a TikZ
-      picture and a nested image. Encodes the CURRENT behavior (so the suite is
-      green and documents reality): the legend TikZ is externalized and
-      uploaded; both legend images upload (subdir remapped to __, root kept
-      as-is); the explanation merges into notes and its image is remapped and
-      uploaded -- BUT the explanation's TikZ is NOT externalized (notes reference
-      an artifacts/tikz_figures/0_0 PDF that is never produced or uploaded). See
+      picture and a nested image. The legend TikZ is externalized and uploaded;
+      both legend images upload (subdir remapped to __, root kept as-is); the
+      explanation merges into notes and its image is remapped and uploaded. The
+      template now subimports the explanation, so its TikZ externalizes to
+      artifacts__tikz_figures__0_0.pdf, which is uploaded and referenced
+      consistently from the notes. See
       docs/plans/2026-06-10-polygon-statement-upload-audit.md.
     steps:
       - cmd: build
@@ -38,18 +38,16 @@ scenarios:
                 notes_contains:
                   - "Explanation for example 1"
                   - "\\includegraphics{figs__expl.png}"
-                  # BUG: the explanation TikZ references a PDF that is never
-                  # produced or uploaded (it is not externalized).
-                  - "\\includegraphics{artifacts/tikz_figures/0_0}"
+                  # The template now subimports the explanation, so its TikZ is
+                  # externalized and the notes reference the uploaded PDF.
+                  - "\\includegraphics{artifacts__tikz_figures__0_0.pdf}"
             resources_present:
               - "artifacts__tikz_figures__legend_0.pdf"
               - "img__diagram.png"
               - "pic.png"
               - "figs__expl.png"
-            resources_absent:
-              # BUG: the explanation TikZ was never externalized to a PDF.
               - "artifacts__tikz_figures__0_0.pdf"
-              - "artifacts/tikz_figures/0_0.pdf"
+            resources_absent:
               # #595: sample I/O sources are no longer shipped as statement
               # resources (audit finding #5).
               - "samples__000.in"

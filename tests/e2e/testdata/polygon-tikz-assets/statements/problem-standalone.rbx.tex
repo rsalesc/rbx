@@ -24,6 +24,9 @@
   \subsection*{Examples}
   %- for sample in problem.samples
     \example{\VAR{sample.input}}{\VAR{sample.output if sample.output is not none else ''}}
+    %- if sample.explanation_file is not none
+      \subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}
+    %- endif
   %- endfor
 %- endif
 
