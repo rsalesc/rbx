@@ -1,0 +1,29 @@
+scenarios:
+  - name: partition
+    description: >
+      A problem-level generatorScript inherited by an empty group (alpha) and
+      by the subgroups (one, two) of a group with subgroups (beta). The
+      untagged line flows to every group/subgroup (back-compat); path-qualified
+      @testgroup lines route to exactly one subgroup, so siblings never
+      duplicate. With the bug (#600) both subgroups would have received the same
+      filtered lines; here `one` gets `21 21` and `two` gets `22 22`, and each
+      subgroup holds exactly two inputs.
+    steps:
+      - cmd: build
+        expect:
+          tests:
+            count: 6
+            groups:
+              alpha: 2
+              beta: 4
+            exist:
+              - alpha/000.in
+              - alpha/001.in
+              - beta/1-one-000.in
+              - beta/1-one-001.in
+              - beta/2-two-000.in
+              - beta/2-two-001.in
+          file_contains:
+            "build/tests/alpha/001.in": "11 11"
+            "build/tests/beta/1-one-001.in": "21 21"
+            "build/tests/beta/2-two-001.in": "22 22"
