@@ -946,6 +946,18 @@ A list of output validators to use to validate the output of the testcases of th
         default=[], description='Generators for this problem.'
     )
 
+    generatorScript: Optional[GeneratorScript] = Field(
+        default=None,
+        description="""
+A generator script used as the default for any test group or subgroup that does
+not specify its own test parameters (testcases, testcaseGlob, generators,
+generatorScript) and has no subgroups of its own.
+
+Useful when a single script -- usually partitioned with `@testgroup` blocks --
+drives generation for every group, so it does not need to be repeated on each one.
+""",
+    )
+
     solutions: List[Solution] = Field(
         default=[],
         description="""

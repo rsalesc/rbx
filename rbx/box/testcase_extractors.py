@@ -47,43 +47,37 @@ def _get_group_output(
     return group_path / f'{subgroup_prefix}{i:03d}.out'
 
 
-async def run_generator_script(testcase: TestcaseSubgroup) -> str:
-    assert testcase.generatorScript is not None
-
+async def run_generator_script(script_entry: GeneratorScript, name: str) -> str:
     cacher = package.get_file_cacher()
 
-    if not testcase.generatorScript.path.is_file():
+    if not script_entry.path.is_file():
         console.console.print(
-            f'[error]Generator script not found: [item]{testcase.generatorScript.href()}[/item][/error]'
+            f'[error]Generator script not found: [item]{script_entry.href()}[/item][/error]'
         )
         raise typer.Exit(1)
 
     script_digest = DigestHolder()
-    if testcase.generatorScript.path.suffix == '.txt':
-        script_digest.value = await cacher.put_file_from_path(
-            testcase.generatorScript.path
-        )
+    if script_entry.path.suffix == '.txt':
+        script_digest.value = await cacher.put_file_from_path(script_entry.path)
     else:
         try:
-            compiled_digest = await compile_item(testcase.generatorScript)
+            compiled_digest = await compile_item(script_entry)
         except:
             console.console.print(
-                f'[error]Failed compiling generator script for group [item]{testcase.name}[/item].[/error]'
+                f'[error]Failed compiling generator script for group [item]{name}[/item].[/error]'
             )
             raise
 
         run_stderr = DigestHolder()
         run_log = await run_item(
-            testcase.generatorScript,
+            script_entry,
             DigestOrSource.create(compiled_digest),
             stdout=DigestOrDest.create(script_digest),
             stderr=DigestOrDest.create(run_stderr),
         )
 
         if run_log is None or run_log.exitcode != 0:
-            console.console.print(
-                f'Could not run generator script for group {testcase.name}'
-            )
+            console.console.print(f'Could not run generator script for group {name}')
             if run_log is not None:
                 console.console.print(
                     f'[error]Summary:[/error] {run_log.get_summary()}'
@@ -291,13 +285,26 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         if not visitor.should_visit_generator_scripts(group_path, subgroup_path):
             return
 
+        # A group or subgroup that does not define any test parameters of its own
+        # (and has no subgroups) inherits the problem-level generatorScript, if set.
+        effective_generator_script = subgroup.generatorScript
+        if effective_generator_script is None and not (
+            subgroup.testcases
+            or subgroup.testcaseGlob
+            or subgroup.generators
+            or getattr(subgroup, 'subgroups', None)
+        ):
+            effective_generator_script = pkg.generatorScript
+
         # Run generator script.
-        if subgroup.generatorScript is not None:
-            script = await run_generator_script(subgroup)
+        if effective_generator_script is not None:
+            script = await run_generator_script(
+                effective_generator_script, subgroup.name
+            )
 
             # Run each line from generator script.
             for generation_input in _extract_script_lines(
-                script, subgroup.generatorScript, group_path
+                script, effective_generator_script, group_path
             ):
                 if generation_input.copied_from is not None:
                     metadata = GenerationMetadata(
@@ -311,7 +318,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     call = GeneratorCall(
                         name=_resolve_generator_name(
                             generation_input.generator_call.name,
-                            subgroup.generatorScript,
+                            effective_generator_script,
                         ),
                         args=generation_input.generator_call.args,
                     )
