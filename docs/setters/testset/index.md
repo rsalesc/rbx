@@ -209,6 +209,28 @@ random 5
 }
 ```
 
+##### A shared, problem-level generator script
+
+When a single testplan -- usually partitioned with `@testgroup` blocks like above --
+drives generation for every group, you don't have to repeat the `generatorScript` field on
+each one. Set it once at the **problem level**, and any test group (or subgroup) that does
+not define its own test parameters (`testcases`, `testcaseGlob`, `generators`,
+`generatorScript`) and has no subgroups of its own will inherit it as a default.
+
+```yaml
+# problem.rbx.yml
+generatorScript:
+  path: "testplan/main.txt"
+
+testcases:
+  - name: "subtask1"   # inherits the problem-level generatorScript
+  - name: "subtask2"   # inherits the problem-level generatorScript
+  - name: "manual"
+    testcaseGlob: "tests/*.in"   # has its own parameters, so it does NOT inherit
+```
+
+A group that sets any of its own test parameters always overrides the default.
+
 ### What about the outputs?
 
 Until now, we've just generated the inputs of our testcases. What about the outputs? Where they come from?

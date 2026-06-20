@@ -8,7 +8,11 @@ from rbx.box.generation_schema import (
     GeneratorScriptEntry,
     TestcaseOrScriptEntry,
 )
-from rbx.box.schema import CodeItem, GeneratorScript, TestcaseGroup
+from rbx.box.schema import (
+    CodeItem,
+    GeneratorScript,
+    TestcaseGroup,
+)
 from rbx.box.testcase_extractors import (
     TestcaseGroupVisitor,
     TestcaseVisitor,
@@ -189,6 +193,120 @@ class TestRunTestcaseVisitor:
         assert visited_entries[1].metadata.generator_call.args == '456'
         assert visited_entries[0].metadata.generator_script is not None
         assert visited_entries[1].metadata.generator_script is not None
+
+    async def test_group_inherits_problem_level_generator_script(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A group with no test parameters inherits the problem-level generatorScript."""
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        plan_path = testing_pkg.add_testplan('shared')
+        plan_path.write_text('gen1 123\ngen1 456')
+        testing_pkg.yml.generatorScript = GeneratorScript(path=plan_path)
+        testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+            TestcaseGroup(name='inherits')
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        assert len(visited_entries) == 2
+        assert all(e.group_entry.group == 'inherits' for e in visited_entries)
+        assert visited_entries[0].metadata.generator_call.name == 'gen1'
+        assert visited_entries[0].metadata.generator_call.args == '123'
+        assert visited_entries[1].metadata.generator_call.args == '456'
+        assert visited_entries[0].metadata.generator_script is not None
+
+    async def test_group_with_own_params_overrides_problem_level_generator_script(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A group with its own test parameters ignores the problem-level default."""
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        plan_path = testing_pkg.add_testplan('shared')
+        plan_path.write_text('gen1 111\ngen1 222\ngen1 333')
+        testing_pkg.yml.generatorScript = GeneratorScript(path=plan_path)
+        testing_pkg.save()
+
+        testing_pkg.add_testgroup_with_generators(
+            'own', [{'name': 'gen1', 'args': 'explicit'}]
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        assert len(visited_entries) == 1
+        assert visited_entries[0].metadata.generator_call.args == 'explicit'
+        assert visited_entries[0].metadata.generator_script is None
+
+    async def test_subgroup_inherits_problem_level_generator_script(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """An empty subgroup inherits the default; a group with subgroups does not.
+
+        The parent group itself has subgroups, so it does not generate from the
+        inherited script at its own root (which would duplicate its subgroups).
+        The empty subgroup inherits, while the subgroup with its own generator does not.
+        """
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        plan_path = testing_pkg.add_testplan('shared')
+        plan_path.write_text('gen1 a\ngen1 b')
+        testing_pkg.yml.generatorScript = GeneratorScript(path=plan_path)
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {'name': 'sub1', 'generators': [{'name': 'gen1', 'args': 'own'}]},
+                {'name': 'sub2'},
+            ],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        sub1 = [e for e in visited_entries if e.subgroup_entry.group == 'main/sub1']
+        sub2 = [e for e in visited_entries if e.subgroup_entry.group == 'main/sub2']
+
+        assert len(visited_entries) == 3
+        assert len(sub1) == 1
+        assert sub1[0].metadata.generator_call.args == 'own'
+        assert sub1[0].metadata.generator_script is None
+
+        assert len(sub2) == 2
+        assert [e.metadata.generator_call.args for e in sub2] == ['a', 'b']
+        assert all(e.metadata.generator_script is not None for e in sub2)
+
+    async def test_empty_group_without_problem_level_generator_script_is_silent(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Without a problem-level default, an empty group produces no testcases."""
+        testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+            TestcaseGroup(name='empty')
+        ]
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        assert len(visited_entries) == 0
 
     async def test_run_testcase_visitor_with_subgroups(
         self, testing_pkg: testing_package.TestingPackage
