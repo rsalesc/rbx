@@ -43,3 +43,9 @@ scenarios:
               english:
                 legend_contains: ["A", "B"]
                 notes_contains: "In the first sample"
+            resources_present:
+              # #590: the separate-file sample explanation contains TikZ, so the
+              # standalone template subimports it and externalizes the figure to
+              # the 0_0 label the uploaded notes reference.
+              - "artifacts__tikz_figures__0_0.pdf"
+            resources_referenced_consistent: true
