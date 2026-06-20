@@ -207,6 +207,12 @@ def render_problem_tex(
             root_prefix,
             sources,
             explanation_blocks=latex_explanations,
+            # Only on the externalize path do we feed the already-externalized
+            # separate-file explanations through staging, so the staged figure
+            # carries the same label the Polygon upload references. The normal
+            # PDF build (externalize=False) keeps resolving these from disk and
+            # stays byte-identical.
+            extra_explanations=file_latex_explanations if externalize else None,
             render_text=render_text,
             render_blocks=render_blocks,
             lang=lang,
