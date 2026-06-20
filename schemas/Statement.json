@@ -1,0 +1,144 @@
+{
+    "$defs": {
+        "RecVars": {
+            "additionalProperties": {
+                "anyOf": [
+                    {
+                        "type": "integer"
+                    },
+                    {
+                        "type": "number"
+                    },
+                    {
+                        "type": "boolean"
+                    },
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "$ref": "#/$defs/RecVars"
+                    }
+                ]
+            },
+            "type": "object"
+        },
+        "StatementType": {
+            "enum": [
+                "rbxTeX",
+                "rbxMarkdown",
+                "TeX",
+                "Markdown",
+                "JinjaTeX",
+                "JinjaMarkdown",
+                "PDF"
+            ],
+            "title": "StatementType",
+            "type": "string"
+        },
+        "StatementVariantRef": {
+            "additionalProperties": false,
+            "description": "A problem-statement `extends` target referenced by (language, variant).\n\nA bare string `extends: en` is shorthand for `{language: en}` with the\ndefault variant (design \u00a75).",
+            "properties": {
+                "language": {
+                    "title": "Language",
+                    "type": "string"
+                },
+                "variant": {
+                    "default": "default",
+                    "title": "Variant",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "language"
+            ],
+            "title": "StatementVariantRef",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "description": "A problem-level statement. Identified by (language, variant) \u2014 it has no\n`name` (design \u00a73.1).",
+    "properties": {
+        "language": {
+            "default": "en",
+            "description": "Language code of this statement (ISO 639-1).",
+            "title": "Language",
+            "type": "string"
+        },
+        "variant": {
+            "default": "default",
+            "description": "Optional discriminator between formats of the same language. Together with `language` it forms the join key with contest statements.",
+            "title": "Variant",
+            "type": "string"
+        },
+        "title": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Title as it appears in the statement. Can be left unset to fall back to the package/contest title.",
+            "title": "Title"
+        },
+        "file": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Path to the input statement file. Required unless this statement `extends` another one to inherit its file.",
+            "title": "File"
+        },
+        "type": {
+            "$ref": "#/$defs/StatementType",
+            "default": "rbxTeX",
+            "description": "Type of the input statement file."
+        },
+        "params": {
+            "$ref": "#/$defs/RecVars",
+            "default": {},
+            "description": "This statement's own parameters, exposed to the template as the `params` namespace (kept separate from problem/contest `vars`)."
+        },
+        "samples": {
+            "default": true,
+            "description": "Whether to build the statement with samples.",
+            "title": "Samples",
+            "type": "boolean"
+        },
+        "assets": {
+            "description": "Globs (relative to the package root) selecting files to ship as statement resources (e.g. images/PDFs). Inherited via `extends`. At build time the default image/PDF globs over the statement subtree and each sample subtree are concatenated to this list.",
+            "items": {
+                "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+        },
+        "extends": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "$ref": "#/$defs/StatementVariantRef"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Another problem statement to inherit the build recipe from, referenced by language (`extends: en`) or by `{language, variant}`.",
+            "title": "Extends"
+        }
+    },
+    "title": "Statement",
+    "type": "object"
+}

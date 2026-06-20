@@ -1,0 +1,3265 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A tool for creating and managing competitive programming problems">
+      
+      
+        <meta name="author" content="Roberto Sales">
+      
+      
+        <link rel="canonical" href="https://rbx.rsalesc.dev/plans/2026-05-29-boca-next-python-packager-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>BocaNext: a Python-based BOCA packager - rbx</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,300i,400,400i,700,700i%7CSource+Code+Pro:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Source Sans Pro";--md-code-font:"Source Code Pro"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../extra.css">
+    
+      <link rel="stylesheet" href="../../termynal.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="orange" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#bocanext-a-python-based-boca-packager" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="rbx" class="md-header__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rbx
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              BocaNext: a Python-based BOCA packager
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="rbx" class="md-nav__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    rbx
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Walkthrough
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring a problem
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Authoring a problem
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/first-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/custom-checker-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a custom checker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress-testing your solutions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivering a contest
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Delivering a contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging a problem
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Feature Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/testset/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testset
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testset
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/testset/generators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/testset/visualizers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/running/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Running
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/grading/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grading
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Grading
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/grading/checkers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/grading/interactors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/verification/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verification
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Verification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/verification/validators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/verification/unit-tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unit tests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/profiling/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiling
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/statements/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statements
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Statements
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7_2" id="__nav_5_7_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/rbxtex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rbxTeX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/latex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JinjaTeX & LaTeX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7_3" id="__nav_5_7_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Customizing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write a template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/contest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write contest statements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/packaging/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Packaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging/boca/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BOCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging/polygon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polygon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/presets/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presets
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Presets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/package/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Package
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/package/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/contest/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contest
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_3" id="__nav_6_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/contest/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/environment/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_4" id="__nav_6_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Environment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/environment/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generators-and-rbx-h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators and rbx.h
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cpp-on-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C/C++ on MacOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stack-limit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stack limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/windows-git/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows and symlinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migrating-to-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to rbx v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Motivation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery form
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Delivery form">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtime-requirement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime requirement
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layer-2-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer 2 interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Layer 2 interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#design-rule-behavior-in-code-data-in-the-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design rule: behavior in code, data in the manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-two-manifests-split-by-axis-of-variation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Two manifests, split by axis of variation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-languagespec-generic-engine-axis-3-per-language-compileexec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. LanguageSpec + generic engine (axis 3 — per-language compile/exec)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-safeexecspec-build_safeexec_argvspec-liststr-axis-3-sandbox-params" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. SafeExecSpec + build_safeexec_argv(spec) -&gt; list[str] (axis 3 — sandbox params)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-nativeasset-axis-2-which-assets-to-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. NativeAsset (axis 2 — which assets to build)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-task-strategy-axis-1-execution-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Task strategy (axis 1 — execution method)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-verdictspy-pure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. verdicts.py (pure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interactive-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactive execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-entrypointspy-thin-glue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. entrypoints.py (thin glue)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#argument-contract-from-autojudgingphp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Argument contract (from autojudging.php)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#explicitly-out-of-scope-this-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicitly out of scope (this session)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-corrections-as-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation corrections (as-built)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="bocanext-a-python-based-boca-packager">BocaNext: a Python-based BOCA packager<a class="headerlink" href="#bocanext-a-python-based-boca-packager" title="Permanent link">#</a></h1>
+<p>Date: 2026-05-29
+Issue: https://github.com/rsalesc/rbx/issues/488</p>
+<h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">#</a></h2>
+<p>The current BOCA packager (<code>rbx/box/packaging/boca/</code>) emits per-language <strong>bash</strong>
+scripts from templates in <code>rbx/resources/packagers/boca/</code>. There are 7 <code>compile</code>
+scripts (130–1200 lines each), 7 <code>run</code>, 7 <code>interactive</code>, plus shared
+<code>compare.sh</code>, <code>checker.sh</code>, <code>interactor_*.sh</code>, <code>safeexec_compile.sh</code>,
+<code>pipe_compile.sh</code>. ~80% of the compile/run/interactive content is duplicated
+boilerplate (bocajail user detection, safeexec parameter assembly, chroot
+mount/unmount, MD5 compile caching). It is hard to read, hard to test, and
+hard to extend.</p>
+<p>BOCA does not require these scripts to be bash. <code>autojudging.php</code> runs each
+script <strong>by path with its executable bit</strong> (<code>chmod 0700</code> then <code>system()</code>), so
+the shebang chooses the interpreter — Python works. Scripts receive only
+file-path arguments, run under user <code>nobody</code> in a working directory, and may
+run inside a <code>bocajail</code> chroot.</p>
+<p>This document designs <strong>BocaNext</strong>: a <em>new, separate</em> packager (the existing
+bash packager is left untouched and can be deprecated later once BocaNext is
+proven). The goals are (1) maintainability and code reuse and (3) room to
+redesign the execution model — not a 1:1 port.</p>
+<h2 id="two-layers">Two layers<a class="headerlink" href="#two-layers" title="Permanent link">#</a></h2>
+<p>BocaNext splits into two bodies of code with different lifecycles and test
+strategies:</p>
+<ul>
+<li>
+<p><strong>Layer 1 — rbx-side packager</strong> (<code>rbx/box/packaging/boca_next/</code>). Runs at
+  <code>rbx package</code> time. Reuses <code>BocaExtension</code>, limits resolution, and
+  language-mapping utilities. Its only new job is to <strong>assemble <code>.pyz</code> bundles</strong>
+  and lay them out in the directory shape BOCA expects
+  (<code>compile/&lt;lang&gt;</code>, <code>run/&lt;lang&gt;</code>, <code>compare/&lt;lang&gt;</code>, <code>limits/&lt;lang&gt;</code>,
+  <code>tests/&lt;lang&gt;</code>). <strong>Tracked in a follow-up issue — out of scope for this
+  design.</strong></p>
+</li>
+<li>
+<p><strong>Layer 2 — judge-side runtime library</strong> (<code>rbx/resources/packagers/boca_next/runtime/</code>).
+  The reusable code that actually runs on the judge. Authored as a clean,
+  stdlib-only, importable Python package and <strong>zipapp-bundled into every
+  <code>.pyz</code></strong>. Because it is a real package in the source tree, it is directly
+  unit-testable in rbx's own test suite — no shell, no judge required.
+  <strong>This document designs Layer 2.</strong></p>
+</li>
+</ul>
+<h2 id="delivery-form">Delivery form<a class="headerlink" href="#delivery-form" title="Permanent link">#</a></h2>
+<p>Each emitted file (e.g. <code>run/cpp</code>) is a <strong><code>.pyz</code></strong> (PEP 441 zipapp) with a
+<code>#!/usr/bin/env python3</code> shebang. BOCA selects scripts by <em>filename</em>, not by
+argument, so the entrypoint and language are frozen per file.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>run/cpp  (a .pyz)
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a> ├─ __main__.py          # generated: from rbx_boca import run; run.main()
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a> ├─ rbx_boca/            # Layer 2 runtime library (identical in every bundle)
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a> │   ├─ sandbox.py       # safeexec argv builder + executor
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a> │   ├─ assets.py        # native-asset compile + MD5 cache
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a> │   ├─ languages.py     # generic LanguageSpec engine + kind handlers
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a> │   ├─ tasks.py         # BatchTask / InteractiveTask orchestration
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a> │   ├─ verdicts.py      # exit-code -&gt; BOCA-code pure mappers
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a> │   ├─ interactor_launcher.py  # re-entrant mode: setrlimit + watchdog + execv
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a> │   └─ entrypoints.py   # compile/run/compare/limits/tests glue
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a> ├─ task.json            # language-agnostic config (task_type, output_kb)
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a> ├─ language.json        # this bundle&#39;s LanguageSpec + per-language limits
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a> └─ assets/              # embedded sources: checker.cpp, testlib.h, rbx.h,
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>                         #   interactor.cpp, safeexec.c, pipe.c
+</span></code></pre></div>
+<p><code>zipimport</code> loads pure-Python modules straight from the zip (no extraction);
+embedded asset sources are read via the zip loader. The result is a single
+self-contained file that survives the <code>bocajail</code> chroot, exactly like the
+inline-heredoc bash approach does today.</p>
+<h3 id="runtime-requirement">Runtime requirement<a class="headerlink" href="#runtime-requirement" title="Permanent link">#</a></h3>
+<p><code>.pyz</code> execution requires a <code>python3</code> interpreter (&gt;= 3.8, stdlib only)
+reachable wherever the script runs — the BOCA host and inside <code>bocajail</code> if
+used. The current bash approach only needs <code>/bin/sh</code>, so this is a <strong>new,
+documented deployment requirement</strong> of BocaNext.</p>
+<h2 id="layer-2-interfaces">Layer 2 interfaces<a class="headerlink" href="#layer-2-interfaces" title="Permanent link">#</a></h2>
+<p>The issue's three configuration axes map onto three abstractions, plus a
+strategy for execution method and a pure verdict layer.</p>
+<h3 id="design-rule-behavior-in-code-data-in-the-manifest">Design rule: behavior in code, data in the manifest<a class="headerlink" href="#design-rule-behavior-in-code-data-in-the-manifest" title="Permanent link">#</a></h3>
+<p>Behavior (how to compile cpp, how to assemble safeexec flags, the interactive
+verdict priority) lives in the runtime library <strong>code</strong>. The manifest carries
+<strong>only</strong> values that cannot be known until package time. Three forces shrink it
+to almost nothing:</p>
+<ul>
+<li><strong>Behavior lives in the <code>kind</code> handlers</strong> (how to compile cpp, assemble
+  safeexec flags, the interactive verdict priority) — never in data.</li>
+<li><strong>Asset <em>sources</em> are embedded zip files</strong>, not manifest fields; the <code>Task</code>
+  derives which assets it needs from <code>task_type</code>.</li>
+<li><strong>The time-rounding / <code>nruns</code> computation is a package-time (Layer 1) job</strong>,
+  not judge-side. <code>_get_limits</code> today computes the integer time limit and run
+  count on the packaging machine (using <code>maximumTimeError</code> / <code>_MAX_REPS</code>); the
+  <code>limits/&lt;lang&gt;</code> script just echoes four literal numbers, which BOCA then feeds
+  <em>back</em> as argv to <code>compile</code> / <code>run</code> / <code>compare</code>. So <code>maximumTimeError</code> and the
+  rounding logic never reach the judge, and <code>compile</code> / <code>run</code> / <code>compare</code> read
+  their effective limits from <strong>argv</strong>, not the manifest. <code>bocajail</code> is detected
+  at runtime (<code>id -u bocajail</code>) with a universal <code>nobody</code> fallback, so no policy
+  data is baked either.</li>
+</ul>
+<h3 id="1-two-manifests-split-by-axis-of-variation">1. Two manifests, split by axis of variation<a class="headerlink" href="#1-two-manifests-split-by-axis-of-variation" title="Permanent link">#</a></h3>
+<p>Rather than one blob, BocaNext bakes <strong>two</strong> small JSON files, separated by
+<em>what varies</em>:</p>
+<p><strong><code>task.json</code></strong> — language-agnostic, problem-level, identical in every bundle:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>{ &quot;task_type&quot;: &quot;batch&quot;, &quot;output_kb&quot;: 65536 }   // pkg.outputLimit is problem-wide
+</span></code></pre></div>
+<p><strong><code>language.json</code></strong> — everything that varies per language; each <code>.pyz</code> carries
+the one for its own language:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>{
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  &quot;language&quot;: { &quot;...one LanguageSpec...&quot; : true },
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  &quot;limits&quot;:   { &quot;time_sec&quot;: 3, &quot;runs&quot;: 2, &quot;memory_mb&quot;: 256, &quot;wall_time_sec&quot;: 12 }
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>}
+</span></code></pre></div>
+<p>Consumption: <code>limits</code> reads <code>output_kb</code> (task) + <code>time_sec/runs/memory_mb</code>
+(language) and echoes the four numbers BOCA expects; <code>compile</code> / <code>run</code> read
+<code>language.json</code> + <code>task_type</code>; <code>compare</code> reads <code>task_type</code>. Both files parse
+into frozen dataclasses, read by everything downstream — no globals, trivially
+unit-tested via parse round-trips.</p>
+<h3 id="2-languagespec-generic-engine-axis-3-per-language-compileexec">2. <code>LanguageSpec</code> + generic engine (axis 3 — per-language compile/exec)<a class="headerlink" href="#2-languagespec-generic-engine-axis-3-per-language-compileexec" title="Permanent link">#</a></h3>
+<p>The runtime library contains <strong>one generic engine</strong> that interprets a
+<code>LanguageSpec</code>, parameterized by its <code>kind</code>. This collapses the 7×130–1200-line
+compile scripts into a single code path — the largest dedup win. The crucial
+design decision is <strong>where the data/code line falls</strong>: research on the existing
+bash templates (compile + run + interactive, all 7 languages) showed that <em>most</em>
+of what "varies per language" is actually <code>kind</code>-level structure, not data.</p>
+<p><strong>The <code>kind</code> handler owns the structural behavior</strong> (identical within a kind):</p>
+<table>
+<thead>
+<tr>
+<th>Behavior</th>
+<th><code>compiled_static</code></th>
+<th><code>jvm_jar</code></th>
+<th><code>interpreted</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Artifact</td>
+<td>static ELF</td>
+<td><code>run.jar</code></td>
+<td>script + shebang</td>
+</tr>
+<tr>
+<td>Static-link check</td>
+<td>required</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Sandbox fd limit</td>
+<td><code>-F10</code></td>
+<td><code>-F256 -u256</code></td>
+<td><code>-F256 -u256</code></td>
+</tr>
+<tr>
+<td>Run memory → safeexec</td>
+<td>real (<code>-d/-m</code>)</td>
+<td>fixed large + <code>-Xmx</code>/<code>-Xss=heap/10</code></td>
+<td>real (<code>-d/-m</code>)</td>
+</tr>
+<tr>
+<td><code>nruns</code> (repeat timing)</td>
+<td>supported</td>
+<td>forced to 1</td>
+<td>forced to 1</td>
+</tr>
+<tr>
+<td>JVM flags (<code>-XX:+UseSerialGC</code> …)</td>
+<td>—</td>
+<td>generated</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Syntax pre-check</td>
+<td>—</td>
+<td>—</td>
+<td>py3 <code>py_compile</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The <code>LanguageSpec</code> (data) fills the small holes the kind leaves:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>{
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  &quot;id&quot;: &quot;cpp&quot;,
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  &quot;kind&quot;: &quot;compiled_static&quot;,
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  &quot;compiler_argv&quot;: [&quot;g++&quot;, &quot;{flags}&quot;, &quot;-o&quot;, &quot;{exe}&quot;, &quot;{src}&quot;],  // C adds -lm via flags
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  &quot;compiler_fallbacks&quot;: [&quot;/usr/bin/g++&quot;],
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  &quot;flags&quot;: &quot;-std=c++20 -O2 -lm -static&quot;,
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  &quot;run_argv&quot;: [&quot;{exe}&quot;],          // kind injects computed holes like {jvm_flags}
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  &quot;sandbox_overrides&quot;: {}          // optional escape hatch over kind defaults
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>}
+</span></code></pre></div>
+<p><code>jvm_jar</code> additionally carries a <strong><code>build</code> selector</strong> in data
+(<code>javac_then_jar</code> vs <code>kotlinc_include_runtime</code>) and the <code>run_argv</code> form
+(<code>-jar {jar}</code> vs <code>-cp {jar} {jvm_flags} MainKt</code>), since those genuinely differ
+Java-vs-Kotlin but both stay inside one kind.</p>
+<p>Adding a language by <strong>reusing an existing kind</strong> is pure config (no runtime
+code) and covers the overwhelming majority of cases. A genuinely novel execution
+model requires adding a new <code>kind</code> to the runtime library — a deliberate, rare
+extension point. rbx ships default <code>LanguageSpec</code>s; users extend/override via the
+<code>env.rbx.yml</code> extension mechanism (Layer 1 resolves and bakes the spec for this
+bundle's language).</p>
+<p><strong>Fidelity decisions</strong> (from auditing the current bash). BocaNext <em>unifies</em> two
+genuine bugs/drift and <em>preserves</em> two semantically-meaningful behaviors as
+overridable <code>kind</code> defaults:</p>
+<ul>
+<li><strong>Unify:</strong> Kotlin compile currently skips the <code>bocajail</code>/chroot logic every
+  other language applies — apply it uniformly. Kotlin compile hardcodes
+  <code>-t20 -T32 -istdin0</code> unlike Java — derive its compile sandbox params from the
+  kind like Java's.</li>
+<li><strong>Preserve:</strong> the JVM's large fixed virtual-memory grant (it cannot start
+  otherwise; the real limit is enforced via <code>-Xmx</code>), and <code>nruns = 1</code> for
+  JVM/interpreted (startup variance makes repeated timing meaningless).</li>
+</ul>
+<h3 id="3-safeexecspec-build_safeexec_argvspec-liststr-axis-3-sandbox-params">3. <code>SafeExecSpec</code> + <code>build_safeexec_argv(spec) -&gt; list[str]</code> (axis 3 — sandbox params)<a class="headerlink" href="#3-safeexecspec-build_safeexec_argvspec-liststr-axis-3-sandbox-params" title="Permanent link">#</a></h3>
+<p>A <strong>pure function</strong> mapping resource limits + policy to safeexec argv
+(<code>-r -t -T -d -m -f -F -U -G -R -C -o -e</code>). Asserted directly in tests. The
+<code>SafeExec</code> <em>executor</em> wraps it with <code>.locate_or_build()</code> (compile <code>safeexec.c</code>,
+cached) and <code>.run(...)</code>. The actual subprocess call sits behind an <strong>injectable
+<code>Runner</code></strong> so tests use a fake.</p>
+<h3 id="4-nativeasset-axis-2-which-assets-to-build">4. <code>NativeAsset</code> (axis 2 — which assets to build)<a class="headerlink" href="#4-nativeasset-axis-2-which-assets-to-build" title="Permanent link">#</a></h3>
+<p>Represents a compiled-on-judge artifact: name, embedded source, compiler argv,
+MD5 cache key, output path. <code>.ensure(runner) -&gt; Path</code> performs the
+<code>/tmp/boca-cache</code> check-or-compile <strong>once</strong>, tested once. Instances: <code>checker</code>,
+<code>interactor</code>, <code>safeexec</code>, <code>pipe</code>. Caching behavior matches today's bash
+scripts (MD5 of source + flags).</p>
+<h3 id="5-task-strategy-axis-1-execution-method">5. <code>Task</code> strategy (axis 1 — execution method)<a class="headerlink" href="#5-task-strategy-axis-1-execution-method" title="Permanent link">#</a></h3>
+<p><code>BatchTask</code> / <code>InteractiveTask</code>, selected by <code>manifest.task_type</code>. Each
+implements:</p>
+<ul>
+<li><code>required_assets()</code> — which <code>NativeAsset</code>s to build (axis 2 in action).
+  Batch: <code>checker</code>, <code>safeexec</code>. Interactive: also <code>interactor</code>, <code>pipe</code>.</li>
+<li><code>compile(ctx)</code> — build the solution (via the <code>LanguageSpec</code> engine) plus
+  required assets.</li>
+<li><code>run(ctx, args)</code> — batch: direct safeexec; interactive: pipe-coordinated
+  (<code>pipe.exe</code> + <code>interactor.exe</code> over fifos).</li>
+<li><code>compare(ctx, args)</code> — both run the checker; interactive also reads the
+  testlib exit code from the pipe log.</li>
+</ul>
+<p>A future execution method is a new <code>Task</code> subclass — nothing else changes.</p>
+<h3 id="6-verdictspy-pure">6. <code>verdicts.py</code> (pure)<a class="headerlink" href="#6-verdictspy-pure" title="Permanent link">#</a></h3>
+<p>The exit-code translations, rewritten as pure functions over parsed data — the
+surface that is impossible to test in today's bash. There are <strong>two BOCA code
+spaces</strong> (the run script's exit code, interpreted by the autojudge, and the
+compare script's <code>4/6/43/47</code>), so three mappers:</p>
+<ul>
+<li><code>batch_run_exit(safeexec_exit) -&gt; run_exit</code> — incl. the <code>&gt;10 -&gt; 9</code> RTE remap.</li>
+<li><code>interactive_run_decision(first_tag, ecsf, ecint) -&gt; (run_exit, testlib_code?)</code>
+  — the 6-level priority logic, de-duplicated into ordered rules (table below).</li>
+<li><code>compare_verdict(testlib_code?, checker_exit?) -&gt; boca_code</code> — shared by both
+  task types.</li>
+</ul>
+<p>All three are pure, with table-driven tests over every code combination.</p>
+<p>See <strong>Interactive execution</strong> below for the priority table.</p>
+<h3 id="interactive-execution">Interactive execution<a class="headerlink" href="#interactive-execution" title="Permanent link">#</a></h3>
+<p>Coordination is split native-vs-Python at clean seams:</p>
+<ul>
+<li><strong><code>pipe.exe</code> (<code>pipe.c</code>) and <code>safeexec</code> stay <code>NativeAsset</code>s.</strong> <code>pipe.exe</code>
+  launches the two children, wires their stdin/stdout over <code>fifo.in</code>/<code>fifo.out</code>,
+  uses <code>epoll</code> on per-child notify pipes to detect which exits first, and writes
+  a <strong>3-line <code>pipe.log</code></strong>: <code>first_tag</code> (1=solution, 2=interactor),
+  <code>solution_status</code>, <code>interactor_status</code> (bash-like: <code>0-255</code>, or <code>128+signal</code>).
+  Kept <em>as-is</em> — it is a clean contract with no bug to fix.</li>
+<li><strong><code>InteractiveTask</code> (Python) replaces <code>interactor_run.sh</code></strong>: create the fifos,
+  build the <code>pipe.exe</code> argv (solution-under-safeexec <code>=</code> interactor-under-
+  launcher), invoke it, parse <code>pipe.log</code>, then apply
+  <code>interactive_run_decision</code>.</li>
+</ul>
+<p><strong>Interactor launcher (Python).</strong> The interactor runs <em>unsandboxed</em> (trusted
+judge code that needs the fifos + notify fd), so it goes through a thin launcher
+instead of safeexec. <code>pipe.exe</code> execs the <strong>same <code>.pyz</code> re-entrantly</strong> with a
+sentinel argv (<code>&lt;pyz&gt; __interactor_launcher__ &lt;ittime&gt; ./interactor.exe ...</code>);
+<code>__main__</code> dispatches to <code>rbx_boca/interactor_launcher.py</code>, which does
+<code>resource.setrlimit(RLIMIT_AS, 1GB)</code>, arms a process-group watchdog
+(<code>SIGTERM</code> after the budget, <code>SIGKILL</code> +5s), then <code>os.execv</code>s the interactor.</p>
+<blockquote>
+<p><strong>Implementation risk to verify:</strong> the bash watchdog does <code>exec {fd}&gt;&amp;-</code> so it
+drops its copy of <code>pipe.exe</code>'s notify fd — otherwise the pipe never <code>HUP</code>s and
+first-exit detection hangs. The Python launcher must replicate this exactly:
+the watchdog child must <strong>not inherit</strong> the notify fd, and the main interactor
+process must hold it open until exit. fd-inheritance / close-on-exec / <code>killpg</code>
+semantics get <strong>integration coverage</strong> (real <code>.pyz</code> + stub interactor); the
+pure parts (rlimit value, timeout computation) are extracted as tested helpers.</p>
+</blockquote>
+<p><strong>6-level priority logic</strong> (<code>interactive_run_decision</code>). The ordering <em>is</em> the
+spec — resource limits beat the interactor verdict, which beats solution RTE:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Condition</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>interactor-first &amp; <code>ecint ∉ {0,1,2,3,4}</code> (interactor crashed)</td>
+<td><code>run_exit=4</code> (judge error)</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>ecsf ∈ {3,7}</code></td>
+<td><code>run_exit=ecsf</code> (TLE / MLE)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>interactor-first</td>
+<td><code>ecint∈{1..4}</code> → emit testlib code, <code>run_exit=0</code>; <code>0</code> → fall through; else <code>run_exit=4</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>ecsf ≠ 0</code></td>
+<td><code>run_exit=ecsf</code> (solution RTE)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>(always) re-check interactor</td>
+<td>as #3</td>
+</tr>
+<tr>
+<td>6</td>
+<td>otherwise</td>
+<td><code>run_exit=0</code> (success → compare decides)</td>
+</tr>
+</tbody>
+</table>
+<p><code>compare_verdict</code> then reads the emitted <code>testlib exitcode</code> line if present
+(<code>1,2 → WA(6)</code>, <code>3 → 43</code>, else <code>47</code>); otherwise it runs the checker
+(<code>0 → AC(4)</code>, <code>1,2 → WA(6)</code>, <code>3 → 43</code>, else <code>47</code>).</p>
+<h3 id="7-entrypointspy-thin-glue">7. <code>entrypoints.py</code> (thin glue)<a class="headerlink" href="#7-entrypointspy-thin-glue" title="Permanent link">#</a></h3>
+<p><code>compile / run / compare / limits / tests</code> each: parse argv -&gt; build a
+<code>RunContext</code> from <code>task.json</code> / <code>language.json</code> + cwd -&gt; call the <code>Task</code> method
+-&gt; translate the result to an exit code + stderr details. Deliberately thin; all
+logic lives in the tested units above. <code>limits</code> echoes the four pre-computed
+numbers (<code>time_sec</code>, <code>runs</code>, <code>memory_mb</code>, <code>output_kb</code>); effective per-run limits
+arrive as argv from BOCA. <code>tests</code> is a trivial validation hook (<code>exit 0</code>).</p>
+<h2 id="argument-contract-from-autojudgingphp">Argument contract (from <code>autojudging.php</code>)<a class="headerlink" href="#argument-contract-from-autojudgingphp" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Entrypoint</th>
+<th>Arguments</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>limits</code></td>
+<td>(none)</td>
+</tr>
+<tr>
+<td><code>compile</code></td>
+<td><code>sourcename basename timelimit memory</code></td>
+</tr>
+<tr>
+<td><code>run</code></td>
+<td><code>basename inputfile timelimit repetitions memory outputsize_kb</code></td>
+</tr>
+<tr>
+<td><code>compare</code></td>
+<td><code>team_output expected_output input_file</code></td>
+</tr>
+<tr>
+<td><code>tests</code></td>
+<td>(none)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="testability">Testability<a class="headerlink" href="#testability" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>Pure units</strong> (argv builders, verdict mappers, cache keys, manifest /
+  LanguageSpec parsing) — tested directly by asserting return values.</li>
+<li><strong>Side-effecting units</strong> (compile, run) — take an injectable <code>Runner</code> /
+  filesystem so tests substitute fakes; no real subprocess or sandbox needed.</li>
+<li><strong>Integration</strong> — a few tests build a real <code>.pyz</code> and run it against a <strong>stub
+  <code>safeexec</code></strong> that emits canned exit codes, exercising the full entrypoint -&gt;
+  task -&gt; verdict path end to end.</li>
+</ul>
+<h2 id="explicitly-out-of-scope-this-session">Explicitly out of scope (this session)<a class="headerlink" href="#explicitly-out-of-scope-this-session" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>Layer 1</strong> (the rbx-side bundler, env-config -&gt; <code>LanguageSpec</code> resolution,
+  <code>.pyz</code> assembly, directory layout, <code>rbx package boca-next</code> CLI wiring) —
+  follow-up issue.</li>
+<li>Migrating or deprecating the existing bash packager.</li>
+<li>Polygon/BOCA upload integration changes.</li>
+</ul>
+<h2 id="implementation-corrections-as-built">Implementation corrections (as-built)<a class="headerlink" href="#implementation-corrections-as-built" title="Permanent link">#</a></h2>
+<p>The earlier prose above was written from slightly incorrect research. The
+following points are the authoritative description of the Layer 2 runtime as
+actually built; where they conflict with text above, these win.</p>
+<ul>
+<li><strong><code>nruns</code> is honored for ALL kinds in the batch run phase.</strong> The earlier kind
+  table claimed <code>nruns</code> is forced to <code>1</code> for JVM/interpreted runs. That is WRONG
+  versus the bash: <code>run/cpp</code>, <code>run/java</code>, and <code>run/py3</code> all pass <code>-r$nruns</code>.
+  Forcing to <code>1</code> happens only in Layer 1's limits computation and for
+  interactive tasks — never in the per-language run profiles. So
+  <code>sandbox.profile_for</code> honors the passed <code>nruns</code> for <code>compiled_static</code>,
+  <code>jvm_jar</code>, AND <code>interpreted</code> in the run phase.</li>
+<li><strong>safeexec argv includes <code>-n</code> (process limit) and a <code>--</code> separator.</strong>
+  <code>build_safeexec_argv</code> emits <code>-n{n}</code> (<code>1</code> for <code>compiled_static</code>; <code>0</code> for JVM,
+  interpreted, and compile) and a literal <code>--</code> before the program, so JVM /
+  interpreter dash-args are not parsed by safeexec.</li>
+<li><strong>Time limits are configured, not hardcoded multiples</strong> (revises the original
+  <code>×4</code> run / <code>×2</code> compile sketch). <code>profile_for</code> is a dumb assembler taking
+  explicit <code>cpu_sec</code> and <code>wall_sec</code>; the caller supplies the policy:</li>
+<li><strong>Run wall TL</strong> is an absolute <code>wall_time_sec</code> field on <code>LimitsConfig</code> (a
+    per-problem limit, hence in the limits). The run phase sets <code>cpu_sec</code> from
+    the BOCA run argv and <code>wall_sec = limits.wall_time_sec</code>.</li>
+<li><strong>Compile TL</strong> is an absolute <code>compile_time_sec</code> field on <code>LanguageSpec</code>
+    (default <code>30</code>; a per-language property — JVM langs set it higher), used as
+    <code>cpu_sec == wall_sec == compile_time_sec</code> (TL == wall TL), fully decoupled
+    from the problem timelimit.</li>
+<li>Interactive <code>ittime</code> (the interactor watchdog budget) is <code>wall_time_sec + 1</code>
+    (<code>interactor_run.sh:13</code>, where <code>ttime</code> is the wall TL).</li>
+<li><strong>Manifests are read via <code>pkgutil.get_data('rbx_boca', name)</code> from INSIDE the
+  <code>rbx_boca</code> package</strong> (not the zip root), with an <code>RBX_BOCA_BUNDLE_DIR</code> env
+  override for testing. (The design originally sketched manifests at the zip
+  root; bundling them inside the package is what makes zip-safe reading work via
+  <code>pkgutil</code>.)</li>
+<li><strong>The interactor launcher's <code>RLIMIT_AS</code> is best-effort</strong> — clamped to the hard
+  limit and with errors swallowed — so it works on non-Linux dev machines.
+  Production Linux still applies the ~1GB cap.</li>
+<li><strong>Interactive testing scope:</strong> a full real-<code>pipe.exe</code> / SUID-<code>safeexec</code>
+  interactive run needs gcc + root and is out of scope for hermetic CI. The risk
+  (a leaked notify fd → <code>pipe.exe</code> hang) is instead covered by the
+  interactor-launcher fd-inheritance + watchdog integration tests, plus a
+  <code>build_pipe_argv</code> shape test that structurally matches <code>interactor_run.sh</code>.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/rsalesc/rbx" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.expand", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": {"accepted": "\u003cspan style=\"color: green\"\u003eaccepted\u003c/span\u003e", "wrong_answer": "\u003cspan style=\"color: red\"\u003ewrong answer\u003c/span\u003e"}, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../termynal.js"></script>
+      
+    
+  </body>
+</html>

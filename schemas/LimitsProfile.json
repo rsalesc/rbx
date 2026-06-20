@@ -1,0 +1,254 @@
+{
+    "$defs": {
+        "LimitModifiers": {
+            "properties": {
+                "timeMultiplier": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Multiplier for time limit.",
+                    "title": "Timemultiplier"
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override time limit with, in milliseconds.",
+                    "title": "Time"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override memory limit with, in MB.",
+                    "title": "Memory"
+                }
+            },
+            "title": "LimitModifiers",
+            "type": "object"
+        },
+        "TimingGroupOrigin": {
+            "enum": [
+                "estimated",
+                "multiplier",
+                "defaulted"
+            ],
+            "title": "TimingGroupOrigin",
+            "type": "string"
+        },
+        "TimingGroupReport": {
+            "additionalProperties": false,
+            "properties": {
+                "languages": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Languages",
+                    "type": "array"
+                },
+                "timeLimit": {
+                    "title": "Timelimit",
+                    "type": "integer"
+                },
+                "origin": {
+                    "$ref": "#/$defs/TimingGroupOrigin"
+                },
+                "solutionCount": {
+                    "default": 0,
+                    "title": "Solutioncount",
+                    "type": "integer"
+                },
+                "fastest": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Fastest"
+                },
+                "slowest": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Slowest"
+                },
+                "relativeToLanguage": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Relativetolanguage"
+                },
+                "multiplier": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Multiplier"
+                },
+                "increment": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Increment"
+                },
+                "isLeftover": {
+                    "default": false,
+                    "title": "Isleftover",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "languages",
+                "timeLimit",
+                "origin"
+            ],
+            "title": "TimingGroupReport",
+            "type": "object"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "inheritFromPackage": {
+            "default": false,
+            "description": "\nWhether to inherit limits from the package.\n",
+            "title": "Inheritfrompackage",
+            "type": "boolean"
+        },
+        "timeLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Time limit of the problem, in milliseconds.",
+            "title": "Timelimit"
+        },
+        "memoryLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Memory limit of the problem, in MB.",
+            "title": "Memorylimit"
+        },
+        "outputLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Output limit of the problem, in KB.",
+            "title": "Outputlimit"
+        },
+        "modifiers": {
+            "additionalProperties": {
+                "$ref": "#/$defs/LimitModifiers"
+            },
+            "default": {},
+            "description": "\n    Limit modifiers that can be specified per language.\n    ",
+            "title": "Modifiers",
+            "type": "object"
+        },
+        "formula": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nA formula to estimate the time limit for the problem.\n",
+            "title": "Formula"
+        },
+        "groups": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/TimingGroupReport"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nMetadata describing the language grouping used when this profile was estimated.\nPresentation-only; never used for limit resolution.\n",
+            "title": "Groups"
+        },
+        "baseEstimate": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/TimingGroupReport"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nMetadata describing how the base (fallback) time limit was estimated, pooled\nacross every solution. Presentation-only; never used for limit resolution.\n"
+        }
+    },
+    "title": "LimitsProfile",
+    "type": "object"
+}

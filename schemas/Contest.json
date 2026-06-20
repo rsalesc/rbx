@@ -1,0 +1,451 @@
+{
+    "$defs": {
+        "ContestProblem": {
+            "properties": {
+                "short_name": {
+                    "description": "\nShort name of the problem. Usually, just an uppercase letter,\nbut can be a sequence of uppercase letters followed by a number.",
+                    "maxLength": 4,
+                    "minLength": 1,
+                    "pattern": "^[A-Z]+[0-9]*$",
+                    "title": "Short Name",
+                    "type": "string"
+                },
+                "aliases": {
+                    "description": "\nOptional list of aliases for this problem. You can refer to the problem by its\nshort_name or by any of these aliases in commands such as [item]rbx on <name> run[/item].\nAliases must be unique across all problems (case-insensitive).",
+                    "items": {
+                        "maxLength": 32,
+                        "minLength": 3,
+                        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                        "type": "string"
+                    },
+                    "title": "Aliases",
+                    "type": "array"
+                },
+                "path": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nPath to the problem relative to the contest package directory.\nIf not specified, will expect the problem to be in ./{short_name}/ folder.",
+                    "title": "Path"
+                },
+                "color": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nColor that represents this problem in the contest.\n\nCan be a hex color (#abcdef or #abc format), or a color name among available X11 colors.\n\nSee https://en.wikipedia.org/wiki/X11_color_names for the list of supported color names.\n",
+                    "title": "Color"
+                },
+                "colorName": {
+                    "anyOf": [
+                        {
+                            "pattern": "^[a-zA-Z]+$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA custom color name for the color provided by this problem.\n\nIf not provided, will try to infer a color name from the color provided.\n",
+                    "title": "Colorname"
+                }
+            },
+            "required": [
+                "short_name"
+            ],
+            "title": "ContestProblem",
+            "type": "object"
+        },
+        "ContestStatement": {
+            "additionalProperties": false,
+            "description": "A contest-level statement. Owns the templates used to render problems both\nstandalone and inside the contest join (design \u00a73.2).",
+            "properties": {
+                "language": {
+                    "default": "en",
+                    "description": "Language code of this statement (ISO 639-1).",
+                    "title": "Language",
+                    "type": "string"
+                },
+                "variant": {
+                    "default": "default",
+                    "description": "Optional discriminator between formats of the same language. Together with `language` it forms the join key with contest statements.",
+                    "title": "Variant",
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Title as it appears in the statement. Can be left unset to fall back to the package/contest title.",
+                    "title": "Title"
+                },
+                "file": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Path to the input statement file. Required unless this statement `extends` another one to inherit its file.",
+                    "title": "File"
+                },
+                "type": {
+                    "$ref": "#/$defs/StatementType",
+                    "default": "rbxTeX",
+                    "description": "Type of the input statement file."
+                },
+                "params": {
+                    "$ref": "#/$defs/RecVars",
+                    "default": {},
+                    "description": "This statement's own parameters, exposed to the template as the `params` namespace (kept separate from problem/contest `vars`)."
+                },
+                "samples": {
+                    "default": true,
+                    "description": "Whether to build the statement with samples.",
+                    "title": "Samples",
+                    "type": "boolean"
+                },
+                "assets": {
+                    "description": "Globs (relative to the package root) selecting files to ship as statement resources (e.g. images/PDFs). Inherited via `extends`. At build time the default image/PDF globs over the statement subtree and each sample subtree are concatenated to this list.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Assets",
+                    "type": "array"
+                },
+                "name": {
+                    "description": "Name of this statement. Unique within the contest.",
+                    "maxLength": 128,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "extends": {
+                    "anyOf": [
+                        {
+                            "maxLength": 128,
+                            "minLength": 3,
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Name of the contest statement to inherit the build recipe from.",
+                    "title": "Extends"
+                },
+                "location": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Location of the contest in this language.",
+                    "title": "Location"
+                },
+                "date": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Date of the contest in this language.",
+                    "title": "Date"
+                },
+                "standaloneProblemTemplate": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Template applied to build a problem-level statement as a standalone document (`rbx st b`). rbx* types only.",
+                    "title": "Standaloneproblemtemplate"
+                },
+                "contestProblemTemplate": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Template applied to build the problem fragment that gets imported into the contest statement (`rbx contest st b`). rbx* types only.",
+                    "title": "Contestproblemtemplate"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "ContestStatement",
+            "type": "object"
+        },
+        "Document": {
+            "additionalProperties": false,
+            "description": "A contest-level document (infosheet, etc.). Shares the statement model but\nNEVER joins on problems, so it is restricted to non-rbx types (design \u00a73.2).",
+            "properties": {
+                "language": {
+                    "default": "en",
+                    "description": "Language code of this statement (ISO 639-1).",
+                    "title": "Language",
+                    "type": "string"
+                },
+                "variant": {
+                    "default": "default",
+                    "description": "Optional discriminator between formats of the same language. Together with `language` it forms the join key with contest statements.",
+                    "title": "Variant",
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Title as it appears in the statement. Can be left unset to fall back to the package/contest title.",
+                    "title": "Title"
+                },
+                "file": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Path to the input statement file. Required unless this statement `extends` another one to inherit its file.",
+                    "title": "File"
+                },
+                "type": {
+                    "$ref": "#/$defs/StatementType",
+                    "default": "rbxTeX",
+                    "description": "Type of the input statement file."
+                },
+                "params": {
+                    "$ref": "#/$defs/RecVars",
+                    "default": {},
+                    "description": "This statement's own parameters, exposed to the template as the `params` namespace (kept separate from problem/contest `vars`)."
+                },
+                "samples": {
+                    "default": true,
+                    "description": "Whether to build the statement with samples.",
+                    "title": "Samples",
+                    "type": "boolean"
+                },
+                "assets": {
+                    "description": "Globs (relative to the package root) selecting files to ship as statement resources (e.g. images/PDFs). Inherited via `extends`. At build time the default image/PDF globs over the statement subtree and each sample subtree are concatenated to this list.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Assets",
+                    "type": "array"
+                },
+                "name": {
+                    "description": "Name of this document. Unique within the contest.",
+                    "maxLength": 128,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "extends": {
+                    "anyOf": [
+                        {
+                            "maxLength": 128,
+                            "minLength": 3,
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Name of the document to inherit the build recipe from.",
+                    "title": "Extends"
+                },
+                "location": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Location, per language.",
+                    "title": "Location"
+                },
+                "date": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Date, per language.",
+                    "title": "Date"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "Document",
+            "type": "object"
+        },
+        "RecVars": {
+            "additionalProperties": {
+                "anyOf": [
+                    {
+                        "type": "integer"
+                    },
+                    {
+                        "type": "number"
+                    },
+                    {
+                        "type": "boolean"
+                    },
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "$ref": "#/$defs/RecVars"
+                    }
+                ]
+            },
+            "type": "object"
+        },
+        "StatementType": {
+            "enum": [
+                "rbxTeX",
+                "rbxMarkdown",
+                "TeX",
+                "Markdown",
+                "JinjaTeX",
+                "JinjaMarkdown",
+                "PDF"
+            ],
+            "title": "StatementType",
+            "type": "string"
+        }
+    },
+    "additionalProperties": false,
+    "properties": {
+        "use_variants": {
+            "default": false,
+            "description": "When true, this file is a sentinel marking the directory as a multi-contest dispatcher. The actual contests live in sibling files matching contest.<id>.rbx.yml. When set, no other Contest fields may be specified.",
+            "title": "Use Variants",
+            "type": "boolean"
+        },
+        "name": {
+            "default": "",
+            "description": "Name of this contest.",
+            "title": "Name",
+            "type": "string"
+        },
+        "titles": {
+            "additionalProperties": {
+                "type": "string"
+            },
+            "default": {},
+            "description": "Titles for the contest in each language. Languages should be specified as lowercase ISO 639-1 codes.",
+            "title": "Titles",
+            "type": "object"
+        },
+        "problems": {
+            "default": [],
+            "description": "List of problems in this contest.",
+            "items": {
+                "$ref": "#/$defs/ContestProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+        },
+        "statements": {
+            "default": [],
+            "description": "Configure statements in this contest, per language.",
+            "items": {
+                "$ref": "#/$defs/ContestStatement"
+            },
+            "title": "Statements",
+            "type": "array"
+        },
+        "tutorials": {
+            "default": [],
+            "description": "Configure tutorials (editorials) in this contest, per language.",
+            "items": {
+                "$ref": "#/$defs/ContestStatement"
+            },
+            "title": "Tutorials",
+            "type": "array"
+        },
+        "documents": {
+            "default": [],
+            "description": "Configure standalone documents (infosheets, etc.) for this contest. Documents never join on problems.",
+            "items": {
+                "$ref": "#/$defs/Document"
+            },
+            "title": "Documents",
+            "type": "array"
+        },
+        "vars": {
+            "$ref": "#/$defs/RecVars",
+            "default": {},
+            "description": "Variables to be re-used across the package."
+        }
+    },
+    "title": "Contest",
+    "type": "object"
+}

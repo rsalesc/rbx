@@ -1,0 +1,278 @@
+{
+    "$defs": {
+        "Expansion": {
+            "properties": {
+                "problem": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/VariableExpansion"
+                    },
+                    "title": "Problem",
+                    "type": "array"
+                },
+                "contest": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/VariableExpansion"
+                    },
+                    "title": "Contest",
+                    "type": "array"
+                }
+            },
+            "title": "Expansion",
+            "type": "object"
+        },
+        "Libraries": {
+            "properties": {
+                "problem": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/Library"
+                    },
+                    "title": "Problem",
+                    "type": "array"
+                },
+                "contest": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/Library"
+                    },
+                    "title": "Contest",
+                    "type": "array"
+                }
+            },
+            "title": "Libraries",
+            "type": "object"
+        },
+        "Library": {
+            "properties": {
+                "name": {
+                    "maxLength": 32,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "source": {
+                    "title": "Source",
+                    "type": "string"
+                },
+                "path": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Path"
+                },
+                "version": {
+                    "default": "latest",
+                    "title": "Version",
+                    "type": "string"
+                },
+                "dest": {
+                    "format": "path",
+                    "title": "Dest",
+                    "type": "string"
+                },
+                "symlink": {
+                    "default": false,
+                    "title": "Symlink",
+                    "type": "boolean"
+                },
+                "always_include": {
+                    "default": false,
+                    "title": "Always Include",
+                    "type": "boolean"
+                },
+                "include_as": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Include As"
+                }
+            },
+            "required": [
+                "name",
+                "source",
+                "dest"
+            ],
+            "title": "Library",
+            "type": "object"
+        },
+        "ReplacementMode": {
+            "enum": [
+                "PROMPT"
+            ],
+            "title": "ReplacementMode",
+            "type": "string"
+        },
+        "TrackedAsset": {
+            "properties": {
+                "path": {
+                    "format": "path",
+                    "title": "Path",
+                    "type": "string"
+                },
+                "symlink": {
+                    "default": false,
+                    "title": "Symlink",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "path"
+            ],
+            "title": "TrackedAsset",
+            "type": "object"
+        },
+        "Tracking": {
+            "properties": {
+                "problem": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/TrackedAsset"
+                    },
+                    "title": "Problem",
+                    "type": "array"
+                },
+                "contest": {
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/TrackedAsset"
+                    },
+                    "title": "Contest",
+                    "type": "array"
+                }
+            },
+            "title": "Tracking",
+            "type": "object"
+        },
+        "VariableExpansion": {
+            "properties": {
+                "needle": {
+                    "title": "Needle",
+                    "type": "string"
+                },
+                "replacement": {
+                    "$ref": "#/$defs/ReplacementMode",
+                    "default": "PROMPT"
+                },
+                "prompt": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Prompt"
+                },
+                "glob": {
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Glob",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "needle"
+            ],
+            "title": "VariableExpansion",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "name": {
+            "maxLength": 32,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-]*$",
+            "title": "Name",
+            "type": "string"
+        },
+        "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+        },
+        "uri": {
+            "title": "Uri",
+            "type": "string"
+        },
+        "min_version": {
+            "default": "0.14.0",
+            "title": "Min Version",
+            "type": "string"
+        },
+        "env": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Env"
+        },
+        "problem": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Problem"
+        },
+        "contest": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "title": "Contest"
+        },
+        "tracking": {
+            "$ref": "#/$defs/Tracking"
+        },
+        "expansion": {
+            "$ref": "#/$defs/Expansion"
+        },
+        "libraries": {
+            "$ref": "#/$defs/Libraries"
+        }
+    },
+    "required": [
+        "name",
+        "uri"
+    ],
+    "title": "Preset",
+    "type": "object"
+}
