@@ -41,6 +41,21 @@ class TestExtractBlocks:
         assert 'why sample zero' in blocks.explanations[0]
 
 
+def test_explanation_blocks_are_removed_from_named_blocks(tmp_path):
+    # An `explanation_<i>` block is split into `.explanations` and must NOT
+    # remain in `.blocks` under its string key (it would otherwise be labeled
+    # `explanation_0_0` on externalize -> a PDF never produced or uploaded).
+    content = (
+        b'%- block legend\nhi\n%- endblock\n'
+        b'%- block explanation_0\nwhy sample zero\n%- endblock\n'
+    )
+    blocks = render.render_jinja_blocks(tmp_path, content, mode='latex')
+    assert 0 in blocks.explanations
+    assert 'why sample zero' in blocks.explanations[0]
+    assert 'explanation_0' not in blocks.blocks
+    assert 'legend' in blocks.blocks
+
+
 class TestRenderProblemDocument:
     def test_fills_template_with_blocks_and_namespaces(self, tmp_path):
         # Template lives in the overlay root (staged by the stager).
