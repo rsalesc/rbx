@@ -85,6 +85,8 @@ def pytest_collect_file(parent, file_path):
 # (non-strict) so the suite stays green while documenting a known bug, and flips
 # to xpass the moment the bug is fixed. Keyed by scenario name. See
 # docs/plans/2026-06-10-polygon-statement-upload-audit.md.
+# Intentionally empty right now (the #590 referential-integrity scenario was
+# fixed and now passes normally); keep the hook for the next documented bug.
 _XFAIL_SCENARIOS = {}
 
 

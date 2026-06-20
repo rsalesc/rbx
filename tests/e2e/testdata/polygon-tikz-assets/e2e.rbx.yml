@@ -55,11 +55,11 @@ scenarios:
   - name: polygon-upload-assets-referential-integrity
     markers: [pdflatex]
     description: >
-      The DESIRED end state: every \includegraphics in the uploaded statement
-      resolves to an uploaded resource. Currently xfails (registered in
-      tests/e2e/conftest.py) because the sample explanation's TikZ is not
-      externalized/uploaded -- the notes reference an artifacts/tikz_figures/0_0
-      PDF that does not exist. Flips to xpass when that bug is fixed.
+      Acceptance assertion for #590: every \includegraphics in the uploaded
+      statement resolves to an uploaded resource, including the sample
+      explanation's externalized TikZ. The standalone template subimports the
+      explanation, so its TikZ externalizes to artifacts__tikz_figures__0_0.pdf,
+      which is uploaded and referenced consistently. Passes as a normal scenario.
     steps:
       - cmd: package polygon -u --upload-as-english --upload-only statements
         cwd: A
