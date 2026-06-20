@@ -62,6 +62,7 @@ def _resolve_explanation(
     index: int,
     source: SampleSource,
     explanation_blocks: Dict[int, str],
+    extra_explanations: Dict[int, str],
     render_text: Optional[RenderText],
     render_blocks: Optional[RenderBlocks],
     lang: str,
@@ -69,10 +70,16 @@ def _resolve_explanation(
 ) -> Optional[bytes]:
     """Return the final explanation content for a sample, or None.
 
-    Inline ``explanation_<i>`` blocks take precedence over an authored file.
+    Precedence: inline ``explanation_<i>`` blocks → ``extra_explanations`` →
+    the authored file on disk. ``extra_explanations`` only overrides the staged
+    *text* of a separate-file explanation (e.g. the engine's already-externalized
+    copy); it does NOT suppress the source-dir mirror, so the explanation's own
+    figures still resolve (the caller's mirror guard is left untouched).
     """
     if index in explanation_blocks:
         return explanation_blocks[index].encode()
+    if index in extra_explanations:
+        return extra_explanations[index].encode()
     if source.explanation_path is None or not source.explanation_path.is_file():
         return None
     raw = source.explanation_path.read_bytes()
@@ -91,6 +98,7 @@ def stage_samples(
     sources: List[SampleSource],
     *,
     explanation_blocks: Optional[Dict[int, str]] = None,
+    extra_explanations: Optional[Dict[int, str]] = None,
     render_text: Optional[RenderText] = None,
     render_explanation_text: Optional[RenderText] = None,
     render_blocks: Optional[RenderBlocks] = None,
@@ -107,6 +115,7 @@ def stage_samples(
     Jinja before it is written into the sample folder.
     """
     explanation_blocks = explanation_blocks or {}
+    extra_explanations = extra_explanations or {}
     render_text = render_text or render_explanation_text
     samples_root = problem_root / SAMPLES_DIRNAME
 
@@ -121,6 +130,7 @@ def stage_samples(
             index,
             source,
             explanation_blocks,
+            extra_explanations,
             render_text,
             render_blocks,
             lang,
