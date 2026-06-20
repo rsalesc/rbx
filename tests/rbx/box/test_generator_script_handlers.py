@@ -302,6 +302,36 @@ gen5 arg5
         assert isinstance(parsed[0], ScriptGeneratedInput)
         assert parsed[0].group is None
 
+    def _routed_args(self, group):
+        script_entry = GeneratorScript(path=pathlib.Path('s.txt'), format='rbx')
+        script = (
+            'gen0 untagged\n'
+            '@testgroup g {\n  gen1 g-only\n}\n'
+            '@testgroup g/s1 {\n  gen2 s1-only\n}\n'
+            '@testgroup g/s2 {\n  gen3 s2-only\n}\n'
+        )
+        handler = RbxGeneratorScriptHandler(
+            script, GeneratorScriptHandlerParams(script_entry, group)
+        )
+        return [inp.generator_call.args for inp in handler.parse()]
+
+    def test_prefix_filter_subgroup_key_routes_distinctly(self):
+        # Subgroup g/s1: untagged + parent-group-tagged + its own path; NOT g/s2.
+        assert self._routed_args('g/s1') == ['untagged', 'g-only', 's1-only']
+        assert self._routed_args('g/s2') == ['untagged', 'g-only', 's2-only']
+
+    def test_prefix_filter_group_key_excludes_subgroup_lines(self):
+        # Group g (no subgroup in key): untagged + g-only only; path lines dropped.
+        assert self._routed_args('g') == ['untagged', 'g-only']
+
+    def test_prefix_filter_none_group_returns_all(self):
+        assert self._routed_args(None) == [
+            'untagged',
+            'g-only',
+            's1-only',
+            's2-only',
+        ]
+
 
 def _rbx_handler(script):
     return get_generator_script_handler(

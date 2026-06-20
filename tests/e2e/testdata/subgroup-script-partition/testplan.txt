@@ -1,0 +1,10 @@
+@input "10 20"
+@testgroup alpha {
+    @input "11 11"
+}
+@testgroup beta/one {
+    @input "21 21"
+}
+@testgroup beta/two {
+    @input "22 22"
+}

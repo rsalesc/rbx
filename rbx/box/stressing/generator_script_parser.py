@@ -1,6 +1,7 @@
 import ast
 import dataclasses
 import pathlib
+import re
 from typing import List, Optional
 
 import lark
@@ -11,7 +12,12 @@ from rbx.box.stressing import whitespace
 
 
 class ScriptGeneratedInput(GenerationInput):
-    """Input generated from a generator script with optional group annotation."""
+    """Input generated from a generator script with optional group annotation.
+
+    ``group`` is a ``/``-joined path (e.g. ``group`` or ``group/subgroup``)
+    built from inline and/or nested ``@testgroup`` blocks, or ``None`` for
+    untagged statements.
+    """
 
     group: Optional[str] = None
 
@@ -54,7 +60,7 @@ TESTGROUP_KEYWORD.3: "@testgroup"
 # no ambiguity
 REST_OF_LINE.2: /(?!(?:@copy|@input|@testgroup)\b)[^\s\/#][^\n\r]*/
 FILEPATH: /[A-Za-z0-9\.][\/A-Za-z0-9\-_\.]*/
-GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_]*/
+GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_\/]*/
 
 // String literals - support both single and double quotes with escape sequences
 // Negative lookahead (?!") prevents matching "" when it's part of """
@@ -75,6 +81,17 @@ _NEWLINE: /\r?\n/
 '''
 
 LARK_PARSER = lark.Lark(LARK_GRAMMAR, propagate_positions=True)
+
+_GROUP_PATH_SEGMENT = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$')
+
+
+def _validate_group_path(path: str) -> None:
+    """Validate a `/`-joined @testgroup path; raise on empty/malformed segments."""
+    if not all(_GROUP_PATH_SEGMENT.match(seg) for seg in path.split('/')):
+        raise ValueError(
+            f'Invalid @testgroup path: {path!r}. Each `/`-separated segment '
+            f'must be non-empty and match [a-zA-Z0-9][a-zA-Z0-9-_]*.'
+        )
 
 
 @lark.v_args(inline=True, meta=True)
@@ -203,25 +220,30 @@ class TestPlanTransformer(lark.Transformer):
         if len(children) < 2:
             return []
 
-        # First child is TESTGROUP_KEYWORD (@testgroup), second is the group name
+        # First child is TESTGROUP_KEYWORD (@testgroup), second is the group path.
         group_name = str(children[1])
+        _validate_group_path(group_name)
 
-        # Rest are statements (can include nested testgroups)
+        # Rest are statements (can include nested testgroups).
         statements = children[2:]
 
-        # Flatten and assign group name
+        # Flatten and assign/extend the group path.
         result = []
         for stmt in statements:
             if stmt is None:
                 continue
             elif isinstance(stmt, list):
-                # Nested testgroup returns a list
+                # Nested testgroup returns a list whose items already carry the
+                # inner path; prefix this level's name to build the full path.
                 for nested_stmt in stmt:
-                    if nested_stmt.group is None:
-                        nested_stmt.group = group_name
+                    nested_stmt.group = (
+                        group_name
+                        if nested_stmt.group is None
+                        else f'{group_name}/{nested_stmt.group}'
+                    )
                     result.append(nested_stmt)
             elif isinstance(stmt, ScriptGeneratedInput):
-                # Direct statement
+                # Direct statement (always group=None here).
                 if stmt.group is None:
                     stmt.group = group_name
                 result.append(stmt)
@@ -281,7 +303,12 @@ def parse_and_transform(
     """Parse a test plan script and transform it into a list of ScriptGeneratedInput objects."""
     tree = parse(script)
     transformer = TestPlanTransformer(script_path)
-    res = transformer.transform(tree)
+    try:
+        res = transformer.transform(tree)
+    except lark.exceptions.VisitError as e:
+        # Surface the underlying error (e.g. an invalid @testgroup path) instead
+        # of lark's wrapper, so callers see a clean ValueError.
+        raise e.orig_exc from None
     return res
 
 

@@ -1,0 +1,17 @@
+name: subgroup-script-partition
+timeLimit: 1000
+memoryLimit: 256
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+generatorScript:
+  path: testplan.txt
+
+testcases:
+  - name: alpha
+  - name: beta
+    subgroups:
+      - name: one
+      - name: two

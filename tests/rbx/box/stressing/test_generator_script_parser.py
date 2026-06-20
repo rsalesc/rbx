@@ -1,5 +1,8 @@
 import pathlib
 
+import lark
+import pytest
+
 from rbx.box.stressing import generator_script_parser as gsp
 from rbx.box.stressing.generator_script_parser import (
     ScriptGeneratedInput,
@@ -45,6 +48,17 @@ def test_statement_spans_sorted_by_start_line():
     starts = [s.start_line for s in spans]
     assert starts == sorted(starts)
     assert starts == [1, 3, 5]  # two top-level + one inside the group
+
+
+def test_statement_spans_path_qualified_testgroup():
+    # statement_spans must descend into a path-qualified testgroup just like a
+    # flat one, reporting its leaf statements (round-trip / remove safety).
+    script = '@testgroup g/s {\ngens/a 1\n@input "x"\n}\n'
+    spans = gsp.statement_spans(script)
+    kinds = [s.kind for s in spans]
+    assert 'testgroup' not in kinds
+    assert 'generator_call' in kinds
+    assert 'inline_input' in kinds
 
 
 class TestParseAndTransformFunction:
@@ -494,7 +508,7 @@ block
         assert result[0].group == 'group1'
 
     def test_parse_and_transform_nested_testgroups(self):
-        """Test transforming nested testgroups."""
+        """Nested testgroups concatenate into a path (outer/inner)."""
         script = """
 @testgroup outer {
     gens/gen1 --X=1
@@ -512,13 +526,13 @@ block
         gen_call_0 = result[0].generator_call
         assert gen_call_0 is not None
         assert gen_call_0.name == 'gens/gen1'
-        assert result[1].group == 'inner'
+        assert result[1].group == 'outer/inner'
         gen_call_1 = result[1].generator_call
         assert gen_call_1 is not None
         assert gen_call_1.name == 'gens/gen2'
 
-    def test_parse_and_transform_nested_testgroups_inner_takes_precedence(self):
-        """Test that inner testgroup name takes precedence over outer."""
+    def test_parse_and_transform_nested_testgroups_build_path(self):
+        """A nested testgroup builds a full path from outer to inner."""
         script = """
 @testgroup outer {
     @testgroup inner {
@@ -531,8 +545,59 @@ block
         result = parse_and_transform(script, script_path)
 
         assert len(result) == 1
-        # Inner group name should take precedence
-        assert result[0].group == 'inner'
+        # Nested groups build the full outer/inner path.
+        assert result[0].group == 'outer/inner'
+
+    def test_parse_and_transform_inline_subgroup_path(self):
+        """An inline `group/subgroup` path is carried verbatim on .group."""
+        script = """
+@testgroup main/sub1 {
+    gens/gen1 --X=1
+}
+"""
+        result = parse_and_transform(script, pathlib.Path('s.txt'))
+        assert len(result) == 1
+        assert result[0].group == 'main/sub1'
+
+    def test_parse_and_transform_inline_path_then_nested_concats(self):
+        """An inline path nested under another group concatenates fully."""
+        script = """
+@testgroup a {
+    @testgroup b/c {
+        gens/gen1 1
+    }
+}
+"""
+        result = parse_and_transform(script, pathlib.Path('s.txt'))
+        assert len(result) == 1
+        assert result[0].group == 'a/b/c'
+
+    def test_parse_and_transform_deep_path_allowed_syntactically(self):
+        """Paths deeper than rbx's 2-level model parse fine (match nothing)."""
+        script = '@testgroup a/b/c {\n    gens/gen1 1\n}\n'
+        result = parse_and_transform(script, pathlib.Path('s.txt'))
+        assert len(result) == 1
+        assert result[0].group == 'a/b/c'
+
+    def test_parse_and_transform_untagged_lines_have_no_group(self):
+        """Top-level (untagged) statements keep group == None."""
+        script = 'gens/gen1 1\n@testgroup main/sub1 {\n    gens/gen2 2\n}\n'
+        result = parse_and_transform(script, pathlib.Path('s.txt'))
+        assert result[0].group is None
+        assert result[1].group == 'main/sub1'
+
+    @pytest.mark.parametrize('bad', ['main/', 'main//sub', 'a/b/'])
+    def test_parse_and_transform_rejects_malformed_path(self, bad):
+        """Empty path segments are rejected with a clear error."""
+        script = f'@testgroup {bad} {{\n    gens/gen1 1\n}}\n'
+        with pytest.raises(ValueError, match='Invalid @testgroup path'):
+            parse_and_transform(script, pathlib.Path('s.txt'))
+
+    def test_parse_and_transform_rejects_leading_slash_path(self):
+        """A leading-slash path is rejected at parse (tokenize) time."""
+        script = '@testgroup /sub {\n    gens/gen1 1\n}\n'
+        with pytest.raises(lark.exceptions.LarkError):
+            parse_and_transform(script, pathlib.Path('s.txt'))
 
     def test_parse_and_transform_multiple_top_level_testgroups(self):
         """Test transforming multiple top-level testgroups."""
@@ -790,7 +855,7 @@ gens/gen2
         assert gen_script_1.line == 6
 
     def test_parse_and_transform_deeply_nested_testgroups(self):
-        """Test transforming deeply nested testgroups."""
+        """Deeply nested testgroups concatenate into a full path per level."""
         script = """
 @testgroup level1 {
     gens/gen1
@@ -808,8 +873,8 @@ gens/gen2
 
         assert len(result) == 3
         assert result[0].group == 'level1'
-        assert result[1].group == 'level2'
-        assert result[2].group == 'level3'
+        assert result[1].group == 'level1/level2'
+        assert result[2].group == 'level1/level2/level3'
 
     def test_parse_and_transform_generator_with_various_filepath_formats(self):
         """Test transforming generators with different filepath formats."""
