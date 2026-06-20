@@ -4,33 +4,41 @@
 in the table below which formats are supported, and what are its supported features
 and limitations:
 
-+-----------------------+---------------------+-----------------------------------------------------------+
-|        Format         |   Target Systems    |                         Supports                          |
-+=======================+=====================+===========================================================+
-| ICPC                  | DOMjudge, Kattis    |                                                           |
-| (coming soon)         |                     | :white_check_mark: Interactive problems (without checker) |
-|                       |                     | :white_check_mark: Batch problems                         |
-|                       |                     | :white_check_mark: Test grouping                          |
-|                       |                     | :white_check_mark: Limits per language                    |
-|                       |                     | :white_check_mark: Solution verification                  |
-|                       |                     | :white_check_mark: Package upload                         |
-+-----------------------+---------------------+-----------------------------------------------------------+
-| [BOCA](boca.md)       | BOCA                |                                                           |
-|                       |                     | :white_check_mark: Interactive problems (with checker)    |
-|                       |                     | :white_check_mark: Batch problems                         |
-|                       |                     | :white_check_mark: Limits per language                    |
-|                       |                     | :white_check_mark: Package upload                         |
-|                       |                     | :x: Test grouping                                         |
-|                       |                     | :x: Solution verification                                 |
-+-----------------------+---------------------+-----------------------------------------------------------+
-| [Polygon](polygon.md) | Codeforces, Polygon |                                                           |
-|                       |                     | :white_check_mark: Interactive problems (with checker)    |
-|                       |                     | :white_check_mark: Batch problems                         |
-|                       |                     | :white_check_mark: Limits per language                    |
-|                       |                     | :warning: Package upload (with limitations)               |
-|                       |                     | :x: Solution verification                                 |
-|                       |                     | :x: Test grouping                                         |
-+-----------------------+---------------------+-----------------------------------------------------------+
++-------------------------+---------------------+-----------------------------------------------------------+
+|          Format         |    Target Systems   |                          Supports                         |
++=========================+=====================+===========================================================+
+| ICPC                    | Kattis              |                                                           |
+| (coming soon)           |                     | :white_check_mark: Interactive problems (without checker) |
+|                         |                     | :white_check_mark: Batch problems                         |
+|                         |                     | :white_check_mark: Test grouping                          |
+|                         |                     | :white_check_mark: Limits per language                    |
+|                         |                     | :white_check_mark: Solution verification                  |
+|                         |                     | :white_check_mark: Package upload                         |
++-------------------------+---------------------+-----------------------------------------------------------+
+| [DOMjudge](domjudge.md) | DOMjudge            |                                                           |
+|                         |                     | :white_check_mark: Batch problems                         |
+|                         |                     | :white_check_mark: Solution verification                  |
+|                         |                     | :x: Interactive problems                                  |
+|                         |                     | :x: Test grouping                                         |
+|                         |                     | :x: Limits per language                                   |
+|                         |                     | :x: Package upload                                        |
++-------------------------+---------------------+-----------------------------------------------------------+
+| [BOCA](boca.md)         | BOCA                |                                                           |
+|                         |                     | :white_check_mark: Interactive problems (with checker)    |
+|                         |                     | :white_check_mark: Batch problems                         |
+|                         |                     | :white_check_mark: Limits per language                    |
+|                         |                     | :white_check_mark: Package upload                         |
+|                         |                     | :x: Test grouping                                         |
+|                         |                     | :x: Solution verification                                 |
++-------------------------+---------------------+-----------------------------------------------------------+
+| [Polygon](polygon.md)   | Codeforces, Polygon |                                                           |
+|                         |                     | :white_check_mark: Interactive problems (with checker)    |
+|                         |                     | :white_check_mark: Batch problems                         |
+|                         |                     | :white_check_mark: Limits per language                    |
+|                         |                     | :warning: Package upload (with limitations)               |
+|                         |                     | :x: Solution verification                                 |
+|                         |                     | :x: Test grouping                                         |
++-------------------------+---------------------+-----------------------------------------------------------+
 
 ## `rbx package`
 
