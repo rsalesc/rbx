@@ -20,7 +20,6 @@ from rbx.box import (
     creation,
     download,
     environment,
-    generator_script_handlers,
     generators,
     global_package,
     limits_info,
@@ -41,7 +40,7 @@ from rbx.box.environment import VerificationLevel, get_app_environment_path
 from rbx.box.generation_schema import get_parsed_entry
 from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
-from rbx.box.schema import ExpectedOutcome, GeneratorScript, TestcaseGroup
+from rbx.box.schema import ExpectedOutcome, GeneratorScript
 from rbx.box.solutions import (
     get_exact_matching_solutions,
     get_matching_solutions,
@@ -1037,22 +1036,25 @@ async def stress(
         return
     from rbx.box import promotion
 
+    stress_text = f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
+    finding_calls = [finding.generator for finding in report.findings]
+
     testgroup = None
     while testgroup is None or testgroup:
-        groups_by_name = {
-            name: group
-            for name, group in package.get_test_groups_by_name().items()
-            if group.generatorScript is not None
-            and group.generatorScript.path.suffix == '.txt'
-        }
+        # Script targets: one per (run-key, matching @testgroup block) plus a
+        # create/append target per run-key, resolving inherited problem-level
+        # scripts. Labelled `<run-key> @ <script>:<line>` (or without a line for
+        # the create/append target).
+        target_by_label = {t.label: t for t in promotion.script_add_targets()}
         manual_groups = promotion.get_manual_groups_by_name()
 
         import questionary
 
         testgroup = await questionary.select(
-            'Choose the testgroup to add the tests to.\n'
-            'Script groups (.txt generatorScript) and manual (glob-backed) groups are shown below: ',
-            choices=list(groups_by_name)
+            'Choose where to add the tests.\n'
+            'Script blocks (<run-key> @ <script>:<line>) and manual '
+            '(glob-backed) groups are shown below: ',
+            choices=list(target_by_label)
             + list(manual_groups)
             + [
                 '(create new script)',
@@ -1060,6 +1062,9 @@ async def stress(
                 '(skip)',
             ],
         ).ask_async()
+
+        if testgroup is None or testgroup == '(skip)':
+            break
 
         if testgroup == '(create new manual group)':
             manual_target = await promotion.create_manual_group_interactively()
@@ -1097,21 +1102,19 @@ async def stress(
             new_script_name = await questionary.text(
                 'Enter the name of the new .txt generatorScript file: '
             ).ask_async()
+            if new_script_name is None or not new_script_name.strip():
+                break
             new_script_path = pathlib.Path(new_script_name).with_suffix('.txt')
             new_script_path.parent.mkdir(parents=True, exist_ok=True)
             new_script_path.touch()
 
-            # Temporarily create a new testgroup with the new script.
-            testgroup = new_script_path.stem
-            groups_by_name[testgroup] = TestcaseGroup(
-                name=testgroup, generatorScript=GeneratorScript(path=new_script_path)
-            )
+            new_group = new_script_path.stem
             ru, problem_yml = package.get_ruyaml()
             if 'testcases' not in problem_yml:
                 problem_yml['testcases'] = []
             problem_yml['testcases'].append(
                 {
-                    'name': testgroup,
+                    'name': new_group,
                     'generatorScript': {'path': new_script_path.name},
                 }
             )
@@ -1120,28 +1123,29 @@ async def stress(
             utils.save_ruyaml(dest, ru, problem_yml)
             package_utils.clear_package_cache()
 
-        if testgroup not in groups_by_name:
+            # The new script is dedicated to its group -> a plain top-level append.
+            new_target = promotion.ScriptAddTarget(
+                run_key=new_group,
+                script=GeneratorScript(path=new_script_path),
+                block_start_line=None,
+                top_level=True,
+                label='',
+            )
+            promotion.add_calls_to_target(
+                new_target, finding_calls, comment=stress_text
+            )
+            console.console.print(
+                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{new_group}[/item]'s generatorScript at {new_target.script.href()}"
+            )
+            break
+
+        if testgroup not in target_by_label:
             break
         try:
-            subgroup = groups_by_name[testgroup]
-            assert subgroup.generatorScript is not None
-            generator_script = pathlib.Path(subgroup.generatorScript.path)
-            handler = generator_script_handlers.get_generator_script_handler(
-                generator_script.read_text(),
-                generator_script_handlers.GeneratorScriptHandlerParams(
-                    subgroup.generatorScript,
-                ),
-            )
-
-            stress_text = f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
-            handler.append(
-                [finding.generator for finding in report.findings],
-                comment=stress_text,
-            )
-            generator_script.write_text(handler.script)
-
+            target = target_by_label[testgroup]
+            promotion.add_calls_to_target(target, finding_calls, comment=stress_text)
             console.console.print(
-                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at {subgroup.generatorScript.href()}"
+                f'Added [item]{len(report.findings)}[/item] tests to [item]{testgroup}[/item].'
             )
         except typer.Exit:
             continue

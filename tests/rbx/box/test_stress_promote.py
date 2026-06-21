@@ -67,6 +67,59 @@ def _mock_run_stress(report: StressReport):
     return run_stress
 
 
+def _select_matching(predicate):
+    """questionary.select mock that picks the first offered choice matching."""
+
+    def factory(*args, **kwargs):
+        choices = kwargs.get('choices')
+        chosen = next(c for c in choices if predicate(c))
+        result = mock.MagicMock()
+
+        async def ask_async():
+            return chosen
+
+        result.ask_async = ask_async
+        return result
+
+    return factory
+
+
+def test_stress_promote_to_inherited_script_block(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.schema import GeneratorScript, TestcaseGroup
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-id.cpp')
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text('@testgroup grpa {\n  gens/gen.cpp 1\n}\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [TestcaseGroup(name='grpa')]
+    testing_pkg.save()
+
+    report = _write_findings(testing_pkg, b'5 7\n')
+
+    # Pick the existing-@testgroup-block target (its label carries a :line),
+    # not the (append) target.
+    def picks_block(choice: str) -> bool:
+        return choice.startswith('grpa @') and ':' in choice.split('@', 1)[1]
+
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', return_value=True),
+        mock.patch('questionary.select', _select_matching(picks_block)),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp']
+        )
+
+    assert result.exit_code == 0, result.output
+    # The finding's generator call is appended INSIDE the grpa block.
+    body = shared.read_text().split('@testgroup grpa', 1)[1].split('}', 1)[0]
+    assert 'gen 0' in body
+
+
 def test_stress_promote_existing_manual_group(
     runner: CliRunner,
     testing_pkg: testing_package.TestingPackage,

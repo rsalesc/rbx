@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import pathlib
 import re
@@ -8,7 +9,7 @@ from rbx.box import generator_script_handlers as gsh
 from rbx.box import package, package_utils
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.generator_script_handlers import _group_matches
-from rbx.box.schema import TestcaseGroup
+from rbx.box.schema import GeneratorCall, GeneratorScript, TestcaseGroup
 from rbx.box.stressing import generator_script_parser as gsp
 from rbx.box.testcase_extractors import iter_effective_scripts
 
@@ -268,6 +269,77 @@ def is_isolated_removal(
     return removal_affects_only_run_key(
         entry.subgroup_entry.group, annotation, run_keys
     )
+
+
+@dataclasses.dataclass
+class ScriptAddTarget:
+    """A place to append generator-script lines for one run-key."""
+
+    run_key: str
+    script: GeneratorScript
+    block_start_line: Optional[int]  # existing @testgroup block; None => create/append
+    top_level: bool  # only when block_start_line is None: append untagged
+    label: str
+
+
+def script_add_targets() -> List[ScriptAddTarget]:
+    """Targets for appending tests to rbx-format ``.txt`` generator scripts.
+
+    For each leaf run-key with such an effective script, yields one target per
+    existing ``@testgroup`` block matching the run-key exactly, plus a
+    create/append target. The create/append target appends at top level when the
+    script is used by only that run-key (so the new line cannot leak), else it
+    creates a fresh ``@testgroup <run-key>`` block scoping the addition.
+    """
+    run_keys = run_keys_by_script_path()
+    targets: List[ScriptAddTarget] = []
+    for run_key, gs in iter_effective_scripts():
+        if gs.format != 'rbx' or gs.path.suffix != '.txt' or not gs.path.is_file():
+            continue
+        rel = package.relpath(gs.path)
+        for block in gsp.testgroup_blocks(gs.path.read_text()):
+            if block.path == run_key:
+                targets.append(
+                    ScriptAddTarget(
+                        run_key,
+                        gs,
+                        block.start_line,
+                        False,
+                        f'{run_key} @ {rel}:{block.start_line}',
+                    )
+                )
+        exclusive = run_keys.get(gs.path) == {run_key}
+        targets.append(
+            ScriptAddTarget(
+                run_key,
+                gs,
+                None,
+                exclusive,
+                f'{run_key} @ {rel} '
+                + ('(append)' if exclusive else '(new @testgroup block)'),
+            )
+        )
+    return targets
+
+
+def add_calls_to_target(
+    target: ScriptAddTarget,
+    calls: List[GeneratorCall],
+    comment: Optional[str] = None,
+) -> None:
+    """Append ``calls`` to ``target``'s script, scoped to its run-key."""
+    path = target.script.path
+    handler = gsh.get_generator_script_handler(
+        path.read_text(), gsh.GeneratorScriptHandlerParams(target.script)
+    )
+    if target.block_start_line is not None:
+        handler.append_in_block(target.block_start_line, calls, comment)
+    elif target.top_level:
+        handler.append(calls, comment)
+    else:
+        handler.append_new_block(target.run_key, calls, comment)
+    path.write_text(handler.script)
+    package_utils.clear_package_cache()
 
 
 def is_promotable(
