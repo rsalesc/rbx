@@ -9,7 +9,7 @@ from rbx.box.generation_schema import (
     GenerationTestcaseEntry,
     GeneratorScriptEntry,
 )
-from rbx.box.schema import GeneratorCall, Testcase, TestcaseGroup
+from rbx.box.schema import GeneratorCall, GeneratorScript, Testcase, TestcaseGroup
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 
@@ -18,6 +18,15 @@ def _entry(metadata):
     return GenerationTestcaseEntry(
         group_entry=TestcaseEntry(group='g', index=0),
         subgroup_entry=TestcaseEntry(group='g', index=0),
+        metadata=metadata,
+    )
+
+
+def _entry_rk(run_key, metadata):
+    """An entry whose run-key (subgroup path) is ``run_key``."""
+    return GenerationTestcaseEntry(
+        group_entry=TestcaseEntry(group=run_key.split('/')[0], index=0),
+        subgroup_entry=TestcaseEntry(group=run_key, index=0),
         metadata=metadata,
     )
 
@@ -85,6 +94,144 @@ def test_script_format_by_path(testing_pkg: testing_package.TestingPackage):
 
     plan_path = testing_pkg.root / 'testplan' / 'main.txt'
     assert formats[plan_path] == 'rbx'
+
+
+# --- removal isolation gate (pure) -----------------------------------------
+
+
+def test_removal_affects_only_named_block_is_isolated():
+    # annotation 'g1' matches only run-key 'g1' even when 'g2' shares the script.
+    assert promotion.removal_affects_only_run_key('g1', 'g1', {'g1', 'g2'}) is True
+
+
+def test_removal_affects_only_top_level_shared_not_isolated():
+    assert promotion.removal_affects_only_run_key('g1', None, {'g1', 'g2'}) is False
+
+
+def test_removal_affects_only_top_level_exclusive_is_isolated():
+    assert promotion.removal_affects_only_run_key('g1', None, {'g1'}) is True
+
+
+def test_removal_affects_only_parent_tag_bleeds_into_subgroups():
+    # 'main' matches both subgroups -> removing it affects more than main/sub1.
+    assert (
+        promotion.removal_affects_only_run_key(
+            'main/sub1', 'main', {'main/sub1', 'main/sub2'}
+        )
+        is False
+    )
+
+
+def test_removal_affects_only_qualified_block_is_isolated():
+    assert (
+        promotion.removal_affects_only_run_key(
+            'main/sub1', 'main/sub1', {'main/sub1', 'main/sub2'}
+        )
+        is True
+    )
+
+
+# --- effective-script awareness (inherited problem-level script) -----------
+
+
+def test_script_format_by_path_includes_inherited(
+    testing_pkg: testing_package.TestingPackage,
+):
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text('@testgroup grp {\n  gen 1\n}\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [TestcaseGroup(name='grp')]
+    testing_pkg.save()
+
+    formats = promotion.script_format_by_path()
+
+    assert formats[shared] == 'rbx'
+
+
+def test_run_keys_by_script_path_groups_sharing_inherited_script(
+    testing_pkg: testing_package.TestingPackage,
+):
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text('@testgroup grpa {\n  gen 1\n}\n@testgroup grpb {\n  gen 2\n}\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+        TestcaseGroup(name='grpa'),
+        TestcaseGroup(name='grpb'),
+    ]
+    testing_pkg.save()
+
+    run_keys = promotion.run_keys_by_script_path()
+
+    assert run_keys[shared] == {'grpa', 'grpb'}
+
+
+def test_is_isolated_removal_named_block_safe(
+    testing_pkg: testing_package.TestingPackage,
+):
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text('@testgroup grpa {\n  gen 1\n}\n@testgroup grpb {\n  gen 2\n}\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+        TestcaseGroup(name='grpa'),
+        TestcaseGroup(name='grpb'),
+    ]
+    testing_pkg.save()
+
+    run_keys = promotion.run_keys_by_script_path()
+    entry = _entry_rk(
+        'grpa',
+        _md(
+            generator_call=GeneratorCall(name='gen', args='1'),
+            generator_script=GeneratorScriptEntry(path=shared, line=2),
+        ),
+    )
+
+    assert promotion.is_isolated_removal(entry, run_keys) is True
+
+
+def test_is_isolated_removal_top_level_shared_unsafe(
+    testing_pkg: testing_package.TestingPackage,
+):
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text('gen 1\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+        TestcaseGroup(name='grpa'),
+        TestcaseGroup(name='grpb'),
+    ]
+    testing_pkg.save()
+
+    run_keys = promotion.run_keys_by_script_path()
+    entry = _entry_rk(
+        'grpa',
+        _md(
+            generator_call=GeneratorCall(name='gen', args='1'),
+            generator_script=GeneratorScriptEntry(path=shared, line=1),
+        ),
+    )
+
+    assert promotion.is_isolated_removal(entry, run_keys) is False
+
+
+def test_remove_script_entries_removes_from_inherited_script(
+    testing_pkg: testing_package.TestingPackage,
+):
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text('@testgroup grpa {\n  gen 1\n}\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [TestcaseGroup(name='grpa')]
+    testing_pkg.save()
+
+    entry = _entry_rk(
+        'grpa',
+        _md(
+            generator_call=GeneratorCall(name='gen', args='1'),
+            generator_script=GeneratorScriptEntry(path=shared, line=2),
+        ),
+    )
+    promotion.remove_script_entries([entry])
+
+    assert 'gen 1' not in shared.read_text()
 
 
 def test_remove_script_entries_removes_originating_statement(
