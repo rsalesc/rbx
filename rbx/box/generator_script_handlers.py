@@ -82,6 +82,59 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
             name = self.normalize_call_name(call.name)
             self.script += f'\n{name} {call.args or ""}'
 
+    def _call_lines(
+        self, calls: List[GeneratorCall], comment: Optional[str], indent: str
+    ) -> List[str]:
+        lines: List[str] = []
+        if comment:
+            lines.append(f'{indent}# {comment}')
+        for call in calls:
+            name = self.normalize_call_name(call.name)
+            lines.append(f'{indent}{name} {call.args or ""}'.rstrip())
+        return lines
+
+    def append_in_block(
+        self,
+        block_start_line: int,
+        calls: List[GeneratorCall],
+        comment: Optional[str] = None,
+    ) -> None:
+        """Insert ``calls`` inside the @testgroup block opened at
+        ``block_start_line`` (before its closing brace), indented to match it."""
+        block = next(
+            (
+                b
+                for b in generator_script_parser.testgroup_blocks(self.script)
+                if b.start_line == block_start_line
+            ),
+            None,
+        )
+        if block is None:
+            raise ValueError(f'No @testgroup block starts at line {block_start_line}.')
+        lines = self.script.splitlines()
+        # Indent to match the last non-blank body line, else two spaces.
+        indent = '  '
+        for ln in range(block.end_line - 2, block.start_line - 1, -1):
+            if lines[ln].strip():
+                indent = lines[ln][: len(lines[ln]) - len(lines[ln].lstrip())] or '  '
+                break
+        insert_at = block.end_line - 1  # 0-indexed line of the `}`
+        lines[insert_at:insert_at] = self._call_lines(calls, comment, indent)
+        self.script = '\n'.join(lines) + ('\n' if self.script.endswith('\n') else '')
+
+    def append_new_block(
+        self,
+        group_path: str,
+        calls: List[GeneratorCall],
+        comment: Optional[str] = None,
+    ) -> None:
+        """Append a fresh ``@testgroup <group_path> { ... }`` block scoping
+        ``calls`` to exactly that run-key."""
+        body = self._call_lines(calls, comment, '  ')
+        block = '\n'.join([f'@testgroup {group_path} {{', *body, '}'])
+        sep = '\n' if self.script and not self.script.endswith('\n') else ''
+        self.script = f'{self.script}{sep}\n{block}\n'
+
     def remove(self, start_lines: Set[int]) -> None:
         spans = {
             s.start_line: s

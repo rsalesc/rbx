@@ -193,6 +193,79 @@ def test_promote_non_interactive_nonexistent_group_errors(
     assert 'does-not-exist' in result.output
 
 
+def _setup_inherited_named_blocks(testing_pkg: testing_package.TestingPackage):
+    """Problem-level script partitioned by @testgroup, inherited by grpa/grpb."""
+    from rbx.box.schema import GeneratorScript, TestcaseGroup
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-id.cpp')
+    shared = testing_pkg.add_testplan('shared')
+    shared.write_text(
+        '@testgroup grpa {\n  gens/gen.cpp 123\n}\n'
+        '@testgroup grpb {\n  gens/gen.cpp 456\n}\n'
+    )
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+        TestcaseGroup(name='grpa'),
+        TestcaseGroup(name='grpb'),
+    ]
+    testing_pkg.save()
+    return shared
+
+
+def test_promote_inherited_named_block(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    shared = _setup_inherited_named_blocks(testing_pkg)
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    result = runner.invoke(
+        testcases_main.app, ['promote', 'grpa/0', '--group', 'corner']
+    )
+
+    assert result.exit_code == 0, result.output
+    dest = testing_pkg.root / 'tests/manual/corner/000.in'
+    assert dest.is_file()
+    assert dest.read_bytes() == b'123\n'
+    text = shared.read_text()
+    # The grpa line is removed; grpb's block is untouched.
+    assert 'gens/gen.cpp 123' not in text
+    assert 'gens/gen.cpp 456' in text
+
+
+def test_promote_blocked_when_line_shared_across_groups(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.schema import GeneratorScript, TestcaseGroup
+
+    testing_pkg.add_generator('gens/gen.cpp', src='generators/gen-id.cpp')
+    shared = testing_pkg.add_testplan('shared')
+    # Untagged top-level line: it feeds BOTH inheriting groups, so removing it
+    # would change grpb too -> promotion must be rejected.
+    shared.write_text('gens/gen.cpp 123\n')
+    testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+        TestcaseGroup(name='grpa'),
+        TestcaseGroup(name='grpb'),
+    ]
+    testing_pkg.save()
+    (testing_pkg.root / 'tests/manual/corner').mkdir(parents=True, exist_ok=True)
+    testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    result = runner.invoke(
+        testcases_main.app, ['promote', 'grpa/0', '--group', 'corner']
+    )
+
+    assert result.exit_code != 0
+    assert 'cannot be promoted' in result.output
+    assert 'other test group' in result.output
+    # Nothing written; source untouched.
+    assert not any((testing_pkg.root / 'tests/manual/corner').glob('*.in'))
+    assert 'gens/gen.cpp 123' in shared.read_text()
+
+
 def test_promote_interactive_existing_group(
     runner: CliRunner,
     testing_pkg: testing_package.TestingPackage,
@@ -286,7 +359,7 @@ def test_non_promotable_reason_dynamic_script():
             generator_script=GeneratorScriptEntry(path=dynamic, line=1),
         ),
     )
-    reason = testcases_main._non_promotable_reason(entry, {dynamic: 'rbx'})  # noqa: SLF001
+    reason = testcases_main._non_promotable_reason(entry, {dynamic: 'rbx'}, {})  # noqa: SLF001
     assert 'dynamic generator script' in reason
 
 

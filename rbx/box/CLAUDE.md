@@ -117,6 +117,28 @@ Solutions expecting TLE run with 2x time limit. Warns if a "TLE" solution passes
   ```
 - **Manual testcases** -- Files referenced by `inputPath` in `problem.rbx.yml`
 
+### Editing generator scripts (add-tests / promotion)
+
+`rbx stress`'s "add found tests" picker and `rbx testcases promote` edit rbx-format
+`.txt` scripts, and both resolve the **inherited problem-level `generatorScript`**
+(#599/#601), not just explicit per-group scripts:
+
+- `testcase_extractors.effective_generator_script(subgroup, pkg)` is the single
+  own-else-inherited resolver (used by the visitor too); `iter_effective_scripts()`
+  yields `(run_key, GeneratorScript)` for every leaf group/subgroup.
+- **add-tests** (`promotion.script_add_targets` / `add_calls_to_target`): targets are
+  `<run-key> @ <script>:<line>` per matching `@testgroup` block, plus a create/append
+  target. Appends are scoped to the run-key -- into the block, or a new
+  `@testgroup <run-key>` block, or top-level when the script is exclusive to that
+  run-key. `generator_script_parser.testgroup_blocks()` enumerates blocks;
+  `RbxGeneratorScriptHandler.append_in_block` / `append_new_block` insert them.
+- **promotion** (`promotion.is_isolated_removal`): a generated test is promotable only
+  when removing its originating line affects ONLY its own run-key -- i.e. the line sits
+  in a `@testgroup` block scoped to that run-key, or the script is used by only that
+  run-key. Encoded via `removal_affects_only_run_key` using the shared
+  `generator_script_handlers._group_matches` predicate, so it stays in sync with the
+  generation-time `@testgroup` filter.
+
 ### Output Generation
 `generate_outputs_for_testcases()` runs the main (first accepted) solution on all inputs to produce expected outputs.
 

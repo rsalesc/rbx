@@ -292,6 +292,64 @@ def statement_spans(script: str) -> List[StatementSpan]:
     return spans
 
 
+@dataclasses.dataclass
+class TestgroupBlock:
+    path: str  # full `/`-joined @testgroup path, e.g. 'main' or 'a/b'
+    start_line: int  # line of the `@testgroup` keyword (1-indexed)
+    end_line: int  # line of the matching closing `}` (1-indexed)
+
+
+def _closing_brace_line(lines: List[str], start_line: int) -> int:
+    """Line (1-indexed) of the `}` closing the block opened on/after ``start_line``.
+
+    A brace-depth scan; rbx blocks contain only statements/comments (no braces
+    inside strings), so a plain character scan is sufficient.
+    """
+    depth = 0
+    seen_open = False
+    for i in range(start_line - 1, len(lines)):
+        for ch in lines[i]:
+            if ch == '{':
+                depth += 1
+                seen_open = True
+            elif ch == '}':
+                depth -= 1
+                if seen_open and depth == 0:
+                    return i + 1
+    return len(lines)
+
+
+def testgroup_blocks(script: str) -> List[TestgroupBlock]:
+    """All `@testgroup` blocks with their full `/`-joined path and line span.
+
+    Nested blocks yield their concatenated path (e.g. ``a`` then ``a/b``),
+    matching the path semantics applied to statements by the transformer.
+    """
+    tree = parse(script)
+    lines = script.splitlines()
+    blocks: List[TestgroupBlock] = []
+
+    def walk(node, prefix: str):
+        for child in node.children:
+            if not isinstance(child, lark.Tree) or child.data != 'testgroup':
+                continue
+            name = str(child.children[1])
+            full = name if not prefix else f'{prefix}/{name}'
+            start = child.meta.line
+            blocks.append(
+                TestgroupBlock(
+                    path=full,
+                    start_line=start,
+                    end_line=_closing_brace_line(lines, start),
+                )
+            )
+            walk(child, full)
+
+    walk(tree, '')
+    blocks.sort(key=lambda b: b.start_line)
+    return blocks
+
+
 def parse(script: str) -> lark.ParseTree:
     """Parse a test plan script and return the parse tree."""
     return LARK_PARSER.parse(script)
