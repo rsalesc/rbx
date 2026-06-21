@@ -61,6 +61,44 @@ def test_statement_spans_path_qualified_testgroup():
     assert 'inline_input' in kinds
 
 
+def test_testgroup_blocks_flat():
+    script = 'gen 0\n@testgroup main {\n  gen 1\n}\n@testgroup other {\n  gen 2\n}\n'
+    blocks = gsp.testgroup_blocks(script)
+    paths = [(b.path, b.start_line) for b in blocks]
+    assert ('main', 2) in paths
+    assert ('other', 5) in paths
+
+
+def test_testgroup_blocks_nested_path():
+    script = '@testgroup a {\n  @testgroup b {\n    gen 1\n  }\n}\n'
+    paths = {b.path for b in gsp.testgroup_blocks(script)}
+    assert paths == {'a', 'a/b'}
+
+
+def test_testgroup_blocks_qualified_path():
+    script = '@testgroup main/sub1 {\n  gen 1\n}\n'
+    assert [b.path for b in gsp.testgroup_blocks(script)] == ['main/sub1']
+
+
+def test_testgroup_blocks_end_line_is_closing_brace():
+    script = '@testgroup main {\n  gen 1\n  gen 2\n}\n'
+    (block,) = gsp.testgroup_blocks(script)
+    assert block.start_line == 1
+    assert block.end_line == 4  # the `}` line
+
+
+def test_testgroup_blocks_empty_block():
+    script = '@testgroup main {\n}\n'
+    (block,) = gsp.testgroup_blocks(script)
+    assert block.path == 'main'
+    assert block.start_line == 1
+    assert block.end_line == 2
+
+
+def test_testgroup_blocks_none_when_no_groups():
+    assert gsp.testgroup_blocks('gen 1\ngen 2\n') == []
+
+
 class TestParseAndTransformFunction:
     """Test suite for the parse_and_transform function behavior."""
 
