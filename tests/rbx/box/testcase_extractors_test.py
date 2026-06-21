@@ -289,6 +289,50 @@ class TestRunTestcaseVisitor:
         assert [e.metadata.generator_call.args for e in sub2] == ['a', 'b']
         assert all(e.metadata.generator_script is not None for e in sub2)
 
+    async def test_iter_effective_scripts_covers_inherited_and_explicit(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """iter_effective_scripts yields a run-key per leaf group/subgroup,
+        resolving the inherited problem-level script and explicit scripts."""
+        from rbx.box.testcase_extractors import iter_effective_scripts
+
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        shared = testing_pkg.add_testplan('shared')
+        shared.write_text('@testgroup inherits { gen1 1 }\n')
+        testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+        own = testing_pkg.add_testplan('own')
+        own.write_text('gen1 2\n')
+        testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+            TestcaseGroup(name='inherits'),
+            TestcaseGroup(name='explicit', generatorScript=GeneratorScript(path=own)),
+        ]
+        testing_pkg.save()
+
+        mapping = {rk: gs.path for rk, gs in iter_effective_scripts()}
+
+        assert mapping['inherits'] == shared
+        assert mapping['explicit'] == own
+
+    async def test_iter_effective_scripts_includes_inheriting_subgroups(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Leaf subgroups that inherit yield run-keys; a group with subgroups
+        does not yield its own run-key."""
+        from rbx.box.testcase_extractors import iter_effective_scripts
+
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        shared = testing_pkg.add_testplan('shared')
+        shared.write_text('gen1 a\ngen1 b\n')
+        testing_pkg.yml.generatorScript = GeneratorScript(path=shared)
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [{'name': 'sub1'}, {'name': 'sub2'}],
+        )
+
+        run_keys = {rk for rk, _ in iter_effective_scripts()}
+
+        assert run_keys == {'main/sub1', 'main/sub2'}
+
     async def test_shared_script_routes_distinct_testcases_to_subgroups(
         self, testing_pkg: testing_package.TestingPackage
     ):

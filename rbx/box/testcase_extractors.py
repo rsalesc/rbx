@@ -1,6 +1,6 @@
 import abc
 import pathlib
-from typing import Iterable, List, Optional, Set
+from typing import Iterable, List, Optional, Set, Tuple
 
 import typer
 
@@ -22,6 +22,7 @@ from rbx.box.schema import (
     CodeItem,
     GeneratorCall,
     GeneratorScript,
+    Package,
     Solution,
     Testcase,
     TestcaseSubgroup,
@@ -33,6 +34,43 @@ from rbx.box.testcase_utils import (
     fill_output_for_defined_testcase,
 )
 from rbx.grading.steps import DigestHolder, DigestOrDest, DigestOrSource
+
+
+def effective_generator_script(
+    subgroup: TestcaseSubgroup, pkg: Package
+) -> Optional[GeneratorScript]:
+    """The (sub)group's own ``generatorScript`` else the inherited package default.
+
+    A (sub)group with any test parameters of its own -- ``testcases``,
+    ``testcaseGlob``, ``generators`` -- or with subgroups does NOT inherit the
+    problem-level default (it generates from its own source or its subgroups).
+    """
+    if subgroup.generatorScript is not None:
+        return subgroup.generatorScript
+    if (
+        subgroup.testcases
+        or subgroup.testcaseGlob
+        or subgroup.generators
+        or getattr(subgroup, 'subgroups', None)
+    ):
+        return None
+    return pkg.generatorScript
+
+
+def iter_effective_scripts() -> Iterable[Tuple[str, GeneratorScript]]:
+    """Yield ``(run_key, effective script)`` for each leaf (sub)group that
+    resolves to a generator script, mirroring the visitor's traversal: the group
+    itself (run-key ``group``) then each subgroup (run-key ``group/subgroup``).
+    """
+    pkg = package.find_problem_package_or_die()
+    for group in pkg.testcases:
+        gs = effective_generator_script(group, pkg)
+        if gs is not None:
+            yield group.name, gs
+        for subgroup in group.subgroups:
+            sub_gs = effective_generator_script(subgroup, pkg)
+            if sub_gs is not None:
+                yield f'{group.name}/{subgroup.name}', sub_gs
 
 
 def _get_group_input(
@@ -287,26 +325,17 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
 
         # A group or subgroup that does not define any test parameters of its own
         # (and has no subgroups) inherits the problem-level generatorScript, if set.
-        effective_generator_script = subgroup.generatorScript
-        if effective_generator_script is None and not (
-            subgroup.testcases
-            or subgroup.testcaseGlob
-            or subgroup.generators
-            or getattr(subgroup, 'subgroups', None)
-        ):
-            effective_generator_script = pkg.generatorScript
+        effective_gs = effective_generator_script(subgroup, pkg)
 
         # Run generator script.
-        if effective_generator_script is not None:
-            script = await run_generator_script(
-                effective_generator_script, subgroup.name
-            )
+        if effective_gs is not None:
+            script = await run_generator_script(effective_gs, subgroup.name)
 
             # Run each line from generator script. Pass the FULL subgroup path
             # (e.g. `main/sub1`) so path-qualified @testgroup lines route to the
             # matching subgroup; at the group level this equals `group_path`.
             for generation_input in _extract_script_lines(
-                script, effective_generator_script, subgroup_path
+                script, effective_gs, subgroup_path
             ):
                 if generation_input.copied_from is not None:
                     metadata = GenerationMetadata(
@@ -320,7 +349,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     call = GeneratorCall(
                         name=_resolve_generator_name(
                             generation_input.generator_call.name,
-                            effective_generator_script,
+                            effective_gs,
                         ),
                         args=generation_input.generator_call.args,
                     )
