@@ -1,0 +1,19 @@
+name: inherited-script-edits
+timeLimit: 1000
+memoryLimit: 256
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+# A single shared script, inherited by grpa and grpb (neither sets its own test
+# parameters), partitioned by @testgroup. `corner` is a manual glob group used
+# as a promotion target.
+generatorScript:
+  path: testplan.txt
+
+testcases:
+  - name: grpa
+  - name: grpb
+  - name: corner
+    testcaseGlob: tests/manual/corner/*.in
