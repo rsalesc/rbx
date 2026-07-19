@@ -99,7 +99,7 @@ pre_bump_hooks = [
   "uv lock"
 ]
 version_files = [
-  "pyproject.toml",
+  "pyproject.toml:^version = ",
   "rbx/__version__.py",
   "rbx/resources/presets/default/preset.rbx.yml:^min_version",
 ]
