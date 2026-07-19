@@ -1,3 +1,57 @@
+## 1.0.0 (2026-07-19)
+
+### BREAKING CHANGE
+
+- env.rbx.yml files using `bocaLanguage`, env-level
+`extensions.boca.languages`, `maximumTimeError`, or relying on the implicit
+BOCA `template` fallback now fail to load. See the "Migrating to rbx v1"
+guide.
+
+### Feat
+
+- **testset**: subgroup-level @testgroup filtering in generator scripts (#600) (#604)
+- **testset**: problem-level generatorScript default (#599) (#602)
+- **statements**: explicit assets field for Polygon statement resources (#595) (#596)
+- **statements**: contest-less default-template fallback (S15, #571) (#593)
+- **contest**: configurable problem label in rbx on/each command app (#585)
+- **completion**: dynamic completers for run/irun/stress/on + shared flags (#575) (#576)
+- **ui**: test-list filtering + fancy search box (#548) (#553)
+- **ui**: show main solution badge in run-explorer (#551)
+- **ui**: dock run-mode testcase metadata as a toggleable footer (#404) (#539)
+- **linters**: block generators from depending on rbx.h (#545)
+- **ui**: show visualizer errors in a dismissible modal (#541)
+- **presets**: registry of presets with picker (#535) (#536)
+- **presets**: preset-declared, versioned downloaded libraries (#392) (#534)
+- **boca**: remove legacy BOCA env fields for v1 + migration guide (#471) (#533)
+- sandbox dir mirroring Phase 2 — executionFiles + auto-expansion (#524) (#528)
+- **stress**: promote tests and stress findings to manual tests (#442) (#521)
+
+### Fix
+
+- **release**: scope pyproject version_files to the version line
+- **statements**: depend-on-template polygon TikZ externalization (#590) (#603)
+- **packaging**: thread testcase entries through polygon upload (#591) (#594)
+- **statements**: polygon upload audit fixes (#589 findings #1, #3, #4) (#592)
+- honor java + kotlin group in preset infosheet
+- rename problem sheets in preset
+- **completion**: dedupe command/option aliases to one candidate (#578)
+- **ui**: show empty-state when run explorer finds no skeleton (#555)
+- **ui**: handle invalid YAML gracefully in rbx ui instead of crashing (#543)
+- **polygon**: escape upload error comments and warn on truncation (#540)
+- derive package/preset name from path basename in create commands (#537)
+
+### Refactor
+
+- **statements**: delete unused v1 build code (#580) (#587)
+- **timing**: collapse get_solution_limits family (#351) (#552)
+- **contest**: consolidate build folders with problems (#353) (#544)
+- **cache**: rename .box cache directory to .rbx (#542)
+- **grading**: replace is_*_command aliases with command_kinds (#532)
+
+### Perf
+
+- **completion**: fast static-spec shell completion (#333) (#573)
+
 ## 0.38.0 (2026-06-04)
 
 ### Feat
