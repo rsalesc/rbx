@@ -38,6 +38,7 @@ nav:
       - "Statements":
           - "Overview": "setters/statements/index.md"
           - "Writing statements": "setters/statements/writing.md"
+          - "Template context": "setters/statements/context.md"
           - "Write a template": "setters/statements/templates.md"
           - "Contest statements": "setters/statements/contest.md"
       - "Packaging":
