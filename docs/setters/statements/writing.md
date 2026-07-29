@@ -199,24 +199,23 @@ as your `.tex`**, and reference them by a plain relative path.
 \includegraphics{figure.png}   % figure.png sits next to statement.rbx.tex
 ```
 
-They resolve automatically — {{rbx}} stages a portable overlay while building,
-so you never need `\graphicspath` or `TEXINPUTS`.
+During a local build (`rbx st b`), {{rbx}} mirrors the directory that holds your
+`file` — the whole subtree — so anything sitting next to your `.tex` is staged
+automatically. You never need `\graphicspath` or `TEXINPUTS`.
 
-To ship resources that live **outside** the statement's directory (or elsewhere
-in the package), list them under `assets` as globs relative to the package root:
+The `assets` field is a **packaging** concern, not a local-build one: it lists
+extra globs (relative to the package root) to ship with the statement when you
+**export**, notably to {{polygon}}. Use it to declare resources that live
+**outside** the statement's directory, since those aren't picked up by the
+directory mirroring above.
 
 ```yaml title="problem.rbx.yml"
 statements:
   - language: "en"
     file: "statement/statement.rbx.tex"
     assets:
-      - "statement/images/*.png"
-      - "statement/icpc.sty"
+      - "shared/logos/*.png"   # out-of-tree resources to ship on export
 ```
-
-Each asset keeps its path relative to the statement file, so
-`statement/images/example.png` is available as `images/example.png` at build
-time.
 
 ## Other formats
 
