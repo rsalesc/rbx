@@ -4,7 +4,7 @@
 statement in {{rbx}}. This page is a tour of the format, from blocks to samples
 to assets, and finishes with the other formats {{rbx}} also understands.
 
-## rbxTeX — what & why
+## Why rbxTeX
 
 An {{rbxtex}} file is a set of named **blocks** of content, sprinkled with
 {{Jinja2}} for variables and logic. It is a superset of {{latex}}: anything you
@@ -37,7 +37,7 @@ pointing `file` at your `.rbx.tex` is enough.
 
 === "problem.rbx.yml"
 
-    ```yaml title="problem.rbx.yml"
+    ```yaml
     statements:
       - language: "en"                        # (1)!
         file: "statement/statement.rbx.tex"   # (2)!
@@ -111,14 +111,16 @@ Try to use dynamic programming.
     solution text in a `legend` block, not an `editorial` block inside the
     problem statement. See [Tutorials & editorials](tutorials.md).
 
-## Variables & logic
+## Variables and logic
 
 Interpolate any value from `problem.rbx.yml` (and the built-in context) with
-`\VAR{...}`. Your problem-level `vars` live under `vars.*`:
+`\VAR{...}`. Your problem-level `vars` live under `vars.*` — `vars` are your
+problem's own values, while `params` tweak the *template* instead (see
+[Template context](context.md)):
 
 === "statement.rbx.tex"
 
-    ```latex title="statement/statement.rbx.tex"
+    ```latex
     %- block input
     The first line contains an integer $N$
     ($\VAR{vars.N.min} \le N \le \VAR{vars.N.max | sci}$).
@@ -127,7 +129,7 @@ Interpolate any value from `problem.rbx.yml` (and the built-in context) with
 
 === "problem.rbx.yml"
 
-    ```yaml title="problem.rbx.yml"
+    ```yaml
     vars:
       N:
         min: 1
@@ -155,7 +157,7 @@ There is a single test case per file.
 For the complete list of what is in scope (`problem`, `vars`, `samples`,
 `limits`, filters, …) see [context.md](context.md).
 
-## Samples & explanations
+## Sample explanations
 
 Samples are loaded automatically from your testset and handed to the template as
 `problem.samples`; the default template already prints them. To explain a
@@ -190,7 +192,7 @@ higher source wins for the same sample):
 Markdown statements use the same scheme with Markdown suffixes: `000.rbx.md`
 (per-language blocks) or `000.md` (language-agnostic).
 
-## Assets & resources
+## Assets and resources
 
 **The golden rule:** put images, `.sty` files, and PDFs **in the same directory
 as your `.tex`**, and reference them by a plain relative path.
@@ -219,10 +221,11 @@ statements:
 
 ## Other formats
 
-{{rbxtex}} is the default, but `type` accepts a few alternatives (case- and
-hyphen-insensitive). Only `rbx-tex` and `rbx-md` process blocks and can **join
-into a contest statement** — see [Contest statements](contest.md). The rest are
-standalone-only, meant for `documents` or drop-in files.
+{{rbxtex}} is the default, but `type` accepts a few alternatives — see the
+[Formats at a glance](index.md#formats-at-a-glance) table in the Overview. Only
+`rbx-tex` and `rbx-md` process blocks and can **join into a contest statement**
+— see [Contest statements](contest.md). The rest are standalone-only, meant for
+[`documents`](index.md#the-three-kinds) or drop-in files.
 
 ### Markdown (`rbx-md`)
 
