@@ -10,7 +10,7 @@ An {{rbxtex}} file is a set of named **blocks** of content, sprinkled with
 {{Jinja2}} for variables and logic. It is a superset of {{latex}}: anything you
 can write in LaTeX, you can write here.
 
-```latex title="statement/statement.rbx.tex"
+```latex title="statements/statement.rbx.tex"
 %- block legend
 Given two integers $A$ and $B$, determine the value of $A + B$.
 %- endblock
@@ -41,7 +41,7 @@ pointing `file` at your `.rbx.tex` is enough.
     ```yaml
     statements:
       - language: "en"                        # (1)!
-        file: "statement/statement.rbx.tex"   # (2)!
+        file: "statements/statement.rbx.tex"   # (2)!
         params:                               # (3)!
           show_limits: true
     ```
@@ -55,7 +55,7 @@ pointing `file` at your `.rbx.tex` is enough.
 === "Directory layout"
 
     ```text
-    statement/
+    statements/
       statement.rbx.tex      # your blocks
       samples/
         000.in
@@ -69,7 +69,7 @@ statement entry accepts.
 
 A block is a chunk of content between `%- block <name>` and `%- endblock`:
 
-```latex title="statement/statement.rbx.tex"
+```latex title="statements/statement.rbx.tex"
 %- block legend
 Given an array of $\VAR{vars.n}$ integers, find the largest sum of a
 contiguous subarray.
@@ -101,7 +101,7 @@ them get special treatment when packaging for {{polygon}}.
 To add your own section, define a block and render it in your
 [template](contest.md#custom-blocks):
 
-```latex title="statement/statement.rbx.tex"
+```latex title="statements/statement.rbx.tex"
 %- block hint
 Try to use dynamic programming.
 %- endblock
@@ -156,7 +156,7 @@ There is a single test case per file.
 ```
 
 For the complete list of what is in scope (`problem`, `vars`, `samples`,
-`limits`, filters, …) see [context.md](context.md).
+`limits`, [filters](context.md#filters), …) see [context.md](context.md).
 
 ## Sample explanations
 
@@ -172,7 +172,7 @@ higher source wins for the same sample):
    suffix: `000.in` → `000.rbx.tex`. It is a blocks file with one block **per
    language**, keyed by the language code:
 
-    ```latex title="statement/samples/000.rbx.tex"
+    ```latex title="statements/samples/000.rbx.tex"
     %- block en
     In the first sample, $A = 3$ and $B = 7$, so the answer is $A + B = 10$.
     %- endblock
@@ -198,7 +198,7 @@ Markdown statements use the same scheme with Markdown suffixes: `000.rbx.md`
 **The golden rule:** put images, `.sty` files, and PDFs **in the same directory
 as your `.tex`**, and reference them by a plain relative path.
 
-```latex title="statement/statement.rbx.tex"
+```latex title="statements/statement.rbx.tex"
 \includegraphics{figure.png}   % figure.png sits next to statement.rbx.tex
 ```
 
@@ -215,7 +215,7 @@ directory mirroring above.
 ```yaml title="problem.rbx.yml"
 statements:
   - language: "en"
-    file: "statement/statement.rbx.tex"
+    file: "statements/statement.rbx.tex"
     assets:
       - "shared/logos/*.png"   # out-of-tree resources to ship on export
 ```
@@ -267,6 +267,6 @@ external tool or pulled from an old archive.
 ```yaml title="problem.rbx.yml"
 statements:
   - language: "en"
-    file: "statement/statement.pdf"
+    file: "statements/statement.pdf"
     type: "pdf"
 ```

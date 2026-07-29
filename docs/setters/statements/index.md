@@ -107,6 +107,10 @@ Use the full command or its short alias. Each list has its own builder:
 # Build problem statements (one PDF per language)
 $ rbx statements build          # alias: rbx st b
 
+# Build one variant positionally, by its `variant`
+# (mirror of `rbx contest st b <name>`)
+$ rbx st b short
+
 # Build the contest book and its documents
 $ rbx contest statements build  # alias: rbx contest st b
 

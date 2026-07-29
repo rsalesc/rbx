@@ -67,7 +67,7 @@ They answer two different questions, so they live in two different namespaces:
       author: "Jane Doe"      # your problem's data → vars.*
     statements:
       - language: en
-        file: statement/statement.rbx.tex
+        file: statements/statement.rbx.tex
         params:
           show_limits: true   # a template knob → params.*
     ```
@@ -81,6 +81,23 @@ contest title is `\VAR{contest.title}`; top-level `vars` still means the
 \VAR{vars.author}        %# the problem's var
 \VAR{contest.vars.year}  %# a contest var — dotted, never merged into vars
 ```
+
+## Filters
+
+Any `\VAR{...}` value can be piped through a **filter** with `|`, exactly like in
+{{Jinja2}}. On top of the standard {{Jinja2}} filters, {{rbx}} registers a few
+LaTeX-aware ones:
+
+- **`sci`** — a "round" integer in scientific notation:
+  `\VAR{vars.N.max | sci}` renders `1000000000` as `10^9`.
+- **`rsci`** — like `sci`, but keeps the remainder:
+  `\VAR{vars.MOD | rsci}` renders `1000000007` as `10^9 + 7`.
+- **`escape`** — LaTeX-escape a string (`_`, `%`, `&`, …):
+  `\VAR{vars.author | escape}`.
+- **`parent`** — a path's parent directory, e.g. `\VAR{sample.input | parent}`.
+- **`stem`** — a path's filename without its extension: `\VAR{sample.input | stem}`.
+
+The standard {{Jinja2}} filters (`upper`, `join`, `default`, …) also work.
 
 ## The `problem` namespace
 

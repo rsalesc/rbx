@@ -92,7 +92,7 @@ then render it — guarded, since not every problem defines it — in the templa
 See [Writing statements](writing.md#blocks) for the conventional block names
 (`legend`, `input`, `output`, `notes`, ...); [Template context](context.md) lists
 the full set of handles in scope (`problem`, `samples`, `limits`, the join
-handles, filters).
+handles, [filters](context.md#filters)).
 
 ## Declaring contest statements
 

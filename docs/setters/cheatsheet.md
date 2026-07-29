@@ -268,7 +268,7 @@ vars:
 
 === "In statements"
     ```tex
-    The maximum value of N is \VAR{N.max | sci} % (1)!
+    The maximum value of N is \VAR{vars.N.max | sci} % (1)!
     ```
 
     1.   If `N.max` has lots of trailing zeroes, `sci` converts it to scientific notation.
@@ -283,9 +283,9 @@ Problem statements are keyed by `(language, variant)` and have **no `name`**. Se
 statements:
   # ...other statements
   - language: en
-    file: "statement/statement.rbx.tex" # (1)!
+    file: "statements/statement.rbx.tex" # (1)!
     params: { show_limits: true }       # (2)!
-    assets: ['statement/*.png']         # (3)!
+    assets: ['statements/*.png']         # (3)!
 ```
 
 1. Path to the {{rbxTeX}} source, relative to the package root. `type` defaults to `rbx-tex`, so it's omitted.
@@ -299,14 +299,14 @@ statements:
 ```yaml
 statements:
   - language: en
-    file: "statement/statement.rbx.tex"
+    file: "statements/statement.rbx.tex"
     params: { show_limits: true }
   - language: pt
     extends: en                    # (1)!
     params: { show_limits: false } # (2)!
 ```
 
-1. Reuses `en`'s `file`, `type`, and `params`.
+1. Reuses `en`'s `file`, `type`, `assets`, and `params`.
 
 2. `params` deep-merges, so `pt` overrides only `show_limits`.
 
@@ -316,7 +316,7 @@ statements:
 statements:
   # ...other statements
   - language: fr
-    file: "statement/statement.pdf"
+    file: "statements/statement.pdf"
     type: pdf
 ```
 

@@ -18,7 +18,7 @@ The solution text goes in a plain `legend` block, like any statement body. There
 is **no `editorial` block** — a tutorial is a normal statement file that happens
 to describe the solution:
 
-```latex title="statement/editorial.rbx.tex"
+```latex title="statements/editorial-en.rbx.tex"
 %- block legend
 We read the two integers $A$ and $B$ and output their sum $A + B$. The intended
 solution is a direct $O(1)$ computation.
