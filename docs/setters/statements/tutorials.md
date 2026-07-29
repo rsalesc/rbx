@@ -40,8 +40,9 @@ tutorials:
     file: statements/editorial-en.rbx.tex
 ```
 
-A **contest** tutorial, like a contest statement, owns the editorial templates
-and therefore **requires** a `name` plus the two problem templates:
+A **contest** tutorial **requires** a `name` and, like a contest statement,
+carries the two problem templates
+([`standaloneProblemTemplate` / `contestProblemTemplate`](contest.md#the-contest-owns-the-templates)):
 
 ```yaml title="contest.rbx.yml"
 tutorials:
@@ -52,10 +53,10 @@ tutorials:
     contestProblemTemplate: statements/editorial-fragment.rbx.tex
 ```
 
-The two templates behave exactly as for
-[contest statements](contest.md#the-contest-owns-the-templates) — a full
-document for the standalone build, a fragment for the join. See that page for
-the details.
+Both are **optional** and behave exactly as they do for a contest statement — a
+full document for the standalone build, a fragment for the join; when the
+standalone template is absent, {{rbx}} falls back to the bundled default
+editorial. See [Contest statements](contest.md) for the full mechanics.
 
 ## Building
 
