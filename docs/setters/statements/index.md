@@ -25,8 +25,7 @@ rendered to a PDF:
   you just leave it out.
 - **`file`** — the source file, relative to the package root.
 
-Everything else — the title, custom `params`, assets, sample selection — is
-optional.
+Everything else — the title, assets, sample selection — is optional.
 
 !!! info
     See the [auto-generated reference](../reference/package/schema.md) for the
@@ -34,18 +33,31 @@ optional.
 
 ## The three kinds
 
-Statements come in three flavors, and each flavor is its own list:
+A few words first, because you'll meet them in the table below. When you build a
+whole *contest*, {{rbx}} stitches every problem's statement into one booklet — a
+cover, then problem A, then B, and so on. That stitching is the **join**; some
+kinds take part in it, and one doesn't.
 
-| Kind         | Where             | Joins problems?   | Purpose                       |
-| ------------ | ----------------- | ----------------- | ----------------------------- |
-| `statements` | problem + contest | yes (in contests) | the problem/contest statement |
-| `tutorials`  | problem + contest | yes (in contests) | editorials                    |
-| `documents`  | contest only      | no                | infosheets, cover pages       |
+The one that doesn't is a **document**: a contest-only page that stands on its
+own and never joins, so it never pulls in any problem's statement. It's how you
+make the extra pages a contest needs but a single problem can't — an
+**infosheet** (say, a table of every problem's limits) or a **cover page**. A
+**tutorial**, meanwhile, is just an editorial — the write-up explaining how to
+*solve* a problem rather than how to read it.
+
+With those in hand, statements come in three flavors, and each flavor is its own
+list:
+
+| Kind         | Where             | Joined into the contest? | Purpose                       |
+| ------------ | ----------------- | ------------------------ | ----------------------------- |
+| `statements` | problem + contest | yes                      | the problem/contest statement |
+| `tutorials`  | problem + contest | yes                      | editorials                    |
+| `documents`  | contest only      | no                       | infosheets, cover pages       |
 
 Notice that `statements` and `tutorials` are really the same thing under the
 hood — same source model, same build pipeline — they just live in different
-lists and produce differently named PDFs. `documents` are the odd ones out:
-contest-only standalone pages that never pull in any problem content.
+lists and produce differently named PDFs. `documents`, as we said, are the odd
+ones out.
 
 ## Where they're declared
 

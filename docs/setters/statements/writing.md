@@ -46,15 +46,11 @@ just pointing `file` at your `.rbx.tex` is enough:
     statements:
       - language: "en"                        # (1)!
         file: "statements/statement.rbx.tex"   # (2)!
-        params:                               # (3)!
-          show_limits: true
     ```
 
     1.  The language code (ISO 639-1) this statement is written in.
     2.  The `.rbx.tex` source, relative to the package root. `type` defaults to
         `rbx-tex`, so it can be omitted.
-    3.  Free-form values passed to the template as `params.*` (here the default
-        template uses `show_limits` to toggle the limits box).
 
 === "Directory layout"
 
@@ -80,11 +76,11 @@ contiguous subarray.
 %- endblock
 ```
 
-The block above is named `legend`, so its content lands in `problem.blocks.legend`,
-which the template pulls out with `\VAR{problem.blocks.legend}`. Block names are
-**free-form** — any `%- block foo` becomes `problem.blocks.foo`, and there is no
-fixed list, so custom blocks are perfectly fine. See [context.md](context.md) for
-everything exposed as `problem.blocks.<name>` and the rest of the template scope.
+The block above is named `legend` — and that's all a block is: a **named chunk of
+your statement's content**. Block names are **free-form** — any `%- block foo`
+works, there is no fixed list, so custom blocks are perfectly fine. How a template
+later turns these blocks into a rendered page is a story for
+[context.md](context.md); we'll get to how they're rendered there.
 
 That said, the bundled default template (and every preset that inherits it)
 renders this set of blocks by convention:
@@ -103,8 +99,8 @@ renders this set of blocks by convention:
 Reusing these names keeps your statement portable across templates, and a few of
 them even get special treatment when packaging for {{polygon}}.
 
-Want a section of your own? Define a block and render it in your
-[template](contest.md#custom-blocks):
+Want a section of your own? Define the block right here; wiring it into the page
+comes later, from the [template](contest.md#custom-blocks):
 
 ```latex title="statements/statement.rbx.tex"
 %- block hint
@@ -143,9 +139,9 @@ into your statement with `\VAR{...}`. Your problem-level `vars` live under
 
 The snippet above reads `N.min` and `N.max` straight out of `problem.rbx.yml`, so
 the bounds printed in the statement and the bounds your validator checks come from
-the exact same place — change one, and both follow. Notice that `vars` are your
-problem's own values; `params`, on the other hand, tweak the *template* instead
-(see [Template context](context.md)).
+the exact same place — change one, and both follow. That's the whole point of
+`vars`: they're your problem's own values, referenced with `\VAR{vars.…}`, a
+single source of truth.
 
 The `sci` **filter** renders `1000000000` as `10^9` — one of several LaTeX-aware
 filters available in statements.
@@ -175,11 +171,10 @@ For the complete list of what is in scope (`problem`, `vars`, `samples`,
 
 ## Sample explanations
 
-Samples are loaded automatically from your testset and handed to the template as
-`problem.samples`, and the default template already prints them — you don't have
-to lift a finger for the samples themselves to show up. To *explain* a specific
-sample, though, {{rbx}} looks in three places, in **descending priority** (for the
-same sample, a higher source wins):
+Samples are loaded automatically from your testset, and the default template
+already prints them — you don't have to lift a finger for the samples themselves
+to show up. To *explain* a specific sample, though, {{rbx}} looks in three
+places, in **descending priority** (for the same sample, a higher source wins):
 
 1. **An inline `explanation_<i>` block** in the statement file (`explanation_0`
    for the first sample). Because the statement is built per language, this text
