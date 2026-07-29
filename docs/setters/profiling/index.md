@@ -335,7 +335,7 @@ rbx contest statements build -p icpc
 
 At the problem level the command fails if the profile doesn't exist; at the
 contest level problems missing the profile are skipped with a warning. See
-[Building statements](../statements/index.md#rendering-against-a-timing-profile)
+[Building statements](../statements/index.md#building)
 for details.
 
 ### Profiles and packaging

@@ -35,7 +35,7 @@ The exact set of top-level names depends on **what is being rendered**:
     A **problem render** (`rbx st b`, and each problem inside a contest join)
     exposes the singular `problem` — there is **no `problems`**. The **contest
     joining document** exposes the list `problems` — there is **no singular
-    `problem`**. [Documents](contest.md) also get `problems`, but metadata-only
+    `problem`**. [Documents](contest.md#documents) also get `problems`, but metadata-only
     (per-problem `title` / `short_name` / `limits` / `profiles` / `groups`; no
     `blocks`, `samples`, or import handles).
 
