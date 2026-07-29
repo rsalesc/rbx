@@ -13,7 +13,7 @@ guides for writing, templating, contests, and tutorials.
 A statement is a `(language, variant)` source of some `type`, rendered to a PDF:
 
 - **`language`** — an ISO 639-1 code (`en`, `pt`, ...). You declare **one entry
-  per language**.
+  per `(language, variant)` pair**.
 - **`variant`** — an optional label (defaults to `default`) that lets you keep
   more than one recipe for the same language (e.g. a full vs. a simplified
   version).
@@ -26,13 +26,13 @@ exhaustive field list.
 
 ## The three kinds
 
-Statements come in three flavours, declared as three separate lists:
+Statements come in three flavors, declared as three separate lists:
 
-| Kind         | Where              | Joins problems? | Purpose                        |
-| ------------ | ------------------ | --------------- | ------------------------------ |
-| `statements` | problem + contest  | contest join    | the problem/contest statement  |
-| `tutorials`  | problem + contest  | contest join    | editorials                     |
-| `documents`  | contest only       | never           | infosheets, cover pages        |
+| Kind         | Where             | Joins problems?   | Purpose                       |
+| ------------ | ----------------- | ----------------- | ----------------------------- |
+| `statements` | problem + contest | yes (in contests) | the problem/contest statement |
+| `tutorials`  | problem + contest | yes (in contests) | editorials                    |
+| `documents`  | contest only      | no                | infosheets, cover pages       |
 
 `statements` and `tutorials` behave identically — the same source model, the
 same build pipeline — they just live in different lists and produce differently
@@ -83,15 +83,15 @@ Pick a `type` per statement. Only the `rbx-*` types carry blocks and can
 **join** into a contest book; the rest are simpler passthroughs. Each row links
 to the [Writing statements](writing.md) guide.
 
-| `type`                    | When to use                                      | Joins? (rbx\* only) |
-| ------------------------- | ------------------------------------------------ | ------------------- |
-| [`rbx-tex`](writing.md)   | **Default.** {{latex}} with blocks + {{Jinja2}}. | yes                 |
-| [`rbx-md`](writing.md)    | Markdown with blocks + {{Jinja2}}.               | yes                 |
-| [`jinja-tex`](writing.md) | {{latex}} with {{Jinja2}} only (no blocks).      | no                  |
-| [`jinja-md`](writing.md)  | Markdown with {{Jinja2}} only.                   | no                  |
-| [`tex`](writing.md)       | Plain {{latex}}, passed through untouched.       | no                  |
-| [`md`](writing.md)        | Plain Markdown, passed through untouched.        | no                  |
-| [`pdf`](writing.md)       | A pre-built PDF, copied through as-is.           | no                  |
+| `type`                    | When to use                                      | Joins? |
+| ------------------------- | ------------------------------------------------ | ------ |
+| [`rbx-tex`](writing.md)   | **Default.** {{latex}} with blocks + {{Jinja2}}. | yes    |
+| [`rbx-md`](writing.md)    | Markdown with blocks + {{Jinja2}}.               | yes    |
+| [`jinja-tex`](writing.md) | {{latex}} with {{Jinja2}} only (no blocks).      | no     |
+| [`jinja-md`](writing.md)  | Markdown with {{Jinja2}} only.                   | no     |
+| [`tex`](writing.md)       | Plain {{latex}}, passed through untouched.       | no     |
+| [`md`](writing.md)        | Plain Markdown, passed through untouched.        | no     |
+| [`pdf`](writing.md)       | A pre-built PDF, copied through as-is.           | no     |
 
 !!! note
     `type` is case- and hyphen-insensitive, and can be omitted for the default
@@ -113,12 +113,14 @@ $ rbx contest statements build  # alias: rbx contest st b
 # Build tutorials (editorials)
 $ rbx tutorials build           # alias: rbx tut b
 
-# Restrict to one or more languages (repeatable; there is no -l)
+# Restrict to one or more languages (repeatable)
 $ rbx st b --languages en --languages pt
 
 # Render against a timing profile
 $ rbx st b -p icpc
 ```
+
+See [Profiling time limits](../profiling/index.md) for how the `-p` profiles work.
 
 Built PDFs land in the `build/` directory:
 
