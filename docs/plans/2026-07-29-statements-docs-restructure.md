@@ -28,6 +28,24 @@
 - `type` values (case/hyphen-insensitive; omit when default `rbx-tex`): `rbx-tex`, `rbx-md`, `tex`, `md`, `jinja-tex`, `jinja-md`, `pdf`. Only `rbx-tex`/`rbx-md` can **join** into a contest. `documents` may use only `jinja-tex | jinja-md | tex | md | pdf`.
 - Templates live on the **contest** statement: `standaloneProblemTemplate` (full doc, `rbx st b`) and `contestProblemTemplate` (fragment, `rbx contest st b`) — rbx\* types only, alongside `variant`/`params`.
 
+## Confirmed facts (Task 0 results — authoritative; override anything conflicting above)
+
+Verified against `context.py`, `sample_staging.py`, `render.py`, `resolver.py`, and the CLI/build modules.
+
+- **Template context is render-specific:**
+  - *Problem render* (`rbx st b`, and each problem inside a join) injects top-level `params` (the **problem** statement's own params), `vars` (problem/package vars), `contest`, `problem` (singular), `lang`/`languages`/`keyed_languages`. **No `problems`.**
+  - *Contest render* (the joining document) injects `params` (the **contest** statement's own params), `vars` (**contest** vars), `contest`, `problems` (list of per-problem namespaces), `lang`/`languages`/`keyed_languages`. **No singular `problem`.**
+  - *Documents* render like the contest doc but `problems` is **metadata-only** (no `blocks`/`samples`/import handles).
+- **`contest.vars.X` is a separate dotted namespace, NOT merged into top-level `vars`.** Top-level `vars` = problem/package vars in a problem render, contest vars in a contest render.
+- **`problem` namespace:** `title`, `limits` (`.timeLimit`/`.memoryLimit`), `profiles`, `groups`, `samples`, `vars`, `params`, `blocks` (dict: block-name → rendered LaTeX); conditional `short_name`, `import_dir`, `import_file`. **`import_dir`/`import_file` exist ONLY in contest-join fragments** (absent in standalone — guard with `is defined`).
+- **`contest` namespace:** `title`, `vars` (as `contest.vars`); conditional `location`, `date`, `blocks`.
+- **Sample handles** (iterate `problem.samples`): `sample.index`, `sample.input`, `sample.output`, `sample.has_output`, `sample.dir`, `sample.explanation_file`, `sample.interaction` (`.chunks` → `chunk.path`/`chunk.pipe`/`chunk.data`). `sample.input`/`output` are **root-relative path strings** for `\VerbatimInput`; render explanations via `\subimport{sample.dir}{sample.explanation_file}`. **Do NOT use `sample.explanation` (dead) or `sample.inputPath`/`outputPath` (gone).**
+- **Blocks have no engine allowlist:** any `%- block <name> … %- endblock` → `problem.blocks.<name>`. Only `explanation_<i>` (engine splits into per-sample explanations) and `defs` (Polygon macro collection) are special-cased. The bundled-default **preset convention** uses `legend`, `input`, `output`, `interaction`, `notes`, `macros`, `preamble`, and `explanation_<i>`. **There is NO `editorial` block** — editorials are a *separate statement file* whose content sits in a `legend` block.
+- **Sample-explanation precedence:** (1) inline `explanation_<i>` block → (2) `<sample-input>.rbx.tex` sibling with per-language `%- block <langcode>` → (3) `<sample-input>.tex` language-agnostic. Both `.rbx.tex` and `.tex` for one sample = hard error. Files key off the sample **input** path with a suffix swap (`000.in` → `000.rbx.tex` / `000.tex`).
+- **CLI:** language filter is **`--languages`** (plural, repeatable) — **no `-l` short flag**. `-p`/`--profile` exists. `rbx st b [variants]` positional = variant names; `rbx contest st b [names]` positional = contest statement names.
+- **Output filenames:** standalone → `build/statement-<lang>[-<variant>][-<profile>].pdf` (tutorials → `tutorial-…`); contest → `build/<statement-name>[-<profile>].pdf` (**keyed by the contest statement's `name`, NOT language**).
+- **Fallback (`rbx st b`):** no contest / 0 matching candidates → bundled default template + **warning** (not an error); >1 matching standalone candidates → **hard error**; unselected multi-contest dispatcher → **hard error** (needs `-C <id>` / `RBX_CONTEST`). Static types (`tex`/`md`/`pdf`) always build standalone.
+
 ## Verification gate (referenced as "run the gate")
 
 1. `uv run mkdocs build` → **Expected:** completes; **no ERROR** and no new `WARNING` about the page you touched. (Strict mode has ~9 pre-existing unrelated warnings — do **not** use `--strict`.)
@@ -81,7 +99,7 @@ The old pages are stale; confirm these before writing, and keep the findings han
        contestProblemTemplate: statements/problem-in-contest.rbx.tex
    ```
 4. *Formats at a glance* — table of `type` → one-line "when to use" + "joins? (rbx\* only)"; link each to *Writing statements*.
-5. *Building* — `termynal` with `rbx st b`, `rbx contest st b`, `rbx tut b`; mention `-l <lang>` and `-p <profile>`; output filenames.
+5. *Building* — `termynal` with `rbx st b`, `rbx contest st b`, `rbx tut b`; mention `--languages <lang>` (repeatable; no `-l`) and `-p <profile>`; output filenames.
 6. *Pipeline* — refresh the existing `mermaid graph LR`; note the contest owns the chrome, with the no-contest fallback (one-line, link *Contest statements*).
 7. *Next* — links to the other four pages.
 
