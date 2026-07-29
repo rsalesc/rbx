@@ -108,11 +108,6 @@ Try to use dynamic programming.
 %- endblock
 ```
 
-!!! note "There is no `editorial` block"
-    An editorial is a **separate statement file** — a *tutorial* — that puts its
-    solution text in a `legend` block, not an `editorial` block inside the
-    problem statement. See [Tutorials and editorials](tutorials.md).
-
 ## Variables and logic
 
 You can interpolate any value from `problem.rbx.yml` (and the built-in context)
