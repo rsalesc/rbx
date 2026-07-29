@@ -37,13 +37,9 @@ nav:
           - "setters/profiling/index.md"
       - "Statements":
           - "Overview": "setters/statements/index.md"
-          - "Formats":
-              - "rbxTeX": "setters/statements/formats/rbxtex.md"
-              - "JinjaTeX & LaTeX": "setters/statements/formats/latex.md"
-              - "PDF": "setters/statements/formats/pdf.md"
-          - "Customizing":
-              - "Write a template": "setters/statements/templates.md"
-              - "Write contest statements": "setters/statements/contest.md"
+          - "Writing statements": "setters/statements/writing.md"
+          - "Write a template": "setters/statements/templates.md"
+          - "Contest statements": "setters/statements/contest.md"
       - "Packaging":
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
@@ -106,8 +102,8 @@ plugins:
               - griffe_fieldz
 extra:
   rbx: "[rbx](){:.rbx}"
-  rbxTeX: "[rbxTeX](/setters/statements/formats/rbxtex)"
-  rbxtex: "[rbxTeX](/setters/statements/formats/rbxtex)"
+  rbxTeX: "[rbxTeX](/setters/statements/writing)"
+  rbxtex: "[rbxTeX](/setters/statements/writing)"
   icpcformat: "[ICPC package format](https://icpc.io/problem-package-format/spec/legacy-icpc.html)"
   codeforces: "[Codeforces](https://codeforces.com)"
   polygon: "[Polygon](https://polygon.codeforces.com)"
