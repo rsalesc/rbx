@@ -24,7 +24,7 @@ The exact set of top-level names depends on **what is being rendered**:
 | Namespace | Contents | Available in |
 | :--- | :--- | :--- |
 | `params` | this render's own statement `params` | all renders |
-| `vars` | the problem/package `vars` (problem render) or contest `vars` (contest render) | all renders |
+| `vars` | the problem/package `vars` (problem render) or the contest `vars` (contest join) | all renders |
 | `contest` | `contest.title`, `contest.vars.*`, and (when set) `contest.location` / `contest.date` | all renders |
 | `problem` | `title`, `limits`, `profiles`, `groups`, `samples`, `vars`, `params`, `blocks`, and (when set) `short_name`, `import_dir`, `import_file` | problem renders |
 | `problems` | a list of the above (full in a contest join; metadata-only in a document) | contest join; documents |
@@ -44,7 +44,7 @@ They answer two different questions, so they live in two different namespaces:
 
 - **`vars`** is *your problem's own data* — constraints, an author name, a flag
   your statement text keys off. It comes from `vars` in `problem.rbx.yml` (or the
-  contest's `vars` in a contest render).
+  contest's `vars` in a contest join).
 - **`params`** are *knobs for the template/presentation* — e.g. whether to draw
   the limits box. They come from the `params` of the statement entry being
   rendered.
@@ -89,7 +89,7 @@ fields:
 ```latex
 \VAR{problem.title}                  %# the problem title
 \VAR{problem.limits.timeLimit} ms    %# time limit (ms)
-\VAR{problem.limits.memoryLimit} MiB %# memory limit (MiB)
+\VAR{problem.limits.memoryLimit} MB  %# memory limit (MB)
 ```
 
 `problem.short_name` (the letter, e.g. `A`) is **conditional** — it may be unset,
