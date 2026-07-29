@@ -40,6 +40,7 @@ nav:
           - "Writing statements": "setters/statements/writing.md"
           - "Template context": "setters/statements/context.md"
           - "Contest statements": "setters/statements/contest.md"
+          - "Tutorials": "setters/statements/tutorials.md"
       - "Packaging":
           - "setters/packaging/index.md"
           - "BOCA": "setters/packaging/boca.md"
