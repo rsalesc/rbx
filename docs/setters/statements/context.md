@@ -1,17 +1,22 @@
 # Template context
 
-A statement — and the [template](contest.md#the-contest-owns-the-templates) that
-wraps it — reaches everything
-through a handful of **namespaces** exposed to `\VAR{...}` and the `%- ...` /
-`\BLOCK{...}` {{Jinja2}} statements. This page is the reference for what lives in
-each one, and why they stay separate.
+Every value your statement prints — and every value the
+[template](contest.md#the-contest-owns-the-templates) that wraps it reaches for —
+comes from one of a handful of **namespaces** exposed to `\VAR{...}` and the
+`%- ...` / `\BLOCK{...}` {{Jinja2}} statements. This page is the reference for what
+lives in each one and, just as importantly, why they stay separate.
 
 ## Namespaces don't merge
 
-`params`, `vars`, and `contest` are **three distinct namespaces**. Older versions
-of {{rbx}} collapsed everything into one merged `vars`; now each source keeps its
-own name and nothing is copied between them. Reaching a value means knowing which
-namespace it belongs to:
+Here's the pain this design spares you. Older versions of {{rbx}} collapsed
+everything — your problem's data, the template's knobs, the contest's metadata —
+into one merged `vars`. That's convenient right up until two of those sources want
+the same key: one silently wins, and you're left debugging a statement that prints
+the wrong number with no clue which source overwrote which.
+
+So they don't merge anymore. `params`, `vars`, and `contest` are **three distinct
+namespaces**; each source keeps its own name, and nothing is copied between them.
+Reaching a value just means knowing which namespace it belongs to:
 
 ```latex
 \VAR{params.show_limits}   %# the statement's own param
@@ -41,7 +46,8 @@ The exact set of top-level names depends on **what is being rendered**:
 
 ## `params` vs `vars`
 
-They answer two different questions, so they live in two different namespaces:
+They answer two different questions, so {{rbx}} keeps them in two different
+namespaces:
 
 - **`vars`** is *your problem's own data* — constraints, an author name, a flag
   your statement text keys off. It comes from `vars` in `problem.rbx.yml` (or the
@@ -49,6 +55,9 @@ They answer two different questions, so they live in two different namespaces:
 - **`params`** are *knobs for the template/presentation* — e.g. whether to draw
   the limits box. They come from the `params` of the statement entry being
   rendered.
+
+Let's put them side by side — the author name is data, the "show limits" toggle is
+a presentation knob:
 
 === "statement.rbx.tex"
 
@@ -72,10 +81,15 @@ They answer two different questions, so they live in two different namespaces:
           show_limits: true   # a template knob → params.*
     ```
 
+Notice that `author` and `show_limits` sit in the *same* `problem.rbx.yml`, yet
+the template reaches them as `vars.author` and `params.show_limits` — never as one
+flattened blob.
+
 `contest` is a **separate, dotted** namespace — it is never folded into the
 top-level `vars`. A contest variable is `\VAR{contest.vars.year}`, and the
 contest title is `\VAR{contest.title}`; top-level `vars` still means the
-*problem's* vars in a problem render.
+*problem's* vars in a problem render. So in a single render, these two point at
+genuinely different values:
 
 ```latex
 \VAR{vars.author}        %# the problem's var
@@ -86,7 +100,7 @@ contest title is `\VAR{contest.title}`; top-level `vars` still means the
 
 Any `\VAR{...}` value can be piped through a **filter** with `|`, exactly like in
 {{Jinja2}}. On top of the standard {{Jinja2}} filters, {{rbx}} registers a few
-LaTeX-aware ones:
+LaTeX-aware ones you'll reach for constantly:
 
 - **`sci`** — a "round" integer in scientific notation:
   `\VAR{vars.N.max | sci}` renders `1000000000` as `10^9`.
@@ -101,7 +115,7 @@ The standard {{Jinja2}} filters (`upper`, `join`, `default`, …) also work.
 
 ## The `problem` namespace
 
-In a problem render, `problem` is the one problem being built. Its most-used
+In a problem render, `problem` is the one problem you're building. Its most-used
 fields:
 
 ```latex
@@ -128,7 +142,8 @@ its own `problem.vars.*`.
 
 `problem.blocks` is a dict of **block-name → rendered {{latex}}**. This is how a
 template places the statement's content: each `%- block legend` in the source
-becomes `problem.blocks.legend`.
+becomes `problem.blocks.legend`. So a template drops the legend in, and the input
+section only when it exists, like this:
 
 ```latex
 \VAR{problem.blocks.legend}
@@ -216,3 +231,8 @@ itself — consult the auto-generated schemas instead of restating them here:
   `params`, samples, and limits.
 - [Contest schema](../reference/contest/schema.md) — contest statements, documents,
   and the contest `vars`.
+
+And once you know what's in the context, the two pages that put it to work are
+[Writing statements](writing.md) — the source side, where blocks, variables, and
+samples come from — and [Contest statements](contest.md), the join side that wires
+the template, documents, and the (language, variant) matrix together.

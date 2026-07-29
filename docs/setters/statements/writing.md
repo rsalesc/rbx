@@ -1,14 +1,16 @@
 # Writing statements
 
-{{rbxtex}} (extension `.rbx.tex`) is the recommended way to write a problem
-statement in {{rbx}}. This page is a tour of the format, from blocks to samples
-to assets, and finishes with the other formats {{rbx}} also understands.
+{{rbxtex}} (extension `.rbx.tex`) is our recommended way of writing a problem
+statement in {{rbx}}, and this page is a tour of it — from blocks, to samples, to
+assets. We'll finish with the other formats {{rbx}} understands too, but be
+warned: unless you have a specific reason to reach for one of them, {{rbxtex}} is
+what you want.
 
 ## Why rbxTeX
 
-An {{rbxtex}} file is a set of named **blocks** of content, sprinkled with
-{{Jinja2}} for variables and logic. It is a superset of {{latex}}: anything you
-can write in LaTeX, you can write here.
+An {{rbxtex}} file is just a set of named **blocks** of content, sprinkled with
+{{Jinja2}} for variables and logic. It's a superset of {{latex}} — anything you
+can write in LaTeX, you can write here:
 
 ```latex title="statements/statement.rbx.tex"
 %- block legend
@@ -25,16 +27,18 @@ The output must contain only one integer, the sum of $A$ and $B$.
 %- endblock
 ```
 
-The blocks hold *what the problem says*; a separate
-[template](contest.md#the-contest-owns-the-templates) decides *how it looks*. That
-separation is the whole point:
+The file above carves the statement into three blocks — `legend`, `input` and
+`output` — and nothing else. Notice what's *not* there: no `\documentclass`, no
+fonts, no section titles. Those blocks only hold *what the problem says*; a
+separate [template](contest.md#the-contest-owns-the-templates) decides *how it
+looks*. That separation is the whole point:
 
 - **Swap the look** by changing the template — the content never moves.
-- **Full LaTeX power** is still there; {{rbxtex}} is just a thin wrapper.
-- **Samples and variables** are injected for you, so the content stays clean.
+- **Full LaTeX power** is still there; {{rbxtex}} is just a thin wrapper around it.
+- **Samples and variables** are injected for you, so your content stays clean.
 
-You rarely need to configure anything — `rbx-tex` is the default `type`, so
-pointing `file` at your `.rbx.tex` is enough.
+And you rarely have to configure anything. `rbx-tex` is the default `type`, so
+just pointing `file` at your `.rbx.tex` is enough:
 
 === "problem.rbx.yml"
 
@@ -67,7 +71,7 @@ statement entry accepts.
 
 ## Blocks
 
-A block is a chunk of content between `%- block <name>` and `%- endblock`:
+A block is just a chunk of content between `%- block <name>` and `%- endblock`:
 
 ```latex title="statements/statement.rbx.tex"
 %- block legend
@@ -76,13 +80,14 @@ contiguous subarray.
 %- endblock
 ```
 
-Block names are **free-form**: any `%- block foo` becomes `problem.blocks.foo`,
-which the template reads with `\VAR{problem.blocks.foo}`. There is no fixed list
-— custom blocks are perfectly fine. See [context.md](context.md) for everything
-exposed as `problem.blocks.<name>` and the rest of the template scope.
+The block above is named `legend`, so its content lands in `problem.blocks.legend`,
+which the template pulls out with `\VAR{problem.blocks.legend}`. Block names are
+**free-form** — any `%- block foo` becomes `problem.blocks.foo`, and there is no
+fixed list, so custom blocks are perfectly fine. See [context.md](context.md) for
+everything exposed as `problem.blocks.<name>` and the rest of the template scope.
 
-The bundled default template (and every preset that inherits it) renders this
-set of blocks by convention:
+That said, the bundled default template (and every preset that inherits it)
+renders this set of blocks by convention:
 
 | Block | Renders as |
 | :--- | :--- |
@@ -96,9 +101,9 @@ set of blocks by convention:
 | `explanation_<i>` | inline explanation for sample #i (0-indexed) |
 
 Reusing these names keeps your statement portable across templates, and a few of
-them get special treatment when packaging for {{polygon}}.
+them even get special treatment when packaging for {{polygon}}.
 
-To add your own section, define a block and render it in your
+Want a section of your own? Define a block and render it in your
 [template](contest.md#custom-blocks):
 
 ```latex title="statements/statement.rbx.tex"
@@ -110,14 +115,13 @@ Try to use dynamic programming.
 !!! note "There is no `editorial` block"
     An editorial is a **separate statement file** — a *tutorial* — that puts its
     solution text in a `legend` block, not an `editorial` block inside the
-    problem statement. See [Tutorials & editorials](tutorials.md).
+    problem statement. See [Tutorials and editorials](tutorials.md).
 
 ## Variables and logic
 
-Interpolate any value from `problem.rbx.yml` (and the built-in context) with
-`\VAR{...}`. Your problem-level `vars` live under `vars.*` — `vars` are your
-problem's own values, while `params` tweak the *template* instead (see
-[Template context](context.md)):
+You can interpolate any value from `problem.rbx.yml` (and the built-in context)
+into your statement with `\VAR{...}`. Your problem-level `vars` live under
+`vars.*`:
 
 === "statement.rbx.tex"
 
@@ -137,10 +141,17 @@ problem's own values, while `params` tweak the *template* instead (see
         max: 1000000000
     ```
 
+The snippet above reads `N.min` and `N.max` straight out of `problem.rbx.yml`, so
+the bounds printed in the statement and the bounds your validator checks come from
+the exact same place — change one, and both follow. Notice that `vars` are your
+problem's own values; `params`, on the other hand, tweak the *template* instead
+(see [Template context](context.md)).
+
 The `sci` **filter** renders `1000000000` as `10^9` — one of several LaTeX-aware
 filters available in statements.
 
-Everything is LaTeX-flavored {{Jinja2}}, so you also get:
+Everything is LaTeX-flavored {{Jinja2}}, so you get a bit more than plain
+interpolation:
 
 - `%#` — a line comment that is stripped before compilation (unlike `%`, which
   is a normal LaTeX comment that survives).
@@ -155,15 +166,20 @@ There is a single test case per file.
 %- endif
 ```
 
+The block above prints one line or the other depending on `vars.multitest`, so a
+single statement file can cover both the single-case and multi-case flavors of
+your problem.
+
 For the complete list of what is in scope (`problem`, `vars`, `samples`,
 `limits`, [filters](context.md#filters), …) see [context.md](context.md).
 
 ## Sample explanations
 
 Samples are loaded automatically from your testset and handed to the template as
-`problem.samples`; the default template already prints them. To explain a
-specific sample, {{rbx}} looks in three places, in **descending priority** (a
-higher source wins for the same sample):
+`problem.samples`, and the default template already prints them — you don't have
+to lift a finger for the samples themselves to show up. To *explain* a specific
+sample, though, {{rbx}} looks in three places, in **descending priority** (for the
+same sample, a higher source wins):
 
 1. **An inline `explanation_<i>` block** in the statement file (`explanation_0`
    for the first sample). Because the statement is built per language, this text
@@ -195,22 +211,27 @@ Markdown statements use the same scheme with Markdown suffixes: `000.rbx.md`
 
 ## Assets and resources
 
-**The golden rule:** put images, `.sty` files, and PDFs **in the same directory
-as your `.tex`**, and reference them by a plain relative path.
+**The golden rule:** put images, `.sty` files and PDFs **in the same directory
+as your `.tex`**, and reference them by a plain relative path:
 
 ```latex title="statements/statement.rbx.tex"
 \includegraphics{figure.png}   % figure.png sits next to statement.rbx.tex
 ```
 
-During a local build (`rbx st b`), {{rbx}} mirrors the directory that holds your
-`file` — the whole subtree — so anything sitting next to your `.tex` is staged
-automatically. You never need `\graphicspath` or `TEXINPUTS`.
+The line above references `figure.png` by name, and it just works because that
+file sits right next to `statement.rbx.tex`. During a local build (`rbx st b`),
+{{rbx}} mirrors the directory that holds your `file` — the whole subtree — so
+anything sitting next to your `.tex` is staged for you, automagically.
 
-The `assets` field is a **packaging** concern, not a local-build one: it lists
-extra globs (relative to the package root) to ship with the statement when you
-**export**, notably to {{polygon}}. Use it to declare resources that live
-**outside** the statement's directory, since those aren't picked up by the
-directory mirroring above.
+!!! tip
+    Keep everything next to your `.tex` and you'll never have to touch
+    `\graphicspath` or `TEXINPUTS` — {{rbx}} sorts out the paths for you.
+
+The `assets` field, on the other hand, is a **packaging** concern, not a
+local-build one: it lists extra globs (relative to the package root) to ship with
+the statement when you **export**, notably to {{polygon}}. Use it to declare
+resources that live **outside** the statement's directory, since those aren't
+picked up by the directory mirroring above:
 
 ```yaml title="problem.rbx.yml"
 statements:
@@ -222,24 +243,26 @@ statements:
 
 ## Other formats
 
-{{rbxtex}} is the default, but `type` accepts a few alternatives — see the
-[Formats at a glance](index.md#formats-at-a-glance) table in the Overview. Only
-`rbx-tex` and `rbx-md` process blocks and can **join into a contest statement**
-— see [Contest statements](contest.md). The rest are standalone-only, meant for
-[`documents`](index.md#the-three-kinds) or drop-in files.
+{{rbxtex}} is the default, and for the vast majority of problems it's all you'll
+ever touch. Still, `type` accepts a few alternatives — the [Formats at a
+glance](index.md#formats-at-a-glance) table in the Overview lists them all. The
+one thing to keep in mind: only `rbx-tex` and `rbx-md` process blocks and can
+**join into a contest statement** (see [Contest statements](contest.md)). The
+rest are standalone-only, meant for [`documents`](index.md#the-three-kinds) or
+drop-in files.
 
 ### Markdown (`rbx-md`)
 
-The same block / variable / {{Jinja2}} machinery as {{rbxtex}}, but you write the
-body in Markdown (`.rbx.md`) instead of LaTeX. Ideal for HTML or Markdown output
-targets while keeping the block structure.
+The same block / variable / {{Jinja2}} machinery as {{rbxtex}}, except you write
+the body in Markdown (`.rbx.md`) instead of LaTeX. Reach for it when you're
+targeting HTML or Markdown output and still want the block structure.
 
 ### Jinja (`jinja-tex` / `jinja-md`)
 
 Full control of the whole document — you write the `\documentclass`,
 `\begin{document}`, and everything else, with `\VAR{...}` and `%- ...` available
-for interpolation and logic. There are **no blocks**, so these files cannot join
-a contest; use them for standalone documents.
+for interpolation and logic. There are **no blocks** here, so these files can't
+join a contest; use them for standalone documents:
 
 ```latex
 \documentclass{article}
@@ -252,6 +275,11 @@ a contest; use them for standalone documents.
 \end{document}
 ```
 
+The document above is a complete, self-contained LaTeX file — it declares its own
+`\documentclass` and loops over `problem.samples` by hand. You get all the
+interpolation, but none of the block structure, which is exactly why it can't
+join a contest.
+
 ### Plain LaTeX / Markdown (`tex` / `md`)
 
 The file is treated as a **static** document: no blocks, no variables, no
@@ -261,8 +289,8 @@ just want {{rbx}} to compile it as-is.
 ### PDF (`pdf`)
 
 A pre-built PDF. The build is essentially a copy — no templating, variable
-substitution, or asset processing is done. Handy for statements produced by an
-external tool or pulled from an old archive.
+substitution, or asset processing happens at all. Handy for statements produced
+by an external tool, or pulled out of an old archive:
 
 ```yaml title="problem.rbx.yml"
 statements:
@@ -270,3 +298,7 @@ statements:
     file: "statements/statement.pdf"
     type: "pdf"
 ```
+
+And that's every format {{rbx}} understands. When you're ready to see what your
+blocks actually have in scope, and how templates turn them into a polished PDF,
+head over to [Template context](context.md) and [Contest statements](contest.md).

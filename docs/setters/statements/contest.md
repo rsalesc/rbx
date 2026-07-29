@@ -2,34 +2,40 @@
 
 A **contest statement** is the joined task sheet: one document that pulls every
 problem's statement into a single book, usually with a cover page and shared
-chrome. It lives in `contest.rbx.yml`, and — this is the key idea — it **owns the
-templates** that wrap each problem, both inside the book and when a problem is
-built on its own.
+chrome. It lives in `contest.rbx.yml`.
 
-This page covers the two problem templates, how a contest statement joins the
-problems that share its `(language, variant)`, standalone `documents`, and how
-`extends` reuses a build recipe across languages.
+Here's the key idea, and it's worth holding onto before anything else: the contest
+**owns the templates** that wrap each problem — both inside the book and when a
+problem is built on its own. The problem brings only the content; the contest
+decides how it looks.
+
+In the sections below, we'll go through the two problem templates, how a contest
+statement joins the problems that share its `(language, variant)`, the standalone
+`documents` that never join, and how `extends` lets you reuse a build recipe across
+languages.
 
 ## The contest owns the templates
 
 A problem statement (in `problem.rbx.yml`) is only *content* — the
-[blocks](writing.md#blocks) of what the problem says. It carries **no template**.
-The document structure — `\documentclass`, the preamble, how a `legend` block
-turns into a section — lives on the **contest** statement, in two fields:
+[blocks](writing.md#blocks) of what the problem says. It carries **no template** of
+its own. The document structure — `\documentclass`, the preamble, how a `legend`
+block turns into a section — lives on the **contest** statement, in two fields:
 
 | Field | Produces | Used by |
 | :--- | :--- | :--- |
 | `standaloneProblemTemplate` | a **full document** for one problem | `rbx st b` |
 | `contestProblemTemplate` | a **fragment** `\subimport`-ed into the book | `rbx contest st b` |
 
-Why two? When you build a single problem, it needs a complete document —
-`\documentclass`, `\begin{document}`, the works. When the same problem is joined
-into the contest book, the book *already* opens the document, so each problem must
+Why two? Because a problem gets built in two very different situations. When you
+build a single problem on its own, it needs a complete document — `\documentclass`,
+`\begin{document}`, the works. When that same problem is joined into the contest
+book, though, the book *already* opened the document, so each problem must
 contribute only its **body** — no second `\documentclass`. Same content, two
 wrappers.
 
-The cleanest way to keep them in sync is to put the shared body in one file and
-have both templates include it:
+Writing that body twice would be asking for the two copies to drift apart. The
+cleanest way to keep the templates in sync is to put the shared body in one file
+and have both of them include it. Below, the two templates and the body they share:
 
 === "problem-standalone.rbx.tex (full document)"
 
@@ -63,14 +69,21 @@ have both templates include it:
     %- endif
     ```
 
+The standalone template above opens a full document and `%- include`s the body; the
+fragment includes the *same* body with no wrapper of its own. Change the body once,
+and both builds follow.
+
 ### Custom blocks
 
-A template is {{latex}} with {{Jinja2}} interpolation (`\VAR{...}` for values,
-`%- ...` for logic). It **places content by reading `problem.blocks.<name>`** —
-each `%- block legend` in the statement becomes `\VAR{problem.blocks.legend}`, as
-the shared body above shows. Block names are free-form, so the same mechanic adds
-a section the default chrome doesn't know about: define the block in the problem,
-then render it — guarded, since not every problem defines it — in the template.
+A template is {{latex}} with {{Jinja2}} interpolation — `\VAR{...}` drops in a
+value, `%- ...` runs logic. The way it places content is by reading
+`problem.blocks.<name>`: each `%- block legend` you wrote in the statement shows up
+as `\VAR{problem.blocks.legend}`, exactly as the shared body above does it.
+
+Block names are free-form, and that's the nice part — the same mechanic lets you
+add a section the default chrome knows nothing about. Define the block in the
+problem, then render it in the template. Notice we guard it with `%- if ... is
+defined`, since not every problem will define every block:
 
 === "statement.rbx.tex"
 
@@ -89,14 +102,18 @@ then render it — guarded, since not every problem defines it — in the templa
     %- endif
     ```
 
+The block above only shows up for problems that actually wrote a `hint`; everyone
+else's document is untouched.
+
 See [Writing statements](writing.md#blocks) for the conventional block names
-(`legend`, `input`, `output`, `notes`, ...); [Template context](context.md) lists
-the full set of handles in scope (`problem`, `samples`, `limits`, the join
-handles, [filters](context.md#filters)).
+(`legend`, `input`, `output`, `notes`, ...), and [Template context](context.md) for
+the full set of handles in scope (`problem`, `samples`, `limits`, the join handles,
+[filters](context.md#filters)).
 
 ## Declaring contest statements
 
-A contest statement is a single entry under `statements:` in `contest.rbx.yml`:
+A contest statement is a single entry under `statements:` in `contest.rbx.yml`.
+Below, a fully wired one, field by field:
 
 ```yaml title="contest.rbx.yml"
 statements:
@@ -126,13 +143,13 @@ statements:
 8.  **`params`** — free-form knobs exposed to the templates as `params.*` (kept
     separate from problem/contest `vars` — see [Template context](context.md)).
 
-`variant`, `params`, and the two templates are meaningful only for the `rbx-*`
-types; setting them on a non-`rbx` contest statement is an error. For the
-exhaustive field list, see the [contest schema](../reference/contest/schema.md).
+`variant`, `params`, and the two templates only mean something for the `rbx-*`
+types — set them on a non-`rbx` contest statement and {{rbx}} will error out. For
+the exhaustive field list, see the [contest schema](../reference/contest/schema.md).
 
 ## The (language, variant) join
 
-Inside the contest `file`, you iterate the `problems` list and `\subimport` each
+Inside the contest `file`, you walk the `problems` list and `\subimport` each
 problem's rendered fragment:
 
 ```latex title="statements/contest-en.rbx.tex"
@@ -141,19 +158,21 @@ problem's rendered fragment:
 %- endfor
 ```
 
-`problem.import_dir` / `problem.import_file` are the `\subimport` handles for the
-fragment {{rbx}} built from each problem using your `contestProblemTemplate`. They
-exist **only** in this join context — see
-[Template context](context.md#import-handles-contest-join-only).
+The loop above is the whole join. `problem.import_dir` / `problem.import_file` are
+the `\subimport` handles {{rbx}} hands you for the fragment it built from each
+problem using your `contestProblemTemplate`. They exist **only** here, in the join
+context — see [Template context](context.md#import-handles-contest-join-only).
 
-The join is by `(language, variant)`. A contest statement pulls, from every
-problem, the problem statement whose `(language, variant)` **matches its own** (the
-matched problem statement must also share the contest statement's `rbx-*` type). So
-`main-en` (`en`/`default`) joins each problem's `en`/`default` statement.
+But which statement does each problem contribute? The join is by
+`(language, variant)`. A contest statement pulls, from every problem, the problem
+statement whose `(language, variant)` **matches its own** (and the matched problem
+statement has to share the contest statement's `rbx-*` type). So `main-en`
+(`en`/`default`) joins each problem's `en`/`default` statement — nothing more
+magical than that.
 
-The same key drives the **standalone** build. For `rbx st b` to build a problem on
-its own, exactly **one** contest statement must carry a `standaloneProblemTemplate`
-for that problem's `(language, variant)`:
+That same key drives the **standalone** build too. For `rbx st b` to build a
+problem on its own, exactly **one** contest statement must carry a
+`standaloneProblemTemplate` for that problem's `(language, variant)`:
 
 - **Exactly one** — that template is used. This is the normal case.
 - **More than one** — a hard error: two contest statements both claim the same
@@ -161,10 +180,15 @@ for that problem's `(language, variant)`:
 - **Zero (or no contest at all)** — not an error: {{rbx}} falls back to the
   bundled default template and **warns**.
 
+!!! note "No contest? Still fine"
+    You don't need a contest statement at all to build a problem — the zero-match
+    case above is a fallback, not a failure. {{rbx}} reaches for its bundled
+    default template and just **warns** you it did, so a bare problem always builds.
+
 ## Building
 
-Each list has its own builder; contest and problem builds use the two templates
-differently.
+Each list has its own builder, and the two of them reach for the two templates
+differently:
 
 <!--termynal-->
 ```bash
@@ -198,8 +222,9 @@ $ rbx contest st b -p icpc
 
 ## Documents
 
-`documents` are contest-only standalone pages that **never join problems** —
-infosheets, cover pages, instruction sheets. They live in their own list:
+Sometimes a contest needs a page that isn't a problem at all — an infosheet, a
+cover page, an instruction sheet. Those are `documents`: contest-only standalone
+pages that **never join problems**. They live in their own list:
 
 ```yaml title="contest.rbx.yml"
 documents:
@@ -209,13 +234,14 @@ documents:
     type: jinja-tex
 ```
 
-Because a document never joins, its `type` must be one that carries no blocks —
-`jinja-tex`, `jinja-md`, `tex`, `md`, or `pdf` (never the joining `rbx-*` types).
+Because a document never joins, its `type` has to be one that carries no blocks —
+`jinja-tex`, `jinja-md`, `tex`, `md`, or `pdf`, and never the joining `rbx-*`
+types.
 
-A document still receives the `problems` list, but **metadata-only**: each entry
-exposes `title`, `short_name`, `limits`, `profiles`, and `groups` — **no**
-`blocks`, `samples`, or import handles. That is enough for a summary page such as
-a per-problem limits table:
+It does still receive the `problems` list, but **metadata-only**: each entry
+exposes `title`, `short_name`, `limits`, `profiles`, and `groups` — and **no**
+`blocks`, `samples`, or import handles. That's exactly enough for a summary page,
+like a per-problem limits table:
 
 ```latex title="statements/infosheet-en.jinja.tex"
 \begin{tabular}{c|cc}
@@ -229,13 +255,15 @@ a per-problem limits table:
 \end{tabular}
 ```
 
-Documents are built by `rbx contest st b`, alongside the contest statements.
+The table above walks the same `problems` list the contest book does, but reads
+only metadata off each one. Documents are built by `rbx contest st b`, right
+alongside the contest statements.
 
 ## Location and date
 
 `location` and `date` are **per-language** fields on a contest statement — the
-place and date as they should read in that language. They surface in the
-`contest.*` namespace (see [Template context](context.md)), so your cover page can
+place and date exactly as they should read in that language. They surface in the
+`contest.*` namespace (see [Template context](context.md)), so a cover page can
 print them:
 
 ```yaml title="contest.rbx.yml"
@@ -252,10 +280,16 @@ statements:
     date: "29 de julho de 2026"
 ```
 
+Notice the two entries above share a location but not a date string: `main-en`
+reads "July 29, 2026", `main-pt` reads "29 de julho de 2026". Same event, each
+language phrasing it its own way.
+
 ## Reusing recipes with extends
 
-Multiple languages usually share almost everything but the source file. `extends`
-lets one entry inherit another's **build recipe** so you don't repeat it.
+Across languages, two statements usually share almost everything except the source
+file itself. Repeating the whole recipe on each one is exactly the kind of thing
+that drifts out of sync — so `extends` lets one entry inherit another's **build
+recipe** and only spell out what actually differs.
 
 A contest statement extends another **by `name`**:
 
@@ -277,8 +311,8 @@ statements:
     `language`, and `variant`.
 2.  Override just the joined document; everything else is inherited.
 
-A problem statement (in `problem.rbx.yml`) extends by **language** (`extends: en`)
-or by a `{language, variant}` pair:
+A problem statement (in `problem.rbx.yml`) is a little different — it extends by
+**language** (`extends: en`) or by a `{language, variant}` pair:
 
 ```yaml title="problem.rbx.yml"
 statements:
@@ -294,15 +328,22 @@ statements:
 2.  `params` **deep-merges** key by key: `pt` overrides `show_limits`, and any
     other keys defined on `en` are kept.
 
-The merge is an **allowlist of the build recipe only** — `type`, `file`,
-`params`, `assets`, and (contest statements only) `standaloneProblemTemplate` /
-`contestProblemTemplate`. It **never** copies identity (`name`, `language`,
-`variant`), and `params` deep-merges rather than replacing. Cycles and dangling
-`extends` references are errors.
+Whichever side you're on, the merge is an **allowlist of the build recipe only** —
+`type`, `file`, `params`, `assets`, and (contest statements only)
+`standaloneProblemTemplate` / `contestProblemTemplate`. It **never** copies identity
+(`name`, `language`, `variant`), and `params` deep-merges key by key rather than
+replacing wholesale. Cycles and dangling `extends` references are errors.
 
 ## Learn through examples
 
+Reading about templates only gets you so far — the fastest way in is a working one.
 The [default preset](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/contest/)
 ships a complete, working contest: a joined task sheet, both problem templates
-sharing one body file, an editorial, and an infosheet document. It is the best
-starting point to copy and adapt.
+sharing one body file, an editorial, and an infosheet document. It's the best
+starting point to copy and adapt, so grab it and start deleting the parts you don't
+need.
+
+From here, [Writing statements](writing.md) covers the blocks and {{rbxtex}} syntax
+that fill these templates, [Template context](context.md) is the full reference for
+every handle in scope, and [Tutorials](tutorials.md) does for editorials what this
+page did for statements.
