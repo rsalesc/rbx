@@ -219,7 +219,7 @@ a per-problem limits table:
 
 ```latex title="statements/infosheet-en.jinja.tex"
 \begin{tabular}{c|cc}
-{\sf Problem} & {\sf Time (ms)} & {\sf Memory (MiB)} \\
+{\sf Problem} & {\sf Time (ms)} & {\sf Memory (MB)} \\
 \hline
 %- for problem in problems
 \VAR{problem.short_name}
