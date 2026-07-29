@@ -1,109 +1,156 @@
 # Statements
 
-The **statement** is the document that describes the problem to the contestant. It typically contains the problem description, input format, output format, constraints, and samples.
+A **statement** is the document that describes a problem (or a whole contest) to
+the contestant. {{rbx}} builds statements from source files into a PDF, with
+first-class support for the {{rbxtex}} format as well as plain {{latex}},
+Markdown, and pre-built PDFs.
 
-{{rbx}} supports a powerful and flexible statement system that allows you to write statements in multiple formats, including the custom {{rbxtex}} format, as well as standard LaTeX and PDF.
+This page is the map. It explains the mental model and points you at the focused
+guides for writing, templating, contests, and tutorials.
 
-## Overview
+## What a statement is
 
-Regardless of the format you choose, every statement goes through a build pipeline to generally produce a PDF file (though you can also export the intermediate LaTeX if needed).
+A statement is a `(language, variant)` source of some `type`, rendered to a PDF:
 
-```mermaid
-graph LR
-    Source[Source File] -->|Builder| TeX[LaTeX File]
-    TeX -->|pdfLaTeX| PDF[PDF File]
-```
+- **`language`** — an ISO 639-1 code (`en`, `pt`, ...). You declare **one entry
+  per language**.
+- **`variant`** — an optional label (defaults to `default`) that lets you keep
+  more than one recipe for the same language (e.g. a full vs. a simplified
+  version).
+- **`type`** — the source format. Defaults to `rbx-tex`, so you usually omit it.
+- **`file`** — the source file, relative to the package root.
 
-### Supported formats
+Everything else (title, custom `params`, assets, sample selection) is optional.
+See the [auto-generated reference](../reference/package/schema.md) for the
+exhaustive field list.
 
-{{rbx}} supports multiple formats for writing statements. We **highly recommend** using {{rbxtex}} for most problems, as it offers the best balance between power and ease of use.
+## The three kinds
 
-| Format                             | Description                                                                           | Best for...                                                     |
-| :--------------------------------- | :------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
-| **{{rbxtex}}**                     | **Recommended**. A superset of LaTeX with block structure and variable interpolation. | Most problems. It separates content from layout effectively.    |
-| [**JinjaTeX**](formats/latex.md)   | Pure LaTeX with Jinja2 templating.                                                    | Import existing statements, but still leverage from templating. |
-| [**Pure LaTeX**](formats/latex.md) | Standard static LaTeX files.                                                          | Importing existing statements without modifications.            |
-| [**PDF**](formats/pdf.md)          | Pre-built PDF files.                                                                  | Using statements that are already built/provided as PDFs.       |
+Statements come in three flavours, declared as three separate lists:
 
-## Configuration
+| Kind         | Where              | Joins problems? | Purpose                        |
+| ------------ | ------------------ | --------------- | ------------------------------ |
+| `statements` | problem + contest  | contest join    | the problem/contest statement  |
+| `tutorials`  | problem + contest  | contest join    | editorials                     |
+| `documents`  | contest only       | never           | infosheets, cover pages        |
 
-Statements are configured in the `problem.rbx.yml` file under the `statements` list. You can define multiple statements for the same problem (e.g., different languages, different versions).
+`statements` and `tutorials` behave identically — the same source model, the
+same build pipeline — they just live in different lists and produce differently
+named PDFs. `documents` are contest-only standalone pages that never pull in
+problem content.
+
+## Where they're declared
+
+Problem statements live in `problem.rbx.yml`, keyed only by `(language,
+variant)`:
 
 ```yaml title="problem.rbx.yml"
 statements:
-  - name: statement-en        # (1)!
-    language: en              # (2)!
-    path: statement.en.tex    # (3)!
-    type: rbx-tex             # (4)!
-    assets:                   # (5)!
-      - images/*.png
-    vars:                     # (6)!
-      editorial: false
-      showLimits: true
+  - language: en
+    file: statements/statement-en.rbx.tex # (1)!
 ```
 
-1.  **name**: A unique identifier for the statement. Used to refer to this statement.
-2.  **language**: The language code (ISO 639-1) for the statement.
-3.  **path**: Path to the statement file, relative to the package root.
-4.  **type**: The format of the statement. Can be `rbx-tex`, `jinja-tex`, `tex`, or `pdf`.
-5.  **assets**: A list of files (globs supported) to be included in the build directory.
-6.  **vars**: Custom variables to be injected into the statement.
+1.  The source file, relative to the package root. `type` defaults to `rbx-tex`
+    and `variant` defaults to `default`, so both are omitted here. Problem
+    statements have **no `name`**.
 
-## Assets and resources
+Contest statements live in `contest.rbx.yml`. They additionally carry the
+templates that wrap each problem into the book (the contest **owns the chrome**):
 
-You can include images, style files, and other resources in your statement using the `assets` field. These files will be copied to the build directory alongside your statement file, preserving their relative paths.
-
-```yaml
+```yaml title="contest.rbx.yml"
 statements:
-  - name: statement-en
-    path: statements/en.tex
-    assets:
-      - statements/images/*.png
-      - statements/icpc.sty
+  - name: main-en # (1)!
+    language: en
+    file: statements/contest-en.rbx.tex # (2)!
+    standaloneProblemTemplate: statements/problem-standalone.rbx.tex # (3)!
+    contestProblemTemplate: statements/problem-in-contest.rbx.tex # (4)!
 ```
 
-In the case above, the statement source file `en.tex` will be placed in `<build-dir>/en.tex` while building,
-while an image such as `statements/images/example.png` will be placed in `<build-dir>/images/example.png`. In other words, the path of the asset relative to the statement source file is preserved in the build directory.
+1.  Contest statements and documents **require** a `name` — it identifies the
+    entry and keys the output PDF.
+2.  The joining document — the contest book itself.
+3.  Full-document template used to render each problem on its own (`rbx st b`).
+4.  Fragment template used when problems are joined into the contest book
+    (`rbx contest st b`).
 
 !!! tip
-    Keep your statement files and assets organized in a subdirectory (e.g., `statements/` or `doc/`) to avoid cluttering the package root.
+    Keep statement sources and their assets in a subdirectory (e.g.
+    `statements/`) to avoid cluttering the package root.
 
-## Building statements
+## Formats at a glance
 
-To build statements, use the `rbx statements build` command (or alias `rbx st b`):
+Pick a `type` per statement. Only the `rbx-*` types carry blocks and can
+**join** into a contest book; the rest are simpler passthroughs. Each row links
+to the [Writing statements](writing.md) guide.
 
-```bash
-# Build all statements
-rbx statements build
-
-# Build specific statements by name
-rbx statements build statement-en
-
-# Build for specific languages
-rbx statements build --languages en pt
-
-# Render the statement against a specific timing profile
-rbx statements build -p icpc
-```
-
-The built statements will be placed in the `build/` directory of your package.
-
-### Rendering against a timing profile
-
-The `-p` / `--profile` flag tells {{rbx}} to render the statement using the time
-limits from a specific [limits profile](../profiling/index.md) instead of the
-package defaults. The flag fails loudly if the named profile doesn't exist for
-the current problem (i.e. there is no `.limits/<profile>.yml`), so you never
-ship a PDF with the wrong time limits.
-
-The contest-level command (`rbx contest statements build -p <profile>`) is
-more lenient: problems that don't define the profile are **skipped with a
-warning** and excluded from the contest statement. If no problem defines the
-profile, the command fails. This makes it easy to assemble a contest book for
-a specific venue (e.g. `-p icpc`) when only a subset of the problems has been
-profiled for it.
+| `type`                    | When to use                                      | Joins? (rbx\* only) |
+| ------------------------- | ------------------------------------------------ | ------------------- |
+| [`rbx-tex`](writing.md)   | **Default.** {{latex}} with blocks + {{Jinja2}}. | yes                 |
+| [`rbx-md`](writing.md)    | Markdown with blocks + {{Jinja2}}.               | yes                 |
+| [`jinja-tex`](writing.md) | {{latex}} with {{Jinja2}} only (no blocks).      | no                  |
+| [`jinja-md`](writing.md)  | Markdown with {{Jinja2}} only.                   | no                  |
+| [`tex`](writing.md)       | Plain {{latex}}, passed through untouched.       | no                  |
+| [`md`](writing.md)        | Plain Markdown, passed through untouched.        | no                  |
+| [`pdf`](writing.md)       | A pre-built PDF, copied through as-is.           | no                  |
 
 !!! note
-    `rbx statements build -p <profile>` is equivalent to the global
-    `rbx -p <profile> statements build`. The subcommand-level flag wins when
-    both are passed.
+    `type` is case- and hyphen-insensitive, and can be omitted for the default
+    `rbx-tex`. `documents` may only use `jinja-tex`, `jinja-md`, `tex`, `md`, or
+    `pdf` — never the joining `rbx-*` types.
+
+## Building
+
+Use the full command or its short alias. Each list has its own builder:
+
+<!--termynal-->
+```bash
+# Build problem statements (one PDF per language)
+$ rbx statements build          # alias: rbx st b
+
+# Build the contest book and its documents
+$ rbx contest statements build  # alias: rbx contest st b
+
+# Build tutorials (editorials)
+$ rbx tutorials build           # alias: rbx tut b
+
+# Restrict to one or more languages (repeatable; there is no -l)
+$ rbx st b --languages en --languages pt
+
+# Render against a timing profile
+$ rbx st b -p icpc
+```
+
+Built PDFs land in the `build/` directory:
+
+- **Standalone** — `build/statement-<lang>[-<variant>][-<profile>].pdf`
+  (tutorials use `build/tutorial-…`).
+- **Contest** — `build/<statement-name>[-<profile>].pdf`, keyed by the contest
+  statement's `name`, **not** its language.
+
+## Pipeline
+
+Whatever the format, every statement flows through the same pipeline to produce
+a PDF (you can also stop at the intermediate {{latex}} if you need it):
+
+```mermaid
+graph LR
+    Source["Source<br/>(language, variant)"] -->|Builder + template| TeX["LaTeX / Markdown"]
+    TeX -->|pdfLaTeX / pandoc| PDF["PDF"]
+```
+
+!!! note "The contest owns the chrome"
+    The template that wraps a problem into a full document lives on the
+    **contest** statement, not the problem. When you run `rbx st b` with no
+    contest (or no matching standalone template), {{rbx}} falls back to a bundled
+    default template and **warns** — it does not fail. See
+    [Contest statements](contest.md) for the details.
+
+## Where to go next
+
+- **[Writing statements](writing.md)** — author source content, {{rbxtex}}-first:
+  blocks, variables, samples, and assets.
+- **[Template context](context.md)** — the variables in scope while rendering
+  (`params` vs `vars`, the `problem`/`contest` namespaces, per-sample handles).
+- **[Contest statements](contest.md)** — the two problem templates, the
+  `(language, variant)` join, and `documents`.
+- **[Tutorials](tutorials.md)** — editorials: the same model, a separate list.
