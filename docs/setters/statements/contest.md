@@ -1,151 +1,336 @@
 # Contest statements
 
-In addition to problem-level statements, {{rbx}} supports creating **contest statements**. A contest statement is typically a single document (usually PDF) that aggregates all the problem statements in a contest, often with a cover page, customized header/footer, and problem numbering.
+A **contest statement** is the joined task sheet: one document that pulls every
+problem's statement into a single book, usually with a cover page and shared
+chrome. It lives in `contest.rbx.yml`, and — this is the key idea — it **owns the
+templates** that wrap each problem, both inside the book and when a problem is
+built on its own.
 
-## Configuration
+This page covers the two problem templates, how a contest statement joins the
+problems that share its `(language, variant)`, standalone `documents`, and how
+`extends` reuses a build recipe across languages.
 
-Contest statements are defined in the `contest.rbx.yml` file, and are usually JinjaTeX statements
-since there's no need to define blocks (but can be {{rbxtex}} as well if you prefer).
+## The contest owns the templates
 
-```yaml title="contest.rbx.yml"
-name: "my-contest"
-problems:
-  - short_name: A
-    path: problems/A
-  - short_name: B
-    path: problems/B
+A problem statement (in `problem.rbx.yml`) is only *content* — the
+[blocks](writing.md#blocks) of what the problem says. It carries **no template**.
+The document structure — `\documentclass`, the preamble, how a `legend` block
+turns into a section — lives on the **contest** statement, in two fields:
 
-statements:
-  - name: contest-en
-    title: "My Contest"
-    language: en
-    path: statement/contest.rbx.tex
-    type: jinja-tex
-    # Contest-statement specific knobs.
-    match: statement-en # (1)!
-    joiner: {type: "tex2pdf"} # (2)!
-    override:
-      configure: # (3)!
-        - type: "rbx-tex" # Convert rbxTeX to TeX
-          template: "statement/contest_template.rbx.tex"
-      vars: # (4)!
-        showLimits: true
-    vars: # (5)!
-      editorial: false
-```
+| Field | Produces | Used by |
+| :--- | :--- | :--- |
+| `standaloneProblemTemplate` | a **full document** for one problem | `rbx st b` |
+| `contestProblemTemplate` | a **fragment** `\subimport`-ed into the book | `rbx contest st b` |
 
-1.  **match**: Point to the `name` of the problem statements that should be built
-    and joined into this contest statement.
-2.  **joiner**: Usually `tex2pdf`, meaning each problem-level statement will be
-    built into a TeX file (as opposed to the default PDF) and then, after that,
-    joined into a single PDF file. This configuration is **crucial** for contest-level
-    statements.
-3.  **override.configure**: Overrides the `rbx-tex` template to use when building each
-    problem statement. Useful because the problem template when building for contests
-    has to be slightly different (no `\document` directive and such).
-4.  **override.vars**: Variables to pass to the problem statement context.
-5.  **vars**: Variables to pass to the contest statement context.
+Why two? When you build a single problem, it needs a complete document —
+`\documentclass`, `\begin{document}`, the works. When the same problem is joined
+into the contest book, the book *already* opens the document, so each problem must
+contribute only its **body** — no second `\documentclass`. Same content, two
+wrappers.
 
-## Building contest statements
+The cleanest way to keep them in sync is to put the shared body in one file and
+have both templates include it:
 
-The build process for contest statements is slightly different. Instead of compiling each problem statement to PDF individually and merging them, {{rbx}} usually compiles the contest template which *includes* the content of each problem.
+=== "problem.rbx.tex (standalone — full document)"
 
-### The contest template
+    ```latex
+    \documentclass[a4paper,11pt]{article}
+    \usepackage{icpc}
+    \usepackage{import}
 
-The contest template receives a few special variables.
+    \begin{document}
+    %- include "_problem-body.rbx.tex"   %# the shared body
+    \end{document}
+    ```
 
-The `contest` variable contains the following attributes:
+=== "problem-fragment.rbx.tex (in-contest — fragment)"
 
-- `contest.title`: The title of the contest.
+    ```latex
+    %% No \documentclass, no \begin{document}: the book provides those.
+    %- include "_problem-body.rbx.tex"   %# the same shared body
+    ```
 
-The `lang` variable contains the language of the contest (ISO 639-1 code).
+=== "_problem-body.rbx.tex (shared)"
 
-The `languages` and `keyed_languages` variables contains the programming languages available
-for contestants, based on the languages configured in the preset. `languages` is a list, and
-`keyed_languages` is a dictionary with the language ID as the key. These are really useful
-when you want to render an info sheet.
+    ```latex
+    \section*{\VAR{problem.short_name}. \VAR{problem.title}}
 
-The `vars` variable receive all variables defined in the contest statement configuration.
+    \VAR{problem.blocks.legend}
 
-The `problems` variable is a list of problems in the contest. You can read more about
-what is available in each problem [here](templates.md#rbx-provided-variables). Additionally,
-it will have a `problem.path` field pointing to the built TeX file of the problem statement, which
-you can use in your contest template to include it.
+    %- if problem.blocks.input is defined
+    \subsection*{Input}
+    \VAR{problem.blocks.input}
+    %- endif
+    ```
 
-```latex title="contest.tex"
-\documentclass{article}
-\usepackage{icpcformat} % Your custom package
+### How a template is structured
 
-\title{\VAR{contest.title}}
+A template is a {{latex}} file with {{Jinja2}} interpolation: `\VAR{...}` for
+values and `%- ...` for logic. It **places the statement's content** by reading
+`problem.blocks.<name>` — each `%- block legend` in the source becomes
+`\VAR{problem.blocks.legend}` in the template.
 
-\begin{document}
-\maketitle
+```latex title="_problem-body.rbx.tex"
+\section*{\VAR{problem.title}}
 
-% Render contest header, front-page, etc.
+\VAR{problem.blocks.legend}          %# the legend block
 
-% Iterate over problems
-%- for problem in problems
-    \clearpage
-    \subimport{\VAR{problem.path | parent}/}{\VAR{problem.path | stem}}
+%- for sample in problem.samples     %# samples are handed to you
+\VerbatimInput{\VAR{sample.input}}
 %- endfor
-
-\end{document}
 ```
 
-## Variable overrides
+The full set of handles in scope — `problem`, `samples`, `limits`, the
+`import_dir`/`import_file` join handles, filters — is documented in
+[Template context](context.md). This page only shows the shapes; that page is the
+reference.
 
-You can override problem-level settings within the contest statement configuration. This is useful if you want to change the visual appearance of problems specifically for the contest book (e.g., adding the "Editorial" block or changing time limit rendering).
+### Custom blocks
+
+Block names are free-form: any `%- block foo` in the statement becomes
+`problem.blocks.foo`, which the template renders with `\VAR{problem.blocks.foo}`.
+That is how you add a section the default chrome doesn't know about — define the
+block in the problem, render it in the template:
+
+=== "statement.rbx.tex"
+
+    ```latex
+    %- block hint
+    Try to use dynamic programming.
+    %- endblock
+    ```
+
+=== "template (standalone or fragment)"
+
+    ```latex
+    %- if problem.blocks.hint is defined
+    \section*{Hint}
+    \VAR{problem.blocks.hint}
+    %- endif
+    ```
+
+Guard custom blocks with `is defined` — not every problem defines them. See
+[Writing statements](writing.md#blocks) for the conventional block names
+(`legend`, `input`, `output`, `notes`, ...).
+
+!!! note "The bundled default template"
+    You don't have to write a template at all. When `rbx st b` finds no contest
+    statement supplying a `standaloneProblemTemplate` for a problem (or there is
+    no contest), {{rbx}} falls back to a **bundled default template** and warns —
+    it never fails on that account. The two contest templates are how you take
+    over the look once you outgrow the default.
+
+## Declaring contest statements
+
+A contest statement is a single entry under `statements:` in `contest.rbx.yml`:
 
 ```yaml title="contest.rbx.yml"
 statements:
-  - name: contest-editorial
-    # Other options...
-    override:
-      vars:
-        # Sets a custom variable that identifies this as the
-        # editorial. This can be used in the problem template to
-        # render an additional "Editorial" block after the statements.
-        editorial: true
+  - name: main-en                                        # (1)!
+    language: en                                         # (2)!
+    variant: default                                     # (3)!
+    file: statements/contest-en.rbx.tex                  # (4)!
+    type: rbx-tex                                         # (5)!
+    standaloneProblemTemplate: statements/problem-standalone.rbx.tex # (6)!
+    contestProblemTemplate: statements/problem-in-contest.rbx.tex    # (7)!
+    params:                                              # (8)!
+      show_limits: true
 ```
 
-## Matching
+1.  **`name`** — **required** and **unique within the contest**. It identifies
+    the entry (positional args to `rbx contest st b` are names) and keys the
+    output PDF. Problem statements have no `name`; contest ones must.
+2.  **`language`** — ISO 639-1 code. Half of the join key.
+3.  **`variant`** — optional discriminator, defaults to `default`. The other half
+    of the join key; lets you keep, say, a `short` variant alongside the full one.
+4.  **`file`** — the **joined document** itself: the contest book that iterates
+    over the problems (see the join loop below).
+5.  **`type`** — defaults to `rbx-tex`. Only the `rbx-*` types can join problems,
+    so a contest statement is almost always `rbx-tex` (or `rbx-md`).
+6.  **`standaloneProblemTemplate`** — full-document template for `rbx st b`.
+7.  **`contestProblemTemplate`** — fragment template for the join.
+8.  **`params`** — free-form knobs exposed to the templates as `params.*` (kept
+    separate from problem/contest `vars` — see [Template context](context.md)).
 
-When building a contest statement, {{rbx}} tries to find the corresponding problem statement for each problem. By default, it matches based on **language**.
+`variant`, `params`, and the two templates are meaningful only for the `rbx-*`
+types; setting them on a non-`rbx` contest statement is an error. For the
+exhaustive field list, see the [contest schema](../reference/contest/schema.md).
 
-- If the contest statement is `en`, it looks for an `en` statement in each problem definition.
-- You can customize this matching behavior if needed using the `match` field in `contest.rbx.yml`.
+## The (language, variant) join
 
-### Example: Matching by Name
+Inside the contest `file`, you iterate the `problems` list and `\subimport` each
+problem's rendered fragment:
 
-If you have multiple statements per language (e.g., `statement-en` and `statement-en-simplified`) and want to pick a specific one for the contest:
+```latex title="statements/contest-en.rbx.tex"
+%- for problem in problems
+\subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
+%- endfor
+```
 
-=== "contest.rbx.yml"
+`problem.import_dir` / `problem.import_file` are the `\subimport` handles for the
+fragment {{rbx}} built from each problem using your `contestProblemTemplate`. They
+exist **only** in this join context — see
+[Template context](context.md#import-handles-contest-join-only).
 
-    ```yaml
-    statements:
-      - name: contest-en
-        language: en
-        path: contest.rbx.tex
-        match: statement-en-simplified # (1)!
-    ```
+The join is by `(language, variant)`. A contest statement pulls, from every
+problem, the problem statement whose `(language, variant)` **matches its own** (the
+matched problem statement must also share the contest statement's `rbx-*` type). So
+`main-en` (`en`/`default`) joins each problem's `en`/`default` statement.
 
-    1.  This tells {{rbx}} to look for a statement named `statement-en-simplified` in each problem, instead of just picking the first English statement.
+The same key drives the **standalone** build. For `rbx st b` to build a problem on
+its own, exactly **one** contest statement must carry a `standaloneProblemTemplate`
+for that problem's `(language, variant)`:
 
-=== "problem.rbx.yml"
+- **Exactly one** — that template is used. This is the normal case.
+- **More than one** — a hard error: two contest statements both claim the same
+  `(language, variant)`; disambiguate by removing one template.
+- **Zero (or no contest at all)** — not an error: {{rbx}} falls back to the
+  bundled default template and **warns**.
 
-    ```yaml
-    statements:
-      - name: statement-en
-        language: en
-        path: statement-en.rbx.tex
-        type: rbx-tex
+## Building
 
-      - name: statement-en-simplified
-        language: en
-        path: statement-en-simplified.rbx.tex
-        type: rbx-tex
-    ```
+Each list has its own builder; contest and problem builds use the two templates
+differently.
+
+<!--termynal-->
+```bash
+# Build the contest book (joins problems) + its documents
+$ rbx contest statements build     # alias: rbx contest st b
+
+# Build ONE problem standalone, using the contest's standaloneProblemTemplate
+$ rbx st b
+
+# Build only some contest statements, by name
+$ rbx contest st b main-en main-pt
+
+# Restrict to languages (repeatable) or render against a timing profile
+$ rbx contest st b --languages en --languages pt
+$ rbx contest st b -p icpc
+```
+
+- **`rbx contest st b`** renders each problem with the `contestProblemTemplate`,
+  joins them through the contest `file`, and produces
+  `build/<statement-name>[-<profile>].pdf` — keyed by the contest statement's
+  **`name`**, not its language. It also builds the contest [`documents`](#documents)
+  (the tutorials command, `rbx contest tut b`, does **not**).
+- **`rbx st b`** builds a single problem in place with the matching
+  `standaloneProblemTemplate`, producing
+  `build/statement-<lang>[-<variant>][-<profile>].pdf`.
+
+!!! warning "No-contest fallback and dispatchers"
+    Running `rbx st b` with no contest, or with no `standaloneProblemTemplate`
+    matching the problem's `(language, variant)`, falls back to the bundled
+    default template and warns. The one exception: if the contest here is an
+    **unselected multi-contest dispatcher**, {{rbx}} errors instead of falling
+    back — pass `-C <id>` (or set `RBX_CONTEST=<id>`) to pick a contest.
+
+## Documents
+
+`documents` are contest-only standalone pages that **never join problems** —
+infosheets, cover pages, instruction sheets. They live in their own list:
+
+```yaml title="contest.rbx.yml"
+documents:
+  - name: infosheet-en
+    language: en
+    file: statements/infosheet-en.jinja.tex
+    type: jinja-tex
+```
+
+Because a document never joins, its `type` must be one that carries no blocks —
+`jinja-tex`, `jinja-md`, `tex`, `md`, or `pdf` (never the joining `rbx-*` types).
+
+A document still receives the `problems` list, but **metadata-only**: each entry
+exposes `title`, `short_name`, `limits`, `profiles`, and `groups` — **no**
+`blocks`, `samples`, or import handles. That is enough for a summary page such as
+a per-problem limits table:
+
+```latex title="statements/infosheet-en.jinja.tex"
+\begin{tabular}{c|cc}
+{\sf Problem} & {\sf Time (ms)} & {\sf Memory (MiB)} \\
+\hline
+%- for problem in problems
+\VAR{problem.short_name}
+& \VAR{problem.limits.timeLimit}
+& \VAR{problem.limits.memoryLimit} \\
+%- endfor
+\end{tabular}
+```
+
+Documents are built by `rbx contest st b`, alongside the contest statements.
+
+## Location and date
+
+`location` and `date` are **per-language** fields on a contest statement — the
+place and date as they should read in that language. They surface in the
+`contest.*` namespace (see [Template context](context.md)), so your cover page can
+print them:
+
+```yaml title="contest.rbx.yml"
+statements:
+  - name: main-en
+    language: en
+    file: statements/contest-en.rbx.tex
+    location: "Porto, Portugal"
+    date: "July 29, 2026"
+  - name: main-pt
+    language: pt
+    file: statements/contest-pt.rbx.tex
+    location: "Porto, Portugal"
+    date: "29 de julho de 2026"
+```
+
+## Reusing recipes with extends
+
+Multiple languages usually share almost everything but the source file. `extends`
+lets one entry inherit another's **build recipe** so you don't repeat it.
+
+A contest statement extends another **by `name`**:
+
+```yaml title="contest.rbx.yml"
+statements:
+  - name: main-en
+    language: en
+    file: statements/contest-en.rbx.tex
+    standaloneProblemTemplate: statements/problem-standalone.rbx.tex
+    contestProblemTemplate: statements/problem-in-contest.rbx.tex
+  - name: main-pt
+    language: pt
+    extends: main-en                      # (1)!
+    file: statements/contest-pt.rbx.tex   # (2)!
+```
+
+1.  Inherits the recipe from `main-en`: `type` and **both templates**. It does
+    **not** inherit `main-en`'s identity — `main-pt` keeps its own `name`,
+    `language`, and `variant`.
+2.  Override just the joined document; everything else is inherited.
+
+A problem statement (in `problem.rbx.yml`) extends by **language** (`extends: en`)
+or by a `{language, variant}` pair:
+
+```yaml title="problem.rbx.yml"
+statements:
+  - language: en
+    file: statements/statement.rbx.tex
+    params: { show_limits: true }
+  - language: pt
+    extends: en                      # (1)!
+    params: { show_limits: false }   # (2)!
+```
+
+1.  Inherits `file`, `type`, `assets`, and `params` from the `en` statement.
+2.  `params` **deep-merges** key by key: `pt` overrides `show_limits`, and any
+    other keys defined on `en` are kept.
+
+The merge is an **allowlist of the build recipe only** — `type`, `file`,
+`params`, `assets`, and (contest statements only) `standaloneProblemTemplate` /
+`contestProblemTemplate`. It **never** copies identity (`name`, `language`,
+`variant`), and `params` deep-merges rather than replacing. Cycles and dangling
+`extends` references are errors.
 
 ## Learn through examples
 
-Look at our [default preset](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/) to see how it works and modify it to your liking.
+The [default preset](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/contest/)
+ships a complete, working contest: a joined task sheet, both problem templates
+sharing one body file, an editorial, and an infosheet document. It is the best
+starting point to copy and adapt.

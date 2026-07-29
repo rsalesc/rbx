@@ -1,6 +1,7 @@
 # Template context
 
-A statement — and the [template](templates.md) that wraps it — reaches everything
+A statement — and the [template](contest.md#the-contest-owns-the-templates) that
+wraps it — reaches everything
 through a handful of **namespaces** exposed to `\VAR{...}` and the `%- ...` /
 `\BLOCK{...}` {{Jinja2}} statements. This page is the reference for what lives in
 each one, and why they stay separate.

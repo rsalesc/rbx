@@ -25,8 +25,9 @@ The output must contain only one integer, the sum of $A$ and $B$.
 %- endblock
 ```
 
-The blocks hold *what the problem says*; a separate [template](templates.md)
-decides *how it looks*. That separation is the whole point:
+The blocks hold *what the problem says*; a separate
+[template](contest.md#the-contest-owns-the-templates) decides *how it looks*. That
+separation is the whole point:
 
 - **Swap the look** by changing the template — the content never moves.
 - **Full LaTeX power** is still there; {{rbxtex}} is just a thin wrapper.
@@ -98,7 +99,7 @@ Reusing these names keeps your statement portable across templates, and a few of
 them get special treatment when packaging for {{polygon}}.
 
 To add your own section, define a block and render it in your
-[template](templates.md):
+[template](contest.md#custom-blocks):
 
 ```latex title="statement/statement.rbx.tex"
 %- block hint
