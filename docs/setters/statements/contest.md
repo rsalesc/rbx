@@ -31,7 +31,7 @@ wrappers.
 The cleanest way to keep them in sync is to put the shared body in one file and
 have both templates include it:
 
-=== "problem.rbx.tex (standalone — full document)"
+=== "problem-standalone.rbx.tex (full document)"
 
     ```latex
     \documentclass[a4paper,11pt]{article}
@@ -43,7 +43,7 @@ have both templates include it:
     \end{document}
     ```
 
-=== "problem-fragment.rbx.tex (in-contest — fragment)"
+=== "problem-in-contest.rbx.tex (fragment)"
 
     ```latex
     %% No \documentclass, no \begin{document}: the book provides those.
@@ -63,34 +63,14 @@ have both templates include it:
     %- endif
     ```
 
-### How a template is structured
-
-A template is a {{latex}} file with {{Jinja2}} interpolation: `\VAR{...}` for
-values and `%- ...` for logic. It **places the statement's content** by reading
-`problem.blocks.<name>` — each `%- block legend` in the source becomes
-`\VAR{problem.blocks.legend}` in the template.
-
-```latex title="_problem-body.rbx.tex"
-\section*{\VAR{problem.title}}
-
-\VAR{problem.blocks.legend}          %# the legend block
-
-%- for sample in problem.samples     %# samples are handed to you
-\VerbatimInput{\VAR{sample.input}}
-%- endfor
-```
-
-The full set of handles in scope — `problem`, `samples`, `limits`, the
-`import_dir`/`import_file` join handles, filters — is documented in
-[Template context](context.md). This page only shows the shapes; that page is the
-reference.
-
 ### Custom blocks
 
-Block names are free-form: any `%- block foo` in the statement becomes
-`problem.blocks.foo`, which the template renders with `\VAR{problem.blocks.foo}`.
-That is how you add a section the default chrome doesn't know about — define the
-block in the problem, render it in the template:
+A template is {{latex}} with {{Jinja2}} interpolation (`\VAR{...}` for values,
+`%- ...` for logic). It **places content by reading `problem.blocks.<name>`** —
+each `%- block legend` in the statement becomes `\VAR{problem.blocks.legend}`, as
+the shared body above shows. Block names are free-form, so the same mechanic adds
+a section the default chrome doesn't know about: define the block in the problem,
+then render it — guarded, since not every problem defines it — in the template.
 
 === "statement.rbx.tex"
 
@@ -100,7 +80,7 @@ block in the problem, render it in the template:
     %- endblock
     ```
 
-=== "template (standalone or fragment)"
+=== "_problem-body.rbx.tex"
 
     ```latex
     %- if problem.blocks.hint is defined
@@ -109,16 +89,10 @@ block in the problem, render it in the template:
     %- endif
     ```
 
-Guard custom blocks with `is defined` — not every problem defines them. See
-[Writing statements](writing.md#blocks) for the conventional block names
-(`legend`, `input`, `output`, `notes`, ...).
-
-!!! note "The bundled default template"
-    You don't have to write a template at all. When `rbx st b` finds no contest
-    statement supplying a `standaloneProblemTemplate` for a problem (or there is
-    no contest), {{rbx}} falls back to a **bundled default template** and warns —
-    it never fails on that account. The two contest templates are how you take
-    over the look once you outgrow the default.
+See [Writing statements](writing.md#blocks) for the conventional block names
+(`legend`, `input`, `output`, `notes`, ...); [Template context](context.md) lists
+the full set of handles in scope (`problem`, `samples`, `limits`, the join
+handles, filters).
 
 ## Declaring contest statements
 
@@ -211,17 +185,15 @@ $ rbx contest st b -p icpc
 - **`rbx contest st b`** renders each problem with the `contestProblemTemplate`,
   joins them through the contest `file`, and produces
   `build/<statement-name>[-<profile>].pdf` — keyed by the contest statement's
-  **`name`**, not its language. It also builds the contest [`documents`](#documents)
-  (the tutorials command, `rbx contest tut b`, does **not**).
+  **`name`**, not its language. It also builds the contest
+  [`documents`](#documents); the [tutorials](tutorials.md) builder does not.
 - **`rbx st b`** builds a single problem in place with the matching
   `standaloneProblemTemplate`, producing
   `build/statement-<lang>[-<variant>][-<profile>].pdf`.
 
-!!! warning "No-contest fallback and dispatchers"
-    Running `rbx st b` with no contest, or with no `standaloneProblemTemplate`
-    matching the problem's `(language, variant)`, falls back to the bundled
-    default template and warns. The one exception: if the contest here is an
-    **unselected multi-contest dispatcher**, {{rbx}} errors instead of falling
+!!! warning "Unselected dispatcher"
+    The zero-match fallback above has one exception: if the contest here is an
+    **unselected multi-contest dispatcher**, `rbx st b` errors instead of falling
     back — pass `-C <id>` (or set `RBX_CONTEST=<id>`) to pick a contest.
 
 ## Documents
