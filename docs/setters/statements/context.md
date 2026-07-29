@@ -12,7 +12,7 @@ Here's the pain this design spares you. Older versions of {{rbx}} collapsed
 everything — your problem's data, the template's knobs, the contest's metadata —
 into one merged `vars`. That's convenient right up until two of those sources want
 the same key: one silently wins, and you're left debugging a statement that prints
-the wrong number with no clue which source overwrote which.
+the wrong number with no clue which source won.
 
 So they don't merge anymore. `params`, `vars`, and `contest` are **three distinct
 namespaces**; each source keeps its own name, and nothing is copied between them.

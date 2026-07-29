@@ -1,7 +1,7 @@
 # Tutorials
 
 A tutorial is an editorial — the write-up that explains how to *solve* a problem,
-not how to read it. The nice part: in {{rbx}} a tutorial is **just a statement**.
+not how to read it. In {{rbx}}, a tutorial is **just a statement**.
 Same source model, same schema, same build engine as a [statement](index.md) — so
 this page can stay short. Let's just walk through the handful of places where
 tutorials differ; everything else on the other three pages applies unchanged.

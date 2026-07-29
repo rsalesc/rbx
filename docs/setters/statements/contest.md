@@ -4,7 +4,7 @@ A **contest statement** is the joined task sheet: one document that pulls every
 problem's statement into a single book, usually with a cover page and shared
 chrome. It lives in `contest.rbx.yml`.
 
-Here's the key idea, and it's worth holding onto before anything else: the contest
+Here's the key idea: the contest
 **owns the templates** that wrap each problem — both inside the book and when a
 problem is built on its own. The problem brings only the content; the contest
 decides how it looks.
@@ -80,7 +80,7 @@ value, `%- ...` runs logic. The way it places content is by reading
 `problem.blocks.<name>`: each `%- block legend` you wrote in the statement shows up
 as `\VAR{problem.blocks.legend}`, exactly as the shared body above does it.
 
-Block names are free-form, and that's the nice part — the same mechanic lets you
+Block names are free-form, so the same mechanic lets you
 add a section the default chrome knows nothing about. Define the block in the
 problem, then render it in the template. Notice we guard it with `%- if ... is
 defined`, since not every problem will define every block:
@@ -179,11 +179,6 @@ problem on its own, exactly **one** contest statement must carry a
   `(language, variant)`; disambiguate by removing one template.
 - **Zero (or no contest at all)** — not an error: {{rbx}} falls back to the
   bundled default template and **warns**.
-
-!!! note "No contest? Still fine"
-    You don't need a contest statement at all to build a problem — the zero-match
-    case above is a fallback, not a failure. {{rbx}} reaches for its bundled
-    default template and just **warns** you it did, so a bare problem always builds.
 
 ## Building
 

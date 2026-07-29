@@ -5,8 +5,8 @@ to the contestant. {{rbx}} builds statements from source files into a PDF, with
 first-class support for the {{rbxtex}} format, and it handles plain {{latex}},
 Markdown, and pre-built PDFs just as well.
 
-The nice part: you write the problem once and get a polished PDF out of it, in as
-many languages and variants as you need. This page is the map — we'll build the
+You write the problem once and get a PDF out of it, in as many languages and
+variants as you need. This page is the map — we'll build the
 mental model first (what a statement is, the kinds you can declare, where they
 live, and how they're built), then hand you off to the focused guides for
 writing, templating, contests, and tutorials.
@@ -116,8 +116,8 @@ guide:
 
 ## Building
 
-Each list has its own builder, and every command ships with a short alias for
-your fingers. Below, the ones you'll reach for:
+Each list has its own builder, and every command ships with a short alias.
+Below, the ones you'll reach for:
 
 <!--termynal-->
 ```bash
