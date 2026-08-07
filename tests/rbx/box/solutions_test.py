@@ -370,6 +370,16 @@ def recording_console() -> rich.console.Console:
     )
 
 
+def rendered_lines(console: rich.console.Console) -> List[str]:
+    """The recorded report, line by line. Keeps the buffer, so it can be re-read."""
+    return [line.rstrip() for line in console.export_text(clear=False).splitlines()]
+
+
+def rendered_group_lines(console: rich.console.Console) -> List[str]:
+    """Only the group lines, which are what this feature marks."""
+    return [line for line in rendered_lines(console) if line.startswith('group')]
+
+
 def test_get_solution_limits_display_time_recovers_declared_tl(tmp_path, mock_skeleton):
     """The timing report's no-eval fallback reads the declared TL via
     display_time(), so it no longer needs to re-resolve the profile from disk
@@ -1108,6 +1118,92 @@ def test_group_expectation_markup_of_a_passing_subset_group(
         Text.from_markup(get_group_expectation_markup(report, 'group1')).plain
         == ' ✓ as expected'
     )
+
+
+async def test_reporter_marks_group_lines_with_their_expectations(
+    mock_problem_root, mock_binary_scoring
+):
+    """End-to-end through a reporter: each group line ends with its own verdict
+    on its own expectation, and a met one is not a bare glyph trailing the
+    per-testcase glyphs it would otherwise blend into."""
+    solution = Solution(
+        path=pathlib.Path('partial.cpp'),
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            '*': ExpectedOutcome.ACCEPTED,
+            'group2': ExpectedOutcome.WRONG_ANSWER,
+            'group3': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    skeleton = make_reporter_skeleton(
+        mock_problem_root, solution, {'group1': 2, 'group2': 1, 'group3': 1}
+    )
+    result = make_run_result(
+        skeleton,
+        {
+            # Covered by '*': accepted, and accepted.
+            ('group1', 0): Outcome.ACCEPTED,
+            ('group1', 1): Outcome.ACCEPTED,
+            # Expected to be wrong, and wrong.
+            ('group2', 0): Outcome.WRONG_ANSWER,
+            # Expected to time out, but accepted.
+            ('group3', 0): Outcome.ACCEPTED,
+        },
+    )
+    console = recording_console()
+
+    ok = await drive_reporter(
+        FullRunReporter(result, VerificationLevel.FULL, console), skeleton
+    )
+
+    assert not ok
+    assert rendered_group_lines(console) == [
+        'group1 (2)0/✓ 1/✓ (100 ms, 1 KiB) ✓ as expected',
+        # The met expectation lands right after a run of per-testcase glyphs,
+        # which is why it says a word instead of being one more ✓.
+        'group2 (1)0/✗ (100 ms, 1 KiB) ✓ as expected',
+        'group3 (1)0/✓ (100 ms, 1 KiB) ✗ expected TIME_LIMIT_EXCEEDED, got: ACCEPTED',
+    ]
+    # The solution verdict names the offending group, and only that one.
+    assert 'FAILED group3: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED' in (
+        rendered_lines(console)
+    )
+
+
+async def test_reporter_puts_the_score_before_the_expectation_mark(
+    mock_problem_root,
+):
+    """Under POINTS scoring a group line can carry both marks; the score comes
+    first. Scoreless groups still get their expectation mark, which is what makes
+    the feature work for BINARY packages."""
+    solution = Solution(
+        path=pathlib.Path('partial.cpp'),
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={'group2': ExpectedOutcome.WRONG_ANSWER},
+    )
+    skeleton = make_reporter_skeleton(
+        mock_problem_root,
+        solution,
+        {'samples': 1, 'group2': 1},
+        scores_per_group={'group2': 60},
+    )
+    result = make_run_result(
+        skeleton,
+        {('samples', 0): Outcome.ACCEPTED, ('group2', 0): Outcome.WRONG_ANSWER},
+    )
+    console = recording_console()
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        await drive_reporter(
+            FullRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    lines = rendered_lines(console)
+    # group2 failed its tests, so it scores 0 of 60 -- while still meeting the
+    # expectation that it fail.
+    assert 'group2 (1)0/✗ (100 ms, 1 KiB) [0/60 pts] ✓ as expected' in lines
+    # `samples` has no score and no expectation of its own, so it is untouched.
+    assert 'samples (1)0/✓ (100 ms, 1 KiB)' in lines
 
 
 async def test_partial_reports_do_not_add_timing_issues(
