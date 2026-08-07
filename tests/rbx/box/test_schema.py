@@ -404,3 +404,19 @@ class TestSolutionOutcomePerGroup:
             '*': ExpectedOutcome.ACCEPTED,
             'g': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
         }
+
+    def test_unset_outcome_still_contributes_any_to_all_expected_outcomes(self):
+        from rbx.box.schema import ExpectedOutcome, Solution
+
+        solution = Solution(
+            path='sol.cpp',
+            outcomePerGroup={'g': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+        )
+
+        # `outcome` defaults to ANY, and that default is part of the pool: an ANY
+        # solution keeps being counted as neither good nor merely passing.
+        assert solution.outcome == ExpectedOutcome.ANY
+        assert solution.all_expected_outcomes() == {
+            ExpectedOutcome.ANY,
+            ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        }

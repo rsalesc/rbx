@@ -603,7 +603,11 @@ class Solution(CodeItem):
         description="""The expected outcome of this solution for each testcase group,
 keyed by group name.
 
-The reserved key `*` sets a default that applies to every group *individually*.
+Keys must be top-level group names declared in `testcases`; subgroups are not
+addressable here.
+
+The reserved key `*` sets a default that applies to every group *individually*,
+including `samples` -- add an explicit `samples` entry to override it there.
 An entry for a specific group takes precedence over `*`. Groups that match
 neither are not checked individually.
 
@@ -637,18 +641,16 @@ or a tuple of two integers, which means the solution should have a score between
 If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
     )
 
-    def expected_outcome_for_group(self, group: str) -> Optional[ExpectedOutcome]:
+    def expected_outcome_for_group(self, group_name: str) -> Optional[ExpectedOutcome]:
         """The expectation for a single group, or None if the group has none."""
-        if group in self.outcomePerGroup:
-            return self.outcomePerGroup[group]
+        if group_name in self.outcomePerGroup:
+            return self.outcomePerGroup[group_name]
         return self.outcomePerGroup.get(PER_GROUP_OUTCOME_WILDCARD)
 
     def all_expected_outcomes(self) -> Set[ExpectedOutcome]:
-        """Every expectation this solution declares, pooled and per-group.
-
-        Consumers that ask a coarse question about a solution ("is it expected
-        to be slow?") must consider all of them, not just ``outcome``.
-        """
+        """Every expectation this solution declares, pooled and per-group."""
+        # Consumers that ask a coarse question about a solution ("is it expected
+        # to be slow?") must consider all of them, not just `outcome`.
         return {self.outcome} | set(self.outcomePerGroup.values())
 
     def expected_score_range(self) -> Optional[Tuple[int, int]]:
