@@ -25,6 +25,7 @@ from rbx.box.solutions import (
     SolutionReportSkeleton,
     SolutionSkeleton,
     convert_list_of_solution_evaluations_to_dict,
+    get_group_expectation_markup,
     get_matching_solutions,
     get_solution_outcome_report,
     run_solutions,
@@ -826,6 +827,86 @@ def test_verdict_markup_hides_group_lines_when_incomplete(
     )
 
     assert 'group2' not in report.get_verdict_markup(incomplete=True)
+
+
+def test_group_expectation_markup(tmp_path, mock_skeleton, mock_binary_scoring):
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            '*': ExpectedOutcome.ACCEPTED,
+            'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    evals = [make_evaluation(Outcome.ACCEPTED), make_evaluation(Outcome.ACCEPTED)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    # Met expectation: a check, no noise.
+    assert '✓' in get_group_expectation_markup(report, 'group1')
+    assert (
+        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain == ' ✓'
+    )
+    # Unmet: the expectation and what actually happened.
+    unmet = get_group_expectation_markup(report, 'group2')
+    assert '✗' in unmet
+    assert 'TIME_LIMIT_EXCEEDED' in unmet
+    assert 'ACCEPTED' in unmet
+    # Rendering also asserts the markup is well-formed.
+    assert (
+        Text.from_markup(unmet).plain == ' ✗ expected TIME_LIMIT_EXCEEDED, got ACCEPTED'
+    )
+    # A group with no expectation renders nothing at all, so packages that do
+    # not use outcomePerGroup look exactly as before.
+    assert get_group_expectation_markup(report, 'nonexistent') == ''
+
+
+def test_group_expectation_markup_is_empty_without_outcome_per_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """Every real group of a solution with no `outcomePerGroup` renders nothing,
+    so those group lines are byte-identical to before this feature existed."""
+    solution = Solution(path=tmp_path / 'wa.cpp', outcome=ExpectedOutcome.INCORRECT)
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert get_group_expectation_markup(report, 'group1') == ''
+    assert get_group_expectation_markup(report, 'group2') == ''
+
+
+def test_group_expectation_markup_of_a_passing_subset_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """In `subset` mode a *passing* group reports all of its verdicts rather than
+    an empty set, so pass/fail must be read off `status`, never off
+    `gotVerdicts`."""
+    solution = Solution(
+        path=tmp_path / 'wa.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={'group1': ExpectedOutcome.WRONG_ANSWER},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2})
+    evals = [make_evaluation(Outcome.ACCEPTED), make_evaluation(Outcome.WRONG_ANSWER)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL, subset=True
+    )
+
+    assert report.perGroup['group1'].status == SolutionOutcomeStatus.OK
+    assert report.perGroup['group1'].gotVerdicts == {
+        Outcome.ACCEPTED,
+        Outcome.WRONG_ANSWER,
+    }
+    assert (
+        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain == ' ✓'
+    )
 
 
 def test_report_evals_are_not_clobbered_by_the_per_group_loop(tmp_path, mock_skeleton):
