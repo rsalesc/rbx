@@ -1293,6 +1293,18 @@ def get_solution_score_markup(
     return f'[{style}][{res}][/{style}]'
 
 
+def _on_groups_markup(names: List[str]) -> str:
+    """Markup fragment attributing a warning to the groups it came from.
+
+    Empty when no group is involved, so a pooled-only report keeps its original
+    wording.
+    """
+    if not names:
+        return ''
+    groups = ' '.join(utils.escape_markup(name) for name in names)
+    return f' on [item]{groups}[/item]'
+
+
 class SolutionOutcomeStatus(Enum):
     OK = 'OK'
     UNEXPECTED_SCORE = 'UNEXPECTED_SCORE'
@@ -1423,22 +1435,28 @@ class SolutionOutcomeReport(BaseModel):
     def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
         res = self.get_verdict_markup(subset=subset)
         if self.runUnderDoubleTl:
-            # Name only the groups that passed *within* 2x TL. Groups that had
-            # other soft-TLE verdicts are reported by ``doubleTlVerdicts``
-            # instead, and the two conditions are mutually exclusive per group.
-            where = ''
-            double_tl_groups = [
-                name for name, group in self.perGroup.items() if group.runUnderDoubleTl
-            ]
-            if double_tl_groups:
-                groups = ' '.join(
-                    utils.escape_markup(name) for name in double_tl_groups
-                )
-                where = f' on [item]{groups}[/item]'
+            # Both aggregate fields are unions over the pooled layer and every
+            # group, so each half of the sentence names its own groups: a single
+            # group either passed *within* 2x TL or had other soft-TLE verdicts,
+            # never both, and they need not be the same group.
+            passed_where = _on_groups_markup(
+                [
+                    name
+                    for name, group in self.perGroup.items()
+                    if group.runUnderDoubleTl
+                ]
+            )
+            failed_where = _on_groups_markup(
+                [
+                    name
+                    for name, group in self.perGroup.items()
+                    if group.doubleTlVerdicts
+                ]
+            )
             if self.doubleTlVerdicts:
-                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{where}, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{passed_where}, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item]{failed_where}.'
             else:
-                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{where}.'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{passed_where}.'
         if self.sanitizerWarnings:
             res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
         return res

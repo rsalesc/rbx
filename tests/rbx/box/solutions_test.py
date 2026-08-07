@@ -570,6 +570,77 @@ def test_per_group_double_tl_is_reported_and_merged(
     assert report.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
 
 
+def test_double_tl_warning_attributes_each_half_to_its_own_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """The two halves of the warning come from different groups, so each names
+    its own: group2 is what passed within 2x TL, group3 is what failed."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        outcomePerGroup={
+            'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            'group3': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    skeleton = mock_skeleton(
+        [solution], entries_per_group={'group1': 1, 'group2': 2, 'group3': 2}
+    )
+    evals = [
+        make_evaluation(Outcome.ACCEPTED, time_ms=2500),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        # group2 passed within 2x TL.
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED, time_ms=1500, no_tle_outcome=Outcome.ACCEPTED
+        ),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        # group3 was a WA without the TL.
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1500,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        ),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    warning = Text.from_markup(report.get_verdict_markup_with_warnings()).plain
+    assert warning.splitlines()[-1] == (
+        'WARNING The solution still passed in double TL on group2, '
+        'but failed with WRONG_ANSWER on group3.'
+    )
+
+
+def test_double_tl_warning_is_unchanged_without_outcome_per_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """A solution with no `outcomePerGroup` has no group to attribute the
+    warning to, so the sentence must stay exactly as it always was."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED, time_ms=1500, no_tle_outcome=Outcome.ACCEPTED
+        ),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.perGroup == {}
+    assert report.runUnderDoubleTl is True
+    assert report.get_verdict_markup_with_warnings() == (
+        '[success]OK[/success] \n'
+        '[warning]WARNING[/warning] The solution still passed in double TL.'
+    )
+
+
 def test_per_group_outcome_fails_while_pooled_outcome_passes(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):
