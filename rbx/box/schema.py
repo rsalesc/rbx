@@ -5,7 +5,7 @@ import enum
 import pathlib
 import re
 import typing
-from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
@@ -587,12 +587,40 @@ class Generator(CodeItem):
     name: str = Field(description="""The name of the generator.""")
 
 
+PER_GROUP_OUTCOME_WILDCARD = '*'
+
+
 class Solution(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
     outcome: ExpectedOutcome = Field(
         default=ExpectedOutcome.ANY,
         description="""The expected outcome of this solution.""",
+    )
+
+    outcomePerGroup: Dict[str, ExpectedOutcome] = Field(
+        default={},
+        description="""The expected outcome of this solution for each testcase group,
+keyed by group name.
+
+The reserved key `*` sets a default that applies to every group *individually*.
+An entry for a specific group takes precedence over `*`. Groups that match
+neither are not checked individually.
+
+This is an extra layer of expectations, checked *in addition* to `outcome`:
+`outcome` keeps being matched against the whole testset at once, while each
+entry here is matched against that group's tests alone. A solution fails if
+either layer fails.
+
+```yaml
+solutions:
+  - path: 'sols/partial.cpp'
+    outcome: incorrect  # fails somewhere in the testset
+    outcomePerGroup:
+      '*': accepted     # ...but is correct on every group
+      group3: tle       # ...except group3, where it must time out
+```
+""",
     )
 
     tags: List[str] = Field(
@@ -608,6 +636,20 @@ or a tuple of two integers, which means the solution should have a score between
 
 If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
     )
+
+    def expected_outcome_for_group(self, group: str) -> Optional[ExpectedOutcome]:
+        """The expectation for a single group, or None if the group has none."""
+        if group in self.outcomePerGroup:
+            return self.outcomePerGroup[group]
+        return self.outcomePerGroup.get(PER_GROUP_OUTCOME_WILDCARD)
+
+    def all_expected_outcomes(self) -> Set[ExpectedOutcome]:
+        """Every expectation this solution declares, pooled and per-group.
+
+        Consumers that ask a coarse question about a solution ("is it expected
+        to be slow?") must consider all of them, not just ``outcome``.
+        """
+        return {self.outcome} | set(self.outcomePerGroup.values())
 
     def expected_score_range(self) -> Optional[Tuple[int, int]]:
         if self.score is None:

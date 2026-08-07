@@ -335,3 +335,72 @@ class TestTestcaseGroupSubgroupUniqueness:
         ]
         assert [sg.name for sg in package.testcases[1].subgroups] == ['small']
         assert [sg.name for sg in package.testcases[2].subgroups] == ['small']
+
+
+class TestSolutionOutcomePerGroup:
+    def test_no_per_group_outcomes_resolves_to_none(self):
+        from rbx.box.schema import ExpectedOutcome, Solution
+
+        solution = Solution(path='sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
+
+        assert solution.outcomePerGroup == {}
+        assert solution.expected_outcome_for_group('group1') is None
+        assert solution.all_expected_outcomes() == {ExpectedOutcome.ACCEPTED}
+
+    def test_explicit_group_takes_precedence_over_wildcard(self):
+        from rbx.box.schema import ExpectedOutcome, Solution
+
+        solution = Solution(
+            path='sol.cpp',
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={
+                '*': ExpectedOutcome.ACCEPTED,
+                'group3': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            },
+        )
+
+        assert (
+            solution.expected_outcome_for_group('group3')
+            == ExpectedOutcome.TIME_LIMIT_EXCEEDED
+        )
+        # Everything else, samples included, falls back to the wildcard.
+        assert (
+            solution.expected_outcome_for_group('samples') == ExpectedOutcome.ACCEPTED
+        )
+        assert solution.expected_outcome_for_group('group1') == ExpectedOutcome.ACCEPTED
+        assert solution.all_expected_outcomes() == {
+            ExpectedOutcome.INCORRECT,
+            ExpectedOutcome.ACCEPTED,
+            ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        }
+
+    def test_without_wildcard_unlisted_groups_have_no_expectation(self):
+        from rbx.box.schema import ExpectedOutcome, Solution
+
+        solution = Solution(
+            path='sol.cpp',
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={'group2': ExpectedOutcome.WRONG_ANSWER},
+        )
+
+        assert (
+            solution.expected_outcome_for_group('group2')
+            == ExpectedOutcome.WRONG_ANSWER
+        )
+        assert solution.expected_outcome_for_group('group1') is None
+
+    def test_outcome_names_are_parsed_from_yaml_aliases(self):
+        from rbx.box.schema import ExpectedOutcome, Solution
+
+        solution = Solution.model_validate(
+            {
+                'path': 'sol.cpp',
+                'outcome': 'incorrect',
+                'outcomePerGroup': {'*': 'ac', 'g': 'tle'},
+            }
+        )
+
+        assert solution.outcomePerGroup == {
+            '*': ExpectedOutcome.ACCEPTED,
+            'g': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        }
