@@ -215,8 +215,9 @@ class FailedSolutionIssue(issue_stack.Issue):
 
 
 def is_fast(solution: Solution) -> bool:
-    # If solution has TLE tag, it is considered slow.
-    return not solution.outcome.is_slow()
+    # A solution expected to be slow anywhere -- for the whole testset or for a
+    # single group -- is not a fast solution.
+    return not any(outcome.is_slow() for outcome in solution.all_expected_outcomes())
 
 
 def get_matching_solutions(
@@ -1987,17 +1988,25 @@ async def _print_timing(
                 expanded_tls_per_language[eval_language] = expanded_tl
 
         language = find_language_name(solution)
+        # Consider every expectation the solution declares, pooled and per-group.
+        # Without `outcomePerGroup` this is exactly the previous behavior, since
+        # the set is then just `{solution.outcome}`.
+        expectations = solution.all_expected_outcomes()
         # Get solution timings.
-        if solution.outcome == ExpectedOutcome.ACCEPTED:
+        if all(outcome == ExpectedOutcome.ACCEPTED for outcome in expectations):
             summary.add_good(solution_time, solution)
             summary_per_language[language].add_good(solution_time, solution)
-        if solution.outcome in [
-            ExpectedOutcome.ACCEPTED,
-            ExpectedOutcome.ACCEPTED_OR_TLE,
-        ]:
+        if all(
+            outcome
+            in [
+                ExpectedOutcome.ACCEPTED,
+                ExpectedOutcome.ACCEPTED_OR_TLE,
+            ]
+            for outcome in expectations
+        ):
             summary.add_pass(solution_time, solution)
             summary_per_language[language].add_pass(solution_time, solution)
-        if solution.outcome.is_slow():
+        if any(outcome.is_slow() for outcome in expectations):
             summary.add_slow(solution_time, solution)
             summary_per_language[language].add_slow(solution_time, solution)
 

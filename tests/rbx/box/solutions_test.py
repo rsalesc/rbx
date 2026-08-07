@@ -28,6 +28,7 @@ from rbx.box.solutions import (
     get_group_expectation_markup,
     get_matching_solutions,
     get_solution_outcome_report,
+    is_fast,
     run_solutions,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
@@ -1007,6 +1008,29 @@ def test_get_matching_solutions(tmp_path):
         assert get_matching_solutions(
             expected_outcome=ExpectedOutcome.ACCEPTED, tags=['implementation']
         ) == [s1]
+
+
+def test_is_fast_considers_per_group_expectations(tmp_path):
+    """A solution expected to be slow on a single group is not a fast solution."""
+    fast = Solution(path=tmp_path / 'ac.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    slow_group = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            '*': ExpectedOutcome.ACCEPTED,
+            'group3': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    slow_pooled = Solution(
+        path=tmp_path / 'slow.cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+    )
+
+    assert is_fast(fast)
+    # Expected to time out on group3, so it is not a fast solution.
+    assert not is_fast(slow_group)
+    # Unchanged: a pooled slow expectation still makes it not fast.
+    assert not is_fast(slow_pooled)
 
 
 def test_solution_outcome_report_points_scoring(tmp_path, mock_limits, mock_skeleton):
