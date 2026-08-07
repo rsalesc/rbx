@@ -10,6 +10,9 @@ You can use the `rbx run` command to run your solutions on the whole testset.
 The command will run all selected solutions (or all declared solutions if none are selected) on all testcases,
 providing for each of them the solution outcome, and for the whole testset the timing and memory usage.
 
+Testgroups with an expected outcome declared via [`outcomePerGroup`](/setters/reference/package/#expected-outcomes-per-testgroup)
+are marked individually in the report.
+
 {{ asciinema("x8NJUtmob4uSHUUFppxUn64Kn") }}
 
 Below are some examples of how to use the command.
