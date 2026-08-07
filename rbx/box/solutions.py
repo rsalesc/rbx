@@ -1361,6 +1361,21 @@ class SolutionOutcomeReport(BaseModel):
             name for name, report in self.perGroup.items() if not report.status.ok()
         ]
 
+    def _group_failure_lines(self) -> List[str]:
+        lines = []
+        for name, group in self.perGroup.items():
+            if group.status.ok():
+                continue
+            got = ' '.join(sorted(v.name for v in group.gotVerdicts))
+            line = (
+                f'[item]{utils.escape_markup(name)}[/item]: '
+                f'expected {group.expectedOutcome}'
+            )
+            if got:
+                line += f', got: {got}'
+            lines.append(line)
+        return lines
+
     def get_verdict_markup(self, incomplete: bool = False, subset: bool = False) -> str:
         success_str = '[success]OK[/success] '
         if subset:
@@ -1383,22 +1398,47 @@ class SolutionOutcomeReport(BaseModel):
             else:
                 verdict_str = f'Got {get_solution_score_markup(self.gotScore, self.maxScore, pts=True)}'
 
-        if self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS:
+        # Only speak for the pooled layer when the pooled layer is what failed;
+        # otherwise "Expected: X" would accuse an expectation that was met.
+        if (
+            self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+            and not self.pooledStatus.ok()
+        ):
             if self.expectedOutcome != ExpectedOutcome.ANY:
                 verdict_str = f'Expected: {self.expectedOutcome}'
                 if gotVerdicts:
                     verdict_str += f', got: {got_verdict_names}'
             elif gotVerdicts:
                 verdict_str = f'Got: {got_verdict_names}'
-        return f'{success_str}{verdict_str}'
+
+        group_lines = [] if incomplete else self._group_failure_lines()
+        if not verdict_str and group_lines:
+            # Fold the first group into the FAILED line instead of leaving it bare.
+            verdict_str = group_lines.pop(0)
+        res = f'{success_str}{verdict_str}'
+        for line in group_lines:
+            res += f'\n[ierror]FAILED[/ierror] {line}'
+        return res
 
     def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
         res = self.get_verdict_markup(subset=subset)
         if self.runUnderDoubleTl:
+            # Name only the groups that passed *within* 2x TL. Groups that had
+            # other soft-TLE verdicts are reported by ``doubleTlVerdicts``
+            # instead, and the two conditions are mutually exclusive per group.
+            where = ''
+            double_tl_groups = [
+                name for name, group in self.perGroup.items() if group.runUnderDoubleTl
+            ]
+            if double_tl_groups:
+                groups = ' '.join(
+                    utils.escape_markup(name) for name in double_tl_groups
+                )
+                where = f' on [item]{groups}[/item]'
             if self.doubleTlVerdicts:
-                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{where}, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
             else:
-                res += '\n[warning]WARNING[/warning] The solution still passed in double TL.'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{where}.'
         if self.sanitizerWarnings:
             res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
         return res

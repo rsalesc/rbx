@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from unittest.mock import patch
 
 import pytest
+from rich.text import Text
 
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -679,6 +680,81 @@ def test_groups_without_evaluations_are_not_checked(
 
     assert 'group2' not in report.perGroup
     assert report.failedGroups == []
+
+
+def test_verdict_markup_attributes_failure_to_the_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+    markup = report.get_verdict_markup()
+
+    assert 'FAILED' in markup
+    assert 'group2' in markup
+    assert 'TIME_LIMIT_EXCEEDED' in markup
+    assert 'ACCEPTED' in markup
+    # The pooled layer passed, so it must not be reported as the culprit.
+    assert 'Expected: INCORRECT' not in markup
+    # Rendering also asserts the markup is well-formed.
+    assert (
+        Text.from_markup(markup).plain
+        == 'FAILED group2: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED'
+    )
+
+
+def test_verdict_markup_lists_every_failed_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            '*': ExpectedOutcome.ACCEPTED,
+            'group2': ExpectedOutcome.WRONG_ANSWER,
+        },
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    # group1 was supposed to be clean, group2 was supposed to fail.
+    evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+    markup = report.get_verdict_markup()
+
+    assert markup.count('FAILED') == 2
+    assert 'group1' in markup and 'group2' in markup
+    assert Text.from_markup(markup).plain == (
+        'FAILED group1: expected ACCEPTED, got: WRONG_ANSWER\n'
+        'FAILED group2: expected WRONG_ANSWER, got: ACCEPTED'
+    )
+
+
+def test_verdict_markup_hides_group_lines_when_incomplete(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert 'group2' not in report.get_verdict_markup(incomplete=True)
 
 
 def test_report_evals_are_not_clobbered_by_the_per_group_loop(tmp_path, mock_skeleton):
