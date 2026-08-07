@@ -148,9 +148,15 @@ class TestingPackage(TestingShared):
         path: PathOrStr,
         outcome: ExpectedOutcome,
         language: Optional[str] = None,
+        outcome_per_group: Optional[Dict[str, ExpectedOutcome]] = None,
     ):
         self.yml.solutions = self.yml.solutions + [
-            Solution(path=pathlib.Path(path), language=language, outcome=outcome)
+            Solution(
+                path=pathlib.Path(path),
+                language=language,
+                outcome=outcome,
+                outcomePerGroup=outcome_per_group or {},
+            )
         ]
         self.save()
         return self.add_file(path)
