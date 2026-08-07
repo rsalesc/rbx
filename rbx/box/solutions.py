@@ -1313,6 +1313,15 @@ class SolutionOutcomeReport(BaseModel):
     message: Optional[Tuple[GenerationTestcaseEntry, str]]
     expectedOutcome: ExpectedOutcome
     gotVerdicts: Set[Outcome]
+    # Status of the pooled ``outcome`` layer on its own. ``status`` is the
+    # aggregate of this and every per-group expectation.
+    pooledStatus: SolutionOutcomeStatus = SolutionOutcomeStatus.OK
+    # Only groups that carry an expectation AND were evaluated appear below.
+    expectedOutcomePerGroup: Dict[str, ExpectedOutcome] = {}
+    gotVerdictsPerGroup: Dict[str, Set[Outcome]] = {}
+    statusPerGroup: Dict[str, SolutionOutcomeStatus] = {}
+    failedGroups: List[str] = []
+    doubleTlGroups: List[str] = []
     expectedScore: Optional[Tuple[int, int]]
     gotScore: int
     gotScorePerGroup: Dict[str, int]
@@ -1568,30 +1577,82 @@ def get_solution_outcome_report(
             message = (entry, eval.result.message)
             break
 
-    status = (
+    evals_per_group = _get_evals_per_group(evals, skeleton)
+
+    # Per-group expectation layer. Groups with no evaluations are skipped: a
+    # bad expectation on a group that has not run would otherwise fail the
+    # "at least one bad verdict must exist" rule while the run is still live.
+    group_reports: Dict[str, VerdictReport] = {}
+    expected_outcome_per_group: Dict[str, ExpectedOutcome] = {}
+    got_verdicts_per_group: Dict[str, Set[Outcome]] = {}
+    status_per_group: Dict[str, SolutionOutcomeStatus] = {}
+    failed_groups: List[str] = []
+    double_tl_groups: List[str] = []
+    for group_name, group_evals in evals_per_group.items():
+        expected = solution.expected_outcome_for_group(group_name)
+        if expected is None or not group_evals:
+            continue
+        group_report = _get_verdict_report(
+            skeleton, group_evals, solution, expected, subset, verification
+        )
+        group_reports[group_name] = group_report
+        expected_outcome_per_group[group_name] = group_report.expected_outcome
+        got_verdicts_per_group[group_name] = group_report.got_verdicts
+        status_per_group[group_name] = (
+            SolutionOutcomeStatus.OK
+            if group_report.ok
+            else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+        )
+        if not group_report.ok:
+            failed_groups.append(group_name)
+        has_unmatched_slow_verdict = (
+            has_unmatched_slow_verdict or group_report.has_unmatched_slow_verdict()
+        )
+        if group_report.run_under_double_tl or group_report.double_tl_verdicts:
+            double_tl_groups.append(group_name)
+
+    pooled_status = (
         SolutionOutcomeStatus.OK
         if verdict_report.ok
         else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     )
+    status = (
+        SolutionOutcomeStatus.OK
+        if verdict_report.ok and not failed_groups
+        else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    )
+
+    run_under_double_tl = verdict_report.run_under_double_tl or any(
+        group_reports[group_name].run_under_double_tl for group_name in double_tl_groups
+    )
+    double_tl_verdicts = set(verdict_report.double_tl_verdicts)
+    for group_name in double_tl_groups:
+        double_tl_verdicts |= group_reports[group_name].double_tl_verdicts
 
     max_score = 0
     got_score = 0
     got_score_per_group = {}
     if scoring == ScoreType.POINTS:
-        evals_per_group = _get_evals_per_group(evals, skeleton)
-        verdict_report_per_group = {}
-        # TODO: add outcome per group
+        # ``passed()`` only inspects bad verdicts, never the expectation, so a
+        # report computed for the per-group layer is reusable here as-is.
+        scoring_reports: Dict[str, VerdictReport] = {}
         for group in skeleton.groups:
             max_score += group.score
-            evals = evals_per_group.get(group.name, [])
-
-            verdict_report_per_group[group.name] = _get_verdict_report(
-                skeleton, evals, solution, solution.outcome, subset, verification
-            )
-            has_unmatched_slow_verdict = (
-                has_unmatched_slow_verdict
-                or verdict_report_per_group[group.name].has_unmatched_slow_verdict()
-            )
+            group_report = group_reports.get(group.name)
+            if group_report is None:
+                group_report = _get_verdict_report(
+                    skeleton,
+                    evals_per_group.get(group.name, []),
+                    solution,
+                    solution.outcome,
+                    subset,
+                    verification,
+                )
+                has_unmatched_slow_verdict = (
+                    has_unmatched_slow_verdict
+                    or group_report.has_unmatched_slow_verdict()
+                )
+            scoring_reports[group.name] = group_report
 
         def _check_deps(group: GroupSkeleton):
             for dep in group.deps:
@@ -1600,7 +1661,7 @@ def get_solution_outcome_report(
                     return False
                 if not _check_deps(dep_group):
                     return False
-            return verdict_report_per_group[group.name].passed()
+            return scoring_reports[group.name].passed()
 
         for group in skeleton.groups:
             if _check_deps(group):
@@ -1621,15 +1682,21 @@ def get_solution_outcome_report(
         limits=limits,
         evals=evals,
         status=status,
+        pooledStatus=pooled_status,
         message=message,
         expectedOutcome=verdict_report.expected_outcome,
         gotVerdicts=verdict_report.got_verdicts,
+        expectedOutcomePerGroup=expected_outcome_per_group,
+        gotVerdictsPerGroup=got_verdicts_per_group,
+        statusPerGroup=status_per_group,
+        failedGroups=failed_groups,
         expectedScore=expected_score,
         gotScore=got_score,
         gotScorePerGroup=got_score_per_group,
         maxScore=max_score,
-        runUnderDoubleTl=verdict_report.run_under_double_tl,
-        doubleTlVerdicts=verdict_report.double_tl_verdicts,
+        runUnderDoubleTl=run_under_double_tl,
+        doubleTlVerdicts=double_tl_verdicts,
+        doubleTlGroups=double_tl_groups,
         sanitizerWarnings=verdict_report.has_sanitizer_warnings,
         verification=verification,
         scoring=scoring,

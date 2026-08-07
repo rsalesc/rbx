@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import patch
 
 import pytest
@@ -155,16 +155,36 @@ def mock_skeleton(tmp_path, mock_limits):
     def _create_skeleton(
         solutions: List[Solution],
         num_entries: int = 5,
+        entries_per_group: Optional[Dict[str, int]] = None,
+        scores_per_group: Optional[Dict[str, int]] = None,
     ) -> SolutionReportSkeleton:
+        if entries_per_group is None:
+            entries_per_group = {'test': num_entries}
+        entries = [
+            make_generation_entry(group, i, tmp_path)
+            for group, count in entries_per_group.items()
+            for i in range(count)
+        ]
+        groups = [
+            GroupSkeleton(
+                name=group,
+                score=(scores_per_group or {}).get(group, 0),
+                deps=[],
+                testcases=[
+                    entry.metadata.copied_to
+                    for entry in entries
+                    if entry.group_entry.group == group
+                ],
+            )
+            for group in entries_per_group
+        ]
         return SolutionReportSkeleton(
             solutions=[
                 SolutionSkeleton(**sol.model_dump(), runs_dir=tmp_path / f'run_{i}')
                 for i, sol in enumerate(solutions)
             ],
-            entries=[
-                make_generation_entry('test', i, tmp_path) for i in range(num_entries)
-            ],
-            groups=[],
+            entries=entries,
+            groups=groups,
             limits={'cpp': mock_limits},
             compiled_solutions={
                 str(sol.path): f'digest_{i}' for i, sol in enumerate(solutions)
@@ -441,6 +461,142 @@ def test_solution_outcome_report_mixed_outcomes(
     assert Outcome.WRONG_ANSWER in report.gotVerdicts
     assert Outcome.RUNTIME_ERROR in report.gotVerdicts
     assert Outcome.TIME_LIMIT_EXCEEDED in report.gotVerdicts
+
+
+def test_per_group_outcome_fails_while_pooled_outcome_passes(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """group2 is expected to TLE but is fully accepted: the solution fails even
+    though the pooled INCORRECT expectation is satisfied by group1's WA."""
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2, 'group2': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.WRONG_ANSWER),
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    assert report.pooledStatus == SolutionOutcomeStatus.OK
+    assert report.failedGroups == ['group2']
+    assert report.statusPerGroup == {
+        'group2': SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    }
+    assert report.expectedOutcomePerGroup == {
+        'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    }
+    assert report.gotVerdictsPerGroup['group2'] == {Outcome.ACCEPTED}
+
+
+def test_per_group_outcome_all_satisfied(tmp_path, mock_skeleton, mock_binary_scoring):
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            '*': ExpectedOutcome.ACCEPTED,
+            'group2': ExpectedOutcome.WRONG_ANSWER,
+        },
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2, 'group2': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.WRONG_ANSWER),
+        make_evaluation(Outcome.ACCEPTED),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.failedGroups == []
+    # The wildcard covers group1 too.
+    assert report.expectedOutcomePerGroup == {
+        'group1': ExpectedOutcome.ACCEPTED,
+        'group2': ExpectedOutcome.WRONG_ANSWER,
+    }
+
+
+def test_wildcard_expectation_is_checked_per_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """'*': wa demands a WA in EVERY group; group1 being clean is a failure."""
+    solution = Solution(
+        path=tmp_path / 'wa.cpp',
+        outcome=ExpectedOutcome.WRONG_ANSWER,
+        outcomePerGroup={'*': ExpectedOutcome.WRONG_ANSWER},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2, 'group2': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.WRONG_ANSWER),
+        make_evaluation(Outcome.WRONG_ANSWER),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    assert report.failedGroups == ['group1']
+
+
+def test_groups_without_evaluations_are_not_checked(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """Mid-run, later groups have no evals yet. A bad expectation on them must
+    not fail the report, or the live reporters would flash spurious failures."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2, 'group2': 2})
+    # Only group1 has run.
+    evals = [make_evaluation(Outcome.ACCEPTED), make_evaluation(Outcome.ACCEPTED)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert 'group2' not in report.statusPerGroup
+    assert report.failedGroups == []
+
+
+def test_report_evals_are_not_clobbered_by_the_per_group_loop(tmp_path, mock_skeleton):
+    """Regression: the POINTS loop used to rebind `evals`, so the report's
+    Time/Memory line only saw the last group's evaluations."""
+    solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton(
+        [solution],
+        entries_per_group={'group1': 2, 'group2': 2},
+        scores_per_group={'group1': 50, 'group2': 50},
+    )
+    evals = [
+        make_evaluation(Outcome.ACCEPTED, time_ms=900),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+    ]
+
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        report = get_solution_outcome_report(
+            solution, skeleton, evals, VerificationLevel.FULL
+        )
+
+    assert len(report.evals) == 4
+    assert report.gotScore == 100
 
 
 def test_get_matching_solutions(tmp_path):
