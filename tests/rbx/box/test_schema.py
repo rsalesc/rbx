@@ -420,3 +420,163 @@ class TestSolutionOutcomePerGroup:
             ExpectedOutcome.ANY,
             ExpectedOutcome.TIME_LIMIT_EXCEEDED,
         }
+
+
+class TestPackageOutcomePerGroupValidation:
+    def _package(self, **solution_kwargs):
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        return Package(
+            name='prob',
+            timeLimit=1000,
+            memoryLimit=256,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='group1'),
+                TestcaseGroup(name='group2'),
+            ],
+            solutions=[
+                Solution(path='sols/main.cpp', outcome=ExpectedOutcome.ACCEPTED),
+                Solution(path='sols/other.cpp', **solution_kwargs),
+            ],
+        )
+
+    def test_unknown_group_key_is_rejected(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome
+
+        with pytest.raises(ValidationError, match='typo'):
+            self._package(
+                outcome=ExpectedOutcome.INCORRECT,
+                outcomePerGroup={'typo': ExpectedOutcome.WRONG_ANSWER},
+            )
+
+    def test_unknown_group_is_reported_before_contradictions(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome
+
+        # The key is both unknown and contradictory; the actionable error is the
+        # unknown key, and no later validator may crash on it.
+        with pytest.raises(ValidationError, match='not a testcase group'):
+            self._package(
+                outcome=ExpectedOutcome.ACCEPTED,
+                outcomePerGroup={'typo': ExpectedOutcome.WRONG_ANSWER},
+            )
+
+    def test_known_group_and_wildcard_keys_are_accepted(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        package = self._package(
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={
+                '*': ExpectedOutcome.ACCEPTED,
+                'samples': ExpectedOutcome.ACCEPTED,
+                'group2': ExpectedOutcome.WRONG_ANSWER,
+            },
+        )
+
+        assert len(package.solutions) == 2
+
+    def test_main_solution_cannot_expect_a_non_ac_group(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        with pytest.raises(ValidationError, match='first solution'):
+            Package(
+                name='prob',
+                timeLimit=1000,
+                memoryLimit=256,
+                testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
+                solutions=[
+                    Solution(
+                        path='sols/main.cpp',
+                        outcome=ExpectedOutcome.ACCEPTED,
+                        outcomePerGroup={'group1': ExpectedOutcome.WRONG_ANSWER},
+                    ),
+                ],
+            )
+
+    def test_main_solution_may_pin_groups_to_accepted(self):
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        package = Package(
+            name='prob',
+            timeLimit=1000,
+            memoryLimit=256,
+            testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
+            solutions=[
+                Solution(
+                    path='sols/main.cpp',
+                    outcome=ExpectedOutcome.ACCEPTED,
+                    outcomePerGroup={'*': ExpectedOutcome.ACCEPTED},
+                ),
+            ],
+        )
+
+        assert package.solutions[0].outcomePerGroup == {'*': ExpectedOutcome.ACCEPTED}
+
+    def test_group_expectation_contradicting_the_pooled_one_is_rejected(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome
+
+        with pytest.raises(ValidationError, match='cannot be satisfied'):
+            # Pooled ACCEPTED forbids any bad verdict, group2 demands a WA.
+            self._package(
+                outcome=ExpectedOutcome.ACCEPTED,
+                outcomePerGroup={'group2': ExpectedOutcome.WRONG_ANSWER},
+            )
+
+    def test_disjoint_bad_expectations_are_rejected(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome
+
+        with pytest.raises(ValidationError, match='cannot be satisfied'):
+            # A WA on group2 would violate the pooled RTE expectation.
+            self._package(
+                outcome=ExpectedOutcome.RUNTIME_ERROR,
+                outcomePerGroup={'group2': ExpectedOutcome.WRONG_ANSWER},
+            )
+
+    def test_all_groups_accepted_contradicts_a_bad_pooled_outcome(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome
+
+        with pytest.raises(ValidationError, match='cannot be satisfied'):
+            # Every group must be fully AC, yet the testset must fail somewhere.
+            self._package(
+                outcome=ExpectedOutcome.INCORRECT,
+                outcomePerGroup={'*': ExpectedOutcome.ACCEPTED},
+            )
+
+    def test_unconstrained_group_can_host_the_bad_pooled_verdict(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        # Without a `*`, group1 has no expectation at all, so it is free to be
+        # the group where the pooled INCORRECT happens.
+        package = self._package(
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={'group2': ExpectedOutcome.ACCEPTED},
+        )
+
+        assert package.solutions[1].expected_outcome_for_group('group1') is None
+
+    def test_compatible_layers_are_accepted(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        package = self._package(
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={
+                '*': ExpectedOutcome.ACCEPTED,
+                'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            },
+        )
+
+        assert package.solutions[1].outcomePerGroup['group2'] == (
+            ExpectedOutcome.TIME_LIMIT_EXCEEDED
+        )

@@ -1140,6 +1140,91 @@ that is correct and used as reference -- and should have the `accepted` outcome.
         return self
 
     @model_validator(mode='after')
+    def check_outcome_per_group(self):
+        group_names = set(group.name for group in self.testcases)
+        for solution in self.solutions:
+            for group_name in solution.outcomePerGroup:
+                if group_name == PER_GROUP_OUTCOME_WILDCARD:
+                    continue
+                if group_name not in group_names:
+                    raise PydanticCustomError(
+                        'UNKNOWN_OUTCOME_GROUP',
+                        'Solution "{path}" declares an expected outcome for group '
+                        '"{group}", which is not a testcase group of this package.',
+                        {'path': str(solution.path), 'group': group_name},
+                    )
+        return self
+
+    @model_validator(mode='after')
+    def check_main_solution_outcome_per_group(self):
+        if not self.solutions:
+            return self
+        main = self.solutions[0]
+        for group_name, expected in main.outcomePerGroup.items():
+            if not expected.match(Outcome.ACCEPTED):
+                raise PydanticCustomError(
+                    'MAIN_SOLUTION_NOT_ACCEPTED',
+                    'The first solution in the package generates the reference '
+                    'outputs, so it must be accepted everywhere, but it expects '
+                    '"{expected}" on "{group}".',
+                    {'expected': expected.name, 'group': group_name},
+                )
+        return self
+
+    @model_validator(mode='after')
+    def check_outcome_per_group_is_satisfiable(self):
+        for solution in self.solutions:
+            if not solution.outcomePerGroup:
+                continue
+            for group_name, expected in solution.outcomePerGroup.items():
+                if expected.match(Outcome.ACCEPTED):
+                    # The group admits a fully accepted run, which never
+                    # conflicts with the pooled expectation.
+                    continue
+                # The group demands a bad verdict; the pooled expectation must
+                # admit at least one of the verdicts that would satisfy it.
+                if not solution.outcome.intersect(expected):
+                    raise PydanticCustomError(
+                        'CONTRADICTORY_OUTCOME',
+                        'Solution "{path}" expects "{expected}" on "{group}", which '
+                        'cannot be satisfied together with the expected outcome '
+                        '"{outcome}" for the whole testset.',
+                        {
+                            'path': str(solution.path),
+                            'expected': expected.name,
+                            'group': group_name,
+                            'outcome': solution.outcome.name,
+                        },
+                    )
+
+            if solution.outcome.match(Outcome.ACCEPTED):
+                continue
+            # The pooled expectation demands a bad verdict *somewhere*. If every
+            # group is individually pinned to an outcome that admits none, there
+            # is nowhere for it to happen.
+            resolved = [
+                solution.expected_outcome_for_group(group.name)
+                for group in self.testcases
+            ]
+            if any(expected is None for expected in resolved):
+                continue
+            has_room = any(
+                verdict != Outcome.ACCEPTED and solution.outcome.match(verdict)
+                for expected in resolved
+                if expected is not None
+                for verdict in expected.get_matches()
+            )
+            if not has_room:
+                raise PydanticCustomError(
+                    'CONTRADICTORY_OUTCOME',
+                    'Solution "{path}" expects "{outcome}" for the whole testset, '
+                    'but every group is pinned to an outcome that cannot produce '
+                    'it, so the expectation cannot be satisfied.',
+                    {'path': str(solution.path), 'outcome': solution.outcome.name},
+                )
+        return self
+
+    @model_validator(mode='after')
     def check_checker_and_interactor_for_task_type(self):
         if self.type == TaskType.BATCH:
             if self.interactor is not None:
