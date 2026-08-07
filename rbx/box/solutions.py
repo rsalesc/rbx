@@ -1695,6 +1695,13 @@ def get_solution_outcome_report(
 
     evals_per_group = _get_evals_per_group(evals, skeleton)
 
+    # Only groups that are part of the testset carry expectations. This is the
+    # same set `Package.check_outcome_per_group_names` accepts as explicit keys,
+    # so `'*'` expands over exactly those groups and no others -- in particular
+    # not over the synthetic `interactive` group of `rbx irun`, whose skeleton
+    # declares no groups at all.
+    declared_groups = {group.name for group in skeleton.groups}
+
     # Per-group expectation layer, for groups that both carry an expectation and
     # have at least one evaluation. The empty-evals guard only keeps a group that
     # has not started from failing the "at least one bad verdict must exist"
@@ -1706,6 +1713,7 @@ def get_solution_outcome_report(
         )
         for name, group_evals in evals_per_group.items()
         if group_evals
+        and name in declared_groups
         and (expected := solution.expected_outcome_for_group(name)) is not None
     }
     per_group = {

@@ -755,6 +755,35 @@ def test_groups_without_evaluations_are_not_checked(
     assert report.failedGroups == []
 
 
+def test_groups_outside_the_testset_are_not_checked(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """`rbx irun` evaluates a synthetic `interactive` group that is not part of
+    the testset, and builds its skeleton with no groups at all. A `'*'` default
+    must not bind to it: the wildcard expands over declared groups only, which is
+    also the only set `check_outcome_per_group_names` accepts as explicit keys."""
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            '*': ExpectedOutcome.ACCEPTED,
+            'big': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'interactive': 1})
+    # Mirror `_get_interactive_skeleton`, which declares no groups.
+    skeleton.groups = []
+    evals = [make_evaluation(Outcome.WRONG_ANSWER)]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL, subset=True
+    )
+
+    assert report.perGroup == {}
+    assert report.failedGroups == []
+    assert report.status == SolutionOutcomeStatus.OK
+
+
 def test_verdict_markup_attributes_failure_to_the_group(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):
