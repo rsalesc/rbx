@@ -149,11 +149,14 @@ offending group:
 
 ```
 sols/partial.cpp (.box/runs/2)
-samples (2) 12ms, 3MB ✓
-group1 (10) 45ms, 4MB ✓
-group2 (10) 1.02s, 4MB ✗ expected TLE, got AC
+samples (2) 12ms, 3MB ✓ as expected
+group1 (10) 45ms, 4MB ✓ as expected
+group2 (10) 1.02s, 4MB ✗ expected TIME_LIMIT_EXCEEDED, got: ACCEPTED
 FAILED group2: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED
 ```
+
+The success mark carries a word because the group line already ends in a run of
+per-testcase `✓`/`✗`/`⧖` glyphs, which a bare `✓` would blend into.
 
 At group end the pooled report is still partial, but a finished group's own
 report is complete — which is what makes the per-group mark trustworthy mid-run.

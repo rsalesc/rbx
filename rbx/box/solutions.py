@@ -1302,7 +1302,7 @@ def _on_groups_markup(names: List[str]) -> str:
     """
     if not names:
         return ''
-    groups = ' '.join(utils.escape_markup(name) for name in names)
+    groups = ', '.join(utils.escape_markup(name) for name in names)
     return f' on [item]{groups}[/item]'
 
 
@@ -1326,6 +1326,15 @@ class GroupOutcomeReport(BaseModel):
     status: SolutionOutcomeStatus
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
+
+
+def _failed_group_names(per_group: Dict[str, GroupOutcomeReport]) -> List[str]:
+    """The groups that did not meet their own expectation, in ``per_group`` order.
+
+    Shared by ``SolutionOutcomeReport.failedGroups`` and the aggregate status,
+    which must never disagree about what failed.
+    """
+    return [name for name, report in per_group.items() if not report.status.ok()]
 
 
 class SolutionOutcomeReport(BaseModel):
@@ -1355,8 +1364,9 @@ class SolutionOutcomeReport(BaseModel):
     gotVerdicts: Set[Outcome]
     # Status of the pooled ``outcome`` layer on its own.
     pooledStatus: SolutionOutcomeStatus
-    # Only groups that carry an expectation AND were evaluated appear here, in
-    # testset order.
+    # Only groups that carry an expectation AND were evaluated appear here. The
+    # order is the order their first evaluation arrived in, which today is
+    # testset order because both come from ``skeleton.entries``.
     perGroup: Dict[str, GroupOutcomeReport] = {}
     expectedScore: Optional[Tuple[int, int]]
     gotScore: int
@@ -1370,9 +1380,7 @@ class SolutionOutcomeReport(BaseModel):
 
     @property
     def failedGroups(self) -> List[str]:
-        return [
-            name for name, report in self.perGroup.items() if not report.status.ok()
-        ]
+        return _failed_group_names(self.perGroup)
 
     def _group_failure_lines(self) -> List[str]:
         lines = []
@@ -1393,7 +1401,7 @@ class SolutionOutcomeReport(BaseModel):
         success_str = '[success]OK[/success] '
         if subset:
             success_str = ''
-        if not self.status:
+        if not self.status.ok():
             success_str = '[ierror]FAILED[/ierror] '
         if incomplete:
             success_str = '[iwarning]INCOMPLETE[/iwarning] '
@@ -1507,11 +1515,16 @@ def get_group_expectation_markup(report: SolutionOutcomeReport, group_name: str)
     if group.status.ok():
         # A passing group under ``subset`` reports all of its verdicts rather
         # than none, so pass/fail comes from the status alone.
-        return ' [success]✓[/success]'
+        #
+        # The mark carries a word because the group line already ends in a run of
+        # per-testcase ✓/✗/⧖ glyphs: a bare ✓ one space later would read as one
+        # more testcase verdict rather than as a statement about the group. The
+        # failure branch below is already wordy, so only this one needs it.
+        return ' [success]✓ as expected[/success]'
     got = ' '.join(sorted(v.name for v in group.gotVerdicts))
     res = f' [ierror]✗[/ierror] [warning]expected {group.expectedOutcome}[/warning]'
     if got:
-        res += f'[warning], got {got}[/warning]'
+        res += f'[warning], got: {got}[/warning]'
     return res
 
 
@@ -1635,6 +1648,15 @@ def _get_verdict_report(
 def _get_evals_per_group(
     evals: List[Evaluation], skeleton: SolutionReportSkeleton
 ) -> Dict[str, List[Evaluation]]:
+    """Bucket evaluations by the group of the entry at the same position.
+
+    Assumes ``evals`` is a prefix of ``skeleton.entries`` with no gaps -- true for
+    every caller today, since the reporters append in entry order and a partial
+    run is always a prefix. A gap would silently shift every later verdict into
+    the wrong group, and per-group verdicts now drive expectations, not just
+    cosmetics: a caller that can skip an entry must pass the entry alongside its
+    evaluation instead of relying on position.
+    """
     res = {}
     for eval, entry in zip(evals, skeleton.entries):
         if entry.group_entry.group not in res:
@@ -1738,9 +1760,7 @@ def get_solution_outcome_report(
         )
         for name, report in per_group_expectation_reports.items()
     }
-    failed_groups = [
-        name for name, report in per_group.items() if not report.status.ok()
-    ]
+    failed_groups = _failed_group_names(per_group)
 
     has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict() or any(
         report.has_unmatched_slow_verdict()

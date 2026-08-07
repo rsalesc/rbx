@@ -751,6 +751,37 @@ def test_double_tl_warning_attributes_each_half_to_its_own_group(
     )
 
 
+def test_double_tl_warning_comma_joins_the_groups_it_names(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """Several groups are listed with separators, not space-joined into one
+    unreadable run of names."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        outcomePerGroup={'*': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+    )
+    skeleton = mock_skeleton(
+        [solution], entries_per_group={'group1': 1, 'group2': 1, 'group3': 1}
+    )
+    # Every group times out, but within 2x TL.
+    evals = [
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED, time_ms=1500, no_tle_outcome=Outcome.ACCEPTED
+        )
+        for _ in range(3)
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    warning = Text.from_markup(report.get_verdict_markup_with_warnings()).plain
+    assert warning.splitlines()[-1] == (
+        'WARNING The solution still passed in double TL on group1, group2, group3.'
+    )
+
+
 def test_double_tl_warning_is_unchanged_without_outcome_per_group(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):
@@ -1011,10 +1042,12 @@ def test_group_expectation_markup(tmp_path, mock_skeleton, mock_binary_scoring):
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    # Met expectation: a check, no noise.
+    # Met expectation: a check, plus a word -- the group line already ends in
+    # per-testcase ✓/✗ glyphs, so a bare ✓ would read as one more of those.
     assert '✓' in get_group_expectation_markup(report, 'group1')
     assert (
-        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain == ' ✓'
+        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain
+        == ' ✓ as expected'
     )
     # Unmet: the expectation and what actually happened.
     unmet = get_group_expectation_markup(report, 'group2')
@@ -1023,7 +1056,8 @@ def test_group_expectation_markup(tmp_path, mock_skeleton, mock_binary_scoring):
     assert 'ACCEPTED' in unmet
     # Rendering also asserts the markup is well-formed.
     assert (
-        Text.from_markup(unmet).plain == ' ✗ expected TIME_LIMIT_EXCEEDED, got ACCEPTED'
+        Text.from_markup(unmet).plain
+        == ' ✗ expected TIME_LIMIT_EXCEEDED, got: ACCEPTED'
     )
     # A group with no expectation renders nothing at all, so packages that do
     # not use outcomePerGroup look exactly as before.
@@ -1071,7 +1105,8 @@ def test_group_expectation_markup_of_a_passing_subset_group(
         Outcome.WRONG_ANSWER,
     }
     assert (
-        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain == ' ✓'
+        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain
+        == ' ✓ as expected'
     )
 
 
