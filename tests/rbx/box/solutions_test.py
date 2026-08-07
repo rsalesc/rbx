@@ -1152,9 +1152,10 @@ async def test_reporter_marks_group_lines_with_their_expectations(
     )
     console = recording_console()
 
-    ok = await drive_reporter(
-        FullRunReporter(result, VerificationLevel.FULL, console), skeleton
-    )
+    with fresh_issue_stack():
+        ok = await drive_reporter(
+            FullRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
 
     assert not ok
     assert rendered_group_lines(console) == [
@@ -1193,7 +1194,10 @@ async def test_reporter_puts_the_score_before_the_expectation_mark(
     )
     console = recording_console()
 
-    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+    with (
+        fresh_issue_stack(),
+        patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS),
+    ):
         await drive_reporter(
             FullRunReporter(result, VerificationLevel.FULL, console), skeleton
         )
