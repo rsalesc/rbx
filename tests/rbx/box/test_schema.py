@@ -446,11 +446,15 @@ class TestPackageOutcomePerGroupValidation:
 
         from rbx.box.schema import ExpectedOutcome
 
-        with pytest.raises(ValidationError, match='typo'):
+        with pytest.raises(ValidationError, match='typo') as excinfo:
             self._package(
                 outcome=ExpectedOutcome.INCORRECT,
                 outcomePerGroup={'typo': ExpectedOutcome.WRONG_ANSWER},
             )
+
+        # The error renders with no `loc`, so the message is the whole diagnostic:
+        # it has to say which names would have worked.
+        assert 'Known groups: samples, group1, group2.' in str(excinfo.value)
 
     def test_unknown_group_is_reported_before_contradictions(self):
         from pydantic import ValidationError
@@ -484,7 +488,7 @@ class TestPackageOutcomePerGroupValidation:
 
         from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
 
-        with pytest.raises(ValidationError, match='first solution'):
+        with pytest.raises(ValidationError, match='first accepted solution'):
             Package(
                 name='prob',
                 timeLimit=1000,
@@ -498,6 +502,74 @@ class TestPackageOutcomePerGroupValidation:
                     ),
                 ],
             )
+
+    def test_main_solution_is_the_accepted_one_not_the_first_one(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        # `get_main_solution` picks the first ACCEPTED solution, so that is the one
+        # held to being accepted everywhere -- even when it is not listed first.
+        with pytest.raises(ValidationError, match='first accepted solution'):
+            Package(
+                name='prob',
+                timeLimit=1000,
+                memoryLimit=256,
+                testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
+                solutions=[
+                    Solution(path='sols/wa.cpp', outcome=ExpectedOutcome.INCORRECT),
+                    Solution(
+                        path='sols/main.cpp',
+                        outcome=ExpectedOutcome.ACCEPTED,
+                        outcomePerGroup={'group1': ExpectedOutcome.WRONG_ANSWER},
+                    ),
+                ],
+            )
+
+    def test_wildcard_default_is_not_reported_as_a_group_name(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        with pytest.raises(ValidationError, match='default for every group') as excinfo:
+            Package(
+                name='prob',
+                timeLimit=1000,
+                memoryLimit=256,
+                testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
+                solutions=[
+                    Solution(
+                        path='sols/main.cpp',
+                        outcome=ExpectedOutcome.ACCEPTED,
+                        outcomePerGroup={'*': ExpectedOutcome.WRONG_ANSWER},
+                    ),
+                ],
+            )
+
+        assert 'on "*"' not in str(excinfo.value)
+
+    def test_package_without_a_main_solution_is_not_held_to_accepted(self):
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        # Nothing generates the reference outputs here (they come from manual
+        # `outputPath`s), so there is no solution to hold to ACCEPTED.
+        package = Package(
+            name='prob',
+            timeLimit=1000,
+            memoryLimit=256,
+            testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
+            solutions=[
+                Solution(
+                    path='sols/slow.cpp',
+                    outcome=ExpectedOutcome.INCORRECT,
+                    outcomePerGroup={'group1': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+                ),
+            ],
+        )
+
+        assert package.solutions[0].outcomePerGroup == {
+            'group1': ExpectedOutcome.TIME_LIMIT_EXCEEDED
+        }
 
     def test_main_solution_may_pin_groups_to_accepted(self):
         from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
@@ -566,9 +638,45 @@ class TestPackageOutcomePerGroupValidation:
 
         assert package.solutions[1].expected_outcome_for_group('group1') is None
 
+    def test_package_without_groups_is_not_checked_for_satisfiability(self):
+        from rbx.box.schema import ExpectedOutcome, Package, Solution
+
+        # With no groups declared, `*` resolves to nothing, so it cannot make the
+        # pooled expectation unsatisfiable on its own.
+        package = Package(
+            name='prob',
+            timeLimit=1000,
+            memoryLimit=256,
+            solutions=[
+                Solution(
+                    path='sols/wa.cpp',
+                    outcome=ExpectedOutcome.INCORRECT,
+                    outcomePerGroup={'*': ExpectedOutcome.ACCEPTED},
+                ),
+            ],
+        )
+
+        assert package.testcases == []
+
+    def test_default_pooled_outcome_never_contradicts_a_group(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        # Declaring only `outcomePerGroup` leaves `outcome` at its ANY default,
+        # which matches ACCEPTED and so imposes no existential requirement.
+        package = self._package(
+            outcomePerGroup={
+                '*': ExpectedOutcome.ACCEPTED,
+                'group2': ExpectedOutcome.WRONG_ANSWER,
+            },
+        )
+
+        assert package.solutions[1].outcome == ExpectedOutcome.ANY
+
     def test_compatible_layers_are_accepted(self):
         from rbx.box.schema import ExpectedOutcome
 
+        # group2 is the only group allowed to fail, and a TLE satisfies the pooled
+        # INCORRECT: pins the satisfiable side of the every-group-pinned branch.
         package = self._package(
             outcome=ExpectedOutcome.INCORRECT,
             outcomePerGroup={

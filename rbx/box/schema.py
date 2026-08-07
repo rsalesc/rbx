@@ -1139,8 +1139,14 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     )
         return self
 
+    # The three `outcomePerGroup` validators below run in declaration order, and
+    # that order is load-bearing: an unknown group name is reported before any
+    # verdict about satisfiability (a typo'd key resolves to nothing, so every
+    # later conclusion about it would be noise), and the main-solution check
+    # deliberately pre-empts the vaguer CONTRADICTORY_OUTCOME error, which would
+    # otherwise fire first for a reference solution pinned to a bad outcome.
     @model_validator(mode='after')
-    def check_outcome_per_group(self):
+    def check_outcome_per_group_names(self):
         group_names = set(group.name for group in self.testcases)
         for solution in self.solutions:
             for group_name in solution.outcomePerGroup:
@@ -1150,25 +1156,43 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     raise PydanticCustomError(
                         'UNKNOWN_OUTCOME_GROUP',
                         'Solution "{path}" declares an expected outcome for group '
-                        '"{group}", which is not a testcase group of this package.',
-                        {'path': str(solution.path), 'group': group_name},
+                        '"{group}", which is not a testcase group of this package. '
+                        'Known groups: {known}.',
+                        {
+                            'path': str(solution.path),
+                            'group': group_name,
+                            'known': ', '.join(group.name for group in self.testcases),
+                        },
                     )
         return self
 
     @model_validator(mode='after')
     def check_main_solution_outcome_per_group(self):
-        if not self.solutions:
+        main = next(
+            (sol for sol in self.solutions if sol.outcome == ExpectedOutcome.ACCEPTED),
+            None,
+        )
+        if main is None:
+            # No reference solution, so there is nothing to hold to ACCEPTED.
             return self
-        main = self.solutions[0]
         for group_name, expected in main.outcomePerGroup.items():
-            if not expected.match(Outcome.ACCEPTED):
+            if expected.match(Outcome.ACCEPTED):
+                continue
+            if group_name == PER_GROUP_OUTCOME_WILDCARD:
                 raise PydanticCustomError(
                     'MAIN_SOLUTION_NOT_ACCEPTED',
-                    'The first solution in the package generates the reference '
-                    'outputs, so it must be accepted everywhere, but it expects '
-                    '"{expected}" on "{group}".',
-                    {'expected': expected.name, 'group': group_name},
+                    'The first accepted solution generates the reference outputs, so '
+                    'it must be accepted everywhere, but it expects "{expected}" as '
+                    'the default for every group ("*").',
+                    {'expected': expected.name},
                 )
+            raise PydanticCustomError(
+                'MAIN_SOLUTION_NOT_ACCEPTED',
+                'The first accepted solution generates the reference outputs, so it '
+                'must be accepted everywhere, but it expects "{expected}" on '
+                '"{group}".',
+                {'expected': expected.name, 'group': group_name},
+            )
         return self
 
     @model_validator(mode='after')
@@ -1197,24 +1221,26 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                         },
                     )
 
-            if solution.outcome.match(Outcome.ACCEPTED):
+            if solution.outcome.match(Outcome.ACCEPTED) or not self.testcases:
                 continue
             # The pooled expectation demands a bad verdict *somewhere*. If every
             # group is individually pinned to an outcome that admits none, there
             # is nowhere for it to happen.
-            resolved = [
+            pinned = [
                 solution.expected_outcome_for_group(group.name)
                 for group in self.testcases
             ]
-            if any(expected is None for expected in resolved):
+            if any(expected is None for expected in pinned):
+                # Some group is unconstrained, so it is free to host the failure.
                 continue
-            has_room = any(
-                verdict != Outcome.ACCEPTED and solution.outcome.match(verdict)
-                for expected in resolved
-                if expected is not None
+            # `solution.outcome` does not match ACCEPTED here, so every verdict it
+            # matches is a bad one: some group's expectation must admit one of them.
+            some_group_can_fail = any(
+                solution.outcome.match(verdict)
+                for expected in pinned
                 for verdict in expected.get_matches()
             )
-            if not has_room:
+            if not some_group_can_fail:
                 raise PydanticCustomError(
                     'CONTRADICTORY_OUTCOME',
                     'Solution "{path}" expects "{outcome}" for the whole testset, '
