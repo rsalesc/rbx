@@ -1305,7 +1305,34 @@ class SolutionOutcomeStatus(Enum):
         return self == SolutionOutcomeStatus.OK
 
 
+class GroupOutcomeReport(BaseModel):
+    """How one testcase group fared against its own expected outcome."""
+
+    expectedOutcome: ExpectedOutcome
+    gotVerdicts: Set[Outcome]
+    status: SolutionOutcomeStatus
+    runUnderDoubleTl: bool
+    doubleTlVerdicts: Set[Outcome]
+
+
 class SolutionOutcomeReport(BaseModel):
+    """The result of checking one solution's evaluations against its expectations.
+
+    A solution declares its expectations in two layers, and both must hold:
+
+    - ``Solution.outcome`` is checked against every evaluation *pooled* together,
+      over the whole testset. Its result is ``pooledStatus``, and the values it
+      was computed from are the unprefixed ``expectedOutcome``/``gotVerdicts``:
+      they are the pooled layer's, since that layer is the only one every
+      solution has and the only one that predates per-group expectations.
+    - ``Solution.outcomePerGroup`` is checked against each group's evaluations
+      alone. Those results live in ``perGroup``, one record per group.
+
+    ``status`` is the aggregate: OK only when the pooled layer passed and no
+    group failed (and, under POINTS scoring, it becomes UNEXPECTED_SCORE when
+    the score is out of the expected range, which takes precedence).
+    """
+
     solution: Solution
     limits: Limits
     evals: List[Evaluation]
@@ -1313,15 +1340,11 @@ class SolutionOutcomeReport(BaseModel):
     message: Optional[Tuple[GenerationTestcaseEntry, str]]
     expectedOutcome: ExpectedOutcome
     gotVerdicts: Set[Outcome]
-    # Status of the pooled ``outcome`` layer on its own. ``status`` is the
-    # aggregate of this and every per-group expectation.
-    pooledStatus: SolutionOutcomeStatus = SolutionOutcomeStatus.OK
-    # Only groups that carry an expectation AND were evaluated appear below.
-    expectedOutcomePerGroup: Dict[str, ExpectedOutcome] = {}
-    gotVerdictsPerGroup: Dict[str, Set[Outcome]] = {}
-    statusPerGroup: Dict[str, SolutionOutcomeStatus] = {}
-    failedGroups: List[str] = []
-    doubleTlGroups: List[str] = []
+    # Status of the pooled ``outcome`` layer on its own.
+    pooledStatus: SolutionOutcomeStatus
+    # Only groups that carry an expectation AND were evaluated appear here, in
+    # testset order.
+    perGroup: Dict[str, GroupOutcomeReport] = {}
     expectedScore: Optional[Tuple[int, int]]
     gotScore: int
     gotScorePerGroup: Dict[str, int]
@@ -1331,6 +1354,12 @@ class SolutionOutcomeReport(BaseModel):
     sanitizerWarnings: bool
     verification: VerificationLevel
     scoring: ScoreType
+
+    @property
+    def failedGroups(self) -> List[str]:
+        return [
+            name for name, report in self.perGroup.items() if not report.status.ok()
+        ]
 
     def get_verdict_markup(self, incomplete: bool = False, subset: bool = False) -> str:
         success_str = '[success]OK[/success] '
@@ -1567,7 +1596,11 @@ def get_solution_outcome_report(
     verdict_report = _get_verdict_report(
         skeleton, evals, solution, solution.outcome, subset, verification
     )
-    has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict()
+    pooled_status = (
+        SolutionOutcomeStatus.OK
+        if verdict_report.ok
+        else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    )
     message: Optional[Tuple[GenerationTestcaseEntry, str]] = None
     for eval, entry in zip(evals, skeleton.entries):
         if eval.result.outcome in [
@@ -1579,55 +1612,51 @@ def get_solution_outcome_report(
 
     evals_per_group = _get_evals_per_group(evals, skeleton)
 
-    # Per-group expectation layer. Groups with no evaluations are skipped: a
-    # bad expectation on a group that has not run would otherwise fail the
-    # "at least one bad verdict must exist" rule while the run is still live.
-    group_reports: Dict[str, VerdictReport] = {}
-    expected_outcome_per_group: Dict[str, ExpectedOutcome] = {}
-    got_verdicts_per_group: Dict[str, Set[Outcome]] = {}
-    status_per_group: Dict[str, SolutionOutcomeStatus] = {}
-    failed_groups: List[str] = []
-    double_tl_groups: List[str] = []
-    for group_name, group_evals in evals_per_group.items():
-        expected = solution.expected_outcome_for_group(group_name)
-        if expected is None or not group_evals:
-            continue
-        group_report = _get_verdict_report(
+    # Per-group expectation layer, for groups that both carry an expectation and
+    # have at least one evaluation. The empty-evals guard only keeps a group that
+    # has not started from failing the "at least one bad verdict must exist"
+    # rule; a partially evaluated group IS checked, so per-group status is only
+    # meaningful once the group is complete and should be rendered at group end.
+    per_group_expectation_reports: Dict[str, VerdictReport] = {
+        name: _get_verdict_report(
             skeleton, group_evals, solution, expected, subset, verification
         )
-        group_reports[group_name] = group_report
-        expected_outcome_per_group[group_name] = group_report.expected_outcome
-        got_verdicts_per_group[group_name] = group_report.got_verdicts
-        status_per_group[group_name] = (
-            SolutionOutcomeStatus.OK
-            if group_report.ok
-            else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+        for name, group_evals in evals_per_group.items()
+        if group_evals
+        and (expected := solution.expected_outcome_for_group(name)) is not None
+    }
+    per_group = {
+        name: GroupOutcomeReport(
+            expectedOutcome=report.expected_outcome,
+            gotVerdicts=report.got_verdicts,
+            status=SolutionOutcomeStatus.OK
+            if report.ok
+            else SolutionOutcomeStatus.UNEXPECTED_VERDICTS,
+            runUnderDoubleTl=report.run_under_double_tl,
+            doubleTlVerdicts=report.double_tl_verdicts,
         )
-        if not group_report.ok:
-            failed_groups.append(group_name)
-        has_unmatched_slow_verdict = (
-            has_unmatched_slow_verdict or group_report.has_unmatched_slow_verdict()
-        )
-        if group_report.run_under_double_tl or group_report.double_tl_verdicts:
-            double_tl_groups.append(group_name)
+        for name, report in per_group_expectation_reports.items()
+    }
+    failed_groups = [
+        name for name, report in per_group.items() if not report.status.ok()
+    ]
 
-    pooled_status = (
-        SolutionOutcomeStatus.OK
-        if verdict_report.ok
-        else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict() or any(
+        report.has_unmatched_slow_verdict()
+        for report in per_group_expectation_reports.values()
     )
     status = (
         SolutionOutcomeStatus.OK
-        if verdict_report.ok and not failed_groups
+        if pooled_status.ok() and not failed_groups
         else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     )
 
     run_under_double_tl = verdict_report.run_under_double_tl or any(
-        group_reports[group_name].run_under_double_tl for group_name in double_tl_groups
+        report.run_under_double_tl for report in per_group_expectation_reports.values()
     )
     double_tl_verdicts = set(verdict_report.double_tl_verdicts)
-    for group_name in double_tl_groups:
-        double_tl_verdicts |= group_reports[group_name].double_tl_verdicts
+    for report in per_group_expectation_reports.values():
+        double_tl_verdicts |= report.double_tl_verdicts
 
     max_score = 0
     got_score = 0
@@ -1635,10 +1664,10 @@ def get_solution_outcome_report(
     if scoring == ScoreType.POINTS:
         # ``passed()`` only inspects bad verdicts, never the expectation, so a
         # report computed for the per-group layer is reusable here as-is.
-        scoring_reports: Dict[str, VerdictReport] = {}
+        verdict_report_per_group: Dict[str, VerdictReport] = {}
         for group in skeleton.groups:
             max_score += group.score
-            group_report = group_reports.get(group.name)
+            group_report = per_group_expectation_reports.get(group.name)
             if group_report is None:
                 group_report = _get_verdict_report(
                     skeleton,
@@ -1652,7 +1681,7 @@ def get_solution_outcome_report(
                     has_unmatched_slow_verdict
                     or group_report.has_unmatched_slow_verdict()
                 )
-            scoring_reports[group.name] = group_report
+            verdict_report_per_group[group.name] = group_report
 
         def _check_deps(group: GroupSkeleton):
             for dep in group.deps:
@@ -1661,7 +1690,7 @@ def get_solution_outcome_report(
                     return False
                 if not _check_deps(dep_group):
                     return False
-            return scoring_reports[group.name].passed()
+            return verdict_report_per_group[group.name].passed()
 
         for group in skeleton.groups:
             if _check_deps(group):
@@ -1686,17 +1715,13 @@ def get_solution_outcome_report(
         message=message,
         expectedOutcome=verdict_report.expected_outcome,
         gotVerdicts=verdict_report.got_verdicts,
-        expectedOutcomePerGroup=expected_outcome_per_group,
-        gotVerdictsPerGroup=got_verdicts_per_group,
-        statusPerGroup=status_per_group,
-        failedGroups=failed_groups,
+        perGroup=per_group,
         expectedScore=expected_score,
         gotScore=got_score,
         gotScorePerGroup=got_score_per_group,
         maxScore=max_score,
         runUnderDoubleTl=run_under_double_tl,
         doubleTlVerdicts=double_tl_verdicts,
-        doubleTlGroups=double_tl_groups,
         sanitizerWarnings=verdict_report.has_sanitizer_warnings,
         verification=verification,
         scoring=scoring,

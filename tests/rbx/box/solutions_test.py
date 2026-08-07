@@ -18,6 +18,7 @@ from rbx.box.schema import (
 )
 from rbx.box.solutions import (
     FailedToCompileSolutionIssue,
+    GroupOutcomeReport,
     GroupSkeleton,
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
@@ -150,7 +151,11 @@ def make_generation_entry(
 
 @pytest.fixture
 def mock_skeleton(tmp_path, mock_limits):
-    """Create a minimal skeleton for testing."""
+    """Create a minimal skeleton for testing.
+
+    Groups default to ``score=0``, so a POINTS-scoring test must pass
+    ``scores_per_group`` or it will assert against ``maxScore == 0`` vacuously.
+    """
 
     def _create_skeleton(
         solutions: List[Solution],
@@ -463,6 +468,107 @@ def test_solution_outcome_report_mixed_outcomes(
     assert Outcome.TIME_LIMIT_EXCEEDED in report.gotVerdicts
 
 
+def test_no_outcome_per_group_leaves_the_report_untouched(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """A solution that declares no `outcomePerGroup` must be checked exactly as
+    before: no group is inspected, and `status` is the pooled status alone."""
+    solution = Solution(path=tmp_path / 'wa.cpp', outcome=ExpectedOutcome.INCORRECT)
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2, 'group2': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.WRONG_ANSWER),
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.perGroup == {}
+    assert report.failedGroups == []
+    # group2 is fully accepted, which a per-group INCORRECT would have failed.
+    assert report.pooledStatus == SolutionOutcomeStatus.OK
+    assert report.status == report.pooledStatus
+
+
+def test_pooled_outcome_fails_while_every_group_passes(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """The mirror case: relaxing a group's expectation without relaxing the
+    pooled one still fails, and it fails on the pooled layer."""
+    solution = Solution(
+        path=tmp_path / 'sol.cpp',
+        outcome=ExpectedOutcome.ACCEPTED,
+        outcomePerGroup={'group1': ExpectedOutcome.INCORRECT},
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2, 'group2': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.WRONG_ANSWER),
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.pooledStatus == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    assert report.failedGroups == []
+    assert report.perGroup['group1'].status == SolutionOutcomeStatus.OK
+    assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+
+
+def test_per_group_double_tl_is_reported_and_merged(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """Double TL is detected per group and merged into the aggregate, keeping
+    "passed within 2x TL" distinguishable from "had other soft-TLE verdicts"."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        outcomePerGroup={
+            'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            'group3': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    skeleton = mock_skeleton(
+        [solution], entries_per_group={'group1': 1, 'group2': 2, 'group3': 2}
+    )
+    evals = [
+        # group1 alone pushes the pooled max time past 2x TL, so the pooled layer
+        # flags nothing and everything below comes from the per-group reports.
+        make_evaluation(Outcome.ACCEPTED, time_ms=2500),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        # Soft TLE that is otherwise accepted: group2 passed within 2x TL.
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED, time_ms=1500, no_tle_outcome=Outcome.ACCEPTED
+        ),
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        # Soft TLE that is a WA without the TL: group3 has other verdicts.
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1500,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        ),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.perGroup['group2'].runUnderDoubleTl is True
+    assert report.perGroup['group2'].doubleTlVerdicts == set()
+    assert report.perGroup['group3'].runUnderDoubleTl is False
+    assert report.perGroup['group3'].doubleTlVerdicts == {Outcome.WRONG_ANSWER}
+    # The aggregate is the union, even though the pooled layer flagged neither.
+    assert report.runUnderDoubleTl is True
+    assert report.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
+
+
 def test_per_group_outcome_fails_while_pooled_outcome_passes(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):
@@ -488,13 +594,14 @@ def test_per_group_outcome_fails_while_pooled_outcome_passes(
     assert report.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     assert report.pooledStatus == SolutionOutcomeStatus.OK
     assert report.failedGroups == ['group2']
-    assert report.statusPerGroup == {
-        'group2': SolutionOutcomeStatus.UNEXPECTED_VERDICTS
-    }
-    assert report.expectedOutcomePerGroup == {
-        'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED
-    }
-    assert report.gotVerdictsPerGroup['group2'] == {Outcome.ACCEPTED}
+    assert set(report.perGroup) == {'group2'}
+    assert report.perGroup['group2'] == GroupOutcomeReport(
+        expectedOutcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        gotVerdicts={Outcome.ACCEPTED},
+        status=SolutionOutcomeStatus.UNEXPECTED_VERDICTS,
+        runUnderDoubleTl=False,
+        doubleTlVerdicts=set(),
+    )
 
 
 def test_per_group_outcome_all_satisfied(tmp_path, mock_skeleton, mock_binary_scoring):
@@ -521,7 +628,7 @@ def test_per_group_outcome_all_satisfied(tmp_path, mock_skeleton, mock_binary_sc
     assert report.status == SolutionOutcomeStatus.OK
     assert report.failedGroups == []
     # The wildcard covers group1 too.
-    assert report.expectedOutcomePerGroup == {
+    assert {name: group.expectedOutcome for name, group in report.perGroup.items()} == {
         'group1': ExpectedOutcome.ACCEPTED,
         'group2': ExpectedOutcome.WRONG_ANSWER,
     }
@@ -570,7 +677,7 @@ def test_groups_without_evaluations_are_not_checked(
         solution, skeleton, evals, VerificationLevel.FULL
     )
 
-    assert 'group2' not in report.statusPerGroup
+    assert 'group2' not in report.perGroup
     assert report.failedGroups == []
 
 
@@ -595,7 +702,11 @@ def test_report_evals_are_not_clobbered_by_the_per_group_loop(tmp_path, mock_ske
             solution, skeleton, evals, VerificationLevel.FULL
         )
 
-    assert len(report.evals) == 4
+    # The report must carry every eval, not just the last group's -- the first
+    # one, deliberately the slowest, is what the Time line reports.
+    assert report.evals == evals
+    assert report.evals[0].log is not None
+    assert report.evals[0].log.time == 0.9
     assert report.gotScore == 100
 
 
