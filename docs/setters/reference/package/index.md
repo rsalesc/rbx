@@ -223,6 +223,47 @@ Also, you **have to define** an accepted solution. The first accepted solution i
 
 For a full list of expected outcomes, see [here][rbx.box.schema.ExpectedOutcome].
 
+### Expected outcomes per testgroup
+
+The `outcome` field is matched against the **whole testset at once**, so `outcome: tle` only asserts that the solution times out *somewhere*. That is a weak assertion, and it is exactly the one that stops catching regressions: a solution that is supposed to be correct on the small testgroups and to time out only on the big one keeps passing verification once it starts timing out on the small ones as well.
+
+You can use the `outcomePerGroup` field to pin the expectation down to each testgroup, where it is matched against the tests of that group **alone**. The reserved key `'*'` sets a default that is applied to every testgroup individually, and an entry for a specific testgroup takes precedence over it.
+
+```yaml
+testcases:
+  - name: "samples"
+    # ...other testgroup definitions
+  - name: "small"
+    # ...other testgroup definitions
+  - name: "big"
+    # ...other testgroup definitions
+
+solutions:
+  - path: "sols/main.cpp"
+    outcome: accepted
+  - path: "sols/quadratic.cpp"
+    outcome: tle  # (1)!
+    outcomePerGroup:
+      '*': accepted  # (2)!
+      big: tle  # (3)!
+```
+
+1.  Times out *somewhere* in the testset, as before.
+
+2.  ...while being accepted on every testgroup individually...
+
+3.  ...except on `big`, where it **has to** time out.
+
+Both layers are checked, and the solution fails if either of them fails. The testgroups named here have to be declared in `testcases`, and `samples` is a testgroup like any other, so `'*'` applies to it too unless you override it with an explicit `samples` entry. Subgroups cannot be named, since expectations are checked per top-level testgroup.
+
+When you [run your solutions](/setters/running/), every testgroup that carries an expectation is marked in the report, and a solution that fails names the testgroups that missed their expectation.
+
+!!! warning
+    The `'*'` key has to be quoted, otherwise YAML parses it as the start of an alias.
+
+!!! note
+    {{rbx}} rejects a package whose expectations cannot possibly hold: a key that does not name one of your testgroups, a non-accepted expectation for the main solution (it generates the answers for the testcases, so it has to be accepted everywhere), and per-testgroup expectations that contradict `outcome`, such as `outcome: accepted` together with `big: tle`.
+
 ## Testcase groups
 
 **Field**: `testcases`

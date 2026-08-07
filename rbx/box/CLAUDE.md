@@ -9,7 +9,7 @@ The central Pydantic model hierarchy defining `problem.rbx.yml`:
 ### Key Models
 
 - **`Package`** -- Root model. Contains: `name`, `timeLimit`, `memoryLimit`, `solutions`, `testcases`, `checker`, `validator`, `interactor`, `statements`, `vars`, `limitsProfiles`, `scoreType`
-- **`Solution`** -- `path`, `outcome` (ExpectedOutcome), `score`, `doubleTL`, `language`
+- **`Solution`** -- `path`, `outcome` (ExpectedOutcome, matched against the whole testset pooled), `outcomePerGroup` (per-group expectations keyed by top-level group name, `'*'` = default applied to every group individually; an additive second layer, checked on top of `outcome`), `score`, `doubleTL`, `language`. Resolution helpers: `expected_outcome_for_group()`, `all_expected_outcomes()`
 - **`TestcaseGroup`** (extends `TestcaseSubgroup`) -- `name`, `generator`, `generatorScript`, `testcases`, `subgroups`, `validator`, `score`, `deps`
 - **`TestcaseSubgroup`** -- `testcases` list, `generator` (GeneratorCall or CodeItem)
 - **`Testcase`** -- `inputPath`, `outputPath` (for manual test cases)
