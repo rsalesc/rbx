@@ -1,16 +1,20 @@
+import contextlib
 import pathlib
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
+import rich.console
 from rich.text import Text
 
+from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.sanitizers.issue_stack import IssueAccumulator, issue_stack_var
 from rbx.box.schema import (
     ExpectedOutcome,
     ScoreType,
@@ -18,12 +22,17 @@ from rbx.box.schema import (
     Testcase,
 )
 from rbx.box.solutions import (
+    EvaluationItem,
     FailedToCompileSolutionIssue,
+    FullRunReporter,
     GroupOutcomeReport,
     GroupSkeleton,
+    RunSolutionResult,
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
     SolutionSkeleton,
+    TimingIssue,
+    TraditionalRunReporter,
     convert_list_of_solution_evaluations_to_dict,
     get_group_expectation_markup,
     get_matching_solutions,
@@ -232,6 +241,133 @@ def make_evaluation(
 def mock_binary_scoring():
     with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.BINARY):
         yield
+
+
+@contextlib.contextmanager
+def fresh_issue_stack() -> Iterator[IssueAccumulator]:
+    """Isolate the issue stack, so a test sees exactly the issues it caused."""
+    accumulator = IssueAccumulator()
+    token = issue_stack_var.set([accumulator])
+    try:
+        yield accumulator
+    finally:
+        issue_stack_var.reset(token)
+
+
+# Reporter-level helpers. The reporters print the solution header by resolving
+# `runs_dir` against the problem directory, which is the only thing they need a
+# package for; `mock_problem_root` stands in for it.
+
+
+@pytest.fixture
+def mock_problem_root(tmp_path):
+    with patch('rbx.box.package.find_problem', return_value=tmp_path):
+        yield tmp_path
+
+
+def make_reporter_skeleton(
+    root: pathlib.Path,
+    solution: Solution,
+    entries_per_group: Dict[str, int],
+    scores_per_group: Optional[Dict[str, int]] = None,
+) -> SolutionReportSkeleton:
+    inputs_dir = root / 'tests'
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    entries = []
+    for group, count in entries_per_group.items():
+        for index in range(count):
+            input_path = inputs_dir / f'{group}_{index}.in'
+            input_path.write_text('')
+            entry = TestcaseEntry(group=group, index=index)
+            entries.append(
+                GenerationTestcaseEntry(
+                    group_entry=entry,
+                    subgroup_entry=entry,
+                    metadata=GenerationMetadata(
+                        copied_to=Testcase(inputPath=input_path)
+                    ),
+                )
+            )
+    groups = [
+        GroupSkeleton(
+            name=group,
+            score=(scores_per_group or {}).get(group, 0),
+            deps=[],
+            testcases=[
+                entry.metadata.copied_to
+                for entry in entries
+                if entry.group_entry.group == group
+            ],
+        )
+        for group in entries_per_group
+    ]
+    return SolutionReportSkeleton(
+        solutions=[
+            SolutionSkeleton(**solution.model_dump(), runs_dir=root / 'runs' / '0')
+        ],
+        entries=entries,
+        groups=groups,
+        limits={'cpp': Limits(time=1000, memory=256, profile=None, isDoubleTL=False)},
+        compiled_solutions={str(solution.path): 'digest'},
+        verification=VerificationLevel.FULL,
+    )
+
+
+def make_run_result(
+    skeleton: SolutionReportSkeleton,
+    verdicts: Dict[Tuple[str, int], Outcome],
+) -> RunSolutionResult:
+    """Present fixed verdicts as an already-computed run."""
+
+    def resolved(evaluation: Evaluation) -> Deferred[Evaluation]:
+        async def fn() -> Evaluation:
+            return evaluation
+
+        return Deferred(fn)
+
+    return RunSolutionResult(
+        skeleton=skeleton,
+        items=[
+            EvaluationItem(
+                solution=solution,
+                testcase_entry=entry.group_entry,
+                eval=resolved(
+                    make_evaluation(
+                        verdicts[entry.group_entry.key()],
+                        testcase_index=entry.group_entry.index,
+                    )
+                ),
+            )
+            for solution in skeleton.solutions
+            for entry in skeleton.entries
+        ],
+    )
+
+
+async def drive_reporter(
+    reporter: TraditionalRunReporter, skeleton: SolutionReportSkeleton
+) -> bool:
+    """Replay `print_run_report`'s loop over an already-computed run."""
+    ok = True
+    for solution in skeleton.solutions:
+        reporter.start_solution(solution)
+        for group in skeleton.groups:
+            reporter.start_group(group)
+            for entry in skeleton.get_entries_for_group(group.name):
+                reporter.start_testcase(entry)
+                deferred = reporter.get_current_evaluation()
+                reporter.finish_testcase(
+                    await deferred() if deferred is not None else None
+                )
+            reporter.finish_group()
+        ok = reporter.finish_solution() and ok
+    return ok
+
+
+def recording_console() -> rich.console.Console:
+    return rich.console.Console(
+        record=True, force_terminal=False, color_system=None, width=120
+    )
 
 
 def test_get_solution_limits_display_time_recovers_declared_tl(tmp_path, mock_skeleton):
@@ -937,6 +1073,55 @@ def test_group_expectation_markup_of_a_passing_subset_group(
     assert (
         Text.from_markup(get_group_expectation_markup(report, 'group1')).plain == ' ✓'
     )
+
+
+async def test_partial_reports_do_not_add_timing_issues(
+    mock_problem_root, mock_binary_scoring
+):
+    """A partial report is computed at every group end purely to render. The
+    timing heuristic reads too-fast/too-slow off the evals it is handed, so an
+    all-accepted group that finishes before the slow group has started looks too
+    fast in isolation. A BINARY package that adopted `outcomePerGroup` used to
+    collect a bogus `rbx time` warning that way, even though the final report was
+    clean."""
+    solution = Solution(
+        path=pathlib.Path('sol.cpp'),
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
+    )
+    skeleton = make_reporter_skeleton(
+        mock_problem_root, solution, {'group1': 2, 'group2': 1}
+    )
+    result = make_run_result(
+        skeleton,
+        {
+            ('group1', 0): Outcome.ACCEPTED,
+            ('group1', 1): Outcome.ACCEPTED,
+            ('group2', 0): Outcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+
+    with fresh_issue_stack() as issues:
+        ok = await drive_reporter(
+            FullRunReporter(result, VerificationLevel.FULL, recording_console()),
+            skeleton,
+        )
+
+    # The run met every expectation, so nothing at all should have been reported.
+    assert ok
+    assert [issue for issue in issues.issues if isinstance(issue, TimingIssue)] == []
+
+    # The very evals the group-1 partial report saw, checked as a *final* report:
+    # the issue is still raised there, so `report_issues` is the only difference.
+    with fresh_issue_stack() as issues:
+        get_solution_outcome_report(
+            solution,
+            skeleton,
+            [make_evaluation(Outcome.ACCEPTED) for _ in range(2)],
+            VerificationLevel.FULL,
+        )
+
+    assert any(isinstance(issue, TimingIssue) for issue in issues.issues)
 
 
 def test_report_evals_are_not_clobbered_by_the_per_group_loop(tmp_path, mock_skeleton):

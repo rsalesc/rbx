@@ -1669,7 +1669,17 @@ def get_solution_outcome_report(
     evals: List[Evaluation],
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
+    report_issues: bool = True,
 ) -> SolutionOutcomeReport:
+    """Check one solution's evaluations against its declared expectations.
+
+    Pass ``report_issues=False`` when the report is a *partial* one, computed
+    mid-run over the evaluations collected so far purely to render something. The
+    timing heuristic reads "too fast / too slow" off the evals it is given, and a
+    group that has run clean while the slow one has not started yet looks too
+    fast in isolation -- so a partial report must not push issues that the final
+    report would not.
+    """
     # Even if the scoring is points, we use binary scoring for subsets/interactive tests.
     scoring = package.get_scoring() if not subset else ScoreType.BINARY
     expected_score = (
@@ -1794,7 +1804,7 @@ def get_solution_outcome_report(
             status = SolutionOutcomeStatus.UNEXPECTED_SCORE
 
     limits = skeleton.get_solution_limits(solution)
-    if limits.profile is None and has_unmatched_slow_verdict:
+    if report_issues and limits.profile is None and has_unmatched_slow_verdict:
         issue_stack.add_issue(TimingIssue())
 
     return SolutionOutcomeReport(
@@ -2337,6 +2347,9 @@ class TraditionalRunReporter:
 
         Computed only when something will actually be displayed from it: POINTS
         scoring for this group, or a per-group expectation on this solution.
+
+        Rendering-only, hence ``report_issues=False``: the final report at
+        solution end is the one that gets to speak about the run.
         """
         if self.current_solution is None:
             return None
@@ -2347,6 +2360,7 @@ class TraditionalRunReporter:
             self.result.skeleton,
             self.current_solution_evals,
             verification=self.verification,
+            report_issues=False,
         )
 
     def get_evaluation(
