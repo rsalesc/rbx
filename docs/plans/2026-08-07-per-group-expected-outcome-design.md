@@ -120,9 +120,11 @@ no change. `get_solution_outcome_report` changes:
   so far.
 - POINTS scoring is untouched: it keys off `verdict_report_per_group[g].passed()`,
   which inspects bad verdicts only and never the expectation.
-- New fields on `SolutionOutcomeReport`: `expectedOutcomePerGroup`,
-  `gotVerdictsPerGroup`, `statusPerGroup`, `failedGroups`, `doubleTlGroups`.
-  The TUI can consume these later (see "Not covered").
+- New on `SolutionOutcomeReport`: `pooledStatus` (the pooled layer's own status)
+  and `perGroup`, one `GroupOutcomeReport` per checked group, carrying that
+  group's expectation, verdicts, status and double-TL state. `failedGroups` is a
+  property derived from `perGroup`. The TUI can consume these later (see
+  "Not covered").
 - `status` becomes `UNEXPECTED_VERDICTS` when the pooled check **or** any group
   check fails. `UNEXPECTED_SCORE` keeps its current last-wins precedence.
 - The timing-issue heuristic (`has_unmatched_slow_verdict` →
@@ -165,7 +167,8 @@ Three sites that read `solution.outcome` today are generalized over
   group expected to TLE keeps the solution out of
   `--verification=fast-solutions`, exactly as a pooled TLE expectation does.
 - **Double-TL warning** — pooled as today, OR'd with per-group reports whose
-  expectation is TLE-ish; the warning names the groups via `doubleTlGroups`.
+  expectation is TLE-ish; the warning names the groups whose own
+  `runUnderDoubleTl` is set.
 - **Timing summary** (`_print_timing`) — *good* if every expectation is
   `ACCEPTED`, *pass* if all are in `{ACCEPTED, ACCEPTED_OR_TLE}`, *slow* if any
   `is_slow()`.
