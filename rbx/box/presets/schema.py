@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, Callable, List, Optional, TypeVar
+from typing import Callable, Hashable, List, Optional, TypeVar
 
 import typer
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -149,9 +149,13 @@ class PackageVariant(BaseModel):
 T = TypeVar('T')
 
 
-def _merge_by(overrides: List[T], base: List[T], key: Callable[[T], Any]) -> List[T]:
+def _merge_by(
+    overrides: List[T], base: List[T], key: Callable[[T], Hashable]
+) -> List[T]:
     """Merge `overrides` over `base`, keyed by `key`. Overrides win; base order
-    is preserved and override-only entries are appended."""
+    is preserved and override-only entries are appended. If `base` itself
+    repeats a key, only its first entry is overridden and the later ones are
+    kept as-is."""
     override_by_key = {key(item): item for item in overrides}
     res = [override_by_key.pop(key(item), item) for item in base]
     res.extend(override_by_key.values())
@@ -228,59 +232,48 @@ class Preset(BaseModel):
         return self
 
     def variants(self, is_contest: bool) -> List[PackageVariant]:
+        """Variants declared for the given package kind."""
         return self.contestVariants if is_contest else self.problemVariants
 
     def find_variant(
         self, variant_id: str, is_contest: bool
     ) -> Optional[PackageVariant]:
+        """Variant with the given id for this package kind, or None if unknown."""
         for variant in self.variants(is_contest):
             if variant.id == variant_id:
                 return variant
         return None
 
-    def _variant_config(
-        self,
-        variant_id: Optional[str],
-        is_contest: bool,
-        get: Callable[[PackageVariant], List[T]],
-    ) -> List[T]:
-        """Config list of the given variant, or an empty list for the canonical
-        template (`variant_id is None`) or an unknown variant id."""
-        if variant_id is None:
-            return []
-        variant = self.find_variant(variant_id, is_contest)
-        if variant is None:
-            return []
-        return get(variant)
-
     def merged_tracking(
-        self, variant_id: Optional[str], is_contest: bool
+        self, variant: Optional[PackageVariant], is_contest: bool
     ) -> List[TrackedAsset]:
+        """Shared tracking for this package kind, with `variant`'s entries merged
+        over it. Pass None for the canonical template."""
         shared = self.tracking.contest if is_contest else self.tracking.problem
         return _merge_by(
-            self._variant_config(variant_id, is_contest, lambda v: v.tracking),
-            shared,
-            lambda a: a.path,
+            variant.tracking if variant is not None else [], shared, lambda a: a.path
         )
 
     def merged_libraries(
-        self, variant_id: Optional[str], is_contest: bool
+        self, variant: Optional[PackageVariant], is_contest: bool
     ) -> List[Library]:
+        """Shared libraries for this package kind, with `variant`'s entries merged
+        over it. Pass None for the canonical template."""
         shared = self.libraries.contest if is_contest else self.libraries.problem
         return _merge_by(
-            self._variant_config(variant_id, is_contest, lambda v: v.libraries),
+            variant.libraries if variant is not None else [],
             shared,
             lambda lib: lib.name,
         )
 
     def merged_expansion(
-        self, variant_id: Optional[str], is_contest: bool
+        self, variant: Optional[PackageVariant], is_contest: bool
     ) -> List[VariableExpansion]:
+        """Shared expansions for this package kind, with `variant`'s entries merged
+        over it. Pass None for the canonical template."""
         shared = self.expansion.contest if is_contest else self.expansion.problem
         return _merge_by(
-            self._variant_config(variant_id, is_contest, lambda v: v.expansion),
-            shared,
-            lambda e: e.needle,
+            variant.expansion if variant is not None else [], shared, lambda e: e.needle
         )
 
     @property

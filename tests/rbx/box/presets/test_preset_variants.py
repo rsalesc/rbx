@@ -1,4 +1,5 @@
 import pathlib
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -16,8 +17,10 @@ from rbx.box.presets.schema import (
 )
 
 
-def _preset(**kwargs) -> Preset:
-    base = dict(name='my-preset', uri='owner/repo')
+def _preset(**kwargs: Any) -> Preset:
+    # NOTE: `Preset` does not forbid extra fields, so a misspelled keyword here
+    # is silently ignored and the assertion below would run against a default.
+    base: dict = dict(name='my-preset', uri='owner/repo')
     base.update(kwargs)
     return Preset(**base)
 
@@ -89,7 +92,9 @@ class TestPresetVariants:
         assert preset.contestVariants == []
 
     def test_rejects_duplicate_variant_ids(self):
-        with pytest.raises(ValidationError, match='duplicate'):
+        with pytest.raises(
+            ValidationError, match='duplicate variant id interactive in problemVariants'
+        ):
             _preset(
                 problem=pathlib.Path('problem'),
                 problemVariants=[
@@ -99,7 +104,9 @@ class TestPresetVariants:
             )
 
     def test_rejects_duplicate_contest_variant_ids(self):
-        with pytest.raises(ValidationError, match='duplicate'):
+        with pytest.raises(
+            ValidationError, match='duplicate variant id div1 in contestVariants'
+        ):
             _preset(
                 contest=pathlib.Path('contest'),
                 contestVariants=[
@@ -133,6 +140,14 @@ class TestPresetVariants:
 
 class TestVariantMerging:
     def test_tracking_variant_entry_wins_over_shared(self):
+        variant = PackageVariant(
+            id='interactive',
+            path=pathlib.Path('problem-interactive'),
+            tracking=[
+                TrackedAsset(path=pathlib.Path('shared.h'), symlink=True),
+                TrackedAsset(path=pathlib.Path('interactor.cpp')),
+            ],
+        )
         preset = _preset(
             problem=pathlib.Path('problem'),
             tracking=Tracking(
@@ -141,18 +156,9 @@ class TestVariantMerging:
                     TrackedAsset(path=pathlib.Path('shared.h'), symlink=False),
                 ]
             ),
-            problemVariants=[
-                PackageVariant(
-                    id='interactive',
-                    path=pathlib.Path('problem-interactive'),
-                    tracking=[
-                        TrackedAsset(path=pathlib.Path('shared.h'), symlink=True),
-                        TrackedAsset(path=pathlib.Path('interactor.cpp')),
-                    ],
-                )
-            ],
+            problemVariants=[variant],
         )
-        merged = preset.merged_tracking('interactive', is_contest=False)
+        merged = preset.merged_tracking(variant, is_contest=False)
         # Shared order is preserved and variant-only entries are appended.
         assert [str(a.path) for a in merged] == [
             '.gitignore',
@@ -177,37 +183,21 @@ class TestVariantMerging:
         merged = preset.merged_tracking(None, is_contest=False)
         assert [str(a.path) for a in merged] == ['.gitignore']
 
-    def test_tracking_unknown_variant_returns_shared_only(self):
-        preset = _preset(
-            problem=pathlib.Path('problem'),
-            tracking=Tracking(problem=[TrackedAsset(path=pathlib.Path('.gitignore'))]),
-            problemVariants=[
-                PackageVariant(
-                    id='interactive',
-                    path=pathlib.Path('pi'),
-                    tracking=[TrackedAsset(path=pathlib.Path('only-variant'))],
-                )
-            ],
-        )
-        merged = preset.merged_tracking('nope', is_contest=False)
-        assert [str(a.path) for a in merged] == ['.gitignore']
-
     def test_tracking_merges_contest_side_independently(self):
+        variant = PackageVariant(
+            id='div1',
+            path=pathlib.Path('contest-div1'),
+            tracking=[TrackedAsset(path=pathlib.Path('div1.tex'))],
+        )
         preset = _preset(
             contest=pathlib.Path('contest'),
             tracking=Tracking(
                 problem=[TrackedAsset(path=pathlib.Path('problem-only'))],
                 contest=[TrackedAsset(path=pathlib.Path('contest-only'))],
             ),
-            contestVariants=[
-                PackageVariant(
-                    id='div1',
-                    path=pathlib.Path('contest-div1'),
-                    tracking=[TrackedAsset(path=pathlib.Path('div1.tex'))],
-                )
-            ],
+            contestVariants=[variant],
         )
-        merged = preset.merged_tracking('div1', is_contest=True)
+        merged = preset.merged_tracking(variant, is_contest=True)
         assert [str(a.path) for a in merged] == ['contest-only', 'div1.tex']
 
     def test_libraries_merge_by_name_variant_wins(self):
@@ -217,22 +207,38 @@ class TestVariantMerging:
             name='testlib', source='a/b', dest=pathlib.Path('testlib.h'), version='1.0'
         )
         extra = Library(name='interlib', source='c/d', dest=pathlib.Path('inter.h'))
+        variant = PackageVariant(
+            id='interactive',
+            path=pathlib.Path('pi'),
+            libraries=[override, extra],
+        )
         preset = _preset(
             problem=pathlib.Path('problem'),
             libraries=Libraries(problem=[shared, other_shared]),
-            problemVariants=[
-                PackageVariant(
-                    id='interactive',
-                    path=pathlib.Path('pi'),
-                    libraries=[override, extra],
-                )
-            ],
+            problemVariants=[variant],
         )
-        merged = preset.merged_libraries('interactive', is_contest=False)
+        merged = preset.merged_libraries(variant, is_contest=False)
         assert [lib.name for lib in merged] == ['testlib', 'jngen', 'interlib']
         by_name = {lib.name: lib for lib in merged}
         assert by_name['testlib'].version == '1.0'
         assert by_name['jngen'] == other_shared
+
+    def test_libraries_merge_contest_side_independently(self):
+        problem_lib = Library(
+            name='testlib', source='a/b', dest=pathlib.Path('testlib.h')
+        )
+        contest_lib = Library(name='jngen', source='e/f', dest=pathlib.Path('jngen.h'))
+        variant_lib = Library(name='interlib', source='c/d', dest=pathlib.Path('i.h'))
+        variant = PackageVariant(
+            id='div1', path=pathlib.Path('contest-div1'), libraries=[variant_lib]
+        )
+        preset = _preset(
+            contest=pathlib.Path('contest'),
+            libraries=Libraries(problem=[problem_lib], contest=[contest_lib]),
+            contestVariants=[variant],
+        )
+        merged = preset.merged_libraries(variant, is_contest=True)
+        assert [lib.name for lib in merged] == ['jngen', 'interlib']
 
     def test_libraries_canonical_returns_shared_only(self):
         shared = Library(name='testlib', source='a/b', dest=pathlib.Path('testlib.h'))
@@ -254,6 +260,14 @@ class TestVariantMerging:
         assert preset.merged_libraries(None, is_contest=False) == [shared]
 
     def test_expansion_merges_by_needle(self):
+        variant = PackageVariant(
+            id='interactive',
+            path=pathlib.Path('pi'),
+            expansion=[
+                VariableExpansion(needle='AUTHOR', prompt='Who wrote it?'),
+                VariableExpansion(needle='JUDGE', prompt='Judge?'),
+            ],
+        )
         preset = _preset(
             problem=pathlib.Path('problem'),
             expansion=Expansion(
@@ -262,20 +276,28 @@ class TestVariantMerging:
                     VariableExpansion(needle='TITLE', prompt='Title?'),
                 ]
             ),
-            problemVariants=[
-                PackageVariant(
-                    id='interactive',
-                    path=pathlib.Path('pi'),
-                    expansion=[
-                        VariableExpansion(needle='AUTHOR', prompt='Who wrote it?'),
-                        VariableExpansion(needle='JUDGE', prompt='Judge?'),
-                    ],
-                )
-            ],
+            problemVariants=[variant],
         )
-        merged = preset.merged_expansion('interactive', is_contest=False)
+        merged = preset.merged_expansion(variant, is_contest=False)
         assert [e.needle for e in merged] == ['AUTHOR', 'TITLE', 'JUDGE']
         assert merged[0].prompt == 'Who wrote it?'
+
+    def test_expansion_merges_contest_side_independently(self):
+        variant = PackageVariant(
+            id='div1',
+            path=pathlib.Path('contest-div1'),
+            expansion=[VariableExpansion(needle='DIVISION', prompt='Division?')],
+        )
+        preset = _preset(
+            contest=pathlib.Path('contest'),
+            expansion=Expansion(
+                problem=[VariableExpansion(needle='TITLE', prompt='Title?')],
+                contest=[VariableExpansion(needle='AUTHOR', prompt='Author?')],
+            ),
+            contestVariants=[variant],
+        )
+        merged = preset.merged_expansion(variant, is_contest=True)
+        assert [e.needle for e in merged] == ['AUTHOR', 'DIVISION']
 
     def test_expansion_canonical_returns_shared_only(self):
         shared = VariableExpansion(needle='AUTHOR', prompt='Author?')
