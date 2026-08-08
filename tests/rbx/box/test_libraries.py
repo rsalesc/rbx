@@ -1,6 +1,7 @@
 import pathlib
 
 from rbx.box import libraries
+from rbx.box.presets.schema import Library
 from rbx.grading import steps
 
 
@@ -65,12 +66,71 @@ def test_add_always_include_dedups_existing(tmp_path, monkeypatch):
     assert len(internal_mylib) == 1
 
 
-def test_no_preset_returns_empty(tmp_path, monkeypatch):
+def test_no_preset_still_declares_testlib(tmp_path, monkeypatch):
+    """A package with no preset still gets testlib. rbx's own builtin checkers
+    include it and live outside the package root, where the dependency scanner
+    does not reach, so this injection is what resolves their include."""
     monkeypatch.chdir(tmp_path)
     libraries.get_declared_libraries.cache_clear()
-    assert libraries.get_always_include_libraries() == []
+
+    assert [lib.name for lib in libraries.get_always_include_libraries()] == ['testlib']
+
+
+def test_no_preset_falls_back_to_the_bundled_testlib(tmp_path, monkeypatch):
+    """The package never materialized testlib.h, so the copy rbx keeps in its
+    app dir is injected instead."""
+    bundled = tmp_path / 'app' / 'testlib.h'
+    bundled.parent.mkdir()
+    bundled.write_text('// bundled testlib')
+    monkeypatch.setattr('rbx.config.get_testlib', lambda: bundled)
+    monkeypatch.chdir(tmp_path)
+    libraries.get_declared_libraries.cache_clear()
+
     artifacts = steps.GradingArtifacts()
+    added = libraries.add_always_include_libraries(artifacts)
+
+    assert added is True
+    injected = [i for i in artifacts.inputs if str(i.dest) == '__internal__/testlib.h']
+    assert len(injected) == 1
+    assert injected[0].src == bundled
+
+
+def test_no_preset_prefers_the_package_testlib(tmp_path, monkeypatch):
+    """A testlib.h sitting in the package wins over the bundled copy, so a
+    setter pinning their own version keeps it."""
+    bundled = tmp_path / 'app' / 'testlib.h'
+    bundled.parent.mkdir()
+    bundled.write_text('// bundled testlib')
+    (tmp_path / 'testlib.h').write_text("// the package's own testlib")
+    monkeypatch.setattr('rbx.config.get_testlib', lambda: bundled)
+    monkeypatch.chdir(tmp_path)
+    libraries.get_declared_libraries.cache_clear()
+
+    artifacts = steps.GradingArtifacts()
+    libraries.add_always_include_libraries(artifacts)
+
+    injected = [i for i in artifacts.inputs if str(i.dest) == '__internal__/testlib.h']
+    assert injected[0].src == pathlib.Path('testlib.h')
+
+
+def test_declared_library_without_a_fallback_is_skipped(tmp_path, monkeypatch, capsys):
+    """Only the implicit builtin has a fallback. A declared library that was
+    never materialized still warns, because there the missing file means the
+    package is out of sync with its preset rather than never configured."""
+    declared = Library(
+        name='mylib',
+        source='x',
+        path=pathlib.Path('mylib.h'),
+        dest=pathlib.Path('mylib.h'),
+        always_include=True,
+    )
+    monkeypatch.setattr(libraries, 'get_declared_libraries', lambda: [declared])
+    monkeypatch.chdir(tmp_path)
+
+    artifacts = steps.GradingArtifacts()
+
     assert libraries.add_always_include_libraries(artifacts) is False
+    assert 'declared but not materialized' in capsys.readouterr().out
 
 
 def test_testing_package_declares_standard_libraries(testing_pkg):
