@@ -34,7 +34,6 @@ from rbx.box.solutions import (
     TimingIssue,
     TraditionalRunReporter,
     convert_list_of_solution_evaluations_to_dict,
-    get_group_expectation_markup,
     get_matching_solutions,
     get_solution_outcome_report,
     is_fast,
@@ -1010,11 +1009,12 @@ def test_verdict_markup_lists_every_failed_group(
     )
     markup = report.get_verdict_markup()
 
-    assert markup.count('FAILED') == 2
+    # FAILED is said once; the remaining groups line up underneath it.
+    assert markup.count('FAILED') == 1
     assert 'group1' in markup and 'group2' in markup
     assert Text.from_markup(markup).plain == (
         'FAILED group1: expected ACCEPTED, got: WRONG_ANSWER\n'
-        'FAILED group2: expected WRONG_ANSWER, got: ACCEPTED'
+        '       group2: expected WRONG_ANSWER, got: ACCEPTED'
     )
 
 
@@ -1036,62 +1036,7 @@ def test_verdict_markup_hides_group_lines_when_incomplete(
     assert 'group2' not in report.get_verdict_markup(incomplete=True)
 
 
-def test_group_expectation_markup(tmp_path, mock_skeleton, mock_binary_scoring):
-    solution = Solution(
-        path=tmp_path / 'partial.cpp',
-        outcome=ExpectedOutcome.INCORRECT,
-        outcomePerGroup={
-            '*': ExpectedOutcome.ACCEPTED,
-            'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
-        },
-    )
-    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
-    evals = [make_evaluation(Outcome.ACCEPTED), make_evaluation(Outcome.ACCEPTED)]
-
-    report = get_solution_outcome_report(
-        solution, skeleton, evals, VerificationLevel.FULL
-    )
-
-    # Met expectation: a check, plus a word -- the group line already ends in
-    # per-testcase ✓/✗ glyphs, so a bare ✓ would read as one more of those.
-    assert '✓' in get_group_expectation_markup(report, 'group1')
-    assert (
-        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain
-        == ' ✓ as expected'
-    )
-    # Unmet: the expectation and what actually happened.
-    unmet = get_group_expectation_markup(report, 'group2')
-    assert '✗' in unmet
-    assert 'TIME_LIMIT_EXCEEDED' in unmet
-    assert 'ACCEPTED' in unmet
-    # Rendering also asserts the markup is well-formed.
-    assert (
-        Text.from_markup(unmet).plain
-        == ' ✗ expected TIME_LIMIT_EXCEEDED, got: ACCEPTED'
-    )
-    # A group with no expectation renders nothing at all, so packages that do
-    # not use outcomePerGroup look exactly as before.
-    assert get_group_expectation_markup(report, 'nonexistent') == ''
-
-
-def test_group_expectation_markup_is_empty_without_outcome_per_group(
-    tmp_path, mock_skeleton, mock_binary_scoring
-):
-    """Every real group of a solution with no `outcomePerGroup` renders nothing,
-    so those group lines are byte-identical to before this feature existed."""
-    solution = Solution(path=tmp_path / 'wa.cpp', outcome=ExpectedOutcome.INCORRECT)
-    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
-    evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
-
-    report = get_solution_outcome_report(
-        solution, skeleton, evals, VerificationLevel.FULL
-    )
-
-    assert get_group_expectation_markup(report, 'group1') == ''
-    assert get_group_expectation_markup(report, 'group2') == ''
-
-
-def test_group_expectation_markup_of_a_passing_subset_group(
+def test_passing_subset_group_reports_all_of_its_verdicts(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):
     """In `subset` mode a *passing* group reports all of its verdicts rather than
@@ -1114,18 +1059,17 @@ def test_group_expectation_markup_of_a_passing_subset_group(
         Outcome.ACCEPTED,
         Outcome.WRONG_ANSWER,
     }
-    assert (
-        Text.from_markup(get_group_expectation_markup(report, 'group1')).plain
-        == ' ✓ as expected'
-    )
+    # ...and the group is not reported as a failure despite those verdicts.
+    assert report.failedGroups == []
+    assert 'group1' not in report.get_verdict_markup()
 
 
-async def test_reporter_marks_group_lines_with_their_expectations(
+async def test_reporter_leaves_group_lines_alone_and_names_failures_once(
     mock_problem_root, mock_binary_scoring
 ):
-    """End-to-end through a reporter: each group line ends with its own verdict
-    on its own expectation, and a met one is not a bare glyph trailing the
-    per-testcase glyphs it would otherwise blend into."""
+    """End-to-end through a reporter: group lines carry no expectation marker --
+    stating each expectation both inline and in the summary said everything
+    twice -- and the summary says FAILED once, aligning the rest under it."""
     solution = Solution(
         path=pathlib.Path('partial.cpp'),
         outcome=ExpectedOutcome.INCORRECT,
@@ -1141,9 +1085,9 @@ async def test_reporter_marks_group_lines_with_their_expectations(
     result = make_run_result(
         skeleton,
         {
-            # Covered by '*': accepted, and accepted.
+            # Covered by '*': accepted, but wrong on one test.
             ('group1', 0): Outcome.ACCEPTED,
-            ('group1', 1): Outcome.ACCEPTED,
+            ('group1', 1): Outcome.WRONG_ANSWER,
             # Expected to be wrong, and wrong.
             ('group2', 0): Outcome.WRONG_ANSWER,
             # Expected to time out, but accepted.
@@ -1158,25 +1102,26 @@ async def test_reporter_marks_group_lines_with_their_expectations(
         )
 
     assert not ok
+    # No expectation markers here: the group lines are exactly what a package
+    # without `outcomePerGroup` renders.
     assert rendered_group_lines(console) == [
-        'group1 (2)0/✓ 1/✓ (100 ms, 1 KiB) ✓ as expected',
-        # The met expectation lands right after a run of per-testcase glyphs,
-        # which is why it says a word instead of being one more ✓.
-        'group2 (1)0/✗ (100 ms, 1 KiB) ✓ as expected',
-        'group3 (1)0/✓ (100 ms, 1 KiB) ✗ expected TIME_LIMIT_EXCEEDED, got: ACCEPTED',
+        'group1 (2)0/✓ 1/✗ (100 ms, 1 KiB)',
+        'group2 (1)0/✗ (100 ms, 1 KiB)',
+        'group3 (1)0/✓ (100 ms, 1 KiB)',
     ]
-    # The solution verdict names the offending group, and only that one.
-    assert 'FAILED group3: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED' in (
-        rendered_lines(console)
-    )
+    # The summary names every group that missed its expectation, and only those,
+    # saying FAILED once and aligning the rest under it.
+    lines = rendered_lines(console)
+    assert 'FAILED group1: expected ACCEPTED, got: WRONG_ANSWER' in lines
+    assert '       group3: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED' in lines
+    assert not any('group2:' in line for line in lines)
 
 
-async def test_reporter_puts_the_score_before_the_expectation_mark(
+async def test_reporter_group_lines_carry_only_the_score(
     mock_problem_root,
 ):
-    """Under POINTS scoring a group line can carry both marks; the score comes
-    first. Scoreless groups still get their expectation mark, which is what makes
-    the feature work for BINARY packages."""
+    """The group line's only trailing mark is its POINTS score. A per-group
+    expectation adds nothing there, whether the group is scored or not."""
     solution = Solution(
         path=pathlib.Path('partial.cpp'),
         outcome=ExpectedOutcome.INCORRECT,
@@ -1204,28 +1149,30 @@ async def test_reporter_puts_the_score_before_the_expectation_mark(
 
     lines = rendered_lines(console)
     # group2 failed its tests, so it scores 0 of 60 -- while still meeting the
-    # expectation that it fail.
-    assert 'group2 (1)0/✗ (100 ms, 1 KiB) [0/60 pts] ✓ as expected' in lines
-    # `samples` has no score and no expectation of its own, so it is untouched.
+    # expectation that it fail, which the line says nothing about.
+    assert 'group2 (1)0/✗ (100 ms, 1 KiB) [0/60 pts]' in lines
+    # `samples` has no score, so it gets no trailing mark at all.
     assert 'samples (1)0/✓ (100 ms, 1 KiB)' in lines
 
 
 async def test_partial_reports_do_not_add_timing_issues(
     mock_problem_root, mock_binary_scoring
 ):
-    """A partial report is computed at every group end purely to render. The
-    timing heuristic reads too-fast/too-slow off the evals it is handed, so an
-    all-accepted group that finishes before the slow group has started looks too
-    fast in isolation. A BINARY package that adopted `outcomePerGroup` used to
-    collect a bogus `rbx time` warning that way, even though the final report was
-    clean."""
+    """A partial report is computed at every scored group's end purely to render
+    it. The timing heuristic reads too-fast/too-slow off the evals it is handed,
+    so an all-accepted group that finishes before the slow group has started
+    looks too fast in isolation, and used to collect a bogus `rbx time` warning
+    that way even though the final report was clean."""
     solution = Solution(
         path=pathlib.Path('sol.cpp'),
         outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
         outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
     )
     skeleton = make_reporter_skeleton(
-        mock_problem_root, solution, {'group1': 2, 'group2': 1}
+        mock_problem_root,
+        solution,
+        {'group1': 2, 'group2': 1},
+        scores_per_group={'group1': 40, 'group2': 60},
     )
     result = make_run_result(
         skeleton,
@@ -1236,24 +1183,37 @@ async def test_partial_reports_do_not_add_timing_issues(
         },
     )
 
-    with fresh_issue_stack() as issues:
-        ok = await drive_reporter(
+    with (
+        fresh_issue_stack() as issues,
+        patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS),
+    ):
+        await drive_reporter(
             FullRunReporter(result, VerificationLevel.FULL, recording_console()),
             skeleton,
         )
 
-    # The run met every expectation, so nothing at all should have been reported.
-    assert ok
-    assert [issue for issue in issues.issues if isinstance(issue, TimingIssue)] == []
+    # Exactly one: the report at solution end, which is the one entitled to speak
+    # about the run. Both group ends also built a report, to render their score.
+    assert len([i for i in issues.issues if isinstance(i, TimingIssue)]) == 1
 
-    # The very evals the group-1 partial report saw, checked as a *final* report:
-    # the issue is still raised there, so `report_issues` is the only difference.
+    # The very evals the group-1 partial report saw. As a rendering-only report
+    # they raise nothing; as a final one they still do, so `report_issues` is the
+    # only difference between the two calls.
+    partial_evals = [make_evaluation(Outcome.ACCEPTED) for _ in range(2)]
     with fresh_issue_stack() as issues:
         get_solution_outcome_report(
             solution,
             skeleton,
-            [make_evaluation(Outcome.ACCEPTED) for _ in range(2)],
+            partial_evals,
             VerificationLevel.FULL,
+            report_issues=False,
+        )
+
+    assert [issue for issue in issues.issues if isinstance(issue, TimingIssue)] == []
+
+    with fresh_issue_stack() as issues:
+        get_solution_outcome_report(
+            solution, skeleton, partial_evals, VerificationLevel.FULL
         )
 
     assert any(isinstance(issue, TimingIssue) for issue in issues.issues)

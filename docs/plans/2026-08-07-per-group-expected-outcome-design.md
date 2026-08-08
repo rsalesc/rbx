@@ -141,25 +141,25 @@ Time and Memory lines are wrong today. Renaming the loop variable fixes it.
 
 ## Rendering
 
-A shared helper renders a group's expectation status, used from
-`render_group_end` in `FullRunReporter`, `LiveRunReporter` and
-`SingleSolutionRunReporter` so the three stay consistent. A group with an
-expectation gets an inline mark; the per-solution verdict line names each
-offending group:
+Group lines are left exactly as they are today. The per-solution verdict names
+every group that missed its expectation, saying `FAILED` once and aligning the
+rest underneath it:
 
 ```
 sols/partial.cpp (.box/runs/2)
-samples (2) 12ms, 3MB ✓ as expected
-group1 (10) 45ms, 4MB ✓ as expected
-group2 (10) 1.02s, 4MB ✗ expected TIME_LIMIT_EXCEEDED, got: ACCEPTED
-FAILED group2: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED
+samples (3) 0/✗ 1/✗ (9ms, 10MB)
+sub2 (8) 0/✗ 1/✗ 2/✗ (6ms, 10MB) [0/20 pts]
+sub3 (8) 1/✗ 2/✗ (7ms, 10MB) [0/20 pts]
+FAILED Expected score 0, got [0/100 pts]
+       samples: expected TIME_LIMIT_EXCEEDED, got: WRONG_ANSWER
+       sub2: expected TIME_LIMIT_EXCEEDED, got: WRONG_ANSWER
+       sub3: expected TIME_LIMIT_EXCEEDED, got: WRONG_ANSWER
 ```
 
-The success mark carries a word because the group line already ends in a run of
-per-testcase `✓`/`✗`/`⧖` glyphs, which a bare `✓` would blend into.
-
-At group end the pooled report is still partial, but a finished group's own
-report is complete — which is what makes the per-group mark trustworthy mid-run.
+An earlier iteration also marked each group line inline with its own ✓/✗. It was
+dropped: it stated every expectation twice, and the mark trailed a run of
+per-testcase `✓`/`✗`/`⧖` glyphs it visually blended into. The summary is the
+single place that speaks about expectations.
 
 ## Derived behaviors
 

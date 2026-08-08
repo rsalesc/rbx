@@ -256,7 +256,7 @@ solutions:
 
 Both layers are checked, and the solution fails if either of them fails. The testgroups named here have to be declared in `testcases`, and `samples` is a testgroup like any other, so `'*'` applies to it too unless you override it with an explicit `samples` entry. Subgroups cannot be named, since expectations are checked per top-level testgroup.
 
-When you [run your solutions](/setters/running/), every testgroup that carries an expectation is marked in the report, and a solution that fails names the testgroups that missed their expectation.
+When you [run your solutions](/setters/running/), a solution that fails names every testgroup that missed its expectation, and what that testgroup did instead.
 
 !!! warning
     The `'*'` key has to be quoted, otherwise YAML parses it as the start of an alias.

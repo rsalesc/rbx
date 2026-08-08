@@ -1437,8 +1437,12 @@ class SolutionOutcomeReport(BaseModel):
             # Fold the first group into the FAILED line instead of leaving it bare.
             verdict_str = group_lines.pop(0)
         res = f'{success_str}{verdict_str}'
-        for line in group_lines:
-            res += f'\n[ierror]FAILED[/ierror] {line}'
+        if group_lines:
+            # Say FAILED once: the remaining groups line up under the first one
+            # instead of repeating the prefix on every row.
+            indent = ' ' * _length_markup(success_str)
+            for line in group_lines:
+                res += f'\n{indent}{line}'
         return res
 
     def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
@@ -1497,35 +1501,6 @@ class SolutionOutcomeReport(BaseModel):
                 msg = get_truncated_message(msg)
                 res += f'\nMessage for {utils.escape_markup(str(entry))}: {utils.escape_markup(msg)}'
         return res
-
-
-def get_group_expectation_markup(report: SolutionOutcomeReport, group_name: str) -> str:
-    """Inline marker for a group that carries a per-group expectation.
-
-    Returns the empty string when the group declares no expectation or was not
-    evaluated, so group lines are untouched for packages that do not use
-    ``outcomePerGroup``.
-
-    Only meaningful once the group is complete: a partially evaluated group is
-    still checked, so this must be rendered at group end and not before.
-    """
-    group = report.perGroup.get(group_name)
-    if group is None:
-        return ''
-    if group.status.ok():
-        # A passing group under ``subset`` reports all of its verdicts rather
-        # than none, so pass/fail comes from the status alone.
-        #
-        # The mark carries a word because the group line already ends in a run of
-        # per-testcase ✓/✗/⧖ glyphs: a bare ✓ one space later would read as one
-        # more testcase verdict rather than as a statement about the group. The
-        # failure branch below is already wordy, so only this one needs it.
-        return ' [success]✓ as expected[/success]'
-    got = ' '.join(sorted(v.name for v in group.gotVerdicts))
-    res = f' [ierror]✗[/ierror] [warning]expected {group.expectedOutcome}[/warning]'
-    if got:
-        res += f'[warning], got: {got}[/warning]'
-    return res
 
 
 class VerdictReport(BaseModel):
@@ -2365,15 +2340,17 @@ class TraditionalRunReporter:
     ) -> Optional[SolutionOutcomeReport]:
         """The solution's report so far, or None when no renderer needs it.
 
-        Computed only when something will actually be displayed from it: POINTS
-        scoring for this group, or a per-group expectation on this solution.
+        Computed only when something will actually be displayed from it, which is
+        the group's score under POINTS scoring. Per-group expectations are not
+        rendered on the group line -- the solution's verdict names the groups
+        that missed theirs.
 
         Rendering-only, hence ``report_issues=False``: the final report at
         solution end is the one that gets to speak about the run.
         """
         if self.current_solution is None:
             return None
-        if group.score <= 0 and not self.current_solution.outcomePerGroup:
+        if group.score <= 0:
             return None
         return get_solution_outcome_report(
             self.current_solution,
@@ -2488,14 +2465,10 @@ class FullRunReporter(TraditionalRunReporter):
         )
         partial_report = self.get_partial_report(group)
         if partial_report is not None:
-            if group.score > 0:
-                got_score = partial_report.gotScorePerGroup.get(group.name, 0)
-                self.console.print(
-                    f' {get_solution_score_markup(got_score, group.score, pts=True)}',
-                    end='',
-                )
+            got_score = partial_report.gotScorePerGroup.get(group.name, 0)
             self.console.print(
-                get_group_expectation_markup(partial_report, group.name), end=''
+                f' {get_solution_score_markup(got_score, group.score, pts=True)}',
+                end='',
             )
         self.console.print()
 
@@ -2562,27 +2535,15 @@ class LiveRunReporter(FullRunReporter):
                 end='',
             )
         )
-        # Only at group end: mid-run, a group's own report is still partial, and a
-        # partially evaluated group is checked as if it were complete.
+        # Only at group end: mid-run, the group's score is not settled yet.
         partial_report = (
             self.get_partial_report(self.current_group) if finished else None
         )
         if partial_report is not None:
-            if self.current_group.score > 0:
-                got_score = partial_report.gotScorePerGroup.get(
-                    self.current_group.name, 0
-                )
-                renderable.append(
-                    rich.text.Text.from_markup(
-                        f' {get_solution_score_markup(got_score, self.current_group.score, pts=True)}',
-                        end='',
-                    )
-                )
+            got_score = partial_report.gotScorePerGroup.get(self.current_group.name, 0)
             renderable.append(
                 rich.text.Text.from_markup(
-                    get_group_expectation_markup(
-                        partial_report, self.current_group.name
-                    ),
+                    f' {get_solution_score_markup(got_score, self.current_group.score, pts=True)}',
                     end='',
                 )
             )
@@ -2644,14 +2605,10 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print(f'({bracketed})', end='')
         partial_report = self.get_partial_report(group)
         if partial_report is not None:
-            if group.score > 0:
-                got_score = partial_report.gotScorePerGroup.get(group.name, 0)
-                self.console.print(
-                    f' {get_solution_score_markup(got_score, group.score, pts=True)}',
-                    end='',
-                )
+            got_score = partial_report.gotScorePerGroup.get(group.name, 0)
             self.console.print(
-                get_group_expectation_markup(partial_report, group.name), end=''
+                f' {get_solution_score_markup(got_score, group.score, pts=True)}',
+                end='',
             )
         self.console.print()
         self.console.print()
