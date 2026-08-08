@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Optional
+from typing import Any, Callable, List, Optional, TypeVar
 
 import typer
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -146,6 +146,18 @@ class PackageVariant(BaseModel):
         return value
 
 
+T = TypeVar('T')
+
+
+def _merge_by(overrides: List[T], base: List[T], key: Callable[[T], Any]) -> List[T]:
+    """Merge `overrides` over `base`, keyed by `key`. Overrides win; base order
+    is preserved and override-only entries are appended."""
+    override_by_key = {key(item): item for item in overrides}
+    res = [override_by_key.pop(key(item), item) for item in base]
+    res.extend(override_by_key.values())
+    return res
+
+
 class Preset(BaseModel):
     # Name of the preset, or a GitHub repository containing it.
     name: str = NameField()
@@ -184,6 +196,13 @@ class Preset(BaseModel):
     # fetched, cached, and materialized into the package.
     libraries: Libraries = Field(default_factory=Libraries)
 
+    # Additional problem templates ("variants") offered by this preset, beyond
+    # the canonical `problem` template. Selected with `rbx create --variant`.
+    problemVariants: List[PackageVariant] = Field(default_factory=list)
+
+    # Additional contest templates, selected with `rbx contest create --variant`.
+    contestVariants: List[PackageVariant] = Field(default_factory=list)
+
     @field_validator('min_version')
     @classmethod
     def validate_min_version(cls, value: str) -> str:
@@ -194,6 +213,75 @@ class Preset(BaseModel):
                 "min_version must be a valid PEP440 SemVer string (e.g., '1.2.3' or '1.2.3-rc.1')"
             ) from err
         return value
+
+    @model_validator(mode='after')
+    def validate_unique_variant_ids(self) -> 'Preset':
+        for kind, variants in (
+            ('problemVariants', self.problemVariants),
+            ('contestVariants', self.contestVariants),
+        ):
+            seen = set()
+            for variant in variants:
+                if variant.id in seen:
+                    raise ValueError(f'duplicate variant id {variant.id} in {kind}')
+                seen.add(variant.id)
+        return self
+
+    def variants(self, is_contest: bool) -> List[PackageVariant]:
+        return self.contestVariants if is_contest else self.problemVariants
+
+    def find_variant(
+        self, variant_id: str, is_contest: bool
+    ) -> Optional[PackageVariant]:
+        for variant in self.variants(is_contest):
+            if variant.id == variant_id:
+                return variant
+        return None
+
+    def _variant_config(
+        self,
+        variant_id: Optional[str],
+        is_contest: bool,
+        get: Callable[[PackageVariant], List[T]],
+    ) -> List[T]:
+        """Config list of the given variant, or an empty list for the canonical
+        template (`variant_id is None`) or an unknown variant id."""
+        if variant_id is None:
+            return []
+        variant = self.find_variant(variant_id, is_contest)
+        if variant is None:
+            return []
+        return get(variant)
+
+    def merged_tracking(
+        self, variant_id: Optional[str], is_contest: bool
+    ) -> List[TrackedAsset]:
+        shared = self.tracking.contest if is_contest else self.tracking.problem
+        return _merge_by(
+            self._variant_config(variant_id, is_contest, lambda v: v.tracking),
+            shared,
+            lambda a: a.path,
+        )
+
+    def merged_libraries(
+        self, variant_id: Optional[str], is_contest: bool
+    ) -> List[Library]:
+        shared = self.libraries.contest if is_contest else self.libraries.problem
+        return _merge_by(
+            self._variant_config(variant_id, is_contest, lambda v: v.libraries),
+            shared,
+            lambda lib: lib.name,
+        )
+
+    def merged_expansion(
+        self, variant_id: Optional[str], is_contest: bool
+    ) -> List[VariableExpansion]:
+        shared = self.expansion.contest if is_contest else self.expansion.problem
+        return _merge_by(
+            self._variant_config(variant_id, is_contest, lambda v: v.expansion),
+            shared,
+            lambda e: e.needle,
+        )
 
     @property
     def fetch_info(self) -> PresetFetchInfo:
