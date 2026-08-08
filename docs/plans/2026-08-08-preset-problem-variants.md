@@ -600,11 +600,18 @@ def resolve_template(
     return ResolvedTemplate(
         variant_id=variant,
         path=path,
-        tracking=preset.merged_tracking(variant, is_contest),
-        libraries=preset.merged_libraries(variant, is_contest),
-        expansion=preset.merged_expansion(variant, is_contest),
+        tracking=preset.merged_tracking(found, is_contest),
+        libraries=preset.merged_libraries(found, is_contest),
+        expansion=preset.merged_expansion(found, is_contest),
     )
 ```
+
+Note the `merged_*` helpers take the resolved `PackageVariant` (or `None` for the
+canonical template), not a variant id. That was changed during Task 2 so an
+unknown id is unrepresentable at the merge layer: `resolve_template` is the only
+place that maps an id to a template, and the only place that errors on a bad
+one. Bind `found = None` on the canonical branch so the call sites above read
+the same either way.
 
 `_print_available_variants` prints `default` (when a canonical exists) plus each `id — description`.
 
