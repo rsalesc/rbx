@@ -1145,7 +1145,12 @@ def install_contest(
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
     variant: Optional[str] = None,
-):
+) -> ResolvedTemplate:
+    """Install a contest package from the preset, returning the template used.
+
+    Callers MUST pass the returned template to `generate_lock`, so the lock can
+    never claim a different template than the one that was installed.
+    """
     if fetch_info is not None:
         _install_preset_from_fetch_info(
             fetch_info,
@@ -1170,6 +1175,7 @@ def install_contest(
     )
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
+    return template
 
 
 def install_problem(
@@ -1177,7 +1183,12 @@ def install_problem(
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
     variant: Optional[str] = None,
-):
+) -> ResolvedTemplate:
+    """Install a problem package from the preset, returning the template used.
+
+    Callers MUST pass the returned template to `generate_lock`, so the lock can
+    never claim a different template than the one that was installed.
+    """
     if fetch_info is not None:
         _install_preset_from_fetch_info(
             fetch_info,
@@ -1201,6 +1212,7 @@ def install_problem(
     )
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
+    return template
 
 
 def install_preset(
@@ -1340,6 +1352,7 @@ def generate_lock(
     tracked_assets = _get_template_tracked_assets(template)
     preset_lock = PresetLock(
         name=template.preset.name,
+        variant=template.variant_id,
         assets=build_package_locked_assets(tracked_assets, root),
     )
 
@@ -1363,7 +1376,29 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
     if try_update:
         update()
 
-    template = get_active_template(is_contest=is_contest())
+    # Sync against the template the package was actually created from. Falling
+    # back to the canonical one would overwrite a variant package's tracked
+    # assets with the wrong template's, so a variant that no longer exists in
+    # the (possibly just-updated) preset is a hard error.
+    try:
+        template = get_active_template(
+            is_contest=is_contest(), variant=preset_lock.variant
+        )
+    except typer.Exit:
+        # `resolve_template` already said which template is missing and listed
+        # the available ones; add where the request came from, since the user
+        # never typed this variant -- the lock did.
+        if preset_lock.variant is not None:
+            console.console.print(
+                f'[error]This package is locked to the [item]{preset_lock.variant}[/item] '
+                'template in its [item].preset-lock.yml[/item], and syncing against a '
+                'different one would overwrite its assets.[/error]'
+            )
+            console.console.print(
+                '[error]Restore the variant in the preset, or point the [item]variant[/item] '
+                'field of [item].preset-lock.yml[/item] at a template that exists.[/error]'
+            )
+        raise
 
     _copy_updated_assets(
         preset_lock,
@@ -1589,7 +1624,16 @@ def sync(
 @cd.within_closest_package
 def lock():
     check_is_valid_package()
-    generate_lock()
+    # Re-locking must keep the template the package is already locked to;
+    # silently re-pointing a variant package at the canonical template would
+    # make the next sync overwrite its assets.
+    existing_lock = get_preset_lock()
+    generate_lock(
+        template=get_active_template(
+            is_contest=is_contest(),
+            variant=existing_lock.variant if existing_lock is not None else None,
+        )
+    )
 
 
 @app.command('ls', help='List details about the active preset.')

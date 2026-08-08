@@ -62,7 +62,7 @@ def create(
         )
         raise typer.Exit(1)
 
-    presets.install_problem(dest_path, fetch_info)
+    template = presets.install_problem(dest_path, fetch_info)
 
     # Change problem name.
     ru, problem = package.get_ruyaml(dest_path)
@@ -71,7 +71,7 @@ def create(
 
     # fix_package(dest_path)
 
-    presets.generate_lock(dest_path)
+    presets.generate_lock(dest_path, template=template)
 
     if preset is not None:
         presets.maybe_offer_to_register(fetch_info, dest_path)

@@ -114,12 +114,12 @@ def create(
             )
             raise typer.Exit(1)
 
-    presets.install_contest(dest_path, fetch_info)
+    template = presets.install_contest(dest_path, fetch_info)
 
     with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()
         # fix_package()
-        presets.generate_lock()
+        presets.generate_lock(template=template)
 
     if preset is not None:
         presets.maybe_offer_to_register(fetch_info, dest_path)
@@ -141,11 +141,11 @@ def init(
 
     fetch_info = presets.get_preset_fetch_info_with_fallback(preset)
 
-    presets.install_contest(pathlib.Path.cwd(), fetch_info)
+    template = presets.install_contest(pathlib.Path.cwd(), fetch_info)
 
     contest_utils.clear_all_caches()
     # fix_package()
-    presets.generate_lock()
+    presets.generate_lock(template=template)
 
     if preset is not None:
         presets.maybe_offer_to_register(fetch_info, pathlib.Path.cwd())

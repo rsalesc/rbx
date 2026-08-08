@@ -12,13 +12,21 @@ from rbx import utils
 from rbx.box import creation
 from rbx.box.schema import Package
 
+# Stands in for the ResolvedTemplate that install_problem returns, so the test
+# can check it is the one handed to generate_lock.
+_STUB_TEMPLATE = SimpleNamespace(variant_id='interactive')
 
-def _install_problem_stub(dest_pkg: pathlib.Path, fetch_info=None, materialize=True):
-    """Mimic presets.install_problem: create the folder and a minimal package."""
+
+def _install_problem_stub(
+    dest_pkg: pathlib.Path, fetch_info=None, materialize=True, variant=None
+):
+    """Mimic presets.install_problem: create the folder and a minimal package,
+    and return the template that was installed."""
     dest_pkg.mkdir(parents=True, exist_ok=True)
     (dest_pkg / 'problem.rbx.yml').write_text(
         'name: "placeholder"\ntimeLimit: 1000\nmemoryLimit: 256\n'
     )
+    return _STUB_TEMPLATE
 
 
 def _read_name(dest: pathlib.Path) -> str:
@@ -38,9 +46,9 @@ def mock_presets():
         mock.patch.object(
             creation.presets, 'install_problem', side_effect=_install_problem_stub
         ),
-        mock.patch.object(creation.presets, 'generate_lock'),
+        mock.patch.object(creation.presets, 'generate_lock') as generate_lock,
     ):
-        yield
+        yield SimpleNamespace(generate_lock=generate_lock)
 
 
 def test_create_with_plain_name(cleandir, mock_presets):
@@ -62,6 +70,16 @@ def test_create_with_relative_path_uses_basename_as_name(cleandir, mock_presets)
     name = _read_name(dest)
     assert name == 'my-problem'
     utils.validate_field(Package, 'name', name)
+
+
+def test_create_locks_the_template_it_installed(cleandir, mock_presets):
+    # The lock must describe the template that was actually installed, never a
+    # separately-resolved one.
+    creation.create('my-problem')
+
+    mock_presets.generate_lock.assert_called_once_with(
+        pathlib.Path('my-problem'), template=_STUB_TEMPLATE
+    )
 
 
 def test_create_with_invalid_derived_name_fails_fast(cleandir, mock_presets):
