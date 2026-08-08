@@ -1,3 +1,4 @@
+import dataclasses
 import fnmatch
 import functools
 import os
@@ -33,6 +34,8 @@ from rbx.box.presets.fetch import (
 )
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock, SymlinkInfo
 from rbx.box.presets.schema import (
+    Library,
+    PackageVariant,
     Preset,
     ReplacementMode,
     TrackedAsset,
@@ -614,6 +617,112 @@ def _get_active_preset_package_path(
         'Preset does not have a problem package definition.'
     )
     return preset_path / preset.problem
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolvedTemplate:
+    """A preset template directory plus the config that applies to it.
+
+    `variant_id` is None for the preset's canonical template.
+    """
+
+    variant_id: Optional[str]
+    path: pathlib.Path
+    tracking: List[TrackedAsset]
+    libraries: List[Library]
+    expansion: List[VariableExpansion]
+
+
+def _print_available_variants(preset: Preset, is_contest: bool) -> None:
+    kind = 'contest' if is_contest else 'problem'
+    canonical = preset.contest if is_contest else preset.problem
+    variants = preset.variants(is_contest)
+    if canonical is None and not variants:
+        console.console.print(
+            f'[error]Preset [item]{preset.name}[/item] declares no {kind} templates at all.[/error]'
+        )
+        return
+    console.console.print(f'Available {kind} templates:')
+    if canonical is not None:
+        console.console.print("  [item]default[/item] — the preset's main template")
+    for variant in variants:
+        suffix = f' — {variant.description}' if variant.description else ''
+        console.console.print(f'  [item]{variant.id}[/item]{suffix}')
+
+
+def resolve_template(
+    preset: Preset,
+    preset_path: pathlib.Path,
+    *,
+    is_contest: bool,
+    variant: Optional[str],
+) -> ResolvedTemplate:
+    """Resolve a variant id into the template directory it names.
+
+    This is the only place that maps an id to a template directory, and the only
+    place that errors on an unknown or removed one. `variant` is None (or the
+    reserved id 'default') for the preset's canonical template.
+    """
+    kind = 'contest' if is_contest else 'problem'
+    if variant == 'default':
+        variant = None
+
+    found: Optional[PackageVariant] = None
+    if variant is None:
+        canonical = preset.contest if is_contest else preset.problem
+        if canonical is None:
+            console.console.print(
+                f'[error]Preset [item]{preset.name}[/item] does not have a canonical '
+                f'{kind} template.[/error]'
+            )
+            _print_available_variants(preset, is_contest)
+            raise typer.Exit(1)
+        inner = canonical
+    else:
+        found = preset.find_variant(variant, is_contest)
+        if found is None:
+            console.console.print(
+                f'[error]Preset [item]{preset.name}[/item] has no {kind} variant '
+                f'[item]{variant}[/item].[/error]'
+            )
+            _print_available_variants(preset, is_contest)
+            raise typer.Exit(1)
+        inner = found.path
+
+    path = preset_path / inner
+    if not path.is_dir():
+        console.console.print(
+            f'[error]Preset [item]{preset.name}[/item] declares a {kind} template at '
+            f'[item]{inner}[/item], but that directory does not exist.[/error]'
+        )
+        raise typer.Exit(1)
+
+    return ResolvedTemplate(
+        variant_id=variant,
+        path=path,
+        tracking=preset.merged_tracking(found, is_contest),
+        libraries=preset.merged_libraries(found, is_contest),
+        expansion=preset.merged_expansion(found, is_contest),
+    )
+
+
+def variant_for_path(
+    preset: Preset,
+    preset_path: pathlib.Path,
+    target: pathlib.Path,
+    *,
+    is_contest: bool,
+) -> Optional[str]:
+    """Which variant's template directory contains `target`? None == canonical."""
+    target = utils.abspath(target)
+    best: Optional[Tuple[int, str]] = None
+    for variant in preset.variants(is_contest):
+        candidate = utils.abspath(preset_path / variant.path)
+        if target == candidate or target.is_relative_to(candidate):
+            depth = len(candidate.parts)
+            if best is None or depth > best[0]:
+                best = (depth, variant.id)
+    return best[1] if best is not None else None
 
 
 def get_preset_fetch_info_with_fallback(
