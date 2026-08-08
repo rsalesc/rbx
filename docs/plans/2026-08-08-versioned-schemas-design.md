@@ -117,10 +117,21 @@ schema_url(model, root) ->
   `rbx/box/tasks.py` and cannot afford a directory walk each call.
 - **Floor clamping** guarantees we never emit a URL that 404s — a missing
   schema makes the VSCode YAML extension raise a hard "unable to load schema"
-  error. `SCHEMA_PIN_FLOOR` is the first minor this feature ships in (`1.1`);
-  anything older, including the current `min_version` default of `0.14.0`,
-  falls back to the unversioned URL. Old releases are not backfilled: it would
-  mean importing ~20 historical minors under a modern Python in CI.
+  error. `SCHEMA_PIN_FLOOR` is `(1, 0)`: the minor the bundled preset already
+  declares. Anything older, including the historical `min_version` default of
+  `0.14.0`, falls back to the unversioned URL. Old releases are not backfilled:
+  it would mean importing ~20 historical minors under a modern Python in CI.
+
+  The floor must never exceed the installed version. The two gates compose:
+  a preset whose `min_version` is above the installed version is rejected
+  outright (`OUTDATED`), and a `min_version` below the floor falls back — so a
+  floor above the shipping version would make pinning unreachable, with no
+  preset able to both install and pin. Setting the floor at `1.0` also means
+  this needs no compatibility-breaking bump to the bundled preset's
+  `min_version`, and can ship in a patch release. A guard test asserts that
+  once the installed minor reaches the floor, the bundled preset declares a
+  `min_version` at or above it, so a future bump cannot leave pinning silently
+  inert.
 - Files with no preset in scope — setter config, `LimitsProfile`, eval and run
   logs, the user preset registry, any invocation outside a package — pin to the
   installed `rbx`'s own `major.minor`.
@@ -149,10 +160,14 @@ about this change is breaking for users.
 
 ## Repo-side work
 
-- `rbx/resources/presets/**/*.rbx.yml` and `tests/e2e/testdata/**` hardcode the
-  unversioned URL and become lint-normalized. The default preset's
-  `min_version` must be at or above `SCHEMA_PIN_FLOOR` for pinning to be
-  exercised end to end.
+- `rbx/resources/presets/**/*.rbx.yml` hardcode the unversioned URL and are
+  updated to the pinned `1.0` form, since that is what a user sees before ever
+  running `rbx fix`. `tests/e2e/testdata/**` presets stay at `0.14.0`, below the
+  floor, which is deliberate coverage of the fallback.
+- The committed `.box/**.eval` and `.limits/local.yml` artifacts under the
+  bundled preset point at `Evaluation.json` / `SolutionReportSkeleton.json`,
+  which are not in the published model list at all — those URLs 404 today.
+  Pre-existing, and out of scope here.
 - The schemas repo needs a deploy key or fine-grained PAT stored as an `rbx`
   secret; the default `GITHUB_TOKEN` cannot write to another repository.
 
