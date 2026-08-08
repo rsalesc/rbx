@@ -1,4 +1,6 @@
 import pathlib
+import shutil
+import subprocess
 
 import pytest
 
@@ -365,3 +367,64 @@ class TestHeader:
         assert (
             'if (name == "bool_false") {\n    return false;\n  }' in generated_content
         )
+
+
+_GET_VAR_MAIN = """
+#include "rbx.h"
+#include <cassert>
+#include <cstdio>
+#include <string>
+
+int main() {
+  assert(getVar<int>("N.max") == 100);
+  assert(getVar<int>("N", "max") == 100);
+  assert(getVar<int64_t>("N", "max") == 100);
+  assert(getVar<std::string>("deep", "nested", "name") == "hello");
+  assert(getVar<std::string>("deep.nested", "name") == "hello");
+  assert(getVar<std::string>("deep", "nested.name") == "hello");
+
+  // Segments can also be std::string values.
+  std::string first = "N";
+  std::string second = "max";
+  assert(getVar<int>(first, second) == 100);
+
+  // Missing variables report the joined name.
+  try {
+    getVar<int>("N", "missing");
+    return 1;
+  } catch (const std::runtime_error &e) {
+    assert(std::string(e.what()).find("N.missing") != std::string::npos);
+  }
+
+  printf("ok");
+  return 0;
+}
+"""
+
+
+class TestGetVarWrapper:
+    """Tests for the variadic getVar() wrapper exposed by rbx.h."""
+
+    def test_get_var_accepts_dotted_name_and_segments(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = shutil.which('g++')
+        if gpp is None:
+            pytest.skip('g++ is not available')
+
+        testing_pkg.set_vars(
+            {
+                'N': {'max': 100},
+                'deep': {'nested': {'name': 'hello'}},
+            }
+        )
+
+        header.generate_header()
+        pathlib.Path('main.cpp').write_text(_GET_VAR_MAIN)
+
+        subprocess.run(
+            [gpp, '-std=c++17', '-Wall', '-Werror', '-o', 'main', 'main.cpp'],
+            check=True,
+        )
+        result = subprocess.run(['./main'], check=True, capture_output=True, text=True)
+        assert result.stdout == 'ok'
