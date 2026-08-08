@@ -1,0 +1,28 @@
+scenarios:
+  - name: per-group-outcomes
+    description: |
+      `outcomePerGroup` is checked per testgroup, on top of the pooled
+      `outcome`. `sols/partial.cpp` declares what it really does and passes;
+      `sols/mislabeled.cpp` is the same program claiming to time out
+      everywhere, and is caught even though its pooled `incorrect` holds.
+      The verdicts themselves are identical for both, which is the point:
+      only the per-group expectations tell them apart.
+    steps:
+      - cmd: run
+        expect:
+          stdout_contains:
+            # Both testgroups missed the expectation, so the verdict says
+            # FAILED once and lines the second one up under it.
+            - "FAILED small: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED"
+            - "       big: expected TIME_LIMIT_EXCEEDED, got: WRONG_ANSWER"
+          stdout_not_contains:
+            # The correctly-declared solution is never named.
+            - "sols/partial.cpp has an unexpected outcome"
+          solutions:
+            sols/main.cpp: ac
+            sols/partial.cpp:
+              small: ac
+              big: wa
+            sols/mislabeled.cpp:
+              small: ac
+              big: wa
