@@ -67,6 +67,7 @@ For complex modules, see the inner CLAUDE.md files:
 - [`rbx/box/ui/CLAUDE.md`](rbx/box/ui/CLAUDE.md) -- Textual TUI: screens, widgets, terminal emulator, navigation
 - [`rbx/box/packaging/CLAUDE.md`](rbx/box/packaging/CLAUDE.md) -- Packaging for judge systems: Polygon (with API upload), BOCA, MOJ, PKG
 - [`rbx/box/statements/CLAUDE.md`](rbx/box/statements/CLAUDE.md) -- Statement building: rbxTeX/LaTeX/Jinja pipeline, conversion steps, templates
+- [`casts/README.md`](casts/README.md) -- Documentation asciinema recordings: specs, fixtures, `mise run record`
 
 ## Architecture
 

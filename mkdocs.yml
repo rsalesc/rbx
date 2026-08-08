@@ -129,6 +129,9 @@ extra:
       link: https://github.com/rsalesc/rbx
 extra_css:
   - extra.css
+  - assets/asciinema-player.css
+extra_javascript:
+  - assets/asciinema-player.min.js
 markdown_extensions:
   - admonition
   - attr_list

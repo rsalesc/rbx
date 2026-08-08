@@ -1,0 +1,30 @@
+fixture: ab-problem
+title: Inspecting results with rbx ui
+timeout: 300s
+setup:
+  - rbx build
+  - rbx run
+instructions:
+  - !Interactive
+    command: rbx ui
+    keys:
+      # Land on the menu, move to "Explore results of a past `rbx run`",
+      # open it, look around, then quit back out.
+      - 3s
+      - j
+      - 1s
+      - '^M'
+      - 3s
+      - j
+      - 1s
+      - j
+      - 2s
+      - q
+      - 1s
+      - q
+expect_contains:
+  # Proves the TUI actually rendered and the run-results flow was opened,
+  # rather than the keys landing on an empty screen.
+  - Select a flow
+  - main.cpp
+  - overflow

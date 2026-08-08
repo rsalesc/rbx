@@ -1,0 +1,4 @@
+fixtures/*/.rbx/
+fixtures/*/.box/
+fixtures/*/build/
+fixtures/*/rbx.h
