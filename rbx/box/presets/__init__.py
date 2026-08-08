@@ -1887,6 +1887,45 @@ def lock():
     generate_lock(template=template)
 
 
+def _print_declared_templates(
+    preset: Preset,
+    preset_path: Optional[pathlib.Path],
+    *,
+    is_contest: bool,
+    locked_variant: Optional[str],
+) -> None:
+    """Print every *declared* template of this kind, one row each.
+
+    Deliberately built on `declared_templates` rather than `all_templates`:
+    `ls` inspects the preset, so a declaration whose directory is gone must be
+    shown (flagged as missing) instead of quietly disappearing from the list.
+    """
+    declared = declared_templates(preset, is_contest=is_contest)
+    if not declared:
+        return
+
+    from rich.table import Table
+
+    kind = 'contest' if is_contest else 'problem'
+    table = Table(
+        'Id', 'Description', 'Path', 'Status', title=f'{kind.capitalize()} templates'
+    )
+    for variant, inner in declared:
+        variant_id = 'default' if variant is None else variant.id
+        status = []
+        if locked_variant is not None and locked_variant == variant_id:
+            status.append('in use')
+        if preset_path is not None and not (preset_path / inner).is_dir():
+            status.append('missing')
+        table.add_row(
+            variant_id,
+            variant.description if variant is not None else '',
+            str(inner),
+            ', '.join(status),
+        )
+    console.console.print(table)
+
+
 @app.command('ls', help='List details about the active preset.')
 @cd.within_closest_package
 def ls():
@@ -1895,6 +1934,23 @@ def ls():
     console.console.print(f'Preset: [item]{preset.name}[/item]')
     console.console.print(f'Path: {preset_path}')
     console.console.print(f'URI: {preset.uri}')
+
+    # The lock only says which template *this* package came from, so it can
+    # only mark a row of this package's own kind. A missing (or unreadable)
+    # lock marks nothing at all -- `ls` must keep working either way.
+    locked_kind = is_contest()
+    locked_variant = None
+    if _find_preset_lock() is not None:
+        # `variant: null` in the lock means the canonical template.
+        locked_variant = _read_locked_variant() or 'default'
+
+    for kind_is_contest in (False, True):
+        _print_declared_templates(
+            preset,
+            preset_path,
+            is_contest=kind_is_contest,
+            locked_variant=(locked_variant if kind_is_contest == locked_kind else None),
+        )
 
 
 registry_app = typer.Typer(no_args_is_help=True)

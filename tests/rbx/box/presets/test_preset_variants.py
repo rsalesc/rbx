@@ -1431,3 +1431,152 @@ contestVariants:
 
         assert 'contest template' in _plain(capsys.readouterr().out)
         assert not dst.exists()
+
+
+_LS_PRESET = """---
+name: "ls-preset"
+uri: "test/ls-preset"
+min_version: "1.0.0"
+problem: "problem"
+contest: "contest"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+    description: "Interactive"
+  - id: gone
+    path: "problem-gone"
+    description: "Vanished"
+contestVariants:
+  - id: div1
+    path: "contest-div1"
+    description: "Division 1"
+"""
+
+
+def _package_for_ls(tmp_path: pathlib.Path, lock: Optional[str]) -> pathlib.Path:
+    """A problem package with an installed preset that declares variants of
+    both kinds -- one of them pointing at a directory that does not exist."""
+    src = _preset_with_dirs(
+        tmp_path / 'src',
+        _LS_PRESET,
+        ['problem', 'problem-interactive', 'contest', 'contest-div1'],
+    )
+    for inner in ('problem', 'problem-interactive'):
+        (src / inner / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+    for inner in ('contest', 'contest-div1'):
+        (src / inner / 'contest.rbx.yml').write_text(_CONTEST_YML)
+
+    package_dir = tmp_path / 'package'
+    package_dir.mkdir()
+    presets.install_preset_from_dir(src, package_dir / '.local.rbx')
+    (package_dir / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+    if lock is not None:
+        (package_dir / '.preset-lock.yml').write_text(lock)
+    return package_dir
+
+
+class TestLsTemplates:
+    def _run(self, tmp_path, monkeypatch, capsys, lock: Optional[str]) -> str:
+        package_dir = _package_for_ls(tmp_path, lock)
+        monkeypatch.chdir(package_dir)
+        capsys.readouterr()
+        presets.ls()
+        return _plain(capsys.readouterr().out)
+
+    def test_lists_both_kinds_with_ids_and_descriptions(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        out = self._run(tmp_path, monkeypatch, capsys, 'name: "ls-preset"\n')
+
+        assert 'ls-preset' in out
+        assert 'Problem templates' in out
+        assert 'Contest templates' in out
+        # The canonical template shows up under the id that selects it.
+        assert 'default' in out
+        for token in (
+            'interactive',
+            'Interactive',
+            'problem-interactive',
+            'div1',
+            'Division 1',
+            'contest-div1',
+        ):
+            assert token in out, token
+
+    def test_flags_a_declared_template_whose_directory_is_missing(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        out = self._run(tmp_path, monkeypatch, capsys, 'name: "ls-preset"\n')
+
+        # It is listed at all (`ls` inspects declarations, it does not filter
+        # them), and it is called out as broken.
+        assert 'gone' in out
+        assert 'missing' in out
+
+    def test_marks_the_locked_variant(self, tmp_path, monkeypatch, capsys):
+        out = self._run(
+            tmp_path,
+            monkeypatch,
+            capsys,
+            'name: "ls-preset"\nvariant: interactive\n',
+        )
+
+        lines = [line for line in out.splitlines() if 'in use' in line]
+        assert len(lines) == 1
+        assert 'interactive' in lines[0]
+
+    def test_marks_the_canonical_template_when_locked_to_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # `variant: null` in the lock means the canonical template.
+        out = self._run(tmp_path, monkeypatch, capsys, 'name: "ls-preset"\n')
+
+        lines = [line for line in out.splitlines() if 'in use' in line]
+        assert len(lines) == 1
+        assert 'default' in lines[0]
+
+    def test_omits_a_kind_the_preset_does_not_declare(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        src = _preset_with_dirs(
+            tmp_path / 'src',
+            """---
+name: "problem-only"
+uri: "test/problem-only"
+min_version: "1.0.0"
+problem: "problem"
+""",
+            ['problem'],
+        )
+        (src / 'problem' / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+        package_dir = tmp_path / 'package'
+        package_dir.mkdir()
+        presets.install_preset_from_dir(src, package_dir / '.local.rbx')
+        (package_dir / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+
+        monkeypatch.chdir(package_dir)
+        capsys.readouterr()
+        presets.ls()
+        out = _plain(capsys.readouterr().out)
+
+        assert 'Problem templates' in out
+        assert 'Contest templates' not in out
+
+    def test_works_without_a_lock(self, tmp_path, monkeypatch, capsys):
+        out = self._run(tmp_path, monkeypatch, capsys, None)
+
+        assert 'interactive' in out
+        # Nothing is claimed to be in use when nothing recorded it.
+        assert 'in use' not in out
+
+    def test_survives_a_malformed_lock(self, tmp_path, monkeypatch, capsys):
+        out = self._run(tmp_path, monkeypatch, capsys, '{{ not yaml at all')
+
+        # The listing is still produced...
+        assert 'interactive' in out
+        assert 'div1' in out
+        # ...and the unreadable lock degrades to the canonical template, loudly.
+        assert 'Could not read' in out
+        lines = [line for line in out.splitlines() if 'in use' in line]
+        assert len(lines) == 1
+        assert 'default' in lines[0]
