@@ -215,8 +215,9 @@ class FailedSolutionIssue(issue_stack.Issue):
 
 
 def is_fast(solution: Solution) -> bool:
-    # If solution has TLE tag, it is considered slow.
-    return not solution.outcome.is_slow()
+    # A solution expected to be slow anywhere -- for the whole testset or for a
+    # single group -- is not a fast solution.
+    return not any(outcome.is_slow() for outcome in solution.all_expected_outcomes())
 
 
 def get_matching_solutions(
@@ -1293,6 +1294,18 @@ def get_solution_score_markup(
     return f'[{style}][{res}][/{style}]'
 
 
+def _on_groups_markup(names: List[str]) -> str:
+    """Markup fragment attributing a warning to the groups it came from.
+
+    Empty when no group is involved, so a pooled-only report keeps its original
+    wording.
+    """
+    if not names:
+        return ''
+    groups = ', '.join(utils.escape_markup(name) for name in names)
+    return f' on [item]{groups}[/item]'
+
+
 class SolutionOutcomeStatus(Enum):
     OK = 'OK'
     UNEXPECTED_SCORE = 'UNEXPECTED_SCORE'
@@ -1305,7 +1318,43 @@ class SolutionOutcomeStatus(Enum):
         return self == SolutionOutcomeStatus.OK
 
 
+class GroupOutcomeReport(BaseModel):
+    """How one testcase group fared against its own expected outcome."""
+
+    expectedOutcome: ExpectedOutcome
+    gotVerdicts: Set[Outcome]
+    status: SolutionOutcomeStatus
+    runUnderDoubleTl: bool
+    doubleTlVerdicts: Set[Outcome]
+
+
+def _failed_group_names(per_group: Dict[str, GroupOutcomeReport]) -> List[str]:
+    """The groups that did not meet their own expectation, in ``per_group`` order.
+
+    Shared by ``SolutionOutcomeReport.failedGroups`` and the aggregate status,
+    which must never disagree about what failed.
+    """
+    return [name for name, report in per_group.items() if not report.status.ok()]
+
+
 class SolutionOutcomeReport(BaseModel):
+    """The result of checking one solution's evaluations against its expectations.
+
+    A solution declares its expectations in two layers, and both must hold:
+
+    - ``Solution.outcome`` is checked against every evaluation *pooled* together,
+      over the whole testset. Its result is ``pooledStatus``, and the values it
+      was computed from are the unprefixed ``expectedOutcome``/``gotVerdicts``:
+      they are the pooled layer's, since that layer is the only one every
+      solution has and the only one that predates per-group expectations.
+    - ``Solution.outcomePerGroup`` is checked against each group's evaluations
+      alone. Those results live in ``perGroup``, one record per group.
+
+    ``status`` is the aggregate: OK only when the pooled layer passed and no
+    group failed (and, under POINTS scoring, it becomes UNEXPECTED_SCORE when
+    the score is out of the expected range, which takes precedence).
+    """
+
     solution: Solution
     limits: Limits
     evals: List[Evaluation]
@@ -1313,6 +1362,12 @@ class SolutionOutcomeReport(BaseModel):
     message: Optional[Tuple[GenerationTestcaseEntry, str]]
     expectedOutcome: ExpectedOutcome
     gotVerdicts: Set[Outcome]
+    # Status of the pooled ``outcome`` layer on its own.
+    pooledStatus: SolutionOutcomeStatus
+    # Only groups that carry an expectation AND were evaluated appear here. The
+    # order is the order their first evaluation arrived in, which today is
+    # testset order because both come from ``skeleton.entries``.
+    perGroup: Dict[str, GroupOutcomeReport] = {}
     expectedScore: Optional[Tuple[int, int]]
     gotScore: int
     gotScorePerGroup: Dict[str, int]
@@ -1323,11 +1378,30 @@ class SolutionOutcomeReport(BaseModel):
     verification: VerificationLevel
     scoring: ScoreType
 
+    @property
+    def failedGroups(self) -> List[str]:
+        return _failed_group_names(self.perGroup)
+
+    def _group_failure_lines(self) -> List[str]:
+        lines = []
+        for name, group in self.perGroup.items():
+            if group.status.ok():
+                continue
+            got = ' '.join(sorted(v.name for v in group.gotVerdicts))
+            line = (
+                f'[item]{utils.escape_markup(name)}[/item]: '
+                f'expected {group.expectedOutcome}'
+            )
+            if got:
+                line += f', got: {got}'
+            lines.append(line)
+        return lines
+
     def get_verdict_markup(self, incomplete: bool = False, subset: bool = False) -> str:
         success_str = '[success]OK[/success] '
         if subset:
             success_str = ''
-        if not self.status:
+        if not self.status.ok():
             success_str = '[ierror]FAILED[/ierror] '
         if incomplete:
             success_str = '[iwarning]INCOMPLETE[/iwarning] '
@@ -1345,22 +1419,57 @@ class SolutionOutcomeReport(BaseModel):
             else:
                 verdict_str = f'Got {get_solution_score_markup(self.gotScore, self.maxScore, pts=True)}'
 
-        if self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS:
+        # Only speak for the pooled layer when the pooled layer is what failed;
+        # otherwise "Expected: X" would accuse an expectation that was met.
+        if (
+            self.status == SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+            and not self.pooledStatus.ok()
+        ):
             if self.expectedOutcome != ExpectedOutcome.ANY:
                 verdict_str = f'Expected: {self.expectedOutcome}'
                 if gotVerdicts:
                     verdict_str += f', got: {got_verdict_names}'
             elif gotVerdicts:
                 verdict_str = f'Got: {got_verdict_names}'
-        return f'{success_str}{verdict_str}'
+
+        group_lines = [] if incomplete else self._group_failure_lines()
+        if not verdict_str and group_lines:
+            # Fold the first group into the FAILED line instead of leaving it bare.
+            verdict_str = group_lines.pop(0)
+        res = f'{success_str}{verdict_str}'
+        if group_lines:
+            # Say FAILED once: the remaining groups line up under the first one
+            # instead of repeating the prefix on every row.
+            indent = ' ' * _length_markup(success_str)
+            for line in group_lines:
+                res += f'\n{indent}{line}'
+        return res
 
     def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
         res = self.get_verdict_markup(subset=subset)
         if self.runUnderDoubleTl:
+            # Both aggregate fields are unions over the pooled layer and every
+            # group, so each half of the sentence names its own groups: a single
+            # group either passed *within* 2x TL or had other soft-TLE verdicts,
+            # never both, and they need not be the same group.
+            passed_where = _on_groups_markup(
+                [
+                    name
+                    for name, group in self.perGroup.items()
+                    if group.runUnderDoubleTl
+                ]
+            )
+            failed_where = _on_groups_markup(
+                [
+                    name
+                    for name, group in self.perGroup.items()
+                    if group.doubleTlVerdicts
+                ]
+            )
             if self.doubleTlVerdicts:
-                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item].'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{passed_where}, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item]{failed_where}.'
             else:
-                res += '\n[warning]WARNING[/warning] The solution still passed in double TL.'
+                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{passed_where}.'
         if self.sanitizerWarnings:
             res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
         return res
@@ -1514,6 +1623,15 @@ def _get_verdict_report(
 def _get_evals_per_group(
     evals: List[Evaluation], skeleton: SolutionReportSkeleton
 ) -> Dict[str, List[Evaluation]]:
+    """Bucket evaluations by the group of the entry at the same position.
+
+    Assumes ``evals`` is a prefix of ``skeleton.entries`` with no gaps -- true for
+    every caller today, since the reporters append in entry order and a partial
+    run is always a prefix. A gap would silently shift every later verdict into
+    the wrong group, and per-group verdicts now drive expectations, not just
+    cosmetics: a caller that can skip an entry must pass the entry alongside its
+    evaluation instead of relying on position.
+    """
     res = {}
     for eval, entry in zip(evals, skeleton.entries):
         if entry.group_entry.group not in res:
@@ -1548,7 +1666,17 @@ def get_solution_outcome_report(
     evals: List[Evaluation],
     verification: VerificationLevel = VerificationLevel.NONE,
     subset: bool = False,
+    report_issues: bool = True,
 ) -> SolutionOutcomeReport:
+    """Check one solution's evaluations against its declared expectations.
+
+    Pass ``report_issues=False`` when the report is a *partial* one, computed
+    mid-run over the evaluations collected so far purely to render something. The
+    timing heuristic reads "too fast / too slow" off the evals it is given, and a
+    group that has run clean while the slow one has not started yet looks too
+    fast in isolation -- so a partial report must not push issues that the final
+    report would not.
+    """
     # Even if the scoring is points, we use binary scoring for subsets/interactive tests.
     scoring = package.get_scoring() if not subset else ScoreType.BINARY
     expected_score = (
@@ -1558,7 +1686,11 @@ def get_solution_outcome_report(
     verdict_report = _get_verdict_report(
         skeleton, evals, solution, solution.outcome, subset, verification
     )
-    has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict()
+    pooled_status = (
+        SolutionOutcomeStatus.OK
+        if verdict_report.ok
+        else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
+    )
     message: Optional[Tuple[GenerationTestcaseEntry, str]] = None
     for eval, entry in zip(evals, skeleton.entries):
         if eval.result.outcome in [
@@ -1568,30 +1700,84 @@ def get_solution_outcome_report(
             message = (entry, eval.result.message)
             break
 
+    evals_per_group = _get_evals_per_group(evals, skeleton)
+
+    # Only groups that are part of the testset carry expectations. This is the
+    # same set `Package.check_outcome_per_group_names` accepts as explicit keys,
+    # so `'*'` expands over exactly those groups and no others -- in particular
+    # not over the synthetic `interactive` group of `rbx irun`, whose skeleton
+    # declares no groups at all.
+    declared_groups = {group.name for group in skeleton.groups}
+
+    # Per-group expectation layer, for groups that both carry an expectation and
+    # have at least one evaluation. The empty-evals guard only keeps a group that
+    # has not started from failing the "at least one bad verdict must exist"
+    # rule; a partially evaluated group IS checked, so per-group status is only
+    # meaningful once the group is complete and should be rendered at group end.
+    per_group_expectation_reports: Dict[str, VerdictReport] = {
+        name: _get_verdict_report(
+            skeleton, group_evals, solution, expected, subset, verification
+        )
+        for name, group_evals in evals_per_group.items()
+        if group_evals
+        and name in declared_groups
+        and (expected := solution.expected_outcome_for_group(name)) is not None
+    }
+    per_group = {
+        name: GroupOutcomeReport(
+            expectedOutcome=report.expected_outcome,
+            gotVerdicts=report.got_verdicts,
+            status=SolutionOutcomeStatus.OK
+            if report.ok
+            else SolutionOutcomeStatus.UNEXPECTED_VERDICTS,
+            runUnderDoubleTl=report.run_under_double_tl,
+            doubleTlVerdicts=report.double_tl_verdicts,
+        )
+        for name, report in per_group_expectation_reports.items()
+    }
+    failed_groups = _failed_group_names(per_group)
+
+    has_unmatched_slow_verdict = verdict_report.has_unmatched_slow_verdict() or any(
+        report.has_unmatched_slow_verdict()
+        for report in per_group_expectation_reports.values()
+    )
     status = (
         SolutionOutcomeStatus.OK
-        if verdict_report.ok
+        if pooled_status.ok() and not failed_groups
         else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     )
+
+    run_under_double_tl = verdict_report.run_under_double_tl or any(
+        report.run_under_double_tl for report in per_group_expectation_reports.values()
+    )
+    double_tl_verdicts = set(verdict_report.double_tl_verdicts)
+    for report in per_group_expectation_reports.values():
+        double_tl_verdicts |= report.double_tl_verdicts
 
     max_score = 0
     got_score = 0
     got_score_per_group = {}
     if scoring == ScoreType.POINTS:
-        evals_per_group = _get_evals_per_group(evals, skeleton)
-        verdict_report_per_group = {}
-        # TODO: add outcome per group
+        # ``passed()`` only inspects bad verdicts, never the expectation, so a
+        # report computed for the per-group layer is reusable here as-is.
+        verdict_report_per_group: Dict[str, VerdictReport] = {}
         for group in skeleton.groups:
             max_score += group.score
-            evals = evals_per_group.get(group.name, [])
-
-            verdict_report_per_group[group.name] = _get_verdict_report(
-                skeleton, evals, solution, solution.outcome, subset, verification
-            )
-            has_unmatched_slow_verdict = (
-                has_unmatched_slow_verdict
-                or verdict_report_per_group[group.name].has_unmatched_slow_verdict()
-            )
+            group_report = per_group_expectation_reports.get(group.name)
+            if group_report is None:
+                group_report = _get_verdict_report(
+                    skeleton,
+                    evals_per_group.get(group.name, []),
+                    solution,
+                    solution.outcome,
+                    subset,
+                    verification,
+                )
+                has_unmatched_slow_verdict = (
+                    has_unmatched_slow_verdict
+                    or group_report.has_unmatched_slow_verdict()
+                )
+            verdict_report_per_group[group.name] = group_report
 
         def _check_deps(group: GroupSkeleton):
             for dep in group.deps:
@@ -1613,7 +1799,7 @@ def get_solution_outcome_report(
             status = SolutionOutcomeStatus.UNEXPECTED_SCORE
 
     limits = skeleton.get_solution_limits(solution)
-    if limits.profile is None and has_unmatched_slow_verdict:
+    if report_issues and limits.profile is None and has_unmatched_slow_verdict:
         issue_stack.add_issue(TimingIssue())
 
     return SolutionOutcomeReport(
@@ -1621,15 +1807,17 @@ def get_solution_outcome_report(
         limits=limits,
         evals=evals,
         status=status,
+        pooledStatus=pooled_status,
         message=message,
         expectedOutcome=verdict_report.expected_outcome,
         gotVerdicts=verdict_report.got_verdicts,
+        perGroup=per_group,
         expectedScore=expected_score,
         gotScore=got_score,
         gotScorePerGroup=got_score_per_group,
         maxScore=max_score,
-        runUnderDoubleTl=verdict_report.run_under_double_tl,
-        doubleTlVerdicts=verdict_report.double_tl_verdicts,
+        runUnderDoubleTl=run_under_double_tl,
+        doubleTlVerdicts=double_tl_verdicts,
         sanitizerWarnings=verdict_report.has_sanitizer_warnings,
         verification=verification,
         scoring=scoring,
@@ -1813,17 +2001,25 @@ async def _print_timing(
                 expanded_tls_per_language[eval_language] = expanded_tl
 
         language = find_language_name(solution)
+        # Consider every expectation the solution declares, pooled and per-group.
+        # Without `outcomePerGroup` this is exactly the previous behavior, since
+        # the set is then just `{solution.outcome}`.
+        expectations = solution.all_expected_outcomes()
         # Get solution timings.
-        if solution.outcome == ExpectedOutcome.ACCEPTED:
+        if all(outcome == ExpectedOutcome.ACCEPTED for outcome in expectations):
             summary.add_good(solution_time, solution)
             summary_per_language[language].add_good(solution_time, solution)
-        if solution.outcome in [
-            ExpectedOutcome.ACCEPTED,
-            ExpectedOutcome.ACCEPTED_OR_TLE,
-        ]:
+        if all(
+            outcome
+            in [
+                ExpectedOutcome.ACCEPTED,
+                ExpectedOutcome.ACCEPTED_OR_TLE,
+            ]
+            for outcome in expectations
+        ):
             summary.add_pass(solution_time, solution)
             summary_per_language[language].add_pass(solution_time, solution)
-        if solution.outcome.is_slow():
+        if any(outcome.is_slow() for outcome in expectations):
             summary.add_slow(solution_time, solution)
             summary_per_language[language].add_slow(solution_time, solution)
 
@@ -2139,6 +2335,31 @@ class TraditionalRunReporter:
             raise ValueError('No current solution')
         return self.get_limits(self.current_solution)
 
+    def get_partial_report(
+        self, group: GroupSkeleton
+    ) -> Optional[SolutionOutcomeReport]:
+        """The solution's report so far, or None when no renderer needs it.
+
+        Computed only when something will actually be displayed from it, which is
+        the group's score under POINTS scoring. Per-group expectations are not
+        rendered on the group line -- the solution's verdict names the groups
+        that missed theirs.
+
+        Rendering-only, hence ``report_issues=False``: the final report at
+        solution end is the one that gets to speak about the run.
+        """
+        if self.current_solution is None:
+            return None
+        if group.score <= 0:
+            return None
+        return get_solution_outcome_report(
+            self.current_solution,
+            self.result.skeleton,
+            self.current_solution_evals,
+            verification=self.verification,
+            report_issues=False,
+        )
+
     def get_evaluation(
         self, solution: Solution, entry: GenerationTestcaseEntry
     ) -> Optional[Deferred[Evaluation]]:
@@ -2242,14 +2463,8 @@ class FullRunReporter(TraditionalRunReporter):
             f'[info]({bracketed})[/info]',
             end='',
         )
-        if group.score > 0:
-            assert self.current_solution is not None
-            partial_report = get_solution_outcome_report(
-                self.current_solution,
-                self.result.skeleton,
-                self.current_solution_evals,
-                verification=self.verification,
-            )
+        partial_report = self.get_partial_report(group)
+        if partial_report is not None:
             got_score = partial_report.gotScorePerGroup.get(group.name, 0)
             self.console.print(
                 f' {get_solution_score_markup(got_score, group.score, pts=True)}',
@@ -2320,14 +2535,11 @@ class LiveRunReporter(FullRunReporter):
                 end='',
             )
         )
-        if finished and self.current_group.score > 0:
-            assert self.current_solution is not None
-            partial_report = get_solution_outcome_report(
-                self.current_solution,
-                self.result.skeleton,
-                self.current_solution_evals,
-                verification=self.verification,
-            )
+        # Only at group end: mid-run, the group's score is not settled yet.
+        partial_report = (
+            self.get_partial_report(self.current_group) if finished else None
+        )
+        if partial_report is not None:
             got_score = partial_report.gotScorePerGroup.get(self.current_group.name, 0)
             renderable.append(
                 rich.text.Text.from_markup(
@@ -2391,14 +2603,8 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')
         bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
         self.console.print(f'({bracketed})', end='')
-        if group.score > 0:
-            assert self.current_solution is not None
-            partial_report = get_solution_outcome_report(
-                self.current_solution,
-                self.result.skeleton,
-                self.current_solution_evals,
-                verification=self.verification,
-            )
+        partial_report = self.get_partial_report(group)
+        if partial_report is not None:
             got_score = partial_report.gotScorePerGroup.get(group.name, 0)
             self.console.print(
                 f' {get_solution_score_markup(got_score, group.score, pts=True)}',

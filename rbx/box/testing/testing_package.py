@@ -148,9 +148,21 @@ class TestingPackage(TestingShared):
         path: PathOrStr,
         outcome: ExpectedOutcome,
         language: Optional[str] = None,
+        outcome_per_group: Optional[Dict[str, ExpectedOutcome]] = None,
     ):
+        # Only set `outcomePerGroup` when asked to: the yml is dumped with
+        # `exclude_unset`, so passing an empty dict would write a pointless
+        # `outcomePerGroup: {}` line into every built package.
+        per_group: Dict[str, Any] = {}
+        if outcome_per_group is not None:
+            per_group['outcomePerGroup'] = outcome_per_group
         self.yml.solutions = self.yml.solutions + [
-            Solution(path=pathlib.Path(path), language=language, outcome=outcome)
+            Solution(
+                path=pathlib.Path(path),
+                language=language,
+                outcome=outcome,
+                **per_group,
+            )
         ]
         self.save()
         return self.add_file(path)
