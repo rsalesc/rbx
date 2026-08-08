@@ -52,6 +52,7 @@ nav:
           - "setters/presets/index.md"
   - "Reference":
       - "CLI": "setters/reference/cli.md"
+      - "JSON schemas": "setters/reference/schemas.md"
       - "Package":
           - "setters/reference/package/index.md"
           - "Schema": "setters/reference/package/schema.md"

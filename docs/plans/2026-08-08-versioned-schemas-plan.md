@@ -826,6 +826,7 @@ git commit -m "feat(schemas): build versioned schema site tree"
 
 **Step 1: Add the job**
 
+{% raw %}
 ```yaml
   publish-schemas:
     name: Publish versioned JSON schemas
@@ -858,6 +859,7 @@ git commit -m "feat(schemas): build versioned schema site tree"
           git commit -m "chore: publish schemas for ${{ github.ref_name }}"
           git push
 ```
+{% endraw %}
 
 `needs: pypi-publish` keeps schemas from appearing for a version that failed to publish. The `rc` guard prevents `1.5.0rc1` from exposing a `1.5` schema before `1.5.0` is installable.
 
