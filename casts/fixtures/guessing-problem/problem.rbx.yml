@@ -1,0 +1,25 @@
+name: guessing-problem
+type: COMMUNICATION
+timeLimit: 1000
+memoryLimit: 256
+
+interactor:
+  path: 'interactor.cpp'
+
+solutions:
+  - path: 'sols/main.cpp'
+    outcome: ACCEPTED
+  - path: 'sols/wa-*.*'
+    outcome: WRONG_ANSWER
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+
+vars:
+  N:
+    min: 2
+    max: 1000
+  # The guess budget, read by the interactor via `getVar<int>("Q.max")`.
+  Q:
+    max: 10

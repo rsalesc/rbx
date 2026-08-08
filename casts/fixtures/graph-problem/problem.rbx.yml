@@ -1,0 +1,41 @@
+name: graph-problem
+timeLimit: 1000
+memoryLimit: 256
+
+vars:
+  N:
+    min: 2
+    max: 1000
+
+validator:
+  path: 'validator.cpp'
+
+checker:
+  path: 'checker.cpp'
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: main
+    generatorScript:
+      path: tests/main.txt
+
+unitTests:
+  validator:
+    - glob: unit/validator/valid_*.in
+      outcome: VALID
+    - glob: unit/validator/invalid_*.in
+      outcome: INVALID
+  checker:
+    - glob: unit/checker/ac*
+      outcome: ACCEPTED
+    - glob: unit/checker/wa*
+      outcome: WRONG_ANSWER
