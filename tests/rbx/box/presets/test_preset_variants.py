@@ -1,4 +1,5 @@
 import pathlib
+import re
 from typing import Any
 
 import pytest
@@ -329,6 +330,15 @@ problemVariants:
 """
 
 
+_ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _plain(captured: str) -> str:
+    """Console output without rich's styling, so assertions can match spans of
+    text that the highlighter breaks up with escape codes."""
+    return _ANSI.sub('', captured)
+
+
 def _write_preset(root: pathlib.Path, body: str) -> pathlib.Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / 'preset.rbx.yml').write_text(body)
@@ -370,7 +380,7 @@ class TestResolveTemplate:
         preset = presets.get_preset_yaml(root)
         with pytest.raises(typer.Exit):
             presets.resolve_template(preset, root, is_contest=False, variant='nope')
-        out = capsys.readouterr().out
+        out = _plain(capsys.readouterr().out)
         assert 'nope' in out
         assert 'interactive' in out
         assert 'default' in out
@@ -390,7 +400,7 @@ problemVariants:
         preset = presets.get_preset_yaml(root)
         with pytest.raises(typer.Exit):
             presets.resolve_template(preset, root, is_contest=False, variant=None)
-        out = capsys.readouterr().out
+        out = _plain(capsys.readouterr().out)
         assert 'interactive' in out
 
     def test_declared_but_missing_directory_exits(self, tmp_path, capsys):
@@ -411,7 +421,11 @@ problemVariants:
             presets.resolve_template(
                 preset, root, is_contest=False, variant='interactive'
             )
-        assert 'problem-gone' in capsys.readouterr().out
+        out = _plain(capsys.readouterr().out)
+        assert 'problem-gone' in out
+        # The resolved location is shown too, so the user can tell which copy of
+        # the preset is stale.
+        assert str(root / 'problem-gone') in out
 
     def test_carries_merged_config(self, tmp_path):
         root = _write_preset(
@@ -428,6 +442,11 @@ expansion:
   problem:
     - needle: "AUTHOR"
       prompt: "Author?"
+libraries:
+  problem:
+    - name: "testlib"
+      source: "owner/testlib"
+      dest: "testlib.h"
 problemVariants:
   - id: interactive
     path: "problem-interactive"
@@ -436,6 +455,10 @@ problemVariants:
     expansion:
       - needle: "JUDGE"
         prompt: "Judge?"
+    libraries:
+      - name: "jngen"
+        source: "owner/jngen"
+        dest: "jngen.h"
 """,
         )
         preset = presets.get_preset_yaml(root)
@@ -447,7 +470,7 @@ problemVariants:
             'interactor.cpp',
         ]
         assert [e.needle for e in resolved.expansion] == ['AUTHOR', 'JUDGE']
-        assert resolved.libraries == []
+        assert [lib.name for lib in resolved.libraries] == ['testlib', 'jngen']
 
     def test_canonical_carries_shared_config_only(self, tmp_path):
         root = _write_preset(
@@ -493,14 +516,57 @@ problemVariants:
             presets.resolve_template(
                 preset, root, is_contest=True, variant='interactive'
             )
+        out = _plain(capsys.readouterr().out)
+        assert 'no contest variant' in out
+        # Only the canonical contest template is offered; the problem variant is
+        # not a valid choice here.
+        assert 'interactive' not in out.split('Available contest templates')[1]
+
+    def test_carries_preset_root_and_declared_inner_path(self, tmp_path):
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        preset = presets.get_preset_yaml(root)
+        resolved = presets.resolve_template(
+            preset, root, is_contest=False, variant='interactive'
+        )
+        assert resolved.preset is preset
+        assert resolved.preset_path == root
+        assert resolved.inner == pathlib.Path('problem-interactive')
+        assert resolved.path == resolved.preset_path / resolved.inner
+
+    def test_lists_the_flag_to_use(self, tmp_path, capsys):
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        preset = presets.get_preset_yaml(root)
+        with pytest.raises(typer.Exit):
+            presets.resolve_template(preset, root, is_contest=False, variant='nope')
+        assert 'select with -v <id>' in _plain(capsys.readouterr().out)
+
+    def test_no_templates_at_all_reports_only_that(self, tmp_path, capsys):
+        root = _write_preset(
+            tmp_path / 'preset',
+            """---
+name: "no-templates"
+uri: "test/no-templates"
+min_version: "1.0.0"
+problem: "problem"
+""",
+        )
+        preset = presets.get_preset_yaml(root)
+        with pytest.raises(typer.Exit):
+            presets.resolve_template(preset, root, is_contest=True, variant=None)
+        out = _plain(capsys.readouterr().out)
+        assert 'declares no contest templates at all' in out
+        # No contradictory second message, and no empty list of alternatives.
+        assert 'canonical' not in out
+        assert 'Available' not in out
 
 
 class TestVariantForPath:
     def test_maps_nested_cwd(self, tmp_path):
         root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        preset = presets.get_preset_yaml(root)
         assert (
             presets.variant_for_path(
-                preset := presets.get_preset_yaml(root),
+                preset,
                 root,
                 root / 'problem-interactive' / 'sols',
                 is_contest=False,
@@ -509,7 +575,7 @@ class TestVariantForPath:
         )
         assert (
             presets.variant_for_path(preset, root, root / 'problem', is_contest=False)
-            is None
+            == 'default'
         )
 
     def test_maps_the_variant_root_itself(self, tmp_path):
@@ -521,6 +587,34 @@ class TestVariantForPath:
             )
             == 'interactive'
         )
+
+    def test_preset_root_is_inside_no_template(self, tmp_path):
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        preset = presets.get_preset_yaml(root)
+        assert presets.variant_for_path(preset, root, root, is_contest=False) is None
+
+    def test_path_outside_the_preset_is_inside_no_template(self, tmp_path):
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        preset = presets.get_preset_yaml(root)
+        assert (
+            presets.variant_for_path(
+                preset, root, tmp_path / 'elsewhere', is_contest=False
+            )
+            is None
+        )
+
+    def test_result_feeds_back_into_resolve_template(self, tmp_path):
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        preset = presets.get_preset_yaml(root)
+        for target, expected in (
+            (root / 'problem', root / 'problem'),
+            (root / 'problem-interactive', root / 'problem-interactive'),
+        ):
+            variant = presets.variant_for_path(preset, root, target, is_contest=False)
+            resolved = presets.resolve_template(
+                preset, root, is_contest=False, variant=variant
+            )
+            assert resolved.path == expected
 
     def test_prefers_the_deepest_matching_variant(self, tmp_path):
         root = tmp_path / 'preset'
@@ -556,12 +650,17 @@ problemVariants:
             == 'outer'
         )
 
-    def test_contest_variants_are_separate(self, tmp_path):
+    def test_contest_templates_are_separate(self, tmp_path):
         root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
         preset = presets.get_preset_yaml(root)
+        # The preset declares no contest templates at all, so nothing matches.
         assert (
             presets.variant_for_path(
                 preset, root, root / 'problem-interactive', is_contest=True
             )
+            is None
+        )
+        assert (
+            presets.variant_for_path(preset, root, root / 'problem', is_contest=True)
             is None
         )

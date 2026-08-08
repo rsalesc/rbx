@@ -10,6 +10,7 @@ from typing import (
     Annotated,
     Iterable,
     List,
+    NoReturn,
     Optional,
     Sequence,
     Set,
@@ -623,31 +624,58 @@ def _get_active_preset_package_path(
 class ResolvedTemplate:
     """A preset template directory plus the config that applies to it.
 
-    `variant_id` is None for the preset's canonical template.
+    `variant_id` is None for the preset's canonical template, and the variant's
+    id otherwise. `inner` is the template path as declared in `preset.rbx.yml`
+    (relative to the preset root); `path` is where it actually lives on disk.
     """
 
+    preset: Preset
+    preset_path: pathlib.Path
+    inner: pathlib.Path
     variant_id: Optional[str]
-    path: pathlib.Path
     tracking: List[TrackedAsset]
     libraries: List[Library]
     expansion: List[VariableExpansion]
 
+    @property
+    def path(self) -> pathlib.Path:
+        return self.preset_path / self.inner
 
-def _print_available_variants(preset: Preset, is_contest: bool) -> None:
+
+def _canonical_template(preset: Preset, is_contest: bool) -> Optional[pathlib.Path]:
+    return preset.contest if is_contest else preset.problem
+
+
+def _print_available_templates(preset: Preset, *, is_contest: bool) -> None:
     kind = 'contest' if is_contest else 'problem'
-    canonical = preset.contest if is_contest else preset.problem
-    variants = preset.variants(is_contest)
-    if canonical is None and not variants:
+    console.console.print(
+        f'Available {kind} templates (select with [item]-v <id>[/item]):'
+    )
+    if _canonical_template(preset, is_contest) is not None:
+        console.console.print("  [item]default[/item] — the preset's main template")
+    for variant in preset.variants(is_contest):
+        suffix = f' — {variant.description}' if variant.description else ''
+        console.console.print(f'  [item]{variant.id}[/item]{suffix}')
+
+
+def _fail_no_template(preset: Preset, *, is_contest: bool, message: str) -> NoReturn:
+    """Report that a requested template could not be resolved, and exit.
+
+    When the preset declares no templates of this kind at all, `message` is
+    dropped in favor of saying just that -- listing an empty set of alternatives
+    would only muddy the error.
+    """
+    kind = 'contest' if is_contest else 'problem'
+    if _canonical_template(preset, is_contest) is None and not preset.variants(
+        is_contest
+    ):
         console.console.print(
             f'[error]Preset [item]{preset.name}[/item] declares no {kind} templates at all.[/error]'
         )
-        return
-    console.console.print(f'Available {kind} templates:')
-    if canonical is not None:
-        console.console.print("  [item]default[/item] — the preset's main template")
-    for variant in variants:
-        suffix = f' — {variant.description}' if variant.description else ''
-        console.console.print(f'  [item]{variant.id}[/item]{suffix}')
+    else:
+        console.console.print(message)
+        _print_available_templates(preset, is_contest=is_contest)
+    raise typer.Exit(1)
 
 
 def resolve_template(
@@ -669,37 +697,44 @@ def resolve_template(
 
     found: Optional[PackageVariant] = None
     if variant is None:
-        canonical = preset.contest if is_contest else preset.problem
+        canonical = _canonical_template(preset, is_contest)
         if canonical is None:
-            console.console.print(
-                f'[error]Preset [item]{preset.name}[/item] does not have a canonical '
-                f'{kind} template.[/error]'
+            _fail_no_template(
+                preset,
+                is_contest=is_contest,
+                message=(
+                    f'[error]Preset [item]{preset.name}[/item] does not have a '
+                    f'canonical {kind} template.[/error]'
+                ),
             )
-            _print_available_variants(preset, is_contest)
-            raise typer.Exit(1)
         inner = canonical
     else:
         found = preset.find_variant(variant, is_contest)
         if found is None:
-            console.console.print(
-                f'[error]Preset [item]{preset.name}[/item] has no {kind} variant '
-                f'[item]{variant}[/item].[/error]'
+            _fail_no_template(
+                preset,
+                is_contest=is_contest,
+                message=(
+                    f'[error]Preset [item]{preset.name}[/item] has no {kind} variant '
+                    f'[item]{variant}[/item].[/error]'
+                ),
             )
-            _print_available_variants(preset, is_contest)
-            raise typer.Exit(1)
         inner = found.path
 
     path = preset_path / inner
     if not path.is_dir():
         console.console.print(
             f'[error]Preset [item]{preset.name}[/item] declares a {kind} template at '
-            f'[item]{inner}[/item], but that directory does not exist.[/error]'
+            f'[item]{inner}[/item], but that directory does not exist '
+            f'([item]{path}[/item]).[/error]'
         )
         raise typer.Exit(1)
 
     return ResolvedTemplate(
+        preset=preset,
+        preset_path=preset_path,
+        inner=inner,
         variant_id=variant,
-        path=path,
         tracking=preset.merged_tracking(found, is_contest),
         libraries=preset.merged_libraries(found, is_contest),
         expansion=preset.merged_expansion(found, is_contest),
@@ -713,15 +748,30 @@ def variant_for_path(
     *,
     is_contest: bool,
 ) -> Optional[str]:
-    """Which variant's template directory contains `target`? None == canonical."""
+    """Which template directory contains `target`?
+
+    Returns the owning variant's id, the string 'default' when `target` lives in
+    the preset's canonical template, or None when it is inside no template at
+    all. The result is directly usable as `resolve_template`'s `variant`. When
+    templates nest, the deepest declared one wins.
+    """
+    # Lexical, like `find_local_preset`: a template dir reached through a
+    # symlink will not match.
     target = utils.abspath(target)
+    candidates: List[Tuple[pathlib.Path, str]] = [
+        (variant.path, variant.id) for variant in preset.variants(is_contest)
+    ]
+    canonical = _canonical_template(preset, is_contest)
+    if canonical is not None:
+        candidates.append((canonical, 'default'))
+
     best: Optional[Tuple[int, str]] = None
-    for variant in preset.variants(is_contest):
-        candidate = utils.abspath(preset_path / variant.path)
-        if target == candidate or target.is_relative_to(candidate):
+    for inner, variant_id in candidates:
+        candidate = utils.abspath(preset_path / inner)
+        if target.is_relative_to(candidate):
             depth = len(candidate.parts)
             if best is None or depth > best[0]:
-                best = (depth, variant.id)
+                best = (depth, variant_id)
     return best[1] if best is not None else None
 
 
