@@ -1,7 +1,8 @@
 # Systematic asciinema recordings for the docs
 
 **Date:** 2026-08-08
-**Status:** Design approved, pending implementation plan
+**Status:** Implemented, with one decision reversed — see
+[Outcome](#outcome-engine-decision-reversed).
 
 ## Problem
 
@@ -161,3 +162,41 @@ Both are validated in migration step 2 rather than designed around:
 
 If either fails, that is the trigger to fall back to owning the recorder. The spec files
 survive unchanged.
+
+## Outcome: engine decision reversed
+
+The escape hatch was needed. autocast v0.1.0 (its only release; last commit May
+2024) **hangs on macOS 14 / arm64** — with its bash shell and its python shell,
+with and without a controlling tty, on its own bundled example. No output, no
+CPU. It never got as far as the prompt-detection risk above.
+
+So the documented fallback was taken: the recorder is now in-repo at
+`scripts/casts/engine.py`, using only the standard library (no `pexpect`
+dependency). As promised, **the spec files did not change** — the autocast
+instruction grammar (`!Command`, `!Interactive`, `!Wait`, `!Marker`, `!Clear`)
+is now interpreted locally.
+
+Owning it turned out better on the merits, not merely as a consolation. Each
+instruction runs as its own process on its own pty, so EOF is the completion
+signal: there is no shell prompt to match, which **eliminates the first open
+risk entirely** rather than mitigating it. The prompt and typing animation are
+synthesized into the cast timeline, so recorded output contains only the
+command's own output — no sentinel prompt to strip afterwards.
+
+Two further corrections came out of recording for real:
+
+- **`HOME` is the real one, not a synthetic tmpdir.** `rbx` keeps its compiler
+  configuration under `HOME`, so a pristine `HOME` makes every compile fail and
+  the cast showed nothing but errors. `scrub_cast` rewrites the path to `~`.
+- **Rich's OSC-8 hyperlinks carry a random id** that changes every run. Left
+  alone, an otherwise identical re-recording would diff on every clickable
+  path, so scrubbing strips it.
+
+Both open risks are now closed by real recordings: `casts/run-basic.yml`
+captures `rbx run` (verdict table, checker message, timing summary), and
+`casts/ui-navigation.yml` drives the Textual TUI through its menu into the
+run-results flow and back out, entering and leaving the alternate screen
+cleanly.
+
+Migration step 3 (the three rotting placeholders) is still outstanding; it needs
+two more fixtures rather than any further engine work.
