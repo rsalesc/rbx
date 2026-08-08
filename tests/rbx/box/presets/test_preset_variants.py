@@ -1351,3 +1351,83 @@ class TestPickVariant:
         assert presets.pick_variant(preset, is_contest=True, variant=None) == 'div1'
         assert fake.values == ['default', 'div1']
         assert 'contest template' in fake.calls[0].message
+
+
+class TestInstallEnsuresSomeTemplate:
+    """`ensure_problem`/`ensure_contest` ask whether the preset can produce a
+    package of that kind at all -- not whether it has a *canonical* template."""
+
+    VARIANTS_ONLY = """---
+name: "variants-only"
+uri: "test/variants-only"
+min_version: "1.0.0"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+"""
+
+    NO_PROBLEM = """---
+name: "contest-only"
+uri: "test/contest-only"
+min_version: "1.0.0"
+contest: "contest"
+"""
+
+    def test_variants_only_preset_installs(self, tmp_path):
+        src = _preset_with_dirs(
+            tmp_path / 'src', self.VARIANTS_ONLY, ['problem-interactive']
+        )
+        (src / 'problem-interactive' / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+        dst = tmp_path / 'installed'
+
+        presets.install_preset_from_dir(src, dst, ensure_problem=True)
+
+        assert (dst / 'preset.rbx.yml').is_file()
+        assert (dst / 'problem-interactive' / 'problem.rbx.yml').is_file()
+
+    def test_variants_only_contest_preset_installs(self, tmp_path):
+        src = _preset_with_dirs(
+            tmp_path / 'src',
+            """---
+name: "variants-only"
+uri: "test/variants-only"
+min_version: "1.0.0"
+contestVariants:
+  - id: div1
+    path: "contest-div1"
+""",
+            ['contest-div1'],
+        )
+        (src / 'contest-div1' / 'contest.rbx.yml').write_text(_CONTEST_YML)
+        dst = tmp_path / 'installed'
+
+        presets.install_preset_from_dir(src, dst, ensure_contest=True)
+
+        assert (dst / 'contest-div1' / 'contest.rbx.yml').is_file()
+
+    def test_preset_with_no_problem_template_still_fails(self, tmp_path, capsys):
+        src = _preset_with_dirs(tmp_path / 'src', self.NO_PROBLEM, ['contest'])
+        (src / 'contest' / 'contest.rbx.yml').write_text(_CONTEST_YML)
+        dst = tmp_path / 'installed'
+
+        with pytest.raises(typer.Exit) as exc_info:
+            presets.install_preset_from_dir(src, dst, ensure_problem=True)
+
+        assert exc_info.value.exit_code != 0
+        out = _plain(capsys.readouterr().out)
+        assert 'contest-only' in out
+        assert 'problem template' in out
+        # It failed early, before touching the destination.
+        assert not dst.exists()
+
+    def test_preset_with_no_contest_template_still_fails(self, tmp_path, capsys):
+        src = _preset_with_dirs(
+            tmp_path / 'src', self.VARIANTS_ONLY, ['problem-interactive']
+        )
+        dst = tmp_path / 'installed'
+
+        with pytest.raises(typer.Exit):
+            presets.install_preset_from_dir(src, dst, ensure_contest=True)
+
+        assert 'contest template' in _plain(capsys.readouterr().out)
+        assert not dst.exists()

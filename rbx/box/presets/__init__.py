@@ -1082,14 +1082,18 @@ def install_preset_from_dir(
 ):
     preset = get_preset_yaml(src)
 
-    if ensure_contest and preset.contest is None:
+    # A preset only needs *some* template of the requested kind -- a
+    # variants-only preset (no canonical `problem:`/`contest:`, only
+    # `problemVariants`/`contestVariants`) is legal, and `-v <id>` picks from it
+    # just fine. Only a preset that declares nothing at all is unusable here.
+    if ensure_contest and not declared_templates(preset, is_contest=True):
         console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a contest package definition.[/error]'
+            f'[error]Preset [item]{preset.name}[/item] does not declare any contest template.[/error]'
         )
         raise typer.Exit(1)
-    if ensure_problem and preset.problem is None:
+    if ensure_problem and not declared_templates(preset, is_contest=False):
         console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a problem package definition.[/error]'
+            f'[error]Preset [item]{preset.name}[/item] does not declare any problem template.[/error]'
         )
         raise typer.Exit(1)
 
