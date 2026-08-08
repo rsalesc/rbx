@@ -1,6 +1,7 @@
 ---
 name: "simple-preset"
 uri: "test/simple-preset"
+min_version: "1.0.0"
 problem: "problem"
 contest: "contest"
 env: "env.rbx.yml"

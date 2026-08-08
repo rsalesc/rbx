@@ -1,6 +1,7 @@
 ---
 name: "problem-only"
 uri: "test/problem-only"
+min_version: "1.0.0"
 problem: "problem"
 tracking:
   problem:

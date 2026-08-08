@@ -1,6 +1,7 @@
 ---
 name: "nested-preset"
 uri: "test/nested-preset"
+min_version: "1.0.0"
 problem: "problem"
 tracking:
   problem:
