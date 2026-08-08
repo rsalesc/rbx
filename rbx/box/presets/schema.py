@@ -112,6 +112,40 @@ class Expansion(BaseModel):
     contest: List[VariableExpansion] = []
 
 
+class PackageVariant(BaseModel):
+    # Identifier of the variant. Used in `--variant` and recorded in the
+    # package's `.preset-lock.yml`.
+    id: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_-]*$', min_length=1, max_length=32)
+
+    # Path of the variant's template directory, relative to the preset directory.
+    path: pathlib.Path
+
+    # Human-readable description, shown in the variant picker.
+    description: str = Field(default='')
+
+    # Assets tracked for this variant, merged over the shared tracking list
+    # for this package kind (variant entries win, per path).
+    tracking: List[TrackedAsset] = []
+
+    # Libraries for this variant, merged over the shared library list for this
+    # package kind (variant entries win, per library name).
+    libraries: List[Library] = []
+
+    # Variable expansions for this variant, merged over the shared expansion
+    # list for this package kind (variant entries win, per needle).
+    expansion: List[VariableExpansion] = []
+
+    @field_validator('id')
+    @classmethod
+    def validate_id_not_reserved(cls, value: str) -> str:
+        if value == 'default':
+            raise ValueError(
+                "'default' is a reserved variant id: it refers to the preset's "
+                'canonical template'
+            )
+        return value
+
+
 class Preset(BaseModel):
     # Name of the preset, or a GitHub repository containing it.
     name: str = NameField()
