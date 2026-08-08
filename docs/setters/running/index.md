@@ -110,7 +110,7 @@ By default, `rbx irun` will prompt you to type a testcase input. After you've fi
 {{rbx}} will then run the solutions on the testcase you've provided, and print the results into files. You can
 also use the `-p` flag to instruct it to print the results into the console instead.
 
-{{ asciinema("OW9JfUpTzwQlvwcXmR3xSnS3q") }}
+{{ asciinema("irun-stdin") }}
 
 When printing with `-p`, the solution's `stderr` is shown in its own colored section right after the output.
 If you'd rather see it woven into the output in true line order — handy for debugging where each log line was
@@ -139,7 +139,7 @@ and `secret/10` is the 11th testcase in the `secret` testgroup.
 rbx irun -t sample/0
 ```
 
-{{ asciinema("1QYrKEMUKGgtFLTEEtrKTFIgn") }}
+{{ asciinema("irun-testcase") }}
 
 Last but not least, you can also specify a [generator call](/setters/testset/generators/#generator-call) to be used when generating the testcase.
 
@@ -147,4 +147,4 @@ Last but not least, you can also specify a [generator call](/setters/testset/gen
 rbx irun -g "gen 100 123" -p
 ```
 
-{{ asciinema("F6BfQ4GKr9FvCTmVD8zuOKJ8r") }}
+{{ asciinema("irun-generator") }}

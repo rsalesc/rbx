@@ -49,8 +49,7 @@ thing.
 rbx stress -g "tests/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
 ```
 
-<!-- TODO(#437): record the rbx stress run (kickoff -> counterexample) and replace REPLACE_ME_CAST_ID. -->
-{{ asciinema("REPLACE_ME_CAST_ID") }}
+{{ asciinema("stress-walkthrough") }}
 
 By default the stress runs for about 10 seconds and stops as soon as it finds the first
 match. You can tune both the number of findings and the timeout with `-n` and `-t` — see

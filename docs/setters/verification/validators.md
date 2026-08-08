@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
 
     You can always manually call a validator on a custom input with `rbx validate`.
 
-    {{ asciinema("i1qR2ygzbV7rYnd03uAQ1mPzb") }}
+    {{ asciinema("validate-input") }}
 
 ## Using custom validators
 

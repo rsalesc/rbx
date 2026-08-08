@@ -107,7 +107,7 @@ You can notice it created several folders inside a `tests` directory, each of wh
 If you want, you can explore these folders manually, but {{rbx}} also provides a TUI (terminal UI) to explore the testcases.
 You can run `rbx ui` and select the first option to explore the built testcases.
 
-{{ asciinema("cqUTWgIRFA1P7VsV39uJTorKC") }}
+{{ asciinema("ui-testcases") }}
 
 ## Run
 
@@ -117,7 +117,7 @@ Now, let's execute `rbx run`. This command **builds** all testcases and **execut
 $ rbx run
 ```
 
-{{ asciinema("x8NJUtmob4uSHUUFppxUn64Kn") }}
+{{ asciinema("run-basic") }}
 
 You can see this command prints a full run report: it shows for each testcase of each testgroup whether a certain solution passed or not. There are also links for the outputs of each problem.
 
