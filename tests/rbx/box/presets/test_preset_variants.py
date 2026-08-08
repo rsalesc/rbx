@@ -1,6 +1,7 @@
 import pathlib
 import re
 import shutil
+from types import SimpleNamespace
 from typing import Any, Iterable, Optional
 
 import pytest
@@ -1166,3 +1167,187 @@ contestVariants:
         # Contest templates get their .local.rbx stripped too, variants included.
         assert not (dst / 'contest' / '.local.rbx').exists()
         assert not (dst / 'contest-div1' / '.local.rbx').exists()
+
+
+class _FakeSelect:
+    """Stands in for `questionary.select(...)`, recording how it was called."""
+
+    def __init__(self, answer: Any):
+        self.answer = answer
+        self.calls: list = []
+
+    def __call__(self, message, choices, default=None, **kwargs):
+        self.calls.append(
+            SimpleNamespace(message=message, choices=choices, default=default)
+        )
+        return SimpleNamespace(ask=lambda: self.answer)
+
+    @property
+    def titles(self) -> list:
+        assert len(self.calls) == 1
+        return [choice.title for choice in self.calls[0].choices]
+
+    @property
+    def values(self) -> list:
+        assert len(self.calls) == 1
+        return [choice.value for choice in self.calls[0].choices]
+
+
+@pytest.fixture
+def fake_tty(monkeypatch):
+    monkeypatch.setattr(presets.sys.stdin, 'isatty', lambda: True)
+
+
+@pytest.fixture
+def fake_no_tty(monkeypatch):
+    monkeypatch.setattr(presets.sys.stdin, 'isatty', lambda: False)
+
+
+def _patch_select(monkeypatch, answer: Any) -> _FakeSelect:
+    fake = _FakeSelect(answer)
+    monkeypatch.setattr(presets.questionary, 'select', fake)
+    return fake
+
+
+class TestPickVariant:
+    def test_no_variants_declared_never_prompts(self, monkeypatch, fake_tty):
+        fake = _patch_select(monkeypatch, 'anything')
+        preset = _preset(problem=pathlib.Path('problem'))
+
+        assert presets.pick_variant(preset, is_contest=False, variant=None) is None
+        assert fake.calls == []
+
+    def test_explicit_variant_is_returned_unchanged(self, monkeypatch, fake_tty):
+        fake = _patch_select(monkeypatch, 'anything')
+        preset = _preset(
+            problem=pathlib.Path('problem'),
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i'))
+            ],
+        )
+
+        assert (
+            presets.pick_variant(preset, is_contest=False, variant='interactive')
+            == 'interactive'
+        )
+        # Even an id the preset does not declare is passed through untouched --
+        # rejecting it is `resolve_template`'s job.
+        assert (
+            presets.pick_variant(preset, is_contest=False, variant='bogus') == 'bogus'
+        )
+        assert fake.calls == []
+
+    def test_non_tty_uses_canonical_without_prompting(self, monkeypatch, fake_no_tty):
+        fake = _patch_select(monkeypatch, 'interactive')
+        preset = _preset(
+            problem=pathlib.Path('problem'),
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i'))
+            ],
+        )
+
+        assert presets.pick_variant(preset, is_contest=False, variant=None) is None
+        assert fake.calls == []
+
+    def test_non_tty_without_canonical_fails(
+        self, monkeypatch, fake_no_tty, capsys: pytest.CaptureFixture[str]
+    ):
+        fake = _patch_select(monkeypatch, 'interactive')
+        preset = _preset(
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i'))
+            ],
+        )
+
+        with pytest.raises(typer.Exit):
+            presets.pick_variant(preset, is_contest=False, variant=None)
+
+        assert fake.calls == []
+        out = _plain(capsys.readouterr().out)
+        assert 'does not have a canonical problem template' in out
+        assert '-v <id>' in out
+        assert 'interactive' in out
+
+    def test_prompts_with_default_and_every_variant(self, monkeypatch, fake_tty):
+        fake = _patch_select(monkeypatch, 'default')
+        preset = _preset(
+            problem=pathlib.Path('problem'),
+            problemVariants=[
+                PackageVariant(
+                    id='interactive',
+                    path=pathlib.Path('problem-i'),
+                    description='An interactive problem.',
+                ),
+                PackageVariant(id='bare', path=pathlib.Path('problem-bare')),
+            ],
+        )
+
+        # Answering 'default' maps back to the canonical template.
+        assert presets.pick_variant(preset, is_contest=False, variant=None) is None
+
+        assert fake.values == ['default', 'interactive', 'bare']
+        assert fake.titles == [
+            "default — the preset's main template",
+            'interactive — An interactive problem.',
+            'bare',
+        ]
+        assert fake.calls[0].default == 'default'
+
+    def test_prompt_returns_selected_variant_id(self, monkeypatch, fake_tty):
+        _patch_select(monkeypatch, 'interactive')
+        preset = _preset(
+            problem=pathlib.Path('problem'),
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i'))
+            ],
+        )
+
+        assert (
+            presets.pick_variant(preset, is_contest=False, variant=None)
+            == 'interactive'
+        )
+
+    def test_prompt_omits_default_when_no_canonical(self, monkeypatch, fake_tty):
+        fake = _patch_select(monkeypatch, 'interactive')
+        preset = _preset(
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i')),
+                PackageVariant(id='bare', path=pathlib.Path('problem-bare')),
+            ],
+        )
+
+        assert (
+            presets.pick_variant(preset, is_contest=False, variant=None)
+            == 'interactive'
+        )
+        assert fake.values == ['interactive', 'bare']
+        assert fake.calls[0].default == 'interactive'
+
+    def test_aborting_the_prompt_exits(self, monkeypatch, fake_tty):
+        _patch_select(monkeypatch, None)
+        preset = _preset(
+            problem=pathlib.Path('problem'),
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i'))
+            ],
+        )
+
+        with pytest.raises(typer.Exit):
+            presets.pick_variant(preset, is_contest=False, variant=None)
+
+    def test_contest_variants_are_independent(self, monkeypatch, fake_tty):
+        fake = _patch_select(monkeypatch, 'div1')
+        preset = _preset(
+            problem=pathlib.Path('problem'),
+            contest=pathlib.Path('contest'),
+            problemVariants=[
+                PackageVariant(id='interactive', path=pathlib.Path('problem-i'))
+            ],
+            contestVariants=[
+                PackageVariant(id='div1', path=pathlib.Path('contest-div1'))
+            ],
+        )
+
+        assert presets.pick_variant(preset, is_contest=True, variant=None) == 'div1'
+        assert fake.values == ['default', 'div1']
+        assert 'contest template' in fake.calls[0].message

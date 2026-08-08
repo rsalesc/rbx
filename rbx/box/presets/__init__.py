@@ -4,6 +4,7 @@ import functools
 import os
 import pathlib
 import shutil
+import sys
 import tempfile
 from typing import (
     TYPE_CHECKING,
@@ -846,6 +847,68 @@ def declared_templates(
     return declared
 
 
+def pick_variant(
+    preset: Preset, *, is_contest: bool, variant: Optional[str]
+) -> Optional[str]:
+    """Resolve the variant to use, prompting when the preset offers a choice.
+
+    Returns None for the canonical template. Never prompts when the preset
+    declares no variants, or when stdin is not a TTY.
+    """
+    if variant is not None:
+        # An explicit flag always wins: never second-guess it with a prompt,
+        # and let `resolve_template` be the one to reject a bad id.
+        return variant
+
+    declared = declared_templates(preset, is_contest=is_contest)
+    has_canonical = any(v is None for v, _ in declared)
+    variants = [v for v, _ in declared if v is not None]
+    if not variants:
+        # The overwhelmingly common case: a preset with a single template. Stay
+        # exactly as silent as rbx was before variants existed.
+        return None
+
+    kind = 'contest' if is_contest else 'problem'
+    if not sys.stdin.isatty():
+        if not has_canonical:
+            console.console.print(
+                f'[error]Preset [item]{preset.name}[/item] does not have a canonical '
+                f'{kind} template, so one of its variants must be chosen '
+                'explicitly.[/error]'
+            )
+            console.console.print(
+                '[error]Re-run with [item]-v <id>[/item] -- there is no terminal to '
+                'prompt on.[/error]'
+            )
+            _print_available_templates(preset, is_contest=is_contest)
+            raise typer.Exit(1)
+        return None
+
+    choices = []
+    if has_canonical:
+        choices.append(
+            questionary.Choice(
+                title="default — the preset's main template", value='default'
+            )
+        )
+    for v in variants:
+        choices.append(
+            questionary.Choice(
+                title=f'{v.id} — {v.description}' if v.description else v.id,
+                value=v.id,
+            )
+        )
+
+    answer = questionary.select(
+        f'Which {kind} template do you want to use?',
+        choices=choices,
+        default=choices[0].value,
+    ).ask()
+    if answer is None:
+        raise typer.Exit(1)
+    return None if answer == 'default' else answer
+
+
 def all_templates(
     preset: Preset,
     preset_path: pathlib.Path,
@@ -1333,6 +1396,9 @@ def install_contest(
             dest_pkg / '.local.rbx',
             ensure_contest=True,
         )
+    variant = pick_variant(
+        get_active_preset(dest_pkg), is_contest=True, variant=variant
+    )
     template = get_active_template(dest_pkg, is_contest=True, variant=variant)
 
     expansions = _collect_expansions(template.expansion)
@@ -1371,6 +1437,9 @@ def install_problem(
             dest_pkg / '.local.rbx',
             ensure_problem=True,
         )
+    variant = pick_variant(
+        get_active_preset(dest_pkg), is_contest=False, variant=variant
+    )
     template = get_active_template(dest_pkg, is_contest=False, variant=variant)
 
     expansions = _collect_expansions(template.expansion)
