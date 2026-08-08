@@ -105,6 +105,10 @@ def build_env(
             # Rich checks this; forcing it keeps colour stable regardless of how
             # the recording itself was invoked.
             'FORCE_COLOR': '1',
+            # questionary/prompt_toolkit asks the terminal for its cursor
+            # position and prints a WARNING when nothing answers. Our pty never
+            # answers, so every interactive prompt would open with that line.
+            'PROMPT_TOOLKIT_NO_CPR': '1',
         }
     )
     return env
