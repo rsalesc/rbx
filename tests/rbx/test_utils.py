@@ -1744,3 +1744,43 @@ class TestFdLeakDetector:
 
         with FdLeakDetector(id='test', diff=True):
             pass  # Should not raise any errors
+
+
+class TestSchemaRelaxation:
+    """Tests for forward-tolerant published schemas."""
+
+    def test_dump_schema_str_drops_additional_properties_false(self):
+        import json
+
+        from pydantic import ConfigDict
+
+        from rbx.utils import dump_schema_str
+
+        class Inner(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            x: int = 0
+
+        class Outer(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            inner: Inner = Inner()
+
+        dumped = json.loads(dump_schema_str(Outer))
+
+        assert 'additionalProperties' not in dumped
+        assert 'additionalProperties' not in dumped['$defs']['Inner']
+
+    def test_dump_schema_str_keeps_required_and_types(self):
+        import json
+
+        from pydantic import ConfigDict
+
+        from rbx.utils import dump_schema_str
+
+        class Model(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            name: str
+
+        dumped = json.loads(dump_schema_str(Model))
+
+        assert dumped['required'] == ['name']
+        assert dumped['properties']['name']['type'] == 'string'

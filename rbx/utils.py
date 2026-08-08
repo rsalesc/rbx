@@ -306,8 +306,23 @@ def get_app_path() -> pathlib.Path:
     return pathlib.Path(app_dir)
 
 
+def _relax_schema(node):
+    """Drop `additionalProperties: false` so a pinned schema tolerates keys
+    added by newer rbx versions. rbx itself still rejects unknown keys at load
+    time (models are `extra='forbid'`), so typos are caught by the tool."""
+    if isinstance(node, dict):
+        return {
+            k: _relax_schema(v)
+            for k, v in node.items()
+            if not (k == 'additionalProperties' and v is False)
+        }
+    if isinstance(node, list):
+        return [_relax_schema(item) for item in node]
+    return node
+
+
 def dump_schema_str(model: Type[BaseModel]) -> str:
-    return json.dumps(model.model_json_schema(), indent=4)
+    return json.dumps(_relax_schema(model.model_json_schema()), indent=4)
 
 
 def dump_schema(model: Type[BaseModel], path: pathlib.Path):
