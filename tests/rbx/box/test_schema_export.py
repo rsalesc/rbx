@@ -37,3 +37,63 @@ def test_exported_schema_is_valid_json_and_relaxed(tmp_path):
     # *schema*, which must survive.
     assert not [v for v in _additional_properties_values(schema) if v is False]
     assert 'vars' in schema['properties']
+
+
+class TestSchemaPublish:
+    def test_publish_layout(self, tmp_path):
+        from rbx.box import schema_publish
+
+        schema_publish.build_site(tmp_path, version='1.4.2')
+
+        assert (tmp_path / '1.4' / 'Package.json').is_file()
+        assert (tmp_path / 'latest' / 'Package.json').is_file()
+
+        index = json.loads((tmp_path / 'index.json').read_text())
+        assert index['latest'] == '1.4'
+        assert '1.4' in index['versions']
+        assert 'Package' in index['models']
+
+    def test_publish_merges_with_existing_versions(self, tmp_path):
+        from rbx.box import schema_publish
+
+        schema_publish.build_site(tmp_path, version='1.3.0')
+        schema_publish.build_site(tmp_path, version='1.4.0')
+
+        index = json.loads((tmp_path / 'index.json').read_text())
+
+        assert index['versions'] == ['1.3', '1.4']
+        assert index['latest'] == '1.4'
+        assert (tmp_path / '1.3' / 'Package.json').is_file()
+
+    def test_republishing_older_patch_does_not_demote_latest(self, tmp_path):
+        from rbx.box import schema_publish
+
+        schema_publish.build_site(tmp_path, version='1.4.0')
+        schema_publish.build_site(tmp_path, version='1.3.9')
+
+        index = json.loads((tmp_path / 'index.json').read_text())
+
+        assert index['latest'] == '1.4'
+
+    def test_versions_sort_numerically_not_lexicographically(self, tmp_path):
+        from rbx.box import schema_publish
+
+        for version in ('1.9.0', '1.10.0', '2.0.0'):
+            schema_publish.build_site(tmp_path, version=version)
+
+        index = json.loads((tmp_path / 'index.json').read_text())
+
+        assert index['versions'] == ['1.9', '1.10', '2.0']
+        assert index['latest'] == '2.0'
+
+    def test_ignores_unrelated_directories(self, tmp_path):
+        from rbx.box import schema_publish
+
+        (tmp_path / '.git').mkdir()
+        (tmp_path / 'assets').mkdir()
+
+        schema_publish.build_site(tmp_path, version='1.4.0')
+
+        index = json.loads((tmp_path / 'index.json').read_text())
+
+        assert index['versions'] == ['1.4']
