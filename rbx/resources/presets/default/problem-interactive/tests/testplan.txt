@@ -1,0 +1,4 @@
+# Each line calls a generator to produce tests.
+tests/gen 2
+tests/gen 10
+tests/gen 1000

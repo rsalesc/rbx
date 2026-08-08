@@ -7,6 +7,10 @@ uri: "rsalesc/rbx/rbx/resources/presets/default"
 problem: "problem"
 contest: "contest"
 env: "env.rbx.yml"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+    description: "Communication task with a testlib interactor (guessing game)"
 tracking:
   problem:
     - path: ".gitignore"
