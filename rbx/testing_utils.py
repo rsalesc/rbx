@@ -37,6 +37,7 @@ def clear_all_functools_cache():
         libraries,
         package,
         presets,
+        schema_urls,
         setter_config,
         visualizers,
     )
@@ -54,6 +55,7 @@ def clear_all_functools_cache():
         contest_package,
         setter_config,
         presets,
+        schema_urls,
         grading_steps,
         peek,
     ]

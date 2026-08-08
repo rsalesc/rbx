@@ -982,6 +982,25 @@ def _install_package_from_preset(
         )
 
 
+def _pin_schema_header(
+    path: pathlib.Path, is_contest: bool, pkg_root: pathlib.Path
+) -> None:
+    """Normalize the schema header of a freshly copied preset template.
+
+    Preset templates (including third-party ones) hardcode a schema URL; the
+    package that was just created is the authority on which version it should
+    point at.
+    """
+    if not path.is_file():
+        return
+    # Function-local imports: both modules import this one.
+    from rbx.box.contest.schema import Contest
+    from rbx.box.linting import fix_language_server
+    from rbx.box.schema import Package
+
+    fix_language_server(path, Contest if is_contest else Package, pkg_root)
+
+
 def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bool):
     # Libraries are tool-managed: every create/sync re-fetches per the version
     # spec and overwrites the materialized file. Reproducibility comes from the
@@ -1036,6 +1055,7 @@ def install_contest(
         delete_local_rbx=False,
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
+    _pin_schema_header(dest_pkg / 'contest.rbx.yml', True, dest_pkg)
     if materialize:
         materialize_libraries(preset, dest_pkg, is_contest=True)
 
@@ -1075,6 +1095,7 @@ def install_problem(
         dest_pkg,
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
+    _pin_schema_header(dest_pkg / 'problem.rbx.yml', False, dest_pkg)
     if materialize:
         materialize_libraries(preset, dest_pkg, is_contest=False)
 
