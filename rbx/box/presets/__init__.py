@@ -710,6 +710,28 @@ def _fail_no_template(
     raise typer.Exit(1)
 
 
+def _print_missing_template_dir(
+    preset: Preset,
+    *,
+    kind: str,
+    inner: pathlib.Path,
+    path: pathlib.Path,
+    severity: str,
+    consequence: str = '',
+) -> None:
+    """Report a template whose declared directory does not exist.
+
+    Shared by the fatal path (`resolve_template`, severity 'error') and the
+    sweep (`all_templates`, severity 'warning'), so both name the declaration
+    and the location it resolved to identically.
+    """
+    console.console.print(
+        f'[{severity}]Preset [item]{preset.name}[/item] declares a {kind} template at '
+        f'[item]{inner}[/item], but that directory does not exist '
+        f'([item]{path}[/item]).{consequence}[/{severity}]'
+    )
+
+
 def resolve_template(
     preset: Preset,
     preset_path: pathlib.Path,
@@ -763,10 +785,8 @@ def resolve_template(
 
     path = preset_path / inner
     if not path.is_dir():
-        console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] declares a {kind} template at '
-            f'[item]{inner}[/item], but that directory does not exist '
-            f'([item]{path}[/item]).[/error]'
+        _print_missing_template_dir(
+            preset, kind=kind, inner=inner, path=path, severity='error'
         )
         if requested_by is not None:
             _print_requested_by_remediation(requested_by)
@@ -800,49 +820,85 @@ def get_active_template(
     )
 
 
+def declared_templates(
+    preset: Preset,
+    *,
+    is_contest: bool,
+) -> List[Tuple[Optional[PackageVariant], pathlib.Path]]:
+    """Every template of this kind as *declared*, without touching the disk.
+
+    Yields `(variant, inner)` pairs -- `variant` is None for the canonical
+    template and the `PackageVariant` itself otherwise, `inner` is the declared
+    path relative to the preset root. Ordering is stable: canonical first (a
+    variants-only preset simply has none), then variants in declaration order.
+
+    The `PackageVariant` is carried rather than just its id because the variant
+    picker and `rbx presets ls` need its `description`. They also need the
+    declarations whose directories are missing, which `all_templates` drops --
+    which is why this is the shared layer rather than the other way around.
+    """
+    declared: List[Tuple[Optional[PackageVariant], pathlib.Path]] = []
+    canonical = _canonical_template(preset, is_contest)
+    if canonical is not None:
+        declared.append((None, canonical))
+    for variant in preset.variants(is_contest):
+        declared.append((variant, variant.path))
+    return declared
+
+
 def all_templates(
     preset: Preset,
     preset_path: pathlib.Path,
     *,
     is_contest: bool,
 ) -> List[ResolvedTemplate]:
-    """Every template of this kind: the canonical one (when declared) plus each variant.
+    """Every template of this kind that actually resolves: the canonical one
+    (when declared) plus each variant, in `declared_templates` order.
 
-    Ordering is stable: the canonical template first (omitted by a variants-only
-    preset, which is legal), then the variants in declaration order.
-
-    A template whose declared directory does not exist is warned about and
-    skipped, rather than raising like `resolve_template` does. Callers of this
-    function sweep over every template (linting them, cleaning build artifacts
-    out of them) instead of acting on the one template the user asked for, so a
-    stale declaration is a recoverable authoring mistake that must not stop the
-    remaining templates from being processed. `resolve_template` still exits,
-    since there the missing directory *is* what was asked for.
+    A template that fails to resolve -- today, one whose declared directory does
+    not exist -- is reported and skipped, rather than raising like
+    `resolve_template` does. Callers of this function sweep over every template
+    (linting them, cleaning build artifacts out of them) instead of acting on the
+    one template the user asked for, so a bad declaration is a recoverable
+    authoring mistake that must not stop the remaining templates from being
+    processed. `resolve_template` still exits, since there the bad template *is*
+    what was asked for.
     """
     kind = 'contest' if is_contest else 'problem'
 
-    candidates: List[Tuple[Optional[str], pathlib.Path]] = []
-    canonical = _canonical_template(preset, is_contest)
-    if canonical is not None:
-        candidates.append((None, canonical))
-    for variant in preset.variants(is_contest):
-        candidates.append((variant.id, variant.path))
-
     resolved: List[ResolvedTemplate] = []
-    for variant_id, inner in candidates:
+    for variant, inner in declared_templates(preset, is_contest=is_contest):
         if not (preset_path / inner).is_dir():
-            console.console.print(
-                f'[warning]Preset [item]{preset.name}[/item] declares a {kind} template at '
-                f'[item]{inner}[/item], but that directory does not exist '
-                f'([item]{preset_path / inner}[/item]); skipping it.[/warning]'
+            _print_missing_template_dir(
+                preset,
+                kind=kind,
+                inner=inner,
+                path=preset_path / inner,
+                severity='warning',
+                consequence=(
+                    ' Skipping it: this template will not be formatted, cleaned '
+                    'or otherwise processed. Fix or remove its entry in '
+                    '[item]preset.rbx.yml[/item].'
+                ),
             )
             continue
-        # The directory exists, so this resolution cannot fail.
-        resolved.append(
-            resolve_template(
-                preset, preset_path, is_contest=is_contest, variant=variant_id
+        try:
+            resolved.append(
+                resolve_template(
+                    preset,
+                    preset_path,
+                    is_contest=is_contest,
+                    variant=variant.id if variant is not None else None,
+                )
             )
-        )
+        except typer.Exit:
+            # The existence check above already covers `resolve_template`'s only
+            # current failure mode for a declared template, so this is dead code
+            # today. It is here because validations queued for `resolve_template`
+            # (e.g. rejecting declared paths that escape the preset root) would
+            # otherwise turn a sweep into a hard exit halfway through. Every exit
+            # branch there prints its own message first, so skipping stays loud.
+            continue
     return resolved
 
 

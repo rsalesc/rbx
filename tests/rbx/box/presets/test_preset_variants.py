@@ -1,7 +1,7 @@
 import pathlib
 import re
 import shutil
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 import pytest
 import typer
@@ -964,12 +964,9 @@ class TestContestLockVariant:
         assert (package_dir / 'tracked.txt').read_text() == 'variant v2'
 
 
-_PROBLEM_YML = """---
-name: "template-problem"
-"""
-
-
-def _preset_with_dirs(root: pathlib.Path, body: str, dirs) -> pathlib.Path:
+def _preset_with_dirs(
+    root: pathlib.Path, body: str, dirs: Iterable[str]
+) -> pathlib.Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / 'preset.rbx.yml').write_text(body)
     for inner in dirs:
