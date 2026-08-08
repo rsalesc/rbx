@@ -51,7 +51,7 @@ Solutions are also bounded by a configurable **wall (real) time** limit, derived
 The results of a `rbx run` command can be inspected through the `rbx ui` command, as shown in the
 animation below.
 
-{{ asciinema("6XYQ11Cv1HZ8TuTiCFXBXXM29") }}
+{{ asciinema("ui-navigation") }}
 
 ## Sharing a report
 
