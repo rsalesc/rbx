@@ -1,0 +1,20 @@
+fixture: sum-problem
+title: Finding a counterexample with rbx stress
+timeout: 300s
+setup:
+  # Warms the compilation cache so the recording opens on the stress itself
+  # rather than on a minute of compiling.
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx stress -g "tests/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
+    keys:
+      # The stress stops at the first match and then offers to save it. Saving
+      # is its own topic (see the walkthrough recording), so decline here.
+      - 25s
+      - 'n'
+      - '^M'
+expect_contains:
+  - Stress test report
+  - Finding 1
+  - Generator

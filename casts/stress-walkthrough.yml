@@ -1,0 +1,34 @@
+fixture: sum-problem
+title: Saving a stress-test counterexample into the testset
+timeout: 300s
+setup:
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx stress -g "tests/gen [1..5] <A.max> @" -f "sols/wa-overflow.cpp"
+    keys:
+      - 25s
+      # Accept the offer to save the finding...
+      - 'y'
+      - '^M'
+      - 2s
+      # ...then walk the picker down past `testplan` and `samples` to
+      # `(create new script)`. Arrow keys, because that is what questionary
+      # binds; `\x1B[B` is Down.
+      - "\x1B[B"
+      - 500ms
+      - "\x1B[B"
+      - 500ms
+      - '^M'
+      - 2s
+      - 'tests/corner'
+      - '^M'
+expect_contains:
+  - Stress test report
+  - Choose the testgroup to add the tests to
+  - create new script
+  # The recording stops at the confirmation rather than going on to `rbx build`:
+  # the picker writes `path: corner.txt` into problem.rbx.yml while creating the
+  # file at `tests/corner.txt`, so the next build cannot find the script. See
+  # the note in casts/README.md.
+  - Enter the name of the new .txt generatorScript file

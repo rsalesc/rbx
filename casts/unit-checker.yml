@@ -1,0 +1,8 @@
+fixture: pair-problem
+title: Unit testing a custom checker with rbx unit
+timeout: 300s
+instructions:
+  - rbx unit
+expect_contains:
+  - ac_BASIC
+  - wa_BAD_SUM

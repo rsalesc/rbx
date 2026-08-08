@@ -1,0 +1,11 @@
+fixture: ab-problem
+title: Running solutions on a generated testcase with rbx irun -g
+setup:
+  - rbx build
+instructions:
+  # The large operands are what make `sols/overflow.cpp` diverge, so the cast
+  # shows the two solutions disagreeing rather than a pair of identical rows.
+  - rbx irun -g "gen 2000000000 2000000000" -p
+expect_contains:
+  - sols/main.cpp
+  - sols/overflow.cpp
