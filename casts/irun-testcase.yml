@@ -1,0 +1,11 @@
+fixture: ab-problem
+title: Running solutions on a single testcase with rbx irun -t
+setup:
+  - rbx build
+instructions:
+  - rbx irun -t samples/0 -p
+expect_contains:
+  # `-p` is the whole point here: the outputs must be printed inline rather
+  # than only written to files.
+  - sols/main.cpp
+  - sols/overflow.cpp

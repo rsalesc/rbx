@@ -1,0 +1,13 @@
+fixture: graph-problem
+title: Unit testing a validator and a checker with rbx unit
+timeout: 300s
+instructions:
+  - rbx unit
+expect_contains:
+  # One assertion per unit test declared by the fixture, so a validator or
+  # checker that stops behaving as documented fails the recording.
+  - valid_CONNECTED.in
+  - invalid_NOT_CONNECTED.in
+  - invalid_VERTEX_OUT_OF_BOUNDS.in
+  - ac_VALID_PATH
+  - wa_NON_EXISTING_EDGE

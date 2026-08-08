@@ -227,6 +227,15 @@ def test_build_env_pins_the_values_that_must_not_vary():
     assert env['TZ'] == 'UTC'
 
 
+def test_build_env_silences_the_prompt_toolkit_cursor_position_warning():
+    # Our pty never answers a cursor-position request, so without this every
+    # recording of an interactive prompt opens with prompt_toolkit's CPR
+    # warning printed over the question.
+    env = build_env(_spec(), home='/tmp/h', base={'PATH': '/bin'})
+
+    assert env['PROMPT_TOOLKIT_NO_CPR'] == '1'
+
+
 def test_build_env_inherits_the_toolchain_variables():
     # Dropping TMPDIR/SDKROOT breaks the C++ compiler, which would make every
     # `rbx run` recording a wall of compile errors.

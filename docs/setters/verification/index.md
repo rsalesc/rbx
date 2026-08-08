@@ -30,7 +30,7 @@ rbx run -v{0,1,2,3,4}  # defaults to 4
 rbx package -v{0,1,2,3,4}  # defaults to 4
 ```
 
-{{ asciinema("141SSzM2QsLqznBknzMdojOHj") }}
+{{ asciinema("verification-levels") }}
 
 The verification level is a non-negative incremental enum, which means that the level
 `N+1` will include all the checks of level `N`, plus what is specified in

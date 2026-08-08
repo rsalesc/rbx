@@ -6,7 +6,7 @@
 rbx package boca
 ```
 
-{{ asciinema("3aYdLnJVUS6dUaF9TWg6UkFMz") }}
+{{ asciinema("package-boca") }}
 
 Or, if you want to build the package for all problems in your contest:
 
@@ -89,6 +89,8 @@ rbx on A-C package boca -u
 rbx on A,C package boca -u
 ```
 
+<!-- Still hosted on asciinema.org: reproducing an upload needs a live BOCA
+     server, which the recording pipeline has no way to stand up. -->
 {{ asciinema("onJXQDVPELqn2kITmCrbkJeCX", speed=3) }}
 
 For that to work, you have to instruct {{rbx}} on how to connect to the BOCA server.

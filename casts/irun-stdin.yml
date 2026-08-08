@@ -1,0 +1,18 @@
+fixture: ab-problem
+title: Typing a testcase into rbx irun
+setup:
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx irun -p
+    keys:
+      # Type the input by hand, then Ctrl+D to tell rbx the test is complete --
+      # exactly the flow the surrounding prose describes.
+      - 2s
+      - '2000000000 2000000000'
+      - '^M'
+      - 1s
+      - '^D'
+expect_contains:
+  - sols/main.cpp
+  - sols/overflow.cpp

@@ -41,6 +41,15 @@ def record(
             display_root=DISPLAY_ROOT,
             home=str(home),
             title=spec.title,
+            # Commands under recording make their own temp directories, which
+            # are siblings of `tmpdir`, not children. Passing the root lets the
+            # scrubber catch those too -- in both spellings, since macOS
+            # resolves /var/folders/... to /private/var/folders/... and a cast
+            # can contain either.
+            temp_roots=[
+                tempfile.gettempdir(),
+                str(pathlib.Path(tempfile.gettempdir()).resolve()),
+            ],
         )
         # Verify before writing, so a broken recording never overwrites a good
         # committed cast.

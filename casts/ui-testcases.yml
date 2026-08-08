@@ -1,0 +1,26 @@
+fixture: ab-problem
+title: Exploring the built testset with rbx ui
+timeout: 300s
+setup:
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx ui
+    keys:
+      # The first flow on the menu explores the built testcases: open it,
+      # walk down a few tests, then quit back out.
+      - 3s
+      - '^M'
+      - 3s
+      - j
+      - 1s
+      - j
+      - 2s
+      - q
+      - 1s
+      - q
+expect_contains:
+  # Proves the TUI rendered and the testcase explorer was actually opened,
+  # rather than the keys landing on an empty screen.
+  - Select a flow
+  - samples

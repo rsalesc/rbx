@@ -109,6 +109,49 @@ previous good cast is left untouched.
 Pick strings that would genuinely disappear if the command broke — a solution
 path, a section heading — not decoration.
 
+Match against **one uninterrupted run of plain text**. Verification reads the
+recorded bytes, and Rich splits a styled phrase with escape sequences, so
+`Added 1 tests to test group corner's generatorScript` never matches even
+though that is exactly what the terminal shows — the styling sits between
+`corner` and `'s`. When an expectation fails on a string you can plainly see in
+the playback, that is why: shorten it to a fragment that carries no markup.
+
+## Fixtures
+
+| Fixture | Shape | Used by |
+| --- | --- | --- |
+| `ab-problem` | A + B, one correct and one overflowing solution | build, run, irun, ui, BOCA packaging |
+| `graph-problem` | Connected-graph input, path checker, validator and checker unit tests | `rbx unit`, `rbx validate`, verification levels |
+| `sum-problem` | Sum of N integers, `wa-overflow.cpp`, `vars.A.max` | both `rbx stress` recordings |
+| `pair-problem` | Print any `a + b = N`, custom checker | custom-checker walkthrough |
+| `guessing-problem` | Interactive guessing game with a testlib interactor | `rbx ui` on an interactive run |
+
+The fixtures are transcribed from the docs pages they illustrate, so a reader
+sees the same code they just read. Three of them needed **corrections** the
+pages still carry, because the snippets as printed do not run:
+
+- The validator, checker and interactor snippets rely on `testlib.h` pulling
+  `std` into scope. Under GCC 15 it does not, so the fixtures add the includes
+  and the `using namespace std;`.
+- The interactor in `docs/setters/grading/interactors.md` never writes `N` to
+  the participant, though the statement above it says it does — any solution
+  that opens by reading `N` deadlocks. It also reads the guess with
+  `ouf.readInt`, rejecting the `? X` format the same statement specifies. The
+  fixture fixes both.
+
+## Known gaps
+
+- **The BOCA upload recording** (`boca.md`, `packaging-walkthrough.md`) is still
+  hosted on asciinema.org. `rbx package boca -u` uploads to a live BOCA server,
+  and the pipeline has no way to stand one up. `record-check` reports these two
+  as "not yet migrated" by design.
+- **`stress-walkthrough` stops at the save confirmation** rather than going on
+  to `rbx build`. Choosing `(create new script)` and typing `tests/corner`
+  creates the file at `tests/corner.txt` but writes `path: corner.txt` into
+  `problem.rbx.yml`, and the path is resolved from the package root — so the
+  next build fails with `Generator script not found`. That is an rbx bug, not a
+  recording one.
+
 ## How recording works
 
 `scripts/record.py` drives `scripts/casts/`:
