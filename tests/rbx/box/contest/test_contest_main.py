@@ -5,6 +5,7 @@ import pathlib
 import pytest
 from typer.testing import CliRunner
 
+from rbx import utils
 from rbx.box.contest import main as contest_main
 
 
@@ -38,6 +39,9 @@ def _make_minimal_preset(dest: pathlib.Path, *, invalid: bool = False) -> pathli
     (dest / 'preset.rbx.yml').write_text(
         'name: "minimal-preset"\n'
         'uri: "test/minimal-preset"\n'
+        # Pin to the running version: the schema default is an old version,
+        # which reads as a breaking change once rbx crosses a major.
+        f'min_version: "{utils.get_version()}"\n'
         'contest: "contest"\n'
         'env: "env.rbx.yml"\n'
     )
