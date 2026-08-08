@@ -75,3 +75,11 @@ description = "Regenerate the committed completion spec from the Typer app"
 # serialize writes raw pprint output; ruff-format it so the committed file is
 # textually reproducible (the drift test is dict-based, but this avoids churn).
 run = "python -m rbx.box.completion.serialize && ruff format rbx/box/completion/_spec.py"
+
+[tasks.record]
+description = "Record documentation asciinema casts (all, or the named ones)"
+run = "python scripts/record.py"
+
+[tasks.record-check]
+description = "Lint asciinema references against committed casts (local only)"
+run = "python scripts/record.py --check"

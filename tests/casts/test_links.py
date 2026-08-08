@@ -95,3 +95,19 @@ def test_references_carry_their_page_and_line(tmp_path: pathlib.Path):
 
     assert reference.page.name == 'page.md'
     assert reference.line == 3
+
+
+def test_plan_documents_are_not_scanned(tmp_path: pathlib.Path):
+    docs = _docs(tmp_path, page='clean page\n')
+    plans = docs / 'plans'
+    plans.mkdir()
+    (plans / 'a-design.md').write_text(
+        '{{ asciinema("<id>") }}\n<!-- TODO(record): explains the macro -->\n'
+    )
+    casts = _casts(tmp_path)
+
+    report = check_links(docs, casts)
+
+    assert report.missing == []
+    assert report.pending == []
+    assert report.ok
