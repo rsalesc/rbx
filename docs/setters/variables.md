@@ -55,6 +55,14 @@ This header exposes a function `getVar<T>(name)` that can be used to get the val
 of a variable as a `T`-typed object. There are 4 overloads for this function:
 `getVar<bool>(name)`, `getVar<int>(name)`, `getVar<float>(name)` and `getVar<std::string>(name)`.
 
+Nested variables can be addressed either by their full dotted name, or by passing
+one segment per argument -- the two calls below are equivalent:
+
+```cpp
+int n = getVar<int>("N.max");
+int n = getVar<int>("N", "max");
+```
+
 This header can be directly included in your validator/checker files.
 
 === "validator.cpp"

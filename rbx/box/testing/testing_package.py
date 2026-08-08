@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from rbx import console, utils
 from rbx.box import package_utils, presets
-from rbx.box.fields import Primitive
+from rbx.box.fields import Primitive, RecVars
 from rbx.box.presets.schema import Libraries, Library
 from rbx.box.schema import (
     CheckerTest,
@@ -241,7 +241,7 @@ class TestingPackage(TestingShared):
         self.yml.vars[name] = value
         self.save()
 
-    def set_vars(self, vars: Dict[str, Primitive]):
+    def set_vars(self, vars: RecVars):
         self.yml.vars = vars
         self.save()
 
