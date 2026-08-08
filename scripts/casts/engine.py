@@ -190,6 +190,19 @@ class CastBuilder:
     def marker(self, label: str) -> None:
         self.events.append((round(self.clock, 6), 'm', label))
 
+    def hold(self, seconds: float) -> None:
+        """Extend the cast without changing what is on screen.
+
+        A player takes the cast's duration from its last event, so advancing
+        the clock alone is invisible -- the recording would still end, and
+        loop, at the last byte of output. Emitting a zero-byte output event
+        at the later timestamp is what actually holds the final frame.
+        """
+        if seconds <= 0:
+            return
+        self.advance(seconds)
+        self.events.append((round(self.clock, 6), 'o', ''))
+
     def to_text(self) -> str:
         header: Dict[str, Any] = {
             'version': 2,
@@ -235,10 +248,24 @@ class Engine:
         started = time.monotonic()
         pending = list(keys)
         next_key_at = started + self.type_speed
+        tick = started
 
         def emit(data: bytes) -> None:
             if capture:
                 self.cast.output(data.decode('utf-8', errors='replace'))
+
+        def sync() -> None:
+            """Move the cast clock forward by the real time that just passed.
+
+            Advancing by a fixed amount per iteration would be wrong: at EOF
+            the pty read returns immediately, so the loop can spin thousands
+            of times per real second and the cast would claim a duration of
+            hours.
+            """
+            nonlocal tick
+            moment = time.monotonic()
+            self.cast.advance(moment - tick)
+            tick = moment
 
         while True:
             now = time.monotonic()
@@ -261,12 +288,11 @@ class Engine:
                     next_key_at = now + wait
 
             chunk = session.read_available(_POLL_SECONDS)
+            sync()
             if chunk:
-                self.cast.advance(time.monotonic() - now)
                 emit(chunk)
                 continue
 
-            self.cast.advance(_POLL_SECONDS)
             if session.finished() and not pending:
                 # The child is gone; flush whatever the pty still holds.
                 while True:
@@ -275,6 +301,10 @@ class Engine:
                         break
                     emit(leftover)
                 break
+
+            # At EOF the read above returns instantly, so without this the
+            # loop would burn CPU while waiting out the remaining keys.
+            time.sleep(_POLL_SECONDS)
 
         session.close()
 
@@ -332,6 +362,7 @@ class Engine:
             self._command(command, hidden=True)
         for instruction in self.spec.instructions:
             self._instruction(instruction)
+        self.cast.hold(parse_duration(self.spec.end_pause))
         return self.cast.to_text()
 
 

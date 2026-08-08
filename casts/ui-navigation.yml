@@ -22,7 +22,6 @@ instructions:
       - q
       - 1s
       - q
-  - !Wait 2s
 expect_contains:
   # Proves the TUI actually rendered and the run-results flow was opened,
   # rather than the keys landing on an empty screen.

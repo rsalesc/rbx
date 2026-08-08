@@ -1,5 +1,6 @@
 import json
 import pathlib
+import time
 
 import pytest
 
@@ -111,7 +112,9 @@ def test_wait_advances_the_timeline_without_output(tmp_path: pathlib.Path):
 
 
 def test_marker_instructions_become_marker_events(tmp_path: pathlib.Path):
-    raw = _run(_spec(instructions=[Tagged('Marker', 'Chapter one')]), tmp_path)
+    raw = _run(
+        _spec(instructions=[Tagged('Marker', 'Chapter one')], end_pause='0s'), tmp_path
+    )
 
     events = [json.loads(line) for line in raw.splitlines()[1:]]
     assert [event[1:] for event in events] == [['m', 'Chapter one']]
@@ -144,6 +147,71 @@ def test_an_unknown_instruction_tag_is_rejected(tmp_path: pathlib.Path):
 
     with pytest.raises(RecordingError, match='unknown instruction tag'):
         _run(spec, tmp_path)
+
+
+# -- trailing hold --------------------------------------------------------
+
+
+def _duration(raw: str) -> float:
+    events = [json.loads(line) for line in raw.splitlines()[1:]]
+    return events[-1][0]
+
+
+def test_the_cast_holds_its_final_frame_by_default(tmp_path: pathlib.Path):
+    # Casts autoplay on a loop; without this the last frame flashes past.
+    # Compared against an explicit longer hold, so the constant post-command
+    # pause cancels out and the delta is purely the configured difference.
+    default = _duration(_run(_spec(instructions=['echo done']), tmp_path))
+    longer = _duration(
+        _run(_spec(instructions=['echo done'], end_pause='8s'), tmp_path)
+    )
+
+    assert longer - default == pytest.approx(5.0, abs=0.5)
+
+
+def test_the_hold_is_configurable(tmp_path: pathlib.Path):
+    short = _duration(_run(_spec(instructions=['echo x'], end_pause='1s'), tmp_path))
+    long = _duration(_run(_spec(instructions=['echo x'], end_pause='6s'), tmp_path))
+
+    assert long - short == pytest.approx(5.0, abs=0.5)
+
+
+def test_the_hold_adds_no_visible_output(tmp_path: pathlib.Path):
+    held = cast_text(_run(_spec(instructions=['echo x'], end_pause='4s'), tmp_path))
+    bare = cast_text(_run(_spec(instructions=['echo x'], end_pause='0s'), tmp_path))
+
+    assert held == bare
+
+
+def test_the_hold_extends_the_last_event_not_just_the_clock(tmp_path: pathlib.Path):
+    # A player reads duration from the final event, so advancing the internal
+    # clock without emitting anything would be a no-op.
+    raw = _run(_spec(instructions=['echo x'], end_pause='5s'), tmp_path)
+
+    events = [json.loads(line) for line in raw.splitlines()[1:]]
+    assert events[-1][1] == 'o'
+    assert events[-1][2] == ''
+    assert events[-1][0] - events[-2][0] >= 5.0
+
+
+def test_cast_duration_tracks_real_elapsed_time(tmp_path: pathlib.Path):
+    # Regression: the clock used to advance by a fixed amount per loop
+    # iteration. At EOF the pty read returns instantly, so a recording that
+    # waited on remaining keys spun thousands of times per second and claimed
+    # a duration of hours.
+    started = time.monotonic()
+    raw = _run(
+        _spec(
+            instructions=[
+                Tagged('Interactive', {'command': 'cat', 'keys': ['^D', '1s']})
+            ],
+            end_pause='0s',
+        ),
+        tmp_path,
+    )
+    real = time.monotonic() - started
+
+    assert _duration(raw) <= real + 1.0
 
 
 # -- environment ----------------------------------------------------------

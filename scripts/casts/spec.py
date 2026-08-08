@@ -74,6 +74,10 @@ class RecordingSpec(BaseModel):
     height: int = 30
     type_speed: str = '60ms'
     timeout: str = '120s'
+    # Casts autoplay on a loop, so without a trailing hold the final frame --
+    # usually the whole point of the recording -- flashes past. Set '0s' to
+    # opt out.
+    end_pause: str = '3s'
     setup: List[str] = Field(default_factory=list)
     instructions: List[Any] = Field(min_length=1)
     expect_contains: List[str] = Field(default_factory=list)

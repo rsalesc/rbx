@@ -55,6 +55,7 @@ width: 100                   # optional; terminal columns (default 100)
 height: 30                   # optional; terminal rows (default 30)
 type_speed: 60ms             # optional; delay between typed characters
 timeout: 120s                # optional; per-instruction limit
+end_pause: 3s                # optional; hold the final frame (see below)
 
 setup:                       # optional; runs for real, never shown
   - rbx build
@@ -83,6 +84,20 @@ give you more:
 `keys` accepts single characters, caret-escaped control codes (`^C`, `^D`,
 `^M` for Enter), and durations (`500ms`) to pause between keystrokes. The keys
 **must** leave the program exited, or the instruction hits its timeout.
+
+### `end_pause`
+
+Casts autoplay on a loop, so without a trailing hold the final frame — usually
+the whole point of the recording — flashes past before anyone can read it.
+Every recording therefore ends with a **3 second hold** by default. Set
+`end_pause` to change it, or `0s` to opt out.
+
+You do not need a trailing `!Wait` for this; the hold is applied after the last
+instruction. A `!Wait` at the end would simply add to it.
+
+The hold is a zero-byte output event at a later timestamp, not just an idle
+gap — a player takes a cast's duration from its final event, so advancing the
+clock without emitting anything would have no effect.
 
 ### `expect_contains`
 
