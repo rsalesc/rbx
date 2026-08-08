@@ -345,7 +345,9 @@ def uploaded_schema_path(model: Type[BaseModel]) -> str:
     return f'https://rsalesc.github.io/rbx/schemas/{model.__name__}.json'
 
 
-def model_to_yaml(model: BaseModel, **kwargs) -> str:
+def model_to_yaml(
+    model: BaseModel, root: Optional[pathlib.Path] = None, **kwargs
+) -> str:
     """Convert model to YAML string with proper boolean handling.
 
     This function works around Pydantic's issue where Union[str, int, float, bool]
@@ -357,8 +359,11 @@ def model_to_yaml(model: BaseModel, **kwargs) -> str:
     # Ensure the result is JSON-serializable by converting any non-JSON types
     json_safe_data = _ensure_json_serializable(data)
 
-    # Add schema path comment and convert to YAML
-    path = uploaded_schema_path(model.__class__)
+    # Add schema path comment and convert to YAML.
+    # Function-local import: rbx.box.presets imports this module.
+    from rbx.box.schema_urls import schema_url
+
+    path = schema_url(model.__class__, root or pathlib.Path())
     schema_comment = f'# yaml-language-server: $schema={path}\n\n'
 
     yaml_content = yaml.safe_dump(

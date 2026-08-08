@@ -244,4 +244,6 @@ class PolygonImporter(BaseImporter):
         _copy_interactor(problem, pkg, pkg_path, into_path)
         _copy_headers(problem, pkg, pkg_path, into_path)
 
-        (into_path / 'problem.rbx.yml').write_text(utils.model_to_yaml(pkg))
+        (into_path / 'problem.rbx.yml').write_text(
+            utils.model_to_yaml(pkg, root=into_path)
+        )
