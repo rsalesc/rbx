@@ -16,7 +16,14 @@ VERSIONED_BASE_URL = 'https://rsalesc.github.io/rbx-schemas'
 # historical `min_version` default of 0.14.0 -- fall back to the unversioned
 # URL, because pointing at a nonexistent file makes editors show a hard
 # "unable to load schema" error.
-SCHEMA_PIN_FLOOR: Tuple[int, int] = (1, 1)
+#
+# This is deliberately the minor that the bundled preset already declares, so
+# pinning goes live with the first release that publishes schemas and needs no
+# compatibility-breaking bump to `min_version`. A floor above the installed
+# version would be unreachable: a preset whose `min_version` exceeds the
+# installed version is rejected outright, so no preset could both install and
+# pin.
+SCHEMA_PIN_FLOOR: Tuple[int, int] = (1, 0)
 
 
 @functools.cache

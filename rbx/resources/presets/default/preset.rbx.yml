@@ -1,5 +1,5 @@
 ---
-# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx-schemas/1.0/Preset.json
 name: "default"
 description: "rbx's default preset: ICPC-style problem/contest with testlib, jngen and tgen."
 min_version: "1.0.0"

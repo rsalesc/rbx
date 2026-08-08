@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/PresetRegistry.json
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx-schemas/1.0/PresetRegistry.json
 presets:
   - name: "default"
     uri: "default"
