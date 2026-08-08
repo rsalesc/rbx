@@ -1057,7 +1057,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 
     @model_validator(mode='after')
     def check_first_solution_is_main_if_there_is_ac(self):
-        if all(sol.outcome != Outcome.ACCEPTED for sol in self.solutions):
+        if all(sol.outcome != ExpectedOutcome.ACCEPTED for sol in self.solutions):
             # No main solution.
             return self
         if self.solutions:

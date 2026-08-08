@@ -503,14 +503,14 @@ class TestPackageOutcomePerGroupValidation:
                 ],
             )
 
-    def test_main_solution_is_the_accepted_one_not_the_first_one(self):
+    def test_accepted_solution_listed_after_another_one_is_rejected(self):
         from pydantic import ValidationError
 
         from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
 
-        # `get_main_solution` picks the first ACCEPTED solution, so that is the one
-        # held to being accepted everywhere -- even when it is not listed first.
-        with pytest.raises(ValidationError, match='first accepted solution'):
+        # An ACCEPTED solution that is not listed first is rejected outright, so
+        # `get_main_solution` never has to look past the first solution.
+        with pytest.raises(ValidationError, match='must have the "ACCEPTED" outcome'):
             Package(
                 name='prob',
                 timeLimit=1000,
@@ -688,3 +688,53 @@ class TestPackageOutcomePerGroupValidation:
         assert package.solutions[1].outcomePerGroup['group2'] == (
             ExpectedOutcome.TIME_LIMIT_EXCEEDED
         )
+
+
+class TestFirstSolutionIsMain:
+    def _package(self, *outcomes):
+        from rbx.box.schema import Package, Solution, TestcaseGroup
+
+        return Package(
+            name='prob',
+            timeLimit=1000,
+            memoryLimit=256,
+            testcases=[TestcaseGroup(name='samples')],
+            solutions=[
+                Solution(path=f'sols/sol{i}.cpp', outcome=outcome)
+                for i, outcome in enumerate(outcomes)
+            ],
+        )
+
+    def test_accepted_solution_after_a_non_accepted_one_is_rejected(self):
+        from pydantic import ValidationError
+
+        from rbx.box.schema import ExpectedOutcome
+
+        # Regression: the guard used to compare the solution's `ExpectedOutcome`
+        # against the grading `Outcome` enum, which never matches, so this
+        # package was silently accepted.
+        with pytest.raises(ValidationError, match='must have the "ACCEPTED" outcome'):
+            self._package(
+                ExpectedOutcome.WRONG_ANSWER,
+                ExpectedOutcome.ACCEPTED,
+            )
+
+    def test_accepted_solution_coming_first_is_accepted(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        package = self._package(
+            ExpectedOutcome.ACCEPTED,
+            ExpectedOutcome.WRONG_ANSWER,
+        )
+
+        assert package.solutions[0].outcome == ExpectedOutcome.ACCEPTED
+
+    def test_package_without_accepted_solutions_is_not_checked(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        package = self._package(
+            ExpectedOutcome.WRONG_ANSWER,
+            ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        )
+
+        assert len(package.solutions) == 2
