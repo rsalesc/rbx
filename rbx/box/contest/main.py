@@ -90,6 +90,15 @@ def create(
             'If not provided, the default preset will be used, or the active preset if any.',
         ),
     ] = None,
+    variant: Annotated[
+        Optional[str],
+        typer.Option(
+            '--variant',
+            '-v',
+            help='Which template variant of the preset to use. Omit to use the '
+            'canonical template, or to be prompted when the preset offers variants.',
+        ),
+    ] = None,
     local: Annotated[
         bool,
         typer.Option(
@@ -114,7 +123,7 @@ def create(
             )
             raise typer.Exit(1)
 
-    template = presets.install_contest(dest_path, fetch_info)
+    template = presets.install_contest(dest_path, fetch_info, variant=variant)
 
     with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()
@@ -271,6 +280,15 @@ def add(
             help='Preset to use when creating the problem. If not specified, the active preset will be used.',
         ),
     ] = None,
+    variant: Annotated[
+        Optional[str],
+        typer.Option(
+            '--variant',
+            '-v',
+            help='Which template variant of the preset to use. Omit to use the '
+            'canonical template, or to be prompted when the preset offers variants.',
+        ),
+    ] = None,
 ):
     problem_path = pathlib.Path(path)
     name = problem_path.stem
@@ -286,7 +304,7 @@ def add(
         )
         raise typer.Exit(1)
 
-    creation.create(name, preset=preset, path=pathlib.Path(path))
+    creation.create(name, preset=preset, path=pathlib.Path(path), variant=variant)
 
     contest_pkg = find_contest_package_or_die()
 
