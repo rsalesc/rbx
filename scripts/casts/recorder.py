@@ -1,39 +1,19 @@
-"""Records a docs cast: fixture -> tmpdir -> autocast -> scrub -> verify."""
+"""Records a docs cast: fixture -> tmpdir -> engine -> scrub -> verify."""
 
 import pathlib
 import shutil
-import subprocess
 import tempfile
 
-from scripts.casts.autocast_input import build_autocast_input
+from scripts.casts.engine import run_recording
 from scripts.casts.postprocess import scrub_cast, verify_cast
-from scripts.casts.spec import RecordingSpec, dump_autocast_yaml
+from scripts.casts.spec import RecordingSpec
 
 DISPLAY_ROOT = '~/problems'
-
-_INSTALL_HINT = (
-    'autocast is required to record docs casts but was not found on PATH.\n'
-    'Install it with one of:\n'
-    '  cargo binstall autocast\n'
-    '  cargo install autocast\n'
-    '  https://github.com/k9withabone/autocast/releases'
-)
-
-
-class AutocastMissingError(RuntimeError):
-    pass
-
-
-class AutocastFailedError(RuntimeError):
-    pass
 
 
 def record(
     spec: RecordingSpec, fixtures_root: pathlib.Path, out_path: pathlib.Path
 ) -> pathlib.Path:
-    if shutil.which('autocast') is None:
-        raise AutocastMissingError(_INSTALL_HINT)
-
     fixture = fixtures_root / spec.fixture
     if not fixture.is_dir():
         raise FileNotFoundError(
@@ -41,33 +21,20 @@ def record(
             f'but {fixture} does not exist'
         )
 
+    # The real HOME is used, not a synthetic one. rbx keeps its compiler and
+    # environment configuration under HOME, so a pristine HOME silently breaks
+    # compilation -- and a cast of a failed build teaches nothing. The tradeoff
+    # is that HOME appears in the output, which `scrub_cast` rewrites to `~`.
+    home = pathlib.Path.home()
+
     with tempfile.TemporaryDirectory(prefix='rbx-cast-') as tmp:
         tmpdir = pathlib.Path(tmp).resolve()
-        # The fixture is copied so recording side effects (build/, .rbx/) never
-        # touch the source tree, and HOME is redirected so the real rbx cache is
-        # neither used nor leaked into the cast.
+        # The fixture is still copied, so recording side effects (build/,
+        # .rbx/) never touch the source tree.
         workdir = tmpdir / spec.fixture
-        home = tmpdir / 'home'
         shutil.copytree(fixture, workdir)
-        home.mkdir()
 
-        data = build_autocast_input(spec, workdir=str(workdir), home=str(home))
-        input_path = tmpdir / 'autocast.yml'
-        cast_path = tmpdir / 'out.cast'
-        input_path.write_text(dump_autocast_yaml(data))
-
-        process = subprocess.run(
-            ['autocast', str(input_path), str(cast_path), '--overwrite'],
-            capture_output=True,
-            text=True,
-        )
-        if process.returncode != 0:
-            raise AutocastFailedError(
-                f'autocast failed while recording `{spec.name}` '
-                f'(exit {process.returncode}):\n{process.stderr}'
-            )
-
-        raw = cast_path.read_text()
+        raw = run_recording(spec, workdir=str(workdir), home=str(home))
         scrubbed = scrub_cast(
             raw,
             tmpdir=str(tmpdir),

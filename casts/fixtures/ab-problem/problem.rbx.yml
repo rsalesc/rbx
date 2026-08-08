@@ -1,0 +1,28 @@
+name: ab-problem
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/overflow.cpp
+    outcome: wrong-answer
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 100 -50
+          # Overflows a 32-bit sum, so sols/overflow.cpp really is wrong.
+          - name: gen
+            args: 2000000000 2000000000

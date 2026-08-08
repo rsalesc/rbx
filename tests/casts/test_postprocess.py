@@ -98,3 +98,21 @@ def test_verify_reports_every_missing_expectation():
     assert 'run-basic' in message
     assert "'Wrong answer'" in message
     assert "'Accepted'" not in message
+
+
+def test_scrub_strips_volatile_osc8_hyperlink_ids():
+    raw = _cast('\x1b]8;id=660217;file:///wd/gen.cpp\x1b\\gen.cpp\x1b]8;;\x1b\\\r\n')
+
+    scrubbed = scrub_cast(raw, tmpdir='/wd', display_root='~/problems')
+
+    assert 'id=660217' not in scrubbed
+    assert '\\u001b]8;;file:///~/problems/gen.cpp' in scrubbed or 'gen.cpp' in scrubbed
+
+
+def test_scrub_is_idempotent():
+    raw = _cast('\x1b]8;id=1;file:///wd/a\x1b\\a\r\n/wd/b\r\n')
+
+    once = scrub_cast(raw, tmpdir='/wd', display_root='~/problems')
+    twice = scrub_cast(once, tmpdir='/wd', display_root='~/problems')
+
+    assert once == twice

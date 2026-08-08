@@ -1,0 +1,13 @@
+fixture: ab-problem
+title: Running solutions with rbx run
+setup:
+  - rbx build
+instructions:
+  - rbx run
+  - !Wait 3s
+expect_contains:
+  # If rbx's run output changes shape, the recording fails here rather than
+  # silently publishing a cast of something else.
+  - sols/main.cpp
+  - sols/overflow.cpp
+  - Timing summary

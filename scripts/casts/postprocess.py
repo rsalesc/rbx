@@ -6,7 +6,13 @@ JSON array per line, each ``[time, code, data]`` where ``code`` is ``o``
 """
 
 import json
+import re
 from typing import List, Optional
+
+# Rich emits OSC-8 hyperlinks carrying a random `id=NNNN` that changes on every
+# run. Left alone, an otherwise identical re-recording would diff on every
+# clickable path. The id is decoration -- the link still works without it.
+_OSC8_ID = re.compile(r'\x1b]8;id=\d+;')
 
 # Environment variables worth keeping in the published header. Everything else
 # describes the recording machine, not the demo.
@@ -20,7 +26,8 @@ class CastVerificationError(Exception):
 def _scrub_str(value: str, tmpdir: str, display_root: str, home: Optional[str]) -> str:
     if home:
         value = value.replace(home, '~')
-    return value.replace(tmpdir, display_root)
+    value = value.replace(tmpdir, display_root)
+    return _OSC8_ID.sub('\x1b]8;;', value)
 
 
 def scrub_cast(
