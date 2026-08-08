@@ -126,7 +126,7 @@ class Preset(BaseModel):
     uri: str
 
     # Minimum version of rbx.cp required to use this preset.
-    min_version: str = '0.14.0'
+    min_version: str = '1.0.0'
 
     # Path to the environment file that will be installed with this preset.
     # When copied to the box environment, the environment will be named `name`.
