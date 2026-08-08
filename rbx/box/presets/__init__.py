@@ -999,10 +999,12 @@ def install_preset_from_dir(
     shutil.rmtree(str(dest / build_dir), ignore_errors=True)
     shutil.rmtree(str(dest / '.local.rbx'), ignore_errors=True)
 
-    if preset.contest is not None:
-        clean_copied_contest_dir(dest / preset.contest, build_dir=build_dir)
-    if preset.problem is not None:
-        clean_copied_problem_dir(dest / preset.problem, build_dir=build_dir)
+    # Every declared template, not just the canonical one: build artifacts left
+    # in a variant's directory would otherwise leak into the installed preset.
+    for template in all_templates(preset, dest, is_contest=True):
+        clean_copied_contest_dir(template.path, build_dir=build_dir)
+    for template in all_templates(preset, dest, is_contest=False):
+        clean_copied_problem_dir(template.path, build_dir=build_dir)
 
     clean_copied_package_dir(dest)
 

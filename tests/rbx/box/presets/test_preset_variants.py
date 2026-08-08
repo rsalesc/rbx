@@ -1198,3 +1198,60 @@ problemVariants:
         linting.fix_package(root)
 
         self._assert_formatted(root / 'problem-interactive' / 'problem.rbx.yml')
+
+
+class TestInstallCleansVariantDirs:
+    """Build cruft sitting in a variant's template dir must not be carried into
+    the installed preset."""
+
+    PRESET = """---
+name: "with-variants"
+uri: "test/with-variants"
+min_version: "1.0.0"
+problem: "problem"
+contest: "contest"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+contestVariants:
+  - id: div1
+    path: "contest-div1"
+"""
+
+    def _src(self, tmp_path: pathlib.Path) -> pathlib.Path:
+        from rbx.config import CACHE_DIR_NAME
+
+        src = _preset_with_dirs(
+            tmp_path / 'src',
+            self.PRESET,
+            ['problem', 'problem-interactive', 'contest', 'contest-div1'],
+        )
+        (src / 'problem' / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+        (src / 'problem-interactive' / 'problem.rbx.yml').write_text(_PROBLEM_YML)
+        (src / 'contest' / 'contest.rbx.yml').write_text(_CONTEST_YML)
+        (src / 'contest-div1' / 'contest.rbx.yml').write_text(_CONTEST_YML)
+        for inner in ('problem', 'problem-interactive', 'contest', 'contest-div1'):
+            (src / inner / 'build').mkdir()
+            (src / inner / 'build' / 'stale.o').write_text('junk')
+            (src / inner / CACHE_DIR_NAME).mkdir()
+            (src / inner / '.preset-lock.yml').write_text('name: "stale"\n')
+        (src / 'contest' / '.local.rbx').mkdir()
+        (src / 'contest-div1' / '.local.rbx').mkdir()
+        return src
+
+    def test_cleans_every_template_dir(self, tmp_path):
+        from rbx.config import CACHE_DIR_NAME
+
+        src = self._src(tmp_path)
+        dst = tmp_path / 'installed'
+
+        presets.install_preset_from_dir(src, dst)
+
+        for inner in ('problem', 'problem-interactive', 'contest', 'contest-div1'):
+            assert (dst / inner).is_dir()
+            assert not (dst / inner / 'build').exists()
+            assert not (dst / inner / CACHE_DIR_NAME).exists()
+            assert not (dst / inner / '.preset-lock.yml').exists()
+        # Contest templates get their .local.rbx stripped too, variants included.
+        assert not (dst / 'contest' / '.local.rbx').exists()
+        assert not (dst / 'contest-div1' / '.local.rbx').exists()
