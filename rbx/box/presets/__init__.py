@@ -53,6 +53,8 @@ app = typer.Typer(no_args_is_help=True)
 
 _MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
 
+LOCK_FILE_NAME = '.preset-lock.yml'
+
 # Cache/build artefacts ignored when globbing a package's source files. The
 # legacy cache dir is kept so stale caches don't leak into globbed output.
 _DEFAULT_GLOB_GITIGNORE = (
@@ -194,7 +196,7 @@ def get_preset_yaml_metadata(root: pathlib.Path = pathlib.Path()) -> Tuple[str, 
 
 def _find_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     root = utils.abspath(root)
-    problem_yaml_path = root / '.preset-lock.yml'
+    problem_yaml_path = root / LOCK_FILE_NAME
     if not problem_yaml_path.is_file():
         return None
     return problem_yaml_path
@@ -205,6 +207,32 @@ def get_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[PresetLock]
     if not found:
         return None
     return load_yaml_model(found, PresetLock)
+
+
+def _read_locked_variant(root: pathlib.Path = pathlib.Path()) -> Optional[str]:
+    """The `variant` recorded in the lock, read without validating the rest.
+
+    `rbx presets lock` is the command you reach for when `.preset-lock.yml` is
+    broken, so it must not choke on a malformed one: anything unreadable here
+    degrades to None (the canonical template) with a warning.
+    """
+    found = _find_preset_lock(root)
+    if found is None:
+        return None
+    try:
+        data = yaml.safe_load(found.read_text())
+    except (yaml.YAMLError, OSError, UnicodeDecodeError):
+        data = None
+
+    variant = data.get('variant') if isinstance(data, dict) else None
+    if not isinstance(data, dict) or not isinstance(variant, (str, type(None))):
+        console.console.print(
+            f'[warning]Could not read the [item]variant[/item] field of '
+            f'[item]{LOCK_FILE_NAME}[/item]; assuming this package came from the '
+            "preset's canonical template.[/warning]"
+        )
+        return None
+    return variant
 
 
 def find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
@@ -618,11 +646,15 @@ def _canonical_template(preset: Preset, is_contest: bool) -> Optional[pathlib.Pa
     return preset.contest if is_contest else preset.problem
 
 
-def _print_available_templates(preset: Preset, *, is_contest: bool) -> None:
+def _print_available_templates(
+    preset: Preset, *, is_contest: bool, requested_by: Optional[str] = None
+) -> None:
     kind = 'contest' if is_contest else 'problem'
-    console.console.print(
-        f'Available {kind} templates (select with [item]-v <id>[/item]):'
-    )
+    # `-v` only exists on the commands that create a package. When the template
+    # was requested by a file, that flag is not the user's lever, so don't
+    # advertise it.
+    how = '' if requested_by is not None else ' (select with [item]-v <id>[/item])'
+    console.console.print(f'Available {kind} templates{how}:')
     if _canonical_template(preset, is_contest) is not None:
         console.console.print("  [item]default[/item] — the preset's main template")
     for variant in preset.variants(is_contest):
@@ -630,7 +662,31 @@ def _print_available_templates(preset: Preset, *, is_contest: bool) -> None:
         console.console.print(f'  [item]{variant.id}[/item]{suffix}')
 
 
-def _fail_no_template(preset: Preset, *, is_contest: bool, message: str) -> NoReturn:
+def _print_requested_by_remediation(requested_by: str) -> None:
+    """Explain that the missing template was asked for by a file, not by a flag,
+    and how to get out of it."""
+    console.console.print(
+        f'[error]This template was requested by [item]{requested_by}[/item], and rbx '
+        'will not silently fall back to another one -- doing so could overwrite this '
+        "package's assets.[/error]"
+    )
+    console.console.print(
+        'Either restore the template in the installed preset copy at '
+        '[item].local.rbx/preset.rbx.yml[/item] (re-fetching the preset with '
+        '[item]rbx presets sync -u[/item] overwrites that copy from the remote), '
+        f'or set the [item]variant[/item] field of [item]{requested_by}[/item] to a '
+        "template that does exist ([item]default[/item] means the preset's canonical "
+        'template).'
+    )
+
+
+def _fail_no_template(
+    preset: Preset,
+    *,
+    is_contest: bool,
+    message: str,
+    requested_by: Optional[str] = None,
+) -> NoReturn:
     """Report that a requested template could not be resolved, and exit.
 
     When the preset declares no templates of this kind at all, `message` is
@@ -646,7 +702,11 @@ def _fail_no_template(preset: Preset, *, is_contest: bool, message: str) -> NoRe
         )
     else:
         console.console.print(message)
-        _print_available_templates(preset, is_contest=is_contest)
+        _print_available_templates(
+            preset, is_contest=is_contest, requested_by=requested_by
+        )
+    if requested_by is not None:
+        _print_requested_by_remediation(requested_by)
     raise typer.Exit(1)
 
 
@@ -656,12 +716,18 @@ def resolve_template(
     *,
     is_contest: bool,
     variant: Optional[str],
+    requested_by: Optional[str] = None,
 ) -> ResolvedTemplate:
     """Resolve a variant id into the template directory it names.
 
     This is the only place that maps an id to a template directory, and the only
     place that errors on an unknown or removed one. `variant` is None (or the
     reserved id 'default') for the preset's canonical template.
+
+    `requested_by` names the file that asked for this template (e.g.
+    `.preset-lock.yml`) when it was not a command-line flag. It only shapes the
+    error messages -- provenance lives here, next to the code that knows which
+    template is missing, so every failure branch reports it consistently.
     """
     kind = 'contest' if is_contest else 'problem'
     if variant == 'default':
@@ -678,6 +744,7 @@ def resolve_template(
                     f'[error]Preset [item]{preset.name}[/item] does not have a '
                     f'canonical {kind} template.[/error]'
                 ),
+                requested_by=requested_by,
             )
         inner = canonical
     else:
@@ -690,6 +757,7 @@ def resolve_template(
                     f'[error]Preset [item]{preset.name}[/item] has no {kind} variant '
                     f'[item]{variant}[/item].[/error]'
                 ),
+                requested_by=requested_by,
             )
         inner = found.path
 
@@ -700,6 +768,8 @@ def resolve_template(
             f'[item]{inner}[/item], but that directory does not exist '
             f'([item]{path}[/item]).[/error]'
         )
+        if requested_by is not None:
+            _print_requested_by_remediation(requested_by)
         raise typer.Exit(1)
 
     return ResolvedTemplate(
@@ -718,6 +788,7 @@ def get_active_template(
     *,
     is_contest: bool = False,
     variant: Optional[str] = None,
+    requested_by: Optional[str] = None,
 ) -> ResolvedTemplate:
     """Resolve a template of the preset that is active for the package at `root`."""
     return resolve_template(
@@ -725,6 +796,7 @@ def get_active_template(
         get_active_preset_path(root),
         is_contest=is_contest,
         variant=variant,
+        requested_by=requested_by,
     )
 
 
@@ -1356,9 +1428,9 @@ def generate_lock(
         assets=build_package_locked_assets(tracked_assets, root),
     )
 
-    (root / '.preset-lock.yml').write_text(utils.model_to_yaml(preset_lock))
+    (root / LOCK_FILE_NAME).write_text(utils.model_to_yaml(preset_lock))
     console.console.print(
-        '[success][item].preset-lock.yml[/item] was created.[/success]'
+        f'[success][item]{LOCK_FILE_NAME}[/item] was created.[/success]'
     )
 
 
@@ -1378,27 +1450,14 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
 
     # Sync against the template the package was actually created from. Falling
     # back to the canonical one would overwrite a variant package's tracked
-    # assets with the wrong template's, so a variant that no longer exists in
-    # the (possibly just-updated) preset is a hard error.
-    try:
-        template = get_active_template(
-            is_contest=is_contest(), variant=preset_lock.variant
-        )
-    except typer.Exit:
-        # `resolve_template` already said which template is missing and listed
-        # the available ones; add where the request came from, since the user
-        # never typed this variant -- the lock did.
-        if preset_lock.variant is not None:
-            console.console.print(
-                f'[error]This package is locked to the [item]{preset_lock.variant}[/item] '
-                'template in its [item].preset-lock.yml[/item], and syncing against a '
-                'different one would overwrite its assets.[/error]'
-            )
-            console.console.print(
-                '[error]Restore the variant in the preset, or point the [item]variant[/item] '
-                'field of [item].preset-lock.yml[/item] at a template that exists.[/error]'
-            )
-        raise
+    # assets with the wrong template's, so a template that no longer exists in
+    # the (possibly just-updated) preset is a hard error -- reported by
+    # `resolve_template`, which is told the request came from the lock.
+    template = get_active_template(
+        is_contest=is_contest(),
+        variant=preset_lock.variant,
+        requested_by=LOCK_FILE_NAME if preset_lock.variant is not None else None,
+    )
 
     _copy_updated_assets(
         preset_lock,
@@ -1624,16 +1683,31 @@ def sync(
 @cd.within_closest_package
 def lock():
     check_is_valid_package()
+    contest = is_contest()
     # Re-locking must keep the template the package is already locked to;
     # silently re-pointing a variant package at the canonical template would
     # make the next sync overwrite its assets.
-    existing_lock = get_preset_lock()
-    generate_lock(
-        template=get_active_template(
-            is_contest=is_contest(),
-            variant=existing_lock.variant if existing_lock is not None else None,
+    existing_lock = _find_preset_lock()
+    variant = _read_locked_variant() if existing_lock is not None else None
+    template = get_active_template(is_contest=contest, variant=variant)
+
+    if existing_lock is None and template.preset.variants(contest):
+        # Nothing recorded the template this package came from, so canonical is
+        # only a guess -- and a wrong guess makes the next sync overwrite the
+        # package's assets. Say so instead of guessing silently.
+        console.console.print(
+            f'[warning]This package had no [item]{LOCK_FILE_NAME}[/item], so it was '
+            "locked to the preset's [item]default[/item] template.[/warning]"
         )
-    )
+        console.console.print(
+            'If it was created from another template, set the [item]variant[/item] '
+            f'field in [item]{LOCK_FILE_NAME}[/item] to its id before syncing:'
+        )
+        _print_available_templates(
+            template.preset, is_contest=contest, requested_by=LOCK_FILE_NAME
+        )
+
+    generate_lock(template=template)
 
 
 @app.command('ls', help='List details about the active preset.')

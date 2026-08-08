@@ -1,5 +1,6 @@
 import pathlib
 import re
+import shutil
 from typing import Any, Optional
 
 import pytest
@@ -722,7 +723,7 @@ def _install_package(tmp_path: pathlib.Path, variant: Optional[str]) -> pathlib.
     package_dir.mkdir()
     presets.install_preset_from_dir(preset_root, package_dir / '.local.rbx')
     template = presets.install_problem(package_dir, variant=variant)
-    assert template is not None, 'install_problem must return the template it used'
+    assert template.variant_id == variant
     presets.generate_lock(package_dir, template=template)
     return package_dir
 
@@ -767,6 +768,44 @@ class TestLockVariant:
         assert lock is not None
         assert lock.variant == 'interactive'
 
+    def test_relock_repairs_a_corrupt_lock(self, tmp_path, monkeypatch, capsys):
+        package_dir = _install_package(tmp_path, variant='interactive')
+        # `presets lock` is exactly the command you reach for here, so it must
+        # not refuse to run.
+        (package_dir / '.preset-lock.yml').write_text('{{ not yaml at all')
+
+        monkeypatch.chdir(package_dir)
+        presets.lock()
+
+        lock = presets.get_preset_lock(package_dir)
+        assert lock is not None
+        # The variant could not be recovered, so canonical is assumed -- but the
+        # user is told, rather than left to discover it at the next sync.
+        assert lock.variant is None
+        assert 'Could not read' in _plain(capsys.readouterr().out)
+
+    def test_locking_a_package_with_no_lock_announces_the_guess(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        package_dir = _install_package(tmp_path, variant='interactive')
+        # Adopting a package whose lock was never committed: nothing records
+        # which template it came from.
+        (package_dir / '.preset-lock.yml').unlink()
+
+        monkeypatch.chdir(package_dir)
+        presets.lock()
+
+        lock = presets.get_preset_lock(package_dir)
+        assert lock is not None
+        assert lock.variant is None
+
+        out = _plain(capsys.readouterr().out)
+        # The guess is stated, and the alternatives it might have been are
+        # listed, so a variant package can be corrected before the next sync.
+        assert 'default' in out
+        assert 'interactive' in out
+        assert '.preset-lock.yml' in out
+
     def test_sync_uses_the_locked_variant(self, tmp_path, monkeypatch):
         package_dir = _install_package(tmp_path, variant='interactive')
         assert (package_dir / 'tracked.txt').read_text() == 'variant v1'
@@ -810,9 +849,33 @@ class TestLockVariant:
         out = _plain(capsys.readouterr().out)
         assert 'interactive' in out
         assert '.preset-lock.yml' in out
+        # `-v` is not a lever on `presets sync`, so it must not be suggested.
+        assert '-v <id>' not in out
         # Crucially, the variant's asset was NOT overwritten with the
-        # canonical template's content.
+        # canonical template's content...
         assert (package_dir / 'tracked.txt').read_text() == 'variant v1'
+        # ...and the lock was not rewritten to point at the canonical template,
+        # which would make the next sync destroy the package quietly.
+        lock = presets.get_preset_lock(package_dir)
+        assert lock is not None
+        assert lock.variant == 'interactive'
+
+    def test_sync_does_not_blame_the_lock_for_an_unrelated_failure(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        package_dir = _install_package(tmp_path, variant='interactive')
+        # A very common setup: `.local.rbx` is gitignored, so a fresh clone has
+        # no installed preset at all. That has nothing to do with the lock.
+        shutil.rmtree(package_dir / '.local.rbx')
+
+        monkeypatch.chdir(package_dir)
+        with pytest.raises(typer.Exit):
+            presets._sync()  # noqa: SLF001
+
+        out = _plain(capsys.readouterr().out)
+        assert 'No preset is active' in out
+        # No advice to go edit a lock file that is perfectly fine.
+        assert 'variant' not in out
 
     def test_pre_variants_lock_syncs_against_the_canonical_template(
         self, tmp_path, monkeypatch
@@ -833,3 +896,69 @@ class TestLockVariant:
         presets._sync()  # noqa: SLF001
 
         assert (package_dir / 'tracked.txt').read_text() == 'canonical v2'
+
+
+CONTEST_PRESET_WITH_TRACKED_VARIANT = """---
+name: "with-variant"
+uri: "test/with-variant"
+min_version: "1.0.0"
+contest: "contest"
+tracking:
+  contest:
+    - path: "tracked.txt"
+contestVariants:
+  - id: div1
+    path: "contest-div1"
+    description: "Div 1"
+"""
+
+_CONTEST_YML = """---
+name: "template-contest"
+problems: []
+"""
+
+
+class TestContestLockVariant:
+    """The contest side goes through its own install entrypoint, so it gets its
+    own end-to-end coverage of the same failure mode."""
+
+    def _install_contest_package(
+        self, tmp_path: pathlib.Path, variant: Optional[str]
+    ) -> pathlib.Path:
+        preset_root = tmp_path / 'preset'
+        preset_root.mkdir()
+        (preset_root / 'preset.rbx.yml').write_text(CONTEST_PRESET_WITH_TRACKED_VARIANT)
+        for inner, content in (
+            ('contest', 'canonical v1'),
+            ('contest-div1', 'variant v1'),
+        ):
+            (preset_root / inner).mkdir()
+            (preset_root / inner / 'contest.rbx.yml').write_text(_CONTEST_YML)
+            (preset_root / inner / 'tracked.txt').write_text(content)
+
+        package_dir = tmp_path / 'package'
+        package_dir.mkdir()
+        presets.install_preset_from_dir(preset_root, package_dir / '.local.rbx')
+        template = presets.install_contest(package_dir, variant=variant)
+        assert template.variant_id == variant
+        presets.generate_lock(package_dir, template=template)
+        return package_dir
+
+    def test_install_contest_returns_the_template_and_lock_records_it(self, tmp_path):
+        package_dir = self._install_contest_package(tmp_path, variant='div1')
+
+        assert (package_dir / 'tracked.txt').read_text() == 'variant v1'
+        lock = presets.get_preset_lock(package_dir)
+        assert lock is not None
+        assert lock.variant == 'div1'
+
+    def test_sync_uses_the_locked_contest_variant(self, tmp_path, monkeypatch):
+        package_dir = self._install_contest_package(tmp_path, variant='div1')
+        local = package_dir / '.local.rbx'
+        (local / 'contest' / 'tracked.txt').write_text('canonical v2')
+        (local / 'contest-div1' / 'tracked.txt').write_text('variant v2')
+
+        monkeypatch.chdir(package_dir)
+        presets._sync()  # noqa: SLF001
+
+        assert (package_dir / 'tracked.txt').read_text() == 'variant v2'

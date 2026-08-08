@@ -52,13 +52,13 @@ class LockedAsset(TrackedAsset):
 class PresetLock(BaseModel):
     name: str
 
-    @property
-    def preset_name(self) -> str:
-        return self.name
-
     # Which preset template this package was created from. None means the
     # preset's canonical template -- which is what every pre-variants lock file
     # means, so old locks keep working untouched.
     variant: Optional[str] = None
 
     assets: List[LockedAsset] = []
+
+    @property
+    def preset_name(self) -> str:
+        return self.name
