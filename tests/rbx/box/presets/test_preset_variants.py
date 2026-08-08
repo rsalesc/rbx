@@ -962,3 +962,239 @@ class TestContestLockVariant:
         presets._sync()  # noqa: SLF001
 
         assert (package_dir / 'tracked.txt').read_text() == 'variant v2'
+
+
+_PROBLEM_YML = """---
+name: "template-problem"
+"""
+
+
+def _preset_with_dirs(root: pathlib.Path, body: str, dirs) -> pathlib.Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / 'preset.rbx.yml').write_text(body)
+    for inner in dirs:
+        (root / inner).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+class TestAllTemplates:
+    def test_canonical_then_variants_in_declaration_order(self, tmp_path):
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "with-variants"
+uri: "test/with-variants"
+min_version: "1.0.0"
+problem: "problem"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+  - id: alpha
+    path: "problem-alpha"
+""",
+            ['problem', 'problem-interactive', 'problem-alpha'],
+        )
+        preset = presets.get_preset_yaml(root)
+
+        templates = presets.all_templates(preset, root, is_contest=False)
+
+        assert [t.variant_id for t in templates] == [None, 'interactive', 'alpha']
+        assert [t.path for t in templates] == [
+            root / 'problem',
+            root / 'problem-interactive',
+            root / 'problem-alpha',
+        ]
+
+    def test_canonical_only(self, tmp_path):
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "plain"
+uri: "test/plain"
+min_version: "1.0.0"
+problem: "problem"
+""",
+            ['problem'],
+        )
+        preset = presets.get_preset_yaml(root)
+
+        templates = presets.all_templates(preset, root, is_contest=False)
+
+        assert [(t.variant_id, t.path) for t in templates] == [(None, root / 'problem')]
+
+    def test_variants_only_without_canonical(self, tmp_path):
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "variant-only"
+uri: "test/variant-only"
+min_version: "1.0.0"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+""",
+            ['problem-interactive'],
+        )
+        preset = presets.get_preset_yaml(root)
+
+        templates = presets.all_templates(preset, root, is_contest=False)
+
+        assert [(t.variant_id, t.path) for t in templates] == [
+            ('interactive', root / 'problem-interactive')
+        ]
+
+    def test_no_templates_of_this_kind_returns_empty(self, tmp_path):
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "problem-only"
+uri: "test/problem-only"
+min_version: "1.0.0"
+problem: "problem"
+""",
+            ['problem'],
+        )
+        preset = presets.get_preset_yaml(root)
+
+        assert presets.all_templates(preset, root, is_contest=True) == []
+
+    def test_missing_directory_is_warned_and_skipped(self, tmp_path, capsys):
+        # Unlike `resolve_template`, sweeping over every template must not abort
+        # on a stale declaration: the remaining templates still get processed.
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "stale"
+uri: "test/stale"
+min_version: "1.0.0"
+problem: "problem-gone"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+""",
+            ['problem-interactive'],
+        )
+        preset = presets.get_preset_yaml(root)
+
+        templates = presets.all_templates(preset, root, is_contest=False)
+
+        assert [(t.variant_id, t.path) for t in templates] == [
+            ('interactive', root / 'problem-interactive')
+        ]
+        out = _plain(capsys.readouterr().out)
+        assert 'problem-gone' in out
+
+    def test_carries_merged_config_per_template(self, tmp_path):
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "with-variant"
+uri: "test/with-variant"
+min_version: "1.0.0"
+problem: "problem"
+tracking:
+  problem:
+    - path: ".gitignore"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+    tracking:
+      - path: "interactor.cpp"
+""",
+            ['problem', 'problem-interactive'],
+        )
+        preset = presets.get_preset_yaml(root)
+
+        canonical, variant = presets.all_templates(preset, root, is_contest=False)
+
+        assert [str(t.path) for t in canonical.tracking] == ['.gitignore']
+        assert sorted(str(t.path) for t in variant.tracking) == [
+            '.gitignore',
+            'interactor.cpp',
+        ]
+
+
+class TestLintingCoversVariants:
+    """`rbx fix` on a preset must format every template's package yaml, not just
+    the canonical one."""
+
+    UNFORMATTED = "name: 'template-problem'\n"
+    UNFORMATTED_CONTEST = "name: 'template-contest'\nproblems: []\n"
+
+    def _assert_formatted(self, path: pathlib.Path):
+        text = path.read_text()
+        assert text.startswith('---')
+        assert "'" not in text
+
+    def test_formats_problem_variants(self, tmp_path):
+        from rbx.box import linting
+
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "with-variant"
+uri: "test/with-variant"
+min_version: "1.0.0"
+problem: "problem"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+""",
+            ['problem', 'problem-interactive'],
+        )
+        (root / 'problem' / 'problem.rbx.yml').write_text(self.UNFORMATTED)
+        (root / 'problem-interactive' / 'problem.rbx.yml').write_text(self.UNFORMATTED)
+
+        linting.fix_package(root)
+
+        self._assert_formatted(root / 'problem' / 'problem.rbx.yml')
+        self._assert_formatted(root / 'problem-interactive' / 'problem.rbx.yml')
+
+    def test_formats_contest_variants(self, tmp_path):
+        from rbx.box import linting
+
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "with-variant"
+uri: "test/with-variant"
+min_version: "1.0.0"
+contest: "contest"
+contestVariants:
+  - id: div1
+    path: "contest-div1"
+""",
+            ['contest', 'contest-div1'],
+        )
+        (root / 'contest' / 'contest.rbx.yml').write_text(self.UNFORMATTED_CONTEST)
+        (root / 'contest-div1' / 'contest.rbx.yml').write_text(self.UNFORMATTED_CONTEST)
+
+        linting.fix_package(root)
+
+        self._assert_formatted(root / 'contest' / 'contest.rbx.yml')
+        self._assert_formatted(root / 'contest-div1' / 'contest.rbx.yml')
+
+    def test_template_without_package_yaml_does_not_stop_the_others(self, tmp_path):
+        from rbx.box import linting
+
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "with-variant"
+uri: "test/with-variant"
+min_version: "1.0.0"
+problem: "problem"
+problemVariants:
+  - id: empty
+    path: "problem-empty"
+  - id: interactive
+    path: "problem-interactive"
+""",
+            ['problem', 'problem-empty', 'problem-interactive'],
+        )
+        (root / 'problem' / 'problem.rbx.yml').write_text(self.UNFORMATTED)
+        (root / 'problem-interactive' / 'problem.rbx.yml').write_text(self.UNFORMATTED)
+
+        linting.fix_package(root)
+
+        self._assert_formatted(root / 'problem-interactive' / 'problem.rbx.yml')

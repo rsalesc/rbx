@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box.cd import is_contest_package, is_preset_package, is_problem_package
 from rbx.box.contest.schema import Contest
-from rbx.box.presets import get_preset_yaml
+from rbx.box.presets import all_templates, get_preset_yaml
 from rbx.box.presets.schema import Preset
 from rbx.box.schema import Package
 from rbx.box.stats import find_problem_packages_from_contest
@@ -73,14 +73,16 @@ def fix_package(root: pathlib.Path = pathlib.Path(), print_diff: bool = False):
     if is_preset_package(root):
         fix_yaml(root / 'preset.rbx.yml', model_cls=Preset, print_diff=print_diff)
         preset = get_preset_yaml(root)
-        if preset.problem is not None:
-            fix_yaml(
-                root / preset.problem / 'problem.rbx.yml',
-                model_cls=Package,
-                print_diff=print_diff,
-            )
-        if preset.contest is not None:
-            fix_package(root / preset.contest, print_diff=print_diff)
+        # Every template of each kind, not just the canonical one: a variant's
+        # package must be formatted too.
+        for template in all_templates(preset, root, is_contest=False):
+            problem_yaml = template.path / 'problem.rbx.yml'
+            # Skip (instead of blowing up) a template dir that carries no
+            # package yaml, so one broken template does not stop the others.
+            if problem_yaml.is_file():
+                fix_yaml(problem_yaml, model_cls=Package, print_diff=print_diff)
+        for template in all_templates(preset, root, is_contest=True):
+            fix_package(template.path, print_diff=print_diff)
         return
 
     if is_problem_package(root):
