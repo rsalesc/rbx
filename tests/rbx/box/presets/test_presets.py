@@ -81,23 +81,12 @@ def test_materialize_libraries_local_source(tmp_path, monkeypatch):
     pkg = tmp_path / 'pkg'
     pkg.mkdir()
 
-    def template_for(is_contest: bool) -> presets.ResolvedTemplate:
-        return presets.ResolvedTemplate(
-            preset=preset,
-            preset_path=tmp_path,
-            inner=Path('contest' if is_contest else 'problem'),
-            variant_id=None,
-            tracking=preset.merged_tracking(None, is_contest),
-            libraries=preset.merged_libraries(None, is_contest),
-            expansion=preset.merged_expansion(None, is_contest),
-        )
-
-    presets.materialize_libraries(template_for(is_contest=False), pkg)
+    presets.materialize_libraries(preset.libraries.problem, pkg)
     assert (pkg / 'libs' / 'lib.h').read_text() == '// header'
     # Only problem libraries materialized when is_contest=False.
     assert not (pkg / 'clib.h').exists()
 
-    presets.materialize_libraries(template_for(is_contest=True), pkg)
+    presets.materialize_libraries(preset.libraries.contest, pkg)
     assert (pkg / 'clib.h').read_text() == '// header'
 
 
@@ -412,16 +401,16 @@ class TestAssetTracking:
         assert len(result) == 2
         assert {asset.path.name for asset in result} == {'file1.cpp', 'file2.cpp'}
 
-    def test_get_preset_tracked_assets_problem(self, problem_package_with_preset):
+    def test_get_template_tracked_assets_problem(self, problem_package_with_preset):
         """Should get tracked assets for problem package."""
-        assets = presets.get_template_tracked_assets(
+        assets = presets._get_template_tracked_assets(  # noqa: SLF001
             presets.get_active_template(problem_package_with_preset, is_contest=False)
         )
 
         # Should include template.cpp and other tracked files
         assert any(asset.path.name == 'template.cpp' for asset in assets)
 
-    def test_get_preset_tracked_assets_with_symlinks(
+    def test_get_template_tracked_assets_with_symlinks(
         self, tmp_path, symlink_preset_testdata
     ):
         """Should include symlinks when requested."""
@@ -433,7 +422,7 @@ class TestAssetTracking:
             symlink_preset_testdata, package_dir / '.local.rbx'
         )
 
-        assets = presets.get_template_tracked_assets(
+        assets = presets._get_template_tracked_assets(  # noqa: SLF001
             presets.get_active_template(package_dir, is_contest=False),
             add_symlinks=True,
         )

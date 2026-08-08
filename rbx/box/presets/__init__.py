@@ -60,6 +60,31 @@ _DEFAULT_GLOB_GITIGNORE = (
 )
 
 
+@dataclasses.dataclass(frozen=True)
+class ResolvedTemplate:
+    """A preset template directory plus the config that applies to it.
+
+    `variant_id` is None for the preset's canonical template, and the variant's
+    id otherwise. `inner` is the template path as declared in `preset.rbx.yml`
+    (relative to the preset root); `path` is where it actually lives on disk.
+
+    Built by `resolve_template`, which is the only place that maps a variant id
+    to a template directory.
+    """
+
+    preset: Preset
+    preset_path: pathlib.Path
+    inner: pathlib.Path
+    variant_id: Optional[str]
+    tracking: List[TrackedAsset]
+    libraries: List[Library]
+    expansion: List[VariableExpansion]
+
+    @property
+    def path(self) -> pathlib.Path:
+        return self.preset_path / self.inner
+
+
 def _expand_content(
     content: bytes,
     expansions: List[Tuple[str, str, List[str]]],
@@ -297,8 +322,8 @@ def dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
     return res
 
 
-def get_template_tracked_assets(
-    template: 'ResolvedTemplate', add_symlinks: bool = False
+def _get_template_tracked_assets(
+    template: ResolvedTemplate, *, add_symlinks: bool = False
 ) -> List[TrackedAsset]:
     preset_pkg_path = template.path
     res = process_globbing(template.tracking, preset_pkg_path)
@@ -469,8 +494,9 @@ def copy_preset_file(
 
 def _copy_updated_assets(
     preset_lock: PresetLock,
-    template: 'ResolvedTemplate',
+    template: ResolvedTemplate,
     root: pathlib.Path = pathlib.Path(),
+    *,
     force: bool = False,
     symlinks: bool = False,
 ):
@@ -479,7 +505,9 @@ def _copy_updated_assets(
     preset_path = template.preset_path
     preset_package_path = template.path
 
-    preset_tracked_assets = get_template_tracked_assets(template, add_symlinks=symlinks)
+    preset_tracked_assets = _get_template_tracked_assets(
+        template, add_symlinks=symlinks
+    )
     current_preset_snapshot = build_package_locked_assets(
         preset_tracked_assets, preset_package_path
     )
@@ -584,28 +612,6 @@ def get_preset_environment_path(
         )
         raise typer.Exit(1)
     return env_path
-
-
-@dataclasses.dataclass(frozen=True)
-class ResolvedTemplate:
-    """A preset template directory plus the config that applies to it.
-
-    `variant_id` is None for the preset's canonical template, and the variant's
-    id otherwise. `inner` is the template path as declared in `preset.rbx.yml`
-    (relative to the preset root); `path` is where it actually lives on disk.
-    """
-
-    preset: Preset
-    preset_path: pathlib.Path
-    inner: pathlib.Path
-    variant_id: Optional[str]
-    tracking: List[TrackedAsset]
-    libraries: List[Library]
-    expansion: List[VariableExpansion]
-
-    @property
-    def path(self) -> pathlib.Path:
-        return self.preset_path / self.inner
 
 
 def _canonical_template(preset: Preset, is_contest: bool) -> Optional[pathlib.Path]:
@@ -1117,7 +1123,7 @@ def _install_package_from_preset(
         )
 
 
-def materialize_libraries(template: ResolvedTemplate, pkg_root: pathlib.Path):
+def materialize_libraries(libraries: List[Library], pkg_root: pathlib.Path):
     # Libraries are tool-managed: every create/sync re-fetches per the version
     # spec and overwrites the materialized file. Reproducibility comes from the
     # committed files (the pin), not from a lock — so local hand-edits to a
@@ -1125,7 +1131,7 @@ def materialize_libraries(template: ResolvedTemplate, pkg_root: pathlib.Path):
     # under a different path/source if you need to diverge.
     from rbx.box.presets import library_fetch
 
-    for library in template.libraries:
+    for library in libraries:
         cached = library_fetch.fetch_library(library)
         library_fetch.materialize_library(library, cached, pkg_root)
         console.console.print(
@@ -1163,7 +1169,7 @@ def install_contest(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     if materialize:
-        materialize_libraries(template, dest_pkg)
+        materialize_libraries(template.libraries, dest_pkg)
 
 
 def install_problem(
@@ -1194,7 +1200,7 @@ def install_problem(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     if materialize:
-        materialize_libraries(template, dest_pkg)
+        materialize_libraries(template.libraries, dest_pkg)
 
 
 def install_preset(
@@ -1317,14 +1323,23 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
     return res, res.load(root / 'preset.rbx.yml')
 
 
-def generate_lock(root: pathlib.Path = pathlib.Path()):
-    preset = get_active_preset(root)
+def generate_lock(
+    root: pathlib.Path = pathlib.Path(),
+    template: Optional[ResolvedTemplate] = None,
+):
+    """Write `.preset-lock.yml` for the package at `root`.
 
-    tracked_assets = get_template_tracked_assets(
-        get_active_template(root, is_contest=is_contest(root))
-    )
+    `template` is the template the package was installed from / synced against.
+    Callers that already resolved one MUST pass it, so the lock can never end up
+    describing a different template than the one that was just applied; it is
+    resolved here only for callers that have none.
+    """
+    if template is None:
+        template = get_active_template(root, is_contest=is_contest(root))
+
+    tracked_assets = _get_template_tracked_assets(template)
     preset_lock = PresetLock(
-        name=preset.name,
+        name=template.preset.name,
         assets=build_package_locked_assets(tracked_assets, root),
     )
 
@@ -1356,8 +1371,8 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
         force=force,
         symlinks=symlinks,
     )
-    materialize_libraries(template, pathlib.Path())
-    generate_lock()
+    materialize_libraries(template.libraries, pathlib.Path())
+    generate_lock(template=template)
 
 
 def copy_tree_normalizing_gitdir(
