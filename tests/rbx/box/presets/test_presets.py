@@ -81,12 +81,23 @@ def test_materialize_libraries_local_source(tmp_path, monkeypatch):
     pkg = tmp_path / 'pkg'
     pkg.mkdir()
 
-    presets.materialize_libraries(preset, pkg, is_contest=False)
+    def template_for(is_contest: bool) -> presets.ResolvedTemplate:
+        return presets.ResolvedTemplate(
+            preset=preset,
+            preset_path=tmp_path,
+            inner=Path('contest' if is_contest else 'problem'),
+            variant_id=None,
+            tracking=preset.merged_tracking(None, is_contest),
+            libraries=preset.merged_libraries(None, is_contest),
+            expansion=preset.merged_expansion(None, is_contest),
+        )
+
+    presets.materialize_libraries(template_for(is_contest=False), pkg)
     assert (pkg / 'libs' / 'lib.h').read_text() == '// header'
     # Only problem libraries materialized when is_contest=False.
     assert not (pkg / 'clib.h').exists()
 
-    presets.materialize_libraries(preset, pkg, is_contest=True)
+    presets.materialize_libraries(template_for(is_contest=True), pkg)
     assert (pkg / 'clib.h').read_text() == '// header'
 
 
@@ -403,8 +414,8 @@ class TestAssetTracking:
 
     def test_get_preset_tracked_assets_problem(self, problem_package_with_preset):
         """Should get tracked assets for problem package."""
-        assets = presets.get_preset_tracked_assets(
-            problem_package_with_preset, is_contest=False
+        assets = presets.get_template_tracked_assets(
+            presets.get_active_template(problem_package_with_preset, is_contest=False)
         )
 
         # Should include template.cpp and other tracked files
@@ -422,8 +433,9 @@ class TestAssetTracking:
             symlink_preset_testdata, package_dir / '.local.rbx'
         )
 
-        assets = presets.get_preset_tracked_assets(
-            package_dir, is_contest=False, add_symlinks=True
+        assets = presets.get_template_tracked_assets(
+            presets.get_active_template(package_dir, is_contest=False),
+            add_symlinks=True,
         )
 
         symlink_assets = [a for a in assets if a.symlink]

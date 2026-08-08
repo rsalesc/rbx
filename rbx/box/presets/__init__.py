@@ -297,25 +297,11 @@ def dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
     return res
 
 
-def get_preset_tracked_assets(
-    root: pathlib.Path, is_contest: bool, add_symlinks: bool = False
+def get_template_tracked_assets(
+    template: 'ResolvedTemplate', add_symlinks: bool = False
 ) -> List[TrackedAsset]:
-    preset = get_active_preset(root)
-    preset_path = find_local_preset(root)
-    assert preset_path is not None
-
-    if is_contest:
-        assert preset.contest is not None, (
-            'Preset does not have a contest package definition.'
-        )
-        preset_pkg_path = preset_path / preset.contest
-        res = process_globbing(preset.tracking.contest, preset_pkg_path)
-    else:
-        assert preset.problem is not None, (
-            'Preset does not have a problem package definition,'
-        )
-        preset_pkg_path = preset_path / preset.problem
-        res = process_globbing(preset.tracking.problem, preset_pkg_path)
+    preset_pkg_path = template.path
+    res = process_globbing(template.tracking, preset_pkg_path)
 
     if add_symlinks:
         for file in _glob_while_ignoring(
@@ -483,19 +469,17 @@ def copy_preset_file(
 
 def _copy_updated_assets(
     preset_lock: PresetLock,
-    is_contest: bool,
+    template: 'ResolvedTemplate',
     root: pathlib.Path = pathlib.Path(),
     force: bool = False,
     symlinks: bool = False,
 ):
     # Build preset package snapshot.
-    preset = get_active_preset(root)
-    preset_path = get_active_preset_path(root)
-    preset_package_path = _get_active_preset_package_path(root, is_contest)
+    preset = template.preset
+    preset_path = template.preset_path
+    preset_package_path = template.path
 
-    preset_tracked_assets = get_preset_tracked_assets(
-        preset_package_path, is_contest=is_contest, add_symlinks=symlinks
-    )
+    preset_tracked_assets = get_template_tracked_assets(template, add_symlinks=symlinks)
     current_preset_snapshot = build_package_locked_assets(
         preset_tracked_assets, preset_package_path
     )
@@ -600,24 +584,6 @@ def get_preset_environment_path(
         )
         raise typer.Exit(1)
     return env_path
-
-
-def _get_active_preset_package_path(
-    root: pathlib.Path = pathlib.Path(),
-    is_contest: bool = False,
-) -> pathlib.Path:
-    preset = get_active_preset(root)
-    preset_path = find_local_preset(root)
-    assert preset_path is not None
-    if is_contest:
-        assert preset.contest is not None, (
-            'Preset does not have a contest package definition.'
-        )
-        return preset_path / preset.contest
-    assert preset.problem is not None, (
-        'Preset does not have a problem package definition.'
-    )
-    return preset_path / preset.problem
 
 
 @dataclasses.dataclass(frozen=True)
@@ -738,6 +704,21 @@ def resolve_template(
         tracking=preset.merged_tracking(found, is_contest),
         libraries=preset.merged_libraries(found, is_contest),
         expansion=preset.merged_expansion(found, is_contest),
+    )
+
+
+def get_active_template(
+    root: pathlib.Path = pathlib.Path(),
+    *,
+    is_contest: bool = False,
+    variant: Optional[str] = None,
+) -> ResolvedTemplate:
+    """Resolve a template of the preset that is active for the package at `root`."""
+    return resolve_template(
+        get_active_preset(root),
+        get_active_preset_path(root),
+        is_contest=is_contest,
+        variant=variant,
     )
 
 
@@ -1101,18 +1082,13 @@ def install_preset_at_package(fetch_info: PresetFetchInfo, dest_pkg: pathlib.Pat
 
 
 def _install_package_from_preset(
-    preset_path: pathlib.Path,
-    preset_package_inner_path: pathlib.Path,
+    template: ResolvedTemplate,
     dest_pkg: pathlib.Path,
-    tracked_assets: List[TrackedAsset],
     expansions: Optional[List[Tuple[str, str, List[str]]]] = None,
 ):
-    preset_package_path = preset_path / preset_package_inner_path
-    if not preset_package_path.is_dir():
-        console.console.print(
-            f'[error]Preset [item]{preset_path.name}[/item] does not have a [item]{preset_package_inner_path}[/item] package definition.[/error]'
-        )
-        raise typer.Exit(1)
+    # `resolve_template` already guaranteed the template directory exists.
+    preset_path = template.preset_path
+    preset_package_path = template.path
 
     for file in _glob_while_ignoring(
         preset_package_path,
@@ -1129,7 +1105,7 @@ def _install_package_from_preset(
             expansions=expansions,
         )
 
-    for asset in tracked_assets:
+    for asset in template.tracking:
         if not asset.symlink:
             continue
         copy_preset_file(
@@ -1141,7 +1117,7 @@ def _install_package_from_preset(
         )
 
 
-def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bool):
+def materialize_libraries(template: ResolvedTemplate, pkg_root: pathlib.Path):
     # Libraries are tool-managed: every create/sync re-fetches per the version
     # spec and overwrites the materialized file. Reproducibility comes from the
     # committed files (the pin), not from a lock — so local hand-edits to a
@@ -1149,8 +1125,7 @@ def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bo
     # under a different path/source if you need to diverge.
     from rbx.box.presets import library_fetch
 
-    libs = preset.libraries.contest if is_contest else preset.libraries.problem
-    for library in libs:
+    for library in template.libraries:
         cached = library_fetch.fetch_library(library)
         library_fetch.materialize_library(library, cached, pkg_root)
         console.console.print(
@@ -1163,6 +1138,7 @@ def install_contest(
     dest_pkg: pathlib.Path,
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
+    variant: Optional[str] = None,
 ):
     if fetch_info is not None:
         _install_preset_from_fetch_info(
@@ -1170,24 +1146,15 @@ def install_contest(
             dest_pkg / '.local.rbx',
             ensure_contest=True,
         )
-    preset = get_active_preset(dest_pkg)
-    preset_path = find_local_preset(dest_pkg)
-    assert preset_path is not None
-    if preset.contest is None:
-        console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a contest package definition.[/error]'
-        )
-        raise typer.Exit(1)
+    template = get_active_template(dest_pkg, is_contest=True, variant=variant)
 
-    expansions = _collect_expansions(preset.expansion.contest)
+    expansions = _collect_expansions(template.expansion)
     console.console.print(
-        f'Installing contest from [item]{preset_path / preset.contest}[/item] to [item]{dest_pkg}[/item]...'
+        f'Installing contest from [item]{template.path}[/item] to [item]{dest_pkg}[/item]...'
     )
     _install_package_from_preset(
-        preset_path,
-        preset.contest,
+        template,
         dest_pkg,
-        preset.tracking.contest,
         expansions=expansions,
     )
     clean_copied_contest_dir(
@@ -1196,13 +1163,14 @@ def install_contest(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     if materialize:
-        materialize_libraries(preset, dest_pkg, is_contest=True)
+        materialize_libraries(template, dest_pkg)
 
 
 def install_problem(
     dest_pkg: pathlib.Path,
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
+    variant: Optional[str] = None,
 ):
     if fetch_info is not None:
         _install_preset_from_fetch_info(
@@ -1210,24 +1178,15 @@ def install_problem(
             dest_pkg / '.local.rbx',
             ensure_problem=True,
         )
-    preset = get_active_preset(dest_pkg)
-    preset_path = find_local_preset(dest_pkg)
-    assert preset_path is not None
-    if preset.problem is None:
-        console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a problem package definition.[/error]'
-        )
-        raise typer.Exit(1)
+    template = get_active_template(dest_pkg, is_contest=False, variant=variant)
 
-    expansions = _collect_expansions(preset.expansion.problem)
+    expansions = _collect_expansions(template.expansion)
     console.console.print(
-        f'Installing problem from [item]{preset_path / preset.problem}[/item] to [item]{dest_pkg}[/item]...'
+        f'Installing problem from [item]{template.path}[/item] to [item]{dest_pkg}[/item]...'
     )
     _install_package_from_preset(
-        preset_path,
-        preset.problem,
+        template,
         dest_pkg,
-        preset.tracking.problem,
         expansions=expansions,
     )
     clean_copied_problem_dir(
@@ -1235,7 +1194,7 @@ def install_problem(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     if materialize:
-        materialize_libraries(preset, dest_pkg, is_contest=False)
+        materialize_libraries(template, dest_pkg)
 
 
 def install_preset(
@@ -1361,7 +1320,9 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
 def generate_lock(root: pathlib.Path = pathlib.Path()):
     preset = get_active_preset(root)
 
-    tracked_assets = get_preset_tracked_assets(root, is_contest=is_contest(root))
+    tracked_assets = get_template_tracked_assets(
+        get_active_template(root, is_contest=is_contest(root))
+    )
     preset_lock = PresetLock(
         name=preset.name,
         assets=build_package_locked_assets(tracked_assets, root),
@@ -1387,13 +1348,15 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
     if try_update:
         update()
 
+    template = get_active_template(is_contest=is_contest())
+
     _copy_updated_assets(
         preset_lock,
-        is_contest=is_contest(),
+        template,
         force=force,
         symlinks=symlinks,
     )
-    materialize_libraries(get_active_preset(), pathlib.Path(), is_contest=is_contest())
+    materialize_libraries(template, pathlib.Path())
     generate_lock()
 
 
