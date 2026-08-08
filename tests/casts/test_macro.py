@@ -28,6 +28,17 @@ def test_local_name_renders_a_player_pointed_at_the_committed_cast():
     assert 'asciinema.org' not in html
 
 
+def test_player_init_waits_for_the_bundle_to_load():
+    # extra_javascript lands at the end of <body>, after this inline script,
+    # so calling AsciinemaPlayer immediately throws ReferenceError.
+    html = _asciinema()('run-basic')
+
+    assert "document.addEventListener('DOMContentLoaded'" in html
+    init = html.index('AsciinemaPlayer.create')
+    guard = html.index('DOMContentLoaded')
+    assert guard < init
+
+
 def test_speed_and_idleness_map_onto_player_options():
     html = _asciinema()('run-basic', idleness=2, speed=1.5)
 

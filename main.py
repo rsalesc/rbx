@@ -33,10 +33,16 @@ def define_env(env):
             },
             sort_keys=True,
         )
+        # The player bundle is injected via `extra_javascript`, which Material
+        # places at the end of <body> -- after this inline script. Waiting for
+        # DOMContentLoaded is what guarantees `AsciinemaPlayer` exists by the
+        # time we call it.
         return f"""<div style="width: 90%; margin: 0 auto;">
 <div id="{element_id}"></div>
 <script>
-  AsciinemaPlayer.create('/assets/casts/{id}.cast', document.getElementById('{element_id}'), {options});
+  document.addEventListener('DOMContentLoaded', function () {{
+    AsciinemaPlayer.create('/assets/casts/{id}.cast', document.getElementById('{element_id}'), {options});
+  }});
 </script>
 </div>
 """
