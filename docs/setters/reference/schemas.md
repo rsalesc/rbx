@@ -69,11 +69,11 @@ editor stayed quiet about it.
 
 ## Fixing up the header
 
-`rbx lint` normalizes the header of your problem, contest and preset YAMLs,
+`rbx fix` normalizes the header of your problem, contest and preset YAMLs,
 adding it when missing and re-pointing it when the pin is stale:
 
 ```bash
-rbx lint
+rbx fix
 ```
 
 It leaves a `$schema` that rbx does not own alone, so pointing a file at a local

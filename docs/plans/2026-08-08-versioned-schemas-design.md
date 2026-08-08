@@ -133,7 +133,7 @@ Three surfaces, all normalizing to the same helper:
 
 1. `model_to_yaml` in `rbx/utils.py` — every machine-written YAML.
 2. `fix_language_server` in `rbx/box/linting.py`, currently commented out since
-   it was added, is enabled so `rbx lint` normalizes headers in problem,
+   it was added, is enabled so `rbx fix` normalizes headers in problem,
    contest, and preset YAMLs.
 3. Preset materialization rewrites the header of copied templates, so
    third-party presets that hardcode a URL are normalized on use.

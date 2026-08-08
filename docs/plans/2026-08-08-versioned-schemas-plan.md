@@ -4,7 +4,7 @@
 
 **Goal:** Publish versioned JSON Schemas to a dedicated GitHub Pages repo, and make `rbx` write a `# yaml-language-server` URL pinned to the active preset's `min_version`.
 
-**Architecture:** A release-tag CI job generates the 8 schemas and pushes them into `rsalesc/rbx-schemas` under `<major>.<minor>/`. In the CLI, a new `rbx/box/schema_urls.py` resolves the pin from the nearest `.local.rbx/preset.rbx.yml` (falling back to the installed version, and to today's unversioned URL below a floor), and three write paths stamp it: `model_to_yaml`, `rbx lint`, and package creation from a preset.
+**Architecture:** A release-tag CI job generates the 8 schemas and pushes them into `rsalesc/rbx-schemas` under `<major>.<minor>/`. In the CLI, a new `rbx/box/schema_urls.py` resolves the pin from the nearest `.local.rbx/preset.rbx.yml` (falling back to the installed version, and to today's unversioned URL below a floor), and three write paths stamp it: `model_to_yaml`, `rbx fix`, and package creation from a preset.
 
 **Tech Stack:** Python 3.9+/Pydantic v2 JSON Schema generation, Typer CLI, mkdocs `gen-files`, pytest, GitHub Actions.
 
@@ -387,7 +387,7 @@ git commit -m "feat(schemas): pin schema header written by model_to_yaml"
 
 ---
 
-## Task 4: Enable header normalization in `rbx lint`
+## Task 4: Enable header normalization in `rbx fix`
 
 `fix_language_server` (`rbx/box/linting.py:19`) has been commented out of `fix_yaml` since it was added. It also has a latent bug: it re-inserts the header only after a line starting with `---`, so a file without a document marker would *lose* its header. Fix that, make it idempotent, and leave foreign schema URLs alone.
 
@@ -895,7 +895,7 @@ git commit -m "ci(schemas): publish versioned schemas on release"
 
 **Steps:**
 1. Set `min_version: "1.1.0"` in the default preset.
-2. Update the four committed header lines to the pinned URLs. This is what a user sees before ever running `rbx lint`, so it must already be correct.
+2. Update the four committed header lines to the pinned URLs. This is what a user sees before ever running `rbx fix`, so it must already be correct.
 3. Do **not** touch `tests/e2e/testdata/**` presets (`min_version: "0.14.0"`) — they are below the floor and correctly keep the unversioned URL. That is deliberate coverage of the fallback.
 4. Run: `uv run pytest tests/rbx/box/presets -q` and `uv run pytest --ignore=tests/rbx/box/cli -q`.
 5. Commit: `feat(presets): pin default preset to versioned schemas`.
@@ -913,7 +913,7 @@ git commit -m "ci(schemas): publish versioned schemas on release"
 - Where schemas live: `https://rsalesc.github.io/rbx-schemas/<major>.<minor>/<Model>.json`, plus `latest/` and `index.json`.
 - The pin comes from the active preset's `min_version` — the compatibility floor the package promises — so the editor validates against the oldest rbx the package claims to support.
 - Published schemas tolerate unknown keys, but *not* enum values added after the pinned minor; if the editor rejects a value your rbx accepts, raise the preset's `min_version`.
-- `rbx lint` normalizes the header; a custom or local `$schema` is left untouched.
+- `rbx fix` normalizes the header; a custom or local `$schema` is left untouched.
 - Floors below 1.1 fall back to the unversioned URL, which stays published indefinitely.
 
 Verify: `uv run mkdocs build 2>&1 | tail -5` (non-strict, per the pre-existing warnings), then commit `docs(schemas): document versioned schema URLs`.
@@ -926,7 +926,7 @@ Verify: `uv run mkdocs build 2>&1 | tail -5` (non-strict, per the pre-existing w
 2. `uv run pytest --ignore=tests/rbx/box/cli -q -n auto`
 3. `uv run pytest tests/rbx/box/cli -q` (slow)
 4. `mise run test-e2e`
-5. Manual: create a problem from the default preset in a scratch dir, confirm `problem.rbx.yml`'s header is `.../rbx-schemas/1.1/Package.json`, run `rbx lint` twice and confirm the second run reports no change.
+5. Manual: create a problem from the default preset in a scratch dir, confirm `problem.rbx.yml`'s header is `.../rbx-schemas/1.1/Package.json`, run `rbx fix` twice and confirm the second run reports no change.
 
 **Known pre-existing failures on this machine** (not caused by this work): checker/validator/sandbox/docker tests, `test_compute_walltime_uses_active_environment`, and the completion spec drift test. Confirm any failure reproduces on the base commit before investigating.
 
