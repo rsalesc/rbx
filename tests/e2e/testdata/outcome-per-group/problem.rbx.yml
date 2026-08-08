@@ -2,11 +2,6 @@ name: outcome-per-group
 timeLimit: 1000
 memoryLimit: 256
 
-# A plain token-comparison checker rather than the default one, so this package
-# needs no downloaded testlib.h to run.
-checker:
-  path: checker.cpp
-
 generators:
   - name: gen
     path: gens/gen.cpp
