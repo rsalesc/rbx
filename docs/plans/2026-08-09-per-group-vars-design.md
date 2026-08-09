@@ -107,29 +107,74 @@ call in `main()`, no include-order rule.
 no include, no symbol reference, no `_TESTLIB_H_` conditional. Matching
 testlib's convention is a semantic choice, not a link-time one.
 
-`argc`/`argv` are captured by a constructor-attribute hook, which glibc and
-Apple's dyld both invoke with `(argc, argv, envp)`:
+The program reads **its own** command line, through whichever accessor the
+platform provides. No hook, no init call, no argument passed in from `main()`:
 
 ```cpp
 namespace rbx {
 namespace detail {
-static int g_argc = 0;
-static char** g_argv = nullptr;
-__attribute__((constructor)) static void captureArgs(int argc, char** argv, char**) {
-    g_argc = argc;
-    g_argv = argv;
-}
+inline std::vector<std::string> collectArgs();  // per-platform, see below
 }  // namespace detail
 
 inline const std::string& getGroup();  // parsed once, cached in a function-local static
 }  // namespace rbx
 ```
 
-Verified on macOS/clang at `-O2`: resolves correctly even when called from a
-static initializer, before `main()`. **Not yet verified on Linux/glibc** (no
-container available at design time) — the implementation adds a
-`/proc/self/cmdline` fallback and a CI check rather than relying on the
-documented convention alone.
+| Platform | Mechanism | Status |
+| --- | --- | --- |
+| macOS | `_NSGetArgc()` / `_NSGetArgv()` (`<crt_externs.h>`) | Verified: Apple clang and GCC 15, `-O2` |
+| Linux | `/proc/self/cmdline`, split on NUL | Verified by the test suite on Linux CI |
+| Windows | `__argc` / `__argv` globals (`<stdlib.h>`) | **Written but unverified** — no toolchain available |
+| anything else | returns `""` | falls back to package-level vars |
+
+The Windows branch matters because Polygon export pins compilation to
+`cpp.gcc13-64-winlibs-g++20`, a MinGW toolchain
+(`rbx/box/packaging/polygon/utils.py`, `rbx/resources/presets/default/env.rbx.yml`)
+— Windows is the primary export target, not an edge case. `__argv` is null in a
+`wmain()` build, which degrades to "no group" rather than misbehaving.
+
+#### Why not `__attribute__((constructor))`
+
+The obvious idea — and the one this design originally specified — is a
+constructor-attribute hook taking `(argc, argv, envp)`, since glibc and Apple's
+dyld both invoke `.init_array` entries with that signature:
+
+```cpp
+__attribute__((constructor)) static void captureArgs(int argc, char** argv, char**);
+```
+
+**It does not work under the flags rbx actually uses.** At `-O2`, GCC folds the
+hook into the translation unit's static-init thunk `_sub_I_65535_0`, which takes
+no arguments, so the values are lost. GCC 15 says so outright:
+
+```
+In function 'void rbx::detail::rbxCaptureArgs(int, char**, char**)',
+    inlined from '_sub_I_65535_0' at p.cpp:10:1:
+rbx.h:24:10: error: 'argc' is used uninitialized [-Werror=uninitialized]
+```
+
+With warnings off, a real testlib validator built with the default command from
+`env.rbx.yml` reads an empty group while testlib reads the right one:
+
+```
+$ g++ -std=c++20 -O2 -w -o vg v.cpp && ./vg --group sub2 </dev/null
+rbx=[]
+testlib=[sub2]
+```
+
+Three things make this trap easy to fall into:
+
+- The fold only happens when the TU has a **dynamic initializer**. Every testlib
+  TU has several (`__testlib_group` and friends are global `std::string`s), so
+  real validators hit it and toy programs may not.
+- **`-O0` masks it** — at `-O0` nothing is inlined and the hook works.
+- **Apple clang does not fold it**, so it passes on macOS at `-O2`. The original
+  probe for this design was run on macOS, which is why the flaw was missed.
+
+Adding `noinline` happened to fix it on GCC 15, but that leans on the optimizer
+not merging init functions and on `.init_array` ordering between the hook and
+the TU's dynamic init. Reading the command line directly has no UB, no
+optimizer interaction and no init-order hazard, so it is what shipped.
 
 Parsing accepts both `--group X` and `--group=X`, treats a trailing `--group`
 with no value as absent, and returns `""` when the flag is missing (which
@@ -139,6 +184,19 @@ selects package defaults).
 `testlib.h:4594` already defines one, and a second definition is an ODR
 violation (confirmed: clang reports `redefinition of 'getGroup'`). `getVar`
 stays global as the one name setters actually call.
+
+**Follow-up (not yet implemented).** On an unsupported platform the fallback is
+silent: `getGroup()` returns `""` and validation quietly uses package-level
+vars. Since `header.py` knows whether any group declares `vars`, it can emit
+
+```cpp
+#if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)
+#error "rbx: per-group vars need command-line access on this platform"
+#endif
+```
+
+only into headers for packages that actually use the feature, turning that
+silent fallback into a compile error. Belongs with the `getVar` work.
 
 ### Package schema
 

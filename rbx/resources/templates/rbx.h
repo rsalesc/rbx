@@ -10,6 +10,8 @@
 
 #if defined(__APPLE__)
 #include <crt_externs.h>
+#elif defined(_WIN32)
+#include <cstdlib>
 #endif
 
 namespace rbx {
@@ -19,10 +21,16 @@ namespace detail {
 // without the program having to call anything from main(), and without this
 // header depending on any other library.
 //
-// Both supported platforms expose the command line to the process itself:
-// macOS through the public _NSGetArgc/_NSGetArgv accessors, and Linux through
-// the NUL-separated /proc/self/cmdline. Anywhere else this returns nothing,
-// which reads as "no group" and falls back to package-level values.
+// Every supported platform exposes the command line to the process itself:
+// macOS through the public _NSGetArgc/_NSGetArgv accessors, Linux through the
+// NUL-separated /proc/self/cmdline, and Windows through the __argc/__argv
+// globals the C runtime fills in at startup. Anywhere else this returns
+// nothing, which reads as "no group" and falls back to package-level values.
+//
+// A deliberate non-solution: capturing argv from an __attribute__((constructor))
+// hook taking (argc, argv, envp). GCC at -O2 folds such a hook into the
+// translation unit's static-init thunk, which takes no arguments, so the
+// values are silently lost. See the design doc for the full evidence.
 inline std::vector<std::string> collectArgs() {
   std::vector<std::string> args;
 #if defined(__APPLE__)
@@ -53,6 +61,18 @@ inline std::vector<std::string> collectArgs() {
     args.push_back(current);
   }
   std::fclose(file);
+#elif defined(_WIN32)
+  // UNVERIFIED ON WINDOWS: no toolchain was available to test this branch.
+  // The mechanism is the __argc/__argv globals declared by <stdlib.h>, which
+  // both MinGW-w64 and MSVC populate at startup for programs entered through
+  // main(). __argv is null in a wmain() build (__wargv carries the arguments
+  // there instead), which the guard below degrades to "no group".
+  if (__argv == nullptr) {
+    return args;
+  }
+  for (int i = 0; i < __argc && __argv[i] != nullptr; i++) {
+    args.push_back(std::string(__argv[i]));
+  }
 #endif
   return args;
 }
