@@ -120,11 +120,17 @@ the playback, that is why: shorten it to a fragment that carries no markup.
 
 | Fixture | Shape | Used by |
 | --- | --- | --- |
-| `ab-problem` | A + B, one correct and one overflowing solution | build, run, irun, ui, BOCA packaging |
-| `graph-problem` | Connected-graph input, path checker, validator and checker unit tests | `rbx unit`, `rbx validate`, verification levels |
+| `ab-problem` | A + B, one correct and one overflowing solution | build, run, irun, ui, BOCA packaging, `rbx time` |
+| `graph-problem` | Connected-graph input, path checker, validator and checker unit tests | `rbx unit`, `rbx validate`, verification levels, build caching |
 | `sum-problem` | Sum of N integers, `wa-overflow.cpp`, `vars.A.max` | both `rbx stress` recordings |
 | `pair-problem` | Print any `a + b = N`, custom checker | custom-checker walkthrough |
 | `guessing-problem` | Interactive guessing game with a testlib interactor | `rbx ui` on an interactive run |
+| `workspace` | Empty directory, not a package | `rbx create`, which needs somewhere to create *into* |
+
+`graph-problem` also carries `broken/validator-without-connectivity.cpp`: the
+same validator with its connectivity check removed, swapped in by the
+`unit-validator-failure` setup so that recording can show a unit test actually
+failing. It is not part of the package and nothing else reads it.
 
 The fixtures are transcribed from the docs pages they illustrate, so a reader
 sees the same code they just read. Three of them needed **corrections** the
@@ -141,6 +147,14 @@ pages still carry, because the snippets as printed do not run:
 
 ## Known gaps
 
+- **`create-problem` needs the network.** `rbx create` clones the preset from
+  GitHub and materializes its libraries, so this is the one recording that
+  cannot be re-made offline. It is pinned in practice by the tool tag rbx
+  checks out (the installed version), not by the spec.
+- **`create-problem` does not `ls` the problem it just made**, even though the
+  page prints an annotated tree right below it. The tree says `documents/`
+  while the preset ships `statement/`, so showing both would put the
+  contradiction on screen. Once the page and the preset agree, add the `ls`.
 - **The BOCA upload recording** (`boca.md`, `packaging-walkthrough.md`) is still
   hosted on asciinema.org. `rbx package boca -u` uploads to a live BOCA server,
   and the pipeline has no way to stand one up. `record-check` reports these two

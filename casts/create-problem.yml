@@ -1,0 +1,31 @@
+fixture: workspace
+title: Creating a problem with rbx create
+timeout: 300s
+instructions:
+  - !Interactive
+    command: rbx create
+    keys:
+      - 2s
+      # `rbx create` asks for the name first; a path may be given here too, but
+      # the page introduces the plain form.
+      - 'sum-of-n'
+      - '^M'
+      - 3s
+      # With no active preset, rbx offers the registry. Take the highlighted
+      # entry -- the default preset the rest of the page assumes.
+      - '^M'
+      # Cloning the preset and materializing testlib, jngen and tgen reaches
+      # the network, so this wait is generous on purpose.
+      - 45s
+  - !Wait 2s
+# Deliberately no `ls` of the new folder: the page prints its own annotated
+# tree, and the two disagree today (the preset ships `statement/`, the tree
+# says `documents/`). Showing both would put the contradiction on screen, so
+# the recording stops at the creation flow, which is what it is here to teach.
+expect_contains:
+  - What should the problem be named?
+  - Which preset do you want to use?
+  - Installing preset from
+  # Just `Materialized library`: the library name that follows is styled
+  # separately, so the longer phrase never matches (see casts/README.md).
+  - Materialized library

@@ -1,0 +1,25 @@
+fixture: graph-problem
+title: A validator unit test catching a missing check
+timeout: 300s
+setup:
+  # The page promises that `rbx unit` reports failures "if the validator does
+  # not behave as expected", so the recording needs a validator that genuinely
+  # misbehaves. Swapping in the fixture's incomplete copy -- same validator,
+  # connectivity check removed -- is cheaper than a second fixture, and the
+  # swap itself teaches nothing, so it stays out of the cast.
+  - cp broken/validator-without-connectivity.cpp validator.cpp
+instructions:
+  - rbx unit
+expect_contains:
+  # The point of the recording: the disconnected input is accepted by the
+  # validator, so the expectation declared in problem.rbx.yml is violated.
+  # `Actual` is printed only when a unit test's outcome differs from the one
+  # declared, which makes it the load-bearing assertion here -- and it has to
+  # stand alone, because the styling splits `FAIL`, `Unit test`, the filename
+  # and `VALID` into separate runs (see casts/README.md).
+  - Actual
+  - invalid_NOT_CONNECTED.in
+  # The other two validator tests still pass, which is what makes the failure
+  # legible as a targeted regression rather than a broken setup.
+  - valid_CONNECTED.in
+  - invalid_VERTEX_OUT_OF_BOUNDS.in

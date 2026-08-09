@@ -1,0 +1,23 @@
+# `graph-problem` rather than `ab-problem` on purpose: the cache mostly saves
+# compilation and generation, so the contrast is only legible on a package with
+# something to compile. This fixture has a validator, a checker and a generator
+# script, which is also the shape of the problem the preset creates -- on A + B
+# the second build comes out barely a second faster and the recording would
+# appear to show nothing.
+fixture: graph-problem
+title: Rebuilding a testset hits the cache
+timeout: 300s
+instructions:
+  # The first build pays for everything: compiling the programs and writing
+  # every testcase.
+  - rbx build
+  - !Wait 2s
+  - !Clear
+  # The second asks for exactly the same thing and gets it back from the cache.
+  # The contrast is the whole recording, so both runs have to be on screen back
+  # to back -- and it is a contrast in elapsed time, which is why this cast is
+  # embedded at its recorded speed.
+  - rbx build
+expect_contains:
+  - Compiling
+  - Problem built.

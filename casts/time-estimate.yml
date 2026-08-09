@@ -1,0 +1,30 @@
+fixture: ab-problem
+title: Estimating a time limit with rbx time
+timeout: 300s
+setup:
+  # `rbx time` builds and runs on its own; doing it once up front keeps the
+  # recording about the estimation flow rather than about compilation.
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx time
+    keys:
+      # Read the current limits table and the strategy prompt...
+      - 4s
+      # ...then take the highlighted option, `estimate`, which is the default
+      # and the one the page documents first.
+      - '^M'
+      # Building outputs and timing the accepted solution takes a while; the
+      # language-bucketing screen only appears afterwards.
+      - 45s
+      # Accept the default bucketing (everything pooled, py/java/kt derived
+      # from cpp) and let the profile be written.
+      - '^M'
+      - 8s
+expect_contains:
+  # The prompt that opens the flow, the formula it settles on, and the file it
+  # writes -- if any of the three changes shape, the recording is stale.
+  - Select how you want to define the time limits
+  - step_up(max(fastest * 3, slowest * 1.5), 100)
+  - Time estimation
+  - .limits/local.yml
