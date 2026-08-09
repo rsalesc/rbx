@@ -218,8 +218,9 @@ rbx create [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--name` | TEXT | Name of the problem to create, which will be used as the name of the new folder. | - |
+| `--name` | TEXT | Name of the problem to create, which will be used as the name of the new folder. A path relative to the current directory may be given (e.g. "problems/my-problem"), in which case the problem name is the basename ("my-problem"). | - |
 | `--preset` | TEXT | Preset to use when creating the problem. | - |
+| `--variant`, `-v` | TEXT | Which template variant of the preset to use. Omit to use the canonical template, or to be prompted when the preset offers variants. | - |
 | `--local` | BOOLEAN | Whether to use a preset from the local version of rbx, instead of the global one (not recommended). | `False` |
 
 
@@ -510,7 +511,7 @@ rbx statements build <NAMES> [OPTIONS]
 
 | Name | Description | Required |
 | :--- | :--- | :--- |
-| `NAMES` | Names of statements to build. | No |
+| `NAMES` | Variants of statements to build. | No |
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
@@ -521,6 +522,46 @@ rbx statements build <NAMES> [OPTIONS]
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
 | `-p`, `--profile` | TEXT | Timing profile to render the statement against. Must exist in this problem. | - |
+
+
+---
+
+## tutorials (tut)
+
+Manage tutorials/editorials (sub-command).
+
+**Usage:**
+```bash
+rbx tutorials [OPTIONS]
+```
+
+
+---
+
+### build (b)
+
+Build tutorials (editorials).
+
+**Usage:**
+```bash
+rbx tutorials build <NAMES> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `NAMES` | Variants of tutorials to build. | No |
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--languages` | TEXT | Languages to build tutorials for. If not specified, build tutorials for all available languages. | - |
+| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. | `PDF` |
+| `--samples` | BOOLEAN | Whether to build the tutorial with samples or not. | `True` |
+| `--vars` | TEXT | Variables to be used in the tutorials. | - |
+| `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
+| `-p`, `--profile` | TEXT | Timing profile to render the tutorial against. Must exist in this problem. | - |
 
 
 ---
@@ -670,7 +711,7 @@ rbx presets create [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--name` | TEXT | The name of the preset to create. This will also be the name of the folder. | - |
+| `--name` | TEXT | The name of the preset to create. This will also be the name of the folder. A relative path may be given, in which case the preset name is its basename. | - |
 | `--uri` | TEXT | The URI of the new preset. | - |
 | `--preset`, `-p` | TEXT | The URI of the preset to init the new preset from. | - |
 | `--local` | BOOLEAN | Whether to fetch the init preset from the local version of rbx, instead of the remote one (not recommended). | `False` |
@@ -897,9 +938,10 @@ rbx contest create [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--path` | TEXT | Path where to create the contest. | - |
+| `--path` | TEXT | Path (relative to the current directory) where to create the contest (e.g. "contests/ioi2024"). | - |
 | `--preset`, `-p` | TEXT | Which preset to use to create this package. Can be a named of an already installed preset, or an URI, in which case the preset will be downloaded.
 If not provided, the default preset will be used, or the active preset if any. | - |
+| `--variant`, `-v` | TEXT | Which template variant of the preset to use. Omit to use the canonical template, or to be prompted when the preset offers variants. | - |
 | `--local` | BOOLEAN | Whether to use a preset from the local version of rbx, instead of the global one (not recommended). | `False` |
 
 
@@ -967,9 +1009,10 @@ rbx contest add [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--path` | TEXT | Path where to create the problem. Name part of the path will be used as the problem name. | - |
+| `--path` | TEXT | Path (relative to the contest root) where to create the problem. The name part of the path will be used as the problem name (e.g. "problems/choco" creates a problem named "choco" in that directory). | - |
 | `--short-name` | TEXT | Short name of the problem. Will be used as the identifier in the contest. | - |
 | `--preset` | TEXT | Preset to use when creating the problem. If not specified, the active preset will be used. | - |
+| `--variant`, `-v` | TEXT | Which template variant of the preset to use. Omit to use the canonical template, or to be prompted when the preset offers variants. | - |
 
 
 ---
@@ -1083,6 +1126,47 @@ rbx contest statements build <NAMES> [OPTIONS]
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
 | `-p`, `--profile` | TEXT | Timing profile to render statements against. Problems missing this profile are skipped with a warning. | - |
+
+
+---
+
+### tutorials (tut)
+
+Manage contest-level tutorials/editorials.
+
+**Usage:**
+```bash
+rbx contest tutorials [OPTIONS]
+```
+
+
+---
+
+#### build (b)
+
+Build tutorials (editorials).
+
+**Usage:**
+```bash
+rbx contest tutorials build <NAMES> [OPTIONS]
+```
+
+**Arguments:**
+
+| Name | Description | Required |
+| :--- | :--- | :--- |
+| `NAMES` | Names of tutorials to build. | No |
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--languages` | TEXT | Languages to build tutorials for. If not specified, build tutorials for all available languages. | - |
+| `--validate` | BOOLEAN | Whether to validate outputs for testcases or not. | `True` |
+| `--output` | [StatementType][rbx.box.statements.schema.StatementType] | Output type to be generated. | `PDF` |
+| `--samples` | BOOLEAN | Whether to build the tutorial with samples or not. | `True` |
+| `--vars` | TEXT | Variables to be used in the tutorials. | - |
+| `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
+| `-p`, `--profile` | TEXT | Timing profile to render tutorials against. Problems missing this profile are skipped with a warning. | - |
 
 
 ---

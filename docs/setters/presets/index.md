@@ -90,6 +90,171 @@ and the `name` field of the `problem.rbx.yml` file, which will be changed to mat
     You can run {{rbx}} commands freely inside the problem template folder to test your template:
     any {{rbx}} internal folders will be ignored when inheriting from the preset.
 
+### Problem template variants
+
+A single problem template goes a long way, but it can't cover every kind of problem you
+will write. An interactive problem needs an interactor and no checker; a subtask-scored
+problem needs a completely different `testcases`/scoring layout. These are not small
+tweaks on top of a batch template: the package schema treats them as mutually exclusive,
+so starting an interactive problem from a batch template mostly means deleting things
+before you can begin.
+
+That's what **variants** are for. A variant is an additional, complete problem template
+directory inside your preset, declared in `preset.rbx.yml` alongside the canonical one:
+
+```yaml title="preset.rbx.yml"
+# The canonical problem template.
+problem: "problem"
+
+# Additional problem templates, selectable with `-v/--variant`.
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+    description: "Communication task with a testlib interactor (guessing game)"
+```
+
+Each entry needs an `id` (used on the command line, matching `^[a-zA-Z][a-zA-Z0-9_-]*$`)
+and a `path` pointing at the variant's template folder, relative to the preset root. The
+`description` is what setters see when picking a variant, so make it say what the template
+is *for*.
+
+!!! note
+    The id `default` is **reserved**: it always refers to the preset's canonical `problem`
+    template, so you can't declare a variant with that name.
+
+    A preset may also declare variants and **no** canonical template at all. In that case
+    every problem must pick a variant explicitly — there is no fallback.
+
+#### Adding a variant
+
+There is nothing magic about a variant directory -- it is just another problem template, so
+you build it the same way you built the canonical one:
+
+```bash
+# Start from the canonical template, so you keep your own conventions.
+cp -r problem problem-interactive
+
+# Edit problem-interactive/problem.rbx.yml (here: type: "communication", drop the
+# checker, add `interactor: {path: "interactor.cpp"}`), write the interactor, adapt
+# the statement, and delete whatever no longer applies.
+
+# Then test the template in place -- rbx commands work inside it just as they do
+# inside the canonical template.
+cd problem-interactive
+rbx build
+rbx run
+```
+
+Once it works, declare it in `problemVariants:` as shown above.
+
+!!! tip
+    The bundled `default` preset already ships an `interactive` variant (the guessing game
+    from [Interactors](../grading/interactors.md)). If you created your preset from it with
+    `rbx presets create`, you already have a working example to crib from in
+    `problem-interactive/`.
+
+#### Selecting a variant
+
+Pass `-v/--variant` to any of the package creation commands:
+
+```bash
+# Standalone problem from the `interactive` variant.
+rbx create --preset your-preset -v interactive
+
+# Add a problem to a contest, using a variant of the contest's own preset.
+rbx contest add -v interactive
+```
+
+If you omit the flag and the preset declares variants, {{rbx}} shows an interactive picker
+listing `default` (the canonical template) plus every declared variant and its description.
+Outside a terminal (CI, scripts), there is nothing to pick from, so {{rbx}} silently uses
+the canonical template — or fails, if the preset has none. A preset that declares no
+variants at all behaves exactly as it always did: no picker, no extra output.
+
+!!! tip
+    `rbx presets ls` prints the templates a preset offers, per kind, with their id,
+    description, path, and which one the current package is using.
+
+#### Per-variant tracking, libraries and expansion
+
+A variant can override the preset's shared [`tracking`](#setting-up-the-preset-definition),
+[`libraries`](#libraries) and `expansion` lists — useful when, say, an interactive template
+needs an extra tracked file that the batch template has no use for:
+
+```yaml title="preset.rbx.yml"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+    description: "Communication task with a testlib interactor"
+    tracking:
+      - path: "interactor.cpp"
+    libraries:
+      - name: testlib
+        source: MikeMirzayanov/testlib
+        path: testlib.h
+        version: "0.9.34"
+        dest: testlib.h
+        always_include: true
+```
+
+These lists are **merged over** the shared ones for that package kind, rather than
+replacing them: shared entries the variant doesn't mention are kept, and where both
+declare the same thing the **variant wins**. Entries are matched by tracked `path`, by
+library `name`, and by expansion `needle` respectively — so the `testlib` above pins that
+one library for this variant only, and every other declared library still applies.
+
+#### Sharing files between variants
+
+Variants are usually near-duplicates of each other, and you don't want to maintain the same
+`.gitignore` or `validator.cpp` twice. Two options, both supported:
+
+- **Plain copies**: just keep a copy of the file in each template directory. Simple, and
+  what the bundled `default` preset does.
+- **Symlinks inside the preset**: point a file in one template at a file elsewhere in the
+  preset. When the package is created, {{rbx}} rewrites such a symlink into a relative link
+  into the installed package's `.local.rbx/`, so the created package stays self-contained
+  and the file keeps following the preset.
+
+#### The variant is fixed at creation
+
+The chosen variant is recorded as `variant:` in the package's `.preset-lock.yml`, and
+`rbx presets sync` resolves updates against **that** template. There is deliberately no
+command to switch a problem to another variant: the templates differ structurally, and
+re-pointing an existing package at a different one would overwrite its tracked assets with
+files describing a different kind of problem. If you picked the wrong variant, recreate the
+problem.
+
+For the same reason, if the recorded variant no longer exists in the preset (you renamed or
+deleted it), `rbx presets sync` **fails loudly** instead of quietly falling back to the
+canonical template — a silent fallback would overwrite your interactive problem's tracked
+assets with batch ones. The escape hatch, when you really do know better, is to edit
+`variant:` in `.preset-lock.yml` by hand; `default` is a valid value there and means the
+canonical template.
+
+#### Contest template variants
+
+Contests work exactly the same way, through a `contestVariants:` block with the same entry
+shape (`id`, `path`, `description`, and the optional `tracking`/`libraries`/`expansion`
+overrides):
+
+```yaml title="preset.rbx.yml"
+contest: "contest"
+
+contestVariants:
+  - id: ioi
+    path: "contest-ioi"
+    description: "IOI-style contest: subtask scoring, two-day schedule"
+```
+
+Pick one at creation time with `rbx contest create --preset your-preset -v ioi`, and
+everything above — the reserved `default` id, the picker, the merge rule, the lock entry,
+the sync behavior — applies unchanged.
+
+!!! warning
+    Don't confuse these with `rbx contest add_variant`, which scaffolds an additional
+    *contest file* (`contest.<id>.rbx.yml`) inside one contest package — divisions of the
+    same contest, not preset templates.
+
 ### Setting up the contest template
 
 You can go to the contest template and modify it to your liking: statement templates, `contest.rbx.yml` file,
