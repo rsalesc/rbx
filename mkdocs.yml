@@ -66,6 +66,7 @@ nav:
   # nav until there is more here. Uncomment to show it.
   # - "Internal reference":
   #     - "JSON schemas": "internal/schemas.md"
+  #     - "Backporting a fix": "internal/backporting.md"
   - "Troubleshooting":
       - "Generators and rbx.h": "generators-and-rbx-h.md"
       - "cpp-on-macos.md"
