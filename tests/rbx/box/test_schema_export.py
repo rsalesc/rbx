@@ -49,6 +49,8 @@ class TestSchemaPublish:
 
         assert (tmp_path / '1.4' / 'Package.json').is_file()
         assert (tmp_path / 'latest' / 'Package.json').is_file()
+        # Pages must serve the tree verbatim, without a Jekyll build.
+        assert (tmp_path / '.nojekyll').is_file()
 
         index = json.loads((tmp_path / 'index.json').read_text())
         assert index['latest'] == '1.4'

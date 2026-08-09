@@ -64,6 +64,10 @@ def build_site(out: pathlib.Path, version: str) -> None:
         )
     )
 
+    # Serve the tree verbatim: skips the Pages Jekyll build and guarantees no
+    # path is ever treated as a template or dropped for starting with `_`.
+    (out / '.nojekyll').touch()
+
 
 if __name__ == '__main__':
     build_site(pathlib.Path(sys.argv[1]), sys.argv[2])

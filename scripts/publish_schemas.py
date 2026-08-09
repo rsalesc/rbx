@@ -23,7 +23,9 @@ import sys
 from rbx import utils
 from rbx.box.schema_publish import build_site
 
-DEFAULT_REPO = 'git@github.com:rsalesc/rbx-schemas.git'
+# HTTPS by default, to match how rbx itself is cloned and so the usual git
+# credential helper applies. Pass `--repo git@github.com:...` for SSH.
+DEFAULT_REPO = 'https://github.com/rsalesc/rbx-schemas.git'
 DEFAULT_CACHE_DIR = pathlib.Path.home() / '.cache' / 'rbx' / 'schemas-site'
 
 
@@ -89,7 +91,9 @@ def _commit_and_push(site: pathlib.Path, version: str, push: bool) -> bool:
 
     _run(['git', 'commit', '-m', f'chore: publish schemas for {version}'], cwd=site)
     if push:
-        _run(['git', 'push'], cwd=site)
+        # `-u origin HEAD` so the very first publish works too, when the freshly
+        # cloned repo has no upstream for its unborn default branch.
+        _run(['git', 'push', '-u', 'origin', 'HEAD'], cwd=site)
         print(f'Published schemas for {version}.')
     else:
         print(f'Committed schemas for {version} (not pushed).')
