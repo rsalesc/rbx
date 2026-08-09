@@ -46,6 +46,22 @@ else:
     RecVars = TypeAliasType('RecVars', "Dict[str, Union[Primitive, 'RecVars']]")
 
 
+def merge_recvars(base: RecVars, override: RecVars) -> RecVars:
+    """Deep-merge ``override`` onto ``base``, leaf by leaf.
+
+    A dict value merges recursively so a partial override keeps its siblings;
+    any non-dict value replaces whatever was there. Neither input is mutated.
+    """
+    res: RecVars = dict(base)
+    for key, value in override.items():
+        prev = res.get(key)
+        if isinstance(value, dict) and isinstance(prev, dict):
+            res[key] = merge_recvars(prev, value)
+        else:
+            res[key] = value
+    return res
+
+
 def expand_var(value: Primitive, ctx: Optional[RecVars] = None) -> Primitive:
     if not isinstance(value, str):
         return value

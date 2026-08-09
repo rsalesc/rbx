@@ -690,6 +690,31 @@ class TestPackageOutcomePerGroupValidation:
         )
 
 
+class TestPackageVarsPerGroup:
+    def test_expanded_vars_for_group_applies_override(self):
+        from rbx.box.schema import Package
+
+        pkg = Package.model_validate(
+            {
+                'name': 'test',
+                'timeLimit': 1000,
+                'memoryLimit': 256,
+                'vars': {'AB': {'min': -200, 'max': 200}},
+                'testcases': [
+                    {'name': 'sub2', 'vars': {'AB': {'min': 0}}},
+                    {'name': 'sub4'},
+                ],
+            }
+        )
+
+        assert pkg.expanded_vars == {'AB.min': -200, 'AB.max': 200}
+        assert pkg.expanded_vars_for_group('sub2') == {'AB.min': 0, 'AB.max': 200}
+        assert pkg.expanded_vars_for_group('sub4') == {'AB.min': -200, 'AB.max': 200}
+        # Unknown or absent group falls back to the package vars.
+        assert pkg.expanded_vars_for_group('nope') == {'AB.min': -200, 'AB.max': 200}
+        assert pkg.expanded_vars_for_group(None) == {'AB.min': -200, 'AB.max': 200}
+
+
 class TestFirstSolutionIsMain:
     def _package(self, *outcomes):
         from rbx.box.schema import Package, Solution, TestcaseGroup

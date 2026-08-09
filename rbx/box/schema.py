@@ -12,7 +12,14 @@ from pydantic_core import PydanticCustomError
 
 from rbx import utils
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import NameField, Primitive, RecVars, Vars, expand_vars
+from rbx.box.fields import (
+    NameField,
+    Primitive,
+    RecVars,
+    Vars,
+    expand_vars,
+    merge_recvars,
+)
 from rbx.box.formatting import href
 from rbx.box.statements.expander import expand_problem_statements
 from rbx.box.statements.schema import Statement, is_unique_problem_statements
@@ -543,6 +550,18 @@ Useful in cases where the constraints vary across test groups.
 """,
     )
 
+    vars: RecVars = Field(
+        default={},
+        description="""
+Variables that override the package-level `vars` for this group only.
+
+Merged leaf-by-leaf onto the package `vars`, so a partial override keeps its
+siblings. The effective values are what `getVar<T>()` returns inside a
+validator run for this group, and what `problem.groups.<name>.vars` renders in
+a statement. Keys need not exist at package level.
+""",
+    )
+
     score: int = Field(
         default=0,
         description="""
@@ -1054,6 +1073,19 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     @property
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)
+
+    def expanded_vars_for_group(self, group: Optional[str]) -> Vars:
+        """Package vars with the named group's overrides applied.
+
+        Falls back to the package vars when ``group`` is None or names no
+        declared group (interactive validation, unit tests, samples).
+        """
+        if group is None:
+            return self.expanded_vars
+        for testcase_group in self.testcases:
+            if testcase_group.name == group:
+                return expand_vars(merge_recvars(self.vars, testcase_group.vars))
+        return self.expanded_vars
 
     @model_validator(mode='after')
     def check_first_solution_is_main_if_there_is_ac(self):

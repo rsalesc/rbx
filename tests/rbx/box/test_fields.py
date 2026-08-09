@@ -1,7 +1,7 @@
 import pytest
 import simpleeval
 
-from rbx.box.fields import RecVars, expand_var, expand_vars
+from rbx.box.fields import RecVars, expand_var, expand_vars, merge_recvars
 
 
 class TestExpandVar:
@@ -105,6 +105,31 @@ class TestExpandVar:
 
         # Nested backticks in string
         assert expand_var('py`"py`nested`"`') == 'py`nested`'
+
+
+class TestMergeRecvars:
+    """Tests for the merge_recvars function."""
+
+    def test_merge_recvars_is_deep_and_keeps_siblings(self):
+        """Test that a partial override keeps the siblings it doesn't mention."""
+        base: RecVars = {'AB': {'min': -200, 'max': 200}, 'N': 10}
+        override: RecVars = {'AB': {'min': 0}}
+
+        assert merge_recvars(base, override) == {
+            'AB': {'min': 0, 'max': 200},
+            'N': 10,
+        }
+        # The inputs must not be mutated.
+        assert base == {'AB': {'min': -200, 'max': 200}, 'N': 10}
+        assert override == {'AB': {'min': 0}}
+
+    def test_merge_recvars_allows_group_only_keys(self):
+        """Test that keys absent from the base are added by the override."""
+        assert merge_recvars({'N': 10}, {'maxOps': 5}) == {'N': 10, 'maxOps': 5}
+
+    def test_merge_recvars_scalar_replaces_subtree(self):
+        """Test that a non-dict override replaces whatever was there."""
+        assert merge_recvars({'AB': {'min': 1}}, {'AB': 7}) == {'AB': 7}
 
 
 class TestExpandVars:
