@@ -6,16 +6,40 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #if defined(__APPLE__)
 #include <crt_externs.h>
 #elif defined(_WIN32)
-#include <cstdlib>
+// Not <cstdlib>: __argc/__argv are non-standard names in the global namespace,
+// which <cstdlib> is not specified to declare.
+#include <stdlib.h>
 #endif
 
 namespace rbx {
 namespace detail {
+
+// Splits the NUL-separated command line Linux exposes in /proc/self/cmdline.
+// A trailing NUL terminates the last argument rather than introducing an empty
+// one; an argument that is genuinely empty still yields an empty string.
+// Kept out of the platform branch below so that it is testable everywhere.
+inline std::vector<std::string> splitCmdline(const std::string &blob) {
+  std::vector<std::string> args;
+  std::string current;
+  for (char ch : blob) {
+    if (ch == '\0') {
+      args.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(ch);
+  }
+  if (!current.empty()) {
+    args.push_back(current);
+  }
+  return args;
+}
 
 // Reads this process' own command line, so that the group can be resolved
 // without the program having to call anything from main(), and without this
@@ -47,20 +71,13 @@ inline std::vector<std::string> collectArgs() {
   if (file == nullptr) {
     return args;
   }
-  std::string current;
+  std::string blob;
   int ch;
   while ((ch = std::fgetc(file)) != EOF) {
-    if (ch == '\0') {
-      args.push_back(current);
-      current.clear();
-      continue;
-    }
-    current.push_back(static_cast<char>(ch));
-  }
-  if (!current.empty()) {
-    args.push_back(current);
+    blob.push_back(static_cast<char>(ch));
   }
   std::fclose(file);
+  args = splitCmdline(blob);
 #elif defined(_WIN32)
   // UNVERIFIED ON WINDOWS: no toolchain was available to test this branch.
   // The mechanism is the __argc/__argv globals declared by <stdlib.h>, which
@@ -78,7 +95,7 @@ inline std::vector<std::string> collectArgs() {
 }
 
 inline std::string parseGroupFromArgs(const std::vector<std::string> &args) {
-  static const std::string kFlag = "--group";
+  static constexpr std::string_view kFlag = "--group";
   // Skips args[0], the program name.
   for (std::size_t i = 1; i < args.size(); i++) {
     const std::string &arg = args[i];

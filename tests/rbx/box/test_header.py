@@ -410,9 +410,7 @@ class TestGetVarWrapper:
     def test_get_var_accepts_dotted_name_and_segments(
         self, testing_pkg: testing_package.TestingPackage
     ):
-        gpp = shutil.which('g++')
-        if gpp is None:
-            pytest.skip('g++ is not available')
+        gpp = _require_gpp()
 
         testing_pkg.set_vars(
             {
@@ -478,6 +476,28 @@ int main(int argc, char *argv[]) {
 """
 
 
+# Reads a blob from stdin and prints how rbx.h splits it. Exercises the
+# /proc/self/cmdline splitter on every platform, not just Linux.
+_SPLIT_CMDLINE_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::string blob;
+  char buffer[4096];
+  std::size_t read;
+  while ((read = std::fread(buffer, 1, sizeof(buffer), stdin)) > 0) {
+    blob.append(buffer, read);
+  }
+  for (const std::string &arg : rbx::detail::splitCmdline(blob)) {
+    std::printf("[%s]\\n", arg.c_str());
+  }
+  return 0;
+}
+"""
+
+
 def _require_gpp() -> str:
     gpp = shutil.which('g++')
     if gpp is None:
@@ -523,6 +543,40 @@ class TestGetGroup:
             ['./main'] + argv, check=True, capture_output=True, text=True
         )
         assert result.stdout == f'early=[{expected}]\nlate=[{expected}]\n'
+
+    @pytest.mark.parametrize(
+        ('blob', 'expected'),
+        [
+            # NUL-separated args, as the kernel writes them.
+            (b'./validator\x00--group\x00sub2\x00', ['./validator', '--group', 'sub2']),
+            # A trailing NUL terminates the last arg, it does not add a phantom one.
+            (b'a\x00b\x00', ['a', 'b']),
+            # ... and a missing trailing NUL still yields the last arg.
+            (b'a\x00b', ['a', 'b']),
+            # A single arg with no trailing NUL.
+            (b'solo', ['solo']),
+            # An empty blob yields no args at all.
+            (b'', []),
+            # An embedded empty arg is representable and preserved.
+            (b'a\x00\x00b\x00', ['a', '', 'b']),
+        ],
+    )
+    def test_split_cmdline(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        blob: bytes,
+        expected: List[str],
+    ):
+        """The /proc/self/cmdline splitter, tested on every platform."""
+        gpp = _require_gpp()
+
+        header.generate_header()
+        _compile(gpp, _SPLIT_CMDLINE_MAIN, 'split', [])
+
+        result = subprocess.run(
+            ['./split'], check=True, capture_output=True, input=blob
+        )
+        assert result.stdout.decode() == ''.join(f'[{arg}]\n' for arg in expected)
 
     def test_header_does_not_depend_on_testlib(
         self, testing_pkg: testing_package.TestingPackage
