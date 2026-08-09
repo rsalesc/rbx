@@ -1,16 +1,21 @@
 name: 'problem-a'
 timeLimit: 1000
 memoryLimit: 256
+# Nested form on both sides, so the groups below exercise a real deep merge:
+# each overrides one leaf and must keep its sibling.
 vars:
-  'AB.min': 1
-  'AB.max': 200
+  AB:
+    min: 1
+    max: 200
 testcases:
   - name: 'sub1'
     vars:
-      'AB.max': 10
+      AB:
+        max: 10 # `min` must survive as 1.
   - name: 'sub2'
     vars:
-      'AB.min': 100
+      AB:
+        min: 100 # `max` must survive as 200.
   - name: 'sub3'
     # Overrides nothing: must inherit both package values.
 statements:
