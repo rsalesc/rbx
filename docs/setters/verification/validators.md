@@ -351,7 +351,9 @@ A few details worth knowing:
   way to be selected at runtime.
 - The group's resolved values are also what {{rbx}} passes on the validator command
   line as `--{name}={value}`, so a validator written in another language that parses
-  `argv` sees exactly the same numbers as a C++ one using `getVar`.
+  `argv` sees the same numbers and strings as a C++ one using `getVar`. Booleans are
+  the exception: they are rendered with Python's spelling (`--flag=True`), not C++'s,
+  so `opt<bool>` cannot read them -- use `getVar<bool>`.
 
 ### Reading the group name
 
