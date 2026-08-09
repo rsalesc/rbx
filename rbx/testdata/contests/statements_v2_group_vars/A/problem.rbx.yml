@@ -1,0 +1,20 @@
+name: 'problem-a'
+timeLimit: 1000
+memoryLimit: 256
+vars:
+  'AB.min': 1
+  'AB.max': 200
+testcases:
+  - name: 'sub1'
+    vars:
+      'AB.max': 10
+  - name: 'sub2'
+    vars:
+      'AB.min': 100
+  - name: 'sub3'
+    # Overrides nothing: must inherit both package values.
+statements:
+  - language: 'en'
+    title: 'Problem A'
+    file: 'statement/statement.rbx.tex'
+    type: 'rbxTeX'

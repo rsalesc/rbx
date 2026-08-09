@@ -1,6 +1,10 @@
+import jinja2
+import pytest
+
 from rbx.box.statements import context
 from rbx.box.statements.context import (
     ContestRenderContext,
+    GroupView,
     ProblemRenderContext,
     SampleHandle,
     StatementCodeLanguage,
@@ -110,3 +114,82 @@ class TestContestNamespaces:
             problems=[],
         )
         assert 'cpp' in kwargs['keyed_languages']
+
+
+def _group_views():
+    """The three groups of the per-group-vars fixture, as the build sites wire them."""
+    from rbx.box.schema import Package
+
+    pkg = Package.model_validate(
+        {
+            'name': 'test',
+            'timeLimit': 1000,
+            'memoryLimit': 256,
+            'scoring': 'points',
+            'vars': {'AB': {'min': 1, 'max': 200}},
+            'testcases': [
+                {'name': 'sub1', 'score': 30, 'vars': {'AB': {'max': 10}}},
+                {'name': 'sub2', 'score': 40, 'vars': {'AB': {'min': 100}}},
+                {'name': 'sub3', 'score': 30},
+            ],
+        }
+    )
+    return {
+        g.name: GroupView(g, pkg.expanded_vars_for_group(g.name)) for g in pkg.testcases
+    }
+
+
+class TestGroupViews:
+    def test_group_vars_are_resolved_not_raw_overrides(self):
+        groups = context.ProblemRenderContext(
+            title='A', groups=_group_views()
+        ).namespace()['groups']
+
+        # The override wins...
+        assert groups['sub2'].vars['AB']['min'] == 100
+        # ...and every key the group did not override is inherited, rather than
+        # rendering blank as a raw override block would.
+        assert groups['sub2'].vars['AB']['max'] == 200
+        assert groups['sub1'].vars['AB']['max'] == 10
+        assert groups['sub1'].vars['AB']['min'] == 1
+        # A group that overrides nothing still sees the full package var set.
+        assert groups['sub3'].vars['AB']['min'] == 1
+        assert groups['sub3'].vars['AB']['max'] == 200
+
+    def test_raw_override_block_is_not_reachable(self):
+        # The model's raw override for sub1 is only `{'AB': {'max': 10}}`; a
+        # template that reached it would render nothing for `AB.min`.
+        from rbx.box.schema import TestcaseGroup
+
+        group = TestcaseGroup(name='sub1', vars={'AB': {'max': 10}})
+        view = GroupView(group, {'AB.min': 1, 'AB.max': 10})
+        assert view.vars['AB']['min'] == 1
+        assert dict(view.vars['AB']) == {'min': 1, 'max': 10}
+
+    def test_model_attributes_pass_through(self):
+        groups = _group_views()
+        assert groups['sub2'].name == 'sub2'
+        assert groups['sub2'].score == 40
+
+    def test_dunder_probes_do_not_recurse(self):
+        import copy
+
+        view = _group_views()['sub1']
+        with pytest.raises(AttributeError):
+            view.__deepcopy__  # noqa: B018
+        assert copy.copy(view) is not None
+
+    def test_iteration_preserves_declaration_order(self):
+        groups = context.ProblemRenderContext(
+            title='A', groups=_group_views()
+        ).namespace()['groups']
+        assert [g.name for g in groups] == ['sub1', 'sub2', 'sub3']
+
+    def test_missing_var_raises_strict_undefined_with_a_hint(self):
+        groups = _group_views()
+        undefined = groups['sub2'].vars['AB']['mim']
+        with pytest.raises(jinja2.UndefinedError) as exc_info:
+            str(undefined)
+        message = str(exc_info.value)
+        assert 'AB.mim' in message
+        assert 'groups.sub2.vars' in message

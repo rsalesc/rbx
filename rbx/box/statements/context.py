@@ -42,6 +42,32 @@ def _wrap(vars: Vars, key: str) -> JinjaDictWrapper:
     return JinjaDictWrapper.from_dict(dict(vars or {}), wrapper_key=key)
 
 
+class GroupView:
+    """A testcase group as seen by a statement template.
+
+    Attribute access proxies to the underlying ``TestcaseGroup`` model
+    (``g.name``, ``g.score``, ...), with one deliberate exception: ``vars`` is
+    the **resolved** var set for the group (package vars with that group's
+    overrides applied), not the raw override block declared on the model.
+
+    That distinction is the whole point. A subtasks table reads
+    ``g.vars.AB.max`` for *every* group; if this exposed the raw override, every
+    group that does not override ``AB.max`` would render a blank instead of the
+    inherited value — the silent degradation per-group vars exist to remove. The
+    raw override block is intentionally unreachable from templates.
+    """
+
+    def __init__(self, group: Any, vars: Vars):
+        self._group = group
+        self.vars = _wrap(vars, f'groups.{group.name}.vars')
+
+    def __getattr__(self, name: str) -> Any:
+        # Guard dunders so copy/pickle probes do not recurse through the proxy.
+        if name.startswith('__') and name.endswith('__'):
+            raise AttributeError(name)
+        return getattr(self._group, name)
+
+
 @dataclasses.dataclass
 class SampleHandle:
     """Per-sample handles exposed to templates (design §4/§6.3).

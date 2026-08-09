@@ -38,6 +38,7 @@ from rbx.box.statements.build_statements import (
 )
 from rbx.box.statements.context import (
     ContestRenderContext,
+    GroupView,
     ProblemRenderContext,
     contest_jinja_kwargs,
 )
@@ -135,7 +136,12 @@ def _collect_problem_metadata(
                             profile=limits_info.get_active_profile()
                         ),
                         profiles=limits_info.get_available_limits_profiles(),
-                        groups={g.name: g for g in pkg.testcases},
+                        groups={
+                            g.name: GroupView(
+                                g, package.get_expanded_vars_for_group(g.name)
+                            )
+                            for g in pkg.testcases
+                        },
                     )
                 )
         except (typer.Exit, RbxException) as exc:
@@ -326,7 +332,10 @@ async def _render_problem_fragment_async(
                 profile=limits_info.get_active_profile()
             ),
             profiles=limits_info.get_available_limits_profiles(),
-            groups={g.name: g for g in pkg.testcases},
+            groups={
+                g.name: GroupView(g, package.get_expanded_vars_for_group(g.name))
+                for g in pkg.testcases
+            },
             import_dir=root_prefix,
             import_file='statement',
         )
