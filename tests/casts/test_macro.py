@@ -80,8 +80,20 @@ def test_each_player_gets_a_unique_container_id():
     assert first != second
 
 
-def test_a_legacy_asciinema_org_id_still_renders_the_old_embed():
+def test_a_legacy_asciinema_org_id_plays_through_the_vendored_player():
+    # Their `<script>` embed brings its own player, which only takes
+    # `data-loop` and restarts the instant the last frame is drawn. Pointing
+    # our player at the hosted `.cast` (served with `Allow-Origin: *`) is what
+    # gives a hosted recording the same loop pause as a committed one.
     html = _asciinema()(LEGACY_ID)
 
-    assert f'asciinema.org/a/{LEGACY_ID}.js' in html
-    assert 'AsciinemaPlayer.create' not in html
+    assert f"AsciinemaPlayer.create('https://asciinema.org/a/{LEGACY_ID}.cast'" in html
+    assert f'asciinema.org/a/{LEGACY_ID}.js' not in html
+
+
+def test_a_legacy_asciinema_org_id_gets_the_loop_pause_too():
+    html = _asciinema()(LEGACY_ID)
+
+    assert '"loop": false' in html
+    assert "addEventListener('ended'" in html
+    assert '}, 3000);' in html

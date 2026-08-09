@@ -160,14 +160,18 @@ pages still carry, because the snippets as printed do not run:
   page prints an annotated tree right below it. The tree says `documents/`
   while the preset ships `statement/`, so showing both would put the
   contradiction on screen. Once the page and the preset agree, add the `ls`.
-- **The two asciinema.org embeds loop without the 3 second pause.** That pause
-  is applied to the vendored player, which the macro controls; the hosted
-  embed brings its own player and only takes `data-loop`, so it restarts
-  immediately. Migrating those recordings fixes it.
 - **The BOCA upload recording** (`boca.md`, `packaging-walkthrough.md`) is still
   hosted on asciinema.org. `rbx package boca -u` uploads to a live BOCA server,
   and the pipeline has no way to stand one up. `record-check` reports these two
   as "not yet migrated" by design.
+
+    It is still *played* by the vendored player, pointed at the hosted `.cast`
+    (asciinema.org serves it with `Access-Control-Allow-Origin: *`), rather
+    than by asciinema.org's `<script>` embed. That embed brings its own player,
+    which only takes `data-loop` and restarts the instant the last frame is
+    drawn — so going through ours is what gives it the same loop pause as every
+    other recording. It remains the one embed that needs the network to play,
+    and the only one whose bytes are not in this repository.
 - **`stress-walkthrough` stops at the save confirmation** rather than going on
   to `rbx build`. Choosing `(create new script)` and typing `tests/corner`
   creates the file at `tests/corner.txt` but writes `path: corner.txt` into

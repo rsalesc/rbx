@@ -16,11 +16,16 @@ _counter = itertools.count()
 def define_env(env):
     @env.macro
     def asciinema(id: str, idleness: float = 1, speed: float = 1, pause: float = 3):
+        # A hosted recording is played by the same vendored player, just from a
+        # remote source (asciinema.org serves `.cast` with
+        # `Access-Control-Allow-Origin: *`). The alternative -- their `<script>`
+        # embed -- brings its own player, which only takes `data-loop` and so
+        # restarts the instant the last frame is drawn. Going through our player
+        # is what gives every recording in the docs the same loop pause.
         if _LEGACY_ID.match(id):
-            return f"""<div style="width: 90%; margin: 0 auto;">
-<script src="https://asciinema.org/a/{id}.js" id="asciicast-{id}" async="true" data-autoplay data-loop data-idle-time-limit="{idleness}" data-speed="{speed}"></script>
-</div>
-"""
+            src = f'https://asciinema.org/a/{id}.cast'
+        else:
+            src = f'/assets/casts/{id}.cast'
 
         element_id = f'cast-{id}-{next(_counter)}'
         # `loop` is deliberately off: the player restarts the instant the last
@@ -50,7 +55,7 @@ def define_env(env):
 <div id="{element_id}"></div>
 <script>
   document.addEventListener('DOMContentLoaded', function () {{
-    var player = AsciinemaPlayer.create('/assets/casts/{id}.cast', document.getElementById('{element_id}'), {options});
+    var player = AsciinemaPlayer.create('{src}', document.getElementById('{element_id}'), {options});
     var pending = null;
     player.addEventListener('ended', function () {{
       // `ended` can fire again while the restart is queued (a seek to the end,
