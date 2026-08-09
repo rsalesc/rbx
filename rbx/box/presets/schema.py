@@ -1,8 +1,8 @@
 import pathlib
-from typing import Callable, Hashable, List, Optional, TypeVar
+from typing import Annotated, Callable, Hashable, List, Optional, TypeVar
 
 import typer
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
 from rbx import console, utils
 from rbx.autoenum import AutoEnum, alias
@@ -15,10 +15,41 @@ def NameField(**kwargs):
     )
 
 
+def _reject_escaping_path(value: pathlib.Path) -> pathlib.Path:
+    """Reject a declared path that does not stay inside the directory it is
+    declared relative to.
+
+    Every path a preset declares is interpreted relative to the preset directory
+    (or, for a tracked asset, to a template directory inside it). An absolute
+    path would silently discard that root when joined, and a `..` component would
+    walk out of it -- reaching files rbx never intended the preset to touch, and
+    in the case of a library `dest`, writing them into the user's package. This is
+    a purely lexical check, so it fires at parse time with the offending field's
+    location; `resolve_template` additionally checks real containment, which is
+    the only way to catch a symlinked template directory.
+    """
+    if value.is_absolute() or value.drive or value.root:
+        raise ValueError(
+            f"'{value}' must be a path relative to the preset directory, "
+            'but it is absolute'
+        )
+    if '..' in value.parts:
+        raise ValueError(
+            f"'{value}' must stay inside the preset directory, but it has a "
+            "'..' component that walks out of it"
+        )
+    return value
+
+
+# A path declared by a preset: always relative to the preset directory, and never
+# allowed to escape it.
+RelativePath = Annotated[pathlib.Path, AfterValidator(_reject_escaping_path)]
+
+
 class TrackedAsset(BaseModel):
     # Path of the asset relative to the root of the problem/contest that should
     # be tracked. Can also be a glob, when specified in the preset config.
-    path: pathlib.Path
+    path: RelativePath
 
     # Whether the asset should be symlinked to the local preset directory,
     # instead of being copied.
@@ -53,7 +84,8 @@ class Library(BaseModel):
     version: str = 'latest'
 
     # Where the library is materialized inside the problem/contest package.
-    dest: pathlib.Path
+    # May be nested (e.g. `include/testlib.h`), but must stay inside the package.
+    dest: RelativePath
 
     # When true, the materialized file lives in .local.rbx/libs/<name>/ and
     # `dest` is a relative symlink into it; otherwise `dest` is a real copy.
@@ -118,7 +150,7 @@ class PackageVariant(BaseModel):
     id: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_-]*$', min_length=1, max_length=32)
 
     # Path of the variant's template directory, relative to the preset directory.
-    path: pathlib.Path
+    path: RelativePath
 
     # Human-readable description, shown in the variant picker.
     description: str = Field(default='')
@@ -180,13 +212,13 @@ class Preset(BaseModel):
 
     # Path to the environment file that will be installed with this preset.
     # When copied to the box environment, the environment will be named `name`.
-    env: Optional[pathlib.Path] = None
+    env: Optional[RelativePath] = None
 
     # Path to the contest preset directory, relative to the preset directory.
-    problem: Optional[pathlib.Path] = None
+    problem: Optional[RelativePath] = None
 
     # Path to the problem preset directory, relative to the preset directory.
-    contest: Optional[pathlib.Path] = None
+    contest: Optional[RelativePath] = None
 
     # Configures how preset assets should be tracked and updated when the
     # preset has an update. Usually useful when a common library used by the

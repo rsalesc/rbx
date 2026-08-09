@@ -475,6 +475,41 @@ problemVariants:
         assert [e.needle for e in resolved.expansion] == ['AUTHOR', 'JUDGE']
         assert [lib.name for lib in resolved.libraries] == ['testlib', 'jngen']
 
+    def test_template_symlinked_outside_the_preset_exits(self, tmp_path, capsys):
+        # The schema check is lexical, so `problem-interactive` looks perfectly
+        # contained; only resolving symlinks reveals that it is not.
+        outside = tmp_path / 'outside'
+        outside.mkdir()
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        (root / 'problem-interactive').rmdir()
+        (root / 'problem-interactive').symlink_to(outside, target_is_directory=True)
+        preset = presets.get_preset_yaml(root)
+
+        with pytest.raises(typer.Exit):
+            presets.resolve_template(
+                preset, root, is_contest=False, variant='interactive'
+            )
+
+        out = _plain(capsys.readouterr().out)
+        assert 'problem-interactive' in out
+        assert 'outside the preset folder' in out
+
+    def test_template_symlinked_inside_the_preset_is_allowed(self, tmp_path):
+        # A symlink is only a problem when it leaves the preset: an internal one
+        # is a legitimate way to share a template directory.
+        root = _write_preset(tmp_path / 'preset', PRESET_WITH_VARIANT)
+        (root / 'problem-interactive').rmdir()
+        (root / 'problem-interactive').symlink_to(
+            root / 'problem', target_is_directory=True
+        )
+        preset = presets.get_preset_yaml(root)
+
+        resolved = presets.resolve_template(
+            preset, root, is_contest=False, variant='interactive'
+        )
+
+        assert resolved.path == root / 'problem-interactive'
+
     def test_canonical_carries_shared_config_only(self, tmp_path):
         root = _write_preset(
             tmp_path / 'preset',
@@ -1081,6 +1116,33 @@ problemVariants:
         ]
         out = _plain(capsys.readouterr().out)
         assert 'problem-gone' in out
+
+    def test_template_symlinked_outside_is_warned_and_skipped(self, tmp_path, capsys):
+        # `is_dir()` happily follows the symlink, so this only trips inside
+        # `resolve_template` -- a sweep must survive it and keep going.
+        outside = tmp_path / 'outside'
+        outside.mkdir()
+        root = _preset_with_dirs(
+            tmp_path / 'preset',
+            """---
+name: "escaping"
+uri: "test/escaping"
+min_version: "1.0.0"
+problem: "problem"
+problemVariants:
+  - id: interactive
+    path: "problem-interactive"
+""",
+            ['problem'],
+        )
+        (root / 'problem-interactive').symlink_to(outside, target_is_directory=True)
+        preset = presets.get_preset_yaml(root)
+
+        templates = presets.all_templates(preset, root, is_contest=False)
+
+        assert [(t.variant_id, t.path) for t in templates] == [(None, root / 'problem')]
+        out = _plain(capsys.readouterr().out)
+        assert 'outside the preset folder' in out
 
     def test_carries_merged_config_per_template(self, tmp_path):
         root = _preset_with_dirs(

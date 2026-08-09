@@ -88,6 +88,18 @@ class ResolvedTemplate:
         return self.preset_path / self.inner
 
 
+def _realpath(path: pathlib.Path) -> pathlib.Path:
+    """Absolute path with symlinks resolved, tolerating a missing path.
+
+    Unlike `utils.abspath`, which is purely lexical, this follows symlinks -- the
+    only way to tell that a declared-relative template directory actually lives
+    outside the preset. Both sides of a containment check must go through this,
+    since the preset root itself is often reached through a symlink (e.g. macOS
+    `/tmp` -> `/private/tmp`).
+    """
+    return pathlib.Path(os.path.realpath(path))
+
+
 def _expand_content(
     content: bytes,
     expansions: List[Tuple[str, str, List[str]]],
@@ -785,6 +797,23 @@ def resolve_template(
         inner = found.path
 
     path = preset_path / inner
+
+    # Belt and braces. The schema already rejects declarations that are absolute
+    # or contain `..`, but that check is lexical: a template directory that is a
+    # *symlink* pointing out of the preset looks perfectly relative on paper and
+    # is only visible after resolving symlinks, so resolve for real here. This
+    # mirrors what `copy_preset_file` does for symlinked preset files.
+    if not _realpath(path).is_relative_to(_realpath(preset_path)):
+        console.console.print(
+            f'[error]Preset [item]{preset.name}[/item] declares a {kind} template at '
+            f'[item]{inner}[/item], but that resolves to '
+            f'[item]{_realpath(path)}[/item], which is outside the preset '
+            f'folder ([item]{_realpath(preset_path)}[/item]).[/error]'
+        )
+        if requested_by is not None:
+            _print_requested_by_remediation(requested_by)
+        raise typer.Exit(1)
+
     if not path.is_dir():
         _print_missing_template_dir(
             preset, kind=kind, inner=inner, path=path, severity='error'
@@ -918,8 +947,9 @@ def all_templates(
     """Every template of this kind that actually resolves: the canonical one
     (when declared) plus each variant, in `declared_templates` order.
 
-    A template that fails to resolve -- today, one whose declared directory does
-    not exist -- is reported and skipped, rather than raising like
+    A template that fails to resolve -- one whose declared directory does not
+    exist, or one that resolves outside the preset root -- is reported and
+    skipped, rather than raising like
     `resolve_template` does. Callers of this function sweep over every template
     (linting them, cleaning build artifacts out of them) instead of acting on the
     one template the user asked for, so a bad declaration is a recoverable
@@ -955,11 +985,10 @@ def all_templates(
                 )
             )
         except typer.Exit:
-            # The existence check above already covers `resolve_template`'s only
-            # current failure mode for a declared template, so this is dead code
-            # today. It is here because validations queued for `resolve_template`
-            # (e.g. rejecting declared paths that escape the preset root) would
-            # otherwise turn a sweep into a hard exit halfway through. Every exit
+            # `resolve_template` also rejects a template that resolves outside the
+            # preset root (a symlinked directory, which the existence check above
+            # happily follows). A sweep must not turn into a hard exit halfway
+            # through because of one bad declaration, so skip it -- every exit
             # branch there prints its own message first, so skipping stays loud.
             continue
     return resolved

@@ -151,17 +151,18 @@ class TestLintingStaysInsideThePreset:
 
     def test_does_not_reformat_the_package_above_the_preset(self, tmp_path):
         ancestor = self._ancestor_package(tmp_path)
-        # The declared directory exists (it is the ancestor package itself) but
-        # holds no `contest.rbx.yml`, so the recursion resolves to the ancestor.
+        # The declared directory exists but holds no `contest.rbx.yml`, so
+        # recursing into it would resolve, via `find_package`'s walk up the tree,
+        # to the unrelated package above the preset.
         root = _preset_with_dirs(
             ancestor / 'preset',
             """---
 name: "escaping"
 uri: "test/escaping"
 min_version: "1.0.0"
-contest: ".."
+contest: "contest"
 """,
-            [],
+            ['contest'],
         )
 
         linting.fix_package(root)
@@ -171,7 +172,10 @@ contest: ".."
     def test_does_not_reformat_an_unrelated_package_beside_the_preset(self, tmp_path):
         ancestor = self._ancestor_package(tmp_path)
         # Same hazard reached through a *variant* declaration, and landing on a
-        # package that merely sits beside the preset rather than above it.
+        # package that merely sits beside the preset rather than above it. The
+        # declaration itself is relative and contained -- the schema would reject
+        # a `../unrelated` outright -- so the escape is smuggled in as a symlink,
+        # which only `resolve_template`'s real-path check can see.
         sibling = ancestor / 'unrelated'
         sibling.mkdir()
         (sibling / 'problem.rbx.yml').write_text(_UNFORMATTED_ANCESTOR)
@@ -184,10 +188,11 @@ min_version: "1.0.0"
 contest: "contest"
 contestVariants:
   - id: div1
-    path: "../unrelated"
+    path: "unrelated"
 """,
             ['contest'],
         )
+        (root / 'unrelated').symlink_to(sibling, target_is_directory=True)
         (root / 'contest' / 'contest.rbx.yml').write_text(
             "name: 'template-contest'\nproblems: []\n"
         )
