@@ -1,0 +1,13 @@
+fixture: pair-problem
+title: A custom checker's verdict in rbx run
+timeout: 300s
+setup:
+  - rbx build
+instructions:
+  - rbx run
+expect_contains:
+  # The point of the recording: the report carries the checker's own message,
+  # not an opaque token diff. This is the exact string the page quotes.
+  - 'a + b = 11, expected 10'
+  - sols/main.cpp
+  - sols/wa-offbyone.cpp

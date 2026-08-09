@@ -69,6 +69,12 @@ For complex modules, see the inner CLAUDE.md files:
 - [`rbx/box/statements/CLAUDE.md`](rbx/box/statements/CLAUDE.md) -- Statement building: rbxTeX/LaTeX/Jinja pipeline, conversion steps, templates
 - [`casts/README.md`](casts/README.md) -- Documentation asciinema recordings: specs, fixtures, `mise run record`
 
+## Releases and Backports
+
+Releases are commitizen-driven and cut manually with `mise run release` (bump + push tags + PyPI + schemas). There is no release CI on `main` -- the tag-push trigger in `.github/workflows/release.yml` is deliberately disabled. Tags cut from older commits still carry the enabled trigger, which matters when backporting.
+
+To ship a fix to an already-released older version (e.g. patch `0.38.0` while `main` is at `1.0.0`), follow [`docs/internal/backporting.md`](docs/internal/backporting.md). The short version: **fix forward on `main` first, cherry-pick down to a `release/<major>.<minor>.x` branch cut from the old tag, never merge that branch back.**
+
 ## Architecture
 
 ### Entry Point and CLI

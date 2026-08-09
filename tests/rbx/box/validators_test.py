@@ -8,6 +8,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.validators import (
+    _has_group_specific_bounds,
     check_output_from_entries,
     has_validation_errors,
     print_validation_report,
@@ -602,6 +603,72 @@ async def test_validator_receives_group_argument(
     assert results[('large', 'pass.in')] is True
     assert results[('large', 'fail.in')] is False
     assert results[('default', 'pass.in')] is True
+
+
+async def test_validator_receives_group_resolved_vars(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A single validator sees the group's effective vars, on argv and in rbx.h."""
+    testing_pkg.set_vars({'N': {'min': 1, 'max': 1000}})
+
+    testing_pkg.add_from_testdata(
+        'validator_vars.cpp', src='validators/getvar-group-validator.cpp'
+    )
+    testing_pkg.set_validator('validator_vars.cpp')
+
+    testing_pkg.add_testgroup_from_glob('small', 'manual_tests/small/*.in')
+    testing_pkg.yml.testcases[-1].vars = {'N': {'max': 10}}
+    testing_pkg.save()
+    testing_pkg.add_file('manual_tests/small/pass.in').write_text('5\n')
+    # `small/fail.in` and `large/pass.in` are deliberately the same input: one
+    # value getting opposite verdicts in two groups is the strongest form of
+    # this assertion. Generation warns they are hash duplicates; that is
+    # expected, and desynchronising them would weaken the test.
+    testing_pkg.add_file('manual_tests/small/fail.in').write_text('500\n')
+
+    testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
+    testing_pkg.add_file('manual_tests/large/pass.in').write_text('500\n')
+    testing_pkg.add_file('manual_tests/large/fail.in').write_text('5000\n')
+
+    await generate_testcases()
+    validation_infos = await validate_testcases()
+
+    infos_by_case = {}
+    for info in validation_infos:
+        assert info.testcase is not None
+        assert info.generation_metadata is not None
+        assert info.generation_metadata.copied_from is not None
+
+        group = info.testcase.group
+        name = info.generation_metadata.copied_from.inputPath.name
+        infos_by_case[(group, name)] = info
+
+    # The group override lowers N.max to 10, so 500 is only valid in `large`.
+    assert infos_by_case[('small', 'pass.in')].ok is True
+    assert infos_by_case[('small', 'fail.in')].ok is False
+    assert infos_by_case[('large', 'pass.in')].ok is True
+    assert infos_by_case[('large', 'fail.in')].ok is False
+
+    # No testcase may fail because argv and rbx.h resolved different bounds.
+    for info in infos_by_case.values():
+        assert 'disagree' not in (info.message or '')
+
+
+def test_group_vars_make_bounds_group_specific(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A group declaring `vars` has its own bounds, even with a single validator."""
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+    testing_pkg.add_testgroup_from_glob('small', 'manual_tests/small/*.in')
+    testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
+
+    assert _has_group_specific_bounds() is False
+
+    testing_pkg.yml.testcases[0].vars = {'N': {'max': 10}}
+    testing_pkg.save()
+
+    assert _has_group_specific_bounds() is True
 
 
 async def test_check_output_from_entries_with_checker(

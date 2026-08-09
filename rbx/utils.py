@@ -306,8 +306,23 @@ def get_app_path() -> pathlib.Path:
     return pathlib.Path(app_dir)
 
 
+def _relax_schema(node):
+    """Drop `additionalProperties: false` so a pinned schema tolerates keys
+    added by newer rbx versions. rbx itself still rejects unknown keys at load
+    time (models are `extra='forbid'`), so typos are caught by the tool."""
+    if isinstance(node, dict):
+        return {
+            k: _relax_schema(v)
+            for k, v in node.items()
+            if not (k == 'additionalProperties' and v is False)
+        }
+    if isinstance(node, list):
+        return [_relax_schema(item) for item in node]
+    return node
+
+
 def dump_schema_str(model: Type[BaseModel]) -> str:
-    return json.dumps(model.model_json_schema(), indent=4)
+    return json.dumps(_relax_schema(model.model_json_schema()), indent=4)
 
 
 def dump_schema(model: Type[BaseModel], path: pathlib.Path):
@@ -330,7 +345,9 @@ def uploaded_schema_path(model: Type[BaseModel]) -> str:
     return f'https://rsalesc.github.io/rbx/schemas/{model.__name__}.json'
 
 
-def model_to_yaml(model: BaseModel, **kwargs) -> str:
+def model_to_yaml(
+    model: BaseModel, root: Optional[pathlib.Path] = None, **kwargs
+) -> str:
     """Convert model to YAML string with proper boolean handling.
 
     This function works around Pydantic's issue where Union[str, int, float, bool]
@@ -342,8 +359,11 @@ def model_to_yaml(model: BaseModel, **kwargs) -> str:
     # Ensure the result is JSON-serializable by converting any non-JSON types
     json_safe_data = _ensure_json_serializable(data)
 
-    # Add schema path comment and convert to YAML
-    path = uploaded_schema_path(model.__class__)
+    # Add schema path comment and convert to YAML.
+    # Function-local import: rbx.box.presets imports this module.
+    from rbx.box.schema_urls import schema_url
+
+    path = schema_url(model.__class__, root or pathlib.Path())
     schema_comment = f'# yaml-language-server: $schema={path}\n\n'
 
     yaml_content = yaml.safe_dump(

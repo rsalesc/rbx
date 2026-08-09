@@ -394,6 +394,48 @@ You can pass variables to validators in two different ways.
     # Use variables...
     ```
 
+    The values passed here are already resolved for the testgroup being validated, so an
+    `argv`-parsing validator and a `getVar` one always agree.
+
+{{rbx}} additionally passes `--group <name>` naming the top-level testgroup being validated.
+
+### Per-testgroup variables
+
+**Field**: `testcases.vars`
+
+A testgroup can override the package-level `vars` for itself. The validator is unchanged:
+it keeps reading the same variable names, and gets the values effective for the testgroup
+being validated.
+
+```yaml
+validator:
+  path: "validator.cpp"
+vars:
+  N:
+    min: 1
+    max: 1000
+testcases:
+  - name: "small"
+    # ...other testgroup definitions
+    vars:
+      N:
+        max: 50 # N.min stays at the package-level 1.
+  - name: "large"
+    # No override: the package-level values apply.
+```
+
+The merge is done leaf by leaf, so a partial override keeps its siblings, and the keys
+need not exist at package level -- a variable meaningful only inside one testgroup can be
+declared there alone. Only top-level testgroups can declare `vars`; subgroups cannot,
+because {{rbx}} only passes the top-level testgroup name to the validator.
+
+The resolved values are also readable in statements as `problem.groups.<name>.vars.<key>`.
+
+!!! success "Recommended"
+    This is the recommended way of varying constraints between subtasks -- it beats both a
+    testgroup-specific validator and a branch on the testgroup's name. See
+    [Varying constraints per test group](../../verification/validators.md#varying-constraints-per-test-group).
+
 ### Extra validators
 
 You can also specify extra validators to be used in your testcases, both at the problem-level and testgroup-level.

@@ -1,0 +1,13 @@
+fixture: ab-problem
+title: Building the testset with rbx build
+instructions:
+  - rbx build
+  - !Wait 1s
+  # A peek at the layout the prose describes: one directory per testgroup.
+  - ls build/tests
+expect_contains:
+  # The build has to actually reach the end and lay the tests out per group;
+  # if either changes, the recording fails instead of publishing a stale cast.
+  - Problem built.
+  - samples
+  - gen

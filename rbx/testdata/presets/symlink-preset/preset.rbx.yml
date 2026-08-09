@@ -1,7 +1,6 @@
 ---
 name: "symlink-preset"
 uri: "test/symlink-preset"
-min_version: "1.0.0"
 problem: "problem"
 env: "env.rbx.yml"
 tracking:

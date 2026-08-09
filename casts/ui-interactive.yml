@@ -1,0 +1,28 @@
+fixture: guessing-problem
+title: Inspecting an interactive run with rbx ui
+timeout: 300s
+setup:
+  - rbx build
+  - rbx run
+instructions:
+  - !Interactive
+    command: rbx ui
+    keys:
+      # Down to "Explore results of a past `rbx run`", open it, then walk the
+      # solutions to reach the failing interaction before quitting out.
+      - 3s
+      - j
+      - 1s
+      - '^M'
+      - 3s
+      - j
+      - 2s
+      - j
+      - 2s
+      - q
+      - 1s
+      - q
+expect_contains:
+  - Select a flow
+  - main.cpp
+  - wa-linear

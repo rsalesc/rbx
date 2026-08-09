@@ -137,7 +137,7 @@ Now run `rbx run` again. Two things change compared to step 1:
 - `wa-offbyone.cpp` fails, and instead of an opaque token diff you get the checker's custom
   message, e.g. `a + b = 11, expected 10`.
 
-<!-- TODO(record): rbx run cast showing the custom WA message goes here -->
+{{ asciinema("run-custom-checker") }}
 
 ## Testing the checker with `rbx unit`
 
@@ -187,7 +187,7 @@ answer, so we only provide `.in` and `.out`.
 rbx unit
 ```
 
-<!-- TODO(record): short rbx unit cast goes here -->
+{{ asciinema("unit-checker") }}
 
 For many small cases you can avoid one-file-per-test with **test plans** — see the
 [Unit tests](verification/unit-tests.md) feature guide.

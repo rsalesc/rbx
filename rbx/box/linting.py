@@ -7,30 +7,54 @@ import yamlfix.model
 from pydantic import BaseModel
 
 from rbx import console
+from rbx.box import schema_urls
 from rbx.box.cd import is_contest_package, is_preset_package, is_problem_package
 from rbx.box.contest.schema import Contest
 from rbx.box.presets import all_templates, get_preset_yaml
 from rbx.box.presets.schema import Preset
 from rbx.box.schema import Package
 from rbx.box.stats import find_problem_packages_from_contest
-from rbx.utils import uploaded_schema_path
+
+# Hosts whose schema headers rbx owns and may rewrite. A user pointing at a
+# local or third-party schema is left alone.
+_OWNED_SCHEMA_PREFIXES = (
+    'https://rsalesc.github.io/rbx/schemas/',
+    f'{schema_urls.VERSIONED_BASE_URL}/',
+)
 
 
-def fix_language_server(path: pathlib.Path, model_cls: Type[BaseModel]) -> bool:
-    stream = []
-    with path.open('r') as f:
-        for line in f:
-            if line.strip().startswith('# yaml-language-server:'):
-                continue
-            stream.append(line)
-            if line.startswith('---'):
-                stream.append(
-                    f'# yaml-language-server: $schema={uploaded_schema_path(model_cls)}\n'
-                )
-    content = ''.join(stream)
+def _is_owned_schema_header(line: str) -> bool:
+    return any(prefix in line for prefix in _OWNED_SCHEMA_PREFIXES)
+
+
+def fix_language_server(
+    path: pathlib.Path,
+    model_cls: Type[BaseModel],
+    root: pathlib.Path = pathlib.Path(),
+) -> bool:
     orig_text = path.read_text()
+    header = (
+        f'# yaml-language-server: $schema={schema_urls.schema_url(model_cls, root)}\n'
+    )
+
+    lines = orig_text.splitlines(keepends=True)
+    existing = {
+        i
+        for i, line in enumerate(lines)
+        if line.strip().startswith('# yaml-language-server:')
+    }
+    if existing and not all(_is_owned_schema_header(lines[i]) for i in existing):
+        # The file points at a schema rbx does not own; do not touch it.
+        return False
+
+    kept = [line for i, line in enumerate(lines) if i not in existing]
+    insert_at = 1 if kept and kept[0].startswith('---') else 0
+    content = ''.join(kept[:insert_at] + [header] + kept[insert_at:])
+
+    if content == orig_text:
+        return False
     path.write_text(content)
-    return orig_text != content
+    return True
 
 
 def fix_yaml(
@@ -51,9 +75,9 @@ def fix_yaml(
     )
     _, changed = yamlfix.fix_files([str(path)], dry_run=False, config=config)
 
-    # if model_cls is not None:
-    #     if fix_language_server(path, model_cls):
-    #         changed = True
+    if model_cls is not None:
+        if fix_language_server(path, model_cls, path.parent):
+            changed = True
 
     if changed and verbose:
         console.console.print(

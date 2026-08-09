@@ -7,7 +7,7 @@ JSON array per line, each ``[time, code, data]`` where ``code`` is ``o``
 
 import json
 import re
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 # Rich emits OSC-8 hyperlinks carrying a random `id=NNNN` that changes on every
 # run. Left alone, an otherwise identical re-recording would diff on every
@@ -18,15 +18,29 @@ _OSC8_ID = re.compile(r'\x1b]8;id=\d+;')
 # describes the recording machine, not the demo.
 _KEEP_ENV = ('TERM', 'SHELL')
 
+# Where a residual scratch path is rewritten to. The random directory name is
+# dropped along with the machine-specific temp root, so re-recordings agree.
+SCRATCH_ROOT = '/tmp/scratch'
+
 
 class CastVerificationError(Exception):
     pass
 
 
-def _scrub_str(value: str, tmpdir: str, display_root: str, home: Optional[str]) -> str:
+def _scrub_str(
+    value: str,
+    tmpdir: str,
+    display_root: str,
+    home: Optional[str],
+    scratch: Optional[re.Pattern],
+) -> str:
     if home:
         value = value.replace(home, '~')
+    # The recording's own tmpdir first: it also lives under the temp root, and
+    # it is the one path with a meaningful name to show.
     value = value.replace(tmpdir, display_root)
+    if scratch is not None:
+        value = scratch.sub(SCRATCH_ROOT, value)
     return _OSC8_ID.sub('\x1b]8;;', value)
 
 
@@ -36,6 +50,7 @@ def scrub_cast(
     display_root: str,
     home: Optional[str] = None,
     title: Optional[str] = None,
+    temp_roots: Sequence[str] = (),
 ) -> str:
     lines = raw.splitlines()
     if not lines:
@@ -53,12 +68,25 @@ def scrub_cast(
     if title is not None:
         header['title'] = title
 
+    # rbx creates its own temp directories (`rbx validate` stages the typed
+    # testcase in one), which are siblings of the recording's tmpdir rather
+    # than children -- so the rewrite above never reaches them.
+    # More than one root because macOS reports the same directory as both
+    # `/var/folders/...` and `/private/var/folders/...` depending on whether
+    # the path was resolved; a cast can contain either spelling.
+    alternatives = '|'.join(
+        re.escape(root.rstrip('/')) for root in sorted(set(temp_roots), reverse=True)
+    )
+    scratch = (
+        re.compile(f'(?:{alternatives})' + r'/[^/\s"\')\]]+') if alternatives else None
+    )
+
     out = [json.dumps(header, sort_keys=True)]
     for line in lines[1:]:
         if not line.strip():
             continue
         event = json.loads(line)
-        event[2] = _scrub_str(event[2], tmpdir, display_root, home)
+        event[2] = _scrub_str(event[2], tmpdir, display_root, home, scratch)
         out.append(json.dumps(event))
     return '\n'.join(out) + '\n'
 

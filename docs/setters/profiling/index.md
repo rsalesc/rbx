@@ -45,6 +45,12 @@ solutions and applying a formula to their timings.
 6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a sensible limit instead of falling back to the base. See [Language groups](#language-groups).
 7. **Profile persistence** -- The result is written to `.limits/<profile>.yml`, together with the chosen grouping as metadata.
 
+All seven steps in one run, taking the recommended **Estimate** strategy and the default
+grouping — note the preview table updating as the languages are bucketed, and the formula
+printed just above the limits that get written:
+
+{{ asciinema("time-estimate", speed=2) }}
+
 ### Strategies
 
 When you run `rbx time`, you are prompted to choose a strategy:

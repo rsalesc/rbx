@@ -1,0 +1,3 @@
+tests/gen 1000000000 1
+tests/gen 1000000000 2
+tests/gen 1000000000 3

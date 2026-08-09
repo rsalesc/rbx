@@ -12,6 +12,7 @@ from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements import engine, overlay, render, resolver
 from rbx.box.statements.context import (
     ContestRenderContext,
+    GroupView,
     ProblemRenderContext,
     StatementCodeLanguage,
 )
@@ -291,7 +292,10 @@ async def build_statement(
                 profile=limits_info.get_active_profile()
             ),
             profiles=limits_info.get_available_limits_profiles(),
-            groups={g.name: g for g in pkg.testcases},
+            groups={
+                g.name: GroupView(g, package.get_expanded_vars_for_group(g.name))
+                for g in pkg.testcases
+            },
         )
         contest_ctx = ContestRenderContext(
             title=(

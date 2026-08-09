@@ -1,0 +1,35 @@
+name: pair-problem
+timeLimit: 1000
+memoryLimit: 256
+
+# Any pair summing to N is correct, so token comparison will not do.
+checker:
+  path: 'checker.cpp'
+
+validator:
+  path: 'validator.cpp'
+
+solutions:
+  - path: 'sols/main.cpp'
+    outcome: ACCEPTED
+  - path: 'sols/wa-*.*'
+    outcome: WRONG_ANSWER
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: testplan
+    generatorScript:
+      path: 'tests/testplan.txt'
+
+unitTests:
+  checker:
+    - glob: unit/checker/ac*
+      outcome: ACCEPTED
+    - glob: unit/checker/wa*
+      outcome: WRONG_ANSWER
+
+vars:
+  N:
+    min: 2
+    max: 1000000000

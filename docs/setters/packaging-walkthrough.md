@@ -206,6 +206,8 @@ package **and** uploads it in a single step:
 rbx package boca -u
 ```
 
+<!-- Still hosted on asciinema.org: reproducing an upload needs a live BOCA
+     server, which the recording pipeline has no way to stand up. -->
 {{ asciinema("onJXQDVPELqn2kITmCrbkJeCX", speed=3) }}
 
 #### Set up BOCA credentials

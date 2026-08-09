@@ -21,6 +21,7 @@ from rbx.box.environment import (
     get_language_by_extension_or_nil,
     get_sandbox_type,
 )
+from rbx.box.fields import Vars
 from rbx.box.formatting import href
 from rbx.box.global_package import get_cache_fingerprint
 from rbx.box.sanitizers import issue_stack
@@ -518,6 +519,19 @@ def get_test_groups_by_name(
             res[f'{testgroup.name}.{subgroup.name}'] = subgroup
 
     return res
+
+
+@functools.cache
+def get_expanded_vars_for_group(
+    group_name: Optional[str], root: pathlib.Path = pathlib.Path()
+) -> Vars:
+    """Package vars with the named group's overrides applied, cached per group.
+
+    Expansion re-evaluates every interpolated var, so it is too costly to redo
+    once per validated testcase; there is at most one distinct result per group.
+    The returned dict is shared between callers and must not be mutated.
+    """
+    return find_problem_package_or_die(root).expanded_vars_for_group(group_name)
 
 
 def get_statement_or_nil(

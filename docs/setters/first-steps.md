@@ -18,6 +18,12 @@ $ rbx create
 # in a folder with that name.
 ```
 
+The command asks for the name first, then — since there is no preset active yet — lets you
+pick one from the registry. Choosing the default preset clones it and materializes
+{{testlib}}, {{jngen}} and {{tgen}} into the new folder:
+
+{{ asciinema("create-problem") }}
+
 This is how the directory structure of the pre-initialized problem preset will look like:
 
 ```bash
@@ -107,7 +113,7 @@ You can notice it created several folders inside a `tests` directory, each of wh
 If you want, you can explore these folders manually, but {{rbx}} also provides a TUI (terminal UI) to explore the testcases.
 You can run `rbx ui` and select the first option to explore the built testcases.
 
-{{ asciinema("cqUTWgIRFA1P7VsV39uJTorKC") }}
+{{ asciinema("ui-testcases") }}
 
 ## Run
 
@@ -117,7 +123,7 @@ Now, let's execute `rbx run`. This command **builds** all testcases and **execut
 $ rbx run
 ```
 
-{{ asciinema("x8NJUtmob4uSHUUFppxUn64Kn") }}
+{{ asciinema("run-basic") }}
 
 You can see this command prints a full run report: it shows for each testcase of each testgroup whether a certain solution passed or not. There are also links for the outputs of each problem.
 
@@ -125,6 +131,12 @@ You can see this command prints a full run report: it shows for each testcase of
     You can notice when you call `rbx run` again, the testcases were built really fast.
     That's because {{rbx}} caches certain calls based on the hash tree of your package
     (similar to Makefile). You can explicitly clear this cache by calling `rbx clean`.
+
+    Below, the same `rbx build` runs twice in a row. Nothing about the package changed
+    between them, so the second one compiles nothing and regenerates nothing — it just
+    reports the same testset back:
+
+    {{ asciinema("build-cache") }}
 
 ## Modifying the package
 
@@ -217,7 +229,6 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
 
     int main(int argc, char *argv[]) {
       registerValidation(argc, argv);
-      prepareOpts(argc, argv);
 
       // Read from package vars. // (1)!
       int MIN_N = getVar<int>("N.min");

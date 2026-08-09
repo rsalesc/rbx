@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
 
     You can always manually call a validator on a custom input with `rbx validate`.
 
-    {{ asciinema("i1qR2ygzbV7rYnd03uAQ1mPzb") }}
+    {{ asciinema("validate-input") }}
 
 ## Using custom validators
 
@@ -280,11 +280,69 @@ testcases:
       - path: 'straight-validator.cpp'
 ```
 
+## Varying constraints per test group
 
+When test groups differ only in their constraints, the recommended way of expressing
+that is to override, in the group itself, the variables the validator already reads.
 
+=== "problem.rbx.yml"
+    ```yaml hl_lines="14-16"
+    # ... rest of the problem.rbx.yml ...
+    scoring: POINTS
+    validator:
+      path: 'validator.cpp'
+    vars:
+      N:
+        min: 2
+        max: 1000
+    testcases:
+      - name: samples
+        testcaseGlob: documents/samples/*.in
+      - name: small
+        score: 30
+        vars:
+          N:
+            max: 50 # (1)!
+      - name: large
+        score: 70 # (2)!
+    ```
 
+    1.  Only `N.max` is overridden. The merge happens leaf by leaf, so `N.min`
+        keeps the package-level value of `2`.
 
+    2.  No `vars` block, so this group validates against the package-level values.
 
+=== "validator.cpp"
+    ```cpp
+    #include "testlib.h"
+    #include "rbx.h"
 
+    int main(int argc, char *argv[]) {
+      registerValidation(argc, argv);
+
+      // Unchanged. `getVar` already returns the value effective for the group
+      // being validated: 50 inside `small`, 1000 inside `large`.
+      int MIN_N = getVar<int>("N.min");
+      int MAX_N = getVar<int>("N.max");
+
+      int n = inf.readInt(MIN_N, MAX_N, "N");
+      // ...rest of the validator...
+    }
+    ```
+
+**The validator source does not change at all.** {{rbx}} passes the group being
+validated to every validator run, and the generated `rbx.h` resolves `getVar` against
+it. A test that is legal in `large` and too big for `small` now fails in `small`, and
+`rbx build` reports it.
+
+A few details worth knowing:
+
+- **The merge is deep, at the leaf.** `vars: {N: {max: 50}}` overrides `N.max` and
+  leaves every sibling (`N.min`, and every other variable) alone. You never have to
+  restate the constraints you are not changing.
+- **Only top-level testgroups can declare `vars`.** Subgroups cannot.
+- The group's resolved values are also what {{rbx}} passes on the validator command
+  line as `--{name}={value}`, so a validator written in another language that parses
+  `argv` sees exactly the same values as a C++ one using `getVar`.
 
 

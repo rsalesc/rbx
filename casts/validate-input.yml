@@ -1,0 +1,38 @@
+fixture: graph-problem
+title: Validating a hand-written input with rbx validate
+timeout: 300s
+setup:
+  # Warms the compilation cache. Without it the typed input races the
+  # validator's compile and gets echoed over the progress spinner.
+  - rbx build -v1
+instructions:
+  # A connected triangle: the validator accepts it.
+  - !Interactive
+    command: rbx validate
+    keys:
+      - 2s
+      - '3 3'
+      - '^M'
+      - '1 2'
+      - '^M'
+      - '2 3'
+      - '^M'
+      - '1 3'
+      - '^M'
+      - 1s
+      - '^D'
+  - !Wait 2s
+  # The same graph minus an edge: now disconnected, so the validator rejects it
+  # with the message the validator itself defines.
+  - !Interactive
+    command: rbx validate
+    keys:
+      - 2s
+      - '3 1'
+      - '^M'
+      - '1 2'
+      - '^M'
+      - 1s
+      - '^D'
+expect_contains:
+  - The graph is not connected.

@@ -10,7 +10,7 @@ The central Pydantic model hierarchy defining `problem.rbx.yml`:
 
 - **`Package`** -- Root model. Contains: `name`, `timeLimit`, `memoryLimit`, `solutions`, `testcases`, `checker`, `validator`, `interactor`, `statements`, `vars`, `limitsProfiles`, `scoreType`
 - **`Solution`** -- `path`, `outcome` (ExpectedOutcome, matched against the whole testset pooled), `outcomePerGroup` (per-group expectations keyed by top-level group name, `'*'` = default applied to every group individually; an additive second layer, checked on top of `outcome`), `score`, `doubleTL`, `language`. Resolution helpers: `expected_outcome_for_group()`, `all_expected_outcomes()`
-- **`TestcaseGroup`** (extends `TestcaseSubgroup`) -- `name`, `generator`, `generatorScript`, `testcases`, `subgroups`, `validator`, `score`, `deps`
+- **`TestcaseGroup`** (extends `TestcaseSubgroup`) -- `name`, `generator`, `generatorScript`, `testcases`, `subgroups`, `validator`, `score`, `deps`, `vars` (per-group overrides of the package `vars`; top-level groups only, since only the top-level group name reaches the validator)
 - **`TestcaseSubgroup`** -- `testcases` list, `generator` (GeneratorCall or CodeItem)
 - **`Testcase`** -- `inputPath`, `outputPath` (for manual test cases)
 - **`GeneratorCall`** -- `name`, `args` (references a generator program)
@@ -18,6 +18,17 @@ The central Pydantic model hierarchy defining `problem.rbx.yml`:
 - **`LimitsProfile`** -- Per-packager limit overrides with `modifiers` per language, `formula` support; also carries optional `groups` metadata (a `TimingGroupReport` list, presentation-only) recording how languages were grouped during estimation
 - **`LimitModifiers`** -- `time`, `timeMultiplier`, `memory` per language
 - **`TimingGroupOrigin` / `TimingGroupReport`** -- presentation-only types describing each language group's resolved time limit and its source (estimated / `whenEmpty` multiple / defaulted)
+
+### Vars and per-group overrides
+
+`Package.vars` / `TestcaseGroup.vars` are `RecVars` (nested dicts of primitives, `fields.py`). `expand_vars()` resolves ``py`...`` interpolation and flattens to dotted keys (`AB: {min: 1}` -> `AB.min`).
+
+- `Package.expanded_vars` -- package-level flattened vars.
+- `Package.expanded_vars_for_group(name)` -- `merge_recvars(pkg.vars, group.vars)` (deep, leaf-by-leaf, so a partial override keeps its siblings) expanded afterwards, so an override can feed any var interpolated from it. Falls back to the package vars when `name` is `None` or names no declared group (interactive validation, unit tests, samples).
+- `package.get_expanded_vars_for_group(name)` -- `@functools.cache`d wrapper; expansion is too costly to redo per testcase. The returned dict is shared -- never mutate it.
+- **Reserved names** (`RESERVED_VAR_NAMES`, `check_reserved_var_names`) -- vars go to validators as `--{dotted_key}={value}`, so a *top-level primitive* key named after a flag testlib or rbx consumes (`group`, `testset`, `help`, `testCase`, `testCaseFileName`, `testMarkupFileName`, `testOverviewLogFileName`) is rejected at validation time. Nested keys are fine: they flatten to `--parent.key=...`, which no flag parser matches.
+
+`header.py` emits the per-group arms into `rbx.h`: for each group declaring `vars` (sorted), one `if (group == "<name>") { ... return std::nullopt; }` arm ahead of the package-level table, per accessor type. An arm carries the group's *whole* resolved var set so a type-changing override cannot leave the package value reachable. `group` comes from `rbx::getGroup()`, which parses `--group` out of the process command line; the preamble and the platform guard are emitted only when some group declares `vars`, so packages without overrides pay nothing. `validators.py` passes `--group <name>` plus the group-resolved vars, and reports hit bounds per group whenever any group declares `validator` or `vars`.
 
 ### `ExpectedOutcome` (AutoEnum)
 
@@ -175,4 +186,4 @@ Singleton factories (via `@functools.cache`) for shared resources:
 - Cache versioning via `CACHE_STEP_VERSION` -- incremented when cache format changes
 - `clear_global_cache()` -- Nukes the cache directory (used by `rbx clear`)
 
-**Test isolation rule:** any new `@functools.cache` (or `@async_lru.alru_cache`) on a module-level function in `rbx/box/` must be added to `rbx.testing_utils.clear_all_functools_cache`. The autouse `_isolate_global_state` fixture in `tests/rbx/conftest.py` calls this between every test; uncovered caches will leak path-resolved state across tests and surface as flaky cross-test failures (#423).
+**Test isolation rule:** `rbx.testing_utils.clear_all_functools_cache` holds a list of *modules* and clears every attribute of each that exposes `cache_clear`. So a new `@functools.cache` (or `@async_lru.alru_cache`) on a module-level function in `rbx/box/` is covered automatically **if its module is already in that list** -- add the module if it is not (individual functions are never registered). The autouse `_isolate_global_state` fixture in `tests/rbx/conftest.py` calls this between every test; uncovered caches will leak path-resolved state across tests and surface as flaky cross-test failures (#423). `global_package` is excluded on purpose -- see the function's docstring.

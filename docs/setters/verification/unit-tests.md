@@ -24,7 +24,7 @@ The unit tests can be run with the following command:
 rbx unit
 ```
 
-{{ asciinema("51w76V3tB3zirJkucufFVD4hs") }}
+{{ asciinema("unit-tests") }}
 
 In the next sections, we'll go through what each of these fields mean, and how to define
 the actual test inputs.
@@ -86,7 +86,18 @@ To check the tests are working properly, let's create the following files in the
 Now, when you run `rbx unit`, you should see all the three tests passing if the validator
 is implemented correctly, and we should see failures if the validator does not behave as expected.
 
-{{ asciinema("Q31OAPd4qfzHM5oGcqjeos904") }}
+{{ asciinema("unit-tests") }}
+
+The failing case is the one worth knowing by sight. Below, the validator is the same one,
+except the connectivity check has been dropped — so `invalid_NOT_CONNECTED.in` passes
+validation when the `unitTests` entry says it must not. {{rbx}} reports the test that broke,
+what it expected, and what it actually got:
+
+{{ asciinema("unit-validator-failure") }}
+
+Note the other two tests still pass: the input that violates the declared bounds is still
+rejected by {{testlib}} itself. That is the sort of hole unit tests are for — a validator
+can look healthy on the tests you happen to generate and still be missing a constraint.
 
 ## Testing checkers
 

@@ -10,7 +10,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 from rich import text
 
-from rbx.utils import model_from_yaml, model_to_yaml, uploaded_schema_path
+from rbx.utils import model_from_yaml, model_to_yaml
 
 
 class SampleModel(BaseModel):
@@ -238,11 +238,35 @@ class TestModelToYaml:
 
     def test_schema_path_generation(self, sample_model):
         """Test that the schema path is correctly generated."""
+        from rbx.box import schema_urls
+
         yaml_output = model_to_yaml(sample_model)
-        expected_schema = uploaded_schema_path(SampleModel)
+        expected_schema = schema_urls.schema_url(SampleModel)
 
         assert f'# yaml-language-server: $schema={expected_schema}' in yaml_output
-        assert 'https://rsalesc.github.io/rbx/schemas/SampleModel.json' in yaml_output
+        assert expected_schema.endswith('/SampleModel.json')
+
+    def test_model_to_yaml_pins_schema_to_preset_min_version(
+        self, sample_model, tmp_path
+    ):
+        """A preset's min_version pins the header written into its packages."""
+        from rbx.box import schema_urls
+
+        (tmp_path / '.local.rbx').mkdir()
+        (tmp_path / '.local.rbx' / 'preset.rbx.yml').write_text(
+            'name: "p"\nuri: "u"\nmin_version: "1.4.0"\n'
+        )
+
+        schema_urls.preset_min_version.cache_clear()
+        try:
+            output = model_to_yaml(sample_model, root=tmp_path)
+        finally:
+            schema_urls.preset_min_version.cache_clear()
+
+        assert output.startswith(
+            '# yaml-language-server: '
+            '$schema=https://rsalesc.github.io/rbx-schemas/1.4/SampleModel.json'
+        )
 
     def test_yaml_roundtrip(self, sample_model):
         """Test that YAML can be parsed and contains expected data."""
@@ -1744,3 +1768,43 @@ class TestFdLeakDetector:
 
         with FdLeakDetector(id='test', diff=True):
             pass  # Should not raise any errors
+
+
+class TestSchemaRelaxation:
+    """Tests for forward-tolerant published schemas."""
+
+    def test_dump_schema_str_drops_additional_properties_false(self):
+        import json
+
+        from pydantic import ConfigDict
+
+        from rbx.utils import dump_schema_str
+
+        class Inner(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            x: int = 0
+
+        class Outer(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            inner: Inner = Inner()
+
+        dumped = json.loads(dump_schema_str(Outer))
+
+        assert 'additionalProperties' not in dumped
+        assert 'additionalProperties' not in dumped['$defs']['Inner']
+
+    def test_dump_schema_str_keeps_required_and_types(self):
+        import json
+
+        from pydantic import ConfigDict
+
+        from rbx.utils import dump_schema_str
+
+        class Model(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            name: str
+
+        dumped = json.loads(dump_schema_str(Model))
+
+        assert dumped['required'] == ['name']
+        assert dumped['properties']['name']['type'] == 'string'

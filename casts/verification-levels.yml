@@ -1,0 +1,13 @@
+fixture: graph-problem
+title: Verification levels when building a testset
+timeout: 300s
+instructions:
+  # -v0 generates the tests and stops there.
+  - rbx build -v0
+  - !Wait 2s
+  # -v1 additionally runs the validator over every generated input and reports
+  # which declared bounds the testset actually reaches.
+  - rbx build -v1
+expect_contains:
+  - Problem built.
+  - Validation report

@@ -23,7 +23,7 @@
 </div>
 {% endmacro %}
 
-{% macro feature_item(title, link, recordingId, command="", reverse=None) %}
+{% macro feature_item(title, link, cast, command="", reverse=None) %}
 <!-- Feature Row-->
 {% if reverse is none %}
 {% set direction = "flex-row even:flex-row-reverse" %}
@@ -50,8 +50,21 @@
   </div>
   <!-- RHS -->
   <div class="w-full sm:w-[90%] md:w-[55%] p-6 flex flex-col">
-    <script src="https://asciinema.org/a/{{ recordingId }}.js" id="asciicast-{{ recordingId }}" async="true" data-loop
-      data-autoplay data-idle-time-limit="1"></script>
+    <!-- The cast is a file committed under docs/assets/casts, played by the
+         vendored asciinema-player. Nothing is fetched from asciinema.org, so
+         re-recording never changes a URL here. `extra_javascript` puts the
+         player bundle at the end of <body>, after this script, which is why
+         creation waits for DOMContentLoaded.
+
+         Go through `rbxCast` (assets/casts-loop.js) rather than calling
+         AsciinemaPlayer.create directly -- that is what holds the final frame
+         for three seconds instead of restarting the moment it is drawn. -->
+    <div id="cast-{{ cast }}"></div>
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        rbxCast('/assets/casts/{{ cast }}.cast', 'cast-{{ cast }}');
+      });
+    </script>
   </div>
 </div>
 {% endmacro %}
@@ -224,14 +237,13 @@
 
     <div>
       {% call feature_item("Visualize your testset", "setters/testset/#visualizing-the-testset",
-      "cqUTWgIRFA1P7VsV39uJTorKC",
+      "ui-testcases",
       command="rbx ui") %}
       <p>Visualize your testset <b>interactively</b>, without leaving your terminal.</p>
       <p>Check the test input, the expected output, and information about the origin of the test case.</p>
       {% endcall %}
 
-      <!-- TODO: set recording id and link -->
-      {% call feature_item("Verify solutions", "setters/running", "x8NJUtmob4uSHUUFppxUn64Kn", command="rbx run") %}
+      {% call feature_item("Verify solutions", "setters/running", "run-basic", command="rbx run") %}
       <p>
         Verify whether correct solutions pass, and incorrect solutions fail at least one testcase.
       </p>
@@ -241,7 +253,7 @@
       </p>
       {% endcall %}
 
-      {% call feature_item("Stress test", "setters/stress-testing", "TOoswpIL4mRKfstnDCkKLw2Xn", command="rbx
+      {% call feature_item("Stress test", "setters/stress-testing", "stress-basic", command="rbx
       stress") %}
       <p>
         Build a strong testset by generating <b>random testcases</b> that break incorrect solutions.
@@ -251,14 +263,14 @@
       </p>
       {% endcall %}
 
-      {% call feature_item("Validate inputs", "setters/verification/validators", "141SSzM2QsLqznBknzMdojOHj") %}
+      {% call feature_item("Validate inputs", "setters/verification/validators", "verification-levels") %}
       <p>
         Validate your input data with <b>validators</b> and never worry about
         invalid input data again.
       </p>
       {% endcall %}
 
-      {% call feature_item("Unit tests", "setters/verification/unit-tests", "51w76V3tB3zirJkucufFVD4hs", command="rbx
+      {% call feature_item("Unit tests", "setters/verification/unit-tests", "unit-tests", command="rbx
       unit") %}
       <p>
         Write unit tests for your custom <b>checkers</b> and <b>validators</b>

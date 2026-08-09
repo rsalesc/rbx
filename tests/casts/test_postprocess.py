@@ -49,6 +49,39 @@ def test_scrub_rewrites_the_home_directory_too():
     assert '~/.cache/rbx' in scrubbed
 
 
+def test_scrub_rewrites_scratch_dirs_the_recording_did_not_create():
+    # rbx makes its own temp directories (e.g. for `rbx validate`'s stdin
+    # testcase). Those sit next to the recording's tmpdir rather than inside
+    # it, so the tmpdir rewrite alone leaves a machine-specific, run-specific
+    # path in the published cast.
+    raw = _cast('Testcase /private/var/folders/ab/T/tmpk7q869rc/000.in failed\r\n')
+
+    scrubbed = scrub_cast(
+        raw,
+        tmpdir='/private/var/folders/ab/T/tmpxyz',
+        display_root='~/problems',
+        temp_roots=['/var/folders/ab/T', '/private/var/folders/ab/T'],
+    )
+
+    assert '/private/var/folders' not in scrubbed
+    assert 'tmpk7q869rc' not in scrubbed
+    assert '/tmp/scratch/000.in' in scrubbed
+
+
+def test_scrub_prefers_the_recording_tmpdir_over_the_generic_scratch_rewrite():
+    raw = _cast('$ pwd\r\n/private/var/folders/ab/T/tmpxyz/ab-problem\r\n')
+
+    scrubbed = scrub_cast(
+        raw,
+        tmpdir='/private/var/folders/ab/T/tmpxyz',
+        display_root='~/problems',
+        temp_roots=['/var/folders/ab/T', '/private/var/folders/ab/T'],
+    )
+
+    assert '~/problems/ab-problem' in scrubbed
+    assert 'scratch' not in scrubbed
+
+
 def test_scrub_sets_a_stable_header():
     raw = _cast('hello\r\n')
 

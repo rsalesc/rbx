@@ -20,11 +20,6 @@ class TestingPreset(TestingShared):
                     Preset(
                         name='test-preset',
                         uri='rsalesc/test-preset',
-                        # Pin to the running version: the schema default
-                        # (an old version) reads as a breaking change once
-                        # rbx crosses a major, failing every test that loads
-                        # this preset.
-                        min_version=utils.get_version(),
                         env=pathlib.Path('env.rbx.yml'),
                         tracking=Tracking(),  # Explicitly include tracking
                     )

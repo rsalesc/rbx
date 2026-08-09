@@ -1,6 +1,5 @@
 import pathlib
 
-from rbx import utils
 from rbx.box import libraries
 from rbx.box.presets.schema import Library
 from rbx.grading import steps
@@ -9,10 +8,7 @@ from rbx.grading import steps
 def _write_preset(root: pathlib.Path, extra_yaml: str) -> None:
     (root / '.local.rbx').mkdir(parents=True, exist_ok=True)
     (root / '.local.rbx' / 'preset.rbx.yml').write_text(
-        # Pin min_version to the running version: the schema default is an old
-        # version, which reads as a breaking change once rbx crosses a major.
-        f'name: pre\nuri: owner/repo\nmin_version: "{utils.get_version()}"\n'
-        + extra_yaml
+        'name: pre\nuri: owner/repo\n' + extra_yaml
     )
 
 

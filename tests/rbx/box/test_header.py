@@ -1,9 +1,35 @@
 import pathlib
+import shutil
+import subprocess
+from typing import Dict, List
 
 import pytest
 
-from rbx.box import header
+from rbx import config
+
+# Imported as a module: a bare `TestcaseGroup` name makes pytest try to collect
+# the Pydantic model as a test class.
+from rbx.box import header, schema
+from rbx.box.fields import RecVars
 from rbx.box.testing import testing_package
+from rbx.box.validators import _get_var_args
+
+# Every sentinel the rbx.h template must carry, in template order.
+_ALL_SENTINELS = [
+    'group_guard',
+    'string_var_groups',
+    'string_var',
+    'int_var_groups',
+    'int_var',
+    'float_var_groups',
+    'float_var',
+    'bool_var_groups',
+    'bool_var',
+]
+
+
+def _fake_template(sentinels: List[str]) -> str:
+    return ''.join(f'//<rbx::{sentinel}>\n' for sentinel in sentinels)
 
 
 class TestHeader:
@@ -333,6 +359,43 @@ class TestHeader:
             in generated_content
         )
 
+    @pytest.mark.parametrize('dropped', _ALL_SENTINELS)
+    def test_template_missing_a_sentinel_raises(
+        self, testing_pkg: testing_package.TestingPackage, dropped: str
+    ):
+        """A silent no-op here would ship a header that resolves no vars."""
+        template = _fake_template([s for s in _ALL_SENTINELS if s != dropped])
+
+        with pytest.raises(ValueError, match=f'`//<rbx::{dropped}>`'):
+            header.preprocess_header(template)
+
+    @pytest.mark.parametrize(
+        'line',
+        [
+            '  //<rbx::int_var_groups>\n',  # indented
+            '//<rbx::int_var_groups> // trailing\n',  # not alone on its line
+            '//<rbx::int_var_groups>\n//<rbx::int_var_groups>\n',  # duplicated
+        ],
+    )
+    def test_template_sentinel_must_be_alone_at_column_zero(
+        self, testing_pkg: testing_package.TestingPackage, line: str
+    ):
+        template = _fake_template(_ALL_SENTINELS).replace(
+            '//<rbx::int_var_groups>\n', line
+        )
+
+        with pytest.raises(ValueError, match='`//<rbx::int_var_groups>`'):
+            header.preprocess_header(template)
+
+    def test_template_with_every_sentinel_is_accepted(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        testing_pkg.set_vars({'x': 1})
+
+        result = header.preprocess_header(_fake_template(_ALL_SENTINELS))
+
+        assert 'if (name == "x") {\n    return static_cast<int64_t>(1);\n  }' in result
+
     def test_generate_header_bool_as_int_in_int_block(
         self, testing_pkg: testing_package.TestingPackage
     ):
@@ -365,3 +428,654 @@ class TestHeader:
         assert (
             'if (name == "bool_false") {\n    return false;\n  }' in generated_content
         )
+
+
+_GET_VAR_MAIN = """
+#include "rbx.h"
+#include <cassert>
+#include <cstdio>
+#include <string>
+
+int main() {
+  assert(getVar<int>("N.max") == 100);
+  assert(getVar<int>("N", "max") == 100);
+  assert(getVar<int64_t>("N", "max") == 100);
+  assert(getVar<std::string>("deep", "nested", "name") == "hello");
+  assert(getVar<std::string>("deep.nested", "name") == "hello");
+  assert(getVar<std::string>("deep", "nested.name") == "hello");
+
+  // Segments can also be std::string values.
+  std::string first = "N";
+  std::string second = "max";
+  assert(getVar<int>(first, second) == 100);
+
+  // Missing variables report the joined name.
+  try {
+    getVar<int>("N", "missing");
+    return 1;
+  } catch (const std::runtime_error &e) {
+    assert(std::string(e.what()).find("N.missing") != std::string::npos);
+  }
+
+  printf("ok");
+  return 0;
+}
+"""
+
+
+class TestGetVarWrapper:
+    """Tests for the variadic getVar() wrapper exposed by rbx.h."""
+
+    def test_get_var_accepts_dotted_name_and_segments(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(
+            {
+                'N': {'max': 100},
+                'deep': {'nested': {'name': 'hello'}},
+            }
+        )
+
+        header.generate_header()
+        pathlib.Path('main.cpp').write_text(_GET_VAR_MAIN)
+
+        subprocess.run(
+            [gpp, '-std=c++17', '-Wall', '-Werror', '-o', 'main', 'main.cpp'],
+            check=True,
+        )
+        result = subprocess.run(['./main'], check=True, capture_output=True, text=True)
+        assert result.stdout == 'ok'
+
+    def test_get_var_bool_reads_ints_and_throws_on_missing_var(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """getVar<bool> must report a missing var, not fall back to `true`."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'yes': True, 'no': False, 'one': 1, 'zero': 0})
+
+        header.generate_header()
+        # The package declares no string or float var, so `name` goes unused in
+        # those two accessors.
+        _compile(
+            gpp, _GET_BOOL_VAR_MAIN, 'boolvar', ['-Wextra', '-Wno-unused-parameter']
+        )
+
+        result = subprocess.run(
+            ['./boolvar'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'yes=1\nno=0\none=1\nzero=0\nmissing=threw\n'
+
+
+_GET_GROUP_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+// Resolved before main() runs, to prove no call from main() is needed.
+static const std::string kEarly = rbx::getGroup();
+
+int main() {
+  std::printf("early=[%s]\\n", kEarly.c_str());
+  std::printf("late=[%s]\\n", rbx::getGroup().c_str());
+  return 0;
+}
+"""
+
+# Includes rbx.h BEFORE testlib.h.
+_TESTLIB_BEFORE_MAIN = """
+#include "rbx.h"
+#include "testlib.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  registerValidation(argc, argv);
+  inf.readEof();
+  std::printf("rbx=[%s]\\n", rbx::getGroup().c_str());
+  std::printf("testlib=[%s]\\n", getGroup().c_str());
+  return 0;
+}
+"""
+
+# Includes rbx.h AFTER testlib.h.
+_TESTLIB_AFTER_MAIN = """
+#include "testlib.h"
+#include "rbx.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  registerValidation(argc, argv);
+  inf.readEof();
+  std::printf("rbx=[%s]\\n", rbx::getGroup().c_str());
+  std::printf("testlib=[%s]\\n", getGroup().c_str());
+  return 0;
+}
+"""
+
+
+# Reads a blob from stdin and prints how rbx.h splits it. Exercises the
+# /proc/self/cmdline splitter on every platform, not just Linux.
+_SPLIT_CMDLINE_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::string blob;
+  char buffer[4096];
+  std::size_t read;
+  while ((read = std::fread(buffer, 1, sizeof(buffer), stdin)) > 0) {
+    blob.append(buffer, read);
+  }
+  for (const std::string &arg : rbx::detail::splitCmdline(blob)) {
+    std::printf("[%s]\\n", arg.c_str());
+  }
+  return 0;
+}
+"""
+
+
+def _require_gpp() -> str:
+    gpp = shutil.which('g++')
+    if gpp is None:
+        pytest.skip('g++ is not available')
+    return gpp
+
+
+def _compile(gpp: str, source: str, name: str, extra_args: List[str]) -> None:
+    pathlib.Path(f'{name}.cpp').write_text(source)
+    subprocess.run(
+        [gpp, '-std=c++20', '-O2', '-Wall', '-Werror', '-o', name, f'{name}.cpp']
+        + extra_args,
+        check=True,
+    )
+
+
+class TestGetGroup:
+    """Tests for rbx::getGroup(), which parses --group out of argv."""
+
+    @pytest.mark.parametrize(
+        ('argv', 'expected'),
+        [
+            (['--group', 'sub2'], 'sub2'),
+            (['--group=sub2'], 'sub2'),
+            (['--AB.min=-200', '--group', 'sub2', '--other', 'x'], 'sub2'),
+            ([], ''),
+            (['--group'], ''),
+            (['--groups', 'sub2'], ''),
+            # Last-wins, like testlib's own --group scan.
+            (['--group', 'a', '--group', 'b'], 'b'),
+            # The hijack: a package var literally named `group` is rendered as
+            # `--group=<value>` BEFORE rbx appends the real `--group <name>`. A
+            # first-wins parser hands back the var's value, and every group then
+            # silently reads the package-level vars.
+            (
+                [
+                    '--AB.min=0',
+                    '--group=oops',
+                    '--testOverviewLogFileName',
+                    'validator.log',
+                    '--group',
+                    'nonneg',
+                ],
+                'nonneg',
+            ),
+        ],
+    )
+    def test_get_group_parses_argv(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        argv: List[str],
+        expected: str,
+    ):
+        gpp = _require_gpp()
+
+        header.generate_header()
+        _compile(gpp, _GET_GROUP_MAIN, 'main', [])
+
+        result = subprocess.run(
+            ['./main'] + argv, check=True, capture_output=True, text=True
+        )
+        assert result.stdout == f'early=[{expected}]\nlate=[{expected}]\n'
+
+    @pytest.mark.parametrize(
+        ('blob', 'expected'),
+        [
+            # NUL-separated args, as the kernel writes them.
+            (b'./validator\x00--group\x00sub2\x00', ['./validator', '--group', 'sub2']),
+            # A trailing NUL terminates the last arg, it does not add a phantom one.
+            (b'a\x00b\x00', ['a', 'b']),
+            # ... and a missing trailing NUL still yields the last arg.
+            (b'a\x00b', ['a', 'b']),
+            # A single arg with no trailing NUL.
+            (b'solo', ['solo']),
+            # An empty blob yields no args at all.
+            (b'', []),
+            # An embedded empty arg is representable and preserved.
+            (b'a\x00\x00b\x00', ['a', '', 'b']),
+        ],
+    )
+    def test_split_cmdline(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        blob: bytes,
+        expected: List[str],
+    ):
+        """The /proc/self/cmdline splitter, tested on every platform."""
+        gpp = _require_gpp()
+
+        header.generate_header()
+        _compile(gpp, _SPLIT_CMDLINE_MAIN, 'split', [])
+
+        result = subprocess.run(
+            ['./split'], check=True, capture_output=True, input=blob
+        )
+        assert result.stdout.decode() == ''.join(f'[{arg}]\n' for arg in expected)
+
+    def test_header_does_not_depend_on_testlib(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        header.generate_header()
+
+        header_content = pathlib.Path('rbx.h').read_text()
+        assert 'testlib' not in header_content.lower()
+        assert '_TESTLIB_H_' not in header_content
+
+    @pytest.mark.parametrize(
+        ('source', 'name'),
+        [
+            (_TESTLIB_BEFORE_MAIN, 'rbx_first'),
+            (_TESTLIB_AFTER_MAIN, 'testlib_first'),
+        ],
+    )
+    def test_get_group_coexists_with_testlib(
+        self, testing_pkg: testing_package.TestingPackage, source: str, name: str
+    ):
+        """rbx::getGroup() must not collide with testlib's global getGroup()."""
+        gpp = _require_gpp()
+
+        header.generate_header()
+        testlib = config.get_resources_file(pathlib.Path('predownloaded/testlib.h'))
+        pathlib.Path('testlib.h').write_text(testlib.read_text())
+
+        # testlib.h is not warning-clean under -Wall -Werror, so relax it here;
+        # the point of this test is the name collision, not warnings.
+        _compile(gpp, source, name, ['-Wno-error', '-w'])
+
+        result = subprocess.run(
+            [f'./{name}', '--group', 'sub2'],
+            check=True,
+            capture_output=True,
+            text=True,
+            input='',
+        )
+        assert result.stdout == 'rbx=[sub2]\ntestlib=[sub2]\n'
+
+
+# Exercises getVar<bool>, including its fallback to the int table.
+_GET_BOOL_VAR_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+static void report(const char *name) {
+  try {
+    std::printf("%s=%d\\n", name, (int)getVar<bool>(name));
+  } catch (const std::runtime_error &e) {
+    (void)e;
+    std::printf("%s=threw\\n", name);
+  }
+}
+
+int main() {
+  report("yes");
+  report("no");
+  report("one");
+  report("zero");
+  report("missing");
+  return 0;
+}
+"""
+
+
+# Prints one var of each type, so a group arm wired for only some of the four
+# accessors is caught.
+_GROUP_VARS_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::printf("AB.min=%lld\\n", (long long)getVar<int64_t>("AB.min"));
+  std::printf("AB.max=%lld\\n", (long long)getVar<int64_t>("AB.max"));
+  std::printf("name=%s\\n", getVar<std::string>("name").c_str());
+  std::printf("ratio=%.2f\\n", getVar<double>("ratio"));
+  std::printf("flag=%d\\n", (int)getVar<bool>("flag"));
+  return 0;
+}
+"""
+
+# Reports, per type, whether a var declared only by a group is visible.
+_GROUP_ONLY_VARS_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+template <typename T> void report(const char *label, const std::string &name) {
+  try {
+    T value = getVar<T>(name);
+    (void)value;
+    std::printf("%s=ok\\n", label);
+  } catch (const std::runtime_error &e) {
+    (void)e;
+    std::printf("%s=threw\\n", label);
+  }
+}
+
+int main() {
+  report<int64_t>("maxOps", "maxOps");
+  report<std::string>("label", "label");
+  report<double>("eps", "eps");
+  report<bool>("strict", "strict");
+  return 0;
+}
+"""
+
+# A group override that changes a var's type must not leave the package's value
+# of the old type reachable under that group.
+_CROSS_TYPE_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+int main() {
+  try {
+    std::printf("int=%lld\\n", (long long)getVar<int64_t>("x"));
+  } catch (const std::runtime_error &e) {
+    (void)e;
+    std::printf("int=threw\\n");
+  }
+  std::printf("string=%s\\n", getVar<std::string>("x").c_str());
+  return 0;
+}
+"""
+
+_UNSUPPORTED_PLATFORM_GUARD = (
+    '#if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)'
+)
+
+_PACKAGE_VARS: RecVars = {
+    'AB': {'min': -200, 'max': 200},
+    'name': 'pkg',
+    'ratio': 1.5,
+    'flag': True,
+}
+
+
+def _set_group_vars(
+    testing_pkg: testing_package.TestingPackage, groups: Dict[str, RecVars]
+) -> None:
+    testing_pkg.yml.testcases = [
+        schema.TestcaseGroup(name=name, vars=vars) for name, vars in groups.items()
+    ]
+    testing_pkg.save()
+
+
+class TestGroupVars:
+    """Tests for per-group `vars` overrides baked into rbx.h."""
+
+    def test_getvar_resolves_group_override(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """getVar returns the group's value under --group, the package's otherwise."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(
+            testing_pkg,
+            {
+                'sub2': {
+                    'AB': {'min': 0},
+                    'name': 'sub2name',
+                    'ratio': 2.5,
+                    'flag': False,
+                },
+                'sub3': {'AB': {'max': 0}},
+                'sub4': {},
+            },
+        )
+
+        header.generate_header()
+        _compile(gpp, _GROUP_VARS_MAIN, 'groupvars', ['-Wextra'])
+
+        package_expected = 'AB.min=-200\nAB.max=200\nname=pkg\nratio=1.50\nflag=1\n'
+        cases = [
+            (
+                ['--group', 'sub2'],
+                'AB.min=0\nAB.max=200\nname=sub2name\nratio=2.50\nflag=0\n',
+            ),
+            (
+                ['--group', 'sub3'],
+                'AB.min=-200\nAB.max=0\nname=pkg\nratio=1.50\nflag=1\n',
+            ),
+            (['--group', 'sub4'], package_expected),
+            (['--group', 'unknown'], package_expected),
+            ([], package_expected),
+        ]
+        for argv, expected in cases:
+            result = subprocess.run(
+                ['./groupvars'] + argv, check=True, capture_output=True, text=True
+            )
+            assert result.stdout == expected, argv
+
+    def test_group_only_var_is_visible_in_its_group_and_throws_outside(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        _set_group_vars(
+            testing_pkg,
+            {
+                'sub2': {
+                    'maxOps': 5,
+                    'label': 'small',
+                    'eps': 0.5,
+                    'strict': True,
+                },
+            },
+        )
+
+        header.generate_header()
+        # The package declares no vars of its own, so the accessors' `name`
+        # parameter goes unused in the package-level block.
+        _compile(
+            gpp,
+            _GROUP_ONLY_VARS_MAIN,
+            'grouponly',
+            ['-Wextra', '-Wno-unused-parameter'],
+        )
+
+        result = subprocess.run(
+            ['./grouponly', '--group', 'sub2'],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == 'maxOps=ok\nlabel=ok\neps=ok\nstrict=ok\n'
+
+        result = subprocess.run(
+            ['./grouponly'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'maxOps=threw\nlabel=threw\neps=threw\nstrict=threw\n'
+
+    def test_group_override_changing_a_var_type_hides_the_package_value(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A group arm answers on its own; it never falls through to the package."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'x': 1})
+        _set_group_vars(testing_pkg, {'sub2': {'x': 'one'}})
+
+        header.generate_header()
+        # `name` goes unused in the float and bool accessors: neither the
+        # package nor the group declares a var of those types.
+        _compile(
+            gpp, _CROSS_TYPE_MAIN, 'crosstype', ['-Wextra', '-Wno-unused-parameter']
+        )
+
+        result = subprocess.run(
+            ['./crosstype', '--group', 'sub2'],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == 'int=threw\nstring=one\n'
+
+        result = subprocess.run(
+            ['./crosstype'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'int=1\nstring=1\n'
+
+    def test_package_without_group_vars_generates_no_group_arms(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Existing packages stay byte-stable apart from Task 2's getGroup block."""
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(testing_pkg, {'sub1': {}, 'sub2': {}})
+
+        header.generate_header()
+
+        generated_content = pathlib.Path('rbx.h').read_text()
+        assert 'if (group ==' not in generated_content
+        # Not even the getGroup() lookup: nothing to resolve against.
+        assert 'const std::string &group = rbx::getGroup();' not in generated_content
+
+    def test_group_arms_are_emitted_in_sorted_order(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """rbx.h is a compilation-cache input, so the order must not drift."""
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(
+            testing_pkg, {'sub2': {'AB': {'min': 0}}, 'sub1': {'AB': {'min': 1}}}
+        )
+
+        header.generate_header()
+
+        generated_content = pathlib.Path('rbx.h').read_text()
+        assert generated_content.find('if (group == "sub1")') < generated_content.find(
+            'if (group == "sub2")'
+        )
+
+    def test_guard_is_emitted_only_when_a_group_declares_vars(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(testing_pkg, {'sub1': {}})
+
+        header.generate_header()
+        assert _UNSUPPORTED_PLATFORM_GUARD not in pathlib.Path('rbx.h').read_text()
+
+        _set_group_vars(testing_pkg, {'sub1': {'AB': {'min': 0}}})
+
+        header.generate_header()
+        assert _UNSUPPORTED_PLATFORM_GUARD in pathlib.Path('rbx.h').read_text()
+
+    def test_header_is_warning_clean_without_group_vars(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """The header is compiled into every validator; it must not warn.
+
+        The with-group-vars shape is covered by
+        `test_getvar_resolves_group_override`, which compiles the same program
+        under the same flags.
+        """
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+
+        header.generate_header()
+        _compile(gpp, _GROUP_VARS_MAIN, 'warnings', ['-Wextra'])
+
+
+# Reads `--flag` with testlib's own option parser. `registerGen` is what calls
+# `prepareOpts`, so this is the generator-side reader, not a validator.
+_TESTLIB_OPT_BOOL_MAIN = """
+#include "testlib.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  registerGen(argc, argv, 1);
+  std::printf("%d\\n", (int)opt<bool>("flag"));
+  return 0;
+}
+"""
+
+# Reads the same flag with jngen. Note the `-flag` name: jngen's
+# `parseArguments` strips a single leading dash, so `--flag=1` lands under
+# `-flag`.
+_JNGEN_GET_OPT_BOOL_MAIN = """
+#include "jngen.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  parseArgs(argc, argv);
+  bool flag = getOpt("-flag", false);
+  std::printf("%d\\n", (int)flag);
+  return 0;
+}
+"""
+
+
+class TestVarArgsAreReadableByBothLibraries:
+    """End-to-end check of `validators._get_var_args`'s bool rendering.
+
+    Lives here because this is the file holding the compile-and-run harness.
+    The rendering itself is unit-tested in `validators_argv_test.py`; what only
+    a real compiler can show is that the string rbx puts on the command line is
+    the one both shipped libraries actually accept -- `true`/`false` would pass
+    testlib and fail jngen, and `True`/`False` fails both.
+    """
+
+    @pytest.mark.parametrize(('value', 'expected'), [(True, '1\n'), (False, '0\n')])
+    @pytest.mark.parametrize(
+        ('source', 'name', 'library'),
+        [
+            (_TESTLIB_OPT_BOOL_MAIN, 'testlib_opt_bool', 'predownloaded/testlib.h'),
+            (_JNGEN_GET_OPT_BOOL_MAIN, 'jngen_opt_bool', 'predownloaded/jngen.h'),
+        ],
+    )
+    def test_bool_var_round_trips_through_the_library_option_parser(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        value: bool,
+        expected: str,
+        source: str,
+        name: str,
+        library: str,
+    ):
+        gpp = _require_gpp()
+
+        library_path = config.get_resources_file(pathlib.Path(library))
+        pathlib.Path(library_path.name).write_text(library_path.read_text())
+
+        # Neither library is warning-clean under -Wall -Werror; what is being
+        # tested here is the parsed value, not warnings.
+        _compile(gpp, source, name, ['-Wno-error', '-w'])
+
+        args = _get_var_args({'flag': value})
+        assert args == [f'--flag={"1" if value else "0"}']
+
+        result = subprocess.run(
+            [f'./{name}'] + args,
+            check=True,
+            capture_output=True,
+            text=True,
+            input='',
+        )
+        assert result.stdout == expected

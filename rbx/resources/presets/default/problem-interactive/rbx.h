@@ -35,6 +35,9 @@ std::optional<bool> getBoolVar(std::string name) {
   return std::nullopt;
 }
 
+namespace rbx {
+namespace vars {
+
 template <typename T> T getVar(std::string name);
 
 template <> int32_t getVar<int32_t>(std::string name) {
@@ -135,5 +138,37 @@ template <> bool getVar<bool>(std::string name) {
                              " is not a boolean or could not be found");
   }
   return opt.value();
+}
+
+inline void joinVarPath(std::string &acc) { (void)acc; }
+
+template <typename... Args>
+void joinVarPath(std::string &acc, const std::string &part,
+                 const Args &...rest) {
+  if (!acc.empty() && !part.empty()) {
+    acc += '.';
+  }
+  acc += part;
+  joinVarPath(acc, rest...);
+}
+
+} // namespace vars
+} // namespace rbx
+
+// Reads a variable declared in the `vars` section of the package.
+//
+// The path to the variable can be given either as a single dotted string or as
+// one segment per argument, so the two calls below are equivalent:
+//
+//   getVar<int>("N.max");
+//   getVar<int>("N", "max");
+//
+// Supported types are int32_t, uint32_t, int64_t, uint64_t, float, double,
+// std::string and bool.
+template <typename T, typename... Args>
+T getVar(const std::string &first, const Args &...rest) {
+  std::string name;
+  rbx::vars::joinVarPath(name, first, rest...);
+  return rbx::vars::getVar<T>(name);
 }
 #endif

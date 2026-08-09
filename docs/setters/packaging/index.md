@@ -56,4 +56,14 @@ The example below shows how to build an ICPC package by only generating tests an
 rbx package icpc -v1
 ```
 
+The flag changes how much work happens before the package is written, not what the package
+contains. Below, the same problem is packaged twice for [BOCA](boca.md) — first with `-v1`,
+which stops once the tests are built and validated, and then with the default `-v4`, which
+also runs every declared solution and checks it against its expected outcome:
+
+{{ asciinema("package-verification") }}
+
+Both produce the same `.zip`. The second one just refuses to produce it if a solution
+disagrees with the outcome you declared for it.
+
 See each one of the sections dedicated to each of the avilable formats on the sidebar.

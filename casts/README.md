@@ -55,7 +55,7 @@ width: 100                   # optional; terminal columns (default 100)
 height: 30                   # optional; terminal rows (default 30)
 type_speed: 60ms             # optional; delay between typed characters
 timeout: 120s                # optional; per-instruction limit
-end_pause: 3s                # optional; hold the final frame (see below)
+end_pause: 0s                # optional; extra dwell baked in (see below)
 
 setup:                       # optional; runs for real, never shown
   - rbx build
@@ -87,17 +87,29 @@ give you more:
 
 ### `end_pause`
 
-Casts autoplay on a loop, so without a trailing hold the final frame — usually
-the whole point of the recording — flashes past before anyone can read it.
-Every recording therefore ends with a **3 second hold** by default. Set
-`end_pause` to change it, or `0s` to opt out.
+Casts autoplay on a loop, and the final frame is usually the whole point of the
+recording, so **every player waits 3 seconds on it before restarting**. That
+wait lives in `docs/assets/casts-loop.js`, not in the cast file, and
+`end_pause` therefore defaults to `0s`.
 
-You do not need a trailing `!Wait` for this; the hold is applied after the last
-instruction. A `!Wait` at the end would simply add to it.
+Create players through its `rbxCast(src, elementId, options, pauseMs)` helper
+and nowhere else. There are two call sites — the `asciinema()` macro in
+`main.py` for pages, and `docs/templates/home.html` for the landing page — and
+when they each created their own player, the home page kept `loop: true` and
+went on restarting instantly after the macro learned to pause. A test guards
+this.
 
-The hold is a zero-byte output event at a later timestamp, not just an idle
-gap — a player takes a cast's duration from its final event, so advancing the
-clock without emitting anything would have no effect.
+It has to live there. A trailing gap inside the cast is idle time like any
+other: the player first clamps it to `idleTimeLimit` (1 second) and then
+divides it by `speed`, so a recorded "3 second hold" plays for one second, or
+half of one on a `speed=2` embed. The macro pauses in wall-clock time instead,
+which is the same three seconds at any playback rate.
+
+Set `end_pause` only when a recording wants extra dwell baked into the file
+itself; it adds to the player's pause rather than replacing it. The hold it
+writes is a zero-byte output event at a later timestamp, not just an idle gap —
+a player takes a cast's duration from its final event, so advancing the clock
+without emitting anything would have no effect.
 
 ### `expect_contains`
 
@@ -108,6 +120,84 @@ previous good cast is left untouched.
 
 Pick strings that would genuinely disappear if the command broke — a solution
 path, a section heading — not decoration.
+
+Match against **one uninterrupted run of plain text**. Verification reads the
+recorded bytes, and Rich splits a styled phrase with escape sequences, so
+`Added 1 tests to test group corner's generatorScript` never matches even
+though that is exactly what the terminal shows — the styling sits between
+`corner` and `'s`. When an expectation fails on a string you can plainly see in
+the playback, that is why: shorten it to a fragment that carries no markup.
+
+## Fixtures
+
+| Fixture | Shape | Used by |
+| --- | --- | --- |
+| `ab-problem` | A + B, one correct and one overflowing solution | build, run, irun, ui, BOCA packaging, `rbx time` |
+| `graph-problem` | Connected-graph input, path checker, validator and checker unit tests | `rbx unit`, `rbx validate`, verification levels, build caching |
+| `sum-problem` | Sum of N integers, `wa-overflow.cpp`, `vars.A.max` | both `rbx stress` recordings |
+| `pair-problem` | Print any `a + b = N`, custom checker | custom-checker walkthrough |
+| `guessing-problem` | Interactive guessing game with a testlib interactor | `rbx ui` on an interactive run |
+| `workspace` | Empty directory, not a package | `rbx create`, which needs somewhere to create *into* |
+
+`graph-problem` also carries `broken/validator-without-connectivity.cpp`: the
+same validator with its connectivity check removed, swapped in by the
+`unit-validator-failure` setup so that recording can show a unit test actually
+failing. It is not part of the package and nothing else reads it.
+
+The fixtures are transcribed from the docs pages they illustrate, so a reader
+sees the same code they just read. Three of them needed **corrections** the
+pages still carry, because the snippets as printed do not run:
+
+- The validator, checker and interactor snippets rely on `testlib.h` pulling
+  `std` into scope. Under GCC 15 it does not, so the fixtures add the includes
+  and the `using namespace std;`.
+- The interactor in `docs/setters/grading/interactors.md` never writes `N` to
+  the participant, though the statement above it says it does — any solution
+  that opens by reading `N` deadlocks. It also reads the guess with
+  `ouf.readInt`, rejecting the `? X` format the same statement specifies. The
+  fixture fixes both.
+
+## Re-record on an idle machine
+
+A cast's timeline is real elapsed time: the engine advances its clock by the
+wall-clock time each command actually took. A recording made while the machine
+is busy is therefore a *slower recording*, permanently — and the compile-heavy
+fixtures are the ones that suffer. Recording the whole set with `mkdocs serve`
+rebuilding in the background once stretched `unit-tests` from 9s to 22s.
+
+So close the docs server and anything else expensive first, and re-record only
+what changed rather than everything. Compare against the previous file before
+committing; a cast that got noticeably longer with no change to its spec was
+timed against load, not against `rbx`.
+
+## Known gaps
+
+- **`create-problem` needs the network.** `rbx create` clones the preset from
+  GitHub and materializes its libraries, so this is the one recording that
+  cannot be re-made offline. It is pinned in practice by the tool tag rbx
+  checks out (the installed version), not by the spec.
+- **`create-problem` does not `ls` the problem it just made**, even though the
+  page prints an annotated tree right below it. The tree says `documents/`
+  while the preset ships `statement/`, so showing both would put the
+  contradiction on screen. Once the page and the preset agree, add the `ls`.
+- **The BOCA upload recording** (`boca.md`, `packaging-walkthrough.md`) is still
+  hosted on asciinema.org. `rbx package boca -u` uploads to a live BOCA server,
+  and the pipeline has no way to stand one up. `record-check` reports these two
+  as "not yet migrated" by design.
+
+    It is still *played* by the vendored player, pointed at the hosted `.cast`
+    (asciinema.org serves it with `Access-Control-Allow-Origin: *`), rather
+    than by asciinema.org's `<script>` embed. That embed brings its own player,
+    which only takes `data-loop` and restarts the instant the last frame is
+    drawn — so going through ours is what gives it the same loop pause as every
+    other recording. It remains the one embed that needs the network to play,
+    and the only one whose bytes are not in this repository.
+- **`stress-walkthrough` stops at the save confirmation** rather than going on
+  to `rbx build`. Choosing `(create new script)` and typing `tests/corner`
+  creates the file at `tests/corner.txt` but writes `path: corner.txt` into
+  `problem.rbx.yml`, and the path is resolved from the package root — so the
+  next build fails with `Generator script not found`. That is an rbx bug, not a
+  recording one.
 
 ## How recording works
 

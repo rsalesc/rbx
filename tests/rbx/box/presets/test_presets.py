@@ -23,6 +23,25 @@ from rbx.box.testing.testing_preset import TestingPreset
 from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME
 
 
+def test_preset_default_min_version_is_compatible_with_installed_version():
+    """The default `min_version` must accept the rbx version being shipped.
+
+    Presets that don't declare a floor inherit this default, so if it lags
+    behind a major bump every such preset (including the ones built by the
+    test fixtures) is rejected as a breaking change. Bump the default
+    deliberately whenever the major version changes.
+    """
+    from rbx import utils
+    from rbx.box.presets.schema import Preset
+
+    default_min_version = Preset.model_fields['min_version'].default
+
+    assert (
+        utils.check_version_compatibility(default_min_version)
+        == utils.SemVerCompatibility.COMPATIBLE
+    )
+
+
 def test_preset_parses_libraries_block():
     from rbx.box.presets.schema import Preset
 
@@ -1129,3 +1148,18 @@ class TestErrorHandling:
 
         # Destination should not exist
         assert not dst.exists()
+
+
+def test_polygon_e2e_fixture_validator_matches_the_preset():
+    """The e2e fixture's validator is a verbatim copy of the default preset's.
+
+    They have drifted apart silently before (the fixture kept a `prepareOpts`
+    call the preset had dropped). Keep them byte-identical.
+    """
+    repo_root = Path(__file__).parents[4]
+    preset = repo_root / 'rbx' / 'resources' / 'presets' / 'default' / 'problem'
+    fixture = repo_root / 'tests' / 'e2e' / 'testdata' / 'polygon-default-preset' / 'A'
+
+    assert (preset / 'validator.cpp').read_bytes() == (
+        fixture / 'validator.cpp'
+    ).read_bytes()

@@ -1,0 +1,14 @@
+fixture: ab-problem
+title: Packaging a problem for BOCA
+timeout: 300s
+setup:
+  # BOCA refuses to package without a `boca` limits profile. The docs tell the
+  # reader to create it with `rbx time -p boca`; here it is a prerequisite of
+  # the recording rather than part of what the recording teaches, so it is
+  # hidden. `-a` skips the interactive strategy prompt.
+  - rbx time -p boca -a
+instructions:
+  - rbx package boca
+expect_contains:
+  - Problem packaged for
+  - ab_problem.zip
