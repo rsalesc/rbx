@@ -95,8 +95,19 @@ inline std::vector<std::string> collectArgs() {
   return args;
 }
 
+// Last-wins, deliberately: it scans the whole command line and keeps the final
+// --group it sees. That is what the validation library rbx bundles does when it
+// parses --group for validator.group(), so the two agree.
+//
+// First-wins would be exploitable. rbx renders every package variable as
+// `--{name}={value}` BEFORE appending the real `--group <name>`, so a package
+// declaring a variable literally named `group` would put a `--group=<value>`
+// ahead of it. A first-wins parser hands back that value, no generated arm
+// matches it, and every group silently falls back to the package-level values
+// while validator.group() still reports the real group.
 inline std::string parseGroupFromArgs(const std::vector<std::string> &args) {
   static constexpr std::string_view kFlag = "--group";
+  std::string group;
   // Skips args[0], the program name.
   for (std::size_t i = 1; i < args.size(); i++) {
     const std::string &arg = args[i];
@@ -105,18 +116,17 @@ inline std::string parseGroupFromArgs(const std::vector<std::string> &args) {
     }
     // "--group=value"
     if (arg.size() > kFlag.size() && arg[kFlag.size()] == '=') {
-      return arg.substr(kFlag.size() + 1);
+      group = arg.substr(kFlag.size() + 1);
+      continue;
     }
     // "--group value"; a trailing flag with no value reads as absent.
     if (arg.size() == kFlag.size()) {
-      if (i + 1 < args.size()) {
-        return args[i + 1];
-      }
-      return "";
+      group = i + 1 < args.size() ? args[i + 1] : std::string();
+      continue;
     }
     // Anything else ("--groups", ...) is a different flag.
   }
-  return "";
+  return group;
 }
 
 } // namespace detail

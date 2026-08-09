@@ -604,6 +604,23 @@ class TestGetGroup:
             ([], ''),
             (['--group'], ''),
             (['--groups', 'sub2'], ''),
+            # Last-wins, like testlib's own --group scan.
+            (['--group', 'a', '--group', 'b'], 'b'),
+            # The hijack: a package var literally named `group` is rendered as
+            # `--group=<value>` BEFORE rbx appends the real `--group <name>`. A
+            # first-wins parser hands back the var's value, and every group then
+            # silently reads the package-level vars.
+            (
+                [
+                    '--AB.min=0',
+                    '--group=oops',
+                    '--testOverviewLogFileName',
+                    'validator.log',
+                    '--group',
+                    'nonneg',
+                ],
+                'nonneg',
+            ),
         ],
     )
     def test_get_group_parses_argv(
