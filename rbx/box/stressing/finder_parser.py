@@ -56,10 +56,19 @@ _NOT: "!"
 WILDCARD: "$"
 
 // File name
-_filename: FILENAME | "\"" FILENAME "\""
+_filename: FILENAME | "\"" QUOTED_FILENAME "\""
 _solution_filename: _filename | AT _filename
 AT: "@"
-FILENAME: /[\/A-Za-z0-9\-_\.]/+
+
+// A bare path may use any character that is not whitespace and does not carry
+// meaning in this grammar. The reserved set is exactly the operators above:
+// ( ) [ ] | & ! ~ = $ @ " and the ':' of `2:checker` / `:nil`. Everything else
+// -- '+', ',', '#', '%', '^', '*', '{', '}', "'", ... -- is just a path char.
+FILENAME: /[^\s()\[\]|&!~=$@":]/+
+// Inside quotes nothing is ambiguous, so any path can be spelled out verbatim,
+// including one using the reserved characters above. Quoting is literal: no
+// wildcard ('$') or remote ('@') expansion happens inside it.
+QUOTED_FILENAME: /[^"\r\n]/+
 
 // Names (Variables)
 LCASE_LETTER: "a".."z"
@@ -158,12 +167,11 @@ def _get_default_checker_for_finder() -> Optional[FinderChecker]:
 
 
 def _get_solution_from_token(token: lark.Token) -> str:
-    path = str(token)
-    if path == '$':
+    if token.type == 'WILDCARD':
         main_path = _get_main_solution()
         assert main_path is not None
         return main_path
-    return path
+    return str(token)
 
 
 def _get_solution_from_node(node: lark.ParseTree) -> str:
@@ -175,12 +183,11 @@ def _get_solution_from_node(node: lark.ParseTree) -> str:
 
 
 def _get_checker_from_token(token: lark.Token) -> str:
-    path = str(token)
-    if path == '$':
+    if token.type == 'WILDCARD':
         main_path = _get_main_checker()
         assert main_path is not None
         return main_path
-    return path
+    return str(token)
 
 
 def _get_eval_checker(eval: lark.ParseTree) -> Optional[FinderChecker]:

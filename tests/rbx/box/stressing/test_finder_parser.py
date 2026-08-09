@@ -1,3 +1,6 @@
+import typing
+from typing import List
+
 import lark
 import pytest
 import typer
@@ -6,6 +9,7 @@ from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.stressing.finder_parser import (
     LARK_PARSER,
     FinderSolutionResolver,
+    _get_solution_from_node,
     get_all_checker_items,
     get_all_checkers,
     get_all_solution_items,
@@ -241,6 +245,29 @@ class TestParseFunction:
         assert len(solutions) > 0
         assert any(str(s.path) == 'sol-file.cpp' for s in solutions)
 
+    @pytest.mark.parametrize(
+        'expression',
+        [
+            'ac_nsqrtS+qsqrtn_reference.cpp',
+            '"ac_nsqrtS+qsqrtn_reference.cpp"',
+        ],
+    )
+    def test_parse_solution_whose_name_has_a_plus(
+        self, expression: str, testing_pkg: testing_package.TestingPackage
+    ):
+        """Regression: '+' in a path used to be a syntax error (#622)."""
+        testing_pkg.add_solution(
+            'ac_nsqrtS+qsqrtn_reference.cpp', outcome=ExpectedOutcome.ACCEPTED
+        ).write_text('#include <iostream>\nint main() { return 0; }')
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+        testing_pkg.save()
+
+        reference = Solution(path='ac_nsqrtS+qsqrtn_reference.cpp')
+        tree = parse(expression, reference_solution=reference)
+
+        solutions = get_all_solution_items(tree, reference_solution=reference)
+        assert [str(s.path) for s in solutions] == ['ac_nsqrtS+qsqrtn_reference.cpp']
+
     def test_parse_validation_fails_for_missing_solution(
         self, testing_pkg: testing_package.TestingPackage
     ):
@@ -374,6 +401,99 @@ class TestParseFunction:
         for expr in expressions:
             tree = parse(expr, reference_solution=reference)
             assert tree is not None, f'Failed to parse expression: {expr}'
+
+
+def _parsed_solution_paths(expression: str) -> List[str]:
+    """Parse an expression at the grammar level and return its solution paths."""
+    tree = LARK_PARSER.parse(expression)
+    return [
+        _get_solution_from_node(typing.cast(lark.Tree, node))
+        for node in tree.find_data('solution')
+    ]
+
+
+class TestFilenameGrammar:
+    """Grammar-level tests for how paths are spelled in finder expressions.
+
+    These do not need a package on disk -- they only exercise the tokenizer,
+    which is where path support is decided.
+    """
+
+    @pytest.mark.parametrize(
+        'path',
+        [
+            'sol.cpp',
+            'solutions/good/sol.cpp',
+            './solutions/sol.cpp',
+            '../shared/sol.cpp',
+            # Characters that carry no meaning in the finder grammar, so they
+            # are safe to spell out unquoted.
+            'solutions/good/ac_nsqrtS+qsqrtn_reference_bruno.cpp',
+            'solutions/n^2/sol.cpp',
+            'solutions/a,b/sol.cpp',
+            'solutions/50%/sol.cpp',
+            'solutions/sol#2.cpp',
+            "solutions/bruno's/sol.cpp",
+            'solutions/{alt}/sol.cpp',
+            'solutions/*.cpp',
+        ],
+    )
+    def test_bare_path_is_parsed_verbatim(self, path: str):
+        assert _parsed_solution_paths(path) == [path]
+
+    @pytest.mark.parametrize(
+        'path',
+        [
+            'sol.cpp',
+            'solutions/good/ac_nsqrtS+qsqrtn_reference_bruno.cpp',
+            # Only quoting can express these -- every one of them is a grammar
+            # operator when spelled bare.
+            'solutions/my sol.cpp',
+            'solutions/(old)/sol.cpp',
+            'solutions/[wip]/sol.cpp',
+            'solutions/a&b/sol.cpp',
+            'solutions/a|b/sol.cpp',
+            'solutions/sol!.cpp',
+            'solutions/~backup/sol.cpp',
+            'solutions/x=y/sol.cpp',
+            'C:/solutions/sol.cpp',
+            'solutions/@remote/sol.cpp',
+            # Quoting is literal: no wildcard or remote expansion inside it.
+            '$',
+            '@sol.cpp',
+        ],
+    )
+    def test_quoted_path_is_parsed_verbatim(self, path: str):
+        assert _parsed_solution_paths(f'"{path}"') == [path]
+
+    def test_bare_dollar_is_the_wildcard(self):
+        tree = LARK_PARSER.parse('$')
+        (solution,) = tree.find_data('solution')
+        (token,) = solution.children
+        assert typing.cast(lark.Token, token).type == 'WILDCARD'
+
+    def test_at_prefix_is_preserved_for_bare_and_quoted_paths(self):
+        assert _parsed_solution_paths('@rbx/sol.cpp') == ['@rbx/sol.cpp']
+        assert _parsed_solution_paths('"@rbx/my sol.cpp"') == ['@rbx/my sol.cpp']
+
+    def test_paths_with_operators_still_parse_as_expressions(self):
+        """Widening the path charset must not swallow the operators."""
+        assert _parsed_solution_paths('a+b.cpp && c+d.cpp') == ['a+b.cpp', 'c+d.cpp']
+        assert _parsed_solution_paths('a+b.cpp || c+d.cpp') == ['a+b.cpp', 'c+d.cpp']
+        assert _parsed_solution_paths('!(a+b.cpp)') == ['a+b.cpp']
+        assert _parsed_solution_paths('a+b.cpp == c+d.cpp') == ['a+b.cpp', 'c+d.cpp']
+        assert _parsed_solution_paths('a+b.cpp ~ WRONG_ANSWER') == ['a+b.cpp']
+        assert _parsed_solution_paths('[a+b.cpp on 2:c+d.cpp]') == ['a+b.cpp']
+
+    def test_quoted_path_may_contain_a_checking_keyword(self):
+        assert _parsed_solution_paths('["sols/on my own.cpp" on chk.cpp]') == [
+            'sols/on my own.cpp'
+        ]
+
+    @pytest.mark.parametrize('expression', ['"sol.cpp', 'sol.cpp"', '""'])
+    def test_unterminated_or_empty_quotes_are_rejected(self, expression: str):
+        with pytest.raises(lark.exceptions.LarkError):
+            LARK_PARSER.parse(expression)
 
 
 class TestParseTreeMethods:

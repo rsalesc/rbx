@@ -110,6 +110,28 @@ sols/wa.cpp
 [$ ON 2:$] ~ INCORRECT
 ```
 
+#### Paths with unusual characters
+
+Solution and checker paths can be written directly, and may contain almost any
+character -- `sols/ac_nsqrtS+qsqrtn.cpp` and `sols/n^2/brute.cpp` are both fine.
+
+The only characters a bare path cannot contain are the ones the grammar itself
+uses: whitespace, `(`, `)`, `[`, `]`, `|`, `&`, `!`, `~`, `=`, `$`, `@`, `"` and
+`:`. To use those, wrap the path in double quotes:
+
+```py
+# A path with spaces and parentheses.
+["sols/wa (old attempt).cpp"] ~ INCORRECT
+
+# A Windows-style path, whose drive letter needs the ':'.
+["C:/sols/wa.cpp"] ~ INCORRECT
+```
+
+Inside quotes everything is taken literally, so `"$"` means a file actually
+named `$` rather than the main solution, and `"@foo/bar.cpp"` is a local path
+rather than a remote solution reference. Quoted paths may contain anything
+except a double quote itself.
+
 ## Running a stress test
 
 {{rbx}} exposes an `rbx stress` command that can be used to run a stress test. The syntax is pretty straightforward.
