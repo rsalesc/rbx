@@ -1,3 +1,9 @@
+## 0.38.1 (2026-08-09)
+
+### Fix
+
+- **stressing**: support general paths in finder expressions
+
 ## 0.38.0 (2026-06-04)
 
 ### Feat
