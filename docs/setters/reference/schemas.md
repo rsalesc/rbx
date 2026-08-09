@@ -47,6 +47,11 @@ Both call `scripts/publish_schemas.py`, and publishing is idempotent -- whicheve
 runs second commits nothing. Prereleases (`rc`) are skipped, so an `rc` never
 exposes a schema for a minor nobody can install yet.
 
+The manual path is the primary one and pushes over SSH. The CI job is a
+backstop that needs a cross-repo token (`GITHUB_TOKEN` cannot write to another
+repository) and skips quietly when that secret is absent, so it never fails a
+release on its own.
+
 ## Which version your files point at
 
 The pinned version comes from the **`min_version` of the preset your package

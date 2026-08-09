@@ -62,21 +62,41 @@ jobs:
     # RC tags must not expose a schema for a version nobody can install yet.
     if: ${{ !contains(github.ref_name, 'rc') }}
     steps:
+      # Releases are normally cut manually with `mise run release`, which
+      # publishes schemas over SSH and needs no secret. This job is a backstop,
+      # so it skips quietly rather than failing the release when the cross-repo
+      # token is not configured. (`GITHUB_TOKEN` cannot write to another repo.)
+      - name: Check publish credentials
+        id: creds
+        env:
+          SCHEMAS_DEPLOY_TOKEN: ${{ secrets.SCHEMAS_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$SCHEMAS_DEPLOY_TOKEN" ]; then
+            echo "SCHEMAS_DEPLOY_TOKEN is not set; skipping schema publish."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.creds.outputs.enabled == 'true'
       - name: Install uv
+        if: steps.creds.outputs.enabled == 'true'
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
           python-version: "3.14"
       - name: Install dependencies
+        if: steps.creds.outputs.enabled == 'true'
         run: uv sync --locked --all-groups
       - name: Checkout schemas repo
+        if: steps.creds.outputs.enabled == 'true'
         uses: actions/checkout@v4
         with:
           repository: rsalesc/rbx-schemas
           token: ${{ secrets.SCHEMAS_DEPLOY_TOKEN }}
           path: .schemas-site
       - name: Configure Git Credentials
+        if: steps.creds.outputs.enabled == 'true'
         working-directory: .schemas-site
         run: |
           git config user.name github-actions[bot]
@@ -84,6 +104,7 @@ jobs:
       # Same script the local `mise run publish-schemas` uses; --dir skips
       # cloning since actions/checkout already made the checkout above.
       - name: Publish schemas
+        if: steps.creds.outputs.enabled == 'true'
         run: |
           uv run python scripts/publish_schemas.py \
             --dir .schemas-site \
