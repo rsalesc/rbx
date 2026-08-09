@@ -12,7 +12,14 @@ from pydantic_core import PydanticCustomError
 
 from rbx import utils
 from rbx.autoenum import AutoEnum, alias
-from rbx.box.fields import NameField, Primitive, RecVars, Vars, expand_vars
+from rbx.box.fields import (
+    NameField,
+    Primitive,
+    RecVars,
+    Vars,
+    expand_vars,
+    merge_recvars,
+)
 from rbx.box.formatting import href
 from rbx.box.statements.expander import expand_problem_statements
 from rbx.box.statements.schema import Statement, is_unique_problem_statements
@@ -57,6 +64,52 @@ def convert_to_primitive(value: Any) -> Primitive:
 def expand_any_vars(vars: Dict[str, Any]) -> Dict[str, Primitive]:
     converted_vars = {key: convert_to_primitive(value) for key, value in vars.items()}
     return expand_vars(typing.cast(RecVars, converted_vars))
+
+
+# Command-line flags consumed by testlib itself (`__testlib_set_testset_and_group`,
+# `registerValidation`, `registerTestlibCmd`) or by rbx (`rbx::getGroup()`, which
+# reads `--group` to pick a group's var overrides).
+#
+# `vars` are flattened to dotted keys and handed to the validator as
+# `--<key>=<value>`, so a *top-level* var with one of these names would be
+# indistinguishable from the real flag -- and `--group=<value>` would silently
+# make every group resolve against the package-level values.
+RESERVED_VAR_NAMES = frozenset(
+    [
+        'group',
+        'help',
+        'testCase',
+        'testCaseFileName',
+        'testMarkupFileName',
+        'testOverviewLogFileName',
+        'testset',
+    ]
+)
+
+
+def check_reserved_var_names(vars: RecVars) -> RecVars:
+    """Reject top-level var names that collide with a testlib/rbx flag.
+
+    Only top-level *primitive* keys are checked: a nested var is emitted as
+    `--<parent>.<key>=<value>`, which no flag parser matches.
+    """
+    for key, value in vars.items():
+        if isinstance(value, dict):
+            continue
+        if key in RESERVED_VAR_NAMES:
+            raise PydanticCustomError(
+                'RESERVED_VAR_NAME',
+                'Variable "{key}" collides with the testlib/rbx command-line flag '
+                '"--{key}": vars are passed to validators as "--{key}=<value>", '
+                'which the flag parser would consume instead. '
+                'Rename the variable, or nest it under another key '
+                '(as in "limits.{key}"). Reserved names: {reserved}.',
+                {'key': key, 'reserved': ', '.join(sorted(RESERVED_VAR_NAMES))},
+            )
+    return vars
+
+
+CheckedRecVars = Annotated[RecVars, AfterValidator(check_reserved_var_names)]
 
 
 def is_unique_testcase_group_names(
@@ -540,6 +593,18 @@ A list of test subgroups to define for this group.
 A validator to use to validate the testcases of this group.
 If specified, will use this validator instead of the package-level validator.
 Useful in cases where the constraints vary across test groups.
+""",
+    )
+
+    vars: CheckedRecVars = Field(
+        default={},
+        description="""
+Variables that override the package-level `vars` for this group only.
+
+Merged leaf-by-leaf onto the package `vars`, so a partial override keeps its
+siblings. The effective values are what `getVar<T>()` returns inside a
+validator run for this group, and what `problem.groups.<name>.vars` renders in
+a statement. Keys need not exist at package level.
 """,
     )
 
@@ -1034,7 +1099,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     # Vars to be re-used across the package.
     #   - It will be passed as --key=value arguments to the validator.
     #   - It will be available as \VAR{key} variables in the rbx statement.
-    vars: RecVars = Field(
+    vars: CheckedRecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 
@@ -1054,6 +1119,22 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     @property
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)
+
+    def expanded_vars_for_group(self, group_name: Optional[str]) -> Vars:
+        """Package vars with the named group's overrides applied.
+
+        The merge happens before expansion, so an override can feed the
+        interpolation of any var derived from it.
+
+        Falls back to the package vars when ``group_name`` is None or names no
+        declared group (interactive validation, unit tests, samples).
+        """
+        if group_name is None:
+            return self.expanded_vars
+        for testcase_group in self.testcases:
+            if testcase_group.name == group_name:
+                return expand_vars(merge_recvars(self.vars, testcase_group.vars))
+        return self.expanded_vars
 
     @model_validator(mode='after')
     def check_first_solution_is_main_if_there_is_ac(self):

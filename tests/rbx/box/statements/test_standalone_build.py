@@ -89,6 +89,43 @@ async def test_standalone_tutorial_builds_from_contest_template(
     assert 'belongs to' not in text
 
 
+@pytest.mark.test_pkg('contests/statements_v2_group_vars')
+async def test_standalone_renders_group_resolved_vars(cleandir_with_testdata):
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        await build_statements.execute_build(
+            verification=0,
+            samples=False,
+            validate=False,
+            output=StatementType.TeX,
+        )
+
+    text = (cleandir_with_testdata / 'A' / 'build' / 'statement-en.tex').read_text()
+    # Iteration is in declaration order, and every group renders BOTH bounds:
+    # the overridden one and the inherited one (never a blank).
+    assert '\\subtask{sub1}{1}{10}' in text
+    assert '\\subtask{sub2}{100}{200}' in text
+    # sub3 overrides nothing and still inherits the full package var set.
+    assert '\\subtask{sub3}{1}{200}' in text
+    assert text.index('{sub1}') < text.index('{sub2}') < text.index('{sub3}')
+    # `vars` stays package-level, and by-name access works too.
+    assert 'Package-level: 1 to 200.' in text
+    assert 'By name: 100.' in text
+
+
+@pytest.mark.test_pkg('contests/statements_v2_group_vars')
+async def test_standalone_group_vars_build_pdf(cleandir_with_testdata, mock_pdflatex):
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        await build_statements.execute_build(
+            verification=0,
+            samples=False,
+            validate=False,
+            output=StatementType.PDF,
+        )
+    assert (cleandir_with_testdata / 'A' / 'build' / 'statement-en.pdf').is_file()
+
+
 @pytest.mark.test_pkg('problems/rooted-tree-detective')
 async def test_standalone_outside_contest_stages_bundled_default_chrome(
     pkg_from_testdata,

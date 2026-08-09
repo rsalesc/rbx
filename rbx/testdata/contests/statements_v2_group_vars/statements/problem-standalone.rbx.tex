@@ -1,0 +1,17 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{import}
+\begin{document}
+
+\section*{\VAR{problem.title | escape}}
+
+\VAR{problem.blocks.legend}
+
+\subsection*{Subtasks}
+%- for g in problem.groups
+  \subtask{\VAR{g.name}}{\VAR{g.vars.AB.min}}{\VAR{g.vars.AB.max}}
+%- endfor
+
+Package-level: \VAR{vars.AB.min} to \VAR{vars.AB.max}.
+By name: \VAR{problem.groups.sub2.vars.AB.min}.
+
+\end{document}

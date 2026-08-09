@@ -229,7 +229,6 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
 
     int main(int argc, char *argv[]) {
       registerValidation(argc, argv);
-      prepareOpts(argc, argv);
 
       // Read from package vars. // (1)!
       int MIN_N = getVar<int>("N.min");

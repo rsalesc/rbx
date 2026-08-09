@@ -1,0 +1,42 @@
+# Assertions here use `stdout_matches` with `\s+` between words rather than
+# literal substrings: Rich word-wraps the report at the console width, which
+# differs between a local run and CI, so a literal phrase can be split by a
+# newline.
+scenarios:
+  - name: build-with-group-vars
+    description: |
+      A package whose `nonneg` group overrides `AB.min` and whose `full` group
+      does not. The validator reads `AB.min` / `AB.max` through `getVar` and
+      knows nothing about groups; every test is legal under the bounds
+      effective for the group it lives in, so the build goes through.
+
+      The hit-bounds report is the second thing under test. `nonneg` only ever
+      produces small values and never reaches `AB.max`; `full` reaches both
+      ends of its own (wider) bounds. Because a group declares `vars`, the
+      report is emitted per group instead of merged, so `nonneg`'s unhit
+      maximum survives. Merged -- the behaviour before per-group vars -- every
+      bound would look covered and rbx would print `No validation issues
+      found.` instead.
+    steps:
+      - cmd: build
+        expect:
+          stdout_matches: "Group\\s+nonneg\\s+hit\\s+bounds:[\\s\\S]*max-value\\s+not\\s+hit"
+          stdout_contains:
+            - "Problem built."
+          stdout_not_contains:
+            # Merged reporting uses the unqualified header (capital H).
+            - "Hit bounds:"
+            # `full` reaches both ends of its own bounds, so it is not listed.
+            - "Group full"
+            # Merging `full` over `nonneg` would hide every unhit bound.
+            - "No validation issues found."
+            - "failed verification"
+          tests:
+            count: 4
+            groups:
+              nonneg: 2
+              full: 2
+          files_exist:
+            - "build/tests/nonneg/000.in"
+            - "build/tests/full/000.in"
+            - "build/tests/nonneg/000.out"

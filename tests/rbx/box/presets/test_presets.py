@@ -1147,3 +1147,18 @@ class TestErrorHandling:
 
         # Destination should not exist
         assert not dst.exists()
+
+
+def test_polygon_e2e_fixture_validator_matches_the_preset():
+    """The e2e fixture's validator is a verbatim copy of the default preset's.
+
+    They have drifted apart silently before (the fixture kept a `prepareOpts`
+    call the preset had dropped). Keep them byte-identical.
+    """
+    repo_root = Path(__file__).parents[4]
+    preset = repo_root / 'rbx' / 'resources' / 'presets' / 'default' / 'problem'
+    fixture = repo_root / 'tests' / 'e2e' / 'testdata' / 'polygon-default-preset' / 'A'
+
+    assert (preset / 'validator.cpp').read_bytes() == (
+        fixture / 'validator.cpp'
+    ).read_bytes()

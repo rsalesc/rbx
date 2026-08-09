@@ -46,6 +46,52 @@ else:
     RecVars = TypeAliasType('RecVars', "Dict[str, Union[Primitive, 'RecVars']]")
 
 
+def render_var_on_command_line(value: Primitive) -> str:
+    """Render a var as the string it takes on a program's command line.
+
+    Booleans become ``1``/``0``, not ``true``/``false``, because that is the
+    only spelling *both* libraries rbx ships can read:
+
+    - testlib's ``opt<bool>`` accepts ``true``, ``false``, ``1`` and ``0``,
+      and calls ``__testlib_fail`` on anything else;
+    - jngen's ``getOpt<bool>`` has no bool specialization -- ``readVariable``
+      feeds the raw string to ``std::istringstream >> bool`` without
+      ``std::boolalpha``, which accepts ``1``/``0`` and *fails* on
+      ``true``/``false``.
+
+    So ``true``/``false`` is the tempting choice that would silently break
+    every jngen user, and Python's own ``str(True) == 'True'`` is readable by
+    neither. Please do not "fix" this to ``true``/``false``.
+
+    Note that ``isinstance(True, int)`` is ``True`` in Python, so the bool
+    branch must come before any int branch.
+    """
+    if isinstance(value, bool):
+        return '1' if value else '0'
+    return str(value)
+
+
+def merge_recvars(base: RecVars, override: RecVars) -> RecVars:
+    """Deep-merge ``override`` onto ``base``, leaf by leaf.
+
+    A dict value merges recursively so a partial override keeps its siblings;
+    any non-dict value replaces whatever was there.
+
+    Neither input is mutated, but the copies are shallow: sub-dicts the override
+    does not touch are shared with ``base``, so the result must be treated as
+    read-only. Writing into a nested dict of the result would corrupt ``base``
+    -- and, for the usual caller, the ``Package`` model it came from.
+    """
+    res: RecVars = dict(base)
+    for key, value in override.items():
+        prev = res.get(key)
+        if isinstance(value, dict) and isinstance(prev, dict):
+            res[key] = merge_recvars(prev, value)
+        else:
+            res[key] = value
+    return res
+
+
 def expand_var(value: Primitive, ctx: Optional[RecVars] = None) -> Primitive:
     if not isinstance(value, str):
         return value

@@ -1,7 +1,56 @@
 import pytest
 import simpleeval
 
-from rbx.box.fields import RecVars, expand_var, expand_vars
+from rbx.box.fields import (
+    RecVars,
+    expand_var,
+    expand_vars,
+    merge_recvars,
+    render_var_on_command_line,
+)
+
+
+class TestRenderVarOnCommandLine:
+    """Tests for how a var is spelled on a program's command line."""
+
+    def test_bools_render_as_one_and_zero(self):
+        """`1`/`0` is the only spelling both testlib and jngen can read."""
+        assert render_var_on_command_line(True) == '1'
+        assert render_var_on_command_line(False) == '0'
+
+    def test_bools_do_not_render_as_python_or_cpp_spelling(self):
+        """Guards against both regressions: `True`/`False` and `true`/`false`.
+
+        jngen's `getOpt<bool>` fails on `true`/`false`, testlib's `opt<bool>`
+        fails on `True`/`False`, so neither is an acceptable rendering.
+        """
+        for value in (True, False):
+            assert render_var_on_command_line(value) not in (
+                'True',
+                'False',
+                'true',
+                'false',
+            )
+
+    def test_bool_is_rendered_before_int(self):
+        """`isinstance(True, int)` is True, so the order of the branches matters.
+
+        A branch that handled ints (or anything else falling back to `str()`)
+        before bools would swallow bools and hand back `'True'`/`'False'`.
+        Ints must keep rendering as themselves either way.
+        """
+        assert render_var_on_command_line(True) == '1'
+        assert render_var_on_command_line(False) == '0'
+        assert render_var_on_command_line(1) == '1'
+        assert render_var_on_command_line(0) == '0'
+
+    def test_other_primitives_are_unaffected(self):
+        assert render_var_on_command_line(42) == '42'
+        assert render_var_on_command_line(-7) == '-7'
+        assert render_var_on_command_line(3.14) == '3.14'
+        assert render_var_on_command_line('hello') == 'hello'
+        assert render_var_on_command_line('') == ''
+        assert render_var_on_command_line('True') == 'True'
 
 
 class TestExpandVar:
@@ -105,6 +154,31 @@ class TestExpandVar:
 
         # Nested backticks in string
         assert expand_var('py`"py`nested`"`') == 'py`nested`'
+
+
+class TestMergeRecvars:
+    """Tests for the merge_recvars function."""
+
+    def test_merge_recvars_is_deep_and_keeps_siblings(self):
+        """Test that a partial override keeps the siblings it doesn't mention."""
+        base: RecVars = {'AB': {'min': -200, 'max': 200}, 'N': 10}
+        override: RecVars = {'AB': {'min': 0}}
+
+        assert merge_recvars(base, override) == {
+            'AB': {'min': 0, 'max': 200},
+            'N': 10,
+        }
+        # The inputs must not be mutated.
+        assert base == {'AB': {'min': -200, 'max': 200}, 'N': 10}
+        assert override == {'AB': {'min': 0}}
+
+    def test_merge_recvars_allows_group_only_keys(self):
+        """Test that keys absent from the base are added by the override."""
+        assert merge_recvars({'N': 10}, {'maxOps': 5}) == {'N': 10, 'maxOps': 5}
+
+    def test_merge_recvars_scalar_replaces_subtree(self):
+        """Test that a non-dict override replaces whatever was there."""
+        assert merge_recvars({'AB': {'min': 1}}, {'AB': 7}) == {'AB': 7}
 
 
 class TestExpandVars:

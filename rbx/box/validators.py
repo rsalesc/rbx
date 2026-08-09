@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import checkers, package, setter_config
 from rbx.box.code import SanitizationLevel, compile_item, run_item
-from rbx.box.fields import Primitive
+from rbx.box.fields import Primitive, render_var_on_command_line
 from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import CodeItem
 from rbx.box.testcase_extractors import (
@@ -94,10 +94,30 @@ def _merge_hit_bounds(hit_bounds: Iterable[HitBounds]) -> HitBounds:
     return res
 
 
-def _has_group_specific_validator() -> bool:
+def _has_group_specific_bounds() -> bool:
+    """Whether the bounds a validator enforces can differ between groups.
+
+    A group gets its own bounds either by running its own validator, or by
+    overriding the `vars` the shared validator reads. Merging the hit bounds of
+    groups that were validated against different constraints would report
+    bounds as not hit that no testcase of that group could ever hit.
+
+    Deliberately conservative on the `vars` arm: any group declaring `vars` --
+    even ones no validator ever reads -- switches the whole package to
+    per-group hit-bounds reporting. Over-reporting is recoverable; a merged
+    report that hides a group's unhit bound is not.
+    """
     pkg = package.find_problem_package_or_die()
 
-    return any(group.validator is not None for group in pkg.testcases)
+    return any(
+        group.validator is not None or bool(group.vars) for group in pkg.testcases
+    )
+
+
+def _get_var_args(vars: Dict[str, Primitive]) -> List[str]:
+    """Render the package vars as the `--{name}={value}` flags a validator sees."""
+    # TODO: check if needs to do some escaping
+    return [f'--{k}={render_var_on_command_line(v)}' for k, v in vars.items()]
 
 
 async def _validate_testcase(
@@ -107,9 +127,7 @@ async def _validate_testcase(
     vars: Optional[Dict[str, Primitive]] = None,
     group: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
-    vars = vars or {}
-    # TODO: check if needs to do some escaping
-    var_args = [f'--{k}={v}' for k, v in vars.items()]
+    var_args = _get_var_args(vars or {})
     var_args.extend(['--testOverviewLogFileName', 'validator.log'])
     if group is not None:
         var_args.extend(['--group', group])
@@ -161,9 +179,18 @@ async def validate_file(
     validator_digest: str,
     group: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
-    pkg = package.find_problem_package_or_die()
+    # The vars sent on the command line must be the same ones the generated
+    # rbx.h resolves for this group, otherwise a validator reading a bound
+    # through `opt()` and one reading it through `getVar()` would disagree.
+    #
+    # `group` must be the top-level group name: an unmatched name silently
+    # falls back to the package-level vars.
     return await _validate_testcase(
-        testcase, validator, validator_digest, vars=pkg.expanded_vars, group=group
+        testcase,
+        validator,
+        validator_digest,
+        vars=package.get_expanded_vars_for_group(group),
+        group=group,
     )
 
 
@@ -517,7 +544,7 @@ def print_validation_report(
         console.console.print()
         return
 
-    if not _has_group_specific_validator():
+    if not _has_group_specific_bounds():
         hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
 
     def _is_hit_bound_good(hit_bounds: HitBounds) -> bool:

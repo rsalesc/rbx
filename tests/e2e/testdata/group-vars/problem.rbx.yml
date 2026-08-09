@@ -1,0 +1,42 @@
+name: group-vars
+timeLimit: 1000
+memoryLimit: 256
+scoring: POINTS
+
+validator:
+  path: validator.cpp
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+vars:
+  AB:
+    min: -200
+    max: 200
+
+testcases:
+  # Non-negative regime. The override raises `AB.min` only; the merge is
+  # leaf-wise, so `AB.max` stays at the package-level 200.
+  - name: nonneg
+    score: 40
+    vars:
+      AB:
+        min: 0
+    generators:
+      - name: gen
+        args: 0 3
+      - name: gen
+        args: 1 2
+  # No override: the package-level bounds apply.
+  - name: full
+    score: 60
+    generators:
+      - name: gen
+        args: -200 200
+      - name: gen
+        args: 200 -200

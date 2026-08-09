@@ -5,7 +5,6 @@ using namespace std;
 
 int main(int argc, char *argv[]) {
   registerValidation(argc, argv);
-  prepareOpts(argc, argv);
 
   // Read from package vars.
   int MIN_N = getVar<int>("N.min");

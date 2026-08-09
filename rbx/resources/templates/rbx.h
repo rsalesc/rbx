@@ -1,28 +1,179 @@
 #ifndef _RBX_H
 #define _RBX_H
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <vector>
+
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#elif defined(_WIN32)
+// Not <cstdlib>: __argc/__argv are non-standard names in the global namespace,
+// which <cstdlib> is not specified to declare.
+#include <stdlib.h>
+#endif
+
+//<rbx::group_guard>
+namespace rbx {
+namespace detail {
+
+// Splits the NUL-separated command line Linux exposes in /proc/self/cmdline.
+// A trailing NUL terminates the last argument rather than introducing an empty
+// one; an argument that is genuinely empty still yields an empty string.
+// Kept out of the platform branch below so that it is testable everywhere.
+inline std::vector<std::string> splitCmdline(const std::string &blob) {
+  std::vector<std::string> args;
+  std::string current;
+  for (char ch : blob) {
+    if (ch == '\0') {
+      args.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(ch);
+  }
+  if (!current.empty()) {
+    args.push_back(current);
+  }
+  return args;
+}
+
+// Reads this process' own command line, so that the group can be resolved
+// without the program having to call anything from main(), and without this
+// header depending on any other library.
+//
+// Every supported platform exposes the command line to the process itself:
+// macOS through the public _NSGetArgc/_NSGetArgv accessors, Linux through the
+// NUL-separated /proc/self/cmdline, and Windows through the __argc/__argv
+// globals the C runtime fills in at startup. Anywhere else this returns
+// nothing, which reads as "no group" and falls back to package-level values.
+//
+// A deliberate non-solution: capturing argv from an __attribute__((constructor))
+// hook taking (argc, argv, envp). GCC at -O2 folds such a hook into the
+// translation unit's static-init thunk, which takes no arguments, so the
+// values are silently lost. See the design doc for the full evidence.
+inline std::vector<std::string> collectArgs() {
+  std::vector<std::string> args;
+#if defined(__APPLE__)
+  int argc = *_NSGetArgc();
+  char **argv = *_NSGetArgv();
+  if (argv == nullptr) {
+    return args;
+  }
+  for (int i = 0; i < argc && argv[i] != nullptr; i++) {
+    args.push_back(std::string(argv[i]));
+  }
+#elif defined(__linux__)
+  std::FILE *file = std::fopen("/proc/self/cmdline", "rb");
+  if (file == nullptr) {
+    return args;
+  }
+  std::string blob;
+  int ch;
+  while ((ch = std::fgetc(file)) != EOF) {
+    blob.push_back(static_cast<char>(ch));
+  }
+  std::fclose(file);
+  args = splitCmdline(blob);
+#elif defined(_WIN32)
+  // UNVERIFIED ON WINDOWS: no toolchain was available to test this branch.
+  // The mechanism is the __argc/__argv globals declared by <stdlib.h>, which
+  // both MinGW-w64 and MSVC populate at startup for programs entered through
+  // main(). __argv is null in a wmain() build (__wargv carries the arguments
+  // there instead), which the guard below degrades to "no group".
+  if (__argv == nullptr) {
+    return args;
+  }
+  for (int i = 0; i < __argc && __argv[i] != nullptr; i++) {
+    args.push_back(std::string(__argv[i]));
+  }
+#endif
+  return args;
+}
+
+// Last-wins, deliberately: it scans the whole command line and keeps the final
+// --group it sees. That is what the validation library rbx bundles does when it
+// parses --group for validator.group(), so the two agree.
+//
+// First-wins would be exploitable. rbx renders every package variable as
+// `--{name}={value}` BEFORE appending the real `--group <name>`, so a package
+// declaring a variable literally named `group` would put a `--group=<value>`
+// ahead of it. A first-wins parser hands back that value, no generated arm
+// matches it, and every group silently falls back to the package-level values
+// while validator.group() still reports the real group.
+inline std::string parseGroupFromArgs(const std::vector<std::string> &args) {
+  static constexpr std::string_view kFlag = "--group";
+  std::string group;
+  // Skips args[0], the program name.
+  for (std::size_t i = 1; i < args.size(); i++) {
+    const std::string &arg = args[i];
+    if (arg.compare(0, kFlag.size(), kFlag) != 0) {
+      continue;
+    }
+    // "--group=value"
+    if (arg.size() > kFlag.size() && arg[kFlag.size()] == '=') {
+      group = arg.substr(kFlag.size() + 1);
+      continue;
+    }
+    // "--group value"; a trailing flag with no value reads as absent.
+    if (arg.size() == kFlag.size()) {
+      group = i + 1 < args.size() ? args[i + 1] : std::string();
+      continue;
+    }
+    // Anything else ("--groups", ...) is a different flag.
+  }
+  return group;
+}
+
+} // namespace detail
+
+// The test group currently being validated, as passed by rbx via `--group`.
+// Empty when the program was not run for a specific group, in which case
+// getVar returns the package-level values.
+//
+// Parsed once, on first use.
+inline const std::string &getGroup() {
+  static const std::string group =
+      detail::parseGroupFromArgs(detail::collectArgs());
+  return group;
+}
+
+} // namespace rbx
+
+// When some test group declares `vars` overrides, each accessor starts with one
+// arm per such group, ahead of the package-level table. An arm carries the
+// group's whole resolved var set and answers on its own, so a group that
+// overrides nothing still sees the package values, and an override that changes
+// a var's type does not leave the package's old value reachable.
+//
+// A package with no group overrides gets none of that, not even the getGroup()
+// lookup: its accessors are exactly the package-level table.
 
 std::optional<std::string> getStringVar(std::string name) {
-  //<rbx::string_var>
+//<rbx::string_var_groups>
+//<rbx::string_var>
   return std::nullopt;
 }
 
 std::optional<int64_t> getIntVar(std::string name) {
-  //<rbx::int_var>
+//<rbx::int_var_groups>
+//<rbx::int_var>
   return std::nullopt;
 }
 
 std::optional<float> getFloatVar(std::string name) {
-  //<rbx::float_var>
+//<rbx::float_var_groups>
+//<rbx::float_var>
   return std::nullopt;
 }
 
 std::optional<bool> getBoolVar(std::string name) {
-  //<rbx::bool_var>
+//<rbx::bool_var_groups>
+//<rbx::bool_var>
   return std::nullopt;
 }
 
@@ -122,7 +273,13 @@ template <> std::string getVar<std::string>(std::string name) {
 template <> bool getVar<bool>(std::string name) {
   auto opt = getBoolVar(name);
   if (!opt.has_value()) {
-    opt = getIntVar(name) != 0;
+    // Not `opt = getIntVar(name) != 0;`: comparing a disengaged
+    // std::optional<int64_t> with 0 is well-formed and yields true, so a
+    // missing variable used to read as `true` instead of throwing below.
+    auto intOpt = getIntVar(name);
+    if (intOpt.has_value()) {
+      opt = intOpt.value() != 0;
+    }
   }
   if (!opt.has_value()) {
     throw std::runtime_error("Variable " + name +
