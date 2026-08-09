@@ -433,6 +433,26 @@ class TestGetVarWrapper:
         result = subprocess.run(['./main'], check=True, capture_output=True, text=True)
         assert result.stdout == 'ok'
 
+    def test_get_var_bool_reads_ints_and_throws_on_missing_var(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """getVar<bool> must report a missing var, not fall back to `true`."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'yes': True, 'no': False, 'one': 1, 'zero': 0})
+
+        header.generate_header()
+        # The package declares no string or float var, so `name` goes unused in
+        # those two accessors.
+        _compile(
+            gpp, _GET_BOOL_VAR_MAIN, 'boolvar', ['-Wextra', '-Wno-unused-parameter']
+        )
+
+        result = subprocess.run(
+            ['./boolvar'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'yes=1\nno=0\none=1\nzero=0\nmissing=threw\n'
+
 
 _GET_GROUP_MAIN = """
 #include "rbx.h"
@@ -622,6 +642,33 @@ class TestGetGroup:
         assert result.stdout == 'rbx=[sub2]\ntestlib=[sub2]\n'
 
 
+# Exercises getVar<bool>, including its fallback to the int table.
+_GET_BOOL_VAR_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+static void report(const char *name) {
+  try {
+    std::printf("%s=%d\\n", name, (int)getVar<bool>(name));
+  } catch (const std::runtime_error &e) {
+    (void)e;
+    std::printf("%s=threw\\n", name);
+  }
+}
+
+int main() {
+  report("yes");
+  report("no");
+  report("one");
+  report("zero");
+  report("missing");
+  return 0;
+}
+"""
+
+
 # Prints one var of each type, so a group arm wired for only some of the four
 # accessors is caught.
 _GROUP_VARS_MAIN = """
@@ -661,10 +708,7 @@ int main() {
   report<int64_t>("maxOps", "maxOps");
   report<std::string>("label", "label");
   report<double>("eps", "eps");
-  // Not report<bool>: getVar<bool> falls back to getIntVar and, on a missing
-  // var, that fallback yields true instead of throwing -- a pre-existing quirk
-  // of the template that is out of scope here. The accessor itself is exact.
-  std::printf("strict=%s\\n", getBoolVar("strict").has_value() ? "ok" : "threw");
+  report<bool>("strict", "strict");
   return 0;
 }
 """

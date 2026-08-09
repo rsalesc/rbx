@@ -269,7 +269,13 @@ template <> std::string getVar<std::string>(std::string name) {
 template <> bool getVar<bool>(std::string name) {
   auto opt = getBoolVar(name);
   if (!opt.has_value()) {
-    opt = getIntVar(name) != 0;
+    // Not `opt = getIntVar(name) != 0;`: comparing a disengaged
+    // std::optional<int64_t> with 0 is well-formed and yields true, so a
+    // missing variable used to read as `true` instead of throwing below.
+    auto intOpt = getIntVar(name);
+    if (intOpt.has_value()) {
+      opt = intOpt.value() != 0;
+    }
   }
   if (!opt.has_value()) {
     throw std::runtime_error("Variable " + name +
