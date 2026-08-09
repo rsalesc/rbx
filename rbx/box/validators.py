@@ -161,9 +161,18 @@ async def validate_file(
     validator_digest: str,
     group: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
-    pkg = package.find_problem_package_or_die()
+    # The vars sent on the command line must be the same ones the generated
+    # rbx.h resolves for this group, otherwise a validator reading a bound
+    # through `opt()` and one reading it through `getVar()` would disagree.
+    #
+    # `group` must be the top-level group name: an unmatched name silently
+    # falls back to the package-level vars.
     return await _validate_testcase(
-        testcase, validator, validator_digest, vars=pkg.expanded_vars, group=group
+        testcase,
+        validator,
+        validator_digest,
+        vars=package.get_expanded_vars_for_group(group),
+        group=group,
     )
 
 

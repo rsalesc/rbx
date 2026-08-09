@@ -604,6 +604,51 @@ async def test_validator_receives_group_argument(
     assert results[('default', 'pass.in')] is True
 
 
+async def test_validator_receives_group_resolved_vars(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A single validator sees the group's effective vars, on argv and in rbx.h."""
+    testing_pkg.set_vars({'N': {'min': 1, 'max': 1000}})
+
+    testing_pkg.add_from_testdata(
+        'validator_vars.cpp', src='validators/getvar-group-validator.cpp'
+    )
+    testing_pkg.set_validator('validator_vars.cpp')
+
+    testing_pkg.add_testgroup_from_glob('small', 'manual_tests/small/*.in')
+    testing_pkg.yml.testcases[-1].vars = {'N': {'max': 10}}
+    testing_pkg.save()
+    testing_pkg.add_file('manual_tests/small/pass.in').write_text('5\n')
+    testing_pkg.add_file('manual_tests/small/fail.in').write_text('500\n')
+
+    testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
+    testing_pkg.add_file('manual_tests/large/pass.in').write_text('500\n')
+    testing_pkg.add_file('manual_tests/large/fail.in').write_text('5000\n')
+
+    await generate_testcases()
+    validation_infos = await validate_testcases()
+
+    results = {}
+    for info in validation_infos:
+        assert info.testcase is not None
+        assert info.generation_metadata is not None
+        assert info.generation_metadata.copied_from is not None
+
+        group = info.testcase.group
+        name = info.generation_metadata.copied_from.inputPath.name
+        results[(group, name)] = info
+
+    # The group override lowers N.max to 10, so 500 is only valid in `large`.
+    assert results[('small', 'pass.in')].ok is True
+    assert results[('small', 'fail.in')].ok is False
+    assert results[('large', 'pass.in')].ok is True
+    assert results[('large', 'fail.in')].ok is False
+
+    # No testcase may fail because argv and rbx.h resolved different bounds.
+    for info in results.values():
+        assert 'disagree' not in (info.message or '')
+
+
 async def test_check_output_from_entries_with_checker(
     testing_pkg: testing_package.TestingPackage,
     capsys: pytest.CaptureFixture[str],
