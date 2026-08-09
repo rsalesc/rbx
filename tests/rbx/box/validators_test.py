@@ -8,6 +8,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.validators import (
+    _has_group_specific_validator,
     check_output_from_entries,
     has_validation_errors,
     print_validation_report,
@@ -647,6 +648,23 @@ async def test_validator_receives_group_resolved_vars(
     # No testcase may fail because argv and rbx.h resolved different bounds.
     for info in results.values():
         assert 'disagree' not in (info.message or '')
+
+
+def test_group_vars_make_bounds_group_specific(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A group declaring `vars` has its own bounds, even with a single validator."""
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+
+    testing_pkg.add_testgroup_from_glob('small', 'manual_tests/small/*.in')
+    testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
+
+    assert _has_group_specific_validator() is False
+
+    testing_pkg.yml.testcases[0].vars = {'N': {'max': 10}}
+    testing_pkg.save()
+
+    assert _has_group_specific_validator() is True
 
 
 async def test_check_output_from_entries_with_checker(

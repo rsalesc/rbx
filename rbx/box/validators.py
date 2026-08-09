@@ -95,9 +95,18 @@ def _merge_hit_bounds(hit_bounds: Iterable[HitBounds]) -> HitBounds:
 
 
 def _has_group_specific_validator() -> bool:
+    """Whether the bounds a validator enforces can differ between groups.
+
+    A group gets its own bounds either by running its own validator, or by
+    overriding the `vars` the shared validator reads. Merging the hit bounds of
+    groups that were validated against different constraints would report
+    bounds as not hit that no testcase of that group could ever hit.
+    """
     pkg = package.find_problem_package_or_die()
 
-    return any(group.validator is not None for group in pkg.testcases)
+    return any(
+        group.validator is not None or bool(group.vars) for group in pkg.testcases
+    )
 
 
 async def _validate_testcase(
