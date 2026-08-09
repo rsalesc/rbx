@@ -52,7 +52,6 @@ nav:
           - "setters/presets/index.md"
   - "Reference":
       - "CLI": "setters/reference/cli.md"
-      - "JSON schemas": "setters/reference/schemas.md"
       - "Package":
           - "setters/reference/package/index.md"
           - "Schema": "setters/reference/package/schema.md"
@@ -62,6 +61,11 @@ nav:
       - "Environment":
           - "setters/reference/environment/index.md"
           - "Schema": "setters/reference/environment/schema.md"
+  # Internal reference -- notes about rbx's own machinery rather than about
+  # authoring problems. Built and linkable, but deliberately kept out of the
+  # nav until there is more here. Uncomment to show it.
+  # - "Internal reference":
+  #     - "JSON schemas": "internal/schemas.md"
   - "Troubleshooting":
       - "Generators and rbx.h": "generators-and-rbx-h.md"
       - "cpp-on-macos.md"

@@ -2,7 +2,7 @@ import pathlib
 
 import mkdocs_gen_files
 
-from rbx.box.schema_export import MODELS
+from rbx.box.internal.schema_export import MODELS
 from rbx.utils import dump_schema_str
 
 for model in MODELS:

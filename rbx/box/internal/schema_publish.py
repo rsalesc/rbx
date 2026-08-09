@@ -2,7 +2,7 @@
 
 Run from CI against a checkout at a release tag:
 
-    uv run python -m rbx.box.schema_publish <out-dir> <version>
+    uv run python -m rbx.box.internal.schema_publish <out-dir> <version>
 
 `out-dir` is a checkout of the schemas repo, so existing version directories
 are preserved and the index is recomputed from what is on disk.
@@ -13,7 +13,7 @@ import pathlib
 import shutil
 import sys
 
-from rbx.box.schema_export import MODELS, export_schemas
+from rbx.box.internal.schema_export import MODELS, export_schemas
 from rbx.utils import get_semver
 
 

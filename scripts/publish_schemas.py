@@ -21,7 +21,7 @@ import subprocess
 import sys
 
 from rbx import utils
-from rbx.box.schema_publish import build_site
+from rbx.box.internal.schema_publish import build_site
 
 # HTTPS by default, to match how rbx itself is cloned and so the usual git
 # credential helper applies. Pass `--repo git@github.com:...` for SSH.
