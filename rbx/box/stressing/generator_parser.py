@@ -5,6 +5,8 @@ import typing
 import random
 import lark
 
+from rbx.box.fields import render_var_on_command_line
+
 LARK_GRAMMAR = r"""
 start: args
 
@@ -113,6 +115,13 @@ def parse(args: str) -> lark.ParseTree:
 
 
 def _var_as_str(var: Any) -> str:
+    # A var interpolated here ends up on the generator's command line, so a bool
+    # must be rendered as `1`/`0` -- see `render_var_on_command_line` for why
+    # that is the only spelling both testlib and jngen can read. Bools are
+    # tested first because `isinstance(True, int)` is True (and floats are
+    # formatted below, so the order matters there too).
+    if isinstance(var, bool):
+        return render_var_on_command_line(var)
     if isinstance(var, float):
         return f'{var:.6f}'
     return str(var)

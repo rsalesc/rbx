@@ -46,6 +46,31 @@ else:
     RecVars = TypeAliasType('RecVars', "Dict[str, Union[Primitive, 'RecVars']]")
 
 
+def render_var_on_command_line(value: Primitive) -> str:
+    """Render a var as the string it takes on a program's command line.
+
+    Booleans become ``1``/``0``, not ``true``/``false``, because that is the
+    only spelling *both* libraries rbx ships can read:
+
+    - testlib's ``opt<bool>`` accepts ``true``, ``false``, ``1`` and ``0``,
+      and calls ``__testlib_fail`` on anything else;
+    - jngen's ``getOpt<bool>`` has no bool specialization -- ``readVariable``
+      feeds the raw string to ``std::istringstream >> bool`` without
+      ``std::boolalpha``, which accepts ``1``/``0`` and *fails* on
+      ``true``/``false``.
+
+    So ``true``/``false`` is the tempting choice that would silently break
+    every jngen user, and Python's own ``str(True) == 'True'`` is readable by
+    neither. Please do not "fix" this to ``true``/``false``.
+
+    Note that ``isinstance(True, int)`` is ``True`` in Python, so the bool
+    branch must come before any int branch.
+    """
+    if isinstance(value, bool):
+        return '1' if value else '0'
+    return str(value)
+
+
 def merge_recvars(base: RecVars, override: RecVars) -> RecVars:
     """Deep-merge ``override`` onto ``base``, leaf by leaf.
 

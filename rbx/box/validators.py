@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from rbx import console
 from rbx.box import checkers, package, setter_config
 from rbx.box.code import SanitizationLevel, compile_item, run_item
-from rbx.box.fields import Primitive
+from rbx.box.fields import Primitive, render_var_on_command_line
 from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import CodeItem
 from rbx.box.testcase_extractors import (
@@ -114,6 +114,12 @@ def _has_group_specific_bounds() -> bool:
     )
 
 
+def _get_var_args(vars: Dict[str, Primitive]) -> List[str]:
+    """Render the package vars as the `--{name}={value}` flags a validator sees."""
+    # TODO: check if needs to do some escaping
+    return [f'--{k}={render_var_on_command_line(v)}' for k, v in vars.items()]
+
+
 async def _validate_testcase(
     testcase: pathlib.Path,
     validator: CodeItem,
@@ -121,9 +127,7 @@ async def _validate_testcase(
     vars: Optional[Dict[str, Primitive]] = None,
     group: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], HitBounds]:
-    vars = vars or {}
-    # TODO: check if needs to do some escaping
-    var_args = [f'--{k}={v}' for k, v in vars.items()]
+    var_args = _get_var_args(vars or {})
     var_args.extend(['--testOverviewLogFileName', 'validator.log'])
     if group is not None:
         var_args.extend(['--group', group])

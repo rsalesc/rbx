@@ -12,6 +12,7 @@ from rbx import config
 from rbx.box import header, schema
 from rbx.box.fields import RecVars
 from rbx.box.testing import testing_package
+from rbx.box.validators import _get_var_args
 
 # Every sentinel the rbx.h template must carry, in template order.
 _ALL_SENTINELS = [
@@ -1000,3 +1001,81 @@ class TestGroupVars:
 
         header.generate_header()
         _compile(gpp, _GROUP_VARS_MAIN, 'warnings', ['-Wextra'])
+
+
+# Reads `--flag` with testlib's own option parser. `registerGen` is what calls
+# `prepareOpts`, so this is the generator-side reader, not a validator.
+_TESTLIB_OPT_BOOL_MAIN = """
+#include "testlib.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  registerGen(argc, argv, 1);
+  std::printf("%d\\n", (int)opt<bool>("flag"));
+  return 0;
+}
+"""
+
+# Reads the same flag with jngen. Note the `-flag` name: jngen's
+# `parseArguments` strips a single leading dash, so `--flag=1` lands under
+# `-flag`.
+_JNGEN_GET_OPT_BOOL_MAIN = """
+#include "jngen.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  parseArgs(argc, argv);
+  bool flag = getOpt("-flag", false);
+  std::printf("%d\\n", (int)flag);
+  return 0;
+}
+"""
+
+
+class TestVarArgsAreReadableByBothLibraries:
+    """End-to-end check of `validators._get_var_args`'s bool rendering.
+
+    Lives here because this is the file holding the compile-and-run harness.
+    The rendering itself is unit-tested in `validators_argv_test.py`; what only
+    a real compiler can show is that the string rbx puts on the command line is
+    the one both shipped libraries actually accept -- `true`/`false` would pass
+    testlib and fail jngen, and `True`/`False` fails both.
+    """
+
+    @pytest.mark.parametrize(('value', 'expected'), [(True, '1\n'), (False, '0\n')])
+    @pytest.mark.parametrize(
+        ('source', 'name', 'library'),
+        [
+            (_TESTLIB_OPT_BOOL_MAIN, 'testlib_opt_bool', 'predownloaded/testlib.h'),
+            (_JNGEN_GET_OPT_BOOL_MAIN, 'jngen_opt_bool', 'predownloaded/jngen.h'),
+        ],
+    )
+    def test_bool_var_round_trips_through_the_library_option_parser(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        value: bool,
+        expected: str,
+        source: str,
+        name: str,
+        library: str,
+    ):
+        gpp = _require_gpp()
+
+        library_path = config.get_resources_file(pathlib.Path(library))
+        pathlib.Path(library_path.name).write_text(library_path.read_text())
+
+        # Neither library is warning-clean under -Wall -Werror; what is being
+        # tested here is the parsed value, not warnings.
+        _compile(gpp, source, name, ['-Wno-error', '-w'])
+
+        args = _get_var_args({'flag': value})
+        assert args == [f'--flag={"1" if value else "0"}']
+
+        result = subprocess.run(
+            [f'./{name}'] + args,
+            check=True,
+            capture_output=True,
+            text=True,
+            input='',
+        )
+        assert result.stdout == expected

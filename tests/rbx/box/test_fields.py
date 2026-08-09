@@ -1,7 +1,56 @@
 import pytest
 import simpleeval
 
-from rbx.box.fields import RecVars, expand_var, expand_vars, merge_recvars
+from rbx.box.fields import (
+    RecVars,
+    expand_var,
+    expand_vars,
+    merge_recvars,
+    render_var_on_command_line,
+)
+
+
+class TestRenderVarOnCommandLine:
+    """Tests for how a var is spelled on a program's command line."""
+
+    def test_bools_render_as_one_and_zero(self):
+        """`1`/`0` is the only spelling both testlib and jngen can read."""
+        assert render_var_on_command_line(True) == '1'
+        assert render_var_on_command_line(False) == '0'
+
+    def test_bools_do_not_render_as_python_or_cpp_spelling(self):
+        """Guards against both regressions: `True`/`False` and `true`/`false`.
+
+        jngen's `getOpt<bool>` fails on `true`/`false`, testlib's `opt<bool>`
+        fails on `True`/`False`, so neither is an acceptable rendering.
+        """
+        for value in (True, False):
+            assert render_var_on_command_line(value) not in (
+                'True',
+                'False',
+                'true',
+                'false',
+            )
+
+    def test_bool_is_rendered_before_int(self):
+        """`isinstance(True, int)` is True, so the order of the branches matters.
+
+        A branch that handled ints (or anything else falling back to `str()`)
+        before bools would swallow bools and hand back `'True'`/`'False'`.
+        Ints must keep rendering as themselves either way.
+        """
+        assert render_var_on_command_line(True) == '1'
+        assert render_var_on_command_line(False) == '0'
+        assert render_var_on_command_line(1) == '1'
+        assert render_var_on_command_line(0) == '0'
+
+    def test_other_primitives_are_unaffected(self):
+        assert render_var_on_command_line(42) == '42'
+        assert render_var_on_command_line(-7) == '-7'
+        assert render_var_on_command_line(3.14) == '3.14'
+        assert render_var_on_command_line('hello') == 'hello'
+        assert render_var_on_command_line('') == ''
+        assert render_var_on_command_line('True') == 'True'
 
 
 class TestExpandVar:
