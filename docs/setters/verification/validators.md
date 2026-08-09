@@ -352,8 +352,10 @@ A few details worth knowing:
 - The group's resolved values are also what {{rbx}} passes on the validator command
   line as `--{name}={value}`, so a validator written in another language that parses
   `argv` sees the same numbers and strings as a C++ one using `getVar`. Booleans are
-  the exception: they are rendered with Python's spelling (`--flag=True`), not C++'s,
-  so `opt<bool>` cannot read them -- use `getVar<bool>`.
+  spelled `1` and `0` on the command line (`--flag=1`), which is the only spelling
+  both {{testlib}}'s `opt<bool>` and {{jngen}}'s `getOpt<bool>` accept -- a validator
+  parsing `argv` by hand sees the string `"1"`, and `getVar<bool>` gives you the
+  boolean directly.
 
 ### Reading the group name
 

@@ -397,13 +397,17 @@ You can pass variables to validators in two different ways.
     The values passed here are already resolved for the testgroup being validated, so an
     `argv`-parsing validator and a `getVar` one see the same numbers and strings.
 
-    !!! warning "Booleans are not readable from the command line"
+    !!! tip "Booleans are passed as `1` and `0`"
 
-        Boolean variables are rendered on the command line with Python's spelling --
-        `--flag=True` / `--flag=False` -- while the generated `rbx.h` emits C++'s
-        `true` / `false`. {{testlib}}'s `opt<bool>` accepts only `true`, `false`, `0`
-        or `1` and fails the run on anything else, so read boolean variables with
-        `getVar<bool>` (or compare the raw string yourself).
+        A boolean variable is rendered on the command line as `--flag=1` / `--flag=0`,
+        not with Python's `True` / `False` nor with C++'s `true` / `false`. That is the
+        only spelling both libraries {{rbx}} ships can read: {{testlib}}'s `opt<bool>`
+        accepts `true`, `false`, `1` and `0`, while {{jngen}}'s `getOpt<bool>` parses
+        the value with `std::istringstream` and accepts only `1` and `0`.
+
+        A validator reading the flag as a raw string therefore sees `"1"`, and one
+        reading it through `getVar<bool>` sees the boolean itself. Note that
+        {{testlib}}'s `opt<>()` is not usable inside a validator at all -- see below.
 
 {{rbx}} additionally passes `--group <name>` naming the top-level testgroup being validated
 (and `--testOverviewLogFileName`, which {{testlib}} uses to report the bounds your tests hit).
