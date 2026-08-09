@@ -669,6 +669,26 @@ int main() {
 }
 """
 
+# A group override that changes a var's type must not leave the package's value
+# of the old type reachable under that group.
+_CROSS_TYPE_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+int main() {
+  try {
+    std::printf("int=%lld\\n", (long long)getVar<int64_t>("x"));
+  } catch (const std::runtime_error &e) {
+    (void)e;
+    std::printf("int=threw\\n");
+  }
+  std::printf("string=%s\\n", getVar<std::string>("x").c_str());
+  return 0;
+}
+"""
+
 _UNSUPPORTED_PLATFORM_GUARD = (
     '#if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)'
 )
@@ -776,6 +796,35 @@ class TestGroupVars:
             ['./grouponly'], check=True, capture_output=True, text=True
         )
         assert result.stdout == 'maxOps=threw\nlabel=threw\neps=threw\nstrict=threw\n'
+
+    def test_group_override_changing_a_var_type_hides_the_package_value(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """A group arm answers on its own; it never falls through to the package."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'x': 1})
+        _set_group_vars(testing_pkg, {'sub2': {'x': 'one'}})
+
+        header.generate_header()
+        # `name` goes unused in the float and bool accessors: neither the
+        # package nor the group declares a var of those types.
+        _compile(
+            gpp, _CROSS_TYPE_MAIN, 'crosstype', ['-Wextra', '-Wno-unused-parameter']
+        )
+
+        result = subprocess.run(
+            ['./crosstype', '--group', 'sub2'],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == 'int=threw\nstring=one\n'
+
+        result = subprocess.run(
+            ['./crosstype'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'int=1\nstring=1\n'
 
     def test_package_without_group_vars_generates_no_group_arms(
         self, testing_pkg: testing_package.TestingPackage

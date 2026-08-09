@@ -113,12 +113,17 @@ def _get_group_block(var_type: _VarType) -> str:
     entries = []
     for group_name in _get_groups_with_vars():
         vars = package.get_expanded_vars_for_group(group_name)
-        # The arm holds the group's whole resolved var set, not just its
-        # overrides, so the package-level block below cannot shadow it.
+        # An arm holds the group's whole resolved var set, not just its
+        # overrides, and answers on its own: it never falls through to the
+        # package-level block below. Otherwise an override that changes a var's
+        # type -- package `x: 1`, group `x: "one"` -- would leave the group's
+        # int lookup finding the stale package value instead of nothing. For
+        # the same reason an arm is emitted even when it holds no var of this
+        # type: it must still shadow the package's vars of that type.
         block = _get_var_block(_get_vars_of_type(vars, var_type), indent=4)
-        if not block:
-            continue
-        entries.append(f'  if (group == "{group_name}") {{\n{block}  }}\n')
+        entries.append(
+            f'  if (group == "{group_name}") {{\n{block}    return std::nullopt;\n  }}\n'
+        )
     return ''.join(entries)
 
 
