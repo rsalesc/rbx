@@ -1074,16 +1074,19 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)
 
-    def expanded_vars_for_group(self, group: Optional[str]) -> Vars:
+    def expanded_vars_for_group(self, group_name: Optional[str]) -> Vars:
         """Package vars with the named group's overrides applied.
 
-        Falls back to the package vars when ``group`` is None or names no
+        The merge happens before expansion, so an override can feed the
+        interpolation of any var derived from it.
+
+        Falls back to the package vars when ``group_name`` is None or names no
         declared group (interactive validation, unit tests, samples).
         """
-        if group is None:
+        if group_name is None:
             return self.expanded_vars
         for testcase_group in self.testcases:
-            if testcase_group.name == group:
+            if testcase_group.name == group_name:
                 return expand_vars(merge_recvars(self.vars, testcase_group.vars))
         return self.expanded_vars
 

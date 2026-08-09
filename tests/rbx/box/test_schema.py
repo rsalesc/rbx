@@ -714,6 +714,25 @@ class TestPackageVarsPerGroup:
         assert pkg.expanded_vars_for_group('nope') == {'AB.min': -200, 'AB.max': 200}
         assert pkg.expanded_vars_for_group(None) == {'AB.min': -200, 'AB.max': 200}
 
+    def test_overrides_feed_the_vars_derived_from_them(self):
+        from rbx.box.schema import Package
+
+        # The merge happens before expansion, so `M` is recomputed from the
+        # group's `N`. Merging the two *expanded* var sets instead would leave
+        # `M` at its package value of 20 and silently desync the constraints.
+        pkg = Package.model_validate(
+            {
+                'name': 'test',
+                'timeLimit': 1000,
+                'memoryLimit': 256,
+                'vars': {'N': 10, 'M': 'py`vars.N * 2`'},
+                'testcases': [{'name': 'big', 'vars': {'N': 100}}],
+            }
+        )
+
+        assert pkg.expanded_vars == {'N': 10, 'M': 20}
+        assert pkg.expanded_vars_for_group('big') == {'N': 100, 'M': 200}
+
 
 class TestFirstSolutionIsMain:
     def _package(self, *outcomes):

@@ -50,7 +50,12 @@ def merge_recvars(base: RecVars, override: RecVars) -> RecVars:
     """Deep-merge ``override`` onto ``base``, leaf by leaf.
 
     A dict value merges recursively so a partial override keeps its siblings;
-    any non-dict value replaces whatever was there. Neither input is mutated.
+    any non-dict value replaces whatever was there.
+
+    Neither input is mutated, but the copies are shallow: sub-dicts the override
+    does not touch are shared with ``base``, so the result must be treated as
+    read-only. Writing into a nested dict of the result would corrupt ``base``
+    -- and, for the usual caller, the ``Package`` model it came from.
     """
     res: RecVars = dict(base)
     for key, value in override.items():
