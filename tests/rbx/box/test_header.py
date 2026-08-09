@@ -13,6 +13,23 @@ from rbx.box import header, schema
 from rbx.box.fields import RecVars
 from rbx.box.testing import testing_package
 
+# Every sentinel the rbx.h template must carry, in template order.
+_ALL_SENTINELS = [
+    'group_guard',
+    'string_var_groups',
+    'string_var',
+    'int_var_groups',
+    'int_var',
+    'float_var_groups',
+    'float_var',
+    'bool_var_groups',
+    'bool_var',
+]
+
+
+def _fake_template(sentinels: List[str]) -> str:
+    return ''.join(f'//<rbx::{sentinel}>\n' for sentinel in sentinels)
+
 
 class TestHeader:
     """Tests for the header.py module."""
@@ -340,6 +357,43 @@ class TestHeader:
             'if (name == "string_with_return") {\n    return "with\\rreturn";\n  }'
             in generated_content
         )
+
+    @pytest.mark.parametrize('dropped', _ALL_SENTINELS)
+    def test_template_missing_a_sentinel_raises(
+        self, testing_pkg: testing_package.TestingPackage, dropped: str
+    ):
+        """A silent no-op here would ship a header that resolves no vars."""
+        template = _fake_template([s for s in _ALL_SENTINELS if s != dropped])
+
+        with pytest.raises(ValueError, match=f'`//<rbx::{dropped}>`'):
+            header.preprocess_header(template)
+
+    @pytest.mark.parametrize(
+        'line',
+        [
+            '  //<rbx::int_var_groups>\n',  # indented
+            '//<rbx::int_var_groups> // trailing\n',  # not alone on its line
+            '//<rbx::int_var_groups>\n//<rbx::int_var_groups>\n',  # duplicated
+        ],
+    )
+    def test_template_sentinel_must_be_alone_at_column_zero(
+        self, testing_pkg: testing_package.TestingPackage, line: str
+    ):
+        template = _fake_template(_ALL_SENTINELS).replace(
+            '//<rbx::int_var_groups>\n', line
+        )
+
+        with pytest.raises(ValueError, match='`//<rbx::int_var_groups>`'):
+            header.preprocess_header(template)
+
+    def test_template_with_every_sentinel_is_accepted(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        testing_pkg.set_vars({'x': 1})
+
+        result = header.preprocess_header(_fake_template(_ALL_SENTINELS))
+
+        assert 'if (name == "x") {\n    return static_cast<int64_t>(1);\n  }' in result
 
     def test_generate_header_bool_as_int_in_int_block(
         self, testing_pkg: testing_package.TestingPackage
@@ -881,6 +935,24 @@ class TestGroupVars:
 
         generated_content = pathlib.Path('rbx.h').read_text()
         assert 'if (group ==' not in generated_content
+        # Not even the getGroup() lookup: nothing to resolve against.
+        assert 'const std::string &group = rbx::getGroup();' not in generated_content
+
+    def test_group_arms_are_emitted_in_sorted_order(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """rbx.h is a compilation-cache input, so the order must not drift."""
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(
+            testing_pkg, {'sub2': {'AB': {'min': 0}}, 'sub1': {'AB': {'min': 1}}}
+        )
+
+        header.generate_header()
+
+        generated_content = pathlib.Path('rbx.h').read_text()
+        assert generated_content.find('if (group == "sub1")') < generated_content.find(
+            'if (group == "sub2")'
+        )
 
     def test_guard_is_emitted_only_when_a_group_declares_vars(
         self, testing_pkg: testing_package.TestingPackage
@@ -896,16 +968,18 @@ class TestGroupVars:
         header.generate_header()
         assert _UNSUPPORTED_PLATFORM_GUARD in pathlib.Path('rbx.h').read_text()
 
-    @pytest.mark.parametrize('with_group_vars', [False, True])
-    def test_header_is_warning_clean(
-        self, testing_pkg: testing_package.TestingPackage, with_group_vars: bool
+    def test_header_is_warning_clean_without_group_vars(
+        self, testing_pkg: testing_package.TestingPackage
     ):
-        """The header is compiled into every validator; it must not warn."""
+        """The header is compiled into every validator; it must not warn.
+
+        The with-group-vars shape is covered by
+        `test_getvar_resolves_group_override`, which compiles the same program
+        under the same flags.
+        """
         gpp = _require_gpp()
 
         testing_pkg.set_vars(dict(_PACKAGE_VARS))
-        if with_group_vars:
-            _set_group_vars(testing_pkg, {'sub2': {'AB': {'min': 0}}})
 
         header.generate_header()
         _compile(gpp, _GROUP_VARS_MAIN, 'warnings', ['-Wextra'])

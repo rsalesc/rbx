@@ -11,9 +11,20 @@ from rbx.box.fields import Primitive, Vars
 # Emitted only when some group declares `vars`. rbx::getGroup() returns "" on
 # platforms where the command line is not reachable, which would silently
 # validate against package-level constraints; a compile error is preferable.
+#
+# This only catches platforms rbx knows nothing about. It is not a total
+# guarantee: a supported platform can still fail to expose its command line at
+# runtime -- Linux without /proc mounted, or a Windows build entered through
+# wmain(), where __argv is null -- and those degrade to package-level vars
+# silently, as before.
 _GROUP_GUARD = """#if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)
 #error "rbx: per-group vars need command-line access on this platform"
 #endif"""
+
+# Opens every accessor that has group arms below it. Emitted only alongside the
+# arms, so a package with no group vars neither reads its command line nor pays
+# for the lookup.
+_GROUP_PREAMBLE = '  const std::string &group = rbx::getGroup();\n'
 
 
 @functools.cache
@@ -36,7 +47,7 @@ def generate_header():
             header = f.read()
 
     with pathlib.Path('rbx.h').open('w') as f:
-        f.write(_preprocess_header(header))
+        f.write(preprocess_header(header))
 
 
 def _string_repr(s):
@@ -81,15 +92,41 @@ _VAR_TYPES: List[_VarType] = [
 ]
 
 
-def _preprocess_header(header: str) -> str:
-    # Sentinels are replaced together with their own newline, so a block that
-    # comes out empty leaves no blank line behind.
-    header = header.replace('//<rbx::group_guard>\n', _get_group_guard())
+def preprocess_header(header: str) -> str:
+    """Fill the rbx.h template's sentinels in with the current package's vars."""
+    header = _replace_sentinel(header, 'group_guard', _get_group_guard())
     for var_type in _VAR_TYPES:
-        header = header.replace(
-            f'//<rbx::{var_type.name}_var_groups>\n', _get_group_block(var_type)
-        ).replace(f'//<rbx::{var_type.name}_var>\n', _get_package_block(var_type))
+        header = _replace_sentinel(
+            header, f'{var_type.name}_var_groups', _get_group_block(var_type)
+        )
+        header = _replace_sentinel(
+            header, f'{var_type.name}_var', _get_package_block(var_type)
+        )
     return header
+
+
+def _replace_sentinel(header: str, name: str, replacement: str) -> str:
+    """Swap the `//<rbx::{name}>` line of the template for `replacement`.
+
+    A plain `str.replace` would silently do nothing if a template edit ever
+    renamed or indented a sentinel, shipping a header that compiles but
+    resolves no vars -- exactly the silent-wrong-constraint failure this
+    feature exists to remove. So the sentinel must be there, exactly once,
+    alone on its own line at column 0; anything else is a template bug.
+
+    The whole line is replaced, newline included, so an empty `replacement`
+    leaves no blank line behind.
+    """
+    sentinel = f'//<rbx::{name}>'
+    lines = header.splitlines(keepends=True)
+    matches = [i for i, line in enumerate(lines) if line.rstrip('\n') == sentinel]
+    if len(matches) != 1:
+        raise ValueError(
+            f'The rbx.h template has {len(matches)} lines holding exactly `{sentinel}`, '
+            'expected 1. A sentinel must sit alone on its own line, at column 0.'
+        )
+    lines[matches[0]] = replacement
+    return ''.join(lines)
 
 
 def _get_groups_with_vars() -> List[str]:
@@ -110,8 +147,11 @@ def _get_package_block(var_type: _VarType) -> str:
 
 
 def _get_group_block(var_type: _VarType) -> str:
-    entries = []
-    for group_name in _get_groups_with_vars():
+    group_names = _get_groups_with_vars()
+    if not group_names:
+        return ''
+    entries = [_GROUP_PREAMBLE]
+    for group_name in group_names:
         vars = package.get_expanded_vars_for_group(group_name)
         # An arm holds the group's whole resolved var set, not just its
         # overrides, and answers on its own: it never falls through to the

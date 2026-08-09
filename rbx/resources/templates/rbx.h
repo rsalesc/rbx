@@ -134,40 +134,34 @@ inline const std::string &getGroup() {
 
 } // namespace rbx
 
-// Each accessor first consults the arms of the groups that declare `vars`
-// overrides, then the package-level table. An arm carries the group's whole
-// resolved var set, so a group that overrides nothing keeps the package values.
+// When some test group declares `vars` overrides, each accessor starts with one
+// arm per such group, ahead of the package-level table. An arm carries the
+// group's whole resolved var set and answers on its own, so a group that
+// overrides nothing still sees the package values, and an override that changes
+// a var's type does not leave the package's old value reachable.
 //
-// `group` is unused when no group declares overrides, hence the (void) cast:
-// this header is compiled into every validator and checker of every package.
+// A package with no group overrides gets none of that, not even the getGroup()
+// lookup: its accessors are exactly the package-level table.
 
 std::optional<std::string> getStringVar(std::string name) {
-  const std::string &group = rbx::getGroup();
-  (void)group;
 //<rbx::string_var_groups>
 //<rbx::string_var>
   return std::nullopt;
 }
 
 std::optional<int64_t> getIntVar(std::string name) {
-  const std::string &group = rbx::getGroup();
-  (void)group;
 //<rbx::int_var_groups>
 //<rbx::int_var>
   return std::nullopt;
 }
 
 std::optional<float> getFloatVar(std::string name) {
-  const std::string &group = rbx::getGroup();
-  (void)group;
 //<rbx::float_var_groups>
 //<rbx::float_var>
   return std::nullopt;
 }
 
 std::optional<bool> getBoolVar(std::string name) {
-  const std::string &group = rbx::getGroup();
-  (void)group;
 //<rbx::bool_var_groups>
 //<rbx::bool_var>
   return std::nullopt;
