@@ -13,6 +13,7 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    Type,
     Union,
 )
 
@@ -21,6 +22,7 @@ import questionary
 import ruyaml
 import typer
 import yaml
+from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box import cd, git_utils
@@ -982,14 +984,13 @@ def _install_package_from_preset(
         )
 
 
-def _pin_schema_header(
-    path: pathlib.Path, is_contest: bool, pkg_root: pathlib.Path
-) -> None:
+def _pin_schema_header(path: pathlib.Path, kind: str, pkg_root: pathlib.Path) -> None:
     """Normalize the schema header of a freshly copied preset template.
 
-    Preset templates (including third-party ones) hardcode a schema URL; the
-    package that was just created is the authority on which version it should
-    point at.
+    Preset templates (including third-party ones) hardcode a schema URL, and
+    the bundled ones deliberately carry the unversioned URL so they cannot go
+    stale as versions advance. The package that was just created is the
+    authority on which version its header should point at.
     """
     if not path.is_file():
         return
@@ -998,7 +999,12 @@ def _pin_schema_header(
     from rbx.box.linting import fix_language_server
     from rbx.box.schema import Package
 
-    fix_language_server(path, Contest if is_contest else Package, pkg_root)
+    model_cls: Type[BaseModel] = {
+        'problem': Package,
+        'contest': Contest,
+        'preset': Preset,
+    }[kind]
+    fix_language_server(path, model_cls, pkg_root)
 
 
 def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bool):
@@ -1055,7 +1061,7 @@ def install_contest(
         delete_local_rbx=False,
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
-    _pin_schema_header(dest_pkg / 'contest.rbx.yml', True, dest_pkg)
+    _pin_schema_header(dest_pkg / 'contest.rbx.yml', 'contest', dest_pkg)
     if materialize:
         materialize_libraries(preset, dest_pkg, is_contest=True)
 
@@ -1095,7 +1101,7 @@ def install_problem(
         dest_pkg,
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
-    _pin_schema_header(dest_pkg / 'problem.rbx.yml', False, dest_pkg)
+    _pin_schema_header(dest_pkg / 'problem.rbx.yml', 'problem', dest_pkg)
     if materialize:
         materialize_libraries(preset, dest_pkg, is_contest=False)
 
@@ -1390,6 +1396,7 @@ def create(
     preset['name'] = preset_name
     preset['uri'] = uri
     utils.save_ruyaml(dest_path / 'preset.rbx.yml', ru, preset)
+    _pin_schema_header(dest_path / 'preset.rbx.yml', 'preset', dest_path)
 
 
 @app.command('update', help='Update preset of current package')

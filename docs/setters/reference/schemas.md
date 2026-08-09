@@ -36,6 +36,17 @@ Published models: `Package`, `Contest`, `Preset`, `PresetLock`,
 A new directory is published on every release, and a patch release
 re-publishes its own minor -- so `1.4` always reflects the newest `1.4.x`.
 
+Schemas are published by the release itself, from either entrypoint:
+
+| Entrypoint | How |
+| :--- | :--- |
+| Manual release | `mise run release` (bump + PyPI + schemas), or `mise run publish-schemas` on its own |
+| Tag pushed to GitHub | the `publish-schemas` job in `release.yml` |
+
+Both call `scripts/publish_schemas.py`, and publishing is idempotent -- whichever
+runs second commits nothing. Prereleases (`rc`) are skipped, so an `rc` never
+exposes a schema for a minor nobody can install yet.
+
 ## Which version your files point at
 
 The pinned version comes from the **`min_version` of the preset your package

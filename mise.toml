@@ -66,6 +66,14 @@ run = "rm -rf dist/ && uv build"
 description = "Build and publish to PyPI"
 run = "mise run build && uv publish"
 
+[tasks.publish-schemas]
+description = "Publish versioned JSON schemas for the current version"
+run = "python scripts/publish_schemas.py"
+
+[tasks.release]
+description = "Full release: bump + push tags, publish to PyPI, publish schemas"
+run = "mise run bump && mise run publish && mise run publish-schemas"
+
 [tasks.bench-completion]
 description = "Benchmark shell completion latency"
 run = "python scripts/bench_completion.py"

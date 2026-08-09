@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from rbx.box import schema_export
 
 
@@ -97,3 +99,115 @@ class TestSchemaPublish:
         index = json.loads((tmp_path / 'index.json').read_text())
 
         assert index['versions'] == ['1.4']
+
+
+class TestPublishScript:
+    """The publish entrypoint shared by the local task and CI."""
+
+    def _script(self):
+        from scripts import publish_schemas
+
+        return publish_schemas
+
+    def test_skips_prerelease_versions(self, tmp_path, capsys):
+        script = self._script()
+
+        assert script.main(['--dir', str(tmp_path), '--version', '1.5.0rc1']) == 0
+
+        assert 'prerelease' in capsys.readouterr().out
+        assert not (tmp_path / '1.5').exists()
+
+    def test_publishes_prerelease_when_forced(self, tmp_path):
+        script = self._script()
+        _init_repo(tmp_path)
+
+        script.main(
+            [
+                '--dir',
+                str(tmp_path),
+                '--version',
+                '1.5.0rc1',
+                '--allow-prerelease',
+                '--no-push',
+            ]
+        )
+
+        assert (tmp_path / '1.5' / 'Package.json').is_file()
+
+    def test_defaults_to_installed_version(self, tmp_path):
+        from rbx import utils
+
+        script = self._script()
+        _init_repo(tmp_path)
+
+        script.main(['--dir', str(tmp_path), '--no-push'])
+
+        installed = utils.get_semver()
+        assert (tmp_path / f'{installed.major}.{installed.minor}').is_dir()
+
+    def test_commits_and_is_idempotent(self, tmp_path):
+        script = self._script()
+        _init_repo(tmp_path)
+
+        script.main(['--dir', str(tmp_path), '--version', '1.4.0', '--no-push'])
+        first = _commit_count(tmp_path)
+
+        script.main(['--dir', str(tmp_path), '--version', '1.4.0', '--no-push'])
+
+        assert _commit_count(tmp_path) == first, 'republishing should be a no-op'
+
+
+def _init_repo(path):
+    import subprocess
+
+    for args in (
+        ['git', 'init', '-q'],
+        ['git', 'config', 'user.email', 'test@example.com'],
+        ['git', 'config', 'user.name', 'test'],
+        ['git', 'commit', '-q', '--allow-empty', '-m', 'init'],
+    ):
+        subprocess.run(args, cwd=str(path), check=True)
+
+
+def _commit_count(path) -> int:
+    import subprocess
+
+    return int(
+        subprocess.run(
+            ['git', 'rev-list', '--count', 'HEAD'],
+            cwd=str(path),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
+    )
+
+
+class TestPublishSafety:
+    """Publishing writes files, `git add -A` and pushes -- it must never run
+    against anything but a schemas checkout."""
+
+    def test_refuses_empty_dir(self):
+        from scripts import publish_schemas
+
+        with pytest.raises(SystemExit):
+            publish_schemas.main(['--dir', '', '--version', '1.4.0'])
+
+    def test_refuses_a_source_checkout(self, tmp_path):
+        from scripts import publish_schemas
+
+        _init_repo(tmp_path)
+        (tmp_path / 'pyproject.toml').write_text('[project]\n')
+
+        with pytest.raises(SystemExit):
+            publish_schemas.main(
+                ['--dir', str(tmp_path), '--version', '1.4.0', '--no-push']
+            )
+
+    def test_refuses_a_non_git_directory(self, tmp_path):
+        from scripts import publish_schemas
+
+        with pytest.raises(SystemExit):
+            publish_schemas.main(
+                ['--dir', str(tmp_path), '--version', '1.4.0', '--no-push']
+            )
