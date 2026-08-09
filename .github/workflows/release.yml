@@ -1,9 +1,30 @@
-name: Upload Python Package
+name: Upload Python Package (DISABLED)
+
+# ---------------------------------------------------------------------------
+# THIS WORKFLOW IS DISABLED. There is no release CI for now.
+#
+# Releases are cut manually from a local checkout with mise:
+#
+#   mise run release          # bump + push tags, publish to PyPI, publish schemas
+#
+# or, step by step:
+#
+#   mise run bump             # cz bump + push tags
+#   mise run publish          # build + uv publish to PyPI
+#   mise run publish-schemas  # push versioned JSON schemas
+#
+# The tag-push trigger below is intentionally commented out so pushing a
+# version tag does NOT publish anything. `workflow_dispatch` is kept only so
+# the file stays a valid workflow and can be run by hand if we ever need it;
+# do not re-enable the automatic trigger without also removing this notice.
+# ---------------------------------------------------------------------------
 
 on:
-  push:
-    tags:
-      - "*.*.*" # Will trigger for every tag, alternative: 'v*'
+  workflow_dispatch:
+  # DISABLED — use `mise run release` instead of tag-triggered CI.
+  # push:
+  #   tags:
+  #     - "*.*.*" # Will trigger for every tag, alternative: 'v*'
 
 jobs:
   wait-for-tests:
