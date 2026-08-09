@@ -55,7 +55,7 @@ width: 100                   # optional; terminal columns (default 100)
 height: 30                   # optional; terminal rows (default 30)
 type_speed: 60ms             # optional; delay between typed characters
 timeout: 120s                # optional; per-instruction limit
-end_pause: 3s                # optional; hold the final frame (see below)
+end_pause: 0s                # optional; extra dwell baked in (see below)
 
 setup:                       # optional; runs for real, never shown
   - rbx build
@@ -87,17 +87,22 @@ give you more:
 
 ### `end_pause`
 
-Casts autoplay on a loop, so without a trailing hold the final frame — usually
-the whole point of the recording — flashes past before anyone can read it.
-Every recording therefore ends with a **3 second hold** by default. Set
-`end_pause` to change it, or `0s` to opt out.
+Casts autoplay on a loop, and the final frame is usually the whole point of the
+recording, so **every player waits 3 seconds on it before restarting**. That
+wait lives in the `asciinema()` macro (`main.py`), not in the cast file, and
+`end_pause` therefore defaults to `0s`.
 
-You do not need a trailing `!Wait` for this; the hold is applied after the last
-instruction. A `!Wait` at the end would simply add to it.
+It has to live there. A trailing gap inside the cast is idle time like any
+other: the player first clamps it to `idleTimeLimit` (1 second) and then
+divides it by `speed`, so a recorded "3 second hold" plays for one second, or
+half of one on a `speed=2` embed. The macro pauses in wall-clock time instead,
+which is the same three seconds at any playback rate.
 
-The hold is a zero-byte output event at a later timestamp, not just an idle
-gap — a player takes a cast's duration from its final event, so advancing the
-clock without emitting anything would have no effect.
+Set `end_pause` only when a recording wants extra dwell baked into the file
+itself; it adds to the player's pause rather than replacing it. The hold it
+writes is a zero-byte output event at a later timestamp, not just an idle gap —
+a player takes a cast's duration from its final event, so advancing the clock
+without emitting anything would have no effect.
 
 ### `expect_contains`
 
@@ -155,6 +160,10 @@ pages still carry, because the snippets as printed do not run:
   page prints an annotated tree right below it. The tree says `documents/`
   while the preset ships `statement/`, so showing both would put the
   contradiction on screen. Once the page and the preset agree, add the `ls`.
+- **The two asciinema.org embeds loop without the 3 second pause.** That pause
+  is applied to the vendored player, which the macro controls; the hosted
+  embed brings its own player and only takes `data-loop`, so it restarts
+  immediately. Migrating those recordings fixes it.
 - **The BOCA upload recording** (`boca.md`, `packaging-walkthrough.md`) is still
   hosted on asciinema.org. `rbx package boca -u` uploads to a live BOCA server,
   and the pipeline has no way to stand one up. `record-check` reports these two
