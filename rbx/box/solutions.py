@@ -1447,29 +1447,32 @@ class SolutionOutcomeReport(BaseModel):
 
     def get_verdict_markup_with_warnings(self, subset: bool = False) -> str:
         res = self.get_verdict_markup(subset=subset)
+        # The two double-TL facts are independent, so each is its own sentence
+        # naming its own groups. A single layer either passed *within* 2x TL or
+        # finished within it with other (soft-TLE) verdicts, never both -- but
+        # both aggregate fields are unions over the pooled layer and every group,
+        # so two different groups can each contribute one fact. Reporting them
+        # together would have to attribute both to a single group list, and
+        # gating one on the other is how the second was lost entirely (#607).
         if self.runUnderDoubleTl:
-            # Both aggregate fields are unions over the pooled layer and every
-            # group, so each half of the sentence names its own groups: a single
-            # group either passed *within* 2x TL or had other soft-TLE verdicts,
-            # never both, and they need not be the same group.
-            passed_where = _on_groups_markup(
+            where = _on_groups_markup(
                 [
                     name
                     for name, group in self.perGroup.items()
                     if group.runUnderDoubleTl
                 ]
             )
-            failed_where = _on_groups_markup(
+            res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{where}.'
+        if self.doubleTlVerdicts:
+            where = _on_groups_markup(
                 [
                     name
                     for name, group in self.perGroup.items()
                     if group.doubleTlVerdicts
                 ]
             )
-            if self.doubleTlVerdicts:
-                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{passed_where}, but failed with [item]{" ".join(v.name for v in self.doubleTlVerdicts)}[/item]{failed_where}.'
-            else:
-                res += f'\n[warning]WARNING[/warning] The solution still passed in double TL{passed_where}.'
+            verdicts = ' '.join(sorted(v.name for v in self.doubleTlVerdicts))
+            res += f'\n[warning]WARNING[/warning] The solution still finished in double TL, but failed with [item]{verdicts}[/item]{where}.'
         if self.sanitizerWarnings:
             res += '\n[warning]WARNING[/warning] The solution had sanitizer errors or warnings, marked with [item]*[/item]. See their stderr for more details.'
         return res
