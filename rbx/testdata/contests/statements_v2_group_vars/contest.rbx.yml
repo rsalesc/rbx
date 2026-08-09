@@ -11,3 +11,8 @@ statements:
     type: 'rbxTeX'
     standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
     contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'
+documents:
+  - name: 'info-en'
+    language: 'en'
+    file: 'statements/info.jinja.tex'
+    type: 'jinja-tex'

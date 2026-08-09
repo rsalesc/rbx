@@ -53,8 +53,14 @@ class GroupView:
     That distinction is the whole point. A subtasks table reads
     ``g.vars.AB.max`` for *every* group; if this exposed the raw override, every
     group that does not override ``AB.max`` would render a blank instead of the
-    inherited value — the silent degradation per-group vars exist to remove. The
-    raw override block is intentionally unreachable from templates.
+    inherited value — the silent degradation per-group vars exist to remove.
+
+    The raw override block is not part of the template surface: ``g.vars`` is
+    always the resolved set. It is not *inaccessible* — rbx renders with a plain
+    ``jinja2.Environment``, not a sandboxed one, so a template that deliberately
+    reaches for ``g._group.vars`` still gets the raw model. Nothing degrades
+    silently through that path, and closing it would cost more complexity than
+    the (non-)threat is worth.
     """
 
     def __init__(self, group: Any, vars: Vars):
@@ -66,6 +72,9 @@ class GroupView:
         if name.startswith('__') and name.endswith('__'):
             raise AttributeError(name)
         return getattr(self._group, name)
+
+    def __repr__(self) -> str:
+        return f'GroupView({self._group!r})'
 
 
 @dataclasses.dataclass

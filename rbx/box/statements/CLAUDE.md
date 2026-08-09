@@ -190,7 +190,9 @@ The **offline** Polygon packager (embedding PDFs in `problem.zip` /
 `TestcaseGroup` model, but `g.vars` is the **group-resolved** var set
 (`package.get_expanded_vars_for_group(g.name)`), not the raw `vars` override
 declared on the group. A subtasks table must render inherited values for groups
-that override nothing; exposing the raw block would render blanks instead.
+that override nothing; exposing the raw block would render blanks instead. The
+raw override is not part of the template surface, but it is not *blocked*: the
+Jinja env is not sandboxed, so `g._group.vars` still reaches the model.
 
 Per-sample handles: `sample.input`/`output` (root-relative), `sample.dir` +
 `sample.explanation_file` (base-relative `\subimport`), `sample.interaction.chunks`.

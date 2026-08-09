@@ -110,3 +110,30 @@ async def test_contest_build_pdf_with_mocked_pdflatex(cleandir_with_testdata):
     await _run(output=StatementType.PDF)
     assert (cleandir_with_testdata / 'build' / 'main-en.pdf').is_file()
     assert (cleandir_with_testdata / 'build' / 'info-en.pdf').is_file()
+
+
+@pytest.mark.test_pkg('contests/statements_v2_group_vars')
+async def test_join_fragment_renders_group_resolved_vars(cleandir_with_testdata):
+    # The contest JOIN site: each problem fragment is rendered from the
+    # contestProblemTemplate, which loops over `problem.groups`.
+    await _run(output=StatementType.TeX)
+
+    overlay = cleandir_with_testdata / 'build' / 'statements' / 'main-en'
+    frag = (overlay / '.problems' / 'A' / 'statement.tex').read_text()
+    assert '\\subtask{sub1}{1}{10}' in frag
+    assert '\\subtask{sub2}{100}{200}' in frag
+    # sub3 overrides nothing and still renders both inherited bounds.
+    assert '\\subtask{sub3}{1}{200}' in frag
+
+
+@pytest.mark.test_pkg('contests/statements_v2_group_vars')
+async def test_document_metadata_exposes_group_resolved_vars(cleandir_with_testdata):
+    # The document-metadata site (`_collect_problem_metadata`), which builds its
+    # own ProblemRenderContext without rendering any statement.
+    await _run(output=StatementType.TeX)
+
+    info = (cleandir_with_testdata / 'build' / 'info-en.tex').read_text()
+    assert '\\info{A}{sub1}{1}{10}' in info
+    assert '\\info{A}{sub2}{100}{200}' in info
+    assert '\\info{A}{sub3}{1}{200}' in info
+    assert '\\subimport' not in info

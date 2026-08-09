@@ -156,15 +156,19 @@ class TestGroupViews:
         assert groups['sub3'].vars['AB']['min'] == 1
         assert groups['sub3'].vars['AB']['max'] == 200
 
-    def test_raw_override_block_is_not_reachable(self):
-        # The model's raw override for sub1 is only `{'AB': {'max': 10}}`; a
-        # template that reached it would render nothing for `AB.min`.
+    def test_view_vars_are_the_resolved_set(self):
+        # The model's raw override for sub1 is only `{'AB': {'max': 10}}`, but
+        # the view serves the resolved set it was constructed with.
         from rbx.box.schema import TestcaseGroup
 
         group = TestcaseGroup(name='sub1', vars={'AB': {'max': 10}})
         view = GroupView(group, {'AB.min': 1, 'AB.max': 10})
-        assert view.vars['AB']['min'] == 1
         assert dict(view.vars['AB']) == {'min': 1, 'max': 10}
+        assert view.vars is not group.vars
+
+    def test_repr_delegates_to_the_model(self):
+        view = _group_views()['sub2']
+        assert "name='sub2'" in repr(view)
 
     def test_model_attributes_pass_through(self):
         groups = _group_views()
