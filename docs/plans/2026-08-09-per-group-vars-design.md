@@ -90,7 +90,7 @@ problem.rbx.yml            rbx.h (generated)              runtime
 ─────────────────          ─────────────────              ───────
 vars:                      getIntVar("B.min"):            argv: … --group sub2
   AB: {min: -200,            group "sub2" -> 0                    │
-       max: 200}             group "sub3" -> -200         .init_array captures argv
+       max: 200}             group "sub3" -> -200         process reads own cmdline
                              default     -> -200                  │
 testcases:                                                rbx::getGroup() == "sub2"
   - name: sub2             rbx::getGroup():                       │
