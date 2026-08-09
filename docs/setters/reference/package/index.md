@@ -395,7 +395,7 @@ You can pass variables to validators in two different ways.
     ```
 
     The values passed here are already resolved for the testgroup being validated, so an
-    `argv`-parsing validator and a `getVar` one see the same numbers and strings.
+    `argv`-parsing validator and a `getVar` one always agree.
 
     !!! tip "Booleans are passed as `1` and `0`"
 
@@ -405,9 +405,11 @@ You can pass variables to validators in two different ways.
         accepts `true`, `false`, `1` and `0`, while {{jngen}}'s `getOpt<bool>` parses
         the value with `std::istringstream` and accepts only `1` and `0`.
 
-        A validator reading the flag as a raw string therefore sees `"1"`, and one
-        reading it through `getVar<bool>` sees the boolean itself. Note that
-        {{testlib}}'s `opt<>()` is not usable inside a validator at all -- see below.
+        So a validator reading the flag as a raw string sees `"1"`, and one reading it
+        through `getVar<bool>` sees the boolean itself. Note that {{testlib}}'s
+        `opt<>()` is not usable inside a validator at all (see below), and that
+        {{jngen}} strips a single leading dash when it parses arguments, so `--flag=1`
+        is looked up as `getOpt("-flag")`.
 
 {{rbx}} additionally passes `--group <name>` naming the top-level testgroup being validated
 (and `--testOverviewLogFileName`, which {{testlib}} uses to report the bounds your tests hit).

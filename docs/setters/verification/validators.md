@@ -351,9 +351,9 @@ A few details worth knowing:
   way to be selected at runtime.
 - The group's resolved values are also what {{rbx}} passes on the validator command
   line as `--{name}={value}`, so a validator written in another language that parses
-  `argv` sees the same numbers and strings as a C++ one using `getVar`. Booleans are
-  spelled `1` and `0` on the command line (`--flag=1`), which is the only spelling
-  both {{testlib}}'s `opt<bool>` and {{jngen}}'s `getOpt<bool>` accept -- a validator
+  `argv` sees exactly the same values as a C++ one using `getVar`. Booleans are
+  spelled `1` and `0` on the command line (`--flag=1`), the only spelling both
+  {{testlib}}'s `opt<bool>` and {{jngen}}'s `getOpt<bool>` accept -- a validator
   parsing `argv` by hand sees the string `"1"`, and `getVar<bool>` gives you the
   boolean directly.
 
