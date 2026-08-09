@@ -89,8 +89,15 @@ give you more:
 
 Casts autoplay on a loop, and the final frame is usually the whole point of the
 recording, so **every player waits 3 seconds on it before restarting**. That
-wait lives in the `asciinema()` macro (`main.py`), not in the cast file, and
+wait lives in `docs/assets/casts-loop.js`, not in the cast file, and
 `end_pause` therefore defaults to `0s`.
+
+Create players through its `rbxCast(src, elementId, options, pauseMs)` helper
+and nowhere else. There are two call sites — the `asciinema()` macro in
+`main.py` for pages, and `docs/templates/home.html` for the landing page — and
+when they each created their own player, the home page kept `loop: true` and
+went on restarting instantly after the macro learned to pause. A test guards
+this.
 
 It has to live there. A trailing gap inside the cast is idle time like any
 other: the player first clamps it to `idleTimeLimit` (1 second) and then

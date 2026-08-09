@@ -1,3 +1,4 @@
+import pathlib
 import re
 
 from main import define_env
@@ -24,17 +25,17 @@ def test_local_name_renders_a_player_pointed_at_the_committed_cast():
     html = _asciinema()('run-basic')
 
     assert '/assets/casts/run-basic.cast' in html
-    assert 'AsciinemaPlayer.create' in html
+    assert 'rbxCast(' in html
     assert 'asciinema.org' not in html
 
 
 def test_player_init_waits_for_the_bundle_to_load():
     # extra_javascript lands at the end of <body>, after this inline script,
-    # so calling AsciinemaPlayer immediately throws ReferenceError.
+    # so calling rbxCast immediately throws ReferenceError.
     html = _asciinema()('run-basic')
 
     assert "document.addEventListener('DOMContentLoaded'" in html
-    init = html.index('AsciinemaPlayer.create')
+    init = html.index('rbxCast(')
     guard = html.index('DOMContentLoaded')
     assert guard < init
 
@@ -51,10 +52,16 @@ def test_the_player_pauses_before_looping_instead_of_restarting_at_once():
     # own `loop` restarts on the very next tick after it is drawn.
     html = _asciinema()('run-basic')
 
-    assert '"loop": false' in html
-    assert "addEventListener('ended'" in html
-    assert 'player.seek(0)' in html
     assert '}, 3000);' in html
+
+
+def test_the_macro_does_not_create_a_player_of_its_own():
+    # The pause lives in `rbxCast`. A second call site that creates its own
+    # player silently opts out of it -- which is exactly what happened to the
+    # home page template.
+    html = _asciinema()('run-basic')
+
+    assert 'AsciinemaPlayer.create' not in html
 
 
 def test_the_loop_pause_is_configurable():
@@ -80,6 +87,25 @@ def test_each_player_gets_a_unique_container_id():
     assert first != second
 
 
+def test_every_cast_on_the_site_is_created_through_rbx_cast():
+    # The home page builds its own players from a template rather than through
+    # the macro. It kept `loop: true` when the pause was added here, so the
+    # casts a first-time visitor sees restarted instantly. Both call sites have
+    # to go through the one helper that pauses.
+    root = pathlib.Path(__file__).resolve().parents[2]
+    home = (root / 'docs' / 'templates' / 'home.html').read_text()
+    helper = root / 'docs' / 'assets' / 'casts-loop.js'
+    config = (root / 'mkdocs.yml').read_text()
+
+    assert helper.is_file()
+    assert 'rbxCast(' in home
+    assert 'AsciinemaPlayer.create(' not in home
+    # The helper wraps the bundle, so it has to be loaded after it.
+    assert config.index('assets/asciinema-player.min.js') < config.index(
+        'assets/casts-loop.js'
+    )
+
+
 def test_a_legacy_asciinema_org_id_plays_through_the_vendored_player():
     # Their `<script>` embed brings its own player, which only takes
     # `data-loop` and restarts the instant the last frame is drawn. Pointing
@@ -87,13 +113,12 @@ def test_a_legacy_asciinema_org_id_plays_through_the_vendored_player():
     # gives a hosted recording the same loop pause as a committed one.
     html = _asciinema()(LEGACY_ID)
 
-    assert f"AsciinemaPlayer.create('https://asciinema.org/a/{LEGACY_ID}.cast'" in html
+    assert f"rbxCast('https://asciinema.org/a/{LEGACY_ID}.cast'" in html
     assert f'asciinema.org/a/{LEGACY_ID}.js' not in html
 
 
 def test_a_legacy_asciinema_org_id_gets_the_loop_pause_too():
     html = _asciinema()(LEGACY_ID)
 
-    assert '"loop": false' in html
-    assert "addEventListener('ended'" in html
+    assert 'rbxCast(' in html
     assert '}, 3000);' in html

@@ -54,13 +54,15 @@
          vendored asciinema-player. Nothing is fetched from asciinema.org, so
          re-recording never changes a URL here. `extra_javascript` puts the
          player bundle at the end of <body>, after this script, which is why
-         creation waits for DOMContentLoaded. -->
+         creation waits for DOMContentLoaded.
+
+         Go through `rbxCast` (assets/casts-loop.js) rather than calling
+         AsciinemaPlayer.create directly -- that is what holds the final frame
+         for three seconds instead of restarting the moment it is drawn. -->
     <div id="cast-{{ cast }}"></div>
     <script>
       document.addEventListener('DOMContentLoaded', function () {
-        AsciinemaPlayer.create('/assets/casts/{{ cast }}.cast', document.getElementById('cast-{{ cast }}'), {
-          autoPlay: true, loop: true, idleTimeLimit: 1, fit: 'width'
-        });
+        rbxCast('/assets/casts/{{ cast }}.cast', 'cast-{{ cast }}');
       });
     </script>
   </div>

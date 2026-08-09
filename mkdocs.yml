@@ -132,6 +132,9 @@ extra_css:
   - assets/asciinema-player.css
 extra_javascript:
   - assets/asciinema-player.min.js
+  # Must follow the bundle: it wraps AsciinemaPlayer.create to add the loop
+  # pause. Every cast on the site is created through it.
+  - assets/casts-loop.js
 markdown_extensions:
   - admonition
   - attr_list
