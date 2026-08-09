@@ -66,6 +66,52 @@ def expand_any_vars(vars: Dict[str, Any]) -> Dict[str, Primitive]:
     return expand_vars(typing.cast(RecVars, converted_vars))
 
 
+# Command-line flags consumed by testlib itself (`__testlib_set_testset_and_group`,
+# `registerValidation`, `registerTestlibCmd`) or by rbx (`rbx::getGroup()`, which
+# reads `--group` to pick a group's var overrides).
+#
+# `vars` are flattened to dotted keys and handed to the validator as
+# `--<key>=<value>`, so a *top-level* var with one of these names would be
+# indistinguishable from the real flag -- and `--group=<value>` would silently
+# make every group resolve against the package-level values.
+RESERVED_VAR_NAMES = frozenset(
+    [
+        'group',
+        'help',
+        'testCase',
+        'testCaseFileName',
+        'testMarkupFileName',
+        'testOverviewLogFileName',
+        'testset',
+    ]
+)
+
+
+def check_reserved_var_names(vars: RecVars) -> RecVars:
+    """Reject top-level var names that collide with a testlib/rbx flag.
+
+    Only top-level *primitive* keys are checked: a nested var is emitted as
+    `--<parent>.<key>=<value>`, which no flag parser matches.
+    """
+    for key, value in vars.items():
+        if isinstance(value, dict):
+            continue
+        if key in RESERVED_VAR_NAMES:
+            raise PydanticCustomError(
+                'RESERVED_VAR_NAME',
+                'Variable "{key}" collides with the testlib/rbx command-line flag '
+                '"--{key}": vars are passed to validators as "--{key}=<value>", '
+                'which the flag parser would consume instead. '
+                'Rename the variable, or nest it under another key '
+                '(as in "limits.{key}"). Reserved names: {reserved}.',
+                {'key': key, 'reserved': ', '.join(sorted(RESERVED_VAR_NAMES))},
+            )
+    return vars
+
+
+CheckedRecVars = Annotated[RecVars, AfterValidator(check_reserved_var_names)]
+
+
 def is_unique_testcase_group_names(
     groups: List['TestcaseGroup'],
 ) -> List['TestcaseGroup']:
@@ -550,7 +596,7 @@ Useful in cases where the constraints vary across test groups.
 """,
     )
 
-    vars: RecVars = Field(
+    vars: CheckedRecVars = Field(
         default={},
         description="""
 Variables that override the package-level `vars` for this group only.
@@ -1053,7 +1099,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     # Vars to be re-used across the package.
     #   - It will be passed as --key=value arguments to the validator.
     #   - It will be available as \VAR{key} variables in the rbx statement.
-    vars: RecVars = Field(
+    vars: CheckedRecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 

@@ -2,8 +2,13 @@ import os
 from unittest import mock
 
 import pytest
+from pydantic import ValidationError
 
-from rbx.box.schema import LimitModifiers, LimitsProfile
+from rbx.box.schema import (
+    RESERVED_VAR_NAMES,
+    LimitModifiers,
+    LimitsProfile,
+)
 
 
 class TestLimitsProfile:
@@ -782,3 +787,58 @@ class TestFirstSolutionIsMain:
         )
 
         assert len(package.solutions) == 2
+
+
+class TestReservedVarNames:
+    """Vars must not shadow the command-line flags testlib and rbx consume.
+
+    Vars are flattened to dotted keys and passed to validators as
+    `--<key>=<value>`, so a top-level var named `group` would emit
+    `--group=<value>` and make `rbx::getGroup()` resolve a group that does not
+    exist -- silently falling back to the package-level constraints.
+    """
+
+    def _package(self, **kwargs):
+        from rbx.box.schema import Package
+
+        return Package(name='problem', timeLimit=1000, memoryLimit=256, **kwargs)
+
+    @pytest.mark.parametrize('name', sorted(RESERVED_VAR_NAMES))
+    def test_reserved_top_level_package_var_is_rejected(self, name: str):
+        with pytest.raises(ValidationError, match=f'"{name}" collides with'):
+            self._package(vars={name: 1})
+
+    @pytest.mark.parametrize('name', sorted(RESERVED_VAR_NAMES))
+    def test_reserved_top_level_group_var_is_rejected(self, name: str):
+        from rbx.box.schema import TestcaseGroup
+
+        with pytest.raises(ValidationError, match=f'"{name}" collides with'):
+            TestcaseGroup(name='main', vars={name: 1})
+
+    def test_error_message_points_at_the_flag(self):
+        with pytest.raises(ValidationError, match=r'--group=<value>'):
+            self._package(vars={'group': 'oops'})
+
+    def test_nested_reserved_name_is_accepted(self):
+        # Flattens to `--AB.group=1`, which no flag parser matches.
+        package = self._package(vars={'AB': {'group': 1}})
+
+        assert package.expanded_vars == {'AB.group': 1}
+
+    def test_nested_reserved_name_is_accepted_in_a_group(self):
+        from rbx.box.schema import TestcaseGroup
+
+        group = TestcaseGroup(name='main', vars={'AB': {'group': 1}})
+
+        assert group.vars == {'AB': {'group': 1}}
+
+    def test_top_level_reserved_name_holding_a_dict_is_accepted(self):
+        # Flattens to `--group.min=1`, not `--group=...`.
+        package = self._package(vars={'group': {'min': 1}})
+
+        assert package.expanded_vars == {'group.min': 1}
+
+    def test_ordinary_vars_still_validate(self):
+        package = self._package(vars={'MAX_N': 100, 'AB': {'min': 1, 'max': 10}})
+
+        assert package.expanded_vars == {'MAX_N': 100, 'AB.min': 1, 'AB.max': 10}
