@@ -260,12 +260,6 @@ testcases:
 
 2. No override, so the package-level values apply.
 
-!!! danger "`opt()` does not work in a {{testlib}} validator"
-    `registerValidation` never calls `prepareOpts`, so `opt<std::string>("group", "")`
-    silently returns the default and any branch on it is dead code. Use per-group `vars`,
-    or `rbx::getGroup()` / `validator.group()` for the group's name. See
-    [Validators](verification/validators.md#opt-does-not-work-in-a-validator).
-
 ### Add variables
 
 The variables below can be reused across validators and statements.

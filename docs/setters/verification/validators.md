@@ -282,10 +282,8 @@ testcases:
 
 ## Varying constraints per test group
 
-Subtasks usually differ only in *how large* the input may get, not in what a valid
-input looks like. When that is the case you do not need a second validator, and you
-should not branch on the group name inside the one you have. Override the variables
-the validator already reads, in the group itself.
+When test groups differ only in their constraints, the recommended way of expressing
+that is to override, in the group itself, the variables the validator already reads.
 
 === "problem.rbx.yml"
     ```yaml hl_lines="14-16"
@@ -342,109 +340,9 @@ A few details worth knowing:
 - **The merge is deep, at the leaf.** `vars: {N: {max: 50}}` overrides `N.max` and
   leaves every sibling (`N.min`, and every other variable) alone. You never have to
   restate the constraints you are not changing.
-- **The keys do not have to exist at package level.** A variable that is only
-  meaningful inside one group can be declared in that group alone. Reading it from
-  another group fails loudly with the usual `getVar` error (*Variable `X` ... could
-  not be found*), rather than quietly returning something.
-- **Only top-level testgroups can declare `vars`.** Subgroups cannot: {{rbx}} only
-  tells the validator the top-level group name, so a subgroup override would have no
-  way to be selected at runtime.
+- **Only top-level testgroups can declare `vars`.** Subgroups cannot.
 - The group's resolved values are also what {{rbx}} passes on the validator command
   line as `--{name}={value}`, so a validator written in another language that parses
-  `argv` sees exactly the same values as a C++ one using `getVar`. Booleans are
-  spelled `1` and `0` on the command line (`--flag=1`), the only spelling both
-  {{testlib}}'s `opt<bool>` and {{jngen}}'s `getOpt<bool>` accept -- a validator
-  parsing `argv` by hand sees the string `"1"`, and `getVar<bool>` gives you the
-  boolean directly.
-
-### Reading the group name
-
-Some checks genuinely are not parameters — "this group must contain only trees" is
-not a number you can put in `vars`. For those, `rbx.h` exposes the name of the group
-being validated:
-
-```cpp
-#include "testlib.h"
-#include "rbx.h"
-
-int main(int argc, char *argv[]) {
-  registerValidation(argc, argv);
-
-  if (rbx::getGroup() == "trees") {
-    // ...check the input is a tree...
-  }
-}
-```
-
-`rbx::getGroup()` needs no initialization call and does not depend on {{testlib}}; it
-returns an empty string when the validator is run outside of any group (for example
-through `rbx validate`). {{testlib}}'s own `validator.group()` returns the same value.
-
-!!! warning "Prefer per-group `vars` whenever the difference is a constraint"
-
-    A `if (group == "small")` branch is only as good as the group's name. Rename the
-    group, split it in two, or reuse the validator in another problem, and the branch
-    silently stops matching — no error, the check simply evaporates and the build
-    stays green.
-
-    A `vars` override travels *inside* the group entry, so renaming the group cannot
-    detach it.
-
-### `opt()` does not work in a validator
-
-This one deserves a section of its own, because it fails silently.
-
-```cpp
-// DOES NOT WORK. `group` is always "".
-std::string group = opt<std::string>("group", "");
-if (group == "sub2") {
-  ensuref(a + b >= a - b, "subtask 2 requires A+B >= A-B");
-}
-```
-
-{{rbx}} does pass `--group <name>` to validators, but {{testlib}}'s `opt<>()` reads
-from a table that only `prepareOpts()` fills in — and `registerValidation` never calls
-it (only `registerGen` does). So `has_opt("group")` is false, `opt(..., "")` hands back
-the default, the branch is dead, and nothing anywhere reports a problem.
-
-Adding `prepareOpts(argc, argv)` yourself makes `opt` see the group, and then springs a
-second trap: the two-argument `opt(key, default)` form turns on {{testlib}}'s
-"no unused opts" check, and {{rbx}} passes *every* package variable as `--{name}={value}`.
-Since you read those with `getVar` rather than `opt`, {{testlib}} sees them as unused and
-fails every testcase with `FAIL Opts: unused key 'N.max'`.
-
-Use per-group `vars` for constraints, and `rbx::getGroup()` (or `validator.group()`) when
-you really need the group's identity. Neither needs `prepareOpts`.
-
-### Checkers and interactors
-
-There is no equivalent for checkers and interactors, deliberately. They follow the
-convention {{rbx}} shares with [Kattis](https://github.com/Kattis/problem-package-format/issues/393):
-whatever context they need belongs in the input or answer file, both of which are
-judge-controlled data you generate yourself. If a checker has to know it is judging a
-subtask, encode that in the answer file.
-
-For interactors, it is also a hard {{testlib}} constraint rather than a preference:
-`registerInteraction` hard-wires `argv[3..5]` to the answer file, the report file and
-`-appes`, so appending any extra flag corrupts its argument parsing.
-
-### Showing the constraints in the statement
-
-The resolved values are available to statements as `problem.groups.<name>.vars.<key>`,
-which is what makes a subtasks table possible:
-
-```tex
-%- for g in problem.groups
-  \subtask{\VAR{g.name}}{\VAR{g.score}}
-  $\VAR{g.vars.N.min} \le N \le \VAR{g.vars.N.max}$
-%- endfor
-```
-
-These are the **resolved** values, not the raw override, so a group that overrides
-nothing still renders the inherited package-level value — `large` above renders
-`2 \le N \le 1000`, not a blank.
-
-
-
+  `argv` sees exactly the same values as a C++ one using `getVar`.
 
 

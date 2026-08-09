@@ -397,41 +397,7 @@ You can pass variables to validators in two different ways.
     The values passed here are already resolved for the testgroup being validated, so an
     `argv`-parsing validator and a `getVar` one always agree.
 
-    !!! tip "Booleans are passed as `1` and `0`"
-
-        A boolean variable is rendered on the command line as `--flag=1` / `--flag=0`,
-        not with Python's `True` / `False` nor with C++'s `true` / `false`. That is the
-        only spelling both libraries {{rbx}} ships can read: {{testlib}}'s `opt<bool>`
-        accepts `true`, `false`, `1` and `0`, while {{jngen}}'s `getOpt<bool>` parses
-        the value with `std::istringstream` and accepts only `1` and `0`.
-
-        So a validator reading the flag as a raw string sees `"1"`, and one reading it
-        through `getVar<bool>` sees the boolean itself. Note that {{testlib}}'s
-        `opt<>()` is not usable inside a validator at all (see below), and that
-        {{jngen}} strips a single leading dash when it parses arguments, so `--flag=1`
-        is looked up as `getOpt("-flag")`.
-
-{{rbx}} additionally passes `--group <name>` naming the top-level testgroup being validated
-(and `--testOverviewLogFileName`, which {{testlib}} uses to report the bounds your tests hit).
-
-!!! danger "`opt()` does not work in a {{testlib}} validator"
-
-    ```cpp
-    // DOES NOT WORK: `group` is always "".
-    std::string group = opt<std::string>("group", "");
-    ```
-
-    {{testlib}}'s `opt<>()` reads a table populated only by `prepareOpts()`, and
-    `registerValidation` never calls it (only `registerGen` does). The lookup misses, the
-    default is returned, and any branch on it is silently dead.
-
-    Calling `prepareOpts` yourself springs a second trap: the two-argument
-    `opt(key, default)` form turns on {{testlib}}'s "no unused opts" check, which then
-    fails every testcase with `FAIL Opts: unused key 'N.max'` over the variables {{rbx}}
-    injects and you read with `getVar`.
-
-    Use per-group `vars` for constraints, and `rbx::getGroup()` (from `rbx.h`) or
-    `validator.group()` when you need the group's name. Neither requires `prepareOpts`.
+{{rbx}} additionally passes `--group <name>` naming the top-level testgroup being validated.
 
 ### Per-testgroup variables
 

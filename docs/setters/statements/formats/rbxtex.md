@@ -91,6 +91,21 @@ variables.
         max: 100
     ```
 
+For problems with custom testgroups, the variables of each testgroup -- after applying
+its [per-testgroup overrides](../../reference/package/index.md#per-testgroup-variables) --
+are available as `problem.groups.<name>.vars.<key>`, which is what makes a subtasks table
+possible:
+
+```latex
+%- for g in problem.groups
+  \subtask{\VAR{g.name}}{\VAR{g.score}}
+  $\VAR{g.vars.N.min} \le N \le \VAR{g.vars.N.max}$
+%- endfor
+```
+
+These are the resolved values, so a testgroup that overrides nothing still renders the
+package-level value.
+
 ### Comments
 
 You can use standard LaTeX comments `% ...`, but rbxTeX also supports block comments that are stripped before processing:
