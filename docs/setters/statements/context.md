@@ -1,0 +1,238 @@
+# Template context
+
+Every value your statement prints — and every value the
+[template](contest.md#the-contest-owns-the-templates) that wraps it reaches for —
+comes from one of a handful of **namespaces** exposed to `\VAR{...}` and the
+`%- ...` / `\BLOCK{...}` {{Jinja2}} statements. This page is the reference for what
+lives in each one and, just as importantly, why they stay separate.
+
+## Namespaces don't merge
+
+Here's the pain this design spares you. Older versions of {{rbx}} collapsed
+everything — your problem's data, the template's knobs, the contest's metadata —
+into one merged `vars`. That's convenient right up until two of those sources want
+the same key: one silently wins, and you're left debugging a statement that prints
+the wrong number with no clue which source won.
+
+So they don't merge anymore. `params`, `vars`, and `contest` are **three distinct
+namespaces**; each source keeps its own name, and nothing is copied between them.
+Reaching a value just means knowing which namespace it belongs to:
+
+```latex
+\VAR{params.show_limits}   %# the statement's own param
+\VAR{vars.author}          %# a problem/package var
+\VAR{contest.title}        %# contest metadata
+\VAR{contest.vars.year}    %# a contest var (dotted, separate)
+```
+
+The exact set of top-level names depends on **what is being rendered**:
+
+| Namespace | Contents | Available in |
+| :--- | :--- | :--- |
+| `params` | this render's own statement `params` | all renders |
+| `vars` | the problem/package `vars` (problem render) or the contest `vars` (contest join) | all renders |
+| `contest` | `contest.title`, `contest.vars.*`, and (when set) `contest.location` / `contest.date` | all renders |
+| `problem` | `title`, `limits`, `profiles`, `groups`, `samples`, `vars`, `params`, `blocks`, and (when set) `short_name`, `import_dir`, `import_file` | problem renders |
+| `problems` | a list of the above (full in a contest join; metadata-only in a document) | contest join; documents |
+| `lang`, `languages`, `keyed_languages` | environment languages | all renders |
+
+!!! note "`problem` vs `problems`"
+    A **problem render** (`rbx st b`, and each problem inside a contest join)
+    exposes the singular `problem` — there is **no `problems`**. The **contest
+    joining document** exposes the list `problems` — there is **no singular
+    `problem`**. [Documents](contest.md#documents) also get `problems`, but metadata-only
+    (per-problem `title` / `short_name` / `limits` / `profiles` / `groups`; no
+    `blocks`, `samples`, or import handles).
+
+## `params` vs `vars`
+
+They answer two different questions, so {{rbx}} keeps them in two different
+namespaces:
+
+- **`vars`** is *your problem's own data* — constraints, an author name, a flag
+  your statement text keys off. It comes from `vars` in `problem.rbx.yml` (or the
+  contest's `vars` in a contest join).
+- **`params`** are *knobs for the template/presentation* — e.g. whether to draw
+  the limits box. They come from the `params` of the statement entry being
+  rendered.
+
+Let's put them side by side — the author name is data, the "show limits" toggle is
+a presentation knob:
+
+=== "statement.rbx.tex"
+
+    ```latex
+    %- if params.show_limits
+    Time limit: \VAR{problem.limits.timeLimit} ms.
+    %- endif
+
+    Problem by \VAR{vars.author}.
+    ```
+
+=== "problem.rbx.yml"
+
+    ```yaml
+    vars:
+      author: "Jane Doe"      # your problem's data → vars.*
+    statements:
+      - language: en
+        file: statements/statement.rbx.tex
+        params:
+          show_limits: true   # a template knob → params.*
+    ```
+
+Notice that `author` and `show_limits` sit in the *same* `problem.rbx.yml`, yet
+the template reaches them as `vars.author` and `params.show_limits` — never as one
+flattened blob.
+
+`contest` is a **separate, dotted** namespace — it is never folded into the
+top-level `vars`. A contest variable is `\VAR{contest.vars.year}`, and the
+contest title is `\VAR{contest.title}`; top-level `vars` still means the
+*problem's* vars in a problem render. So in a single render, these two point at
+genuinely different values:
+
+```latex
+\VAR{vars.author}        %# the problem's var
+\VAR{contest.vars.year}  %# a contest var — dotted, never merged into vars
+```
+
+## Filters
+
+Any `\VAR{...}` value can be piped through a **filter** with `|`, exactly like in
+{{Jinja2}}. On top of the standard {{Jinja2}} filters, {{rbx}} registers a few
+LaTeX-aware ones you'll reach for constantly:
+
+- **`sci`** — a "round" integer in scientific notation:
+  `\VAR{vars.N.max | sci}` renders `1000000000` as `10^9`.
+- **`rsci`** — like `sci`, but keeps the remainder:
+  `\VAR{vars.MOD | rsci}` renders `1000000007` as `10^9 + 7`.
+- **`escape`** — LaTeX-escape a string (`_`, `%`, `&`, …):
+  `\VAR{vars.author | escape}`.
+- **`parent`** — a path's parent directory, e.g. `\VAR{sample.input | parent}`.
+- **`stem`** — a path's filename without its extension: `\VAR{sample.input | stem}`.
+
+The standard {{Jinja2}} filters (`upper`, `join`, `default`, …) also work.
+
+## The `problem` namespace
+
+In a problem render, `problem` is the one problem you're building. Its most-used
+fields:
+
+```latex
+\VAR{problem.title}                  %# the problem title
+\VAR{problem.limits.timeLimit} ms    %# time limit (ms)
+\VAR{problem.limits.memoryLimit} MB  %# memory limit (MB)
+```
+
+`problem.short_name` (the letter, e.g. `A`) is **conditional** — it may be unset,
+so guard it:
+
+```latex
+%- if problem.short_name is defined
+\textbf{\VAR{problem.short_name}.} \VAR{problem.title}
+%- endif
+```
+
+`problem.vars` and `problem.params` hold that problem's own vars/params — the same
+data as top-level `vars`/`params` in a standalone render. They matter mostly when
+iterating `problems` in a [contest join](contest.md), where each member exposes
+its own `problem.vars.*`.
+
+### Pulling blocks into a template
+
+`problem.blocks` is a dict of **block-name → rendered {{latex}}**. This is how a
+template places the statement's content: each `%- block legend` in the source
+becomes `problem.blocks.legend`. So a template drops the legend in, and the input
+section only when it exists, like this:
+
+```latex
+\VAR{problem.blocks.legend}
+
+%- if problem.blocks.input is defined
+\section*{Input}
+\VAR{problem.blocks.input}
+%- endif
+```
+
+Block names are free-form. See [Writing statements](writing.md#blocks) for the
+conventional set (`legend`, `input`, `output`, `notes`, ...).
+
+### Import handles (contest join only)
+
+`problem.import_dir` and `problem.import_file` are the `\subimport` handle for a
+problem being pulled into a contest book. They exist **only** in a contest-join
+fragment — they are **absent** in a standalone `rbx st b` render, so guard them:
+
+```latex
+%- if problem.import_dir is defined
+\subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
+%- endif
+```
+
+See [Contest statements](contest.md) for the full join pattern.
+
+## Per-sample handles
+
+Samples are handed to the template as `problem.samples` — a list you iterate. Each
+item is a **sample handle** with these fields:
+
+| Field | Meaning |
+| :--- | :--- |
+| `sample.index` | 0-based position (int) |
+| `sample.input` | root-relative path to the input file |
+| `sample.output` | root-relative path to the output file |
+| `sample.has_output` | whether an output file exists (bool) |
+| `sample.dir` | import-base directory for the explanation |
+| `sample.explanation_file` | explanation file to `\subimport` (when present) |
+| `sample.interaction` | interaction protocol (interactive problems), carrying `.chunks` |
+
+`sample.input` / `sample.output` are **path strings meant for verbatim printing** —
+feed them straight to `\VerbatimInput`. The explanation is a separate file you
+`\subimport` from `sample.dir`; guard it, since not every sample has one:
+
+```latex
+%- for sample in problem.samples
+\VerbatimInput{\VAR{sample.input}}
+%- if sample.has_output
+\VerbatimInput{\VAR{sample.output}}
+%- endif
+%- if sample.explanation_file is defined
+\subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}
+%- endif
+%- endfor
+```
+
+!!! note "Why two path anchorings"
+    `sample.input` / `sample.output` are **root-relative** (`\VerbatimInput`
+    ignores the `\subimport` base), while `sample.dir` / `sample.explanation_file`
+    are **import-base-relative** for `\subimport`. You don't have to think about
+    it — just use each handle as shown.
+
+For an **interactive** problem, iterate `sample.interaction.chunks` instead of
+printing plain I/O; each chunk carries `.path`, `.pipe`, and `.data`:
+
+```latex
+%- for sample in problem.samples
+%- if sample.interaction is not none
+%- for chunk in sample.interaction.chunks
+\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
+%- endfor
+%- endif
+%- endfor
+```
+
+## Full field reference
+
+The tables above cover what you reach for day to day. For the **exhaustive** field
+list — every attribute on `limits`, `profiles`, `groups`, and the statement entry
+itself — consult the auto-generated schemas instead of restating them here:
+
+- [Package schema](../reference/package/schema.md) — problems, statements, `vars`,
+  `params`, samples, and limits.
+- [Contest schema](../reference/contest/schema.md) — contest statements, documents,
+  and the contest `vars`.
+
+And once you know what's in the context, the two pages that put it to work are
+[Writing statements](writing.md) — the source side, where blocks, variables, and
+samples come from — and [Contest statements](contest.md), the join side that wires
+the template, documents, and the (language, variant) matrix together.
