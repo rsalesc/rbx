@@ -1,9 +1,11 @@
 import pathlib
 import shutil
 import subprocess
+from typing import List
 
 import pytest
 
+from rbx import config
 from rbx.box import header
 from rbx.box.testing import testing_package
 
@@ -428,3 +430,135 @@ class TestGetVarWrapper:
         )
         result = subprocess.run(['./main'], check=True, capture_output=True, text=True)
         assert result.stdout == 'ok'
+
+
+_GET_GROUP_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+// Resolved before main() runs, to prove no call from main() is needed.
+static const std::string kEarly = rbx::getGroup();
+
+int main() {
+  std::printf("early=[%s]\\n", kEarly.c_str());
+  std::printf("late=[%s]\\n", rbx::getGroup().c_str());
+  return 0;
+}
+"""
+
+# Includes rbx.h BEFORE testlib.h.
+_TESTLIB_BEFORE_MAIN = """
+#include "rbx.h"
+#include "testlib.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  registerValidation(argc, argv);
+  inf.readEof();
+  std::printf("rbx=[%s]\\n", rbx::getGroup().c_str());
+  std::printf("testlib=[%s]\\n", getGroup().c_str());
+  return 0;
+}
+"""
+
+# Includes rbx.h AFTER testlib.h.
+_TESTLIB_AFTER_MAIN = """
+#include "testlib.h"
+#include "rbx.h"
+#include <cstdio>
+
+int main(int argc, char *argv[]) {
+  registerValidation(argc, argv);
+  inf.readEof();
+  std::printf("rbx=[%s]\\n", rbx::getGroup().c_str());
+  std::printf("testlib=[%s]\\n", getGroup().c_str());
+  return 0;
+}
+"""
+
+
+def _require_gpp() -> str:
+    gpp = shutil.which('g++')
+    if gpp is None:
+        pytest.skip('g++ is not available')
+    return gpp
+
+
+def _compile(gpp: str, source: str, name: str, extra_args: List[str]) -> None:
+    pathlib.Path(f'{name}.cpp').write_text(source)
+    subprocess.run(
+        [gpp, '-std=c++20', '-O2', '-Wall', '-Werror', '-o', name, f'{name}.cpp']
+        + extra_args,
+        check=True,
+    )
+
+
+class TestGetGroup:
+    """Tests for rbx::getGroup(), which parses --group out of argv."""
+
+    @pytest.mark.parametrize(
+        ('argv', 'expected'),
+        [
+            (['--group', 'sub2'], 'sub2'),
+            (['--group=sub2'], 'sub2'),
+            (['--AB.min=-200', '--group', 'sub2', '--other', 'x'], 'sub2'),
+            ([], ''),
+            (['--group'], ''),
+            (['--groups', 'sub2'], ''),
+        ],
+    )
+    def test_get_group_parses_argv(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        argv: List[str],
+        expected: str,
+    ):
+        gpp = _require_gpp()
+
+        header.generate_header()
+        _compile(gpp, _GET_GROUP_MAIN, 'main', [])
+
+        result = subprocess.run(
+            ['./main'] + argv, check=True, capture_output=True, text=True
+        )
+        assert result.stdout == f'early=[{expected}]\nlate=[{expected}]\n'
+
+    def test_header_does_not_depend_on_testlib(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        header.generate_header()
+
+        header_content = pathlib.Path('rbx.h').read_text()
+        assert 'testlib' not in header_content.lower()
+        assert '_TESTLIB_H_' not in header_content
+
+    @pytest.mark.parametrize(
+        ('source', 'name'),
+        [
+            (_TESTLIB_BEFORE_MAIN, 'rbx_first'),
+            (_TESTLIB_AFTER_MAIN, 'testlib_first'),
+        ],
+    )
+    def test_get_group_coexists_with_testlib(
+        self, testing_pkg: testing_package.TestingPackage, source: str, name: str
+    ):
+        """rbx::getGroup() must not collide with testlib's global getGroup()."""
+        gpp = _require_gpp()
+
+        header.generate_header()
+        testlib = config.get_resources_file(pathlib.Path('predownloaded/testlib.h'))
+        pathlib.Path('testlib.h').write_text(testlib.read_text())
+
+        # testlib.h is not warning-clean under -Wall -Werror, so relax it here;
+        # the point of this test is the name collision, not warnings.
+        _compile(gpp, source, name, ['-Wno-error', '-w'])
+
+        result = subprocess.run(
+            [f'./{name}', '--group', 'sub2'],
+            check=True,
+            capture_output=True,
+            text=True,
+            input='',
+        )
+        assert result.stdout == 'rbx=[sub2]\ntestlib=[sub2]\n'

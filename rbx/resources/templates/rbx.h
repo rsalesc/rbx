@@ -1,10 +1,100 @@
 #ifndef _RBX_H
 #define _RBX_H
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
+
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#endif
+
+namespace rbx {
+namespace detail {
+
+// Reads this process' own command line, so that the group can be resolved
+// without the program having to call anything from main(), and without this
+// header depending on any other library.
+//
+// Both supported platforms expose the command line to the process itself:
+// macOS through the public _NSGetArgc/_NSGetArgv accessors, and Linux through
+// the NUL-separated /proc/self/cmdline. Anywhere else this returns nothing,
+// which reads as "no group" and falls back to package-level values.
+inline std::vector<std::string> collectArgs() {
+  std::vector<std::string> args;
+#if defined(__APPLE__)
+  int argc = *_NSGetArgc();
+  char **argv = *_NSGetArgv();
+  if (argv == nullptr) {
+    return args;
+  }
+  for (int i = 0; i < argc && argv[i] != nullptr; i++) {
+    args.push_back(std::string(argv[i]));
+  }
+#elif defined(__linux__)
+  std::FILE *file = std::fopen("/proc/self/cmdline", "rb");
+  if (file == nullptr) {
+    return args;
+  }
+  std::string current;
+  int ch;
+  while ((ch = std::fgetc(file)) != EOF) {
+    if (ch == '\0') {
+      args.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(static_cast<char>(ch));
+  }
+  if (!current.empty()) {
+    args.push_back(current);
+  }
+  std::fclose(file);
+#endif
+  return args;
+}
+
+inline std::string parseGroupFromArgs(const std::vector<std::string> &args) {
+  static const std::string kFlag = "--group";
+  // Skips args[0], the program name.
+  for (std::size_t i = 1; i < args.size(); i++) {
+    const std::string &arg = args[i];
+    if (arg.compare(0, kFlag.size(), kFlag) != 0) {
+      continue;
+    }
+    // "--group=value"
+    if (arg.size() > kFlag.size() && arg[kFlag.size()] == '=') {
+      return arg.substr(kFlag.size() + 1);
+    }
+    // "--group value"; a trailing flag with no value reads as absent.
+    if (arg.size() == kFlag.size()) {
+      if (i + 1 < args.size()) {
+        return args[i + 1];
+      }
+      return "";
+    }
+    // Anything else ("--groups", ...) is a different flag.
+  }
+  return "";
+}
+
+} // namespace detail
+
+// The test group currently being validated, as passed by rbx via `--group`.
+// Empty when the program was not run for a specific group, in which case
+// getVar returns the package-level values.
+//
+// Parsed once, on first use.
+inline const std::string &getGroup() {
+  static const std::string group =
+      detail::parseGroupFromArgs(detail::collectArgs());
+  return group;
+}
+
+} // namespace rbx
 
 std::optional<std::string> getStringVar(std::string name) {
   //<rbx::string_var>
