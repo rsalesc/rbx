@@ -1,0 +1,32 @@
+# The failing testcase is named by its path, which rbx prints in full -- a long
+# tmpdir path that Rich folds at the console width, possibly mid-token. Hence
+# the `\s*` between the characters of the group segment, and `\s+` between
+# words elsewhere: a literal substring assertion would be width-dependent.
+scenarios:
+  - name: build-rejects-out-of-group-bounds
+    description: |
+      The regression test for the bug per-group vars exist to fix: a
+      constraint that applies to one group only must actually fire.
+
+      `gen -5 5` is legal at package level and legal in `full`, but the
+      `nonneg` group overrides `AB.min` to 0, so the very same validator --
+      which never mentions a group name -- must reject it there. The report
+      names the offending group through the testcase path and quotes the
+      group-resolved range `[0, 200]`, not the package-level `[-200, 200]`.
+
+      `rbx build` reports the failure and stops before generating outputs, but
+      still exits 0, so the assertions are on the report and on the absence of
+      `.out` files rather than on the exit code.
+    steps:
+      - cmd: build
+        expect:
+          stdout_matches: "n\\s*o\\s*n\\s*n\\s*e\\s*g\\s*/\\s*0\\s*0\\s*1\\s*\\.\\s*i\\s*n[\\s\\S]*Gen\\.\\s+call:\\s+gen\\s+-5\\s+5[\\s\\S]*violates\\s+the\\s+range\\s+\\[0,\\s*200\\][\\s\\S]*Validation\\s+failed"
+          stdout_not_contains:
+            # `full` runs the same shape of input (`gen -5 6`, a negative A)
+            # with no override, and is not reported.
+            - "gen -5 6"
+          files_exist:
+            - "build/tests/nonneg/001.in"
+          files_absent:
+            # Validation failed, so no outputs were ever generated.
+            - "build/tests/*/*.out"
