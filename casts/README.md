@@ -157,6 +157,19 @@ pages still carry, because the snippets as printed do not run:
   `ouf.readInt`, rejecting the `? X` format the same statement specifies. The
   fixture fixes both.
 
+## Re-record on an idle machine
+
+A cast's timeline is real elapsed time: the engine advances its clock by the
+wall-clock time each command actually took. A recording made while the machine
+is busy is therefore a *slower recording*, permanently — and the compile-heavy
+fixtures are the ones that suffer. Recording the whole set with `mkdocs serve`
+rebuilding in the background once stretched `unit-tests` from 9s to 22s.
+
+So close the docs server and anything else expensive first, and re-record only
+what changed rather than everything. Compare against the previous file before
+committing; a cast that got noticeably longer with no change to its spec was
+timed against load, not against `rbx`.
+
 ## Known gaps
 
 - **`create-problem` needs the network.** `rbx create` clones the preset from
