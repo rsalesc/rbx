@@ -234,6 +234,38 @@ testcases:
 
 1. Add a specific validator to verify constraints of a smaller sub-task of the problem.
 
+#### Vary constraints per testgroup
+
+Prefer this over a testgroup-specific validator (and over branching on the group name
+inside the validator) whenever the subtasks differ only in their constraints.
+
+```yaml
+vars:
+  N:
+    min: 1
+    max: 1000
+testcases:
+  - name: "small"
+    # Define tests...
+    vars:
+      N:
+        max: 50 # (1)!
+  - name: "large"
+    # Define tests... # (2)!
+```
+
+1. Overrides `N.max` for this group only. The merge is leaf-by-leaf, so `N.min` stays
+   at the package-level `1`. The validator is untouched: `getVar<int>("N.max")` returns
+   `50` here and `1000` elsewhere.
+
+2. No override, so the package-level values apply.
+
+!!! danger "`opt()` does not work in a {{testlib}} validator"
+    `registerValidation` never calls `prepareOpts`, so `opt<std::string>("group", "")`
+    silently returns the default and any branch on it is dead code. Use per-group `vars`,
+    or `rbx::getGroup()` / `validator.group()` for the group's name. See
+    [Validators](verification/validators.md#opt-does-not-work-in-a-validator).
+
 ### Add variables
 
 The variables below can be reused across validators and statements.

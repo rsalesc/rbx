@@ -350,6 +350,36 @@ You can specify validators in two places:
           path: "validator-alternative.cpp"
     ```
 
+3. In the testgroup definition, through the `vars` field, which overrides the package-level `vars` for that group only. The validator is unchanged: it keeps reading the same variable names, and gets the values effective for the group being validated.
+
+    ```yaml
+    validator:
+      path: "validator.cpp"
+    vars:
+      N:
+        min: 1
+        max: 1000
+    testcases:
+      - name: "small"
+        # ...other testgroup definitions
+        vars:
+          N:
+            max: 50 # N.min stays at the package-level 1.
+      - name: "large"
+        # No override: the package-level values apply.
+    ```
+
+    The merge is done leaf by leaf, so a partial override keeps its siblings, and the
+    keys need not exist at package level -- a variable meaningful only inside one group
+    can be declared there alone. Only top-level testgroups can declare `vars`; subgroups
+    cannot, because {{rbx}} only passes the top-level group name to the validator.
+
+    The resolved values are also readable in statements as `problem.groups.<name>.vars.<key>`.
+
+    !!! success "Recommended"
+        This is the recommended way of varying constraints between subtasks. See
+        [Varying constraints per test group](../../verification/validators.md#varying-constraints-per-test-group).
+
 You can pass variables to validators in two different ways.
 
 1. (C++ only) Include the `rbx.h` header and using the `getVar` accessor.
@@ -393,6 +423,31 @@ You can pass variables to validators in two different ways.
 
     # Use variables...
     ```
+
+    The values passed here are already resolved for the testgroup being validated, so an
+    `argv`-parsing validator and a `getVar` one always agree.
+
+{{rbx}} additionally passes `--group <name>` naming the top-level testgroup being validated
+(and `--testOverviewLogFileName`, which {{testlib}} uses to report the bounds your tests hit).
+
+!!! danger "`opt()` does not work in a {{testlib}} validator"
+
+    ```cpp
+    // DOES NOT WORK: `group` is always "".
+    std::string group = opt<std::string>("group", "");
+    ```
+
+    {{testlib}}'s `opt<>()` reads a table populated only by `prepareOpts()`, and
+    `registerValidation` never calls it (only `registerGen` does). The lookup misses, the
+    default is returned, and any branch on it is silently dead.
+
+    Calling `prepareOpts` yourself springs a second trap: the two-argument
+    `opt(key, default)` form turns on {{testlib}}'s "no unused opts" check, which then
+    fails every testcase with `FAIL Opts: unused key 'N.max'` over the variables {{rbx}}
+    injects and you read with `getVar`.
+
+    Use per-group `vars` for constraints, and `rbx::getGroup()` (from `rbx.h`) or
+    `validator.group()` when you need the group's name. Neither requires `prepareOpts`.
 
 ### Extra validators
 

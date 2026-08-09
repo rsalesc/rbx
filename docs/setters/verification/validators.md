@@ -280,9 +280,165 @@ testcases:
       - path: 'straight-validator.cpp'
 ```
 
+## Varying constraints per test group
 
+Subtasks usually differ only in *how large* the input may get, not in what a valid
+input looks like. When that is the case you do not need a second validator, and you
+should not branch on the group name inside the one you have. Override the variables
+the validator already reads, in the group itself.
 
+=== "problem.rbx.yml"
+    ```yaml hl_lines="14-16"
+    # ... rest of the problem.rbx.yml ...
+    scoring: POINTS
+    validator:
+      path: 'validator.cpp'
+    vars:
+      N:
+        min: 2
+        max: 1000
+    testcases:
+      - name: samples
+        testcaseGlob: documents/samples/*.in
+      - name: small
+        score: 30
+        vars:
+          N:
+            max: 50 # (1)!
+      - name: large
+        score: 70 # (2)!
+    ```
 
+    1.  Only `N.max` is overridden. The merge happens leaf by leaf, so `N.min`
+        keeps the package-level value of `2`.
+
+    2.  No `vars` block, so this group validates against the package-level values.
+
+=== "validator.cpp"
+    ```cpp
+    #include "testlib.h"
+    #include "rbx.h"
+
+    int main(int argc, char *argv[]) {
+      registerValidation(argc, argv);
+
+      // Unchanged. `getVar` already returns the value effective for the group
+      // being validated: 50 inside `small`, 1000 inside `large`.
+      int MIN_N = getVar<int>("N.min");
+      int MAX_N = getVar<int>("N.max");
+
+      int n = inf.readInt(MIN_N, MAX_N, "N");
+      // ...rest of the validator...
+    }
+    ```
+
+**The validator source does not change at all.** {{rbx}} passes the group being
+validated to every validator run, and the generated `rbx.h` resolves `getVar` against
+it. A test that is legal in `large` and too big for `small` now fails in `small`, and
+`rbx build` reports it.
+
+A few details worth knowing:
+
+- **The merge is deep, at the leaf.** `vars: {N: {max: 50}}` overrides `N.max` and
+  leaves every sibling (`N.min`, and every other variable) alone. You never have to
+  restate the constraints you are not changing.
+- **The keys do not have to exist at package level.** A variable that is only
+  meaningful inside one group can be declared in that group alone. Reading it from
+  another group fails loudly with the usual `getVar` error (*Variable `X` ... could
+  not be found*), rather than quietly returning something.
+- **Only top-level testgroups can declare `vars`.** Subgroups cannot: {{rbx}} only
+  tells the validator the top-level group name, so a subgroup override would have no
+  way to be selected at runtime.
+- The group's resolved values are also what {{rbx}} passes on the validator command
+  line as `--{name}={value}`, so a validator written in another language that parses
+  `argv` sees exactly the same numbers as a C++ one using `getVar`.
+
+### Reading the group name
+
+Some checks genuinely are not parameters — "this group must contain only trees" is
+not a number you can put in `vars`. For those, `rbx.h` exposes the name of the group
+being validated:
+
+```cpp
+#include "testlib.h"
+#include "rbx.h"
+
+int main(int argc, char *argv[]) {
+  registerValidation(argc, argv);
+
+  if (rbx::getGroup() == "trees") {
+    // ...check the input is a tree...
+  }
+}
+```
+
+`rbx::getGroup()` needs no initialization call and does not depend on {{testlib}}; it
+returns an empty string when the validator is run outside of any group (for example
+through `rbx validate`). {{testlib}}'s own `validator.group()` returns the same value.
+
+!!! warning "Prefer per-group `vars` whenever the difference is a constraint"
+
+    A `if (group == "small")` branch is only as good as the group's name. Rename the
+    group, split it in two, or reuse the validator in another problem, and the branch
+    silently stops matching — no error, the check simply evaporates and the build
+    stays green.
+
+    A `vars` override travels *inside* the group entry, so renaming the group cannot
+    detach it.
+
+### `opt()` does not work in a validator
+
+This one deserves a section of its own, because it fails silently.
+
+```cpp
+// DOES NOT WORK. `group` is always "".
+std::string group = opt<std::string>("group", "");
+if (group == "sub2") {
+  ensuref(a + b >= a - b, "subtask 2 requires A+B >= A-B");
+}
+```
+
+{{rbx}} does pass `--group <name>` to validators, but {{testlib}}'s `opt<>()` reads
+from a table that only `prepareOpts()` fills in — and `registerValidation` never calls
+it (only `registerGen` does). So `has_opt("group")` is false, `opt(..., "")` hands back
+the default, the branch is dead, and nothing anywhere reports a problem.
+
+Adding `prepareOpts(argc, argv)` yourself makes `opt` see the group, and then springs a
+second trap: the two-argument `opt(key, default)` form turns on {{testlib}}'s
+"no unused opts" check, and {{rbx}} passes *every* package variable as `--{name}={value}`.
+Since you read those with `getVar` rather than `opt`, {{testlib}} sees them as unused and
+fails every testcase with `FAIL Opts: unused key 'N.max'`.
+
+Use per-group `vars` for constraints, and `rbx::getGroup()` (or `validator.group()`) when
+you really need the group's identity. Neither needs `prepareOpts`.
+
+### Checkers and interactors
+
+There is no equivalent for checkers and interactors, deliberately. They follow the
+convention {{rbx}} shares with [Kattis](https://github.com/Kattis/problem-package-format/issues/393):
+whatever context they need belongs in the input or answer file, both of which are
+judge-controlled data you generate yourself. If a checker has to know it is judging a
+subtask, encode that in the answer file.
+
+For interactors, it is also a hard {{testlib}} constraint rather than a preference:
+`registerInteraction` hard-wires `argv[3..5]` to the answer file, the report file and
+`-appes`, so appending any extra flag corrupts its argument parsing.
+
+### Showing the constraints in the statement
+
+The resolved values are available to statements as `problem.groups.<name>.vars.<key>`,
+which is what makes a subtasks table possible:
+
+```tex
+%- for g in problem.groups
+  \subtask{\VAR{g.name}}{\VAR{g.score}}
+  $\VAR{g.vars.N.min} \le N \le \VAR{g.vars.N.max}$
+%- endfor
+```
+
+These are the **resolved** values, not the raw override, so a group that overrides
+nothing still renders the inherited package-level value — `large` above renders
+`2 \le N \le 1000`, not a blank.
 
 
 
