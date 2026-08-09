@@ -6,6 +6,10 @@
 // The bounds are read twice: from the tables generated into rbx.h (getVar) and
 // from the command line rbx passes to the validator (opt). Both must resolve to
 // the same group-effective values, otherwise the validation fails loudly.
+//
+// The no-default `opt<T>(key)` form is load-bearing: `opt(key, default)` (like
+// `has_opt`) arms testlib's unused-opt check, which would then turn every var
+// rbx injects and this validator does not read into a hard failure.
 
 int main(int argc, char *argv[]) {
   registerValidation(argc, argv);

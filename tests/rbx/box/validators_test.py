@@ -8,7 +8,7 @@ from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.validators import (
-    _has_group_specific_validator,
+    _has_group_specific_bounds,
     check_output_from_entries,
     has_validation_errors,
     print_validation_report,
@@ -620,6 +620,10 @@ async def test_validator_receives_group_resolved_vars(
     testing_pkg.yml.testcases[-1].vars = {'N': {'max': 10}}
     testing_pkg.save()
     testing_pkg.add_file('manual_tests/small/pass.in').write_text('5\n')
+    # `small/fail.in` and `large/pass.in` are deliberately the same input: one
+    # value getting opposite verdicts in two groups is the strongest form of
+    # this assertion. Generation warns they are hash duplicates; that is
+    # expected, and desynchronising them would weaken the test.
     testing_pkg.add_file('manual_tests/small/fail.in').write_text('500\n')
 
     testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
@@ -629,7 +633,7 @@ async def test_validator_receives_group_resolved_vars(
     await generate_testcases()
     validation_infos = await validate_testcases()
 
-    results = {}
+    infos_by_case = {}
     for info in validation_infos:
         assert info.testcase is not None
         assert info.generation_metadata is not None
@@ -637,16 +641,16 @@ async def test_validator_receives_group_resolved_vars(
 
         group = info.testcase.group
         name = info.generation_metadata.copied_from.inputPath.name
-        results[(group, name)] = info
+        infos_by_case[(group, name)] = info
 
     # The group override lowers N.max to 10, so 500 is only valid in `large`.
-    assert results[('small', 'pass.in')].ok is True
-    assert results[('small', 'fail.in')].ok is False
-    assert results[('large', 'pass.in')].ok is True
-    assert results[('large', 'fail.in')].ok is False
+    assert infos_by_case[('small', 'pass.in')].ok is True
+    assert infos_by_case[('small', 'fail.in')].ok is False
+    assert infos_by_case[('large', 'pass.in')].ok is True
+    assert infos_by_case[('large', 'fail.in')].ok is False
 
     # No testcase may fail because argv and rbx.h resolved different bounds.
-    for info in results.values():
+    for info in infos_by_case.values():
         assert 'disagree' not in (info.message or '')
 
 
@@ -659,12 +663,12 @@ def test_group_vars_make_bounds_group_specific(
     testing_pkg.add_testgroup_from_glob('small', 'manual_tests/small/*.in')
     testing_pkg.add_testgroup_from_glob('large', 'manual_tests/large/*.in')
 
-    assert _has_group_specific_validator() is False
+    assert _has_group_specific_bounds() is False
 
     testing_pkg.yml.testcases[0].vars = {'N': {'max': 10}}
     testing_pkg.save()
 
-    assert _has_group_specific_validator() is True
+    assert _has_group_specific_bounds() is True
 
 
 async def test_check_output_from_entries_with_checker(

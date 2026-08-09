@@ -94,13 +94,18 @@ def _merge_hit_bounds(hit_bounds: Iterable[HitBounds]) -> HitBounds:
     return res
 
 
-def _has_group_specific_validator() -> bool:
+def _has_group_specific_bounds() -> bool:
     """Whether the bounds a validator enforces can differ between groups.
 
     A group gets its own bounds either by running its own validator, or by
     overriding the `vars` the shared validator reads. Merging the hit bounds of
     groups that were validated against different constraints would report
     bounds as not hit that no testcase of that group could ever hit.
+
+    Deliberately conservative on the `vars` arm: any group declaring `vars` --
+    even ones no validator ever reads -- switches the whole package to
+    per-group hit-bounds reporting. Over-reporting is recoverable; a merged
+    report that hides a group's unhit bound is not.
     """
     pkg = package.find_problem_package_or_die()
 
@@ -535,7 +540,7 @@ def print_validation_report(
         console.console.print()
         return
 
-    if not _has_group_specific_validator():
+    if not _has_group_specific_bounds():
         hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
 
     def _is_hit_bound_good(hit_bounds: HitBounds) -> bool:
