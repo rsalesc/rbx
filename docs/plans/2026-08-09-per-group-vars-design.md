@@ -185,9 +185,10 @@ selects package defaults).
 violation (confirmed: clang reports `redefinition of 'getGroup'`). `getVar`
 stays global as the one name setters actually call.
 
-**Follow-up (not yet implemented).** On an unsupported platform the fallback is
-silent: `getGroup()` returns `""` and validation quietly uses package-level
-vars. Since `header.py` knows whether any group declares `vars`, it can emit
+**Implemented** (with the `getVar` work). On an unsupported platform the
+fallback would be silent: `getGroup()` returns `""` and validation quietly uses
+package-level vars. Since `header.py` knows whether any group declares `vars`,
+it emits
 
 ```cpp
 #if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)
@@ -196,7 +197,7 @@ vars. Since `header.py` knows whether any group declares `vars`, it can emit
 ```
 
 only into headers for packages that actually use the feature, turning that
-silent fallback into a compile error. Belongs with the `getVar` work.
+silent fallback into a compile error.
 
 ### Package schema
 

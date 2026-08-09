@@ -3,10 +3,17 @@ import importlib
 import importlib.resources
 import json
 import pathlib
-from typing import Callable, Dict, Type
+from typing import Callable, Dict, List, NamedTuple, Type
 
 from rbx.box import package
-from rbx.box.fields import Primitive
+from rbx.box.fields import Primitive, Vars
+
+# Emitted only when some group declares `vars`. rbx::getGroup() returns "" on
+# platforms where the command line is not reachable, which would silently
+# validate against package-level constraints; a compile error is preferable.
+_GROUP_GUARD = """#if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)
+#error "rbx: per-group vars need command-line access on this platform"
+#endif"""
 
 
 @functools.cache
@@ -32,21 +39,8 @@ def generate_header():
         f.write(_preprocess_header(header))
 
 
-def _preprocess_header(header: str) -> str:
-    return (
-        header.replace('//<rbx::string_var>', _get_string_var_block())
-        .replace('//<rbx::int_var>', _get_int_var_block())
-        .replace('//<rbx::float_var>', _get_float_var_block())
-        .replace('//<rbx::bool_var>', _get_bool_var_block())
-    )
-
-
 def _string_repr(s):
     return json.dumps(s)
-
-
-def _get_string_var_block() -> str:
-    return _get_var_block(_get_vars_of_type(str, _string_repr))
 
 
 def check_int_bounds(x: int) -> None:
@@ -60,45 +54,88 @@ def check_int_bounds(x: int) -> None:
         )
 
 
-def _get_int_var_block() -> str:
-    def _transform(x: Primitive) -> str:
-        if isinstance(x, bool):
-            return f'static_cast<int64_t>({int(x)})'
-        check_int_bounds(int(x))
-        return f'static_cast<int64_t>({x})'
+def _int_repr(x: Primitive) -> str:
+    if isinstance(x, bool):
+        return f'static_cast<int64_t>({int(x)})'
+    check_int_bounds(int(x))
+    return f'static_cast<int64_t>({x})'
 
-    # Get both int and bool variables for the int block
+
+class _VarType(NamedTuple):
+    """One of the four typed accessors rbx.h exposes."""
+
+    # Prefix of the `//<rbx::{name}_var>` / `//<rbx::{name}_var_groups>` sentinels.
+    name: str
+    # Python type whose values this accessor serves. The int accessor also
+    # serves bools, since `isinstance(True, int)`; `_int_repr` renders them.
+    type: Type
+    # Renders a value as the C++ literal the accessor returns.
+    render: Callable[[Primitive], str]
+
+
+_VAR_TYPES: List[_VarType] = [
+    _VarType('string', str, _string_repr),
+    _VarType('int', int, _int_repr),
+    _VarType('float', float, lambda x: f'{x}'),
+    _VarType('bool', bool, lambda x: 'true' if x else 'false'),
+]
+
+
+def _preprocess_header(header: str) -> str:
+    # Sentinels are replaced together with their own newline, so a block that
+    # comes out empty leaves no blank line behind.
+    header = header.replace('//<rbx::group_guard>\n', _get_group_guard())
+    for var_type in _VAR_TYPES:
+        header = header.replace(
+            f'//<rbx::{var_type.name}_var_groups>\n', _get_group_block(var_type)
+        ).replace(f'//<rbx::{var_type.name}_var>\n', _get_package_block(var_type))
+    return header
+
+
+def _get_groups_with_vars() -> List[str]:
+    """Names of the groups that declare `vars` overrides, in a fixed order."""
     pkg = package.find_problem_package_or_die()
-    vars = pkg.expanded_vars
-    int_vars = {
-        name: _transform(value)
-        for name, value in vars.items()
-        if isinstance(value, (int, bool))
-    }
-    return _get_var_block(int_vars)
+    return sorted(group.name for group in pkg.testcases if group.vars)
 
 
-def _get_float_var_block() -> str:
-    return _get_var_block(_get_vars_of_type(float, lambda x: f'{x}'))
+def _get_group_guard() -> str:
+    if not _get_groups_with_vars():
+        return ''
+    return _GROUP_GUARD + '\n\n'
 
 
-def _get_bool_var_block() -> str:
-    return _get_var_block(_get_vars_of_type(bool, lambda x: 'true' if x else 'false'))
-
-
-def _get_vars_of_type(t: Type, transform: Callable[[Primitive], str]) -> Dict[str, str]:
+def _get_package_block(var_type: _VarType) -> str:
     pkg = package.find_problem_package_or_die()
-    vars = pkg.expanded_vars
-    return {
-        name: transform(value) for name, value in vars.items() if isinstance(value, t)
-    }
+    return _get_var_block(_get_vars_of_type(pkg.expanded_vars, var_type))
 
 
-def _get_var_block(mappings: Dict[str, str]) -> str:
+def _get_group_block(var_type: _VarType) -> str:
     entries = []
+    for group_name in _get_groups_with_vars():
+        vars = package.get_expanded_vars_for_group(group_name)
+        # The arm holds the group's whole resolved var set, not just its
+        # overrides, so the package-level block below cannot shadow it.
+        block = _get_var_block(_get_vars_of_type(vars, var_type), indent=4)
+        if not block:
+            continue
+        entries.append(f'  if (group == "{group_name}") {{\n{block}  }}\n')
+    return ''.join(entries)
+
+
+def _get_vars_of_type(vars: Vars, var_type: _VarType) -> Dict[str, str]:
+    return {
+        name: var_type.render(value)
+        for name, value in vars.items()
+        if isinstance(value, var_type.type)
+    }
+
+
+def _get_var_block(mappings: Dict[str, str], indent: int = 2) -> str:
+    entries = []
+    pad = ' ' * indent
     # Iterate over sorted keys to ensure a deterministic order.
     for name in sorted(mappings):
         value = mappings[name]
-        entry = f'  if (name == "{name}") {{\n    return {value};\n  }}\n'
+        entry = f'{pad}if (name == "{name}") {{\n{pad}  return {value};\n{pad}}}\n'
         entries.append(entry)
     return ''.join(entries)

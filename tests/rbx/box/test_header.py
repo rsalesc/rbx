@@ -1,12 +1,16 @@
 import pathlib
 import shutil
 import subprocess
-from typing import List
+from typing import Dict, List
 
 import pytest
 
 from rbx import config
-from rbx.box import header
+
+# Imported as a module: a bare `TestcaseGroup` name makes pytest try to collect
+# the Pydantic model as a test class.
+from rbx.box import header, schema
+from rbx.box.fields import RecVars
 from rbx.box.testing import testing_package
 
 
@@ -616,3 +620,199 @@ class TestGetGroup:
             input='',
         )
         assert result.stdout == 'rbx=[sub2]\ntestlib=[sub2]\n'
+
+
+# Prints one var of each type, so a group arm wired for only some of the four
+# accessors is caught.
+_GROUP_VARS_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::printf("AB.min=%lld\\n", (long long)getVar<int64_t>("AB.min"));
+  std::printf("AB.max=%lld\\n", (long long)getVar<int64_t>("AB.max"));
+  std::printf("name=%s\\n", getVar<std::string>("name").c_str());
+  std::printf("ratio=%.2f\\n", getVar<double>("ratio"));
+  std::printf("flag=%d\\n", (int)getVar<bool>("flag"));
+  return 0;
+}
+"""
+
+# Reports, per type, whether a var declared only by a group is visible.
+_GROUP_ONLY_VARS_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+template <typename T> void report(const char *label, const std::string &name) {
+  try {
+    T value = getVar<T>(name);
+    (void)value;
+    std::printf("%s=ok\\n", label);
+  } catch (const std::runtime_error &e) {
+    (void)e;
+    std::printf("%s=threw\\n", label);
+  }
+}
+
+int main() {
+  report<int64_t>("maxOps", "maxOps");
+  report<std::string>("label", "label");
+  report<double>("eps", "eps");
+  // Not report<bool>: getVar<bool> falls back to getIntVar and, on a missing
+  // var, that fallback yields true instead of throwing -- a pre-existing quirk
+  // of the template that is out of scope here. The accessor itself is exact.
+  std::printf("strict=%s\\n", getBoolVar("strict").has_value() ? "ok" : "threw");
+  return 0;
+}
+"""
+
+_UNSUPPORTED_PLATFORM_GUARD = (
+    '#if !defined(__linux__) && !defined(__APPLE__) && !defined(_WIN32)'
+)
+
+_PACKAGE_VARS: RecVars = {
+    'AB': {'min': -200, 'max': 200},
+    'name': 'pkg',
+    'ratio': 1.5,
+    'flag': True,
+}
+
+
+def _set_group_vars(
+    testing_pkg: testing_package.TestingPackage, groups: Dict[str, RecVars]
+) -> None:
+    testing_pkg.yml.testcases = [
+        schema.TestcaseGroup(name=name, vars=vars) for name, vars in groups.items()
+    ]
+    testing_pkg.save()
+
+
+class TestGroupVars:
+    """Tests for per-group `vars` overrides baked into rbx.h."""
+
+    def test_getvar_resolves_group_override(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """getVar returns the group's value under --group, the package's otherwise."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(
+            testing_pkg,
+            {
+                'sub2': {
+                    'AB': {'min': 0},
+                    'name': 'sub2name',
+                    'ratio': 2.5,
+                    'flag': False,
+                },
+                'sub3': {'AB': {'max': 0}},
+                'sub4': {},
+            },
+        )
+
+        header.generate_header()
+        _compile(gpp, _GROUP_VARS_MAIN, 'groupvars', ['-Wextra'])
+
+        package_expected = 'AB.min=-200\nAB.max=200\nname=pkg\nratio=1.50\nflag=1\n'
+        cases = [
+            (
+                ['--group', 'sub2'],
+                'AB.min=0\nAB.max=200\nname=sub2name\nratio=2.50\nflag=0\n',
+            ),
+            (
+                ['--group', 'sub3'],
+                'AB.min=-200\nAB.max=0\nname=pkg\nratio=1.50\nflag=1\n',
+            ),
+            (['--group', 'sub4'], package_expected),
+            (['--group', 'unknown'], package_expected),
+            ([], package_expected),
+        ]
+        for argv, expected in cases:
+            result = subprocess.run(
+                ['./groupvars'] + argv, check=True, capture_output=True, text=True
+            )
+            assert result.stdout == expected, argv
+
+    def test_group_only_var_is_visible_in_its_group_and_throws_outside(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        _set_group_vars(
+            testing_pkg,
+            {
+                'sub2': {
+                    'maxOps': 5,
+                    'label': 'small',
+                    'eps': 0.5,
+                    'strict': True,
+                },
+            },
+        )
+
+        header.generate_header()
+        # The package declares no vars of its own, so the accessors' `name`
+        # parameter goes unused in the package-level block.
+        _compile(
+            gpp,
+            _GROUP_ONLY_VARS_MAIN,
+            'grouponly',
+            ['-Wextra', '-Wno-unused-parameter'],
+        )
+
+        result = subprocess.run(
+            ['./grouponly', '--group', 'sub2'],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == 'maxOps=ok\nlabel=ok\neps=ok\nstrict=ok\n'
+
+        result = subprocess.run(
+            ['./grouponly'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'maxOps=threw\nlabel=threw\neps=threw\nstrict=threw\n'
+
+    def test_package_without_group_vars_generates_no_group_arms(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Existing packages stay byte-stable apart from Task 2's getGroup block."""
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(testing_pkg, {'sub1': {}, 'sub2': {}})
+
+        header.generate_header()
+
+        generated_content = pathlib.Path('rbx.h').read_text()
+        assert 'if (group ==' not in generated_content
+
+    def test_guard_is_emitted_only_when_a_group_declares_vars(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        _set_group_vars(testing_pkg, {'sub1': {}})
+
+        header.generate_header()
+        assert _UNSUPPORTED_PLATFORM_GUARD not in pathlib.Path('rbx.h').read_text()
+
+        _set_group_vars(testing_pkg, {'sub1': {'AB': {'min': 0}}})
+
+        header.generate_header()
+        assert _UNSUPPORTED_PLATFORM_GUARD in pathlib.Path('rbx.h').read_text()
+
+    @pytest.mark.parametrize('with_group_vars', [False, True])
+    def test_header_is_warning_clean(
+        self, testing_pkg: testing_package.TestingPackage, with_group_vars: bool
+    ):
+        """The header is compiled into every validator; it must not warn."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(dict(_PACKAGE_VARS))
+        if with_group_vars:
+            _set_group_vars(testing_pkg, {'sub2': {'AB': {'min': 0}}})
+
+        header.generate_header()
+        _compile(gpp, _GROUP_VARS_MAIN, 'warnings', ['-Wextra'])

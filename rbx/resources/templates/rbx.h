@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #endif
 
+//<rbx::group_guard>
 namespace rbx {
 namespace detail {
 
@@ -133,23 +134,42 @@ inline const std::string &getGroup() {
 
 } // namespace rbx
 
+// Each accessor first consults the arms of the groups that declare `vars`
+// overrides, then the package-level table. An arm carries the group's whole
+// resolved var set, so a group that overrides nothing keeps the package values.
+//
+// `group` is unused when no group declares overrides, hence the (void) cast:
+// this header is compiled into every validator and checker of every package.
+
 std::optional<std::string> getStringVar(std::string name) {
-  //<rbx::string_var>
+  const std::string &group = rbx::getGroup();
+  (void)group;
+//<rbx::string_var_groups>
+//<rbx::string_var>
   return std::nullopt;
 }
 
 std::optional<int64_t> getIntVar(std::string name) {
-  //<rbx::int_var>
+  const std::string &group = rbx::getGroup();
+  (void)group;
+//<rbx::int_var_groups>
+//<rbx::int_var>
   return std::nullopt;
 }
 
 std::optional<float> getFloatVar(std::string name) {
-  //<rbx::float_var>
+  const std::string &group = rbx::getGroup();
+  (void)group;
+//<rbx::float_var_groups>
+//<rbx::float_var>
   return std::nullopt;
 }
 
 std::optional<bool> getBoolVar(std::string name) {
-  //<rbx::bool_var>
+  const std::string &group = rbx::getGroup();
+  (void)group;
+//<rbx::bool_var_groups>
+//<rbx::bool_var>
   return std::nullopt;
 }
 
