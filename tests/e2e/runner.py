@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import tempfile
 import traceback
+from typing import Optional
 from unittest import mock
 
 import pytest
@@ -33,6 +34,7 @@ from typer.testing import CliRunner
 from rbx import testing_utils
 from rbx.box.cli import app as rbx_app
 from rbx.box.contest import contest_state
+from rbx.box.presets import get_preset_yaml
 from rbx.box.statements.latex import LatexResult
 from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME, get_default_app_path
 from tests.e2e import polygon_capture
@@ -83,19 +85,38 @@ COPY_IGNORE_PATTERNS = (
 )
 
 
-def seed_package_from_preset(preset_name: str, dest: pathlib.Path) -> None:
-    """Overlay a named preset's ``problem/`` package into ``dest``.
+def seed_package_from_preset(
+    preset_name: str, dest: pathlib.Path, variant: Optional[str] = None
+) -> None:
+    """Overlay a named preset's problem package into ``dest``.
 
-    Resolves ``presets/<preset_name>/problem`` under the rbx resources path (the
-    same location ``rbx`` itself resolves presets from) and copies it into
-    ``dest``, dereferencing any symlinks into regular files and skipping build
-    cruft (``.rbx``, ``build``, ...). ``dest`` is an existing package directory (the
-    overlay target); any files already present (e.g. the fixture's own
-    ``e2e.rbx.yml``) are preserved unless the preset overwrites them.
+    Resolves ``presets/<preset_name>`` under the rbx resources path (the same
+    location ``rbx`` itself resolves presets from) and copies its problem
+    template into ``dest``, dereferencing any symlinks into regular files and
+    skipping build cruft (``.rbx``, ``build``, ...). ``dest`` is an existing
+    package directory (the overlay target); any files already present (e.g. the
+    fixture's own ``e2e.rbx.yml``) are preserved unless the preset overwrites
+    them.
+
+    With ``variant`` set, the template directory is the one declared for that
+    problem variant in the preset's ``preset.rbx.yml`` (``problemVariants``),
+    looked up through the ``Preset`` model rather than guessed from the id.
     """
     if not dest.is_dir():
         raise FileNotFoundError(f'seed destination does not exist: {dest}')
-    preset_problem_dir = get_default_app_path() / 'presets' / preset_name / 'problem'
+    preset_dir = get_default_app_path() / 'presets' / preset_name
+    if not preset_dir.is_dir():
+        raise FileNotFoundError(f'preset {preset_name!r} not found at {preset_dir}')
+    if variant is None:
+        preset_problem_dir = preset_dir / 'problem'
+    else:
+        preset = get_preset_yaml(preset_dir)
+        found = preset.find_variant(variant, is_contest=False)
+        if found is None:
+            raise FileNotFoundError(
+                f'preset {preset_name!r} declares no problem variant {variant!r}'
+            )
+        preset_problem_dir = preset_dir / found.path
     if not preset_problem_dir.is_dir():
         raise FileNotFoundError(
             f'preset {preset_name!r} problem package not found at {preset_problem_dir}'
@@ -310,7 +331,11 @@ class E2EScenarioItem(pytest.Item):
                 )
             )
             if self.scenario.seed_from_preset:
-                seed_package_from_preset(self.scenario.seed_from_preset, pkg_dir)
+                seed_package_from_preset(
+                    self.scenario.seed_from_preset,
+                    pkg_dir,
+                    variant=self.scenario.seed_from_preset_variant,
+                )
             ensure_compilation_deps(pkg_dir)
             # ``rbx`` CLI commands use ``syncer`` which calls
             # ``asyncio.get_event_loop()``; on Python 3.12+ that requires a
