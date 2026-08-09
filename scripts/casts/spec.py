@@ -74,10 +74,12 @@ class RecordingSpec(BaseModel):
     height: int = 30
     type_speed: str = '60ms'
     timeout: str = '120s'
-    # Casts autoplay on a loop, so without a trailing hold the final frame --
-    # usually the whole point of the recording -- flashes past. Set '0s' to
-    # opt out.
-    end_pause: str = '3s'
+    # Holding the final frame is the player's job, not the cast's: a trailing
+    # idle gap here is clamped to the player's `idleTimeLimit` and then divided
+    # by `speed`, so it cannot express "wait three seconds". The `asciinema()`
+    # macro pauses in wall-clock time before looping instead. This knob remains
+    # for a recording that wants extra dwell baked in, and defaults to none.
+    end_pause: str = '0s'
     setup: List[str] = Field(default_factory=list)
     instructions: List[Any] = Field(min_length=1)
     expect_contains: List[str] = Field(default_factory=list)

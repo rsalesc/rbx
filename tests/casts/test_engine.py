@@ -157,16 +157,17 @@ def _duration(raw: str) -> float:
     return events[-1][0]
 
 
-def test_the_cast_holds_its_final_frame_by_default(tmp_path: pathlib.Path):
-    # Casts autoplay on a loop; without this the last frame flashes past.
-    # Compared against an explicit longer hold, so the constant post-command
-    # pause cancels out and the delta is purely the configured difference.
-    default = _duration(_run(_spec(instructions=['echo done']), tmp_path))
-    longer = _duration(
-        _run(_spec(instructions=['echo done'], end_pause='8s'), tmp_path)
-    )
+def test_the_cast_does_not_hold_its_final_frame_by_default(tmp_path: pathlib.Path):
+    # The dwell before a loop restarts belongs to the player, which pauses in
+    # wall-clock time; a hold baked in here would be clamped by
+    # `idleTimeLimit`, scaled by `speed`, and then added on top of it.
+    # Asserted structurally rather than by duration: the hold is the only
+    # zero-byte output event the engine emits, so its absence is exact, while
+    # comparing two real runs would carry their spawn jitter.
+    raw = _run(_spec(instructions=['echo done']), tmp_path)
 
-    assert longer - default == pytest.approx(5.0, abs=0.5)
+    events = [json.loads(line) for line in raw.splitlines()[1:]]
+    assert events[-1][2] != ''
 
 
 def test_the_hold_is_configurable(tmp_path: pathlib.Path):
