@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING, Dict, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Annotated, Dict, Optional, TypeVar, Union
 
 from deepmerge import always_merger
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+from pydantic_core import PydanticCustomError
 from typing_extensions import TypeAliasType
 
 from rbx.box import safeeval
@@ -44,6 +45,86 @@ if TYPE_CHECKING:
     RecVars = Dict[str, Union[Primitive, 'RecVars']]
 else:
     RecVars = TypeAliasType('RecVars', "Dict[str, Union[Primitive, 'RecVars']]")
+
+
+# Names rbx itself binds into a statement template namespace. A var block's keys
+# are bound into the namespace holding it (`\VAR{N.max}` == `\VAR{vars.N.max}`,
+# #630), so a top-level var with one of these names would shadow rbx's own value.
+#
+# One union, checked in every position: package vars reach the root scope, the
+# `problem` namespace and every group, so a per-scope list would only relax the
+# contest case. Kept honest by the drift test in
+# tests/rbx/box/statements/test_context.py -- add new namespace keys here.
+RESERVED_STATEMENT_VAR_NAMES = frozenset(
+    [
+        # Root scope (statements.context._common + the two kwargs builders).
+        'contest',
+        'keyed_languages',
+        'lang',
+        'languages',
+        'params',
+        'problem',
+        'problems',
+        'vars',
+        # `problem` namespace (ProblemRenderContext.namespace).
+        'blocks',
+        'groups',
+        'import_dir',
+        'import_file',
+        'limits',
+        'profiles',
+        'samples',
+        'short_name',
+        'title',
+        # `contest` namespace (ContestRenderContext.namespace).
+        'date',
+        'location',
+        # Group scope (TestcaseGroup model fields, proxied by GroupView).
+        'deps',
+        'extraValidators',
+        'generatorScript',
+        'generators',
+        'model_solution',
+        'name',
+        'outputValidators',
+        'score',
+        'solutionVisualizer',
+        'subgroups',
+        'testcaseGlob',
+        'testcases',
+        'validator',
+        'visualizer',
+    ]
+)
+
+
+def check_reserved_statement_var_names(vars: RecVars) -> RecVars:
+    """Reject top-level var names that collide with a statement template name.
+
+    Every top-level key is checked, dict or primitive: unlike the testlib flag
+    check in `schema.py`, nesting *under* the reserved name does not help, since
+    the top-level key is the one bound into the namespace.
+    """
+    for key in vars:
+        if key in RESERVED_STATEMENT_VAR_NAMES:
+            raise PydanticCustomError(
+                'RESERVED_STATEMENT_VAR_NAME',
+                'Variable "{key}" collides with a name rbx exposes to statement '
+                'templates. Vars are bound directly into the enclosing template '
+                'namespace, so this variable would shadow rbx\'s own "{key}". '
+                'Rename the variable, or nest it under a non-reserved key (as '
+                'in "bounds.{key}"). Reserved names: {reserved}.',
+                {
+                    'key': key,
+                    'reserved': ', '.join(sorted(RESERVED_STATEMENT_VAR_NAMES)),
+                },
+            )
+    return vars
+
+
+CheckedStatementRecVars = Annotated[
+    RecVars, AfterValidator(check_reserved_statement_var_names)
+]
 
 
 def render_var_on_command_line(value: Primitive) -> str:

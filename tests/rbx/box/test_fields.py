@@ -1,13 +1,43 @@
 import pytest
 import simpleeval
+from pydantic_core import PydanticCustomError
 
 from rbx.box.fields import (
+    RESERVED_STATEMENT_VAR_NAMES,
     RecVars,
+    check_reserved_statement_var_names,
     expand_var,
     expand_vars,
     merge_recvars,
     render_var_on_command_line,
 )
+
+
+class TestReservedStatementVarNames:
+    """Vars are bound into their enclosing statement namespace, so a top-level
+    var named after one of rbx's own template names would shadow it."""
+
+    @pytest.mark.parametrize('name', sorted(RESERVED_STATEMENT_VAR_NAMES))
+    def test_reserved_primitive_name_is_rejected(self, name: str):
+        with pytest.raises(PydanticCustomError, match=f'"{name}" collides with'):
+            check_reserved_statement_var_names({name: 1})
+
+    @pytest.mark.parametrize('name', sorted(RESERVED_STATEMENT_VAR_NAMES))
+    def test_reserved_dict_name_is_rejected(self, name: str):
+        # Unlike the testlib check, nesting *under* the reserved name does not
+        # help: the top-level key is what gets bound into the namespace.
+        with pytest.raises(PydanticCustomError, match=f'"{name}" collides with'):
+            check_reserved_statement_var_names({name: {'max': 1}})
+
+    def test_nesting_the_name_one_level_down_is_accepted(self):
+        # Only the top-level key is bound into the namespace, so `bounds.score`
+        # is reachable as `\VAR{bounds.score}` and shadows nothing.
+        vars = {'bounds': {'score': 1}}
+        assert check_reserved_statement_var_names(vars) is vars
+
+    def test_ordinary_names_are_accepted(self):
+        vars = {'N': {'max': 100}, 'MAXN': 5}
+        assert check_reserved_statement_var_names(vars) is vars
 
 
 class TestRenderVarOnCommandLine:
