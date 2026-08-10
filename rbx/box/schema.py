@@ -668,6 +668,11 @@ class Solution(CodeItem):
         description="""The expected outcome of this solution for each testcase group,
 keyed by group name.
 
+Only available for problems with `scoring: points`. A binary-scored problem is
+judged as a single pooled verdict over the whole testset, so its groups carry no
+independent judgement for an expectation to attach to; declaring this field there
+is an error.
+
 Keys must be top-level group names declared in `testcases`; subgroups are not
 addressable here.
 
@@ -682,6 +687,7 @@ entry here is matched against that group's tests alone. A solution fails if
 either layer fails.
 
 ```yaml
+scoring: points
 solutions:
   - path: 'sols/partial.cpp'
     outcome: incorrect  # fails somewhere in the testset
@@ -1179,6 +1185,18 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     raise PydanticCustomError(
                         'SCORE_NOT_ALLOWED',
                         'Expected score is not allowed for solutions of problems with scoring != POINTS.',
+                    )
+                # A BINARY problem judges the testset as one pooled verdict, so a
+                # per-group expectation has no scoring semantics to attach to.
+                # Rejecting it here lets every consumer downstream assume the
+                # per-group layer only ever exists under POINTS.
+                if solution.outcomePerGroup:
+                    raise PydanticCustomError(
+                        'OUTCOME_PER_GROUP_NOT_ALLOWED',
+                        'Per-group expected outcomes ("outcomePerGroup") are not allowed '
+                        'for solutions of problems with scoring != POINTS, since such '
+                        'problems are judged as a single pooled verdict over the whole '
+                        'testset. Use "outcome", or set "scoring: points".',
                     )
         return self
 

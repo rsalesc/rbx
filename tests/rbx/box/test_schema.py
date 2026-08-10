@@ -8,6 +8,7 @@ from rbx.box.schema import (
     RESERVED_VAR_NAMES,
     LimitModifiers,
     LimitsProfile,
+    ScoreType,
 )
 
 
@@ -435,6 +436,7 @@ class TestPackageOutcomePerGroupValidation:
             name='prob',
             timeLimit=1000,
             memoryLimit=256,
+            scoring=ScoreType.POINTS,
             testcases=[
                 TestcaseGroup(name='samples'),
                 TestcaseGroup(name='group1'),
@@ -498,6 +500,7 @@ class TestPackageOutcomePerGroupValidation:
                 name='prob',
                 timeLimit=1000,
                 memoryLimit=256,
+                scoring=ScoreType.POINTS,
                 testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
                 solutions=[
                     Solution(
@@ -520,6 +523,7 @@ class TestPackageOutcomePerGroupValidation:
                 name='prob',
                 timeLimit=1000,
                 memoryLimit=256,
+                scoring=ScoreType.POINTS,
                 testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
                 solutions=[
                     Solution(path='sols/wa.cpp', outcome=ExpectedOutcome.INCORRECT),
@@ -541,6 +545,7 @@ class TestPackageOutcomePerGroupValidation:
                 name='prob',
                 timeLimit=1000,
                 memoryLimit=256,
+                scoring=ScoreType.POINTS,
                 testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
                 solutions=[
                     Solution(
@@ -562,6 +567,7 @@ class TestPackageOutcomePerGroupValidation:
             name='prob',
             timeLimit=1000,
             memoryLimit=256,
+            scoring=ScoreType.POINTS,
             testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
             solutions=[
                 Solution(
@@ -583,6 +589,7 @@ class TestPackageOutcomePerGroupValidation:
             name='prob',
             timeLimit=1000,
             memoryLimit=256,
+            scoring=ScoreType.POINTS,
             testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
             solutions=[
                 Solution(
@@ -652,6 +659,7 @@ class TestPackageOutcomePerGroupValidation:
             name='prob',
             timeLimit=1000,
             memoryLimit=256,
+            scoring=ScoreType.POINTS,
             solutions=[
                 Solution(
                     path='sols/wa.cpp',
@@ -693,6 +701,118 @@ class TestPackageOutcomePerGroupValidation:
         assert package.solutions[1].outcomePerGroup['group2'] == (
             ExpectedOutcome.TIME_LIMIT_EXCEEDED
         )
+
+
+class TestOutcomePerGroupRequiresPointsScoring:
+    """`outcomePerGroup` is only meaningful under POINTS scoring.
+
+    A BINARY problem is judged as one pooled verdict over the whole testset, so
+    its groups carry no independent judgement for a per-group expectation to
+    attach to. Rejecting the field at load time is what lets every consumer
+    downstream assume the per-group layer only ever exists under POINTS.
+    """
+
+    def _package(self, scoring: ScoreType, **solution_kwargs):
+        from rbx.box.schema import ExpectedOutcome, Package, Solution, TestcaseGroup
+
+        return Package(
+            name='prob',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=scoring,
+            testcases=[TestcaseGroup(name='samples'), TestcaseGroup(name='group1')],
+            solutions=[
+                Solution(path='sols/main.cpp', outcome=ExpectedOutcome.ACCEPTED),
+                Solution(path='sols/other.cpp', **solution_kwargs),
+            ],
+        )
+
+    def test_binary_scoring_rejects_per_group_outcomes(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        with pytest.raises(ValidationError, match='outcomePerGroup') as excinfo:
+            self._package(
+                ScoreType.BINARY,
+                outcome=ExpectedOutcome.INCORRECT,
+                outcomePerGroup={'group1': ExpectedOutcome.WRONG_ANSWER},
+            )
+
+        # The error has no `loc`, so the message alone has to say how to fix it.
+        assert 'scoring: points' in str(excinfo.value)
+
+    def test_binary_scoring_rejects_the_wildcard_too(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        with pytest.raises(ValidationError, match='outcomePerGroup'):
+            self._package(
+                ScoreType.BINARY,
+                outcome=ExpectedOutcome.INCORRECT,
+                outcomePerGroup={'*': ExpectedOutcome.ACCEPTED},
+            )
+
+    def test_binary_scoring_is_the_default(self):
+        from rbx.box.schema import Package
+
+        # A package that says nothing about scoring is BINARY, so the field is
+        # rejected there without the setter ever mentioning `scoring`.
+        with pytest.raises(ValidationError, match='outcomePerGroup'):
+            Package.model_validate(
+                {
+                    'name': 'prob',
+                    'timeLimit': 1000,
+                    'memoryLimit': 256,
+                    'testcases': [{'name': 'samples'}, {'name': 'group1'}],
+                    'solutions': [
+                        {'path': 'sols/main.cpp', 'outcome': 'ac'},
+                        {
+                            'path': 'sols/other.cpp',
+                            'outcome': 'incorrect',
+                            'outcomePerGroup': {'group1': 'wa'},
+                        },
+                    ],
+                }
+            )
+
+    def test_binary_scoring_still_allows_an_empty_map(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        # The default `{}` must stay loadable: the gate keys off a *declared*
+        # expectation, not off the field being present.
+        package = self._package(
+            ScoreType.BINARY,
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={},
+        )
+
+        assert package.solutions[1].outcomePerGroup == {}
+
+    def test_points_scoring_allows_per_group_outcomes(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        package = self._package(
+            ScoreType.POINTS,
+            outcome=ExpectedOutcome.INCORRECT,
+            outcomePerGroup={'group1': ExpectedOutcome.WRONG_ANSWER},
+        )
+
+        assert package.solutions[1].outcomePerGroup == {
+            'group1': ExpectedOutcome.WRONG_ANSWER
+        }
+
+    def test_scoring_gate_precedes_the_per_group_diagnostics(self):
+        from rbx.box.schema import ExpectedOutcome
+
+        # The key is both unknown and disallowed by scoring. Telling the setter
+        # the field does not apply at all is more actionable than nitpicking a
+        # group name they should not be naming in the first place.
+        with pytest.raises(ValidationError, match='outcomePerGroup') as excinfo:
+            self._package(
+                ScoreType.BINARY,
+                outcome=ExpectedOutcome.INCORRECT,
+                outcomePerGroup={'typo': ExpectedOutcome.WRONG_ANSWER},
+            )
+
+        assert 'not a testcase group' not in str(excinfo.value)
 
 
 class TestPackageVarsPerGroup:

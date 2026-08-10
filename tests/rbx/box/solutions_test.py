@@ -266,6 +266,15 @@ def mock_binary_scoring():
         yield
 
 
+@pytest.fixture
+def mock_points_scoring():
+    # `outcomePerGroup` is only loadable under POINTS scoring (see
+    # `Package.check_scoring_fields`), so every per-group test must run here and
+    # not under `mock_binary_scoring`, which would be an impossible package.
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
+        yield
+
+
 @contextlib.contextmanager
 def fresh_issue_stack() -> Iterator[IssueAccumulator]:
     """Isolate the issue stack, so a test sees exactly the issues it caused."""
@@ -709,7 +718,7 @@ def test_no_outcome_per_group_leaves_the_report_untouched(
 
 
 def test_pooled_outcome_fails_while_every_group_passes(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """The mirror case: relaxing a group's expectation without relaxing the
     pooled one still fails, and it fails on the pooled layer."""
@@ -737,7 +746,7 @@ def test_pooled_outcome_fails_while_every_group_passes(
 
 
 def test_per_group_double_tl_is_reported_and_merged(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """Double TL is detected per group and merged into the aggregate, keeping
     "passed within 2x TL" distinguishable from "had other soft-TLE verdicts"."""
@@ -785,7 +794,7 @@ def test_per_group_double_tl_is_reported_and_merged(
 
 
 def test_double_tl_warning_attributes_each_fact_to_its_own_group(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """The two facts come from different groups, so each is its own sentence
     naming its own group: group2 is what passed within 2x TL, group3 is what
@@ -830,7 +839,7 @@ def test_double_tl_warning_attributes_each_fact_to_its_own_group(
 
 
 def test_double_tl_warning_comma_joins_the_groups_it_names(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """Several groups are listed with separators, not space-joined into one
     unreadable run of names."""
@@ -889,7 +898,7 @@ def test_double_tl_warning_is_unchanged_without_outcome_per_group(
 
 
 def test_per_group_outcome_fails_while_pooled_outcome_passes(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """group2 is expected to TLE but is fully accepted: the solution fails even
     though the pooled INCORRECT expectation is satisfied by group1's WA."""
@@ -923,7 +932,7 @@ def test_per_group_outcome_fails_while_pooled_outcome_passes(
     )
 
 
-def test_per_group_outcome_all_satisfied(tmp_path, mock_skeleton, mock_binary_scoring):
+def test_per_group_outcome_all_satisfied(tmp_path, mock_skeleton, mock_points_scoring):
     solution = Solution(
         path=tmp_path / 'partial.cpp',
         outcome=ExpectedOutcome.INCORRECT,
@@ -954,7 +963,7 @@ def test_per_group_outcome_all_satisfied(tmp_path, mock_skeleton, mock_binary_sc
 
 
 def test_wildcard_expectation_is_checked_per_group(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """'*': wa demands a WA in EVERY group; group1 being clean is a failure."""
     solution = Solution(
@@ -979,7 +988,7 @@ def test_wildcard_expectation_is_checked_per_group(
 
 
 def test_groups_without_evaluations_are_not_checked(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """Mid-run, later groups have no evals yet. A bad expectation on them must
     not fail the report, or the live reporters would flash spurious failures."""
@@ -1001,7 +1010,7 @@ def test_groups_without_evaluations_are_not_checked(
 
 
 def test_groups_outside_the_testset_are_not_checked(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """`rbx irun` evaluates a synthetic `interactive` group that is not part of
     the testset, and builds its skeleton with no groups at all. A `'*'` default
@@ -1030,14 +1039,18 @@ def test_groups_outside_the_testset_are_not_checked(
 
 
 def test_verdict_markup_attributes_failure_to_the_group(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     solution = Solution(
         path=tmp_path / 'partial.cpp',
         outcome=ExpectedOutcome.INCORRECT,
         outcomePerGroup={'group2': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
     )
-    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    skeleton = mock_skeleton(
+        [solution],
+        entries_per_group={'group1': 1, 'group2': 1},
+        scores_per_group={'group1': 40, 'group2': 60},
+    )
     evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
 
     report = get_solution_outcome_report(
@@ -1051,15 +1064,16 @@ def test_verdict_markup_attributes_failure_to_the_group(
     assert 'ACCEPTED' in markup
     # The pooled layer passed, so it must not be reported as the culprit.
     assert 'Expected: INCORRECT' not in markup
-    # Rendering also asserts the markup is well-formed.
-    assert (
-        Text.from_markup(markup).plain
-        == 'FAILED group2: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED'
+    # Rendering also asserts the markup is well-formed. POINTS scoring leads with
+    # the score line, and the group attribution lines up underneath it.
+    assert Text.from_markup(markup).plain == (
+        'FAILED Got [60/100 pts]\n'
+        '       group2: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED'
     )
 
 
 def test_verdict_markup_lists_every_failed_group(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     solution = Solution(
         path=tmp_path / 'partial.cpp',
@@ -1069,7 +1083,11 @@ def test_verdict_markup_lists_every_failed_group(
             'group2': ExpectedOutcome.WRONG_ANSWER,
         },
     )
-    skeleton = mock_skeleton([solution], entries_per_group={'group1': 1, 'group2': 1})
+    skeleton = mock_skeleton(
+        [solution],
+        entries_per_group={'group1': 1, 'group2': 1},
+        scores_per_group={'group1': 40, 'group2': 60},
+    )
     # group1 was supposed to be clean, group2 was supposed to fail.
     evals = [make_evaluation(Outcome.WRONG_ANSWER), make_evaluation(Outcome.ACCEPTED)]
 
@@ -1078,17 +1096,18 @@ def test_verdict_markup_lists_every_failed_group(
     )
     markup = report.get_verdict_markup()
 
-    # FAILED is said once; the remaining groups line up underneath it.
+    # FAILED is said once; the remaining lines line up underneath it.
     assert markup.count('FAILED') == 1
     assert 'group1' in markup and 'group2' in markup
     assert Text.from_markup(markup).plain == (
-        'FAILED group1: expected ACCEPTED, got: WRONG_ANSWER\n'
+        'FAILED Got [60/100 pts]\n'
+        '       group1: expected ACCEPTED, got: WRONG_ANSWER\n'
         '       group2: expected WRONG_ANSWER, got: ACCEPTED'
     )
 
 
 def test_verdict_markup_hides_group_lines_when_incomplete(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     solution = Solution(
         path=tmp_path / 'partial.cpp',
@@ -1106,7 +1125,7 @@ def test_verdict_markup_hides_group_lines_when_incomplete(
 
 
 def test_passing_subset_group_reports_all_of_its_verdicts(
-    tmp_path, mock_skeleton, mock_binary_scoring
+    tmp_path, mock_skeleton, mock_points_scoring
 ):
     """In `subset` mode a *passing* group reports all of its verdicts rather than
     an empty set, so pass/fail must be read off `status`, never off
