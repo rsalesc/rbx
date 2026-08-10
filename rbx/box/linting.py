@@ -10,7 +10,7 @@ from rbx import console
 from rbx.box import schema_urls
 from rbx.box.cd import is_contest_package, is_preset_package, is_problem_package
 from rbx.box.contest.schema import Contest
-from rbx.box.presets import get_preset_yaml
+from rbx.box.presets import all_templates, get_preset_yaml
 from rbx.box.presets.schema import Preset
 from rbx.box.schema import Package
 from rbx.box.stats import find_problem_packages_from_contest
@@ -93,18 +93,47 @@ def fix_yaml(
         )
 
 
+def _has_package_yaml(path: pathlib.Path) -> bool:
+    """Whether a preset template carries the package yaml it is supposed to.
+
+    Missing is not fatal -- one broken template must not stop the sweep over the
+    others -- but it is reported, so a template directory that exists yet holds
+    no package gets the same signal as one whose directory is missing entirely.
+    """
+    if path.is_file():
+        return True
+    console.console.print(
+        f'[warning]Preset template [item]{path.parent}[/item] has no '
+        f'[item]{path.name}[/item]; skipping it.[/warning]'
+    )
+    return False
+
+
 def fix_package(root: pathlib.Path = pathlib.Path(), print_diff: bool = False):
     if is_preset_package(root):
         fix_yaml(root / 'preset.rbx.yml', model_cls=Preset, print_diff=print_diff)
         preset = get_preset_yaml(root)
-        if preset.problem is not None:
-            fix_yaml(
-                root / preset.problem / 'problem.rbx.yml',
-                model_cls=Package,
-                print_diff=print_diff,
-            )
-        if preset.contest is not None:
-            fix_package(root / preset.contest, print_diff=print_diff)
+        # Every template of each kind, not just the canonical one: a variant's
+        # package must be formatted too.
+        #
+        # Both loops confirm the expected package yaml is there before touching
+        # the directory. That guard is load-bearing, not defensive noise:
+        # `fix_package` (and the `is_*_package` checks it starts with) resolve
+        # through `find_package`, which walks UP the tree and does not stop at
+        # `preset.rbx.yml`. Recursing into a template dir with no package yaml
+        # would escape the preset entirely and reformat whatever unrelated
+        # ancestor package happens to sit above it.
+        for template in all_templates(preset, root, is_contest=False):
+            problem_yaml = template.path / 'problem.rbx.yml'
+            if not _has_package_yaml(problem_yaml):
+                continue
+            fix_yaml(problem_yaml, model_cls=Package, print_diff=print_diff)
+        for template in all_templates(preset, root, is_contest=True):
+            contest_yaml = template.path / 'contest.rbx.yml'
+            if not _has_package_yaml(contest_yaml):
+                continue
+            # Recurse: a contest template also owns the problems under it.
+            fix_package(template.path, print_diff=print_diff)
         return
 
     if is_problem_package(root):

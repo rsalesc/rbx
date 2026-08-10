@@ -1,0 +1,174 @@
+#ifndef _RBX_H
+#define _RBX_H
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <stdexcept>
+#include <string>
+
+std::optional<std::string> getStringVar(std::string name) {
+    if (name == "author") {
+    return "John Doe";
+  }
+
+  return std::nullopt;
+}
+
+std::optional<int64_t> getIntVar(std::string name) {
+    if (name == "N.max") {
+    return static_cast<int64_t>(1000000000);
+  }
+  if (name == "N.min") {
+    return static_cast<int64_t>(1);
+  }
+
+  return std::nullopt;
+}
+
+std::optional<float> getFloatVar(std::string name) {
+  
+  return std::nullopt;
+}
+
+std::optional<bool> getBoolVar(std::string name) {
+  
+  return std::nullopt;
+}
+
+namespace rbx {
+namespace vars {
+
+template <typename T> T getVar(std::string name);
+
+template <> int32_t getVar<int32_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  if (opt.value() < std::numeric_limits<int32_t>::min() ||
+      opt.value() > std::numeric_limits<int32_t>::max()) {
+    throw std::runtime_error("Variable " + name + " of value " +
+                             std::to_string(opt.value()) +
+                             " does not fit in int32_t");
+  }
+  return opt.value();
+}
+
+template <> uint32_t getVar<uint32_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  if (opt.value() < std::numeric_limits<uint32_t>::min() ||
+      opt.value() > std::numeric_limits<uint32_t>::max()) {
+    throw std::runtime_error("Variable " + name + " of value " +
+                             std::to_string(opt.value()) +
+                             " does not fit in uint32_t");
+  }
+  return opt.value();
+}
+
+template <> int64_t getVar<int64_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  return opt.value();
+}
+
+template <> uint64_t getVar<uint64_t>(std::string name) {
+  auto opt = getIntVar(name);
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not an integer or could not be found");
+  }
+  return opt.value();
+}
+
+template <> float getVar<float>(std::string name) {
+  auto opt = getFloatVar(name);
+  if (!opt.has_value()) {
+    auto intOpt = getIntVar(name);
+    if (intOpt.has_value()) {
+      opt = (float)intOpt.value();
+    }
+  }
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not a float or could not be found");
+  }
+  return opt.value();
+}
+
+template <> double getVar<double>(std::string name) {
+  return getVar<float>(name);
+}
+
+template <> std::string getVar<std::string>(std::string name) {
+  auto opt = getStringVar(name);
+  if (!opt.has_value()) {
+    auto intOpt = getIntVar(name);
+    if (intOpt.has_value()) {
+      opt = std::to_string(intOpt.value());
+    }
+  }
+  if (!opt.has_value()) {
+    auto floatOpt = getFloatVar(name);
+    if (floatOpt.has_value()) {
+      opt = std::to_string(floatOpt.value());
+    }
+  }
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not a string or could not be found");
+  }
+  return opt.value();
+}
+
+template <> bool getVar<bool>(std::string name) {
+  auto opt = getBoolVar(name);
+  if (!opt.has_value()) {
+    opt = getIntVar(name) != 0;
+  }
+  if (!opt.has_value()) {
+    throw std::runtime_error("Variable " + name +
+                             " is not a boolean or could not be found");
+  }
+  return opt.value();
+}
+
+inline void joinVarPath(std::string &acc) { (void)acc; }
+
+template <typename... Args>
+void joinVarPath(std::string &acc, const std::string &part,
+                 const Args &...rest) {
+  if (!acc.empty() && !part.empty()) {
+    acc += '.';
+  }
+  acc += part;
+  joinVarPath(acc, rest...);
+}
+
+} // namespace vars
+} // namespace rbx
+
+// Reads a variable declared in the `vars` section of the package.
+//
+// The path to the variable can be given either as a single dotted string or as
+// one segment per argument, so the two calls below are equivalent:
+//
+//   getVar<int>("N.max");
+//   getVar<int>("N", "max");
+//
+// Supported types are int32_t, uint32_t, int64_t, uint64_t, float, double,
+// std::string and bool.
+template <typename T, typename... Args>
+T getVar(const std::string &first, const Args &...rest) {
+  std::string name;
+  rbx::vars::joinVarPath(name, first, rest...);
+  return rbx::vars::getVar<T>(name);
+}
+#endif

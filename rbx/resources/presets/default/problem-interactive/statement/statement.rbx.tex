@@ -1,0 +1,32 @@
+%- block legend
+This is an interactive problem.
+
+The jury has secretly chosen an integer $S$ such that $1 \leq S \leq N$. Your
+task is to find $S$ using at most $\VAR{vars.Q.max}$ guesses.
+%- endblock
+
+%- block interaction
+First, read a single integer $N$ ($\VAR{vars.N.min} \leq N \leq \VAR{vars.N.max}$),
+the size of the search range.
+
+Then, you may make at most $\VAR{vars.Q.max}$ guesses. To make a guess, print a
+single integer $X$ ($1 \leq X \leq N$) on its own line. After each guess, read
+the jury's response, which is one of the following three strings:
+
+\begin{itemize}
+	\item \texttt{<} --- meaning $X < S$;
+	\item \texttt{>} --- meaning $X > S$;
+	\item \texttt{=} --- meaning $X = S$.
+\end{itemize}
+
+As soon as you read \texttt{=}, your guess was correct: stop guessing and
+terminate your program.
+
+After printing each guess, do not forget to print a newline and flush the
+output buffer. Otherwise, you may receive a verdict of
+\textit{Time limit exceeded}.
+%- endblock
+
+%- block notes
+No notes.
+%- endblock

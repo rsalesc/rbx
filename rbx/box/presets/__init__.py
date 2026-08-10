@@ -1,14 +1,17 @@
+import dataclasses
 import fnmatch
 import functools
 import os
 import pathlib
 import shutil
+import sys
 import tempfile
 from typing import (
     TYPE_CHECKING,
     Annotated,
     Iterable,
     List,
+    NoReturn,
     Optional,
     Sequence,
     Set,
@@ -35,6 +38,8 @@ from rbx.box.presets.fetch import (
 )
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock, SymlinkInfo
 from rbx.box.presets.schema import (
+    Library,
+    PackageVariant,
     Preset,
     ReplacementMode,
     TrackedAsset,
@@ -51,11 +56,50 @@ app = typer.Typer(no_args_is_help=True)
 
 _MAX_EXPAND_SIZE = 1024 * 1024  # 1024 KB
 
+LOCK_FILE_NAME = '.preset-lock.yml'
+
 # Cache/build artefacts ignored when globbing a package's source files. The
 # legacy cache dir is kept so stale caches don't leak into globbed output.
 _DEFAULT_GLOB_GITIGNORE = (
     f'{CACHE_DIR_NAME}\n{LEGACY_CACHE_DIR_NAME}\nbuild\n.limits/local.yml\n'
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolvedTemplate:
+    """A preset template directory plus the config that applies to it.
+
+    `variant_id` is None for the preset's canonical template, and the variant's
+    id otherwise. `inner` is the template path as declared in `preset.rbx.yml`
+    (relative to the preset root); `path` is where it actually lives on disk.
+
+    Built by `resolve_template`, which is the only place that maps a variant id
+    to a template directory.
+    """
+
+    preset: Preset
+    preset_path: pathlib.Path
+    inner: pathlib.Path
+    variant_id: Optional[str]
+    tracking: List[TrackedAsset]
+    libraries: List[Library]
+    expansion: List[VariableExpansion]
+
+    @property
+    def path(self) -> pathlib.Path:
+        return self.preset_path / self.inner
+
+
+def _realpath(path: pathlib.Path) -> pathlib.Path:
+    """Absolute path with symlinks resolved, tolerating a missing path.
+
+    Unlike `utils.abspath`, which is purely lexical, this follows symlinks -- the
+    only way to tell that a declared-relative template directory actually lives
+    outside the preset. Both sides of a containment check must go through this,
+    since the preset root itself is often reached through a symlink (e.g. macOS
+    `/tmp` -> `/private/tmp`).
+    """
+    return pathlib.Path(os.path.realpath(path))
 
 
 def _expand_content(
@@ -167,7 +211,7 @@ def get_preset_yaml_metadata(root: pathlib.Path = pathlib.Path()) -> Tuple[str, 
 
 def _find_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[pathlib.Path]:
     root = utils.abspath(root)
-    problem_yaml_path = root / '.preset-lock.yml'
+    problem_yaml_path = root / LOCK_FILE_NAME
     if not problem_yaml_path.is_file():
         return None
     return problem_yaml_path
@@ -178,6 +222,32 @@ def get_preset_lock(root: pathlib.Path = pathlib.Path()) -> Optional[PresetLock]
     if not found:
         return None
     return load_yaml_model(found, PresetLock)
+
+
+def _read_locked_variant(root: pathlib.Path = pathlib.Path()) -> Optional[str]:
+    """The `variant` recorded in the lock, read without validating the rest.
+
+    `rbx presets lock` is the command you reach for when `.preset-lock.yml` is
+    broken, so it must not choke on a malformed one: anything unreadable here
+    degrades to None (the canonical template) with a warning.
+    """
+    found = _find_preset_lock(root)
+    if found is None:
+        return None
+    try:
+        data = yaml.safe_load(found.read_text())
+    except (yaml.YAMLError, OSError, UnicodeDecodeError):
+        data = None
+
+    variant = data.get('variant') if isinstance(data, dict) else None
+    if not isinstance(data, dict) or not isinstance(variant, (str, type(None))):
+        console.console.print(
+            f'[warning]Could not read the [item]variant[/item] field of '
+            f'[item]{LOCK_FILE_NAME}[/item]; assuming this package came from the '
+            "preset's canonical template.[/warning]"
+        )
+        return None
+    return variant
 
 
 def find_nested_preset(root: pathlib.Path) -> Optional[pathlib.Path]:
@@ -295,25 +365,11 @@ def dedup_tracked_assets(assets: List[TrackedAsset]) -> List[TrackedAsset]:
     return res
 
 
-def get_preset_tracked_assets(
-    root: pathlib.Path, is_contest: bool, add_symlinks: bool = False
+def _get_template_tracked_assets(
+    template: ResolvedTemplate, *, add_symlinks: bool = False
 ) -> List[TrackedAsset]:
-    preset = get_active_preset(root)
-    preset_path = find_local_preset(root)
-    assert preset_path is not None
-
-    if is_contest:
-        assert preset.contest is not None, (
-            'Preset does not have a contest package definition.'
-        )
-        preset_pkg_path = preset_path / preset.contest
-        res = process_globbing(preset.tracking.contest, preset_pkg_path)
-    else:
-        assert preset.problem is not None, (
-            'Preset does not have a problem package definition,'
-        )
-        preset_pkg_path = preset_path / preset.problem
-        res = process_globbing(preset.tracking.problem, preset_pkg_path)
+    preset_pkg_path = template.path
+    res = process_globbing(template.tracking, preset_pkg_path)
 
     if add_symlinks:
         for file in _glob_while_ignoring(
@@ -481,18 +537,19 @@ def copy_preset_file(
 
 def _copy_updated_assets(
     preset_lock: PresetLock,
-    is_contest: bool,
+    template: ResolvedTemplate,
     root: pathlib.Path = pathlib.Path(),
+    *,
     force: bool = False,
     symlinks: bool = False,
 ):
     # Build preset package snapshot.
-    preset = get_active_preset(root)
-    preset_path = get_active_preset_path(root)
-    preset_package_path = _get_active_preset_package_path(root, is_contest)
+    preset = template.preset
+    preset_path = template.preset_path
+    preset_package_path = template.path
 
-    preset_tracked_assets = get_preset_tracked_assets(
-        preset_package_path, is_contest=is_contest, add_symlinks=symlinks
+    preset_tracked_assets = _get_template_tracked_assets(
+        template, add_symlinks=symlinks
     )
     current_preset_snapshot = build_package_locked_assets(
         preset_tracked_assets, preset_package_path
@@ -600,22 +657,377 @@ def get_preset_environment_path(
     return env_path
 
 
-def _get_active_preset_package_path(
-    root: pathlib.Path = pathlib.Path(),
-    is_contest: bool = False,
-) -> pathlib.Path:
-    preset = get_active_preset(root)
-    preset_path = find_local_preset(root)
-    assert preset_path is not None
-    if is_contest:
-        assert preset.contest is not None, (
-            'Preset does not have a contest package definition.'
-        )
-        return preset_path / preset.contest
-    assert preset.problem is not None, (
-        'Preset does not have a problem package definition.'
+def _canonical_template(preset: Preset, is_contest: bool) -> Optional[pathlib.Path]:
+    return preset.contest if is_contest else preset.problem
+
+
+def _print_available_templates(
+    preset: Preset, *, is_contest: bool, requested_by: Optional[str] = None
+) -> None:
+    kind = 'contest' if is_contest else 'problem'
+    # `-v` only exists on the commands that create a package. When the template
+    # was requested by a file, that flag is not the user's lever, so don't
+    # advertise it.
+    how = '' if requested_by is not None else ' (select with [item]-v <id>[/item])'
+    console.console.print(f'Available {kind} templates{how}:')
+    if _canonical_template(preset, is_contest) is not None:
+        console.console.print("  [item]default[/item] — the preset's main template")
+    for variant in preset.variants(is_contest):
+        suffix = f' — {variant.description}' if variant.description else ''
+        console.console.print(f'  [item]{variant.id}[/item]{suffix}')
+
+
+def _print_requested_by_remediation(requested_by: str) -> None:
+    """Explain that the missing template was asked for by a file, not by a flag,
+    and how to get out of it."""
+    console.console.print(
+        f'[error]This template was requested by [item]{requested_by}[/item], and rbx '
+        'will not silently fall back to another one -- doing so could overwrite this '
+        "package's assets.[/error]"
     )
-    return preset_path / preset.problem
+    console.console.print(
+        'Either restore the template in the installed preset copy at '
+        '[item].local.rbx/preset.rbx.yml[/item] (re-fetching the preset with '
+        '[item]rbx presets sync -u[/item] overwrites that copy from the remote), '
+        f'or set the [item]variant[/item] field of [item]{requested_by}[/item] to a '
+        "template that does exist ([item]default[/item] means the preset's canonical "
+        'template).'
+    )
+
+
+def _fail_no_template(
+    preset: Preset,
+    *,
+    is_contest: bool,
+    message: str,
+    requested_by: Optional[str] = None,
+) -> NoReturn:
+    """Report that a requested template could not be resolved, and exit.
+
+    When the preset declares no templates of this kind at all, `message` is
+    dropped in favor of saying just that -- listing an empty set of alternatives
+    would only muddy the error.
+    """
+    kind = 'contest' if is_contest else 'problem'
+    if _canonical_template(preset, is_contest) is None and not preset.variants(
+        is_contest
+    ):
+        console.console.print(
+            f'[error]Preset [item]{preset.name}[/item] declares no {kind} templates at all.[/error]'
+        )
+    else:
+        console.console.print(message)
+        _print_available_templates(
+            preset, is_contest=is_contest, requested_by=requested_by
+        )
+    if requested_by is not None:
+        _print_requested_by_remediation(requested_by)
+    raise typer.Exit(1)
+
+
+def _print_missing_template_dir(
+    preset: Preset,
+    *,
+    kind: str,
+    inner: pathlib.Path,
+    path: pathlib.Path,
+    severity: str,
+    consequence: str = '',
+) -> None:
+    """Report a template whose declared directory does not exist.
+
+    Shared by the fatal path (`resolve_template`, severity 'error') and the
+    sweep (`all_templates`, severity 'warning'), so both name the declaration
+    and the location it resolved to identically.
+    """
+    console.console.print(
+        f'[{severity}]Preset [item]{preset.name}[/item] declares a {kind} template at '
+        f'[item]{inner}[/item], but that directory does not exist '
+        f'([item]{path}[/item]).{consequence}[/{severity}]'
+    )
+
+
+def resolve_template(
+    preset: Preset,
+    preset_path: pathlib.Path,
+    *,
+    is_contest: bool,
+    variant: Optional[str],
+    requested_by: Optional[str] = None,
+) -> ResolvedTemplate:
+    """Resolve a variant id into the template directory it names.
+
+    This is the only place that maps an id to a template directory, and the only
+    place that errors on an unknown or removed one. `variant` is None (or the
+    reserved id 'default') for the preset's canonical template.
+
+    `requested_by` names the file that asked for this template (e.g.
+    `.preset-lock.yml`) when it was not a command-line flag. It only shapes the
+    error messages -- provenance lives here, next to the code that knows which
+    template is missing, so every failure branch reports it consistently.
+    """
+    kind = 'contest' if is_contest else 'problem'
+    if variant == 'default':
+        variant = None
+
+    found: Optional[PackageVariant] = None
+    if variant is None:
+        canonical = _canonical_template(preset, is_contest)
+        if canonical is None:
+            _fail_no_template(
+                preset,
+                is_contest=is_contest,
+                message=(
+                    f'[error]Preset [item]{preset.name}[/item] does not have a '
+                    f'canonical {kind} template.[/error]'
+                ),
+                requested_by=requested_by,
+            )
+        inner = canonical
+    else:
+        found = preset.find_variant(variant, is_contest)
+        if found is None:
+            _fail_no_template(
+                preset,
+                is_contest=is_contest,
+                message=(
+                    f'[error]Preset [item]{preset.name}[/item] has no {kind} variant '
+                    f'[item]{variant}[/item].[/error]'
+                ),
+                requested_by=requested_by,
+            )
+        inner = found.path
+
+    path = preset_path / inner
+
+    # Belt and braces. The schema already rejects declarations that are absolute
+    # or contain `..`, but that check is lexical: a template directory that is a
+    # *symlink* pointing out of the preset looks perfectly relative on paper and
+    # is only visible after resolving symlinks, so resolve for real here. This
+    # mirrors what `copy_preset_file` does for symlinked preset files.
+    if not _realpath(path).is_relative_to(_realpath(preset_path)):
+        console.console.print(
+            f'[error]Preset [item]{preset.name}[/item] declares a {kind} template at '
+            f'[item]{inner}[/item], but that resolves to '
+            f'[item]{_realpath(path)}[/item], which is outside the preset '
+            f'folder ([item]{_realpath(preset_path)}[/item]).[/error]'
+        )
+        if requested_by is not None:
+            _print_requested_by_remediation(requested_by)
+        raise typer.Exit(1)
+
+    if not path.is_dir():
+        _print_missing_template_dir(
+            preset, kind=kind, inner=inner, path=path, severity='error'
+        )
+        if requested_by is not None:
+            _print_requested_by_remediation(requested_by)
+        raise typer.Exit(1)
+
+    return ResolvedTemplate(
+        preset=preset,
+        preset_path=preset_path,
+        inner=inner,
+        variant_id=variant,
+        tracking=preset.merged_tracking(found, is_contest),
+        libraries=preset.merged_libraries(found, is_contest),
+        expansion=preset.merged_expansion(found, is_contest),
+    )
+
+
+def get_active_template(
+    root: pathlib.Path = pathlib.Path(),
+    *,
+    is_contest: bool = False,
+    variant: Optional[str] = None,
+    requested_by: Optional[str] = None,
+) -> ResolvedTemplate:
+    """Resolve a template of the preset that is active for the package at `root`."""
+    return resolve_template(
+        get_active_preset(root),
+        get_active_preset_path(root),
+        is_contest=is_contest,
+        variant=variant,
+        requested_by=requested_by,
+    )
+
+
+def declared_templates(
+    preset: Preset,
+    *,
+    is_contest: bool,
+) -> List[Tuple[Optional[PackageVariant], pathlib.Path]]:
+    """Every template of this kind as *declared*, without touching the disk.
+
+    Yields `(variant, inner)` pairs -- `variant` is None for the canonical
+    template and the `PackageVariant` itself otherwise, `inner` is the declared
+    path relative to the preset root. Ordering is stable: canonical first (a
+    variants-only preset simply has none), then variants in declaration order.
+
+    The `PackageVariant` is carried rather than just its id because the variant
+    picker and `rbx presets ls` need its `description`. They also need the
+    declarations whose directories are missing, which `all_templates` drops --
+    which is why this is the shared layer rather than the other way around.
+    """
+    declared: List[Tuple[Optional[PackageVariant], pathlib.Path]] = []
+    canonical = _canonical_template(preset, is_contest)
+    if canonical is not None:
+        declared.append((None, canonical))
+    for variant in preset.variants(is_contest):
+        declared.append((variant, variant.path))
+    return declared
+
+
+def pick_variant(
+    preset: Preset, *, is_contest: bool, variant: Optional[str]
+) -> Optional[str]:
+    """Resolve the variant to use, prompting when the preset offers a choice.
+
+    Returns None for the canonical template. Never prompts when the preset
+    declares no variants, or when stdin is not a TTY.
+    """
+    if variant is not None:
+        # An explicit flag always wins: never second-guess it with a prompt,
+        # and let `resolve_template` be the one to reject a bad id.
+        return variant
+
+    declared = declared_templates(preset, is_contest=is_contest)
+    has_canonical = any(v is None for v, _ in declared)
+    variants = [v for v, _ in declared if v is not None]
+    if not variants:
+        # The overwhelmingly common case: a preset with a single template. Stay
+        # exactly as silent as rbx was before variants existed.
+        return None
+
+    kind = 'contest' if is_contest else 'problem'
+    if not sys.stdin.isatty():
+        if not has_canonical:
+            console.console.print(
+                f'[error]Preset [item]{preset.name}[/item] does not have a canonical '
+                f'{kind} template, so one of its variants must be chosen '
+                'explicitly.[/error]'
+            )
+            console.console.print(
+                '[error]Re-run with [item]-v <id>[/item] -- there is no terminal to '
+                'prompt on.[/error]'
+            )
+            _print_available_templates(preset, is_contest=is_contest)
+            raise typer.Exit(1)
+        return None
+
+    choices = []
+    if has_canonical:
+        choices.append(
+            questionary.Choice(
+                title="default — the preset's main template", value='default'
+            )
+        )
+    for v in variants:
+        choices.append(
+            questionary.Choice(
+                title=f'{v.id} — {v.description}' if v.description else v.id,
+                value=v.id,
+            )
+        )
+
+    answer = questionary.select(
+        f'Which {kind} template do you want to use?',
+        choices=choices,
+        default=choices[0].value,
+    ).ask()
+    if answer is None:
+        raise typer.Exit(1)
+    return None if answer == 'default' else answer
+
+
+def all_templates(
+    preset: Preset,
+    preset_path: pathlib.Path,
+    *,
+    is_contest: bool,
+) -> List[ResolvedTemplate]:
+    """Every template of this kind that actually resolves: the canonical one
+    (when declared) plus each variant, in `declared_templates` order.
+
+    A template that fails to resolve -- one whose declared directory does not
+    exist, or one that resolves outside the preset root -- is reported and
+    skipped, rather than raising like
+    `resolve_template` does. Callers of this function sweep over every template
+    (linting them, cleaning build artifacts out of them) instead of acting on the
+    one template the user asked for, so a bad declaration is a recoverable
+    authoring mistake that must not stop the remaining templates from being
+    processed. `resolve_template` still exits, since there the bad template *is*
+    what was asked for.
+    """
+    kind = 'contest' if is_contest else 'problem'
+
+    resolved: List[ResolvedTemplate] = []
+    for variant, inner in declared_templates(preset, is_contest=is_contest):
+        if not (preset_path / inner).is_dir():
+            _print_missing_template_dir(
+                preset,
+                kind=kind,
+                inner=inner,
+                path=preset_path / inner,
+                severity='warning',
+                consequence=(
+                    ' Skipping it: this template will not be formatted, cleaned '
+                    'or otherwise processed. Fix or remove its entry in '
+                    '[item]preset.rbx.yml[/item].'
+                ),
+            )
+            continue
+        try:
+            resolved.append(
+                resolve_template(
+                    preset,
+                    preset_path,
+                    is_contest=is_contest,
+                    variant=variant.id if variant is not None else None,
+                )
+            )
+        except typer.Exit:
+            # `resolve_template` also rejects a template that resolves outside the
+            # preset root (a symlinked directory, which the existence check above
+            # happily follows). A sweep must not turn into a hard exit halfway
+            # through because of one bad declaration, so skip it -- every exit
+            # branch there prints its own message first, so skipping stays loud.
+            continue
+    return resolved
+
+
+def variant_for_path(
+    preset: Preset,
+    preset_path: pathlib.Path,
+    target: pathlib.Path,
+    *,
+    is_contest: bool,
+) -> Optional[str]:
+    """Which template directory contains `target`?
+
+    Returns the owning variant's id, the string 'default' when `target` lives in
+    the preset's canonical template, or None when it is inside no template at
+    all. The result is directly usable as `resolve_template`'s `variant`. When
+    templates nest, the deepest declared one wins.
+    """
+    # Lexical, like `find_local_preset`: a template dir reached through a
+    # symlink will not match.
+    target = utils.abspath(target)
+    candidates: List[Tuple[pathlib.Path, str]] = [
+        (variant.path, variant.id) for variant in preset.variants(is_contest)
+    ]
+    canonical = _canonical_template(preset, is_contest)
+    if canonical is not None:
+        candidates.append((canonical, 'default'))
+
+    best: Optional[Tuple[int, str]] = None
+    for inner, variant_id in candidates:
+        candidate = utils.abspath(preset_path / inner)
+        if target.is_relative_to(candidate):
+            depth = len(candidate.parts)
+            if best is None or depth > best[0]:
+                best = (depth, variant_id)
+    return best[1] if best is not None else None
 
 
 def get_preset_fetch_info_with_fallback(
@@ -701,14 +1113,18 @@ def install_preset_from_dir(
 ):
     preset = get_preset_yaml(src)
 
-    if ensure_contest and preset.contest is None:
+    # A preset only needs *some* template of the requested kind -- a
+    # variants-only preset (no canonical `problem:`/`contest:`, only
+    # `problemVariants`/`contestVariants`) is legal, and `-v <id>` picks from it
+    # just fine. Only a preset that declares nothing at all is unusable here.
+    if ensure_contest and not declared_templates(preset, is_contest=True):
         console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a contest package definition.[/error]'
+            f'[error]Preset [item]{preset.name}[/item] does not declare any contest template.[/error]'
         )
         raise typer.Exit(1)
-    if ensure_problem and preset.problem is None:
+    if ensure_problem and not declared_templates(preset, is_contest=False):
         console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a problem package definition.[/error]'
+            f'[error]Preset [item]{preset.name}[/item] does not declare any problem template.[/error]'
         )
         raise typer.Exit(1)
 
@@ -737,10 +1153,12 @@ def install_preset_from_dir(
     shutil.rmtree(str(dest / build_dir), ignore_errors=True)
     shutil.rmtree(str(dest / '.local.rbx'), ignore_errors=True)
 
-    if preset.contest is not None:
-        clean_copied_contest_dir(dest / preset.contest, build_dir=build_dir)
-    if preset.problem is not None:
-        clean_copied_problem_dir(dest / preset.problem, build_dir=build_dir)
+    # Every declared template, not just the canonical one: build artifacts left
+    # in a variant's directory would otherwise leak into the installed preset.
+    for template in all_templates(preset, dest, is_contest=True):
+        clean_copied_contest_dir(template.path, build_dir=build_dir)
+    for template in all_templates(preset, dest, is_contest=False):
+        clean_copied_problem_dir(template.path, build_dir=build_dir)
 
     clean_copied_package_dir(dest)
 
@@ -944,18 +1362,13 @@ def install_preset_at_package(fetch_info: PresetFetchInfo, dest_pkg: pathlib.Pat
 
 
 def _install_package_from_preset(
-    preset_path: pathlib.Path,
-    preset_package_inner_path: pathlib.Path,
+    template: ResolvedTemplate,
     dest_pkg: pathlib.Path,
-    tracked_assets: List[TrackedAsset],
     expansions: Optional[List[Tuple[str, str, List[str]]]] = None,
 ):
-    preset_package_path = preset_path / preset_package_inner_path
-    if not preset_package_path.is_dir():
-        console.console.print(
-            f'[error]Preset [item]{preset_path.name}[/item] does not have a [item]{preset_package_inner_path}[/item] package definition.[/error]'
-        )
-        raise typer.Exit(1)
+    # `resolve_template` already guaranteed the template directory exists.
+    preset_path = template.preset_path
+    preset_package_path = template.path
 
     for file in _glob_while_ignoring(
         preset_package_path,
@@ -972,7 +1385,7 @@ def _install_package_from_preset(
             expansions=expansions,
         )
 
-    for asset in tracked_assets:
+    for asset in template.tracking:
         if not asset.symlink:
             continue
         copy_preset_file(
@@ -1007,7 +1420,7 @@ def _pin_schema_header(path: pathlib.Path, kind: str, pkg_root: pathlib.Path) ->
     fix_language_server(path, model_cls, pkg_root)
 
 
-def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bool):
+def materialize_libraries(libraries: List[Library], pkg_root: pathlib.Path):
     # Libraries are tool-managed: every create/sync re-fetches per the version
     # spec and overwrites the materialized file. Reproducibility comes from the
     # committed files (the pin), not from a lock — so local hand-edits to a
@@ -1015,8 +1428,7 @@ def materialize_libraries(preset: Preset, pkg_root: pathlib.Path, is_contest: bo
     # under a different path/source if you need to diverge.
     from rbx.box.presets import library_fetch
 
-    libs = preset.libraries.contest if is_contest else preset.libraries.problem
-    for library in libs:
+    for library in libraries:
         cached = library_fetch.fetch_library(library)
         library_fetch.materialize_library(library, cached, pkg_root)
         console.console.print(
@@ -1029,31 +1441,31 @@ def install_contest(
     dest_pkg: pathlib.Path,
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
-):
+    variant: Optional[str] = None,
+) -> ResolvedTemplate:
+    """Install a contest package from the preset, returning the template used.
+
+    Callers MUST pass the returned template to `generate_lock`, so the lock can
+    never claim a different template than the one that was installed.
+    """
     if fetch_info is not None:
         _install_preset_from_fetch_info(
             fetch_info,
             dest_pkg / '.local.rbx',
             ensure_contest=True,
         )
-    preset = get_active_preset(dest_pkg)
-    preset_path = find_local_preset(dest_pkg)
-    assert preset_path is not None
-    if preset.contest is None:
-        console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a contest package definition.[/error]'
-        )
-        raise typer.Exit(1)
+    variant = pick_variant(
+        get_active_preset(dest_pkg), is_contest=True, variant=variant
+    )
+    template = get_active_template(dest_pkg, is_contest=True, variant=variant)
 
-    expansions = _collect_expansions(preset.expansion.contest)
+    expansions = _collect_expansions(template.expansion)
     console.console.print(
-        f'Installing contest from [item]{preset_path / preset.contest}[/item] to [item]{dest_pkg}[/item]...'
+        f'Installing contest from [item]{template.path}[/item] to [item]{dest_pkg}[/item]...'
     )
     _install_package_from_preset(
-        preset_path,
-        preset.contest,
+        template,
         dest_pkg,
-        preset.tracking.contest,
         expansions=expansions,
     )
     clean_copied_contest_dir(
@@ -1063,38 +1475,39 @@ def install_contest(
     )
     _pin_schema_header(dest_pkg / 'contest.rbx.yml', 'contest', dest_pkg)
     if materialize:
-        materialize_libraries(preset, dest_pkg, is_contest=True)
+        materialize_libraries(template.libraries, dest_pkg)
+    return template
 
 
 def install_problem(
     dest_pkg: pathlib.Path,
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
-):
+    variant: Optional[str] = None,
+) -> ResolvedTemplate:
+    """Install a problem package from the preset, returning the template used.
+
+    Callers MUST pass the returned template to `generate_lock`, so the lock can
+    never claim a different template than the one that was installed.
+    """
     if fetch_info is not None:
         _install_preset_from_fetch_info(
             fetch_info,
             dest_pkg / '.local.rbx',
             ensure_problem=True,
         )
-    preset = get_active_preset(dest_pkg)
-    preset_path = find_local_preset(dest_pkg)
-    assert preset_path is not None
-    if preset.problem is None:
-        console.console.print(
-            f'[error]Preset [item]{preset.name}[/item] does not have a problem package definition.[/error]'
-        )
-        raise typer.Exit(1)
+    variant = pick_variant(
+        get_active_preset(dest_pkg), is_contest=False, variant=variant
+    )
+    template = get_active_template(dest_pkg, is_contest=False, variant=variant)
 
-    expansions = _collect_expansions(preset.expansion.problem)
+    expansions = _collect_expansions(template.expansion)
     console.console.print(
-        f'Installing problem from [item]{preset_path / preset.problem}[/item] to [item]{dest_pkg}[/item]...'
+        f'Installing problem from [item]{template.path}[/item] to [item]{dest_pkg}[/item]...'
     )
     _install_package_from_preset(
-        preset_path,
-        preset.problem,
+        template,
         dest_pkg,
-        preset.tracking.problem,
         expansions=expansions,
     )
     clean_copied_problem_dir(
@@ -1103,7 +1516,8 @@ def install_problem(
     )
     _pin_schema_header(dest_pkg / 'problem.rbx.yml', 'problem', dest_pkg)
     if materialize:
-        materialize_libraries(preset, dest_pkg, is_contest=False)
+        materialize_libraries(template.libraries, dest_pkg)
+    return template
 
 
 def install_preset(
@@ -1226,18 +1640,30 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
     return res, res.load(root / 'preset.rbx.yml')
 
 
-def generate_lock(root: pathlib.Path = pathlib.Path()):
-    preset = get_active_preset(root)
+def generate_lock(
+    root: pathlib.Path = pathlib.Path(),
+    template: Optional[ResolvedTemplate] = None,
+):
+    """Write `.preset-lock.yml` for the package at `root`.
 
-    tracked_assets = get_preset_tracked_assets(root, is_contest=is_contest(root))
+    `template` is the template the package was installed from / synced against.
+    Callers that already resolved one MUST pass it, so the lock can never end up
+    describing a different template than the one that was just applied; it is
+    resolved here only for callers that have none.
+    """
+    if template is None:
+        template = get_active_template(root, is_contest=is_contest(root))
+
+    tracked_assets = _get_template_tracked_assets(template)
     preset_lock = PresetLock(
-        name=preset.name,
+        name=template.preset.name,
+        variant=template.variant_id,
         assets=build_package_locked_assets(tracked_assets, root),
     )
 
-    (root / '.preset-lock.yml').write_text(utils.model_to_yaml(preset_lock))
+    (root / LOCK_FILE_NAME).write_text(utils.model_to_yaml(preset_lock))
     console.console.print(
-        '[success][item].preset-lock.yml[/item] was created.[/success]'
+        f'[success][item]{LOCK_FILE_NAME}[/item] was created.[/success]'
     )
 
 
@@ -1255,14 +1681,25 @@ def _sync(try_update: bool = False, force: bool = False, symlinks: bool = False)
     if try_update:
         update()
 
+    # Sync against the template the package was actually created from. Falling
+    # back to the canonical one would overwrite a variant package's tracked
+    # assets with the wrong template's, so a template that no longer exists in
+    # the (possibly just-updated) preset is a hard error -- reported by
+    # `resolve_template`, which is told the request came from the lock.
+    template = get_active_template(
+        is_contest=is_contest(),
+        variant=preset_lock.variant,
+        requested_by=LOCK_FILE_NAME if preset_lock.variant is not None else None,
+    )
+
     _copy_updated_assets(
         preset_lock,
-        is_contest=is_contest(),
+        template,
         force=force,
         symlinks=symlinks,
     )
-    materialize_libraries(get_active_preset(), pathlib.Path(), is_contest=is_contest())
-    generate_lock()
+    materialize_libraries(template.libraries, pathlib.Path())
+    generate_lock(template=template)
 
 
 def copy_tree_normalizing_gitdir(
@@ -1480,7 +1917,70 @@ def sync(
 @cd.within_closest_package
 def lock():
     check_is_valid_package()
-    generate_lock()
+    contest = is_contest()
+    # Re-locking must keep the template the package is already locked to;
+    # silently re-pointing a variant package at the canonical template would
+    # make the next sync overwrite its assets.
+    existing_lock = _find_preset_lock()
+    variant = _read_locked_variant() if existing_lock is not None else None
+    template = get_active_template(is_contest=contest, variant=variant)
+
+    if existing_lock is None and template.preset.variants(contest):
+        # Nothing recorded the template this package came from, so canonical is
+        # only a guess -- and a wrong guess makes the next sync overwrite the
+        # package's assets. Say so instead of guessing silently.
+        console.console.print(
+            f'[warning]This package had no [item]{LOCK_FILE_NAME}[/item], so it was '
+            "locked to the preset's [item]default[/item] template.[/warning]"
+        )
+        console.console.print(
+            'If it was created from another template, set the [item]variant[/item] '
+            f'field in [item]{LOCK_FILE_NAME}[/item] to its id before syncing:'
+        )
+        _print_available_templates(
+            template.preset, is_contest=contest, requested_by=LOCK_FILE_NAME
+        )
+
+    generate_lock(template=template)
+
+
+def _print_declared_templates(
+    preset: Preset,
+    preset_path: Optional[pathlib.Path],
+    *,
+    is_contest: bool,
+    locked_variant: Optional[str],
+) -> None:
+    """Print every *declared* template of this kind, one row each.
+
+    Deliberately built on `declared_templates` rather than `all_templates`:
+    `ls` inspects the preset, so a declaration whose directory is gone must be
+    shown (flagged as missing) instead of quietly disappearing from the list.
+    """
+    declared = declared_templates(preset, is_contest=is_contest)
+    if not declared:
+        return
+
+    from rich.table import Table
+
+    kind = 'contest' if is_contest else 'problem'
+    table = Table(
+        'Id', 'Description', 'Path', 'Status', title=f'{kind.capitalize()} templates'
+    )
+    for variant, inner in declared:
+        variant_id = 'default' if variant is None else variant.id
+        status = []
+        if locked_variant is not None and locked_variant == variant_id:
+            status.append('in use')
+        if preset_path is not None and not (preset_path / inner).is_dir():
+            status.append('missing')
+        table.add_row(
+            variant_id,
+            variant.description if variant is not None else '',
+            str(inner),
+            ', '.join(status),
+        )
+    console.console.print(table)
 
 
 @app.command('ls', help='List details about the active preset.')
@@ -1491,6 +1991,23 @@ def ls():
     console.console.print(f'Preset: [item]{preset.name}[/item]')
     console.console.print(f'Path: {preset_path}')
     console.console.print(f'URI: {preset.uri}')
+
+    # The lock only says which template *this* package came from, so it can
+    # only mark a row of this package's own kind. A missing (or unreadable)
+    # lock marks nothing at all -- `ls` must keep working either way.
+    locked_kind = is_contest()
+    locked_variant = None
+    if _find_preset_lock() is not None:
+        # `variant: null` in the lock means the canonical template.
+        locked_variant = _read_locked_variant() or 'default'
+
+    for kind_is_contest in (False, True):
+        _print_declared_templates(
+            preset,
+            preset_path,
+            is_contest=kind_is_contest,
+            locked_variant=(locked_variant if kind_is_contest == locked_kind else None),
+        )
 
 
 registry_app = typer.Typer(no_args_is_help=True)

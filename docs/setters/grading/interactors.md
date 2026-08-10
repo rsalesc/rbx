@@ -8,6 +8,17 @@ You can read more about what is an interactive problem in this thorough [Codefor
 
 In this section, we will see how to write an interactive problem and how to define an interactor for it in {{rbx}}.
 
+!!! tip
+    You don't have to write this problem from scratch. The bundled `default` preset ships
+    exactly this problem as a [problem template variant](../presets/index.md#problem-template-variants),
+    so you can start from a working interactive package:
+
+    ```bash
+    rbx create --preset default -v interactive
+    ```
+
+    The rest of this page walks through how that package is put together.
+
 ## Motivational problem
 
 Let's assume we have a problem that asks you to find a number between 1 and `N`, where `N` is between 2 and 1000.

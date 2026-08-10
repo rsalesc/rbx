@@ -181,7 +181,20 @@ class Scenario(_Forbid):
     # ``problem/`` package (dereferencing symlinks, skipping build cruft), so
     # the fixture dir itself need only contain ``e2e.rbx.yml``.
     seed_from_preset: Optional[str] = None
+    # Id of a problem template variant declared by that preset
+    # (``problemVariants`` in its ``preset.rbx.yml``). When set, the scenario is
+    # seeded from the variant's template directory instead of the canonical
+    # ``problem/`` one. Requires ``seed_from_preset``.
+    seed_from_preset_variant: Optional[str] = None
     steps: List[Step] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def _variant_requires_preset(self):
+        if self.seed_from_preset_variant and not self.seed_from_preset:
+            raise ValueError(
+                '`seed_from_preset_variant` requires `seed_from_preset` to be set'
+            )
+        return self
 
     @field_validator('markers')
     @classmethod

@@ -26,6 +26,15 @@ def create(
         ),
     ] = None,
     path: Optional[pathlib.Path] = None,
+    variant: Annotated[
+        Optional[str],
+        typer.Option(
+            '--variant',
+            '-v',
+            help='Which template variant of the preset to use. Omit to use the '
+            'canonical template, or to be prompted when the preset offers variants.',
+        ),
+    ] = None,
     local: Annotated[
         bool,
         typer.Option(
@@ -62,7 +71,7 @@ def create(
         )
         raise typer.Exit(1)
 
-    presets.install_problem(dest_path, fetch_info)
+    template = presets.install_problem(dest_path, fetch_info, variant=variant)
 
     # Change problem name.
     ru, problem = package.get_ruyaml(dest_path)
@@ -71,7 +80,7 @@ def create(
 
     # fix_package(dest_path)
 
-    presets.generate_lock(dest_path)
+    presets.generate_lock(dest_path, template=template)
 
     if preset is not None:
         presets.maybe_offer_to_register(fetch_info, dest_path)

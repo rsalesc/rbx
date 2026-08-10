@@ -829,6 +829,15 @@ def create(
     preset: Annotated[
         Optional[str], typer.Option(help='Preset to use when creating the problem.')
     ] = None,
+    variant: Annotated[
+        Optional[str],
+        typer.Option(
+            '--variant',
+            '-v',
+            help='Which template variant of the preset to use. Omit to use the '
+            'canonical template, or to be prompted when the preset offers variants.',
+        ),
+    ] = None,
     local: Annotated[
         bool,
         typer.Option(
@@ -846,7 +855,7 @@ def create(
         )
         raise typer.Exit(1)
 
-    creation.create(name, preset=preset, local=local)
+    creation.create(name, preset=preset, variant=variant, local=local)
 
 
 @app.command(

@@ -75,8 +75,21 @@ scenarios:
   - name: smoke           # required, used as the pytest test id
     description: ...      # optional, free-form
     markers: [slow]       # optional, see Marker passthrough
+    seed_from_preset: default            # optional, see below
+    seed_from_preset_variant: interactive # optional, requires the above
     steps: [...]          # one or more Step entries
 ```
+
+* `seed_from_preset`: name of a preset under `rbx/resources/presets/<name>/`.
+  When set, the scenario's temp package is overlaid at run time with that
+  preset's problem template (symlinks dereferenced, build cruft skipped), so
+  the fixture directory need only contain `e2e.rbx.yml`. This is how the
+  bundled preset is kept honest without duplicating it into `testdata/`.
+* `seed_from_preset_variant`: id of a problem template *variant* declared by
+  that preset (`problemVariants` in its `preset.rbx.yml`). The template
+  directory is looked up through the `Preset` model, not guessed from the id;
+  an unknown id fails the scenario. Omit it to seed from the canonical
+  `problem/` template.
 
 ### `Step`
 

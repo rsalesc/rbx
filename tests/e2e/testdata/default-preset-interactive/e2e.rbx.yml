@@ -1,0 +1,25 @@
+scenarios:
+  - name: works
+    seed_from_preset: default
+    seed_from_preset_variant: interactive
+    description: >
+      Seeds the temp package from the `interactive` problem variant of the real
+      rbx default preset at run time rather than copying it into the fixture,
+      then verifies the variant builds its testset, judges the reference
+      solution as accepted (exercising the interactor end to end), and builds
+      its statement.
+    steps:
+      - cmd: build
+        expect:
+          tests:
+            groups:
+              samples: 1
+              testplan: 3
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+      - cmd: st b
+        expect:
+          files_exist:
+            - build/statement-en.pdf
