@@ -53,6 +53,51 @@ The `limits` object contains the following attributes/methods:
 - `limits.timelimit_for_language(lang)`: The time limit in milliseconds for a specific language.
 - `limits.memorylimit_for_language(lang)`: The memory limit in megabytes for a specific language.
 
+#### Shorthand for vars
+
+Writing `vars.` in front of every constraint gets old fast in a section that
+mentions a dozen of them. So the keys of a `vars` block are **also** available
+directly in the namespace that holds it. Both spellings always work:
+
+| Long form | Shorthand |
+|---|---|
+| `\VAR{vars.N.max}` | `\VAR{N.max}` |
+| `\VAR{problem.vars.N.max}` | `\VAR{problem.N.max}` |
+| `\VAR{contest.vars.year}` | `\VAR{contest.year}` |
+| `\VAR{g.vars.N.max}` (for a group `g`) | `\VAR{g.N.max}` |
+
+So a constraints block reads as:
+
+```latex title="statement.rbx.tex"
+$1 \le N \le \VAR{N.max}$, $1 \le A_i \le \VAR{A.max}$
+```
+
+A group's shorthand resolves that group's own values, so a subtasks table picks
+up per-group overrides and inherits everything else:
+
+```latex title="template.rbx.tex"
+%- for g in problem.groups
+\VAR{g.name} & $N \le \VAR{g.N.max}$ \\
+%- endfor
+```
+
+##### Reserved variable names
+
+Because vars share a namespace with {{rbx}}'s own template names, a **top-level**
+var may not be named after one of them. Using one of these names in `vars` is an
+error when the package loads:
+
+```
+blocks, contest, deps, extraValidators, generatorScript, generators, groups,
+import_dir, import_file, keyed_languages, lang, languages, limits,
+model_solution, name, outputValidators, params, problem, problems, profiles,
+samples, score, short_name, solutionVisualizer, subgroups, testcaseGlob,
+testcases, title, validator, vars, visualizer
+```
+
+Only the top-level name matters, so nesting one level down is always a valid fix:
+`score` is rejected, `points.score` is fine and reads as `\VAR{points.score}`.
+
 ### Creating custom blocks
 
 While the default template uses standard blocks (`description`, `input`, etc.), you can define **custom blocks** in your {{rbxtex}} files and render them in your template.

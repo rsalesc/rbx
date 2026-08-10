@@ -67,7 +67,7 @@ message any other undefined root name produces today.
     `problem`, `problems`
   - `problem.*`: `title`, `limits`, `profiles`, `groups`, `samples`, `blocks`,
     `short_name`, `import_dir`, `import_file`
-  - `contest.*`: `title`, `location`, `date`, `blocks`
+  - `contest.*`: `title`, `blocks`
   - group (`TestcaseGroup` fields): `name`, `score`, `deps`, `testcases`,
     `subgroups`, `generators`, `generatorScript`, `validator`,
     `extraValidators`, `outputValidators`, `testcaseGlob`, `visualizer`,
@@ -115,10 +115,28 @@ Tests:
   and `Contest.vars`; nested use accepted.
 - One e2e rendering `\VAR{N.max}` and `\VAR{g.N.max}`.
 
+## `ContestStatement.date` / `.location` are removed
+
+Found while implementing: the bundled default preset declares `vars: {year,
+date}` on the contest, and reserving `date` for the `contest` namespace broke
+rbx's own preset — and would have broken every contest created from it.
+
+The fields lose. `ContestStatement.date`/`.location` (and their `Document`
+twins) were plumbed end to end into `contest.date`/`contest.location`, but
+**nothing read them**: every preset, every testdata contest and every docs
+example carries a contest's date as a var and reads `\VAR{vars.date}`. They were
+dead surface that happened to reserve the two most natural contest var names.
+
+Removing them makes the shorthand *supply* what the fields promised:
+`\VAR{contest.date}` now resolves to the contest var, so the preset works
+unchanged and the spelling users would reach for is the one that works. It is
+still a breaking schema change for anyone who declared `date:`/`location:` on a
+contest statement — the fix is to move it into `vars`.
+
 ## Notes
 
-- No JSON-schema regeneration: no field shapes change, and the constraint is not
-  expressible in JSON Schema anyway.
+- No JSON-schema regeneration: the versioned schemas are generated at release
+  time (`mise run publish-schemas`), with nothing committed to the repo.
 - The bundled preset templates stay on the explicit `vars.` form. The shorthand
   is for user templates; the shipped chrome has no repetition problem to solve.
 

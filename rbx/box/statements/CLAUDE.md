@@ -34,7 +34,7 @@ with `\subimport`. There is **no migration** from v1.
   replaces parent), consumed only by the Polygon upload path so far.
 - **`Statement`** (problem) — no `name`; identified by `(language, variant)`
   (unique within a problem). `extends` by language string or `{language, variant}`.
-- **`ContestStatement`** (contest) — adds `name` (unique), `location`, `date`,
+- **`ContestStatement`** (contest) — adds `name` (unique),
   `standaloneProblemTemplate`, `contestProblemTemplate` (rbx-only). `(language,
   variant)` need not be unique. `extends` by `name`.
 - **`Document`** (contest) — like a contest statement but never joins; restricted
@@ -181,7 +181,7 @@ The **offline** Polygon packager (embedding PDFs in `problem.zip` /
 |---|---|---|
 | `params` | the statement's own params | all renders |
 | `vars` | problem/package vars (problem) or contest vars (contest) | all renders |
-| `contest` | `title`, `location`, `date`, `contest.vars` | always |
+| `contest` | `title`, `blocks`, `contest.vars` | always |
 | `problem` | `title`, `short_name`, `limits`, `profiles`, `groups`, `samples`, `blocks`, `import_dir`, `import_file` | problem renders |
 | `problems` | list of the above (full) for a contest join; **metadata only** (title/short_name/limits/profiles/groups) for a document | contest join; documents |
 | `lang`, `languages`, `keyed_languages` | env languages | all renders |
@@ -193,6 +193,19 @@ declared on the group. A subtasks table must render inherited values for groups
 that override nothing; exposing the raw block would render blanks instead. The
 raw override is not part of the template surface, but it is not *blocked*: the
 Jinja env is not sandboxed, so `g._group.vars` still reaches the model.
+
+**Var shorthand (#630).** Every `vars` block's keys are *also* bound into the
+namespace holding it, by `context._lift`: `\VAR{N.max}` == `\VAR{vars.N.max}` at
+the root, `problem.N.max`, `contest.N`, and `g.N.max` on a `GroupView` (model
+fields win there). Real namespace keys are merged last, so they win. Collisions
+are rejected at load time by `fields.RESERVED_STATEMENT_VAR_NAMES` /
+`check_reserved_statement_var_names` — one union checked on `Package.vars`,
+`TestcaseGroup.vars` and `Contest.vars`, since package vars reach all three
+scopes. The list is hand-written; **the drift test in
+`tests/rbx/box/statements/test_context.py` fails if you add a namespace key
+without reserving its name**. `ContestStatement.date`/`location` were dropped in
+the same change — nothing read them, and reserving those names would have broken
+the bundled preset, which (like every template) carries a contest's date in vars.
 
 Per-sample handles: `sample.input`/`output` (root-relative), `sample.dir` +
 `sample.explanation_file` (base-relative `\subimport`), `sample.interaction.chunks`.
