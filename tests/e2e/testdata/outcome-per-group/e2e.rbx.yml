@@ -7,8 +7,11 @@ scenarios:
       everywhere, and is caught even though its pooled `incorrect` holds.
       The verdicts themselves are identical for both, which is the point:
       only the per-group expectations tell them apart.
+
+      `sols/mislabeled.cpp` misses its expectation, so `rbx run` exits 1 (#625).
     steps:
       - cmd: run
+        expect_exit: 1
         expect:
           stdout_contains:
             # Both testgroups missed the expectation, so the verdict says

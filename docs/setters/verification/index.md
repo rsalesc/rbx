@@ -48,3 +48,28 @@ Setting a larger value is usually the recommended approach to ensure all your ex
 
 Setting a smaller value is usually useful when you want to run the commands faster, and you are sure that
 the checks you are running are not being violated.
+
+## Exit codes
+
+Verification is only useful in a pipeline if a failure actually fails the pipeline. The commands
+below exit with status `1` when a check they ran did not pass, and `0` otherwise:
+
+| Command                      | Exits `1` when                                                           |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `rbx build`                  | A validator rejects a generated test.                                     |
+| `rbx run`                    | The build fails, or a solution's verdict does not match its expected one. |
+| `rbx time`                   | The build fails.                                                          |
+| `rbx package build`          | The build or the verification of the testset fails.                       |
+| `rbx contest statements build` | Samples could not be built for some problem.                            |
+
+`rbx contest statements build` still builds every statement it can before failing, so the
+report tells you which problems are broken rather than stopping at the first one.
+
+!!! warning "Behavior change"
+
+    Up to and including `1.0.0`, `rbx build` and `rbx run` exited `0` even when they printed a
+    failing report. A CI job that is silently green today on a broken package will start failing
+    once you upgrade — which is the point, but it may surprise you.
+
+    Use a lower [verification level](#verification-level) (or `--no-validate`) if you deliberately
+    want a step that does not check the testset.

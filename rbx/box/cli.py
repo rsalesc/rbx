@@ -311,9 +311,10 @@ async def build(
 ):
     from rbx.box import builder
 
-    await builder.build(
+    if not await builder.build(
         verification=verification, validate=validate, visualize=visualize
-    )
+    ):
+        raise typer.Exit(1)
 
 
 @app.command(
@@ -424,7 +425,7 @@ async def run(
     if not await builder.build(
         verification=verification, output=check, validate=validate, is_run=True
     ):
-        return
+        raise typer.Exit(1)
 
     if verification <= VerificationLevel.VALIDATE.value:
         console.console.print(
@@ -461,7 +462,7 @@ async def run(
 
     console.console.print()
     console.console.rule('[status]Run report[/status]', style='status')
-    await print_run_report(
+    ok = await print_run_report(
         solution_result,
         console.console,
         VerificationLevel(verification),
@@ -479,6 +480,9 @@ async def run(
             skip_printing_limits=sanitized,
         )
         sharing.capture_and_share(rec, fmt=share, title='rbx run report')
+
+    if not ok:
+        raise typer.Exit(1)
 
 
 @app.command(
@@ -647,7 +651,7 @@ async def time(
     if not await builder.build(
         verification=verification, output=check, validate=validate, is_run=True
     ):
-        return None
+        raise typer.Exit(1)
 
     await timing.compute_time_limits(
         check, detailed, runs, formula=formula, profile=profile, auto=auto, share=share

@@ -228,10 +228,14 @@ def within_contest(func):
             issue_level_token = issue_stack.issue_level_var.set(
                 issue_stack.IssueLevel.OVERVIEW
             )
-            ret = func(*args, **kwargs)
-            issue_stack.print_current_report()
-            issue_stack.issue_level_var.reset(issue_level_token)
-            return ret
+            try:
+                return func(*args, **kwargs)
+            finally:
+                # Print in a finally so a command that exits non-zero (e.g. a
+                # contest statement build that failed for some problem) still
+                # shows the report explaining why.
+                issue_stack.print_current_report()
+                issue_stack.issue_level_var.reset(issue_level_token)
 
     return wrapper
 
