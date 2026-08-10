@@ -95,6 +95,7 @@ async def _execute_build(
 
     # At most run the validators, only in samples.
     problems_of_interest: Optional[List[ContestProblem]] = None
+    failed_problems: List[ContestProblem] = []
     if samples:
         from rbx.box.testcase_sample_utils import build_samples
 
@@ -109,10 +110,12 @@ async def _execute_build(
                 try:
                     if not await build_samples(verification, validate):
                         issue_stack.add_issue(StatementBuildIssue(problem))
+                        failed_problems.append(problem)
                     else:
                         problems_of_interest.append(problem)
                 except Exception:
                     issue_stack.add_issue(StatementBuildIssue(problem))
+                    failed_problems.append(problem)
 
     if profile is not None and problems_of_interest is None:
         problems_of_interest = eligible_problems
@@ -168,6 +171,15 @@ async def _execute_build(
         console.console.print(
             f'[item]{document.name} {document.language}[/item] (document) -> {href(built_path)}'
         )
+
+    if failed_problems:
+        # The statements that could be built were built, but samples are missing
+        # for some problem, so the command as a whole did not succeed.
+        console.console.print(
+            f'[error]Failed to build samples for [item]{len(failed_problems)}[/item] '
+            'problem(s), check the report above.[/error]'
+        )
+        raise typer.Exit(1)
 
 
 @app.command('build, b', help='Build statements.')

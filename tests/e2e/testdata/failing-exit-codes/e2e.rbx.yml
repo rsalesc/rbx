@@ -1,0 +1,28 @@
+scenarios:
+  - name: build-succeeds-exits-zero
+    description: |
+      The control for `run-fails-exits-nonzero`: nothing is wrong with the
+      tests themselves, so `rbx build` still exits 0. Only the *solutions*
+      are inconsistent with the package, and `rbx build` does not run them.
+    steps:
+      - cmd: build
+        expect:
+          tests:
+            count: 2
+            groups:
+              samples: 1
+              main: 1
+
+  - name: run-fails-exits-nonzero
+    description: |
+      `sols/liar.cpp` is declared `ac` but answers `a * b`, so its verdict
+      never matches its expected outcome. Before #625 `rbx run` printed the
+      failing report and exited 0, which let CI go green on a broken package.
+      It must exit 1.
+    steps:
+      - cmd: run
+        expect_exit: 1
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/liar.cpp: wa

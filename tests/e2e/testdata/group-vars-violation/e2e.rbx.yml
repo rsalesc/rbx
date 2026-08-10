@@ -14,11 +14,12 @@ scenarios:
       names the offending group through the testcase path and quotes the
       group-resolved range `[0, 200]`, not the package-level `[-200, 200]`.
 
-      `rbx build` reports the failure and stops before generating outputs, but
-      still exits 0, so the assertions are on the report and on the absence of
-      `.out` files rather than on the exit code.
+      `rbx build` reports the failure, stops before generating outputs, and
+      exits 1 (#625), so the assertions cover the report, the absence of `.out`
+      files, and the exit code.
     steps:
       - cmd: build
+        expect_exit: 1
         expect:
           stdout_matches: "n\\s*o\\s*n\\s*n\\s*e\\s*g\\s*/\\s*0\\s*0\\s*1\\s*\\.\\s*i\\s*n[\\s\\S]*Gen\\.\\s+call:\\s+gen\\s+-5\\s+5[\\s\\S]*violates\\s+the\\s+range\\s+\\[0,\\s*200\\][\\s\\S]*Validation\\s+failed"
           stdout_not_contains:
