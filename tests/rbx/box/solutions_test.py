@@ -134,7 +134,31 @@ async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
     assert tle_report.status == SolutionOutcomeStatus.OK
     assert tle_report.expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
     # Should have double TL warning for soft TLE
-    assert tle_report.runUnderDoubleTl is True or len(tle_report.doubleTlVerdicts) > 0
+    assert tle_report.runUnderDoubleTl is True
+    assert (
+        'still passed in double TL'
+        in Text.from_markup(tle_report.get_verdict_markup_with_warnings()).plain
+    )
+
+    # Solution that is within double TL but is *also* wrong there: the warning
+    # must name the verdict instead of staying silent (#607).
+    tle_incorrect_solution = result.skeleton.solutions[4]
+    tle_incorrect_evals = res[4]['gen1']
+    tle_incorrect_report = get_solution_outcome_report(
+        tle_incorrect_solution,
+        result.skeleton,
+        tle_incorrect_evals,
+        VerificationLevel.FULL,
+    )
+    assert tle_incorrect_report.status == SolutionOutcomeStatus.OK
+    assert tle_incorrect_report.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
+    warning = Text.from_markup(
+        tle_incorrect_report.get_verdict_markup_with_warnings()
+    ).plain
+    assert warning.splitlines()[-1] == (
+        'WARNING The solution still finished in double TL, '
+        'but failed with WRONG_ANSWER.'
+    )
 
 
 # Unit tests with custom inputs
@@ -549,6 +573,49 @@ def test_solution_outcome_report_tle_with_soft_tle_and_wa(
     # Should show double TL verdicts
     assert len(report.doubleTlVerdicts) > 0
     assert Outcome.WRONG_ANSWER in report.doubleTlVerdicts
+    # ...and must actually say so: this warning used to be computed and then
+    # dropped, since a report can never have both double TL flags set at the
+    # pooled layer alone (#607).
+    assert report.runUnderDoubleTl is False
+    assert report.get_verdict_markup_with_warnings() == (
+        '[success]OK[/success] \n'
+        '[warning]WARNING[/warning] The solution still finished in double TL, '
+        'but failed with [item]WRONG_ANSWER[/item].'
+    )
+
+
+def test_double_tl_warning_lists_every_verdict_in_a_stable_order(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """Several soft-TLE verdicts are all named, sorted so the line does not
+    change between runs."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution])
+    evals = [
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1500,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        ),
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1600,
+            no_tle_outcome=Outcome.RUNTIME_ERROR,
+        ),
+    ]
+
+    report = get_solution_outcome_report(
+        solution, skeleton, evals, VerificationLevel.FULL
+    )
+
+    assert report.doubleTlVerdicts == {Outcome.WRONG_ANSWER, Outcome.RUNTIME_ERROR}
+    warning = Text.from_markup(report.get_verdict_markup_with_warnings()).plain
+    assert warning.splitlines()[-1] == (
+        'WARNING The solution still finished in double TL, '
+        'but failed with RUNTIME_ERROR WRONG_ANSWER.'
+    )
 
 
 def test_solution_outcome_report_sanitizer_warnings(
@@ -717,11 +784,12 @@ def test_per_group_double_tl_is_reported_and_merged(
     assert report.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
 
 
-def test_double_tl_warning_attributes_each_half_to_its_own_group(
+def test_double_tl_warning_attributes_each_fact_to_its_own_group(
     tmp_path, mock_skeleton, mock_binary_scoring
 ):
-    """The two halves of the warning come from different groups, so each names
-    its own: group2 is what passed within 2x TL, group3 is what failed."""
+    """The two facts come from different groups, so each is its own sentence
+    naming its own group: group2 is what passed within 2x TL, group3 is what
+    failed."""
     solution = Solution(
         path=tmp_path / 'tle.cpp',
         outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
@@ -754,10 +822,11 @@ def test_double_tl_warning_attributes_each_half_to_its_own_group(
     )
 
     warning = Text.from_markup(report.get_verdict_markup_with_warnings()).plain
-    assert warning.splitlines()[-1] == (
-        'WARNING The solution still passed in double TL on group2, '
-        'but failed with WRONG_ANSWER on group3.'
-    )
+    assert warning.splitlines()[-2:] == [
+        'WARNING The solution still passed in double TL on group2.',
+        'WARNING The solution still finished in double TL, '
+        'but failed with WRONG_ANSWER on group3.',
+    ]
 
 
 def test_double_tl_warning_comma_joins_the_groups_it_names(
