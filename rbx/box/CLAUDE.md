@@ -92,8 +92,7 @@ Evaluations are **not truly parallel** -- they are deferred/lazy sequential. The
 ### Reporter Hierarchy
 
 - **`TraditionalRunReporter`** -- Base with start/finish lifecycle per solution/group/testcase
-- **`FullRunReporter`** -- Compact verdict marks (checkmarks/crosses) per testcase
-- **`LiveRunReporter`** -- Real-time `rich.live.Live` updates
+- **`LiveRunReporter`** -- One `rich.live.Live` line per group, with compact verdict marks (accepted testcases are omitted). Used whenever more than one solution runs, terminal or not: on a non-terminal console Live finalizes a single frame per group, which is what `--share`'s recorded consoles rely on.
 - **`SingleSolutionRunReporter`** -- Verbose per-testcase details (used when only 1 solution)
 
 ### Verdict Verification
