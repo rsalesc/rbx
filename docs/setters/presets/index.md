@@ -106,17 +106,16 @@ directory inside your preset, declared in `preset.rbx.yml` alongside the canonic
 # The canonical problem template.
 problem: "problem"
 
-# Additional problem templates, selectable with `-v/--variant`.
+# Additional problem templates, offered when a problem is created.
 problemVariants:
   - id: interactive
     path: "problem-interactive"
     description: "Communication task with a testlib interactor (guessing game)"
 ```
 
-Each entry needs an `id` (used on the command line, matching `^[a-zA-Z][a-zA-Z0-9_-]*$`)
-and a `path` pointing at the variant's template folder, relative to the preset root. The
-`description` is what setters see when picking a variant, so make it say what the template
-is *for*.
+Each entry needs an `id` (matching `^[a-zA-Z][a-zA-Z0-9_-]*$`) and a `path` pointing at the
+variant's template folder, relative to the preset root. The `description` is what setters
+see when picking a variant, so make it say what the template is *for*.
 
 !!! note
     The id `default` is **reserved**: it always refers to the preset's canonical `problem`
@@ -147,29 +146,39 @@ rbx run
 
 Once it works, declare it in `problemVariants:` as shown above.
 
-!!! tip
-    The bundled `default` preset already ships an `interactive` variant (the guessing game
-    from [Interactors](../grading/interactors.md)). If you created your preset from it with
-    `rbx presets create`, you already have a working example to crib from in
-    `problem-interactive/`.
-
 #### Selecting a variant
 
-Pass `-v/--variant` to any of the package creation commands:
+Once a preset declares variants, creating a package asks which template to start from —
+you don't have to remember any ids:
 
 ```bash
-# Standalone problem from the `interactive` variant.
-rbx create --preset your-preset -v interactive
-
-# Add a problem to a contest, using a variant of the contest's own preset.
-rbx contest add -v interactive
+rbx create --preset your-preset
 ```
 
-If you omit the flag and the preset declares variants, {{rbx}} shows an interactive picker
-listing `default` (the canonical template) plus every declared variant and its description.
-Outside a terminal (CI, scripts), there is nothing to pick from, so {{rbx}} silently uses
-the canonical template — or fails, if the preset has none. A preset that declares no
-variants at all behaves exactly as it always did: no picker, no extra output.
+```
+? Which problem template do you want to use?
+> default — the preset's main template
+  interactive — Communication task with a testlib interactor (guessing game)
+```
+
+The picker lists `default` (the canonical template) alongside every declared variant and
+its `description`, which is the whole reason to write a good one. `rbx contest add` prompts
+the same way, using the contest's own preset.
+
+A preset that declares no variants never prompts: creating a problem from it behaves
+exactly as it always did.
+
+!!! tip "Skipping the prompt"
+    Pass `-v/--variant` to name the template up front:
+
+    ```bash
+    rbx create --preset your-preset -v interactive
+    rbx contest add -v interactive
+    ```
+
+    This is also what happens outside a terminal: with no way to prompt, {{rbx}} falls back
+    to the canonical template — or fails, if the preset declares none — so scripts and CI
+    should always pass `--variant` explicitly.
 
 !!! tip
     `rbx presets ls` prints the templates a preset offers, per kind, with their id,
@@ -215,22 +224,6 @@ Variants are usually near-duplicates of each other, and you don't want to mainta
   into the installed package's `.local.rbx/`, so the created package stays self-contained
   and the file keeps following the preset.
 
-#### The variant is fixed at creation
-
-The chosen variant is recorded as `variant:` in the package's `.preset-lock.yml`, and
-`rbx presets sync` resolves updates against **that** template. There is deliberately no
-command to switch a problem to another variant: the templates differ structurally, and
-re-pointing an existing package at a different one would overwrite its tracked assets with
-files describing a different kind of problem. If you picked the wrong variant, recreate the
-problem.
-
-For the same reason, if the recorded variant no longer exists in the preset (you renamed or
-deleted it), `rbx presets sync` **fails loudly** instead of quietly falling back to the
-canonical template — a silent fallback would overwrite your interactive problem's tracked
-assets with batch ones. The escape hatch, when you really do know better, is to edit
-`variant:` in `.preset-lock.yml` by hand; `default` is a valid value there and means the
-canonical template.
-
 #### Contest template variants
 
 Contests work exactly the same way, through a `contestVariants:` block with the same entry
@@ -246,9 +239,8 @@ contestVariants:
     description: "IOI-style contest: subtask scoring, two-day schedule"
 ```
 
-Pick one at creation time with `rbx contest create --preset your-preset -v ioi`, and
-everything above — the reserved `default` id, the picker, the merge rule, the lock entry,
-the sync behavior — applies unchanged.
+Pick one at creation time with `rbx contest create --preset your-preset`, and everything
+above — the reserved `default` id, the picker, the merge rule — applies unchanged.
 
 !!! warning
     Don't confuse these with `rbx contest add_variant`, which scaffolds an additional
