@@ -962,3 +962,63 @@ class TestReservedVarNames:
         package = self._package(vars={'MAX_N': 100, 'AB': {'min': 1, 'max': 10}})
 
         assert package.expanded_vars == {'MAX_N': 100, 'AB.min': 1, 'AB.max': 10}
+
+
+class TestReservedStatementVarNamesOnModels:
+    """The statement-reserved names are enforced on every vars field (#630)."""
+
+    def test_reserved_package_var_is_rejected(self):
+        from rbx.box.schema import Package
+
+        with pytest.raises(ValidationError, match='"title" collides with'):
+            Package(
+                name='problem', timeLimit=1000, memoryLimit=256, vars={'title': 'x'}
+            )
+
+    def test_reserved_group_var_is_rejected(self):
+        from rbx.box.schema import TestcaseGroup
+
+        with pytest.raises(ValidationError, match='"score" collides with'):
+            TestcaseGroup(name='main', vars={'score': 1})
+
+    def test_reserved_contest_var_is_rejected(self):
+        from rbx.box.contest.schema import Contest
+
+        with pytest.raises(ValidationError, match='"problems" collides with'):
+            Contest(name='contest', vars={'problems': 1})
+
+    def test_reserved_name_holding_a_dict_is_also_rejected(self):
+        # Unlike the testlib check, the value's shape is irrelevant: the
+        # top-level key is what gets bound into the template namespace.
+        from rbx.box.schema import Package
+
+        with pytest.raises(ValidationError, match='"limits" collides with'):
+            Package(
+                name='problem',
+                timeLimit=1000,
+                memoryLimit=256,
+                vars={'limits': {'max': 1}},
+            )
+
+    def test_testlib_reserved_name_is_still_rejected(self):
+        from rbx.box.schema import Package
+
+        with pytest.raises(ValidationError, match=r'--group=<value>'):
+            Package(name='problem', timeLimit=1000, memoryLimit=256, vars={'group': 1})
+
+    def test_contest_vars_skip_the_testlib_check(self):
+        # Contest vars never reach a validator's command line.
+        from rbx.box.contest.schema import Contest
+
+        contest = Contest(name='contest', vars={'group': 1})
+
+        assert contest.expanded_vars == {'group': 1}
+
+    def test_ordinary_vars_still_accepted(self):
+        from rbx.box.schema import Package
+
+        package = Package(
+            name='problem', timeLimit=1000, memoryLimit=256, vars={'N': {'max': 100}}
+        )
+
+        assert package.expanded_vars == {'N.max': 100}

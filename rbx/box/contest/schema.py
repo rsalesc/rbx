@@ -12,9 +12,9 @@ from pydantic import (
 )
 
 from rbx.box.fields import (
+    CheckedStatementRecVars,
     FNameField,
     NameField,
-    RecVars,
     Vars,
     expand_vars,
 )
@@ -319,7 +319,7 @@ class Contest(BaseModel):
 
     # Vars to be re-used in the statements.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
-    vars: RecVars = Field(
+    vars: CheckedStatementRecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 
