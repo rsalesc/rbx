@@ -2433,7 +2433,20 @@ class TraditionalRunReporter:
         pass
 
 
-class FullRunReporter(TraditionalRunReporter):
+class LiveRunReporter(TraditionalRunReporter):
+    """The reporter used whenever more than one solution is run.
+
+    Group lines are rendered through ``rich.live.Live``, which also covers the
+    non-terminal case: there, Live finalizes a single frame per group instead of
+    animating, which is what the recorded consoles behind ``--share`` rely on.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.live: Optional[rich.live.Live] = None
+        self.pre_evaluated = 0
+        self.post_evaluated = 0
+
     def render_solution(self, solution: Solution):
         solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
         assert solution_skeleton is not None
@@ -2453,49 +2466,6 @@ class FullRunReporter(TraditionalRunReporter):
         )
         self.console.print()
         return report.status.ok()
-
-    def render_group(self, group: GroupSkeleton):
-        self.console.print(
-            f'[bold][status]{group.name} ({len(group.testcases)})[/status][/bold]',
-            end='',
-        )
-
-    def render_group_end(self, group: GroupSkeleton):
-        bracketed = f'{get_capped_evals_formatted_time(self.get_current_limits(), self.current_group_evals, self.verification)}, {get_evals_formatted_memory(self.current_group_evals)}'
-        self.console.print(
-            f'[info]({bracketed})[/info]',
-            end='',
-        )
-        partial_report = self.get_partial_report(group)
-        if partial_report is not None:
-            got_score = partial_report.gotScorePerGroup.get(group.name, 0)
-            self.console.print(
-                f' {get_solution_score_markup(got_score, group.score, pts=True)}',
-                end='',
-            )
-        self.console.print()
-
-    def render_pre_evaluation(self, entry: GenerationTestcaseEntry):
-        self.console.print(f'[info]{entry.group_entry.index}/[/info]', end='')
-
-    def render_post_evaluation(
-        self, entry: GenerationTestcaseEntry, evaluation: Optional[Evaluation]
-    ):
-        if evaluation is None:
-            self.console.print('x ', end='')
-            return
-        self.console.print(get_testcase_markup_verdict(evaluation), end='')
-        if evaluation.result.sanitizer_warnings:
-            self.console.print('[warning]*[/warning]', end='')
-        self.console.print(' ', end='')
-
-
-class LiveRunReporter(FullRunReporter):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.live: Optional[rich.live.Live] = None
-        self.pre_evaluated = 0
-        self.post_evaluated = 0
 
     def _update_live(self, finished: bool = False):
         if self.live is None:

@@ -24,9 +24,9 @@ from rbx.box.schema import (
 from rbx.box.solutions import (
     EvaluationItem,
     FailedToCompileSolutionIssue,
-    FullRunReporter,
     GroupOutcomeReport,
     GroupSkeleton,
+    LiveRunReporter,
     RunSolutionResult,
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
@@ -1167,16 +1167,17 @@ async def test_reporter_leaves_group_lines_alone_and_names_failures_once(
 
     with fresh_issue_stack():
         ok = await drive_reporter(
-            FullRunReporter(result, VerificationLevel.FULL, console), skeleton
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
         )
 
     assert not ok
     # No expectation markers here: the group lines are exactly what a package
-    # without `outcomePerGroup` renders.
+    # without `outcomePerGroup` renders. Accepted verdicts are left out of the
+    # line, as the live reporter always does, so group3 shows none at all.
     assert rendered_group_lines(console) == [
-        'group1 (2)0/✓ 1/✗ (100 ms, 1 KiB)',
-        'group2 (1)0/✗ (100 ms, 1 KiB)',
-        'group3 (1)0/✓ (100 ms, 1 KiB)',
+        'group1 (2) 1/✗ (100 ms, 1 KiB)',
+        'group2 (1) 0/✗ (100 ms, 1 KiB)',
+        'group3 (1) (100 ms, 1 KiB)',
     ]
     # The summary names every group that missed its expectation, and only those,
     # saying FAILED once and aligning the rest under it.
@@ -1213,15 +1214,15 @@ async def test_reporter_group_lines_carry_only_the_score(
         patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS),
     ):
         await drive_reporter(
-            FullRunReporter(result, VerificationLevel.FULL, console), skeleton
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
         )
 
     lines = rendered_lines(console)
     # group2 failed its tests, so it scores 0 of 60 -- while still meeting the
     # expectation that it fail, which the line says nothing about.
-    assert 'group2 (1)0/✗ (100 ms, 1 KiB) [0/60 pts]' in lines
+    assert 'group2 (1) 0/✗ (100 ms, 1 KiB) [0/60 pts]' in lines
     # `samples` has no score, so it gets no trailing mark at all.
-    assert 'samples (1)0/✓ (100 ms, 1 KiB)' in lines
+    assert 'samples (1) (100 ms, 1 KiB)' in lines
 
 
 async def test_partial_reports_do_not_add_timing_issues(
@@ -1257,7 +1258,7 @@ async def test_partial_reports_do_not_add_timing_issues(
         patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS),
     ):
         await drive_reporter(
-            FullRunReporter(result, VerificationLevel.FULL, recording_console()),
+            LiveRunReporter(result, VerificationLevel.FULL, recording_console()),
             skeleton,
         )
 
