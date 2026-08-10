@@ -51,14 +51,6 @@ class ContestStatement(BaseStatement):
         description='Name of the contest statement to inherit the build recipe from.',
     )
 
-    location: Optional[str] = Field(
-        default=None, description='Location of the contest in this language.'
-    )
-
-    date: Optional[str] = Field(
-        default=None, description='Date of the contest in this language.'
-    )
-
     standaloneProblemTemplate: Optional[pathlib.Path] = Field(
         default=None,
         description='Template applied to build a problem-level statement as a '
@@ -110,9 +102,6 @@ class Document(BaseStatement):
         default=None,
         description='Name of the document to inherit the build recipe from.',
     )
-
-    location: Optional[str] = Field(default=None, description='Location, per language.')
-    date: Optional[str] = Field(default=None, description='Date, per language.')
 
     @model_validator(mode='after')
     def _non_rbx_type(self):

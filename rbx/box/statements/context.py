@@ -42,6 +42,23 @@ def _wrap(vars: Vars, key: str) -> JinjaDictWrapper:
     return JinjaDictWrapper.from_dict(dict(vars or {}), wrapper_key=key)
 
 
+def _lift(namespace: Dict[str, Any], vars: Vars, key: str) -> Dict[str, Any]:
+    """Bind a var block's keys into the namespace that contains it (#630).
+
+    ``\\VAR{N.max}`` is shorthand for ``\\VAR{vars.N.max}``. The real namespace
+    keys are merged last so they win: ``RESERVED_STATEMENT_VAR_NAMES`` already
+    rejects a colliding var name at load time, and this ordering means a
+    namespace key added *without* reserving its name loses the shorthand rather
+    than being shadowed by user data.
+
+    ``JinjaDictWrapper.from_dict`` rebuilds dotted keys into nested wrappers, so
+    the lifted entries carry their own prefix -- ``\\VAR{N.typo}`` still reports
+    ``"N.typo" was not found in "vars"``.
+    """
+    wrapper = _wrap(vars, key)
+    return {**wrapper, **namespace, 'vars': wrapper}
+
+
 class GroupView:
     """A testcase group as seen by a statement template.
 
@@ -54,6 +71,11 @@ class GroupView:
     ``g.vars.AB.max`` for *every* group; if this exposed the raw override, every
     group that does not override ``AB.max`` would render a blank instead of the
     inherited value — the silent degradation per-group vars exist to remove.
+
+    The group's resolved vars are also bound directly onto the view, so
+    ``g.N.max`` is shorthand for ``g.vars.N.max`` (#630). Model fields win over
+    the shorthand; ``RESERVED_STATEMENT_VAR_NAMES`` rejects a var named after
+    one of them before a render ever sees it.
 
     The raw override block is not part of the template surface: ``g.vars`` is
     always the resolved set. It is not *inaccessible* — rbx renders with a plain
@@ -71,7 +93,13 @@ class GroupView:
         # Guard dunders so copy/pickle probes do not recurse through the proxy.
         if name.startswith('__') and name.endswith('__'):
             raise AttributeError(name)
-        return getattr(self._group, name)
+        try:
+            return getattr(self._group, name)
+        except AttributeError:
+            # Group var shorthand (#630): `g.N.max` == `g.vars.N.max`. Model
+            # fields win; a miss returns the wrapper's strict undefined, which
+            # carries the `groups.<name>.vars` hint.
+            return self.vars[name]
 
     def __repr__(self) -> str:
         return f'GroupView({self._group!r})'
@@ -104,24 +132,23 @@ class ContestRenderContext:
     title: str
     vars: Vars = dataclasses.field(default_factory=dict)
     params: Vars = dataclasses.field(default_factory=dict)
-    location: Optional[str] = None
-    date: Optional[str] = None
     blocks: Dict[str, str] = dataclasses.field(default_factory=dict)
 
     def namespace(self) -> Dict[str, Any]:
         """The ``contest`` template namespace: ``title``/``vars`` (always) plus
-        ``location``/``date``/``blocks`` when present."""
+        ``blocks`` when present.
+
+        Contest metadata beyond the title -- a date, a location -- is contest
+        ``vars``, reachable as ``\\VAR{contest.date}`` through the shorthand
+        (#630). The schema carried dedicated ``date``/``location`` fields until
+        then, but nothing read them: every preset and template already used vars.
+        """
         res: Dict[str, Any] = {
             'title': self.title,
-            'vars': _wrap(self.vars, 'contest.vars'),
         }
-        if self.location is not None:
-            res['location'] = self.location
-        if self.date is not None:
-            res['date'] = self.date
         if self.blocks:
             res['blocks'] = self.blocks
-        return res
+        return _lift(res, self.vars, 'contest.vars')
 
 
 @dataclasses.dataclass
@@ -151,7 +178,6 @@ class ProblemRenderContext:
             'profiles': JinjaDictGetter('profiles', **self.profiles),
             'groups': JinjaGroupsGetter('groups', dict(self.groups)),
             'samples': self.samples,
-            'vars': _wrap(self.vars, 'vars'),
             'params': _wrap(self.params, 'params'),
             'blocks': self.blocks,
         }
@@ -161,7 +187,7 @@ class ProblemRenderContext:
             res['import_dir'] = self.import_dir
         if self.import_file is not None:
             res['import_file'] = self.import_file
-        return res
+        return _lift(res, self.vars, 'vars')
 
 
 def _common(lang: str, languages: List[StatementCodeLanguage]) -> Dict[str, Any]:
@@ -186,12 +212,11 @@ def problem_jinja_kwargs(
     res.update(
         {
             'params': _wrap(problem.params, 'params'),
-            'vars': _wrap(problem.vars, 'vars'),
             'contest': contest.namespace(),
             'problem': problem.namespace(),
         }
     )
-    return res
+    return _lift(res, problem.vars, 'vars')
 
 
 def contest_jinja_kwargs(
@@ -208,9 +233,8 @@ def contest_jinja_kwargs(
     res.update(
         {
             'params': _wrap(contest.params, 'params'),
-            'vars': _wrap(contest.vars, 'vars'),
             'contest': contest.namespace(),
             'problems': [problem.namespace() for problem in problems],
         }
     )
-    return res
+    return _lift(res, contest.vars, 'vars')

@@ -309,8 +309,6 @@ async def build_statement(
             ),
             vars=contest.expanded_vars if contest is not None else {},
             params=contest_statement.expanded_vars,
-            location=contest_statement.location,
-            date=contest_statement.date,
         )
 
         samples = (

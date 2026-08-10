@@ -197,3 +197,184 @@ class TestGroupViews:
         message = str(exc_info.value)
         assert 'AB.mim' in message
         assert 'groups.sub2.vars' in message
+
+    def test_group_var_shorthand_resolves_the_group_set(self):
+        groups = _group_views()
+
+        # The override wins through the shorthand...
+        assert groups['sub2'].AB['min'] == 100
+        # ...and inherited keys still resolve, exactly as g.vars does.
+        assert groups['sub2'].AB['max'] == 200
+        assert groups['sub1'].AB['max'] == 10
+
+    def test_model_fields_win_over_shorthand(self):
+        # The schema rejects a var named `score`; the view must not depend on it.
+        from rbx.box.schema import TestcaseGroup
+
+        view = GroupView(TestcaseGroup(name='sub1', score=40), {'score': 999})
+
+        assert view.score == 40
+
+    def test_unknown_group_attribute_keeps_the_var_hint(self):
+        groups = _group_views()
+
+        with pytest.raises(jinja2.UndefinedError) as exc_info:
+            str(groups['sub2'].NOPE)
+        message = str(exc_info.value)
+        assert 'NOPE' in message
+        assert 'groups.sub2.vars' in message
+
+
+class TestVarShorthand:
+    """`\\VAR{N.max}` is shorthand for `\\VAR{vars.N.max}` (#630)."""
+
+    def test_problem_root_binds_var_keys_directly(self):
+        kwargs = context.problem_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            problem=_problem_ctx(vars={'N.max': 100, 'MAXV': 7}),
+            contest=_contest_ctx(),
+        )
+
+        assert kwargs['N']['max'] == 100
+        assert kwargs['MAXV'] == 7
+        # The long form keeps working.
+        assert kwargs['vars']['N']['max'] == 100
+
+    def test_contest_root_binds_var_keys_directly(self):
+        kwargs = context.contest_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            contest=_contest_ctx(vars={'year': 2026}),
+            problems=[],
+        )
+
+        assert kwargs['year'] == 2026
+        assert kwargs['vars']['year'] == 2026
+
+    def test_real_root_names_win_over_vars(self):
+        # The schema rejects this, but the merge must not depend on that.
+        kwargs = context.problem_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            problem=_problem_ctx(vars={'lang': 'nope'}),
+            contest=_contest_ctx(),
+        )
+
+        assert kwargs['lang'] == 'en'
+
+    def test_shorthand_miss_keeps_the_var_hint(self):
+        kwargs = context.problem_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            problem=_problem_ctx(vars={'N.max': 100}),
+            contest=_contest_ctx(),
+        )
+
+        with pytest.raises(jinja2.UndefinedError) as exc_info:
+            str(kwargs['N']['mim'])
+        message = str(exc_info.value)
+        assert 'N.mim' in message
+        assert 'vars' in message
+
+    def test_problem_namespace_binds_var_keys(self):
+        ns = _problem_ctx(vars={'N.max': 100}).namespace()
+
+        assert ns['N']['max'] == 100
+        assert ns['vars']['N']['max'] == 100
+
+    def test_contest_namespace_binds_var_keys(self):
+        ns = _contest_ctx(vars={'year': 2026}).namespace()
+
+        assert ns['year'] == 2026
+        assert ns['vars']['year'] == 2026
+
+    def test_join_member_problems_bind_var_keys(self):
+        kwargs = context.contest_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            contest=_contest_ctx(),
+            problems=[_problem_ctx(vars={'N.max': 100})],
+        )
+
+        assert kwargs['problems'][0]['N']['max'] == 100
+
+    def test_real_namespace_names_win_in_problem(self):
+        ns = _problem_ctx(title='Real', vars={'title': 'nope'}).namespace()
+
+        assert ns['title'] == 'Real'
+
+    def test_contest_metadata_vars_reach_the_contest_namespace(self):
+        # `date`/`location` used to be dedicated ContestStatement fields that
+        # nothing read; they are ordinary contest vars now, and the shorthand
+        # gives them the spelling the fields would have had.
+        ns = _contest_ctx(
+            vars={'date': '2026-06-21', 'location': 'Campinas'}
+        ).namespace()
+
+        assert ns['date'] == '2026-06-21'
+        assert ns['location'] == 'Campinas'
+
+    def test_contest_namespace_hint_still_names_contest_vars(self):
+        ns = _contest_ctx(vars={'year': 2026}).namespace()
+
+        with pytest.raises(jinja2.UndefinedError) as exc_info:
+            str(ns['vars']['yaer'])
+        assert 'contest.vars' in str(exc_info.value)
+
+
+class TestReservedListCoversTheNamespaceSurface:
+    """RESERVED_STATEMENT_VAR_NAMES is hand-written; this proves it still covers
+    every name a var could shadow. If this fails, add the new key to the
+    frozenset in rbx/box/fields.py (and to the docs table)."""
+
+    def _surface(self):
+        from rbx.box.schema import TestcaseGroup
+
+        problem_kwargs = context.problem_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            problem=_problem_ctx(vars={}),
+            contest=_contest_ctx(vars={}),
+        )
+        contest_kwargs = context.contest_jinja_kwargs(
+            lang='en',
+            languages=_langs(),
+            contest=_contest_ctx(vars={}),
+            problems=[],
+        )
+        problem_ns = _problem_ctx(
+            vars={},
+            short_name='A',
+            import_dir='.problems/A',
+            import_file='statement.tex',
+            blocks={'legend': 'x'},
+        ).namespace()
+        contest_ns = _contest_ctx(vars={}, blocks={'foo': 'x'}).namespace()
+        return (
+            set(problem_kwargs)
+            | set(contest_kwargs)
+            | set(problem_ns)
+            | set(contest_ns)
+            | set(TestcaseGroup.model_fields)
+        )
+
+    def test_every_namespace_key_is_reserved(self):
+        from rbx.box.fields import RESERVED_STATEMENT_VAR_NAMES
+
+        surface = self._surface()
+
+        assert surface <= RESERVED_STATEMENT_VAR_NAMES, (
+            f'unreserved template names: {sorted(surface - RESERVED_STATEMENT_VAR_NAMES)}'
+        )
+
+    def test_no_stale_reservations(self):
+        # The other direction, so the list does not accumulate dead names.
+        from rbx.box.fields import RESERVED_STATEMENT_VAR_NAMES
+
+        surface = self._surface()
+
+        assert RESERVED_STATEMENT_VAR_NAMES <= surface, (
+            'reserved but no longer exposed: '
+            f'{sorted(RESERVED_STATEMENT_VAR_NAMES - surface)}'
+        )

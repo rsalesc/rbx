@@ -76,9 +76,9 @@ RESERVED_STATEMENT_VAR_NAMES = frozenset(
         'samples',
         'short_name',
         'title',
-        # `contest` namespace (ContestRenderContext.namespace).
-        'date',
-        'location',
+        # The `contest` namespace adds nothing beyond `title`/`blocks`/`vars`:
+        # contest metadata such as a date or a location is contest vars,
+        # reachable as `\VAR{contest.date}` through the shorthand.
         # Group scope (TestcaseGroup model fields, proxied by GroupView).
         'deps',
         'extraValidators',
