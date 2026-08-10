@@ -2,6 +2,11 @@ name: outcome-per-group
 timeLimit: 1000
 memoryLimit: 256
 
+# `outcomePerGroup` only applies to points-scored problems: a binary problem is
+# judged as one pooled verdict, so its groups have no separate judgement for a
+# per-group expectation to attach to.
+scoring: points
+
 generators:
   - name: gen
     path: gens/gen.cpp
@@ -26,6 +31,7 @@ solutions:
 
 testcases:
   - name: small
+    score: 40
     subgroups:
       - name: gen
         generators:
@@ -34,6 +40,7 @@ testcases:
           - name: gen
             args: 3 4
   - name: big
+    score: 60
     subgroups:
       - name: gen
         generators:

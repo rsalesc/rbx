@@ -2,7 +2,8 @@ scenarios:
   - name: per-group-outcomes
     description: |
       `outcomePerGroup` is checked per testgroup, on top of the pooled
-      `outcome`. `sols/partial.cpp` declares what it really does and passes;
+      `outcome`. It only applies to `scoring: points` problems, which is what
+      this package is. `sols/partial.cpp` declares what it really does and passes;
       `sols/mislabeled.cpp` is the same program claiming to time out
       everywhere, and is caught even though its pooled `incorrect` holds.
       The verdicts themselves are identical for both, which is the point:
@@ -14,9 +15,10 @@ scenarios:
         expect_exit: 1
         expect:
           stdout_contains:
-            # Both testgroups missed the expectation, so the verdict says
-            # FAILED once and lines the second one up under it.
-            - "FAILED small: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED"
+            # Under POINTS the verdict leads with the score line, and both
+            # missed testgroups line up underneath that single FAILED.
+            - "FAILED Got [40/100 pts]"
+            - "       small: expected TIME_LIMIT_EXCEEDED, got: ACCEPTED"
             - "       big: expected TIME_LIMIT_EXCEEDED, got: WRONG_ANSWER"
           stdout_not_contains:
             # The correctly-declared solution is never named.
