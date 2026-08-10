@@ -12,9 +12,9 @@ from pydantic import (
 )
 
 from rbx.box.fields import (
+    CheckedStatementRecVars,
     FNameField,
     NameField,
-    RecVars,
     Vars,
     expand_vars,
 )
@@ -49,14 +49,6 @@ class ContestStatement(BaseStatement):
     extends: Optional[str] = FNameField(
         default=None,
         description='Name of the contest statement to inherit the build recipe from.',
-    )
-
-    location: Optional[str] = Field(
-        default=None, description='Location of the contest in this language.'
-    )
-
-    date: Optional[str] = Field(
-        default=None, description='Date of the contest in this language.'
     )
 
     standaloneProblemTemplate: Optional[pathlib.Path] = Field(
@@ -110,9 +102,6 @@ class Document(BaseStatement):
         default=None,
         description='Name of the document to inherit the build recipe from.',
     )
-
-    location: Optional[str] = Field(default=None, description='Location, per language.')
-    date: Optional[str] = Field(default=None, description='Date, per language.')
 
     @model_validator(mode='after')
     def _non_rbx_type(self):
@@ -319,7 +308,7 @@ class Contest(BaseModel):
 
     # Vars to be re-used in the statements.
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
-    vars: RecVars = Field(
+    vars: CheckedStatementRecVars = Field(
         default={}, description='Variables to be re-used across the package.'
     )
 

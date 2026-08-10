@@ -17,6 +17,7 @@ from rbx.box.fields import (
     Primitive,
     RecVars,
     Vars,
+    check_reserved_statement_var_names,
     expand_vars,
     merge_recvars,
 )
@@ -109,7 +110,11 @@ def check_reserved_var_names(vars: RecVars) -> RecVars:
     return vars
 
 
-CheckedRecVars = Annotated[RecVars, AfterValidator(check_reserved_var_names)]
+CheckedRecVars = Annotated[
+    RecVars,
+    AfterValidator(check_reserved_var_names),
+    AfterValidator(check_reserved_statement_var_names),
+]
 
 
 def is_unique_testcase_group_names(

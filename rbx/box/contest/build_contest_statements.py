@@ -204,8 +204,6 @@ async def build_statement(
         ),
         vars=contest.expanded_vars,
         params=statement.expanded_vars,
-        location=statement.location,
-        date=statement.date,
     )
 
     problem_ctxs: List[ProblemRenderContext] = []
@@ -410,8 +408,6 @@ def _emit_simple(
         ),
         vars=contest.expanded_vars,
         params=statement.expanded_params,
-        location=getattr(statement, 'location', None),
-        date=getattr(statement, 'date', None),
     )
 
     if statement.type in (StatementType.JinjaTeX, StatementType.JinjaMarkdown):
