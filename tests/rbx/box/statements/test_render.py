@@ -83,6 +83,67 @@ class TestRenderProblemDocument:
         assert 'LEGEND=LEG' in out
         assert 'CONTEST=My Contest' in out
 
+    def test_var_shorthand_renders_through_a_real_template(self, tmp_path):
+        # The shorthand (#630) has to survive the actual Jinja env, not just the
+        # context dict: \VAR{N.max} == \VAR{vars.N.max}, and a group renders its
+        # own resolved value through \VAR{g.N.max}.
+        from rbx.box.schema import Package
+        from rbx.box.statements.context import GroupView
+
+        _write(
+            tmp_path / 'tpl.rbx.tex',
+            '\\documentclass{article}\n'
+            '\\begin{document}\n'
+            'SHORT=\\VAR{AB.max}\n'
+            'LONG=\\VAR{vars.AB.max}\n'
+            'NESTED=\\VAR{problem.AB.min}\n'
+            'CONTEST=\\VAR{contest.date}\n'
+            '%- for g in problem.groups\n'
+            'GROUP=\\VAR{g.name}:\\VAR{g.AB.max}\n'
+            '%- endfor\n'
+            '\\end{document}\n',
+        )
+        pkg = Package.model_validate(
+            {
+                'name': 'test',
+                'timeLimit': 1000,
+                'memoryLimit': 256,
+                'scoring': 'points',
+                'vars': {'AB': {'min': 1, 'max': 200}},
+                'testcases': [
+                    {'name': 'sub1', 'score': 50, 'vars': {'AB': {'max': 10}}},
+                    {'name': 'sub2', 'score': 50},
+                ],
+            }
+        )
+        problem = ProblemRenderContext(
+            title='My Problem',
+            vars=pkg.expanded_vars,
+            groups={
+                g.name: GroupView(g, pkg.expanded_vars_for_group(g.name))
+                for g in pkg.testcases
+            },
+        )
+        contest = ContestRenderContext(title='My Contest', vars={'date': '2026-06-21'})
+
+        out = render.render_problem_document(
+            tmp_path,
+            'tpl.rbx.tex',
+            lang='en',
+            languages=[],
+            problem=problem,
+            contest=contest,
+        ).decode()
+
+        assert 'SHORT=200' in out
+        assert 'LONG=200' in out
+        assert 'NESTED=1' in out
+        # A contest date is an ordinary contest var now, spelled like a field.
+        assert 'CONTEST=2026-06-21' in out
+        # The overriding group renders its own value; the other inherits.
+        assert 'GROUP=sub1:10' in out
+        assert 'GROUP=sub2:200' in out
+
 
 class TestRenderContestDocument:
     def test_joins_problems_via_import_handles(self, tmp_path):
