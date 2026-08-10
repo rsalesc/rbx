@@ -1,5 +1,5 @@
 import pathlib
-from typing import Annotated, Dict, List, Optional, Tuple
+from typing import Annotated, Dict, List, Optional, Set, Tuple
 
 import syncer
 import typer
@@ -171,7 +171,9 @@ async def info(
 
 
 def _non_promotable_reason(
-    entry: GenerationTestcaseEntry, script_formats: Dict[pathlib.Path, str]
+    entry: GenerationTestcaseEntry,
+    script_formats: Dict[pathlib.Path, str],
+    run_keys: Dict[pathlib.Path, Set[str]],
 ) -> str:
     """Return a human-readable reason why ``entry`` cannot be promoted.
 
@@ -186,6 +188,11 @@ def _non_promotable_reason(
         return 'comes from a dynamic generator script (only static .txt scripts can be promoted)'
     if script_formats.get(md.generator_script.path) != 'rbx':
         return 'does not come from an rbx generator script'
+    if not promotion.is_isolated_removal(entry, run_keys):
+        return (
+            'comes from a generator-script line shared by other test groups '
+            '(removing it would change them too)'
+        )
     return 'cannot be promoted'
 
 
@@ -423,6 +430,7 @@ async def _edit_filenames(
 async def _promote_interactive(
     manual_groups: Dict[str, TestcaseGroup],
     script_formats: Dict[pathlib.Path, str],
+    run_keys: Dict[pathlib.Path, Set[str]],
     group: Optional[str] = None,
     progress: Optional[utils.StatusProgress] = None,
 ) -> None:
@@ -431,7 +439,10 @@ async def _promote_interactive(
 
     all_entries = await extract_generation_testcases_from_groups()
     all_entries = [
-        entry for entry in all_entries if promotion.is_promotable(entry, script_formats)
+        entry
+        for entry in all_entries
+        if promotion.is_promotable(entry, script_formats)
+        and promotion.is_isolated_removal(entry, run_keys)
     ]
     if not all_entries:
         console.print(
@@ -527,6 +538,7 @@ async def promote(
 ):
     manual_groups = promotion.get_manual_groups_by_name()
     script_formats = promotion.script_format_by_path()
+    run_keys = promotion.run_keys_by_script_path()
 
     if not selectors:
         if group is not None and group not in manual_groups:
@@ -534,7 +546,7 @@ async def promote(
                 f'[error]Manual group [item]{group}[/item] does not exist.[/error]'
             )
             raise typer.Exit(1)
-        await _promote_interactive(manual_groups, script_formats, group=group)
+        await _promote_interactive(manual_groups, script_formats, run_keys, group=group)
         return
 
     if group is None:
@@ -562,10 +574,13 @@ async def promote(
             raise typer.Exit(1)
 
         # All-or-nothing: validate every selected entry is a promotable rbx-script
-        # test BEFORE writing anything.
+        # test whose removal is isolated to its own group BEFORE writing anything.
         for entry in entries:
-            if not promotion.is_promotable(entry, script_formats):
-                reason = _non_promotable_reason(entry, script_formats)
+            if not (
+                promotion.is_promotable(entry, script_formats)
+                and promotion.is_isolated_removal(entry, run_keys)
+            ):
+                reason = _non_promotable_reason(entry, script_formats, run_keys)
                 console.print(
                     f'[error]Test [item]{entry.group_entry}[/item] cannot be '
                     f'promoted: it {reason}.[/error]'

@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import pathlib
 import re
@@ -7,7 +8,10 @@ from rbx import utils
 from rbx.box import generator_script_handlers as gsh
 from rbx.box import package, package_utils
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import TestcaseGroup
+from rbx.box.generator_script_handlers import _group_matches
+from rbx.box.schema import GeneratorCall, GeneratorScript, TestcaseGroup
+from rbx.box.stressing import generator_script_parser as gsp
+from rbx.box.testcase_extractors import iter_effective_scripts
 
 
 def manual_group_dir(group: TestcaseGroup) -> pathlib.Path:
@@ -207,19 +211,145 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
 
 
 def script_format_by_path() -> Dict[pathlib.Path, str]:
-    """Map each generator-script path in the package to its format ('rbx'/'box')."""
+    """Map each EFFECTIVE generator-script path (explicit or inherited) to its
+    format ('rbx'/'box')."""
     res: Dict[pathlib.Path, str] = {}
-    for group in package.get_test_groups_by_name().values():
-        gs = group.generatorScript
-        if gs is not None:
-            res[gs.path] = gs.format
+    for _run_key, gs in iter_effective_scripts():
+        res[gs.path] = gs.format
     return res
+
+
+def run_keys_by_script_path() -> Dict[pathlib.Path, Set[str]]:
+    """Map each effective script path to the set of run-keys generating from it.
+
+    A problem-level script inherited by several groups/subgroups appears once,
+    mapped to all the run-keys that share it.
+    """
+    res: Dict[pathlib.Path, Set[str]] = {}
+    for run_key, gs in iter_effective_scripts():
+        res.setdefault(gs.path, set()).add(run_key)
+    return res
+
+
+def removal_affects_only_run_key(
+    run_key: str, annotation: Optional[str], run_keys: Set[str]
+) -> bool:
+    """True iff a line annotated ``annotation`` in a script shared by ``run_keys``
+    matches ONLY ``run_key`` -- so removing it cannot change another group."""
+    matched = {k for k in run_keys if _group_matches(annotation, k)}
+    return matched == {run_key}
+
+
+def line_annotation(script_path: pathlib.Path, line: int) -> Optional[str]:
+    """The @testgroup path of the statement at ``line`` (None if untagged)."""
+    inputs = gsp.parse_and_transform(script_path.read_text(), script_path)
+    for inp in inputs:
+        if inp.generator_script is not None and inp.generator_script.line == line:
+            return inp.group
+    return None
+
+
+def is_isolated_removal(
+    entry: GenerationTestcaseEntry, run_keys_by_path: Dict[pathlib.Path, Set[str]]
+) -> bool:
+    """True iff removing ``entry``'s originating line affects only its run-key.
+
+    A line in a @testgroup block scoped to this run-key, or a line in a script
+    used by only this run-key, is safe to remove. An untagged line in a script
+    shared by other groups -- or a parent tag that bleeds into sibling
+    subgroups -- is not.
+    """
+    gse = entry.metadata.generator_script
+    if gse is None:
+        return False
+    run_keys = run_keys_by_path.get(gse.path)
+    if not run_keys:
+        return False
+    annotation = line_annotation(gse.path, gse.line)
+    return removal_affects_only_run_key(
+        entry.subgroup_entry.group, annotation, run_keys
+    )
+
+
+@dataclasses.dataclass
+class ScriptAddTarget:
+    """A place to append generator-script lines for one run-key."""
+
+    run_key: str
+    script: GeneratorScript
+    block_start_line: Optional[int]  # existing @testgroup block; None => create/append
+    top_level: bool  # only when block_start_line is None: append untagged
+    label: str
+
+
+def script_add_targets() -> List[ScriptAddTarget]:
+    """Targets for appending tests to rbx-format ``.txt`` generator scripts.
+
+    For each leaf run-key with such an effective script, yields one target per
+    existing ``@testgroup`` block matching the run-key exactly, plus a
+    create/append target. The create/append target appends at top level when the
+    script is used by only that run-key (so the new line cannot leak), else it
+    creates a fresh ``@testgroup <run-key>`` block scoping the addition.
+    """
+    run_keys = run_keys_by_script_path()
+    targets: List[ScriptAddTarget] = []
+    for run_key, gs in iter_effective_scripts():
+        if gs.format != 'rbx' or gs.path.suffix != '.txt' or not gs.path.is_file():
+            continue
+        rel = package.relpath(gs.path)
+        for block in gsp.testgroup_blocks(gs.path.read_text()):
+            if block.path == run_key:
+                targets.append(
+                    ScriptAddTarget(
+                        run_key,
+                        gs,
+                        block.start_line,
+                        False,
+                        f'{run_key} @ {rel}:{block.start_line}',
+                    )
+                )
+        exclusive = run_keys.get(gs.path) == {run_key}
+        targets.append(
+            ScriptAddTarget(
+                run_key,
+                gs,
+                None,
+                exclusive,
+                f'{run_key} @ {rel} '
+                + ('(append)' if exclusive else '(new @testgroup block)'),
+            )
+        )
+    return targets
+
+
+def add_calls_to_target(
+    target: ScriptAddTarget,
+    calls: List[GeneratorCall],
+    comment: Optional[str] = None,
+) -> None:
+    """Append ``calls`` to ``target``'s script, scoped to its run-key."""
+    path = target.script.path
+    handler = gsh.get_generator_script_handler(
+        path.read_text(), gsh.GeneratorScriptHandlerParams(target.script)
+    )
+    if target.block_start_line is not None:
+        handler.append_in_block(target.block_start_line, calls, comment)
+    elif target.top_level:
+        handler.append(calls, comment)
+    else:
+        handler.append_new_block(target.run_key, calls, comment)
+    path.write_text(handler.script)
+    package_utils.clear_package_cache()
 
 
 def is_promotable(
     entry: GenerationTestcaseEntry, script_formats: Dict[pathlib.Path, str]
 ) -> bool:
-    """True iff entry came from an rbx generator script and is not a @copy."""
+    """True iff entry came from an rbx generator script and is not a @copy.
+
+    This does NOT check removal isolation (see :func:`is_isolated_removal`); the
+    commands gate on both.
+    """
     md = entry.metadata
     if md.generator_script is None or md.copied_from is not None:
         return False
@@ -238,12 +368,9 @@ def remove_script_entries(entries: Iterable[GenerationTestcaseEntry]) -> None:
         assert gse is not None
         by_path.setdefault(gse.path, set()).add(gse.line)
 
-    groups = package.get_test_groups_by_name()
-    script_entry_by_path = {
-        g.generatorScript.path: g.generatorScript
-        for g in groups.values()
-        if g.generatorScript is not None
-    }
+    # Effective scripts include the inherited problem-level path, so a test
+    # generated by the inherited script resolves to a registered entry.
+    script_entry_by_path = {gs.path: gs for _rk, gs in iter_effective_scripts()}
 
     for path, start_lines in by_path.items():
         assert path in script_entry_by_path, (

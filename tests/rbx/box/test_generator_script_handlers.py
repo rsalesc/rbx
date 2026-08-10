@@ -585,3 +585,48 @@ class TestBoxGeneratorScriptHandler:
         handler.append([call])
 
         assert handler.script == '\n1 ; gen.exe arg'
+
+
+class TestRbxGeneratorScriptHandlerInsert:
+    """Test suite for RbxGeneratorScriptHandler block-scoped insertion."""
+
+    def test_append_in_block_inserts_before_closing_brace(self):
+        h = _rbx_handler('@testgroup main {\n  gen 1\n}\n')
+        h.append_in_block(1, [GeneratorCall(name='gen', args='2')], comment='added')
+        assert h.script.splitlines() == [
+            '@testgroup main {',
+            '  gen 1',
+            '  # added',
+            '  gen 2',
+            '}',
+        ]
+
+    def test_append_in_block_targets_block_by_start_line(self):
+        h = _rbx_handler('@testgroup a {\n  gen 1\n}\n@testgroup b {\n  gen 2\n}\n')
+        h.append_in_block(4, [GeneratorCall(name='gen', args='9')])
+        # The new line lands inside block b, not a.
+        b_body = h.script.split('@testgroup b {', 1)[1].split('}', 1)[0]
+        assert 'gen 9' in b_body
+        a_body = h.script.split('@testgroup a {', 1)[1].split('}', 1)[0]
+        assert 'gen 9' not in a_body
+
+    def test_append_in_block_empty_block(self):
+        h = _rbx_handler('@testgroup main {\n}\n')
+        h.append_in_block(1, [GeneratorCall(name='gen', args='1')])
+        assert h.script.splitlines() == [
+            '@testgroup main {',
+            '  gen 1',
+            '}',
+        ]
+
+    def test_append_in_block_unknown_line_raises(self):
+        h = _rbx_handler('@testgroup main {\n  gen 1\n}\n')
+        with pytest.raises(ValueError):
+            h.append_in_block(99, [GeneratorCall(name='gen', args='1')])
+
+    def test_append_new_block_creates_scoped_block(self):
+        h = _rbx_handler('gen 0\n')
+        h.append_new_block('main/sub1', [GeneratorCall(name='gen', args='9')])
+        assert '@testgroup main/sub1 {' in h.script
+        body = h.script.split('@testgroup main/sub1 {', 1)[1]
+        assert 'gen 9' in body

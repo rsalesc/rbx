@@ -1,0 +1,7 @@
+@testgroup grpa {
+    @input "1 1"
+    @input "2 2"
+}
+@testgroup grpb {
+    @input "3 3"
+}
