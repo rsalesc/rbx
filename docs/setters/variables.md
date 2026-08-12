@@ -53,14 +53,7 @@ that were defined in the `problem.rbx.yml` file, right at the root of your packa
 
 This header exposes a function `getVar<T>(name)` that can be used to get the value
 of a variable as a `T`-typed object. `T` can be `bool`, `std::string`, any
-floating-point type (`float`, `double`) or any integer type -- both the plain
-spellings (`int`, `long`, `long long` and their unsigned counterparts) and the
-fixed-width aliases (`int32_t`, `int64_t`, ...). Reading an integer that does not
-fit in the requested type raises an error instead of silently truncating it.
-
-Character types (`char` and friends) are deliberately not supported: it would be
-ambiguous whether `getVar<char>("x")` should give you the number or the letter.
-Read the variable into an explicit integer type instead.
+floating-point type (`float`, `double`) or any integer type.
 
 Nested variables can be addressed either by their full dotted name, or by passing
 one segment per argument -- the two calls below are equivalent:
