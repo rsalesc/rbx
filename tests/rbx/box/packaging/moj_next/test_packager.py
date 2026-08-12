@@ -145,6 +145,32 @@ def test_amalgamated_checker_compiles_the_way_moj_compiles_it(
     assert proc.returncode == 0, proc.stderr
 
 
+def test_partial_scoring_warning_ignores_inlined_testlib(testing_pkg, tmp_path, capsys):
+    # testlib declares quitp/_points itself, so checking the amalgamated output would
+    # warn for every checker, the builtin one included.
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.save()
+
+    run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+
+    assert 'quitp' not in capsys.readouterr().out
+
+
+def test_warns_about_a_partial_scoring_checker(testing_pkg, tmp_path, capsys):
+    testing_pkg.add_file('check.cpp').write_text(
+        '#include "testlib.h"\nint main(){ quitp(0.5, "half"); }\n'
+    )
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.save()
+
+    run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+
+    assert 'quitp' in capsys.readouterr().out
+
+
 def test_refuses_an_unresolvable_checker_include(testing_pkg, tmp_path):
     testing_pkg.add_file('check.cpp').write_text(
         '#include "../outside/lib.h"\n#include "testlib.h"\nint main(){}\n'

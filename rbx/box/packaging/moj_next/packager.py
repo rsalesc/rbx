@@ -235,9 +235,11 @@ class MojNextPackager(BasePackager):
             )
             raise typer.Exit(1)
 
-        content = self._amalgamate_checker_content(checker)
-        text = content.decode('utf-8', errors='replace')
-        if 'quitp' in text or '_points' in text:
+        # Checked against the ORIGINAL source, never the amalgamated output: testlib
+        # itself declares `quitp` and `_points`, so the inlined header would make this
+        # fire for every checker, the builtin one included.
+        source = checker.path.read_text(encoding='utf-8', errors='replace')
+        if 'quitp' in source or '_points' in source:
             console.console.print(
                 '[warning]The checker references [item]quitp[/item]/'
                 '[item]_points[/item], but MOJ maps a testlib partial result to a '
@@ -245,9 +247,6 @@ class MojNextPackager(BasePackager):
                 '[warning]Express subtasks with [item]tests/score[/item] groups '
                 'instead.[/warning]'
             )
-        return content
-
-    def _amalgamate_checker_content(self, checker: CodeItem) -> bytes:
         return self._amalgamate(checker, 'checker')
 
     def _write_checker(self, into_path: pathlib.Path) -> None:
