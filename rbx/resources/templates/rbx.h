@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #if defined(__APPLE__)
@@ -180,112 +181,180 @@ std::optional<bool> getBoolVar(std::string name) {
 namespace rbx {
 namespace vars {
 
-template <typename T> T getVar(std::string name);
+namespace detail {
 
-template <> int32_t getVar<int32_t>(std::string name) {
+template <typename> inline constexpr bool kUnsupportedVarType = false;
+
+// Character types are integral, but reading a var into one is ambiguous: it is
+// not clear whether getVar<char>("x") should yield the number 65 or the letter
+// 'A'. They are rejected instead, so callers spell out an integer type.
+template <typename T>
+inline constexpr bool kIsCharType =
+    std::is_same_v<T, char> || std::is_same_v<T, signed char> ||
+    std::is_same_v<T, unsigned char> || std::is_same_v<T, wchar_t> ||
+    std::is_same_v<T, char16_t> || std::is_same_v<T, char32_t>
+#if defined(__cpp_char8_t)
+    || std::is_same_v<T, char8_t>
+#endif
+    ;
+
+// The fixed-width alias a built-in integer spelling maps to, used in error
+// messages. Naming `int32_t` instead of whichever of `int`/`long`/`long long`
+// the caller wrote keeps the message stable across platforms.
+template <typename T> std::string intTypeName() {
+  return (std::is_signed_v<T> ? std::string("int") : std::string("uint")) +
+         std::to_string(sizeof(T) * 8) + "_t";
+}
+
+// Every integer var is stored as int64_t, so reading one into a narrower or
+// differently-signed type has to be range-checked.
+//
+// A var may hold any value up to 2^64-1, and everything above INT64_MAX is
+// stored as its two's-complement bit pattern -- which is why an unsigned read
+// reinterprets the stored pattern instead of rejecting the negative it looks
+// like. The pattern is all the table keeps, so a value above INT64_MAX and the
+// negative it wraps to are indistinguishable: either one reads back unchanged
+// through a 64-bit type of the matching signedness, and wrapped through the
+// other.
+//
+// Written with `if constexpr` so that no always-true comparison is emitted for
+// the widest types, which -Wtype-limits would reject under -Werror.
+template <typename T> bool intFits(int64_t value) {
+  if constexpr (sizeof(T) >= sizeof(int64_t)) {
+    (void)value;
+    return true;
+  } else if constexpr (std::is_signed_v<T>) {
+    return value >= static_cast<int64_t>(std::numeric_limits<T>::min()) &&
+           value <= static_cast<int64_t>(std::numeric_limits<T>::max());
+  } else {
+    return static_cast<uint64_t>(value) <=
+           static_cast<uint64_t>(std::numeric_limits<T>::max());
+  }
+}
+
+// Renders the stored pattern the way the requested type reads it, so that an
+// out-of-range message quotes the value the caller was asking for.
+template <typename T> std::string intValueString(int64_t value) {
+  if constexpr (std::is_signed_v<T>) {
+    return std::to_string(value);
+  } else {
+    return std::to_string(static_cast<uint64_t>(value));
+  }
+}
+
+inline int64_t requireIntVar(const std::string &name) {
   auto opt = getIntVar(name);
   if (!opt.has_value()) {
     throw std::runtime_error("Variable " + name +
                              " is not an integer or could not be found");
   }
-  if (opt.value() < std::numeric_limits<int32_t>::min() ||
-      opt.value() > std::numeric_limits<int32_t>::max()) {
-    throw std::runtime_error("Variable " + name + " of value " +
-                             std::to_string(opt.value()) +
-                             " does not fit in int32_t");
-  }
   return opt.value();
 }
 
-template <> uint32_t getVar<uint32_t>(std::string name) {
-  auto opt = getIntVar(name);
-  if (!opt.has_value()) {
-    throw std::runtime_error("Variable " + name +
-                             " is not an integer or could not be found");
-  }
-  if (opt.value() < std::numeric_limits<uint32_t>::min() ||
-      opt.value() > std::numeric_limits<uint32_t>::max()) {
-    throw std::runtime_error("Variable " + name + " of value " +
-                             std::to_string(opt.value()) +
-                             " does not fit in uint32_t");
-  }
-  return opt.value();
-}
+} // namespace detail
 
-template <> int64_t getVar<int64_t>(std::string name) {
-  auto opt = getIntVar(name);
-  if (!opt.has_value()) {
-    throw std::runtime_error("Variable " + name +
-                             " is not an integer or could not be found");
-  }
-  return opt.value();
-}
+// getVar<T> dispatches through this class template instead of through one
+// explicit function specialization per fixed-width alias. Which built-in
+// spelling `int64_t` names is platform-dependent -- `long` on LP64 Linux,
+// `long long` on macOS and Windows -- so a header serving only the aliases
+// leaves the other spelling unusable, even though widespread libraries hand
+// back plain `long long`, while a specialization per spelling would redefine
+// whichever one the alias resolves to on a given platform. Matching on type
+// traits serves every spelling from a single definition, so that conflict
+// cannot arise.
+template <typename T, typename Enable = void> struct VarReader {
+  static_assert(detail::kUnsupportedVarType<T>,
+                "getVar<T>: T must be an integer, floating-point, bool or "
+                "std::string type");
+};
 
-template <> uint64_t getVar<uint64_t>(std::string name) {
-  auto opt = getIntVar(name);
-  if (!opt.has_value()) {
-    throw std::runtime_error("Variable " + name +
-                             " is not an integer or could not be found");
+template <typename T>
+struct VarReader<T, std::enable_if_t<std::is_integral_v<T> &&
+                                     !std::is_same_v<T, bool> &&
+                                     !detail::kIsCharType<T>>> {
+  static T read(const std::string &name) {
+    int64_t value = detail::requireIntVar(name);
+    if (!detail::intFits<T>(value)) {
+      throw std::runtime_error("Variable " + name + " of value " +
+                               detail::intValueString<T>(value) +
+                               " does not fit in " + detail::intTypeName<T>());
+    }
+    return static_cast<T>(value);
   }
-  return opt.value();
-}
+};
 
-template <> float getVar<float>(std::string name) {
-  auto opt = getFloatVar(name);
-  if (!opt.has_value()) {
+template <typename T>
+struct VarReader<T, std::enable_if_t<detail::kIsCharType<T>>> {
+  static_assert(detail::kUnsupportedVarType<T>,
+                "getVar<T>: character types are ambiguous -- it is unclear "
+                "whether the var should be read as a number or as a letter. "
+                "Read it into an explicit integer type, such as int or "
+                "int64_t, instead");
+};
+
+template <typename T>
+struct VarReader<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+  static T read(const std::string &name) {
+    // Converted straight to T rather than through a float: an integer var read
+    // as a double should not be rounded to float precision on the way.
+    auto opt = getFloatVar(name);
+    if (opt.has_value()) {
+      return static_cast<T>(opt.value());
+    }
     auto intOpt = getIntVar(name);
     if (intOpt.has_value()) {
-      opt = (float)intOpt.value();
+      return static_cast<T>(intOpt.value());
     }
-  }
-  if (!opt.has_value()) {
     throw std::runtime_error("Variable " + name +
                              " is not a float or could not be found");
   }
-  return opt.value();
-}
+};
 
-template <> double getVar<double>(std::string name) {
-  return getVar<float>(name);
-}
+template <> struct VarReader<bool, void> {
+  static bool read(const std::string &name) {
+    auto opt = getBoolVar(name);
+    if (!opt.has_value()) {
+      // Not `opt = getIntVar(name) != 0;`: comparing a disengaged
+      // std::optional<int64_t> with 0 is well-formed and yields true, so a
+      // missing variable used to read as `true` instead of throwing below.
+      auto intOpt = getIntVar(name);
+      if (intOpt.has_value()) {
+        opt = intOpt.value() != 0;
+      }
+    }
+    if (!opt.has_value()) {
+      throw std::runtime_error("Variable " + name +
+                               " is not a boolean or could not be found");
+    }
+    return opt.value();
+  }
+};
 
-template <> std::string getVar<std::string>(std::string name) {
-  auto opt = getStringVar(name);
-  if (!opt.has_value()) {
-    auto intOpt = getIntVar(name);
-    if (intOpt.has_value()) {
-      opt = std::to_string(intOpt.value());
+template <> struct VarReader<std::string, void> {
+  static std::string read(const std::string &name) {
+    auto opt = getStringVar(name);
+    if (!opt.has_value()) {
+      auto intOpt = getIntVar(name);
+      if (intOpt.has_value()) {
+        opt = std::to_string(intOpt.value());
+      }
     }
-  }
-  if (!opt.has_value()) {
-    auto floatOpt = getFloatVar(name);
-    if (floatOpt.has_value()) {
-      opt = std::to_string(floatOpt.value());
+    if (!opt.has_value()) {
+      auto floatOpt = getFloatVar(name);
+      if (floatOpt.has_value()) {
+        opt = std::to_string(floatOpt.value());
+      }
     }
+    if (!opt.has_value()) {
+      throw std::runtime_error("Variable " + name +
+                               " is not a string or could not be found");
+    }
+    return opt.value();
   }
-  if (!opt.has_value()) {
-    throw std::runtime_error("Variable " + name +
-                             " is not a string or could not be found");
-  }
-  return opt.value();
-}
+};
 
-template <> bool getVar<bool>(std::string name) {
-  auto opt = getBoolVar(name);
-  if (!opt.has_value()) {
-    // Not `opt = getIntVar(name) != 0;`: comparing a disengaged
-    // std::optional<int64_t> with 0 is well-formed and yields true, so a
-    // missing variable used to read as `true` instead of throwing below.
-    auto intOpt = getIntVar(name);
-    if (intOpt.has_value()) {
-      opt = intOpt.value() != 0;
-    }
-  }
-  if (!opt.has_value()) {
-    throw std::runtime_error("Variable " + name +
-                             " is not a boolean or could not be found");
-  }
-  return opt.value();
+template <typename T> T getVar(std::string name) {
+  return VarReader<T>::read(name);
 }
 
 inline void joinVarPath(std::string &acc) { (void)acc; }
@@ -311,8 +380,10 @@ void joinVarPath(std::string &acc, const std::string &part,
 //   getVar<int>("N.max");
 //   getVar<int>("N", "max");
 //
-// Supported types are int32_t, uint32_t, int64_t, uint64_t, float, double,
-// std::string and bool.
+// Supported types are any built-in integer type (`int`, `long`, `long long`,
+// their unsigned counterparts and the fixed-width aliases such as int32_t and
+// int64_t), float, double, std::string and bool. Character types are not
+// supported, since reading a var into one is ambiguous.
 template <typename T, typename... Args>
 T getVar(const std::string &first, const Args &...rest) {
   std::string name;

@@ -463,8 +463,241 @@ int main() {
 """
 
 
+# Every built-in integer spelling must work, not just the fixed-width aliases.
+# Which spelling `int64_t` names is platform-dependent (`long` on LP64 Linux,
+# `long long` on macOS/Windows), so a header that only served the aliases left
+# the other spelling unusable -- and testlib's readLong() hands back `long long`.
+_GET_VAR_INT_TYPES_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::printf("longlong=%lld\\n", getVar<long long>("big"));
+  std::printf("ulonglong=%llu\\n", getVar<unsigned long long>("big"));
+  std::printf("long=%lld\\n", (long long)getVar<long>("big"));
+  std::printf("ulong=%llu\\n", (unsigned long long)getVar<unsigned long>("big"));
+  std::printf("int=%d\\n", getVar<int>("small"));
+  std::printf("short=%d\\n", (int)getVar<short>("small"));
+  std::printf("uint=%u\\n", getVar<unsigned int>("small"));
+  std::printf("int64=%lld\\n", (long long)getVar<int64_t>("big"));
+
+  // A var above INT64_MAX is stored as its two's-complement pattern, so only an
+  // unsigned read of the full width can recover it.
+  std::printf("huge=%llu\\n", getVar<unsigned long long>("huge"));
+  std::printf("huge64=%llu\\n", (unsigned long long)getVar<uint64_t>("huge"));
+
+  // Out-of-range reads still throw, whatever the spelling.
+  try {
+    getVar<short>("big");
+    std::printf("short_overflow=no\\n");
+  } catch (const std::runtime_error &) {
+    std::printf("short_overflow=threw\\n");
+  }
+  // The stored pattern is all the table has, so a signed read of the same var
+  // hands back its wrapped value -- as it did before this header grew traits.
+  std::printf("huge_as_signed=%lld\\n", (long long)getVar<int64_t>("huge"));
+  try {
+    getVar<unsigned int>("neg");
+    std::printf("narrow_unsigned_negative=no\\n");
+  } catch (const std::runtime_error &) {
+    std::printf("narrow_unsigned_negative=threw\\n");
+  }
+  return 0;
+}
+"""
+
+
+_GET_VAR_UNSUPPORTED_TYPE_MAIN = """
+#include "rbx.h"
+#include <string>
+
+struct Custom {};
+
+int main() {
+  Custom c = getVar<Custom>("small");
+  (void)c;
+  return 0;
+}
+"""
+
+
+# Both ends of the int64_t range need a hand-written literal, and a bare one
+# warns -- which -Werror turns into a build failure for the whole package.
+_GET_VAR_EXTREMES_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::printf("max=%llu\\n", getVar<unsigned long long>("max_unsigned"));
+  std::printf("min=%lld\\n", getVar<long long>("min_signed"));
+  return 0;
+}
+"""
+
+
+_GET_VAR_CHAR_MAIN = """
+#include "rbx.h"
+#include <string>
+
+int main() {
+  char c = getVar<char>("small");
+  (void)c;
+  return 0;
+}
+"""
+
+
+# An integer var read as a double must not be rounded through float on the way.
+_GET_VAR_DOUBLE_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::printf("double=%.0f\\n", getVar<double>("exact"));
+  return 0;
+}
+"""
+
+
 class TestGetVarWrapper:
     """Tests for the variadic getVar() wrapper exposed by rbx.h."""
+
+    def test_get_var_reads_both_ends_of_the_int64_range(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(
+            {
+                'max_unsigned': 2**64 - 1,
+                'min_signed': -(2**63),
+            }
+        )
+
+        header.generate_header()
+
+        generated_content = pathlib.Path('rbx.h').read_text()
+        assert 'static_cast<int64_t>(18446744073709551615ULL)' in generated_content
+        assert 'static_cast<int64_t>(INT64_MIN)' in generated_content
+
+        _compile(
+            gpp,
+            _GET_VAR_EXTREMES_MAIN,
+            'extremes',
+            ['-Wextra', '-Wno-unused-parameter'],
+        )
+
+        result = subprocess.run(
+            ['./extremes'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == ('max=18446744073709551615\nmin=-9223372036854775808\n')
+
+    def test_get_var_rejects_char_types_at_compile_time(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Reading a var into a char is ambiguous: number 65 or letter 'A'?"""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'small': 7})
+
+        header.generate_header()
+        pathlib.Path('charvar.cpp').write_text(_GET_VAR_CHAR_MAIN)
+
+        result = subprocess.run(
+            [gpp, '-std=c++17', '-c', '-o', 'charvar.o', 'charvar.cpp'],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert 'character types are ambiguous' in result.stderr
+
+    def test_get_var_double_does_not_round_integers_through_float(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        # Representable exactly as a double, but not as a float.
+        testing_pkg.set_vars({'exact': 9_007_199_254_740_991})
+
+        header.generate_header()
+        _compile(
+            gpp,
+            _GET_VAR_DOUBLE_MAIN,
+            'doublevar',
+            ['-Wextra', '-Wno-unused-parameter'],
+        )
+
+        result = subprocess.run(
+            ['./doublevar'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == 'double=9007199254740991\n'
+
+    def test_get_var_rejects_unsupported_types_at_compile_time(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Trait-based dispatch must still refuse types it cannot serve."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'small': 7})
+
+        header.generate_header()
+        pathlib.Path('unsupported.cpp').write_text(_GET_VAR_UNSUPPORTED_TYPE_MAIN)
+
+        result = subprocess.run(
+            [gpp, '-std=c++17', '-c', '-o', 'unsupported.o', 'unsupported.cpp'],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert 'must be an integer, floating-point, bool or std::string' in (
+            result.stderr
+        )
+
+    def test_get_var_supports_every_integer_spelling(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars(
+            {
+                'big': 5_000_000_000,
+                'small': 7,
+                'neg': -1,
+                'huge': 2**64 - 1,
+            }
+        )
+
+        header.generate_header()
+        # The package declares no string or float var, so `name` goes unused in
+        # those two accessors.
+        _compile(
+            gpp,
+            _GET_VAR_INT_TYPES_MAIN,
+            'inttypes',
+            ['-Wextra', '-Wno-unused-parameter'],
+        )
+
+        result = subprocess.run(
+            ['./inttypes'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == (
+            'longlong=5000000000\n'
+            'ulonglong=5000000000\n'
+            'long=5000000000\n'
+            'ulong=5000000000\n'
+            'int=7\n'
+            'short=7\n'
+            'uint=7\n'
+            'int64=5000000000\n'
+            'huge=18446744073709551615\n'
+            'huge64=18446744073709551615\n'
+            'short_overflow=threw\n'
+            'huge_as_signed=-1\n'
+            'narrow_unsigned_negative=threw\n'
+        )
 
     def test_get_var_accepts_dotted_name_and_segments(
         self, testing_pkg: testing_package.TestingPackage

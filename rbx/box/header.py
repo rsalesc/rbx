@@ -68,8 +68,19 @@ def check_int_bounds(x: int) -> None:
 def _int_repr(x: Primitive) -> str:
     if isinstance(x, bool):
         return f'static_cast<int64_t>({int(x)})'
-    check_int_bounds(int(x))
-    return f'static_cast<int64_t>({x})'
+    value = int(x)
+    check_int_bounds(value)
+    # Both ends of the range need help to be written as a C++ literal at all: a
+    # value above INT64_MAX has no signed literal (it is stored as its
+    # two's-complement pattern, which only an unsigned read recovers), and
+    # INT64_MIN has to be spelled as an expression, since the literal is parsed
+    # before the minus sign applies. Left bare, either one compiles with a
+    # warning that -Werror turns into a build failure.
+    if value > 2**63 - 1:
+        return f'static_cast<int64_t>({value}ULL)'
+    if value == -(2**63):
+        return 'static_cast<int64_t>(INT64_MIN)'
+    return f'static_cast<int64_t>({value})'
 
 
 class _VarType(NamedTuple):

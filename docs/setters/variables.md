@@ -52,8 +52,8 @@ In this section, we go through the different ways to use variables in each of th
 that were defined in the `problem.rbx.yml` file, right at the root of your package.
 
 This header exposes a function `getVar<T>(name)` that can be used to get the value
-of a variable as a `T`-typed object. There are 4 overloads for this function:
-`getVar<bool>(name)`, `getVar<int>(name)`, `getVar<float>(name)` and `getVar<std::string>(name)`.
+of a variable as a `T`-typed object. `T` can be `bool`, `std::string`, any
+floating-point type (`float`, `double`) or any integer type.
 
 Nested variables can be addressed either by their full dotted name, or by passing
 one segment per argument -- the two calls below are equivalent:
