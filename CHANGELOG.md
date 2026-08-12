@@ -1,3 +1,38 @@
+## 1.1.0 (2026-08-12)
+
+### BREAKING CHANGE
+
+- a top-level var named after a statement template name
+(title, name, score, limits, ...) is now rejected; rename it or nest it
+under a non-reserved key.
+- `date` and `location` are no longer contest statement
+fields; declare them as contest vars and read them as \VAR{contest.date}.
+
+### Feat
+
+- **release**: confirm bumps and allow forcing the increment (#636)
+- **statements**: support shorter syntax for vars in statements (#632)
+- **schema**: restrict outcomePerGroup to points-scored problems (#631)
+- **presets**: problem template variants (#264) (#614)
+- per-group vars for validators (#619)
+- **schemas**: versioned JSON schemas with min_version-pinned URLs (#617)
+- **header**: accept variable path segments in getVar (#616)
+- **docs**: generate asciinema recordings from committed specs (#610)
+- **schema**: expected outcomes per testgroup for solutions (#608)
+
+### Fix
+
+- **header**: serve getVar for every built-in integer spelling (#635)
+- **cli**: exit non-zero when build, run or verification fails (#628)
+- **solutions**: surface the dropped soft-TLE double TL warning (#627)
+- **stressing**: support general paths in finder expressions (#622)
+- **presets**: bump default min_version to 1.0.0 (#613)
+- **schema**: compare solution outcome against ExpectedOutcome (#611)
+
+### Refactor
+
+- **solutions**: drop the unreachable FullRunReporter (#607) (#629)
+
 ## 1.0.0 (2026-07-19)
 
 ### BREAKING CHANGE
