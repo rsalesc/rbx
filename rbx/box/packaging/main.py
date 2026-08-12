@@ -132,6 +132,25 @@ async def boca(
         uploader.login_and_upload(result_path)
 
 
+@app.command('domjudge', help='Build a package for DOMjudge.')
+@package.within_problem
+@syncer.sync
+async def domjudge(
+    verification: environment.VerificationParam,
+    language: Optional[str] = typer.Option(
+        None,
+        '--language',
+        '-l',
+        help='If set, will use the given language as the main language. '
+        'Leave unset if you want to use the language of the topmost statement.',
+        autocompletion=annotations._adapt('language'),  # noqa: SLF001
+    ),
+):
+    from rbx.box.packaging.domjudge.packager import DomjudgePackager
+
+    await run_packager(DomjudgePackager, verification=verification, language=language)
+
+
 @app.command('moj', help='Build a package for MOJ.')
 @package.within_problem
 @syncer.sync

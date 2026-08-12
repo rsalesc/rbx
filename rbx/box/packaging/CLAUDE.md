@@ -73,6 +73,16 @@ Supports interactive problems with special `run` scripts.
 
 **`extension.py`** -- env-level `BocaExtension` (`flags`, `minRunningTime`, `preferContestLetter`, `usePypy`) and per-language `BocaLanguageExtension` (`languages` list + required `template`). Both `model_config = extra='forbid'`. rbx v1 (#471) removed the legacy singular `bocaLanguage`, the env-level `languages` allowlist, the implicit `template` fallback, and `maximumTimeError` (#494). Removed fields are kept as fields flagged `Annotated[..., Removed()]` + `Field(deprecated='<migration hint>')`: the shared `RejectsRemovedFields` base (in `rbx/utils.py`) reads the flag and raises that hint at env load, so the explanation lives on the field. `template` is required whenever `languages` is set (`model_validator`), and `resolved_languages`/`primary_language`/`resolved_template` read only the plural fields.
 
+### DOMjudge (`domjudge/`)
+
+**`DomjudgePackager`** -- ICPC problem package format + DOMjudge extensions (layout mirrors pol2dom). BATCH only (rbx COMMUNICATION pairs interactor+checker, which doesn't map onto DOMjudge's single output validator):
+- `domjudge-problem.ini` (short-name = contest letter or pkg name, name, exact fractional `timelimit` in seconds, contest `color` if any) + `problem.yaml` (memory MiB, output MiB, always `validation: custom`)
+- `problem.pdf` -- main built statement; `data/sample/`, `data/secret/` -- per-dir `001.in/.ans` counters
+- **Always ships the rbx checker** as a custom validator (`validation: custom`) -- never maps to DOMjudge's default validators, so DOMjudge judges with the same checker rbx uses locally. Flattened under `output_validators/` with `rbx.h` + a patched `testlib.h`. Checker must be C++ -- detected via `LanguageKind.CPP in environment.language_kinds(code.find_language(checker))`, not file suffixes.
+- `testlib_patch.py` -- ports pol2dom's cn-xcpc-tools patch: rewrites `*_EXIT_CODE` defines (42/43), replaces `registerTestlibCmd`/`registerInteraction` (team output on stdin, feedback dir messages), drops `skipBom()`. Raises if an anchor is missing so testlib upgrades fail tests, not packages.
+- **Submissions: every solution is shipped, none dropped** (`_EXPECTED_RESULTS` maps each `ExpectedOutcome` -> DOMjudge `@EXPECTED_RESULTS@` verdict tokens). DOMjudge derives the expected verdict from the submission dir name when it normalizes to a real verdict token (7 such dirs: `accepted`/`wrong_answer`/`time_limit_exceeded`/`run_time_error`/`output_limit`/`compiler_error`/`no_output`), else keeps an `@EXPECTED_RESULTS@` source annotation verbatim. Single-verdict outcomes -> standard dir (no annotation). Multi-verdict outcomes (MLE, ACCEPTED_OR_TLE, TLE_OR_RTE, INCORRECT, ANY) -> `submissions/mixed/` (a deliberately non-verdict dir name) with a multi-token annotation; comment prefix is `#` for Python else `//`. MLE is the one lossy mapping (DOMjudge has no memory-limit verdict -> RTE/TLE). Mismatches surface on DOMjudge's jury verifier page, never block import.
+- Uses the `domjudge` limits profile when saved, else package limits (profile not required, unlike BOCA)
+
 ### MOJ (`moj/`)
 
 **`MojPackager`** (extends `BocaPackager`) -- Overrides BOCA methods for MOJ format:
@@ -100,6 +110,7 @@ Reverse operation: `PolygonImporter` imports from Polygon packages into rbx form
 |---------|----------|---------------|
 | `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip`, `--upload-tests-raw` |
 | `rbx package boca` | `BocaPackager` | `--upload`, `--language` |
+| `rbx package domjudge` | `DomjudgePackager` | `--language` |
 | `rbx package moj` | `MojPackager` | `--for-boca` |
 | `rbx package pkg` | `PkgPackager` | (none) |
 
