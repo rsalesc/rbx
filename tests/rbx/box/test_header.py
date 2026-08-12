@@ -463,8 +463,113 @@ int main() {
 """
 
 
+# Every built-in integer spelling must work, not just the fixed-width aliases.
+# Which spelling `int64_t` names is platform-dependent (`long` on LP64 Linux,
+# `long long` on macOS/Windows), so a header that only served the aliases left
+# the other spelling unusable -- and testlib's readLong() hands back `long long`.
+_GET_VAR_INT_TYPES_MAIN = """
+#include "rbx.h"
+#include <cstdio>
+#include <string>
+
+int main() {
+  std::printf("longlong=%lld\\n", getVar<long long>("big"));
+  std::printf("ulonglong=%llu\\n", getVar<unsigned long long>("big"));
+  std::printf("long=%lld\\n", (long long)getVar<long>("big"));
+  std::printf("ulong=%llu\\n", (unsigned long long)getVar<unsigned long>("big"));
+  std::printf("int=%d\\n", getVar<int>("small"));
+  std::printf("short=%d\\n", (int)getVar<short>("small"));
+  std::printf("uint=%u\\n", getVar<unsigned int>("small"));
+  std::printf("int64=%lld\\n", (long long)getVar<int64_t>("big"));
+
+  // Out-of-range reads still throw, whatever the spelling.
+  try {
+    getVar<short>("big");
+    std::printf("short_overflow=no\\n");
+  } catch (const std::runtime_error &) {
+    std::printf("short_overflow=threw\\n");
+  }
+  try {
+    getVar<unsigned long long>("neg");
+    std::printf("unsigned_negative=no\\n");
+  } catch (const std::runtime_error &) {
+    std::printf("unsigned_negative=threw\\n");
+  }
+  return 0;
+}
+"""
+
+
+_GET_VAR_UNSUPPORTED_TYPE_MAIN = """
+#include "rbx.h"
+#include <string>
+
+struct Custom {};
+
+int main() {
+  Custom c = getVar<Custom>("small");
+  (void)c;
+  return 0;
+}
+"""
+
+
 class TestGetVarWrapper:
     """Tests for the variadic getVar() wrapper exposed by rbx.h."""
+
+    def test_get_var_rejects_unsupported_types_at_compile_time(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Trait-based dispatch must still refuse types it cannot serve."""
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'small': 7})
+
+        header.generate_header()
+        pathlib.Path('unsupported.cpp').write_text(_GET_VAR_UNSUPPORTED_TYPE_MAIN)
+
+        result = subprocess.run(
+            [gpp, '-std=c++17', '-c', '-o', 'unsupported.o', 'unsupported.cpp'],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert 'must be an integer, floating-point, bool or std::string' in (
+            result.stderr
+        )
+
+    def test_get_var_supports_every_integer_spelling(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        gpp = _require_gpp()
+
+        testing_pkg.set_vars({'big': 5_000_000_000, 'small': 7, 'neg': -1})
+
+        header.generate_header()
+        # The package declares no string or float var, so `name` goes unused in
+        # those two accessors.
+        _compile(
+            gpp,
+            _GET_VAR_INT_TYPES_MAIN,
+            'inttypes',
+            ['-Wextra', '-Wno-unused-parameter'],
+        )
+
+        result = subprocess.run(
+            ['./inttypes'], check=True, capture_output=True, text=True
+        )
+        assert result.stdout == (
+            'longlong=5000000000\n'
+            'ulonglong=5000000000\n'
+            'long=5000000000\n'
+            'ulong=5000000000\n'
+            'int=7\n'
+            'short=7\n'
+            'uint=7\n'
+            'int64=5000000000\n'
+            'short_overflow=threw\n'
+            'unsigned_negative=threw\n'
+        )
 
     def test_get_var_accepts_dotted_name_and_segments(
         self, testing_pkg: testing_package.TestingPackage
