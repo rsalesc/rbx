@@ -73,6 +73,8 @@ For complex modules, see the inner CLAUDE.md files:
 
 Releases are commitizen-driven and cut manually with `mise run release` (bump + push tags + PyPI + schemas). There is no release CI on `main` -- the tag-push trigger in `.github/workflows/release.yml` is deliberately disabled. Tags cut from older commits still carry the enabled trigger, which matters when backporting.
 
+The bump goes through [`scripts/release.py`](scripts/release.py), which prints `current -> next` and **asks for confirmation** before committing, tagging and pushing; declining aborts the whole release before anything is published. Pass `--minor` (or `--major` / `--patch` / `-i MINOR`) to override the increment commitizen derives from the commit log -- e.g. `mise run release --minor` ships a `feat!` as a minor bump, and the prompt says which version commitizen would have picked instead. `--yes` skips the prompt (required when there is no terminal), `--no-push` bumps locally only, and any other flag is forwarded to `cz bump`.
+
 To ship a fix to an already-released older version (e.g. patch `0.38.0` while `main` is at `1.0.0`), follow [`docs/internal/backporting.md`](docs/internal/backporting.md). The short version: **fix forward on `main` first, cherry-pick down to a `release/<major>.<minor>.x` branch cut from the old tag, never merge that branch back.**
 
 ## Architecture

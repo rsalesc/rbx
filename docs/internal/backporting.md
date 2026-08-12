@@ -37,6 +37,11 @@ Read this before touching anything, because the mechanics decide what is safe.
   schemas), or its pieces: `mise run bump`, `mise run publish`,
   `mise run publish-schemas`. The tag-push trigger in
   `.github/workflows/release.yml` is deliberately commented out.
+- `mise run bump` / `mise run release` go through `scripts/release.py`, which
+  shows `current -> next` and asks before committing, tagging and pushing, and
+  accepts `--minor` / `--major` / `--patch` to override the increment
+  commitizen derived. Maintenance branches still bump with `cz bump` directly
+  (see below), so this front-end does not apply there.
 
 That last point is the trap, because **GitHub Actions runs the workflow files
 as they existed at the tagged commit**, not as they exist on `main`. Older tags
