@@ -58,6 +58,10 @@ spellings (`int`, `long`, `long long` and their unsigned counterparts) and the
 fixed-width aliases (`int32_t`, `int64_t`, ...). Reading an integer that does not
 fit in the requested type raises an error instead of silently truncating it.
 
+Character types (`char` and friends) are deliberately not supported: it would be
+ambiguous whether `getVar<char>("x")` should give you the number or the letter.
+Read the variable into an explicit integer type instead.
+
 Nested variables can be addressed either by their full dotted name, or by passing
 one segment per argument -- the two calls below are equivalent:
 
