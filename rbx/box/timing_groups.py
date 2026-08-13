@@ -116,6 +116,15 @@ class UpperTimings(BaseModel):
     dropped_upper: List[str] = []
 
 
+class GroupMeasurements(BaseModel):
+    """Everything measured for one group. The two sides are populated by
+    disjoint sets of solutions, so either may be absent independently: a group
+    can have slow solutions and no accepted ones, and vice versa."""
+
+    lower: Optional[GroupTimings] = None
+    upper: Optional[UpperTimings] = None
+
+
 class ResolutionResult(BaseModel):
     base_time_limit: int
     base_report: TimingGroupReport
@@ -124,14 +133,13 @@ class ResolutionResult(BaseModel):
     defaulted_languages: List[str]
 
 
-# Estimates a group's limit from its own measurements, given the group's upper
-# bound when it has slow solutions.
-EvalFn = Callable[[GroupTimings, Optional[UpperTimings]], int]
+# Estimates a group's limit from its own measurements.
+EvalFn = Callable[[GroupMeasurements], int]
 # Post-processes a limit that was NOT estimated from the group's own accepted
 # solutions -- derived from a reference group (``whenEmpty`` or a forced
 # relative) or inherited from the base estimate (``DEFAULTED``) -- so it can
 # still be checked against the group's own upper bound.
-DeriveFn = Callable[[int, Optional[UpperTimings]], int]
+DeriveFn = Callable[[int, GroupMeasurements], int]
 
 
 def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
@@ -187,24 +195,19 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
 
 def resolve_groups(
     groups: List[ResolvedGroup],
-    pooled: Dict[int, GroupTimings],  # group index -> pooled timings (non-empty only)
-    base: GroupTimings,
+    measured: Dict[int, GroupMeasurements],  # group index -> its measurements
+    base: GroupMeasurements,
     eval_fn: EvalFn,
     derive_fn: Optional[DeriveFn] = None,
-    upper: Optional[
-        Dict[int, UpperTimings]
-    ] = None,  # group index -> upper bound (groups with slow solutions only)
-    base_upper: Optional[UpperTimings] = None,
 ) -> ResolutionResult:
-    upper = upper or {}
-    base_tl = eval_fn(base, base_upper)
+    base_tl = eval_fn(base)
     base_report = TimingGroupReport(
         languages=[],
         timeLimit=base_tl,
         origin=TimingGroupOrigin.ESTIMATED,
-        solutionCount=base.solution_count,
-        fastest=base.fastest,
-        slowest=base.slowest,
+        solutionCount=base.lower.solution_count if base.lower else 0,
+        fastest=base.lower.fastest if base.lower else None,
+        slowest=base.lower.slowest if base.lower else None,
     )
     lang_index = _lang_to_group_index(groups)
 
@@ -220,8 +223,8 @@ def resolve_groups(
             return base_tl
         resolving.add(idx)
         group = groups[idx]
-        timings = pooled.get(idx)
-        group_upper = upper.get(idx)
+        group_measured = measured.get(idx) or GroupMeasurements()
+        timings = group_measured.lower
         if group.forced_relative is not None:
             fb = group.forced_relative
             ref = fb.relativeTo
@@ -229,7 +232,7 @@ def resolve_groups(
             increment = fb.increment or 0
             tl = int(ref_tl * fb.multiplier + increment)
             if derive_fn is not None:
-                tl = derive_fn(tl, group_upper)
+                tl = derive_fn(tl, group_measured)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -243,7 +246,7 @@ def resolve_groups(
                 isLeftover=group.is_leftover,
             )
         elif timings is not None:
-            tl = eval_fn(timings, group_upper)
+            tl = eval_fn(group_measured)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -259,7 +262,7 @@ def resolve_groups(
             increment = group.whenEmpty.increment or 0
             tl = int(ref_tl * group.whenEmpty.multiplier + increment)
             if derive_fn is not None:
-                tl = derive_fn(tl, group_upper)
+                tl = derive_fn(tl, group_measured)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -273,7 +276,13 @@ def resolve_groups(
         else:
             tl = base_tl
             if derive_fn is not None:
-                tl = derive_fn(tl, group_upper)
+                # Check-only: the report and the UI both state that a defaulted
+                # group fell back to the base limit, so it must not move off it
+                # -- and requantizing an already-quantized base_tl is identity
+                # anyway. derive_fn runs solely so it can raise when the group's
+                # own upper bound rules the base limit out; its return value is
+                # deliberately discarded.
+                derive_fn(tl, group_measured)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -294,11 +303,9 @@ def resolve_groups(
     defaulted: List[str] = []
     for idx, group in enumerate(groups):
         report = resolved_report[idx]
-        if report.origin == TimingGroupOrigin.DEFAULTED and report.timeLimit == base_tl:
+        if report.origin == TimingGroupOrigin.DEFAULTED:
             defaulted.extend(group.languages)
             continue  # uses base TL -> no modifier
-        # A defaulted group whose derive_fn moved it off the base limit still
-        # needs a per-language modifier to carry that limit.
         for lang in group.languages:
             tl_per_language[lang] = report.timeLimit
     return ResolutionResult(

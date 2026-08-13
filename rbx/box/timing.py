@@ -79,10 +79,11 @@ def build_timing_profile(
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
-    def _eval(
-        timings: timing_groups.GroupTimings,
-        upper: Optional[timing_groups.UpperTimings] = None,
-    ) -> int:
+    def _eval(measured: timing_groups.GroupMeasurements) -> int:
+        # Formula mode is bounded from below only: it never reads
+        # ``measured.upper``, so no upper bound is measured for it.
+        assert measured.lower is not None
+        timings = measured.lower
         return int(
             safeeval.eval_int(
                 formula, {'fastest': timings.fastest, 'slowest': timings.slowest}
@@ -95,7 +96,7 @@ def build_timing_profile(
         groups = timing_groups.build_partition(env_groups, all_languages)
     timing_groups.validate_partition(groups)
 
-    pooled: Dict[int, timing_groups.GroupTimings] = {}
+    measured: Dict[int, timing_groups.GroupMeasurements] = {}
     all_values: List[int] = []
     for idx, group in enumerate(groups):
         values: List[int] = []
@@ -105,17 +106,21 @@ def build_timing_profile(
             values.extend(per_sol.values())
             count += len(per_sol)
         if values:
-            pooled[idx] = timing_groups.GroupTimings(
-                fastest=min(values), slowest=max(values), solution_count=count
+            measured[idx] = timing_groups.GroupMeasurements(
+                lower=timing_groups.GroupTimings(
+                    fastest=min(values), slowest=max(values), solution_count=count
+                )
             )
             all_values.extend(values)
 
-    base = timing_groups.GroupTimings(
-        fastest=min(all_values),
-        slowest=max(all_values),
-        solution_count=len(all_values),
+    base = timing_groups.GroupMeasurements(
+        lower=timing_groups.GroupTimings(
+            fastest=min(all_values),
+            slowest=max(all_values),
+            solution_count=len(all_values),
+        )
     )
-    result = timing_groups.resolve_groups(groups, pooled, base, _eval)
+    result = timing_groups.resolve_groups(groups, measured, base, _eval)
     return TimingProfile(
         timeLimit=result.base_time_limit,
         formula=formula,
