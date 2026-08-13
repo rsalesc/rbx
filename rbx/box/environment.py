@@ -356,12 +356,56 @@ class LanguageGroup(BaseModel):
     )
 
 
+DEFAULT_TIMING_FORMULA = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
+
+
+class TimingMultipliers(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    acToTimeLimit: float = Field(
+        gt=0,
+        description="""Minimum ratio between the time limit and the slowest solution
+used to estimate it from below: `slowest_good * acToTimeLimit <= timeLimit`.""",
+    )
+
+    timeLimitToTle: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Minimum ratio between the fastest slow solution and the time
+limit: `timeLimit * timeLimitToTle <= fastest_slow`. When omitted, slow solutions
+are not run and the time limit is not bounded from above.""",
+    )
+
+    inferenceTimeout: int = Field(
+        default=10000,
+        gt=0,
+        description="""Time limit (in milliseconds) enforced on solutions while
+estimating. Only used when `timeLimitToTle` is set. A slow solution that hits it
+is dropped from the upper bound; an accepted one that hits it is an error.""",
+    )
+
+    timeResolution: int = Field(
+        default=100,
+        gt=0,
+        description="""Granularity (in milliseconds) of the estimated time limit.
+The estimate is the smallest multiple of this value that is valid.""",
+    )
+
+
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    formula: str = Field(
-        default='step_up(max(fastest * 3, slowest * 1.5), 100)',
-        description="""Formula to use to calculate the time limit for the environment.""",
+    formula: Optional[str] = Field(
+        default=None,
+        description="""Formula to use to calculate the time limit for the environment.
+Mutually exclusive with `multipliers`. When neither is set, a default formula is
+used.""",
+    )
+
+    multipliers: Optional[TimingMultipliers] = Field(
+        default=None,
+        description="""Ratios used to infer the time limit from the measured
+solutions. Mutually exclusive with `formula`.""",
     )
 
     groups: List[LanguageGroup] = Field(
@@ -393,6 +437,21 @@ class TimingConfig(BaseModel):
                     )
                 seen.add(lang)
         return self
+
+    @model_validator(mode='after')
+    def _validate_exclusive_strategies(self):
+        if self.formula is not None and self.multipliers is not None:
+            raise ValueError(
+                'timing.formula and timing.multipliers are mutually exclusive; '
+                'set exactly one of them.'
+            )
+        return self
+
+    def resolved_formula(self) -> Optional[str]:
+        """The formula to estimate with, or None when multipliers are in use."""
+        if self.multipliers is not None:
+            return None
+        return self.formula or DEFAULT_TIMING_FORMULA
 
 
 class Environment(BaseModel):

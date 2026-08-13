@@ -587,7 +587,7 @@ async def time(
 
     import questionary
 
-    formula = environment.get_environment().timing.formula
+    formula = environment.get_environment().timing.resolved_formula()
     timing_choices = [
         questionary.Choice(
             f'Estimate time limits based on the formula {formula} (recommended)',
@@ -613,7 +613,7 @@ async def time(
         )
         raise typer.Exit(1)
 
-    formula = environment.get_environment().timing.formula
+    formula = environment.get_environment().timing.resolved_formula()
 
     if choice == 'inherit':
         timing.inherit_time_limits(profile=profile)

@@ -181,7 +181,7 @@ class TestEstimateTimeLimit:
         mock_find_lang.side_effect = lambda sol: sol.language
 
         # Mock environment so the grouping code works
-        mock_env.return_value.timing.formula = 'slowest * 2'
+        mock_env.return_value.timing.resolved_formula.return_value = 'slowest * 2'
         mock_env.return_value.timing.groups = []
         mock_env.return_value.languages = [
             SimpleNamespace(name='cpp'),

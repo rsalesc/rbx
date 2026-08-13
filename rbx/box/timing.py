@@ -291,7 +291,7 @@ async def estimate_time_limit(
 
     env = environment.get_environment()
     if formula is None:
-        formula = env.timing.formula
+        formula = env.timing.resolved_formula()
     env_groups = env.timing.groups
 
     all_languages = relevant_languages_for_estimation(
