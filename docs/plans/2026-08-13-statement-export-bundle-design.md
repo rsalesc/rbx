@@ -167,12 +167,29 @@ The realistic case is a statement-dir `img/fig.png` meeting an `assets` glob on 
 package-root `img/fig.png`. This is why the collision guard in §5 is keyed on the
 placed destination across *all* scopes rather than per scope.
 
-`derive_remap` additionally raises when two assets at the same shadow tier claim
-one reference key with different destinations (`img/d.png` and `img/d.pdf` under
-the statement dir both key on `img/d`). A destination-keyed guard cannot see
-that case — the destinations differ — and the authored `\includegraphics{img/d}`
-genuinely cannot say which file it means, so it is an authoring error rather than
-something to resolve silently.
+#### Ambiguous references
+
+Two assets can reduce to one reference key with different destinations —
+`img/d.png` and `img/d.pdf` under the statement dir both key on `img/d`. A
+destination-keyed guard cannot see this, since the destinations differ.
+
+`derive_remap` resolves it the way LaTeX already does. `graphicx` fills in an
+extensionless `\includegraphics{img/d}` by extension precedence, preferring PDF
+under pdflatex, so the statement the setter proofread locally rendered `img/d.pdf`.
+Following the same order (`.pdf` > `.png` > `.jpg` > `.jpeg`, unknown extensions
+last) therefore ships exactly what the local build showed — strictly better than
+the old path's silent last-wins, which could publish the `.png` while the PDF
+displayed the `.pdf`.
+
+Only a clash precedence cannot decide — same shadow tier, same extension,
+different destinations — raises. Rejecting the `.png`/`.pdf` pair outright was
+considered and dropped: statement assets are collected automatically by
+extension, so a raster source sitting next to its vector export is routine and
+cites nothing, and failing the export over it breaks packages that worked.
+
+The losing asset is still shipped under its own destination. Precedence decides
+only which file an extensionless reference resolves to, never what the package
+contains.
 
 ### Which slots see which assets
 
