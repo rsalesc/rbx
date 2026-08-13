@@ -25,6 +25,10 @@ The main entry point in `packager.py`. Pipeline:
 
 `run_contest_packager()` iterates over each problem in the contest, calls `run_packager()` per problem, then calls the contest packager.
 
+## Source Amalgamation (`dependencies/amalgamation.py`)
+
+See the **Sibling tool** paragraph at the end of [Source Flattening](#source-flattening-flatteningpy).
+
 ## Source Flattening (`flattening.py`)
 
 Polygon (offline + upload) and BOCA/MOJ are **flat** judges: they compile each source in a single flat file namespace. A source organized under the Phase-1 mirrored layout (`#522`/`#523`/`#524`) -- living in a subdirectory, using `#include "../lib.h"`, or relying on custom `compilationFiles` -- builds locally but breaks on these targets unless its compilation closure is shipped flat with includes rewritten. `flattening.py` is the shared machine that does this (issues #525/#526/#527).
@@ -36,6 +40,8 @@ Polygon (offline + upload) and BOCA/MOJ are **flat** judges: they compile each s
 **Consumers:** Polygon offline (`polygon/packager.py:_flatten_sources` -> `files/` + `_get_files` declares deps), Polygon upload (`polygon/upload.py:_build_upload_namespace` -> one namespace over checker/interactor/validator/solutions/generators, deps shipped as RESOURCE, freemarker references flat **stems**), BOCA (`boca/packager.py:_embed_block` -> N heredocs in `checker.sh`/`interactor_compile.sh`), MOJ (`moj/packager.py` -> rewritten source + deps into `scripts/`).
 
 **Guardrails:** `build_flat_namespace` errors with an actionable message rather than shipping a broken package in two cases: (1) a non-rewritable source (e.g. a Python generator, `can_rewrite=False`) with a *cross-directory* resolving dependency cannot be flattened; (2) a *rewritable* source (or dep) has a quoted include that escapes the package root (`#include "../../shared/lib.h"`) -- it resolves locally against the file's real location (so the package builds green) but its target is outside the package, so it is never shipped and the `..` spelling cannot survive flattening. Only `..`-bearing unresolved spellings trip case (2): bare builtins (`testlib.h`/`rbx.h`/`jngen.h`/`tgen.h`) and quoted system headers resolve on the judge, and a forward-only subpath either resolves in-package or fails locally too. Same-directory and system/builtin deps are fine.
+
+**Sibling tool -- `rbx/box/dependencies/amalgamation.py`:** flattening ships a closure as N files in one flat namespace with includes *rewritten*. Some targets instead need **one file**: MOJ's checker bridge compiles `scripts/checker.cpp` with only `testlib.h` bound into the jail, and MOJ compiles a submission from a single source. `amalgamate(root, *, extra_roots, keep, scanner)` -> `AmalgamationResult` (`.content`, `.inlined`, `.kept`) *inlines* the closure instead, each file contributing once (keyed on resolved realpath, so diamonds collapse and cycles terminate), dropping `#pragma once` and leaving `<system>` includes alone. It is built on a new `DependencyScanner.reference_spans` splice capability (`can_splice`), which reports the byte span of a whole directive -- `rewrite` only renames the quoted path. Unlike flattening, resolution is *not* confined to the package root: `extra_roots` is how a caller makes builtin headers (`testlib.h`, `rbx.h`) inlinable without the library knowing what they are. An unresolvable quoted include raises `AmalgamationError` unless `keep` whitelists the spelling. It is package-agnostic and reusable by any other flat/single-unit target.
 
 **Known limitations:** (1) plain *absolute* Python imports (`from common.helper import x`) resolve as siblings of the importing file in the scanner, so a cross-package absolute import is neither shipped nor guard-flagged -- only parent-relative (`from ..common import`) cross-dir imports trip the guard; the feature is C++-centric. (2) A user-authored file literally named `testlib.h`/`rbx.h` next to a source is a pathological name clash with the injected builtin headers and is not specially guarded.
 
@@ -81,6 +87,18 @@ Supports interactive problems with special `run` scripts.
 - `docs/enunciado.pdf` -- statement
 - Optional `--for-boca` mode that uses BOCA-style layout
 
+### MOJ Next (`moj_next/`)
+
+**`MojNextPackager`** (`rbx package moj-next`) -- a **separate** packager extending `BasePackager` directly, targeting MOJ as [`cd-moj/mojtools`](https://github.com/cd-moj/mojtools) actually consumes it. Shares no code with `moj/`, which stays as-is and keeps interactive problems. See [`moj_next/CLAUDE.md`](moj_next/CLAUDE.md) for the full picture; the load-bearing parts:
+
+- **Calibration-only time limits.** MOJ *measures* the TL from `sols/good`; no `tl` is emitted, and `conf` carries `MEMLIMITMB` (peak RSS, replacing the legacy `ULIMITS[-v]`), `ULIMITS[-f]` and `TLMOD[calibrafactor]`.
+- **Stub vs copy.** `scripts/compare.sh` is a byte-copy of mojtools' canonical stub (the bridge stays upstream -- a bundled copy once replicated a bwrap bug into 198 packages); only the in-jail `scripts/<lang>/{compile,run}.sh` are real copies.
+- **Single-file checker.** The bridge binds only `checker.cpp` + `testlib.h` into the compile jail, so the checker (and every C/C++ solution) is amalgamated -- see [Source Amalgamation](#source-amalgamation-dependenciesamalgamationpy). Packaging refuses rather than shipping something that judge-errors on every test.
+- **Naming/scoring.** `sample001…` plus `t<NN>_<group>_<NNN>`, so samples sort first in MOJ's lexicographic judging loop; `tests/score` for POINTS only.
+- **`.moj-meta.json`.** Only the *content* fields the server accepts from a tar: `display_title` (always) and `languages` (the languages with an accepted solution, since MOJ can only calibrate those). The *access* fields (`public`/`public_at`/`owner`) are never written -- they are ignored from a tar anyway, and `public` is fail-closed server-side.
+- `task_types()` is `[BATCH]` and `statement_types()` is `[]` (a dummy `docs/enunciado.md` is written).
+- `MojLanguageExtension` (key `moj`) mirrors `BocaLanguageExtension`: `languages` + required `template` + optional `flags`.
+
 ### PKG (`pkg/`)
 
 **`PkgPackager`** -- Simplest format:
@@ -101,6 +119,7 @@ Reverse operation: `PolygonImporter` imports from Polygon packages into rbx form
 | `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip`, `--upload-tests-raw` |
 | `rbx package boca` | `BocaPackager` | `--upload`, `--language` |
 | `rbx package moj` | `MojPackager` | `--for-boca` |
+| `rbx package moj-next` | `MojNextPackager` | (none) |
 | `rbx package pkg` | `PkgPackager` | (none) |
 
 All are guarded by `@package.within_problem`.

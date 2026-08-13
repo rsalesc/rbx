@@ -2,7 +2,7 @@ import abc
 import dataclasses
 import enum
 import pathlib
-from typing import Callable, ClassVar, Dict, List, Optional, Set, Type
+from typing import Callable, ClassVar, Dict, List, Optional, Set, Tuple, Type
 
 from rbx.grading.language_kind import LanguageKind
 
@@ -43,6 +43,10 @@ class DependencyScanner(abc.ABC):
     language_kinds: ClassVar[Set[LanguageKind]] = set()
     dependency_kinds: ClassVar[Set[DependencyKind]] = set()
     can_rewrite: ClassVar[bool] = False
+    # Whether ``reference_spans`` is implemented. Splicing replaces a whole dependency
+    # directive with other content (used by amalgamation); renaming via ``rewrite``
+    # only substitutes the referenced path.
+    can_splice: ClassVar[bool] = False
 
     @abc.abstractmethod
     def references(self, file: pathlib.Path) -> List[Reference]: ...
@@ -50,6 +54,19 @@ class DependencyScanner(abc.ABC):
     def rewrite(self, text: str, rename: Callable[[str], Optional[str]]) -> str:
         raise NotImplementedError(
             f'{type(self).__name__} does not support include/import rewriting.'
+        )
+
+    def reference_spans(self, text: str) -> List[Tuple[int, int, str]]:
+        """Byte spans of each dependency directive in ``text``, with its spelling.
+
+        Returns ``(start, end, spelling)`` triples covering the *entire* directive
+        (e.g. the whole ``#include "lib.h"``), sorted by ``start`` and mutually
+        disjoint, so a caller may splice replacement content into each span. Only
+        references a splicing caller could resolve are reported: C++ ``<...>`` system
+        includes are omitted, exactly as in ``references``.
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} does not support dependency splicing.'
         )
 
 

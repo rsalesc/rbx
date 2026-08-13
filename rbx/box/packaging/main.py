@@ -146,6 +146,17 @@ async def moj(
     await run_packager(MojPackager, verification=verification, for_boca=for_boca)
 
 
+@app.command('moj-next', help='Build a package for MOJ (new format).')
+@package.within_problem
+@syncer.sync
+async def moj_next(
+    verification: environment.VerificationParam,
+):
+    from rbx.box.packaging.moj_next.packager import MojNextPackager
+
+    await run_packager(MojNextPackager, verification=verification)
+
+
 @app.command('pkg', help='Build a package for PKG.')
 @package.within_problem
 @syncer.sync

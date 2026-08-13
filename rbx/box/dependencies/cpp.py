@@ -1,5 +1,5 @@
 import pathlib
-from typing import Callable, Iterator, List, Optional
+from typing import Callable, Iterator, List, Optional, Tuple
 
 import tree_sitter_cpp
 from tree_sitter import Language, Node, Parser
@@ -16,8 +16,8 @@ def _parser() -> Parser:
     return Parser(_LANGUAGE)
 
 
-def _quoted_include_nodes(root: Node) -> Iterator[Node]:
-    """Yield the ``string_literal`` path node of each quoted ``#include`` (skips
+def _quoted_include_pairs(root: Node) -> Iterator[Tuple[Node, Node]]:
+    """Yield ``(preproc_include, string_literal)`` for each quoted ``#include`` (skips
     ``<...>`` system includes and never matches includes inside comments)."""
     stack = [root]
     while stack:
@@ -25,11 +25,17 @@ def _quoted_include_nodes(root: Node) -> Iterator[Node]:
         if node.type == 'preproc_include':
             for child in node.children:
                 if child.type == 'string_literal':
-                    yield child
+                    yield node, child
                     break
                 if child.type == 'system_lib_string':
                     break
         stack.extend(node.children)
+
+
+def _quoted_include_nodes(root: Node) -> Iterator[Node]:
+    """Yield the ``string_literal`` path node of each quoted ``#include``."""
+    for _, path_node in _quoted_include_pairs(root):
+        yield path_node
 
 
 def _spelling(path_node: Node) -> str:
@@ -53,6 +59,7 @@ class CppScanner(scanner.DependencyScanner):
     language_kinds = {LanguageKind.CXX}
     dependency_kinds = {DependencyKind.COMPILATION}
     can_rewrite = True
+    can_splice = True
 
     def references(self, file: pathlib.Path) -> List[Reference]:
         tree = _parser().parse(pathlib.Path(file).read_bytes())
@@ -75,3 +82,12 @@ class CppScanner(scanner.DependencyScanner):
         for start, end, repl in sorted(edits, reverse=True):
             data[start:end] = repl.encode('utf-8')
         return data.decode('utf-8')
+
+    def reference_spans(self, text: str) -> List[Tuple[int, int, str]]:
+        tree = _parser().parse(text.encode('utf-8'))
+        spans = [
+            (include_node.start_byte, include_node.end_byte, _spelling(path_node))
+            for include_node, path_node in _quoted_include_pairs(tree.root_node)
+        ]
+        spans.sort()
+        return spans
