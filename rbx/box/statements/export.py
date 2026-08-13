@@ -44,6 +44,18 @@ from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.statements.texsoup_utils import ASSET_EXTS, rewrite_includegraphics
 
 
+class StatementExportError(ValueError):
+    """A statement's asset set cannot be exported as configured.
+
+    Raised by the two guards below -- reference ambiguity and destination
+    collisions -- both of which are *setter* mistakes with actionable messages,
+    not programming errors. A ``ValueError`` subclass so a library consumer that
+    already catches ``ValueError`` keeps working, and its own type so a CLI
+    consumer can turn exactly these into a clean error message without also
+    swallowing the pydantic/YAML ``ValueError``s the pipeline may raise.
+    """
+
+
 def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
     assert statement.type == StatementType.rbxTeX
     # The v2 overlay root is the single export source dir; the substituted blocks
@@ -541,7 +553,7 @@ def _resolve_references(
             # is unambiguous whichever asset is recorded, and whether shipping
             # two sources to one path is legal is the bundle's problem.
             if layout.place_asset(other) != best_dest:
-                raise ValueError(
+                raise StatementExportError(
                     f'Cannot decide which asset the reference {key!r} names: '
                     f'{best.source} and {other.source} both reduce to it and '
                     'share an extension, so extension precedence cannot choose '
@@ -647,7 +659,7 @@ def _check_destination_collisions(bundled: List[BundledAsset]) -> None:
     for entry in bundled:
         previous = by_dest.setdefault(entry.dest, entry)
         if previous.asset.source != entry.asset.source:
-            raise ValueError(
+            raise StatementExportError(
                 f'Two different assets are placed at {entry.dest}: '
                 f'{previous.asset.source} and {entry.asset.source}. One would '
                 'overwrite the other. Rename one, move one out of the statement '

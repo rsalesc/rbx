@@ -5,7 +5,6 @@ import pathlib
 
 import pytest
 
-from rbx.box.packaging.polygon import upload
 from rbx.box.statements import export
 from rbx.box.statements.schema import Statement
 
@@ -232,80 +231,3 @@ def test_resolved_asset_ref_key_drops_the_extension():
         rel=pathlib.PurePosixPath('img/d.png'),
     )
     assert asset.ref_key == 'img/d'
-
-
-def _flat_name(asset: export.ResolvedAsset) -> str:
-    """The Polygon uploaded name for an asset, i.e. what `_collect_assets` bakes
-    in and `resolve_assets` deliberately leaves to a layout."""
-    flat = str(asset.rel).replace('/', '__')
-    if asset.scope == export.AssetScope.SAMPLE:
-        return f'sample_{asset.sample}__{flat}'
-    return flat
-
-
-def test_resolve_assets_matches_collect_assets_under_the_flat_naming(
-    tmp_path, monkeypatch
-):
-    """Port guard (design §8): `resolve_assets` is `_collect_assets` minus the
-    naming, so projecting the flat name back onto it must reproduce the uploads
-    and remaps byte for byte.
-
-    DELETE THIS TEST IN TASK 6, together with `_collect_assets`. It reaches into
-    a private Polygon helper on purpose and only to keep the two implementations
-    honest while they coexist.
-    """
-    (tmp_path / 'statement' / 'img').mkdir(parents=True)
-    (tmp_path / 'statement' / 'img' / 'd.png').touch()
-    (tmp_path / 'statement' / 'pic.png').touch()
-    (tmp_path / 'statement' / 'figure.svg').touch()
-    (tmp_path / 'statement' / 'statement.rbx.tex').touch()
-    (tmp_path / 'statement' / 'samples').mkdir()
-    (tmp_path / 'statement' / 'samples' / '000.in').touch()
-    (tmp_path / 'extra' / 'deep').mkdir(parents=True)
-    (tmp_path / 'extra' / 'deep' / 'logo.png').touch()
-
-    built = tmp_path / 'build' / 'overlay'
-    (built / '.samples' / '000' / 'sub').mkdir(parents=True)
-    (built / '.samples' / '000' / 'diagram.png').touch()
-    (built / '.samples' / '000' / 'sub' / 'e.pdf').touch()
-    (built / '.samples' / '000' / 'in').touch()
-    tikz = built / 'artifacts' / 'tikz_figures'
-    tikz.mkdir(parents=True)
-    (tikz / 'i_0.pdf').touch()
-
-    monkeypatch.chdir(tmp_path)
-    for module in (upload, export):
-        monkeypatch.setattr(module, 'get_statement_dir', lambda statement: built)
-        monkeypatch.setattr(
-            module,
-            'get_produced_tikz_pdfs',
-            lambda statement: [
-                (tikz / 'i_0.pdf', pathlib.Path('artifacts/tikz_figures/i_0.pdf'))
-            ],
-        )
-
-    statement = Statement(
-        language='en',
-        file=pathlib.Path('statement/statement.rbx.tex'),
-        # A recursive glob, a non-image extension, and a duplicate of a file the
-        # image/PDF default already picks up.
-        assets=['extra/**/*.png', 'statement/figure.svg', 'statement/img/d.png'],
-    )
-
-    uploads, remaps = upload._collect_assets(statement, {0})  # noqa: SLF001
-    assets = export.resolve_assets(statement, {0})
-
-    assert {_flat_name(a): a.source for a in assets} == uploads
-    # TikZ is its own scope here, but Polygon folds it into the statement remap.
-    assert {
-        a.ref_key: _flat_name(a)
-        for a in assets
-        if a.scope in (export.AssetScope.STATEMENT, export.AssetScope.TIKZ)
-    } == remaps.statement
-    assert {
-        0: {
-            a.ref_key: _flat_name(a)
-            for a in assets
-            if a.scope == export.AssetScope.SAMPLE
-        }
-    } == remaps.samples

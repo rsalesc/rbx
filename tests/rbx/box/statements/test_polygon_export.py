@@ -208,8 +208,8 @@ async def test_processed_blocks_dump_survives_a_non_normalizing_call(
 
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
-async def test_collect_assets_scopes_statement_subtree(cleandir_with_testdata):
-    from rbx.box.packaging.polygon.upload import _collect_assets
+async def test_resolved_assets_scope_statement_subtree(cleandir_with_testdata):
+    from rbx.box.statements import export
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()
@@ -221,12 +221,15 @@ async def test_collect_assets_scopes_statement_subtree(cleandir_with_testdata):
         (pathlib.Path('statement') / 'imgs' / 'fig.png').write_bytes(b'x')
         (pathlib.Path('statement') / 'notes.txt').write_bytes(b'x')
 
-        uploads, remaps = _collect_assets(st, set())
+        assets = export.resolve_assets(st, set())
+        layout = export.FlatLayout()
+        names = {str(layout.place_asset(asset)): asset.source for asset in assets}
+        remap = export.derive_remap(assets, layout, export.DocumentSlot.body())
 
         # The image is uploaded under a flattened name and remapped by its
         # statement-dir-relative, extensionless reference.
-        assert 'imgs__fig.png' in uploads
-        assert uploads['imgs__fig.png'].is_file()
-        assert remaps.statement['imgs/fig'] == 'imgs__fig.png'
+        assert 'imgs__fig.png' in names
+        assert names['imgs__fig.png'].is_file()
+        assert remap['imgs/fig'] == 'imgs__fig.png'
         # The statement source and the non-image source are NOT resources.
-        assert not any(name.endswith(('.rbx.tex', '.txt')) for name in uploads)
+        assert not any(name.endswith(('.rbx.tex', '.txt')) for name in names)
