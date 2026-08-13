@@ -21,6 +21,24 @@ def _asciinema():
     return env.macros['asciinema']
 
 
+def test_the_default_formula_macro_serves_the_value_the_code_defines():
+    # The profiling docs render this instead of restating the formula, so the
+    # page cannot drift away from what rbx estimates with.
+    from rbx.box.environment import DEFAULT_TIMING_FORMULA
+
+    env = _Env()
+    define_env(env)
+
+    assert env.macros['default_timing_formula']() == DEFAULT_TIMING_FORMULA
+
+
+def test_the_profiling_docs_do_not_restate_the_default_formula():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    page = (root / 'docs' / 'setters' / 'profiling' / 'index.md').read_text()
+
+    assert '{{ default_timing_formula() }}' in page
+
+
 def test_local_name_renders_a_player_pointed_at_the_committed_cast():
     html = _asciinema()('run-basic')
 

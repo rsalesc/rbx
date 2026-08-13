@@ -315,6 +315,28 @@ def test_bounding_solution_names_survive_rendering(capsys):
     assert 'sols/tle[x].cpp' in out
 
 
+def test_the_row_holds_the_real_solution_name_not_an_escaped_one():
+    # Escaping belongs to the renderer: `source` is a data field, and a consumer
+    # that is not rich (a text report, a UI widget) must not read `tle\[x].cpp`.
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=1,
+                fastest=630,
+                slowest=630,
+                upperBound=TimingBound(value=4066, solution='sols/tle[x].cpp'),
+            ),
+        ],
+    )
+    source = build_limits_table_rows(profile)[1].source
+    assert 'sols/tle[x].cpp' in source
+    assert '\\' not in source
+
+
 def test_estimated_time_renders_cyan_with_ms():
     import rbx.console as console_module
     from rbx.box.limits_info import build_limits_table

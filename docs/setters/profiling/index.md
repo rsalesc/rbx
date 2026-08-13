@@ -115,7 +115,9 @@ to be too slow are allowed:
 
 Unlike a formula, the ratios bound the time limit from **both** sides, so a limit that would
 let a solution meant to time out pass is caught while estimating: when no limit satisfies the
-ratios, `rbx time` says which solution binds each side and writes nothing to the profile.
+ratios, `rbx time` says which solution binds each side, writes nothing to the profile, and
+exits with a non-zero status — as it does for any estimation that produces no limit, so a
+pipeline running it notices.
 
 Configure them environment-wide in `env.rbx.yml`:
 
@@ -167,14 +169,18 @@ in `env.rbx.yml` to use it; it is mutually exclusive with `timing.multipliers`.
 
 ### Default formula
 
-When the environment configures neither ratios nor a formula, the default formula is:
+When the environment configures neither ratios nor a formula, {{rbx}} falls back to a built-in
+default formula, which is currently:
 
 ```text
-step_up(max(fastest * 3, slowest * 1.5), 100)
+{{ default_timing_formula() }}
 ```
 
-This means: take the maximum of 3x the fastest solution time and 1.5x the slowest solution time,
-then round up to the nearest multiple of 100 ms.
+That literal is read from `DEFAULT_TIMING_FORMULA` in `rbx/box/environment.py` when these docs
+are built, so it is always the formula {{rbx}} actually estimates with — the code is the
+authoritative source, not this page. Read it with the [variables](#variables) and
+[functions](#functions) below: the outer `step_up(..., 100)` rounds the estimate up to the
+nearest multiple of 100 ms.
 
 ### Variables
 

@@ -15,6 +15,19 @@ _counter = itertools.count()
 
 def define_env(env):
     @env.macro
+    def default_timing_formula() -> str:
+        """The formula rbx estimates with when no strategy is configured.
+
+        Read out of the code rather than restated in prose: a docs page that
+        spells the formula out by hand is a copy that drifts the moment the
+        default changes, and a reader following a stale formula is worse off
+        than one who is told nothing.
+        """
+        from rbx.box.environment import DEFAULT_TIMING_FORMULA
+
+        return DEFAULT_TIMING_FORMULA
+
+    @env.macro
     def asciinema(id: str, idleness: float = 1, speed: float = 1, pause: float = 3):
         # A hosted recording is played by the same vendored player, just from a
         # remote source (asciinema.org serves `.cast` with

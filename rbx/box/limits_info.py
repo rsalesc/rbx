@@ -238,20 +238,20 @@ def _bounds_note(report: TimingGroupReport) -> str:
 
     The lower bound is shown only when a solution set it: a derived one merely
     restates the limit the multiplier source already names.
-    """
-    import rich.markup
 
+    The solution paths land here verbatim: this is a data field, and escaping
+    them for rich would bake one renderer's syntax into it. ``build_limits_table``
+    escapes the whole cell instead.
+    """
     parts: List[str] = []
     lower = report.lowerBound
     if lower is not None and lower.solution is not None:
-        # A solution path is setter-controlled text landing in a cell that is
-        # rendered as markup, so it is escaped here rather than trusted.
-        parts.append(f'≥ {lower.value} ms from {rich.markup.escape(lower.solution)}')
+        parts.append(f'≥ {lower.value} ms from {lower.solution}')
     upper = report.upperBound
     if upper is not None:
         note = f'≤ {upper.value} ms'
         if upper.solution is not None:
-            note += f' from {rich.markup.escape(upper.solution)}'
+            note += f' from {upper.solution}'
         parts.append(note)
     if not parts:
         return ''
@@ -376,6 +376,7 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     tests. Cell-level markup still uses theme names (``warning``/``success``/
     ``item``), which resolve through the markup path.
     """
+    import rich.markup
     import rich.table
 
     rows = build_limits_table_rows(profile)
@@ -417,6 +418,12 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     for row in rows:
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
+        # The Source cell carries setter-controlled text (solution paths), and
+        # the cells below are rendered as markup. Escaping happens here, at the
+        # one place that renders it, so `row.source` stays the real value for
+        # any other consumer -- and before the styling helpers, whose own markup
+        # must survive.
+        source = rich.markup.escape(row.source)
         if row.defaulted:
             # Defaulted rows are warnings: the yellow signals the fallback and
             # deliberately overrides the per-figure time highlight.
@@ -424,14 +431,14 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
                 f'[warning]{row.languages}[/warning]',
                 f'[warning]{sols}[/warning]',
                 f'[warning]{tl}[/warning]',
-                f'[warning]⚠ {row.source}[/warning]',
+                f'[warning]⚠ {source}[/warning]',
             )
         else:
             table.add_row(
                 row.languages,
                 sols,
                 _highlight_ms(tl),
-                _highlight_ms(_source_markup(row.source)),
+                _highlight_ms(_source_markup(source)),
             )
     return table
 

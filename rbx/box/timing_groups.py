@@ -200,7 +200,11 @@ def _record_provenance(
         return
     report.lowerBound = result.lower_bound
     report.upperBound = result.upper_bound
-    if measured.upper is not None:
+    if measured.upper is not None and measured.upper.dropped_upper:
+        # Set only when there is something to record. The profile is serialized
+        # with `exclude_unset`, so assigning an empty list would make an
+        # estimated group emit `droppedUpper: []` while a derived one omits the
+        # key -- a distinction that means nothing to whoever reads the file.
         report.droppedUpper = list(measured.upper.dropped_upper)
 
 
