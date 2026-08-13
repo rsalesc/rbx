@@ -1,0 +1,54 @@
+# Three problems, one per inference outcome. None of them ships a local env:
+# they run against rbx's bundled default environment, so these scenarios also
+# guard the multipliers the default preset configures (100ms resolution, 2.0
+# ac-to-limit, 1.5 limit-to-tle).
+scenarios:
+  - name: range-ok
+    description: >
+      `rbx time --auto` with an accepted solution and a solution expected to be
+      too slow that are comfortably apart. The estimate resolves, the written
+      limit is a multiple of the time resolution (100ms), and the profile
+      records the solution that bounds it on each side.
+    steps:
+      - cmd: time --auto
+        cwd: range-ok
+        expect:
+          files_exist:
+            - 'range-ok/.limits/local.yml'
+          file_contains:
+            # A multiple of 100ms, with both bounds and their solutions recorded.
+            range-ok/.limits/local.yml: '/(?ms)^timeLimit: [0-9]*00$.*solution: sols/main\.cpp$.*solution: sols/slow\.cpp$/'
+
+  - name: empty-range
+    description: >
+      Same setup, but the solution declared too slow returns immediately, so it
+      caps the limit below what the accepted solution requires. No limit is
+      valid: the estimate is refused and nothing is written to the profile.
+    steps:
+      - cmd: time --auto
+        cwd: empty-range
+        # The estimation is refused: `rbx time` reports the range, leaves the
+        # profile untouched, and fails -- a limit was asked for and none was
+        # produced, which a pipeline running `rbx time` has to see.
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - 'no valid time limit exists'
+            - 'sols/not_slow.cpp'
+          files_absent:
+            - 'empty-range/.limits/local.yml'
+
+  - name: inference-off
+    description: >
+      The same solution pair, except the one that would cap the limit declares
+      `inference: false`. It is left out of the estimation entirely, so the
+      estimate resolves and the profile records no upper bound at all.
+    steps:
+      - cmd: time --auto
+        cwd: inference-off
+        expect:
+          files_exist:
+            - 'inference-off/.limits/local.yml'
+          file_contains:
+            # A multiple of 100ms, and no upper bound anywhere in the profile.
+            inference-off/.limits/local.yml: '/(?ms)\A(?!.*upperBound).*^timeLimit: [0-9]*00$/'

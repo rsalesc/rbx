@@ -1,9 +1,9 @@
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
-from rbx.box.schema import TimingGroupOrigin, TimingGroupReport
+from rbx.box.schema import TimingBound, TimingGroupOrigin, TimingGroupReport
 
 
 class ResolvedGroup(BaseModel):
@@ -90,10 +90,48 @@ def partition_from_assignment(
     return result
 
 
+# One solution's measurement: (time in ms, solution path). Ordered by time
+# first, so min/max pick the extreme measurement -- and, on a tie, a stable
+# solution path.
+Measurement = Tuple[int, str]
+
+
 class GroupTimings(BaseModel):
+    """Lower-bound evidence: how long the group's accepted solutions took."""
+
     fastest: int
     slowest: int
     solution_count: int
+    # Which solution took ``slowest`` -- the one that drives the limit up.
+    slowest_solution: Optional[str] = None
+
+
+class UpperTimings(BaseModel):
+    """Upper-bound evidence: how long the group's slow solutions took.
+
+    Tracked separately from ``GroupTimings`` because the two sides are populated
+    by disjoint sets of solutions: a group may have slow solutions and no
+    accepted ones (so no ``GroupTimings`` at all) and still must have its limit
+    checked against this bound.
+    """
+
+    # Absent when every slow solution of the group was dropped: the group then
+    # bounds nothing from above, but still has to carry ``dropped_upper`` so the
+    # drop is reported against the group it happened in.
+    fastest_slow: Optional[int] = None
+    fastest_slow_solution: Optional[str] = None
+    # Slow solutions that were measured but cannot bound the limit (e.g. they
+    # hit the inference timeout).
+    dropped_upper: List[str] = []
+
+
+class GroupMeasurements(BaseModel):
+    """Everything measured for one group. The two sides are populated by
+    disjoint sets of solutions, so either may be absent independently: a group
+    can have slow solutions and no accepted ones, and vice versa."""
+
+    lower: Optional[GroupTimings] = None
+    upper: Optional[UpperTimings] = None
 
 
 class ResolutionResult(BaseModel):
@@ -104,7 +142,42 @@ class ResolutionResult(BaseModel):
     defaulted_languages: List[str]
 
 
-EvalFn = Callable[[int, int], int]
+class EvalResult(BaseModel):
+    """A group's estimated limit and the bounds that produced it.
+
+    An estimator that computes bounds returns them here rather than leaving the
+    reporting layer to recompute them: two implementations of that arithmetic is
+    exactly where the recorded provenance and the limit it explains would
+    silently diverge.
+    """
+
+    time_limit: int
+    lower_bound: Optional[TimingBound] = None
+    upper_bound: Optional[TimingBound] = None
+
+
+# An estimator that derives no bounds at all (the formula path) may return the
+# limit on its own.
+EvalOutcome = Union[int, EvalResult]
+
+# Estimates a group's limit from its own measurements.
+EvalFn = Callable[[GroupMeasurements], EvalOutcome]
+# Post-processes a limit that was NOT estimated from the group's own accepted
+# solutions -- derived from a reference group (``whenEmpty`` or a forced
+# relative) or inherited from the base estimate (``DEFAULTED``) -- so it can
+# still be checked against the group's own upper bound.
+DeriveFn = Callable[[int, GroupMeasurements], EvalOutcome]
+
+
+def _limit_of(outcome: EvalOutcome) -> int:
+    return outcome.time_limit if isinstance(outcome, EvalResult) else outcome
+
+
+def _provenance_of(outcome: EvalOutcome) -> Optional[EvalResult]:
+    """Only an estimator that reports its bounds records provenance: a bare limit
+    (the formula path) knows nothing about the slow solutions, so its group
+    reports must say nothing about them either."""
+    return outcome if isinstance(outcome, EvalResult) else None
 
 
 def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
@@ -115,8 +188,37 @@ def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
     return out
 
 
+def _record_provenance(
+    report: TimingGroupReport,
+    result: Optional[EvalResult],
+    measured: GroupMeasurements,
+) -> None:
+    """Stamp onto a report what decided its limit: the bounds the estimator
+    computed and the slow solutions that were measured but bound nothing.
+    Presentation-only -- nothing here feeds limit resolution."""
+    if result is None:
+        return
+    report.lowerBound = result.lower_bound
+    report.upperBound = result.upper_bound
+    if measured.upper is not None and measured.upper.dropped_upper:
+        # Set only when there is something to record. The profile is serialized
+        # with `exclude_unset`, so assigning an empty list would make an
+        # estimated group emit `droppedUpper: []` while a derived one omits the
+        # key -- a distinction that means nothing to whoever reads the file.
+        report.droppedUpper = list(measured.upper.dropped_upper)
+
+
 class GroupValidationError(ValueError):
     pass
+
+
+class TimingRangeError(GroupValidationError):
+    """No time limit satisfies both bounds of some group.
+
+    Subclasses ``GroupValidationError`` so the interactive group picker renders
+    it inline for the offending grouping, exactly as it does an invalid
+    partition.
+    """
 
 
 def validate_partition(groups: List[ResolvedGroup]) -> None:
@@ -160,19 +262,22 @@ def validate_partition(groups: List[ResolvedGroup]) -> None:
 
 def resolve_groups(
     groups: List[ResolvedGroup],
-    pooled: Dict[int, GroupTimings],  # group index -> pooled timings (non-empty only)
-    base: GroupTimings,
+    measured: Dict[int, GroupMeasurements],  # group index -> its measurements
+    base: GroupMeasurements,
     eval_fn: EvalFn,
+    derive_fn: Optional[DeriveFn] = None,
 ) -> ResolutionResult:
-    base_tl = eval_fn(base.fastest, base.slowest)
+    base_outcome = eval_fn(base)
+    base_tl = _limit_of(base_outcome)
     base_report = TimingGroupReport(
         languages=[],
         timeLimit=base_tl,
         origin=TimingGroupOrigin.ESTIMATED,
-        solutionCount=base.solution_count,
-        fastest=base.fastest,
-        slowest=base.slowest,
+        solutionCount=base.lower.solution_count if base.lower else 0,
+        fastest=base.lower.fastest if base.lower else None,
+        slowest=base.lower.slowest if base.lower else None,
     )
+    _record_provenance(base_report, _provenance_of(base_outcome), base)
     lang_index = _lang_to_group_index(groups)
 
     resolved_tl: Dict[int, int] = {}
@@ -187,13 +292,20 @@ def resolve_groups(
             return base_tl
         resolving.add(idx)
         group = groups[idx]
-        timings = pooled.get(idx)
+        group_measured = measured.get(idx) or GroupMeasurements()
+        timings = group_measured.lower
+        # The bounds the estimator computed for this group, when it computes any.
+        result: Optional[EvalResult] = None
         if group.forced_relative is not None:
             fb = group.forced_relative
             ref = fb.relativeTo
             ref_tl = base_tl if ref is None else resolve(lang_index[ref])
             increment = fb.increment or 0
             tl = int(ref_tl * fb.multiplier + increment)
+            if derive_fn is not None:
+                outcome = derive_fn(tl, group_measured)
+                tl = _limit_of(outcome)
+                result = _provenance_of(outcome)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -207,7 +319,9 @@ def resolve_groups(
                 isLeftover=group.is_leftover,
             )
         elif timings is not None:
-            tl = eval_fn(timings.fastest, timings.slowest)
+            outcome = eval_fn(group_measured)
+            tl = _limit_of(outcome)
+            result = _provenance_of(outcome)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -222,6 +336,10 @@ def resolve_groups(
             ref_tl = base_tl if ref is None else resolve(lang_index[ref])
             increment = group.whenEmpty.increment or 0
             tl = int(ref_tl * group.whenEmpty.multiplier + increment)
+            if derive_fn is not None:
+                outcome = derive_fn(tl, group_measured)
+                tl = _limit_of(outcome)
+                result = _provenance_of(outcome)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -234,6 +352,14 @@ def resolve_groups(
             )
         else:
             tl = base_tl
+            if derive_fn is not None:
+                # Check-only: the report and the UI both state that a defaulted
+                # group fell back to the base limit, so it must not move off it
+                # -- and requantizing an already-quantized base_tl is identity
+                # anyway. derive_fn runs solely so it can raise when the group's
+                # own upper bound rules the base limit out; its *limit* is
+                # deliberately discarded -- only the bounds it reports are kept.
+                result = _provenance_of(derive_fn(tl, group_measured))
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -241,6 +367,7 @@ def resolve_groups(
                 solutionCount=0,
                 isLeftover=group.is_leftover,
             )
+        _record_provenance(report, result, group_measured)
         resolving.discard(idx)
         resolved_tl[idx] = tl
         resolved_report[idx] = report

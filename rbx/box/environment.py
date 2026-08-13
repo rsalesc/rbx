@@ -22,6 +22,7 @@ from rbx import config, console
 from rbx.box import presets, safeeval
 from rbx.box.extensions import Extensions, LanguageExtensions
 from rbx.box.linters.asset_kind import AssetKind
+from rbx.box.schema import TimingMultipliers
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
@@ -356,12 +357,26 @@ class LanguageGroup(BaseModel):
     )
 
 
+DEFAULT_TIMING_FORMULA = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
+
+
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    formula: str = Field(
-        default='step_up(max(fastest * 3, slowest * 1.5), 100)',
-        description="""Formula to use to calculate the time limit for the environment.""",
+    formula: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description="""Formula to use to calculate the time limit for the environment.
+Mutually exclusive with `multipliers`. When neither is set, a default formula is
+used.""",
+    )
+
+    # TimingMultipliers is defined in `schema.py` so problem-level models can embed
+    # it too: `schema.py` cannot import this module back without a cycle.
+    multipliers: Optional[TimingMultipliers] = Field(
+        default=None,
+        description="""Ratios used to infer the time limit from the measured
+solutions. Mutually exclusive with `formula`.""",
     )
 
     groups: List[LanguageGroup] = Field(
@@ -393,6 +408,23 @@ class TimingConfig(BaseModel):
                     )
                 seen.add(lang)
         return self
+
+    @model_validator(mode='after')
+    def _validate_exclusive_strategies(self):
+        if self.formula is not None and self.multipliers is not None:
+            raise ValueError(
+                'timing.formula and timing.multipliers are mutually exclusive; '
+                'set exactly one of them.'
+            )
+        return self
+
+    def resolved_formula(self) -> Optional[str]:
+        """The formula to estimate with, or None when multipliers are in use."""
+        if self.multipliers is not None:
+            return None
+        if self.formula is not None:
+            return self.formula
+        return DEFAULT_TIMING_FORMULA
 
 
 class Environment(BaseModel):

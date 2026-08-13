@@ -229,18 +229,48 @@ class LimitsTableRow(BaseModel):
     source: str
     defaulted: bool = False
     is_leftover: bool = False
+    # Slow solutions of this group that bound nothing from above.
+    dropped_upper: List[str] = []
+
+
+def _bounds_note(report: TimingGroupReport) -> str:
+    """The range the group's limit had to fit in, and who set each side.
+
+    The lower bound is shown only when a solution set it: a derived one merely
+    restates the limit the multiplier source already names.
+
+    The solution paths land here verbatim: this is a data field, and escaping
+    them for rich would bake one renderer's syntax into it. ``build_limits_table``
+    escapes the whole cell instead.
+    """
+    parts: List[str] = []
+    lower = report.lowerBound
+    if lower is not None and lower.solution is not None:
+        parts.append(f'≥ {lower.value} ms from {lower.solution}')
+    upper = report.upperBound
+    if upper is not None:
+        note = f'≤ {upper.value} ms'
+        if upper.solution is not None:
+            note += f' from {upper.solution}'
+        parts.append(note)
+    if not parts:
+        return ''
+    return ' [' + ', '.join(parts) + ']'
 
 
 def _report_source(report: TimingGroupReport) -> str:
     if report.origin == TimingGroupOrigin.ESTIMATED:
-        return f'estimated (fastest {report.fastest} ms / slowest {report.slowest} ms)'
-    if report.origin == TimingGroupOrigin.MULTIPLIER:
+        source = (
+            f'estimated (fastest {report.fastest} ms / slowest {report.slowest} ms)'
+        )
+    elif report.origin == TimingGroupOrigin.MULTIPLIER:
         ref = report.relativeToLanguage or 'base'
         source = f'×{report.multiplier} of {ref}'
         if report.increment is not None:
             source += f' + {report.increment} ms'
-        return source
-    return 'DEFAULTED to base'
+    else:
+        source = 'DEFAULTED to base'
+    return source + _bounds_note(report)
 
 
 def _base_row(profile: LimitsProfile) -> LimitsTableRow:
@@ -252,14 +282,17 @@ def _base_row(profile: LimitsProfile) -> LimitsTableRow:
     """
     source = 'base'
     solutions = None
+    dropped: List[str] = []
     if profile.baseEstimate is not None:
         source = _report_source(profile.baseEstimate)
         solutions = profile.baseEstimate.solutionCount
+        dropped = list(profile.baseEstimate.droppedUpper)
     return LimitsTableRow(
         languages='(base)',
         solutions=solutions,
         time_limit_ms=profile.timeLimit or 0,
         source=source,
+        dropped_upper=dropped,
     )
 
 
@@ -279,6 +312,7 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
                     source=source,
                     defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
                     is_leftover=report.isLeftover,
+                    dropped_upper=list(report.droppedUpper),
                 )
             )
         # Leftover group is shown first; stable sort keeps the rest in order.
@@ -320,8 +354,10 @@ def _source_markup(source: str) -> str:
 
 # Matches a time figure like "1000 ms" so the number can be highlighted while
 # the unit is dimmed; applied uniformly to the Time Limit column and to the
-# fastest/slowest figures inside the Source column.
-_MS_PATTERN = re.compile(r'(\d+)\s*ms')
+# fastest/slowest figures inside the Source column. The guards keep it off
+# solution names, which the Source column also carries: `tle_2000ms.cpp` is an
+# ordinary name for a solution in a package about timing.
+_MS_PATTERN = re.compile(r'(?<![\w.])(\d+)\s*ms(?![\w.])')
 
 
 def _highlight_ms(text: str) -> str:
@@ -340,6 +376,7 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     tests. Cell-level markup still uses theme names (``warning``/``success``/
     ``item``), which resolve through the markup path.
     """
+    import rich.markup
     import rich.table
 
     rows = build_limits_table_rows(profile)
@@ -353,6 +390,17 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
         caption_lines.append(
             '[warning]⚠ DEFAULTED: no accepted solutions and no whenEmpty rule; '
             'fell back to the base time limit.[/warning]'
+        )
+    # Terse on purpose: the estimation run already warned about each dropped
+    # solution by name, with what to do about it. This only says the table's
+    # upper bounds are missing some evidence, and where to find which.
+    dropped = {solution for row in rows for solution in row.dropped_upper}
+    if dropped:
+        plural = 's' if len(dropped) > 1 else ''
+        caption_lines.append(
+            f'[warning]⚠ {len(dropped)} slow solution{plural} hit the inference '
+            f'timeout and bound{"" if plural else "s"} nothing from above; named '
+            f'under droppedUpper in the limits profile.[/warning]'
         )
     caption = '\n'.join(caption_lines) if caption_lines else None
     table = rich.table.Table(
@@ -370,6 +418,12 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     for row in rows:
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
+        # The Source cell carries setter-controlled text (solution paths), and
+        # the cells below are rendered as markup. Escaping happens here, at the
+        # one place that renders it, so `row.source` stays the real value for
+        # any other consumer -- and before the styling helpers, whose own markup
+        # must survive.
+        source = rich.markup.escape(row.source)
         if row.defaulted:
             # Defaulted rows are warnings: the yellow signals the fallback and
             # deliberately overrides the per-figure time highlight.
@@ -377,14 +431,14 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
                 f'[warning]{row.languages}[/warning]',
                 f'[warning]{sols}[/warning]',
                 f'[warning]{tl}[/warning]',
-                f'[warning]⚠ {row.source}[/warning]',
+                f'[warning]⚠ {source}[/warning]',
             )
         else:
             table.add_row(
                 row.languages,
                 sols,
                 _highlight_ms(tl),
-                _highlight_ms(_source_markup(row.source)),
+                _highlight_ms(_source_markup(source)),
             )
     return table
 

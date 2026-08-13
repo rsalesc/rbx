@@ -657,6 +657,18 @@ class Generator(CodeItem):
     name: str = Field(description="""The name of the generator.""")
 
 
+class InferenceRole(AutoEnum):
+    LOWER = alias('lower')  # type: ignore
+    """The solution bounds the inferred time limit from below.
+
+    The limit will be large enough for this solution to comfortably pass."""
+
+    UPPER = alias('upper')  # type: ignore
+    """The solution bounds the inferred time limit from above.
+
+    The limit will be small enough for this solution to comfortably time out."""
+
+
 PER_GROUP_OUTCOME_WILDCARD = '*'
 
 
@@ -703,6 +715,32 @@ solutions:
 """,
     )
 
+    inference: Optional[Union[Literal[False], InferenceRole]] = Field(
+        default=None,
+        description="""The role this solution plays when inferring the time limit.
+
+When unset, the role follows the expected outcomes of this solution: a solution
+expected to be `accepted` everywhere bounds the time limit from below, a
+solution expected to be slow (`tle`, `tle-or-rte`) anywhere bounds it from
+above, and anything else -- notably `accepted-or-tle` -- bounds neither side.
+
+Set it explicitly to override that:
+
+- `false`: the solution is left out of the estimation entirely -- it is not run
+  and bounds neither side.
+- `lower`: the time limit must be large enough for this solution to pass. Not
+  allowed for solutions expected to be slow.
+- `upper`: the time limit must be small enough for this solution to time out.
+
+```yaml
+solutions:
+  - path: 'sols/borderline.cpp'
+    outcome: accepted-or-tle
+    inference: upper
+```
+""",
+    )
+
     tags: List[str] = Field(
         default=[],
         description="""Tags to be associated with this solution.""",
@@ -716,6 +754,19 @@ or a tuple of two integers, which means the solution should have a score between
 
 If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
     )
+
+    @model_validator(mode='after')
+    def check_inference_role(self):
+        if self.inference == InferenceRole.LOWER and any(
+            outcome.is_slow() for outcome in self.all_expected_outcomes()
+        ):
+            raise PydanticCustomError(
+                'INFERENCE_LOWER_NOT_ALLOWED_FOR_SLOW',
+                'Solution {path} is expected to be slow, so it cannot bound the time '
+                'limit from below; use `inference: upper` or `inference: false`.',
+                {'path': str(self.path)},
+            )
+        return self
 
     def expected_outcome_for_group(self, group_name: str) -> Optional[ExpectedOutcome]:
         """The expectation for a single group, or None if the group has none."""
@@ -774,10 +825,107 @@ class LimitModifiers(BaseModel):
     )
 
 
+class TimingMultipliers(BaseModel):
+    model_config = ConfigDict(extra='forbid', frozen=True)
+
+    acToTimeLimit: float = Field(
+        gt=0,
+        description="""Minimum ratio between the time limit and the slowest accepted
+solution, used to estimate the time limit from below: the slowest accepted solution
+times `acToTimeLimit` must fit within the time limit.""",
+    )
+
+    timeLimitToTle: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Minimum ratio between the fastest solution expected to be too
+slow and the time limit: the time limit times `timeLimitToTle` must fit within the
+fastest solution expected to be too slow. When omitted, solutions expected to be too
+slow are not run and the time limit is not bounded from above.""",
+    )
+
+    inferenceTimeout: int = Field(
+        default=10000,
+        gt=0,
+        description="""Time limit (in milliseconds) enforced on solutions while
+estimating. Only used when `timeLimitToTle` is set. A solution expected to be too
+slow that hits it is dropped from the upper bound; an accepted one that hits it is
+an error.""",
+    )
+
+    timeResolution: int = Field(
+        default=100,
+        gt=0,
+        description="""Granularity (in milliseconds) of the estimated time limit.
+The estimate is the smallest multiple of this value that is valid.""",
+    )
+
+
+class TimingMultipliersOverride(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    acToTimeLimit: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `acToTimeLimit`: the minimum ratio
+between the time limit and the slowest accepted solution, which bounds the estimated
+time limit from below.""",
+    )
+
+    timeLimitToTle: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `timeLimitToTle`: the minimum ratio
+between the fastest solution expected to be too slow and the time limit, which bounds
+the estimated time limit from above.""",
+    )
+
+    inferenceTimeout: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `inferenceTimeout`: the time limit
+(in milliseconds) enforced on solutions while estimating. Raise it for a problem whose
+solutions are slower than the environment expects.""",
+    )
+
+    timeResolution: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `timeResolution`: the granularity
+(in milliseconds) the estimated time limit is rounded up to.""",
+    )
+
+
+class PackageTiming(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    multipliers: Optional[TimingMultipliersOverride] = Field(
+        default=None,
+        description="""Per-problem overrides of the environment's timing
+multipliers. Only the declared fields are overridden.""",
+    )
+
+
 class TimingGroupOrigin(str, enum.Enum):
     ESTIMATED = 'estimated'
     MULTIPLIER = 'multiplier'
     DEFAULTED = 'defaulted'
+
+
+class TimingBound(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    value: int = Field(
+        description="""The bound, in milliseconds. A lower bound is the smallest
+time limit it allows, before it is rounded up to `timeResolution`; an upper bound is
+the largest time limit it allows."""
+    )
+
+    solution: Optional[str] = Field(
+        default=None,
+        description="""The solution that set this bound, when it came from a measured
+solution of the group. Absent when the bound was derived from another group's limit.""",
+    )
 
 
 class TimingGroupReport(BaseModel):
@@ -793,6 +941,26 @@ class TimingGroupReport(BaseModel):
     multiplier: Optional[float] = None
     increment: Optional[int] = None
     isLeftover: bool = False
+
+    lowerBound: Optional[TimingBound] = Field(
+        default=None,
+        description="""The lower bound this group's time limit had to respect, when it
+was estimated from multipliers. Presentation-only.""",
+    )
+
+    upperBound: Optional[TimingBound] = Field(
+        default=None,
+        description="""The upper bound this group's time limit had to respect, when it
+was estimated from multipliers and some slow solution of the group bounded it.
+Presentation-only.""",
+    )
+
+    droppedUpper: List[str] = Field(
+        default=[],
+        description="""Solutions of this group that were expected to be too slow but
+were still running at `inferenceTimeout`, so they bound nothing from above.
+Presentation-only.""",
+    )
 
 
 class ValidatorTest(BaseModel):
@@ -952,6 +1120,14 @@ A formula to estimate the time limit for the problem.
 """,
     )
 
+    multipliers: Optional[TimingMultipliers] = Field(
+        default=None,
+        description="""
+The multipliers this profile was estimated from, when it was estimated from
+ratios instead of a formula. Presentation-only; never used for limit resolution.
+""",
+    )
+
     groups: Optional[List[TimingGroupReport]] = Field(
         default=None,
         description="""
@@ -1020,6 +1196,11 @@ class Package(BaseModel):
 
     outputLimit: int = Field(
         default=4 * 1024, description='Output limit of the problem, in KB.'
+    )
+
+    timing: Optional[PackageTiming] = Field(
+        default=None,
+        description='Problem-level overrides for time limit inference.',
     )
 
     modifiers: Dict[str, LimitModifiers] = Field(

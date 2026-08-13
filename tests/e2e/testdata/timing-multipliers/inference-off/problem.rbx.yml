@@ -1,0 +1,26 @@
+name: timing-inference-off
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  # Same solution set as the `empty-range` problem, except this one opts out of
+  # the inference entirely, so it sets no upper bound and the estimate resolves.
+  - path: sols/not_slow.cpp
+    outcome: tle
+    inference: false
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4

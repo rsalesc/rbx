@@ -43,12 +43,13 @@ This launches an interactive session that:
 
 1. Shows the current profile (if one already exists).
 2. Asks you to choose a **strategy** for deciding the time limit.
-3. Runs all accepted solutions with no time limit enforced, measuring their true
-   execution times.
-4. Applies a formula to the timings and writes the result to `.limits/boca.yml`.
+3. Runs the solutions the limit is inferred from, measuring their true execution
+   times.
+4. Applies the configured ratios (or formula) to the timings and writes the result
+   to `.limits/boca.yml`.
 
 !!! tip
-    If you want to skip the interactive prompts and use the default formula, add the
+    If you want to skip the interactive prompts and use the configured strategy, add the
     `--auto` flag:
 
     ```bash
@@ -61,21 +62,18 @@ When prompted, you'll see four strategies:
 
 | Strategy                         | When to use                                                                 |
 | :------------------------------- | :-------------------------------------------------------------------------- |
-| **Estimate** (recommended)       | Let {{rbx}} measure your solutions and apply a formula. Best default.       |
+| **Estimate** (recommended)       | Let {{rbx}} measure your solutions and estimate from them. Best default.    |
 | **Inherit from package**         | Mirror whatever `timeLimit` and `memoryLimit` are set in `problem.rbx.yml`. |
 | **Estimate with custom formula** | Like Estimate, but you provide your own formula.                            |
 | **Custom time limit**            | You already know the exact time limit you want.                             |
 
-The default formula is:
-
-```text
-step_up(max(fastest * 3, slowest * 1.5), 100)
-```
-
-This takes the maximum of 3x the fastest accepted solution and 1.5x the slowest,
-then rounds up to the nearest 100 ms. You can customize this formula in
-`env.rbx.yml` -- see the [Profiling](/setters/profiling#time-limit-formulas) docs for
-details.
+By default, {{rbx}} estimates from ratios: the limit is at least `acToTimeLimit`
+times the slowest accepted solution, small enough that `timeLimitToTle` times the
+limit still fits within the fastest solution expected to be too slow, and rounded
+up to a multiple of `timeResolution`. If no limit satisfies them, the estimation
+fails and says which solution binds each side. You can tune the ratios (or switch
+to a formula) in `env.rbx.yml` -- see the
+[Profiling](/setters/profiling#time-limit-ratios) docs for details.
 
 ### Review the resulting profile
 
@@ -87,7 +85,11 @@ something like this:
 inheritFromPackage: false
 timeLimit: 2000
 memoryLimit: 256
-formula: "step_up(max(fastest * 3, slowest * 1.5), 100)"
+multipliers:
+  acToTimeLimit: 2.0
+  timeLimitToTle: 1.5
+  timeResolution: 100
+  inferenceTimeout: 10000
 ```
 
 You can also add per-language overrides if your contest accepts solutions in multiple

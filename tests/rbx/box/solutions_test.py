@@ -1,6 +1,6 @@
 import contextlib
 import pathlib
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -34,6 +34,7 @@ from rbx.box.solutions import (
     SolutionSkeleton,
     TimingIssue,
     TraditionalRunReporter,
+    _gates_report,  # noqa: SLF001
     convert_list_of_solution_evaluations_to_dict,
     get_full_outcome_markup_verdict,
     get_matching_solutions,
@@ -381,9 +382,17 @@ def make_run_result(
 
 
 async def drive_reporter(
-    reporter: TraditionalRunReporter, skeleton: SolutionReportSkeleton
+    reporter: TraditionalRunReporter,
+    skeleton: SolutionReportSkeleton,
+    gating_solutions: Optional[Set[str]] = None,
 ) -> bool:
-    """Replay `print_run_report`'s loop over an already-computed run."""
+    """Replay `print_run_report`'s loop over an already-computed run.
+
+    Kept structurally identical to the real loop, gate included: a solution
+    outside ``gating_solutions`` is still run and reported but cannot fail the
+    verdict (time limit inference relies on that for the solutions it expects to
+    hit the cap).
+    """
     ok = True
     for solution in skeleton.solutions:
         reporter.start_solution(solution)
@@ -396,7 +405,9 @@ async def drive_reporter(
                     await deferred() if deferred is not None else None
                 )
             reporter.finish_group()
-        ok = reporter.finish_solution() and ok
+        cur_ok = reporter.finish_solution()
+        if _gates_report(solution, gating_solutions):
+            ok = ok and cur_ok
     return ok
 
 
@@ -1246,6 +1257,29 @@ async def test_reporter_group_lines_carry_only_the_score(
     assert 'group2 (1) 0/✗ (100 ms, 1 KiB) [0/60 pts]' in lines
     # `samples` has no score, so it gets no trailing mark at all.
     assert 'samples (1) (100 ms, 1 KiB)' in lines
+
+
+async def test_a_solution_outside_the_gate_cannot_fail_the_report(
+    mock_problem_root, mock_binary_scoring
+):
+    """`print_run_report`'s `gating_solutions`: time limit inference runs
+    solutions it *expects* to fail (they are capped on purpose), and their
+    verdicts must not decide the run's outcome."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+
+    async def _drive(gating_solutions):
+        result = make_run_result(skeleton, {('group1', 0): Outcome.WRONG_ANSWER})
+        with fresh_issue_stack():
+            return await drive_reporter(
+                LiveRunReporter(result, VerificationLevel.FULL, recording_console()),
+                skeleton,
+                gating_solutions=gating_solutions,
+            )
+
+    assert not await _drive(None)  # ungated: the failure decides
+    assert not await _drive({'sol.cpp'})  # gated on itself: still decides
+    assert await _drive(set())  # gated away: the same failure is tolerated
 
 
 async def test_partial_reports_do_not_add_timing_issues(

@@ -11,10 +11,21 @@ import yaml
 from rbx.box import schema, timing
 from rbx.box.deferred import Deferred
 from rbx.box.environment import LanguageGroupFallback
-from rbx.box.schema import ExpectedOutcome, Solution
+from rbx.box.schema import ExpectedOutcome, InferenceRole, Solution
 from rbx.box.solutions import EvaluationItem, RunSolutionResult
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
+from rbx.box.timing_config import TimingStrategy
+
+
+def only_lower_bound(solutions):
+    """`get_inference_solutions` stub for a package whose solutions all bound
+    the time limit from below, so no slow solution is run under the cap."""
+
+    def _get(role):
+        return list(solutions) if role == InferenceRole.LOWER else []
+
+    return _get
 
 
 class TestTimingProfile:
@@ -181,7 +192,7 @@ class TestEstimateTimeLimit:
         mock_find_lang.side_effect = lambda sol: sol.language
 
         # Mock environment so the grouping code works
-        mock_env.return_value.timing.formula = 'slowest * 2'
+        mock_env.return_value.timing.resolved_formula.return_value = 'slowest * 2'
         mock_env.return_value.timing.groups = []
         mock_env.return_value.languages = [
             SimpleNamespace(name='cpp'),
@@ -190,7 +201,10 @@ class TestEstimateTimeLimit:
 
         # auto=True skips the interactive repartition prompt
         result = await timing.estimate_time_limit(
-            mock_console, sample_solution_result, formula='slowest * 2', auto=True
+            mock_console,
+            sample_solution_result,
+            strategy=TimingStrategy(formula='slowest * 2'),
+            auto=True,
         )
 
         assert result is not None
@@ -242,6 +256,132 @@ class TestEstimateTimeLimit:
             '[error]No timings collected from solutions.[/error]'
         )
 
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items')
+    @mock.patch('rbx.box.timing.find_language_name')
+    @mock.patch('rbx.box.environment.get_environment')
+    async def test_the_time_report_headlines_the_measurements_the_limit_uses(
+        self,
+        mock_env,
+        mock_find_lang,
+        mock_consume,
+        mock_console,
+        testing_pkg: testing_package.TestingPackage,
+    ):
+        """Fastest/slowest describe the accepted solutions the limit is computed
+        from; a slow solution -- typically sitting at the cap -- is reported on
+        its own line rather than pooled into a headline no limit derives from."""
+        from types import SimpleNamespace
+
+        ac = Solution(
+            path=testing_pkg.path('ac.cpp'),
+            language='cpp',
+            outcome=ExpectedOutcome.ACCEPTED,
+        )
+        tle = Solution(
+            path=testing_pkg.path('tle.cpp'),
+            language='cpp',
+            outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        )
+
+        def _eval(time_ms):
+            async def _get():
+                log = mock.Mock()
+                log.time = time_ms / 1000
+                return mock.Mock(log=log, result=mock.Mock(outcome='ACCEPTED'))
+
+            return Deferred(_get)
+
+        skeleton = mock.Mock()
+        skeleton.solutions = [ac, tle]
+        mock_consume.return_value = {
+            str(ac.path): {'g': [_eval(400)]},
+            str(tle.path): {'g': [_eval(6000)]},
+        }
+        mock_find_lang.side_effect = lambda sol: sol.language
+        mock_env.return_value.timing.groups = []
+        mock_env.return_value.languages = [SimpleNamespace(name='cpp')]
+
+        estimate = await timing.estimate_time_limit(
+            mock_console,
+            RunSolutionResult(skeleton=skeleton, items=[]),
+            strategy=TimingStrategy(
+                multipliers=schema.TimingMultipliers(
+                    acToTimeLimit=2.0, timeLimitToTle=1.5
+                )
+            ),
+            auto=True,
+        )
+
+        assert estimate is not None and estimate.timeLimit == 800
+        mock_console.print.assert_any_call('Fastest solution: 400 ms')
+        mock_console.print.assert_any_call('Slowest solution: 400 ms')
+        mock_console.print.assert_any_call(
+            'Fastest solution expected to be too slow: 6000 ms'
+        )
+
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items')
+    @mock.patch('rbx.box.timing.find_language_name')
+    @mock.patch('rbx.box.environment.get_environment')
+    async def test_a_language_seen_only_on_the_slow_side_still_bounds_its_group(
+        self,
+        mock_env,
+        mock_find_lang,
+        mock_consume,
+        mock_console,
+        testing_pkg: testing_package.TestingPackage,
+    ):
+        """python has no accepted solution and is not even an environment
+        language: it shows up only as a slow measurement, and its cap must still
+        apply -- which it can only do if python gets a group of its own."""
+        from types import SimpleNamespace
+
+        ac = Solution(
+            path=testing_pkg.path('ac.cpp'),
+            language='cpp',
+            outcome=ExpectedOutcome.ACCEPTED,
+        )
+        tle = Solution(
+            path=testing_pkg.path('tle.py'),
+            language='py',
+            outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        )
+
+        def _eval(time_ms):
+            async def _get():
+                log = mock.Mock()
+                log.time = time_ms / 1000
+                return mock.Mock(log=log, result=mock.Mock(outcome='ACCEPTED'))
+
+            return Deferred(_get)
+
+        skeleton = mock.Mock()
+        skeleton.solutions = [ac, tle]
+        result = RunSolutionResult(skeleton=skeleton, items=[])
+        mock_consume.return_value = {
+            str(ac.path): {'g': [_eval(400)]},
+            str(tle.path): {'g': [_eval(900)]},
+        }
+        mock_find_lang.side_effect = lambda sol: sol.language
+        mock_env.return_value.timing.groups = []
+        mock_env.return_value.languages = [SimpleNamespace(name='cpp')]
+
+        # cpp needs 400*2 = 800 ms, and the base limit propagates to python --
+        # whose own slow solution caps it at floor(900/1.5) = 600 ms.
+        estimate = await timing.estimate_time_limit(
+            mock_console,
+            result,
+            strategy=TimingStrategy(
+                multipliers=schema.TimingMultipliers(
+                    acToTimeLimit=2.0, timeLimitToTle=1.5
+                )
+            ),
+            auto=True,
+        )
+        assert estimate is None
+        printed = ' '.join(str(call) for call in mock_console.print.call_args_list)
+        assert 'Invalid language groups' in printed
+        assert 'tle.py' in printed
+
     async def test_estimate_time_limit_no_solutions(self, mock_console):
         """Test time limit estimation with no solutions."""
         empty_skeleton = mock.Mock()
@@ -267,7 +407,7 @@ class TestComputeTimeLimits:
         assert result is None
 
     @mock.patch('rbx.box.package.get_main_solution')
-    @mock.patch('rbx.box.timing.get_exact_matching_solutions')
+    @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     @mock.patch('rbx.box.timing.estimate_time_limit')
@@ -276,7 +416,7 @@ class TestComputeTimeLimits:
         mock_estimate_time_limit,
         mock_print_run_report,
         mock_run_solutions,
-        mock_get_exact_matching_solutions,
+        mock_get_inference_solutions,
         mock_get_main_solution,
         testing_pkg: testing_package.TestingPackage,
     ):
@@ -284,10 +424,10 @@ class TestComputeTimeLimits:
         # Mock main solution exists
         mock_get_main_solution.return_value = mock.Mock()
 
-        # Mock get_exact_matching_solutions
+        # Mock get_inference_solutions
         mock_solution = mock.Mock()
         mock_solution.path = testing_pkg.path('sol.cpp')
-        mock_get_exact_matching_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         # Mock run_solutions
         mock_result = mock.Mock()
@@ -311,22 +451,23 @@ class TestComputeTimeLimits:
         assert limits_path.exists()
 
     @mock.patch('rbx.box.package.get_main_solution')
-    @mock.patch('rbx.box.timing.get_exact_matching_solutions')
+    @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     async def test_compute_time_limits_failed_run_report(
         self,
         mock_print_run_report,
         mock_run_solutions,
-        mock_get_exact_matching_solutions,
+        mock_get_inference_solutions,
         mock_get_main_solution,
+        testing_pkg: testing_package.TestingPackage,
     ):
         """Test compute_time_limits when run report fails."""
         mock_get_main_solution.return_value = mock.Mock()
 
         mock_solution = mock.Mock()
         mock_solution.path = pathlib.Path('sol.cpp')
-        mock_get_exact_matching_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         mock_result = mock.Mock()
         mock_run_solutions.return_value = mock_result
@@ -378,7 +519,7 @@ class TestTimingIntegration:
 
     @pytest.mark.test_pkg('problems/box1')
     @mock.patch('rbx.box.package.get_main_solution')
-    @mock.patch('rbx.box.timing.get_exact_matching_solutions')
+    @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     @mock.patch('rbx.box.timing.estimate_time_limit')
@@ -387,7 +528,7 @@ class TestTimingIntegration:
         mock_estimate_time_limit,
         mock_print_run_report,
         mock_run_solutions,
-        mock_get_exact_matching_solutions,
+        mock_get_inference_solutions,
         mock_get_main_solution,
         pkg_from_testdata: pathlib.Path,
     ):
@@ -402,7 +543,7 @@ class TestTimingIntegration:
         mock_solution = mock.Mock()
         mock_solution.path = pathlib.Path('sol.cpp')
         mock_solution.language = 'cpp'
-        mock_get_exact_matching_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         # Mock the result structure
         mock_result = mock.Mock()
@@ -455,7 +596,7 @@ class TestForcedRelativeIntegration:
                 'cpp': {'a.cpp': 100},
                 'python': {'b.py': 900},
             },
-            formula='slowest',
+            strategy=TimingStrategy(formula='slowest'),
             env_groups=[],
             all_languages=['cpp', 'python'],
             repartition={'cpp': 1, 'python': 2},

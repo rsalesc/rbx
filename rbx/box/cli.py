@@ -32,6 +32,7 @@ from rbx.box import (
     state,
     summary,
     timing,
+    timing_config,
     validators,
 )
 from rbx.box.contest import contest_state
@@ -508,7 +509,7 @@ async def summary_cmd(
 @app.command(
     'time, t',
     rich_help_panel='Testing',
-    help='Estimate a time limit for the problem based on a time limit formula and timings of accepted solutions.',
+    help='Estimate a time limit for the problem using the timings of its solutions and the estimation strategy configured in the environment.',
 )
 @package.within_problem
 @syncer.sync
@@ -587,33 +588,43 @@ async def time(
 
     import questionary
 
-    formula = environment.get_environment().timing.formula
-    timing_choices = [
-        questionary.Choice(
-            f'Estimate time limits based on the formula {formula} (recommended)',
-            value='estimate',
-        ),
-        questionary.Choice('Inherit from the package.', value='inherit'),
-        questionary.Choice(
-            'Estimate time limits based on a custom formula.', value='estimate_custom'
-        ),
-        questionary.Choice('Provide a custom time limit.', value='custom'),
-    ]
-
-    choice = (
-        strategy
-        or await questionary.select(
+    choice = strategy
+    if not choice:
+        # What the environment (and any problem override) actually estimates
+        # with: a formula, or the Kattis-like ratios. Resolved only to label the
+        # menu, so a strategy passed with -s -- `inherit` in particular, which
+        # estimates nothing -- never fails on a timing config it does not use.
+        configured_strategy = timing_config.resolve_strategy(
+            environment.get_environment().timing,
+            package.find_problem_package_or_die().timing,
+        )
+        timing_choices = [
+            questionary.Choice(
+                f'Estimate time limits '
+                f'{timing.describe_strategy_briefly(configured_strategy)} '
+                f'(recommended)',
+                value='estimate',
+            ),
+            questionary.Choice('Inherit from the package.', value='inherit'),
+            questionary.Choice(
+                'Estimate time limits based on a custom formula.',
+                value='estimate_custom',
+            ),
+            questionary.Choice('Provide a custom time limit.', value='custom'),
+        ]
+        choice = await questionary.select(
             'Select how you want to define the time limits for the problem.',
             choices=timing_choices,
         ).ask_async()
-    )
     if choice is None:
         console.console.print(
             '[error]No time limit strategy selected. Exiting.[/error]'
         )
         raise typer.Exit(1)
 
-    formula = environment.get_environment().timing.formula
+    # Only the custom-formula escape hatch overrides the configured strategy;
+    # left as None, the estimation resolves it again for itself.
+    formula: Optional[str] = None
 
     if choice == 'inherit':
         timing.inherit_time_limits(profile=profile)
@@ -653,9 +664,16 @@ async def time(
     ):
         raise typer.Exit(1)
 
-    await timing.compute_time_limits(
+    estimated = await timing.compute_time_limits(
         check, detailed, runs, formula=formula, profile=profile, auto=auto, share=share
     )
+    if estimated is None:
+        # Every failure of the estimation -- an unsatisfiable range, a solution
+        # that bounds nothing, a failed run, a cancelled picker -- leaves the
+        # limits profile untouched, and `rbx time` must not report success for a
+        # limit it did not produce. The reasons were printed where they were
+        # found; this only turns them into an exit code a pipeline can see.
+        raise typer.Exit(1)
 
 
 @app.command(

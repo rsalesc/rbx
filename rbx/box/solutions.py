@@ -55,6 +55,7 @@ from rbx.box.sanitizers import compilation_warnings, issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
+    InferenceRole,
     ScoreType,
     Solution,
     TaskType,
@@ -218,6 +219,42 @@ def is_fast(solution: Solution) -> bool:
     # A solution expected to be slow anywhere -- for the whole testset or for a
     # single group -- is not a fast solution.
     return not any(outcome.is_slow() for outcome in solution.all_expected_outcomes())
+
+
+def is_good(solution: Solution) -> bool:
+    # A solution is good when every expectation it declares -- for the whole
+    # testset or for a single group -- is a plain AC.
+    return all(
+        outcome == ExpectedOutcome.ACCEPTED
+        for outcome in solution.all_expected_outcomes()
+    )
+
+
+def inference_role_of(solution: Solution) -> Optional[InferenceRole]:
+    """Which bound this solution contributes to during time limit inference.
+
+    Mirrors the classification ``TimingSummary`` already uses: a solution that is
+    accepted everywhere bounds from below, a solution expected to be slow
+    anywhere bounds from above, and everything else -- notably
+    ``accepted-or-tle``, which is neither good nor slow -- bounds neither.
+    """
+    if solution.inference is False:
+        return None
+    if solution.inference is not None:
+        return solution.inference
+    if is_good(solution):
+        return InferenceRole.LOWER
+    if not is_fast(solution):
+        return InferenceRole.UPPER
+    return None
+
+
+def get_inference_solutions(role: InferenceRole) -> List[Solution]:
+    return [
+        solution
+        for solution in package.get_solutions()
+        if inference_role_of(solution) == role
+    ]
 
 
 def get_matching_solutions(
@@ -2009,7 +2046,7 @@ async def _print_timing(
         # the set is then just `{solution.outcome}`.
         expectations = solution.all_expected_outcomes()
         # Get solution timings.
-        if all(outcome == ExpectedOutcome.ACCEPTED for outcome in expectations):
+        if is_good(solution):
             summary.add_good(solution_time, solution)
             summary_per_language[language].add_good(solution_time, solution)
         if all(
@@ -2226,6 +2263,7 @@ async def _print_detailed_run_report(
     structured_evaluations: StructuredEvaluation,
     timing: bool = True,
     verification: VerificationLevel = VerificationLevel.NONE,
+    gating_solutions: Optional[Set[str]] = None,
 ) -> bool:
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
@@ -2255,7 +2293,8 @@ async def _print_detailed_run_report(
             verification=verification,
             print_scoring=True,
         )
-        ok = ok and report.status.ok()
+        if _gates_report(solution, gating_solutions):
+            ok = ok and report.status.ok()
         console.print()
 
     console.print()
@@ -2608,6 +2647,11 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print()
 
 
+def _gates_report(solution: Solution, gating_solutions: Optional[Set[str]]) -> bool:
+    """Whether this solution's outcome decides the report's pass/fail verdict."""
+    return gating_solutions is None or str(solution.path) in gating_solutions
+
+
 async def print_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
@@ -2615,7 +2659,16 @@ async def print_run_report(
     detailed: bool = False,
     timing: bool = True,
     skip_printing_limits: bool = False,
+    gating_solutions: Optional[Set[str]] = None,
 ) -> bool:
+    """Run every tracked solution and report it.
+
+    ``gating_solutions`` restricts which solutions decide the returned verdict: every
+    solution is still run and reported, but only these ones can make it fail.
+    Time limit inference uses it to run solutions that are *expected* to hit the
+    cap without their timeouts aborting the estimate. ``None`` gates on all of
+    them.
+    """
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
 
@@ -2630,6 +2683,7 @@ async def print_run_report(
             reporter.structured_evaluations,
             verification=verification,
             timing=timing,
+            gating_solutions=gating_solutions,
         )
 
     ok = True
@@ -2648,7 +2702,8 @@ async def print_run_report(
                 reporter.finish_testcase(evaled)
             reporter.finish_group()
         cur_ok = reporter.finish_solution()
-        ok = ok and cur_ok
+        if _gates_report(solution, gating_solutions):
+            ok = ok and cur_ok
 
     if not single_solution:
         await _print_timing(

@@ -1,11 +1,15 @@
+from typing import List, Optional, Tuple
+
 import pytest
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
 from rbx.box.schema import TimingGroupOrigin
 from rbx.box.timing_groups import (
+    GroupMeasurements,
     GroupTimings,
     GroupValidationError,
     ResolvedGroup,
+    UpperTimings,
     build_partition,
     partition_from_assignment,
     resolve_groups,
@@ -50,9 +54,10 @@ def test_build_partition_no_leftover_when_all_grouped():
     assert [g.languages for g in groups] == [['c', 'cpp']]
 
 
-def _eval(fastest, slowest):
+def _eval(measured: GroupMeasurements):
     # simple deterministic formula for tests: max(fastest*3, slowest*2)
-    return max(fastest * 3, slowest * 2)
+    assert measured.lower is not None
+    return max(measured.lower.fastest * 3, measured.lower.slowest * 2)
 
 
 def test_resolves_estimated_and_multiplier_and_default_groups():
@@ -65,22 +70,28 @@ def test_resolves_estimated_and_multiplier_and_default_groups():
         ResolvedGroup(languages=['go']),  # empty, no whenEmpty -> DEFAULTED
         ResolvedGroup(languages=['python']),
     ]
-    pooled = {
-        0: GroupTimings(fastest=100, slowest=200, solution_count=2),
-        3: GroupTimings(fastest=500, slowest=500, solution_count=1),
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=200, solution_count=2)
+        ),
+        3: GroupMeasurements(
+            lower=GroupTimings(fastest=500, slowest=500, solution_count=1)
+        ),
     }
-    base = GroupTimings(fastest=100, slowest=500, solution_count=3)
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=500, solution_count=3)
+    )
 
-    result = resolve_groups(groups, pooled, base, _eval)
+    result = resolve_groups(groups, measured, base, _eval)
 
-    assert result.base_time_limit == _eval(100, 500)  # 1000
+    assert result.base_time_limit == _eval(base)  # 1000
     by_lang = result.time_limit_per_language
-    assert by_lang['cpp'] == _eval(100, 200)  # 400
+    assert by_lang['cpp'] == _eval(measured[0])  # 400
     assert by_lang['c'] == 400
     assert by_lang['java'] == int(400 * 4.0)
     assert by_lang['kotlin'] == int(400 * 4.0)
     assert 'go' not in by_lang  # DEFAULTED -> uses base, no modifier
-    assert by_lang['python'] == _eval(500, 500)  # 1500
+    assert by_lang['python'] == _eval(measured[3])  # 1500
 
     origins = {tuple(r.languages): r.origin for r in result.reports}
     assert origins[('c', 'cpp')] == TimingGroupOrigin.ESTIMATED
@@ -105,9 +116,15 @@ def test_multiplier_relative_to_base_when_relative_to_omitted():
             whenEmpty=LanguageGroupFallback(multiplier=3.0),
         ),
     ]
-    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
-    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
-    result = resolve_groups(groups, pooled, base, _eval)
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+        )
+    }
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+    )
+    result = resolve_groups(groups, measured, base, _eval)
     assert result.time_limit_per_language['java'] == int(result.base_time_limit * 3.0)
 
 
@@ -121,9 +138,15 @@ def test_increment_added_on_top_of_multiplier():
             ),
         ),
     ]
-    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
-    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
-    result = resolve_groups(groups, pooled, base, _eval)
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+        )
+    }
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+    )
+    result = resolve_groups(groups, measured, base, _eval)
     cpp_tl = result.time_limit_per_language['cpp']
     assert result.time_limit_per_language['java'] == int(cpp_tl * 2.0 + 500)
 
@@ -140,9 +163,15 @@ def test_increment_relative_to_base_when_relative_to_omitted():
             whenEmpty=LanguageGroupFallback(multiplier=1.0, increment=300),
         ),
     ]
-    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
-    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
-    result = resolve_groups(groups, pooled, base, _eval)
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+        )
+    }
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+    )
+    result = resolve_groups(groups, measured, base, _eval)
     # multiplier 1.0 against the base estimate, plus the increment.
     assert result.time_limit_per_language['java'] == int(
         result.base_time_limit * 1.0 + 300
@@ -161,9 +190,15 @@ def test_multiplier_chain_through_another_empty_group():
             whenEmpty=LanguageGroupFallback(relativeTo='java', multiplier=2.0),
         ),
     ]
-    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
-    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
-    result = resolve_groups(groups, pooled, base, _eval)
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+        )
+    }
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+    )
+    result = resolve_groups(groups, measured, base, _eval)
     cpp_tl = result.time_limit_per_language['cpp']
     assert result.time_limit_per_language['java'] == cpp_tl * 2
     assert result.time_limit_per_language['dart'] == cpp_tl * 2 * 2
@@ -315,17 +350,24 @@ def test_resolve_propagates_is_leftover():
         ResolvedGroup(languages=['cpp']),
         ResolvedGroup(languages=['go', 'java'], is_leftover=True),
     ]
-    pooled = {0: GroupTimings(fastest=100, slowest=100, solution_count=1)}
-    base = GroupTimings(fastest=100, slowest=100, solution_count=1)
-    result = resolve_groups(groups, pooled, base, _eval)
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+        )
+    }
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=100, solution_count=1)
+    )
+    result = resolve_groups(groups, measured, base, _eval)
     by_leftover = {tuple(r.languages): r.isLeftover for r in result.reports}
     assert by_leftover[('cpp',)] is False
     assert by_leftover[('go', 'java')] is True
 
 
-def _eval_slowest(fastest, slowest):
+def _eval_slowest(measured: GroupMeasurements):
     # simple deterministic formula for tests: just the slowest
-    return slowest
+    assert measured.lower is not None
+    return measured.lower.slowest
 
 
 def test_forced_relative_wins_over_pooled_timings():
@@ -339,12 +381,18 @@ def test_forced_relative_wins_over_pooled_timings():
             ),
         ),
     ]
-    pooled = {
-        0: GroupTimings(fastest=100, slowest=200, solution_count=1),
-        1: GroupTimings(fastest=500, slowest=900, solution_count=1),
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+        ),
+        1: GroupMeasurements(
+            lower=GroupTimings(fastest=500, slowest=900, solution_count=1)
+        ),
     }
-    base = GroupTimings(fastest=100, slowest=900, solution_count=2)
-    result = resolve_groups(groups, pooled, base, _eval_slowest)
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=900, solution_count=2)
+    )
+    result = resolve_groups(groups, measured, base, _eval_slowest)
     # group 1 ignores its own timings (would be 900) -> 2.0*200 + 100 = 500
     assert result.reports[1].timeLimit == 500
     assert result.reports[1].origin == TimingGroupOrigin.MULTIPLIER
@@ -372,8 +420,157 @@ def test_forced_relative_to_base_estimate():
             forced_relative=LanguageGroupFallback(relativeTo=None, multiplier=3.0),
         ),
     ]
-    pooled = {0: GroupTimings(fastest=100, slowest=200, solution_count=1)}
-    base = GroupTimings(fastest=100, slowest=200, solution_count=1)
-    result = resolve_groups(groups, pooled, base, _eval_slowest)
-    # base_tl = _eval(100, 200) = 200; forced -> 3.0*200 = 600
+    measured = {
+        0: GroupMeasurements(
+            lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+        )
+    }
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+    )
+    result = resolve_groups(groups, measured, base, _eval_slowest)
+    # base_tl = _eval_slowest(base) = 200; forced -> 3.0*200 = 600
     assert result.reports[1].timeLimit == 600
+
+
+class _RecordingDerive:
+    """A derive_fn stub that records every (time_limit, measurements) it gets."""
+
+    def __init__(self, returns: Optional[int] = None):
+        self.calls: List[Tuple[int, GroupMeasurements]] = []
+        self.returns = returns
+
+    def __call__(self, tl: int, measured: GroupMeasurements) -> int:
+        self.calls.append((tl, measured))
+        return self.returns if self.returns is not None else tl
+
+
+def _slow_only(fastest_slow: int) -> GroupMeasurements:
+    """A group with slow solutions but no accepted ones."""
+    return GroupMeasurements(
+        upper=UpperTimings(
+            fastest_slow=fastest_slow, fastest_slow_solution='sols/slow.py'
+        )
+    )
+
+
+def test_when_empty_group_with_only_slow_solutions_is_upper_checked():
+    # 'python' has a slow solution but no accepted one, so it has no lower
+    # timings and derives its limit from 'cpp' -- its upper bound must still
+    # reach derive_fn.
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['python'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+        ),
+    ]
+    cpp = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+    )
+    py = _slow_only(400)
+    derive = _RecordingDerive()
+
+    result = resolve_groups(groups, {0: cpp, 1: py}, cpp, _eval_slowest, derive)
+
+    assert derive.calls == [(600, py)]  # 3.0 * cpp's 200
+    assert result.reports[1].timeLimit == 600
+    assert result.reports[1].origin == TimingGroupOrigin.MULTIPLIER
+
+
+def test_forced_relative_group_with_only_slow_solutions_is_upper_checked():
+    # Same as above through the user-configured forced-relative path.
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['python'],
+            forced_relative=LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+        ),
+    ]
+    cpp = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+    )
+    py = _slow_only(400)
+    derive = _RecordingDerive(returns=500)
+
+    result = resolve_groups(groups, {0: cpp, 1: py}, cpp, _eval_slowest, derive)
+
+    assert derive.calls == [(600, py)]  # 3.0 * cpp's 200
+    # a forced relative reports as MULTIPLIER, so derive_fn may move it
+    assert result.reports[1].timeLimit == 500
+    assert result.time_limit_per_language['python'] == 500
+
+
+def test_defaulted_group_with_only_slow_solutions_is_upper_checked():
+    # 'python' has neither accepted solutions nor a whenEmpty, so it inherits
+    # the base limit -- its upper bound must still reach derive_fn.
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    cpp = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+    )
+    py = _slow_only(400)
+    derive = _RecordingDerive()
+
+    result = resolve_groups(groups, {0: cpp, 1: py}, cpp, _eval_slowest, derive)
+
+    assert derive.calls == [(200, py)]  # base_tl
+    assert result.reports[1].origin == TimingGroupOrigin.DEFAULTED
+    assert result.defaulted_languages == ['python']
+    assert 'python' not in result.time_limit_per_language
+
+
+def test_defaulted_group_ignores_the_derived_limit():
+    # A DEFAULTED group states it fell back to the base limit, so derive_fn is
+    # a check-only hook there: its return value must not move the group.
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    cpp = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+    )
+    derive = _RecordingDerive(returns=999)
+
+    result = resolve_groups(groups, {0: cpp}, cpp, _eval_slowest, derive)
+
+    assert result.reports[1].timeLimit == result.base_time_limit == 200
+    assert result.defaulted_languages == ['python']
+    assert 'python' not in result.time_limit_per_language
+
+
+def test_defaulted_group_propagates_derive_errors():
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    cpp = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1)
+    )
+
+    def _raising(tl: int, measured: GroupMeasurements) -> int:
+        raise ValueError('slow solution would pass')
+
+    with pytest.raises(ValueError, match='slow solution would pass'):
+        resolve_groups(
+            groups, {0: cpp, 1: _slow_only(150)}, cpp, _eval_slowest, _raising
+        )
+
+
+def test_estimated_groups_receive_their_own_measurements():
+    recorded: List[GroupMeasurements] = []
+
+    def _eval_recording(measured: GroupMeasurements) -> int:
+        recorded.append(measured)
+        assert measured.lower is not None
+        return measured.lower.slowest
+
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    cpp = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=200, solution_count=1),
+        upper=UpperTimings(fastest_slow=500),
+    )
+    py = GroupMeasurements(
+        lower=GroupTimings(fastest=500, slowest=900, solution_count=1)
+    )
+    base = GroupMeasurements(
+        lower=GroupTimings(fastest=100, slowest=900, solution_count=2),
+        upper=UpperTimings(fastest_slow=500, dropped_upper=['sols/timeout.py']),
+    )
+
+    resolve_groups(groups, {0: cpp, 1: py}, base, _eval_recording)
+
+    assert recorded == [base, cpp, py]
