@@ -1,5 +1,5 @@
-"""Target-independent statement export: resolve a statement's blocks and assets
-once, then let a layout decide where they land.
+"""Target-independent statement export: resolve a statement's assets once, then
+let a layout decide where they land.
 
 Extracted from the Polygon upload path, which was the only consumer. See
 ``docs/plans/2026-08-13-statement-export-bundle-design.md``.
@@ -21,12 +21,31 @@ from rbx.box.statements.texsoup_utils import ASSET_EXTS
 
 
 class AssetScope(enum.Enum):
-    """The directory an asset's reference is relative to. See design §3."""
+    """The directory an asset's reference is relative to.
 
-    STATEMENT = 'statement'  # the statement `file`'s directory
-    TIKZ = 'tikz'  # the overlay root
-    SAMPLE = 'sample'  # <overlay>/.samples/<idx>/
-    EXTERNAL = 'external'  # the package root
+    Every asset is resolved against some directory, and that directory is
+    precisely what its ``\\includegraphics`` reference is relative to -- naming
+    the directory names the scope:
+
+    ==============  ==========================================  =======================
+    Scope           Reference base                              Example reference
+    ==============  ==========================================  =======================
+    ``STATEMENT``   the statement ``file``'s directory          ``img/fig``
+    ``TIKZ``        the overlay root (``get_statement_dir``)    ``artifacts/tikz_figures/i_0``
+    ``SAMPLE``      ``<overlay>/.samples/<idx>/``               ``diagram``
+    ``EXTERNAL``    the package root                            n/a (no auto-rewrite)
+    ==============  ==========================================  =======================
+
+    Sources, respectively: image/PDF under the statement dir plus ``assets``
+    globs falling under it (any extension); the ``artifacts/tikz_figures/**.pdf``
+    of the forced-externalize build; image/PDF under the staged sample folder;
+    ``assets`` globs outside the statement dir.
+    """
+
+    STATEMENT = 'statement'
+    TIKZ = 'tikz'
+    SAMPLE = 'sample'
+    EXTERNAL = 'external'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -39,9 +58,27 @@ class ResolvedAsset:
     rel: pathlib.PurePosixPath  # relative to the scope's reference base
     sample_index: Optional[int] = None  # set iff scope is SAMPLE
 
+    def __post_init__(self) -> None:
+        if (self.scope is AssetScope.SAMPLE) != (self.sample_index is not None):
+            raise ValueError('sample_index must be set iff scope is SAMPLE')
+
+    @property
+    def sample(self) -> int:
+        """The sample index, for SAMPLE-scope assets only."""
+        assert self.sample_index is not None
+        return self.sample_index
+
     @property
     def ref_key(self) -> str:
-        """The extensionless reference a block uses to cite this asset."""
+        """The extensionless reference a block uses to cite this asset.
+
+        Beware the asymmetry with the lookup side: this strips *any* suffix,
+        while ``strip_asset_ext`` strips only ``ASSET_EXTS``. So a ``figure.svg``
+        asset keys as ``figure``, and a reference spelled
+        ``\\includegraphics{figure.svg}`` -- which strips to itself -- never
+        matches it. Pre-existing and intended; non-image extensions only reach
+        here through an explicit ``assets`` glob.
+        """
         return str(self.rel.with_suffix(''))
 
 
@@ -81,6 +118,18 @@ def resolve_assets(
 
     Deduped on absolute source path (an ``assets`` glob may re-name a file the
     image/PDF default already picked up) and deterministically ordered.
+
+    **``rel`` and ``ref_key`` are NOT unique across the list.** Only ``source``
+    is. Two out-of-package ``assets`` hits sharing a basename both fall back to
+    the bare name, and ``img/d.png`` + ``img/d.pdf`` under the statement dir have
+    distinct ``rel`` but the same ``ref_key``. Detecting and rejecting such
+    collisions belongs to whoever assigns names -- the layout/bundle -- since
+    only there is it known whether two entries actually land on top of each
+    other.
+
+    Not filesystem-pure, despite reading like a query: ``get_statement_dir``
+    creates the overlay directory (``mkdir(parents=True, exist_ok=True)``) as a
+    side effect.
     """
     pkg_root = utils.abspath(pathlib.Path())
     statement_dir = (
