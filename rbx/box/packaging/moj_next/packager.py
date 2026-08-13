@@ -134,7 +134,44 @@ class MojNextPackager(BasePackager):
                 )
                 continue
             languages.add(moj_language)
-        return sorted(languages)
+
+        allowed = sorted(languages)
+        self._report_submission_languages(allowed)
+        return allowed
+
+    def _report_submission_languages(self, allowed: List[str]) -> None:
+        """Say out loud which languages students may submit in, and which were left
+        out for lack of an accepted solution.
+
+        This whitelist is *derived*, not authored, and it is a real restriction -- the
+        MOJ API rejects submissions outside it. A setter who ships only a C++ solution
+        gets a C++-only problem even though the package carries scripts for every
+        configured language, so that consequence must never be silent.
+        """
+        if not allowed:
+            # `_write_solutions` fails right after this with a precise error.
+            return
+
+        console.console.print(
+            'MOJ will accept submissions in: '
+            f'[item]{"[/item], [item]".join(allowed)}[/item].'
+        )
+
+        skipped = sorted(
+            language
+            for language in get_emitted_moj_languages()
+            if language not in allowed
+        )
+        if not skipped:
+            return
+        console.console.print(
+            f'[warning]Not enabling [item]{"[/item], [item]".join(skipped)}[/item]: '
+            'no [item]ACCEPTED[/item] solution in those languages.[/warning]\n'
+            '[warning]MOJ calibrates a time limit per language from the accepted '
+            'solutions, so a language without one never gets a limit and students '
+            'cannot submit in it. Add an accepted solution in a language to enable '
+            'it.[/warning]'
+        )
 
     def _write_moj_meta(self, into_path: pathlib.Path) -> None:
         """Write `.moj-meta.json`.

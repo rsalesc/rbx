@@ -335,6 +335,12 @@ rejected: that set comes from the setter's `env.rbx.yml`, says nothing about who
 submit what, and would silently narrow the permissive default (absent = all languages)
 to whatever the bundled preset happens to declare.
 
+Because the whitelist is derived rather than authored, packaging **reports it
+explicitly**: it prints the enabled languages and warns by name about every emitted
+language excluded for having no `ACCEPTED` solution, along with the fix. A setter who
+ships only a C++ solution gets a C++-only problem, and that consequence must not be
+discovered on the judge.
+
 `docs/enunciado.md` is a dummy carrying only the two mandatory sections:
 
 ```markdown

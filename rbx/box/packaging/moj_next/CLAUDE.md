@@ -135,6 +135,13 @@ all languages) to whatever the preset happens to declare.
 Ids are normalized the way the server does: lowercased, `py2`/`py3` folded to `py`,
 deduplicated, and sorted so the file is deterministic.
 
+**The narrowing is reported, never silent.** The package ships `scripts/<lang>/` for
+every language the env declares, but the whitelist is derived from accepted solutions,
+so a setter who ships only a C++ solution gets a C++-only problem. Packaging therefore
+prints the enabled set and warns by name about every emitted language left out —
+"no **ACCEPTED** solution in those languages" — with the fix (add an accepted solution
+in that language). See `_report_submission_languages`.
+
 ## Running tests
 
 ```bash

@@ -75,3 +75,15 @@ def moj_next_binary_package(testing_pkg, tmp_path) -> pathlib.Path:
 @pytest.fixture
 def moj_next_package(moj_next_binary_package) -> pathlib.Path:
     return moj_next_binary_package
+
+
+@pytest.fixture
+def moj_next_package_output(testing_pkg, tmp_path, capsys) -> str:
+    """Console output of packaging a problem whose only accepted solution is C++."""
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text(ACCEPTED_SOL)
+    testing_pkg.save()
+
+    run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+    return capsys.readouterr().out

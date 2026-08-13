@@ -104,6 +104,49 @@ def test_moj_meta_languages_covers_every_accepted_language(testing_pkg, tmp_path
     assert meta['languages'] == ['cpp', 'py']
 
 
+def test_reports_which_languages_are_enabled(moj_next_package_output):
+    assert 'MOJ will accept submissions in' in moj_next_package_output
+    assert 'cpp' in moj_next_package_output
+
+
+def test_names_the_languages_skipped_for_lacking_an_accepted_solution(
+    moj_next_package_output,
+):
+    # The whitelist is derived, and it is a real restriction -- a setter shipping only
+    # a C++ solution gets a C++-only problem. That must not be silent.
+    out = ' '.join(moj_next_package_output.split())
+    assert 'ACCEPTED' in out
+    for language in ['c', 'java', 'kt', 'py']:
+        assert language in out
+    assert 'Add an accepted solution in a language to enable it' in out
+
+
+def test_says_nothing_about_skipping_when_every_language_is_enabled(
+    testing_pkg, tmp_path, capsys
+):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    for path, source in [
+        ('sol.cpp', 'int main(){}\n'),
+        ('sol.c', 'int main(){}\n'),
+        ('sol.py', 'print(1)\n'),
+        ('Main.java', 'public class Main { public static void main(String[] a){} }\n'),
+        ('Main.kt', 'fun main() {}\n'),
+    ]:
+        testing_pkg.add_solution(path, outcome='accepted').write_text(source)
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    # Asserted on the emitted whitelist too, so this cannot pass vacuously by simply
+    # failing to resolve some language.
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['languages'] == ['c', 'cpp', 'java', 'kt', 'py']
+    assert 'no ACCEPTED solution' not in ' '.join(capsys.readouterr().out.split())
+
+
 def test_display_title_prefers_portuguese(testing_pkg, tmp_path):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
