@@ -1349,9 +1349,15 @@ Keep the issue references (#568, #583, #595, #590) intact.
 **Step 3: Update `statements/CLAUDE.md`**
 
 In the "Polygon export (S12, #568)" section, note that the block pipeline and
-asset resolution now live in `export.py`, that `statement_block_utils` keeps thin
-re-exports, and that the debug dump moved from `<overlay>/polygon/` to
-`<overlay>/export/`.
+asset resolution now live in `export.py`, and that the debug dump moved from
+`<overlay>/polygon/` to `<overlay>/export/`.
+
+> **Correction (applied during execution).** This step originally said
+> `statement_block_utils` "keeps thin re-exports". Task 6 removed that shim once
+> `upload.py` imported from `statements.export` directly. The module now holds
+> only `_statement_label`, `process_statements` and `validate_statements`, and
+> imports `get_processed_statement_blocks` from `export` for `validate_statements`'
+> own use.
 
 **Step 4: Verify the docs build**
 
