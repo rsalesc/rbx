@@ -1,12 +1,15 @@
 from TexSoup import TexSoup
 
 from rbx.box.statements.texsoup_utils import (
+    ASSET_EXTS,
     add_labels_to_tikz_nodes,
     get_tikz_node_label,
     get_top_level_labeled_tikz_nodes,
     get_top_level_tikz_nodes,
     inject_externalization_for_tikz,
     inject_in_preamble,
+    rewrite_includegraphics,
+    strip_asset_ext,
 )
 
 
@@ -331,3 +334,48 @@ A
     s = str(soup)
     assert r'\begin{center}' not in s
     assert r'\includegraphics{p/nc_0}' in s
+
+
+def test_strip_asset_ext_drops_only_asset_extensions():
+    assert strip_asset_ext('img/diagram.png') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.PDF') == 'img/diagram'
+    assert strip_asset_ext('img/diagram') == 'img/diagram'
+    # Not an asset extension: left alone, dots and all.
+    assert strip_asset_ext('data.v2') == 'data.v2'
+
+
+def test_rewrite_includegraphics_subdir_reference():
+    out = rewrite_includegraphics(
+        r'see \includegraphics{img/diagram}.', {'img/diagram': 'img__diagram.png'}
+    )
+    assert r'\includegraphics{img__diagram.png}' in out
+
+
+def test_rewrite_includegraphics_no_double_extension():
+    out = rewrite_includegraphics(
+        r'\includegraphics{img/diagram.png}', {'img/diagram': 'img__diagram.png'}
+    )
+    assert r'\includegraphics{img__diagram.png}' in out
+    assert '.png.png' not in out
+
+
+def test_rewrite_includegraphics_preserves_optional_arg():
+    out = rewrite_includegraphics(
+        r'\includegraphics[width=0.5\textwidth]{pic}', {'pic': 'pic.png'}
+    )
+    assert r'[width=0.5\textwidth]' in out
+    assert r'{pic.png}' in out
+
+
+def test_rewrite_includegraphics_leaves_unmapped_untouched():
+    block = r'\includegraphics{other}'
+    assert rewrite_includegraphics(block, {'pic': 'pic.png'}) == block
+
+
+def test_rewrite_includegraphics_empty_remap_is_identity():
+    block = r'\includegraphics{pic}'
+    assert rewrite_includegraphics(block, {}) is block
+
+
+def test_asset_exts_contains_the_expected_set():
+    assert ASSET_EXTS == ('.png', '.jpg', '.jpeg', '.pdf')

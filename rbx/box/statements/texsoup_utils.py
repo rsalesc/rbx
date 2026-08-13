@@ -1,7 +1,8 @@
-from typing import List, Optional, Tuple
+import pathlib
+from typing import Dict, List, Optional, Tuple
 
 from TexSoup import TexSoup
-from TexSoup.data import TexNode
+from TexSoup.data import BraceGroup, BracketGroup, TexNode
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
 
@@ -188,3 +189,39 @@ def replace_labeled_tikz_nodes(
             cmd_str = f'\\begin{{center}}{cmd_str}\\end{{center}}'
         label_node.delete()
         tikz_node.replace_with(*TexSoup(cmd_str).contents)
+
+
+ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.pdf')
+
+
+def strip_asset_ext(ref: str) -> str:
+    """Drop a trailing image/PDF extension from an ``\\includegraphics`` argument
+    so it lines up with an (extensionless) reference key."""
+    path = pathlib.Path(ref)
+    return str(path.with_suffix('')) if path.suffix.lower() in ASSET_EXTS else ref
+
+
+def rewrite_includegraphics(block: str, remap: Dict[str, str]) -> str:
+    """Rewrite every ``\\includegraphics[opts]{ref}`` whose ``ref`` (with any
+    image/PDF extension stripped) is a key in ``remap`` to the mapped flat name,
+    preserving optional arguments and all surrounding text.
+
+    Parser-based (TexSoup) rather than a naive ``str.replace`` (audit finding
+    #6): order-independent, free of substring collisions, and — by stripping the
+    extension before lookup — it never produces a double extension
+    (``imgs__fig.png.png``)."""
+    if not remap:
+        return block
+    soup = parse_latex(block)
+    for node in list(soup.find_all('includegraphics')):
+        brace = next((arg for arg in node.args if isinstance(arg, BraceGroup)), None)
+        if brace is None:
+            continue
+        target = remap.get(strip_asset_ext(str(brace.string)))
+        if target is None:
+            continue
+        opts = ''.join(
+            f'[{arg.string}]' for arg in node.args if isinstance(arg, BracketGroup)
+        )
+        node.replace_with(*parse_latex(f'\\includegraphics{opts}{{{target}}}').contents)
+    return str(soup)

@@ -8,7 +8,6 @@ import rich
 import rich.markup
 import rich.progress
 import typer
-from TexSoup.data import BraceGroup, BracketGroup
 
 from rbx import console, utils
 from rbx.box import header, naming, package
@@ -36,7 +35,7 @@ from rbx.box.statements.build_statements import (
     get_statement_dir,
 )
 from rbx.box.statements.schema import Statement
-from rbx.box.statements.texsoup_utils import parse_latex
+from rbx.box.statements.texsoup_utils import ASSET_EXTS, rewrite_includegraphics
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_sample_utils import StatementSample, get_statement_samples
 from rbx.box.testcase_utils import (
@@ -606,7 +605,6 @@ def _get_explanations(explanations: Dict[int, str]) -> str:
 # Statement-resource scoping (#595). Replaces the old "ship everything under the
 # statement dir" rule with explicit `assets` globs plus image/PDF runtime
 # defaults over the statement subtree and each staged sample subtree.
-_ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.pdf')
 
 
 def _flat_name(rel: pathlib.Path) -> str:
@@ -641,41 +639,8 @@ def _image_files_under(base: pathlib.Path) -> List[pathlib.Path]:
     return sorted(
         path
         for path in base.rglob('*')
-        if path.is_file() and path.suffix.lower() in _ASSET_EXTS
+        if path.is_file() and path.suffix.lower() in ASSET_EXTS
     )
-
-
-def _strip_asset_ext(ref: str) -> str:
-    """Drop a trailing image/PDF extension from an ``\\includegraphics`` argument
-    so it lines up with a :func:`_remap_key` (which is extensionless)."""
-    path = pathlib.Path(ref)
-    return str(path.with_suffix('')) if path.suffix.lower() in _ASSET_EXTS else ref
-
-
-def _rewrite_includegraphics(block: str, remap: Dict[str, str]) -> str:
-    """Rewrite every ``\\includegraphics[opts]{ref}`` whose ``ref`` (with any
-    image/PDF extension stripped) is a key in ``remap`` to the mapped flat name,
-    preserving optional arguments and all surrounding text.
-
-    Parser-based (TexSoup) rather than a naive ``str.replace`` (audit finding
-    #6): order-independent, free of substring collisions, and — by stripping the
-    extension before lookup — it never produces a double extension
-    (``imgs__fig.png.png``)."""
-    if not remap:
-        return block
-    soup = parse_latex(block)
-    for node in list(soup.find_all('includegraphics')):
-        brace = next((arg for arg in node.args if isinstance(arg, BraceGroup)), None)
-        if brace is None:
-            continue
-        target = remap.get(_strip_asset_ext(str(brace.string)))
-        if target is None:
-            continue
-        opts = ''.join(
-            f'[{arg.string}]' for arg in node.args if isinstance(arg, BracketGroup)
-        )
-        node.replace_with(*parse_latex(f'\\includegraphics{opts}{{{target}}}').contents)
-    return str(soup)
 
 
 @dataclasses.dataclass
@@ -803,7 +768,7 @@ async def _upload_statement(
 
         def _get_block(block_name: str, blocks=blocks, remaps=remaps) -> str:
             block = blocks.blocks.get(block_name) or ''
-            return _rewrite_includegraphics(block, remaps.statement)
+            return rewrite_includegraphics(block, remaps.statement)
 
         def _rewritten_explanations(blocks=blocks, remaps=remaps) -> Dict[int, str]:
             # An explanation may reference a statement-scope asset (an inline
@@ -812,7 +777,7 @@ async def _upload_statement(
             out: Dict[int, str] = {}
             for idx, text in blocks.explanations.items():
                 merged = {**remaps.statement, **remaps.samples.get(idx, {})}
-                out[idx] = _rewrite_includegraphics(text, merged)
+                out[idx] = rewrite_includegraphics(text, merged)
             return out
 
         def _get_notes_with_explanations(blocks=blocks) -> Optional[str]:

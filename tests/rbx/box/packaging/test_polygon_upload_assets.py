@@ -52,52 +52,6 @@ def test_image_files_under_missing_dir_returns_empty(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# TexSoup-based \includegraphics rewrite (Task 4, fixes audit finding #6)
-# ---------------------------------------------------------------------------
-
-
-def _rewrite(block, remap):
-    return upload._rewrite_includegraphics(block, remap)  # noqa: SLF001
-
-
-def test_rewrite_subdir_reference():
-    out = _rewrite(
-        r'see \includegraphics{img/diagram}.', {'img/diagram': 'img__diagram.png'}
-    )
-    assert r'\includegraphics{img__diagram.png}' in out
-
-
-def test_rewrite_root_level_reference():
-    # Finding #6 uniformity: a root-level reference is rewritten to the flat name
-    # instead of relying on Polygon resolving the bare stem.
-    out = _rewrite(r'\includegraphics{pic}', {'pic': 'pic.png'})
-    assert out.strip() == r'\includegraphics{pic.png}'
-
-
-def test_rewrite_with_extension_no_double_ext():
-    # Finding #6: a sub-dir asset referenced WITH its extension must not become
-    # `imgs__fig.png.png`.
-    out = _rewrite(r'\includegraphics{imgs/fig.png}', {'imgs/fig': 'imgs__fig.png'})
-    assert 'imgs__fig.png.png' not in out
-    assert r'\includegraphics{imgs__fig.png}' in out
-
-
-def test_rewrite_preserves_optional_arg():
-    out = _rewrite(r'\includegraphics[width=1cm]{pic}', {'pic': 'pic.png'})
-    assert r'\includegraphics[width=1cm]{pic.png}' in out
-
-
-def test_rewrite_leaves_unmapped_untouched():
-    src = r'\includegraphics{artifacts/tikz_figures/0_0}'
-    assert _rewrite(src, {'pic': 'pic.png'}).strip() == src
-
-
-def test_rewrite_empty_remap_is_identity():
-    src = r'text \includegraphics{pic} more'
-    assert _rewrite(src, {}) == src
-
-
-# ---------------------------------------------------------------------------
 # Scoped collection: statement / sample / out-of-tree (Task 5, findings #5/#6)
 # ---------------------------------------------------------------------------
 
