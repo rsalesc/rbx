@@ -128,12 +128,23 @@ back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`
 
 ## Statements (`statement.py`, `statement_assets.py`)
 
-`statement_types()` is `[StatementType.rbxTeX]` and `statement_export_params()`
-forces externalize+demacro exactly as `PolygonPackager` does, so the build leaves
-the `blocks.sub.yml` / `macros.json` / TikZ PDFs that
-[`statements/export.py`](../../statements/export.py) reads. The packager then
-converts each block TeX → Markdown with pandoc and writes `docs/enunciado.md`
-plus `docs/notes/<sample>.md`.
+`statement_export_params()` forces externalize+demacro exactly as
+`PolygonPackager` does, so the build leaves the `blocks.sub.yml` / `macros.json`
+/ TikZ PDFs that [`statements/export.py`](../../statements/export.py) reads. The
+packager then converts each block TeX → Markdown with pandoc and writes
+`docs/enunciado.md` plus `docs/notes/<sample>.md`.
+
+**`statement_types()` is deliberately not overridden**, so the default
+`[StatementType.PDF]` applies — as for `PolygonPackager`, the other
+block-consuming packager. That hook names the *output* a statement is built into,
+and statements v2 emits only pdf/tex/md (`build_statements._emit_output`);
+returning the *source* type `rbxTeX` fails the build outright with "statements v2
+cannot yet emit output type rbxTeX. See #569 (S13)". Nor would TeX or Markdown
+output do: externalization and demacro both run inside `render.compile_pdf`, so
+anything other than the PDF build leaves no `macros.json` and no externalized
+TikZ for the bundle to read. Consuming blocks is declared by
+`statement_export_params()`, never here — `tests/rbx/box/packaging/test_statement_types.py`
+pins this for every packager.
 
 **MOJ renders statements with pandoc itself** (`render-statement.sh`, the single
 source shared by the editor's *Pré-visualizar*, `gen-problem-json.sh` and

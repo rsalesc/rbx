@@ -31,7 +31,6 @@ from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
     Statement,
-    StatementType,
     TexToPDF,
     rbxToTeX,
 )
@@ -105,11 +104,16 @@ class MojPackager(BasePackager):
         # Interactive problems are not supported yet; it deserves its own design.
         return [TaskType.BATCH]
 
-    def statement_types(self) -> List[StatementType]:
-        # MOJ consumes statement BLOCKS (converted to markdown), not a PDF, so the
-        # rbxTeX build is what has to run: it is what leaves the blocks and assets
-        # `statement_export_params` forces into the overlay.
-        return [StatementType.rbxTeX]
+    # NOTE: `statement_types()` is deliberately NOT overridden, so the default
+    # `[StatementType.PDF]` applies -- exactly as for `PolygonPackager`, the other
+    # block-consuming packager. `statement_types` names the *output* a statement is
+    # built into, and v2 can only emit pdf/tex/md (`build_statements._emit_output`);
+    # `rbxTeX` is a *source* type and returning it fails the build outright. What
+    # declares "I consume blocks, not a PDF" is `statement_export_params` below --
+    # and the PDF build is what produces the artifacts it asks for, since both
+    # externalization and demacro live inside `render.compile_pdf`. Asking for TeX
+    # or Markdown output would skip that call entirely and leave no macros.json and
+    # no externalized TikZ.
 
     def statement_export_params(self) -> List[ConversionStep]:
         # Declaring these is what makes `run_packager` build every statement with

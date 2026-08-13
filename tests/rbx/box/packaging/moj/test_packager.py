@@ -31,8 +31,12 @@ def test_only_supports_batch_problems():
     assert MojPackager.task_types() == [TaskType.BATCH]
 
 
-def test_builds_rbxtex_statements():
-    assert MojPackager(testcase_entries=[]).statement_types() == [StatementType.rbxTeX]
+def test_builds_pdf_statements_even_though_it_consumes_blocks():
+    # `statement_types()` names the OUTPUT a statement is built into, and v2 emits
+    # only pdf/tex/md. Consuming blocks is declared by `statement_export_params()`
+    # below, and the PDF build is what writes the artifacts it asks for -- both
+    # externalization and demacro run inside `render.compile_pdf`.
+    assert MojPackager(testcase_entries=[]).statement_types() == [StatementType.PDF]
 
 
 def test_export_params_force_externalize_and_demacro():

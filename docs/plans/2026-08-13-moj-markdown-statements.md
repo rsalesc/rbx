@@ -500,8 +500,11 @@ Expected: all PASS
 **Step 1: Write the failing tests**
 
 ```python
-def test_statement_types_now_builds_rbxtex():
-    assert StatementType.rbxTeX in MojPackager.statement_types()
+# CORRECTED after implementation: this assertion was wrong and shipped a bug.
+# `statement_types()` names the OUTPUT type, and v2 emits only pdf/tex/md, so
+# rbxTeX (a SOURCE type) fails the build. Leave the hook at its default [PDF].
+def test_builds_pdf_statements_even_though_it_consumes_blocks():
+    assert MojPackager(testcase_entries=[]).statement_types() == [StatementType.PDF]
 
 
 def test_export_params_force_externalize_and_demacro():
@@ -531,7 +534,7 @@ Expected: FAIL — `statement_types()` still returns `[]`.
 
 **Step 3: Implement**
 
-- `statement_types()` → `[StatementType.rbxTeX]`.
+- **Do NOT override `statement_types()`** — leave the inherited `[StatementType.PDF]`, as `PolygonPackager` does. (The plan originally said `[StatementType.rbxTeX]`; that shipped a bug. The hook names the *output* type and v2 emits only pdf/tex/md, so a source type fails the build — and TeX/Markdown output would skip `render.compile_pdf`, where externalization and demacro actually run.)
 - Add `statement_export_params()` returning the same forced steps as `PolygonPackager.statement_export_params` (`rbx/box/packaging/polygon/packager.py:73`): `rbxToTeX(externalize=True)` and `TexToPDF(externalize=True, demacro=True)`.
 - `MojPackager.__init__` takes `main_language: Optional[str] = None`, mirroring `PolygonPackager`. `_get_main_statement()` honors it, and `_display_title()` resolves from **the same** statement.
 - In `_write_metadata`, replace the `DUMMY_STATEMENT` write with: build the bundle via `export.build_statement_bundle(statement, layout=statement_mod.moj_layout())`, `materialize` into `into_path`, `rasterize_pdf_assets`, then write `docs/enunciado.md` and each `docs/notes/<name>.md`. Keep `DUMMY_STATEMENT` for the no-statement case — do not delete the constant.

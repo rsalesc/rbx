@@ -133,9 +133,20 @@ fourth one.
 
 ## 5. Statement selection
 
-- `statement_types()` → `[StatementType.rbxTeX]`, and `statement_export_params()`
-  forces externalize + demacro exactly as `PolygonPackager` does, so
-  `blocks.sub.yml` and `macros.json` exist for the export pipeline to read.
+- `statement_export_params()` forces externalize + demacro exactly as
+  `PolygonPackager` does, so `blocks.sub.yml` and `macros.json` exist for the
+  export pipeline to read.
+
+  **Correction (post-implementation).** This section originally said
+  `statement_types()` → `[StatementType.rbxTeX]`. That is wrong and fails at
+  runtime: `statement_types()` names the *output* a statement is built into, and
+  statements v2 emits only pdf/tex/md — `rbxTeX` is a *source* type, so a real
+  `rbx package moj` run died with "statements v2 cannot yet emit output type
+  rbxTeX. See #569 (S13)". The hook is left at its default `[PDF]`, exactly as
+  `PolygonPackager` leaves it; `statement_export_params()` is the whole
+  declaration. TeX or Markdown output would not work either, because
+  externalization and demacro both run inside `render.compile_pdf` — only the PDF
+  build produces the artifacts the bundle reads.
 - `rbx package moj --language <lang>`, mirroring `rbx package polygon
   --language`. It defaults to the topmost statement, and `display_title`
   resolves from **the same** statement, so the rendered `<h1>` and the body can
