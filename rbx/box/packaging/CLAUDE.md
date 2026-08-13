@@ -95,6 +95,7 @@ Supports interactive problems with special `run` scripts.
 - **Stub vs copy.** `scripts/compare.sh` is a byte-copy of mojtools' canonical stub (the bridge stays upstream -- a bundled copy once replicated a bwrap bug into 198 packages); only the in-jail `scripts/<lang>/{compile,run}.sh` are real copies.
 - **Single-file checker.** The bridge binds only `checker.cpp` + `testlib.h` into the compile jail, so the checker (and every C/C++ solution) is amalgamated -- see [Source Amalgamation](#source-amalgamation-dependenciesamalgamationpy). Packaging refuses rather than shipping something that judge-errors on every test.
 - **Naming/scoring.** `sample001…` plus `t<NN>_<group>_<NNN>`, so samples sort first in MOJ's lexicographic judging loop; `tests/score` for POINTS only.
+- **`.moj-meta.json`.** Only the *content* fields the server accepts from a tar: `display_title` (always) and `languages` (the languages with an accepted solution, since MOJ can only calibrate those). The *access* fields (`public`/`public_at`/`owner`) are never written -- they are ignored from a tar anyway, and `public` is fail-closed server-side.
 - `task_types()` is `[BATCH]` and `statement_types()` is `[]` (a dummy `docs/enunciado.md` is written).
 - `MojLanguageExtension` (key `moj`) mirrors `BocaLanguageExtension`: `languages` + required `template` + optional `flags`.
 

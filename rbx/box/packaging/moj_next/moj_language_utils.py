@@ -1,7 +1,18 @@
 import typing
 
-from rbx.box.environment import get_environment
+from rbx.box.environment import get_environment, get_language_or_nil
 from rbx.box.packaging.moj_next.extension import MojLanguage, MojLanguageExtension
+
+# MOJ unified Python under `py`; `py2`/`py3` survive only as legacy spellings, and the
+# server normalizes them away. Normalizing here keeps `.moj-meta.json` canonical.
+_LEGACY_ALIASES = {'py2': 'py', 'py3': 'py'}
+
+
+def normalize_moj_language(moj_language: str) -> str:
+    """Canonicalize a MOJ language id the way the server does: lowercased, with the
+    legacy `py2`/`py3` spellings folded into `py`."""
+    lowered = moj_language.lower()
+    return _LEGACY_ALIASES.get(lowered, lowered)
 
 
 def get_rbx_language_from_moj_language(moj_language: str) -> typing.Optional[str]:
@@ -23,6 +34,23 @@ def get_moj_language_extension(moj_language: str) -> MojLanguageExtension:
         if language.name == rbx_name:
             return language.get_extension_or_default('moj', MojLanguageExtension)
     return MojLanguageExtension()
+
+
+def get_moj_language_from_rbx_language(rbx_language: str) -> typing.Optional[str]:
+    """The MOJ language id an rbx language maps to, or ``None`` when it has no
+    counterpart. Mirrors ``get_boca_language_from_rbx_language``, but returns ``None``
+    instead of raising: a language with no MOJ id is skipped, not an error."""
+    language = get_language_or_nil(rbx_language)
+    if language is not None:
+        extension = language.get_extension_or_default('moj', MojLanguageExtension)
+        primary = extension.primary_language
+        if primary:
+            return normalize_moj_language(primary)
+    # Name fallback, matching get_emitted_moj_languages.
+    normalized = normalize_moj_language(rbx_language)
+    if normalized in typing.get_args(MojLanguage):
+        return normalized
+    return None
 
 
 def get_moj_template_name(moj_language: str) -> str:

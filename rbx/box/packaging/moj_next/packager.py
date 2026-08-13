@@ -1,4 +1,5 @@
 import collections
+import json
 import pathlib
 import shutil
 from typing import Dict, List, Optional
@@ -15,6 +16,7 @@ from rbx.box.packaging.moj_next.extension import MojLanguageExtension
 from rbx.box.packaging.moj_next.moj_language_utils import (
     get_emitted_moj_languages,
     get_moj_language_extension,
+    get_moj_language_from_rbx_language,
     get_moj_template_name,
 )
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
@@ -54,6 +56,11 @@ DEFAULT_FLAGS = {
 # Suffixes the amalgamator can reduce to a single translation unit.
 _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
 
+# Statement languages preferred when picking `display_title`. MOJ is a Brazilian
+# judge, so Portuguese wins; the lowest language code breaks any remaining tie, to
+# keep the emitted file deterministic.
+_TITLE_LANGUAGE_PREFERENCE = ('pt', 'pt-br', 'en')
+
 
 class MojNextPackager(BasePackager):
     """Packager for the MOJ format as `mojtools` consumes it.
@@ -87,9 +94,80 @@ class MojNextPackager(BasePackager):
 
     # -- metadata -------------------------------------------------------------
 
+    def _display_title(self) -> str:
+        pkg = package.find_problem_package_or_die()
+        for language in _TITLE_LANGUAGE_PREFERENCE:
+            title = pkg.titles.get(language)
+            if title:
+                return title
+        if pkg.titles:
+            return pkg.titles[sorted(pkg.titles)[0]]
+        return pkg.name
+
+    def _submission_languages(self) -> List[str]:
+        """The MOJ ids to allow submissions in: the languages with an accepted
+        solution.
+
+        This is MOJ's own criterion rather than an rbx invention. The judge measures
+        a time limit per language from `sols/good`, and mojtools' guide is explicit:
+        put a good solution in every language you want to enable, because a language
+        without one never gets a time limit and so the student cannot use it. Deriving
+        the whitelist from the emitted script dirs instead would key it off the
+        setter's env, which says nothing about who may submit what.
+
+        Sorted for a deterministic file, and normalized the way the server would.
+        """
+        from rbx.box.code import find_language
+
+        languages = set()
+        for solution in package.get_solutions():
+            if solution.outcome != ExpectedOutcome.ACCEPTED:
+                continue
+            rbx_language = find_language(solution)
+            moj_language = get_moj_language_from_rbx_language(rbx_language.name)
+            if moj_language is None:
+                console.console.print(
+                    f'[warning]{solution.href()} is written in '
+                    f'[item]{rbx_language.name}[/item], which maps to no MOJ language, '
+                    'so it will not be listed in the allowed submission '
+                    'languages.[/warning]'
+                )
+                continue
+            languages.add(moj_language)
+        return sorted(languages)
+
+    def _write_moj_meta(self, into_path: pathlib.Path) -> None:
+        """Write `.moj-meta.json`.
+
+        On a tar upload the server treats this file in two tiers: the *content* fields
+        (`display_title`, `collections`, `languages`) are taken from it, while the
+        *access* fields (`public`, `public_at`, `owner`) are never accepted from a tar
+        and only move through dedicated API routes. So rbx writes the content fields it
+        can know and omits everything else:
+
+        - `display_title` is required and never empty.
+        - `languages` restricts who may submit what; see `_submission_languages`.
+          Omitted when empty, since absent means "server preserves what it has"
+          whereas an empty list is a meaningless no-op.
+        - `collections` is author-editable but rbx has no notion of them, and absent
+          means the server keeps the existing ones.
+        - `public`, `public_at`, `owner` and `gitea` are server-owned. Beyond being
+          ignored from a tar, `public` is fail-closed in `gen-problem-json.sh`, so
+          emitting it is both useless and the kind of thing that leaks an unpublished
+          problem into an index served to anonymous users.
+        """
+        meta: Dict[str, object] = {'display_title': self._display_title()}
+        languages = self._submission_languages()
+        if languages:
+            meta['languages'] = languages
+        (into_path / '.moj-meta.json').write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + '\n'
+        )
+
     def _write_metadata(self, into_path: pathlib.Path) -> None:
         (into_path / 'author').write_text(DEFAULT_AUTHOR)
         (into_path / 'tags').write_text('')
+        self._write_moj_meta(into_path)
 
         docs_path = into_path / 'docs'
         docs_path.mkdir(parents=True, exist_ok=True)

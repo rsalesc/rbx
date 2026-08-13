@@ -103,7 +103,37 @@ back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`
 - **Interactive.** `task_types()` is `[BATCH]`. MOJ's arbiter protocol (test in
   `argv[1]`, last stderr line `WRONG <reason>`, FIFO driver, per-language SIGPIPE
   handling) is structurally unlike a testlib interactor and deserves its own design.
-- **`.moj-meta.json`.** Server-owned; never written by the package.
+- **Collections and access control.** See `.moj-meta.json` below.
+
+## `.moj-meta.json`
+
+On a tar upload the server treats this file in **two tiers**:
+
+- **Content fields** — `display_title`, `collections`, `languages` — are read from the
+  tar. Absent or empty means *the server preserves what it already has*, not "reset".
+- **Access fields** — `public`, `public_at`, `owner` — are **never** accepted from a
+  tar; only dedicated API routes change them.
+
+So the packager writes the content fields it can know and omits the rest:
+
+| Field | Emitted? | Why |
+|---|---|---|
+| `display_title` | always | Required and never empty. From `pkg.titles`, preferring `pt`/`pt-br`/`en` (MOJ is a Brazilian judge), then the lowest language code, then `pkg.name`. |
+| `languages` | when non-empty | The languages with an **accepted solution** — see below. |
+| `collections` | never | rbx has no notion of them; absent keeps the server's. |
+| `public`, `public_at`, `owner`, `gitea` | never | Server-owned and ignored from a tar. `public` is additionally **fail-closed** in `gen-problem-json.sh` (absent = private); emitting it is how an unpublished problem leaks into an index served to anonymous users. |
+
+**Why `languages` comes from `sols/good`.** It is the whitelist of submission
+languages, and the API rejects anything outside it. MOJ measures a time limit per
+language from the accepted solutions, and mojtools' guide is explicit: put a good
+solution in every language you want to enable, because a language without one never
+gets a time limit and the student cannot use it. Deriving the list from the emitted
+`scripts/<lang>/` dirs instead would key it off the setter's `env.rbx.yml`, which says
+nothing about who may submit what — and would silently *narrow* the default (absent =
+all languages) to whatever the preset happens to declare.
+
+Ids are normalized the way the server does: lowercased, `py2`/`py3` folded to `py`,
+deduplicated, and sorted so the file is deterministic.
 
 ## Running tests
 

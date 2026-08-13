@@ -64,6 +64,7 @@ translation unit.
 ```
 author                     "Unknown\n" placeholder
 tags                       empty
+.moj-meta.json             display_title (+ languages when derivable)
 conf
 docs/enunciado.md          dummy, PT-BR, with ## Entrada and ## Saída
 tests/input/<name>
@@ -76,10 +77,10 @@ scripts/<lang>/compile.sh  derived from rbx env, 0755
 scripts/<lang>/run.sh      derived from rbx env, 0755
 ```
 
-Deliberately **not** emitted: `tl` (calibration owns it), `.moj-meta.json` (the server
-writes it, never the author), `scripts/testlib.h` and `scripts/rbx.h` (both are
-inlined into `checker.cpp`; a stray `scripts/testlib.h` would take precedence in the
-bridge and silently shadow the vendored one).
+Deliberately **not** emitted: `tl` (calibration owns it), the access fields of
+`.moj-meta.json` (see §10), `scripts/testlib.h` and `scripts/rbx.h` (both are inlined
+into `checker.cpp`; a stray `scripts/testlib.h` would take precedence in the bridge
+and silently shadow the vendored one).
 
 The zip root is the package root, as today.
 
@@ -300,9 +301,39 @@ a path that has already produced locale-dependent `Main$X.class` bugs upstream.
 ## 10. Metadata and statement
 
 `author` is written as the placeholder `Unknown\n` — MOJ hard-requires the file, and
-rbx has no author field. `tags` is written empty. `.moj-meta.json` is not written at
-all: the format documents it as server-owned, and `display_title` reaches the server
-through the API rather than the package.
+rbx has no author field. `tags` is written empty.
+
+### `.moj-meta.json` (revised after review)
+
+The first pass omitted this file entirely, reading "the server always writes this,
+never the author" as "never ship it". That was wrong. On a tar upload the server
+applies **two-tier** logic:
+
+- **Content fields** (`display_title`, `collections`, `languages`) *are* sourced from
+  the tar's `.moj-meta.json`; absent or empty means the server preserves its existing
+  values rather than resetting them.
+- **Access fields** (`public`, `public_at`, `owner`) are **never** accepted from a tar
+  and move only through dedicated API routes.
+
+So the packager writes the content fields it can know:
+
+- `display_title` — required, never empty. From `pkg.titles`, preferring `pt`/`pt-br`/
+  `en`, then the lowest language code, then `pkg.name`.
+- `languages` — the whitelist of permitted submission languages; the API rejects
+  anything outside it. Derived from the languages that have an **accepted solution**,
+  which is MOJ's own criterion: it calibrates a time limit per language from
+  `sols/good`, and a language without one never gets a limit, so a student cannot use
+  it. Ids are normalized as the server does (lowercase, `py2`/`py3` → `py`, deduped)
+  and sorted. Omitted when empty, since absent means "preserve" while `[]` is a no-op.
+- `collections` is omitted: rbx has no notion of them and absent keeps the server's.
+- `public`, `public_at`, `owner` and `gitea` are omitted. Beyond being ignored from a
+  tar, `public` is **fail-closed** in `gen-problem-json.sh` — emitting it is how an
+  unpublished problem ends up in an index served to anonymous users.
+
+Deriving `languages` from the emitted `scripts/<lang>/` dirs was considered and
+rejected: that set comes from the setter's `env.rbx.yml`, says nothing about who may
+submit what, and would silently narrow the permissive default (absent = all languages)
+to whatever the bundled preset happens to declare.
 
 `docs/enunciado.md` is a dummy carrying only the two mandatory sections:
 

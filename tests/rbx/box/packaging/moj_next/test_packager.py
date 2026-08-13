@@ -1,4 +1,5 @@
 import fnmatch
+import json
 import shutil
 import subprocess
 
@@ -52,14 +53,76 @@ def test_writes_a_statement_with_the_mandatory_sections(moj_next_package):
     assert not text.lstrip().startswith('%')
 
 
-def test_does_not_write_calibrated_or_server_owned_files(moj_next_package):
+def test_does_not_write_calibrated_files(moj_next_package):
     # MOJ measures the time limit; it is never authored.
     assert not (moj_next_package / 'tl').exists()
-    # .moj-meta.json is written by the server, never by the author.
-    assert not (moj_next_package / '.moj-meta.json').exists()
     # A scripts/testlib.h would take precedence over the mojtools-vendored one.
     assert not (moj_next_package / 'scripts' / 'testlib.h').exists()
     assert not (moj_next_package / 'scripts' / 'rbx.h').exists()
+
+
+def test_writes_moj_meta_with_a_display_title(moj_next_package):
+    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+    assert meta['display_title']
+
+
+def test_moj_meta_omits_server_owned_fields(moj_next_package):
+    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+    # The server never accepts these from a tar upload, and `public` is additionally
+    # fail-closed in gen-problem-json.sh -- emitting it risks publishing an
+    # unpublished problem to anonymous users.
+    for field in ['public', 'public_at', 'owner', 'gitea']:
+        assert field not in meta
+    # rbx has no notion of collections, and absent means the server keeps its own.
+    assert 'collections' not in meta
+
+
+def test_moj_meta_allows_languages_with_an_accepted_solution(moj_next_package):
+    # MOJ calibrates a time limit per language from sols/good, so a language without
+    # an accepted solution can never be submitted in anyway.
+    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+    assert meta['languages'] == ['cpp']
+
+
+def test_moj_meta_languages_covers_every_accepted_language(testing_pkg, tmp_path):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_solution('sol.py', outcome='accepted').write_text('print(1)\n')
+    # A non-accepted solution's language is not enabled for students.
+    testing_pkg.add_solution('wrong.c', outcome='wrong-answer').write_text(
+        'int main(){}\n'
+    )
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    # Sorted, and `py` rather than the legacy `py3` spelling.
+    assert meta['languages'] == ['cpp', 'py']
+
+
+def test_display_title_prefers_portuguese(testing_pkg, tmp_path):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.yml.titles = {'en': 'Sum of Two', 'pt': 'Soma de Dois'}
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['display_title'] == 'Soma de Dois'
+
+
+def test_display_title_falls_back_to_the_problem_name(moj_next_package):
+    # The fixture package declares no titles at all.
+    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+    assert meta['display_title'] == 'test-problem'
 
 
 def test_conf_uses_the_rss_memory_knob(moj_next_package):
