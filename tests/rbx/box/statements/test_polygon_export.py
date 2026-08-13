@@ -104,6 +104,34 @@ async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdat
 
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_processed_blocks_normalize_without_a_macros_file(
+    cleandir_with_testdata,
+):
+    from rbx.box.statements import export
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        await build_statements.build_statement(
+            st,
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        # No macros.json: the demacro pass did not run. `normalize=True` must
+        # still mean what it says -- expanding against an empty macro set is a
+        # no-op, but the Polygon conversion is not.
+        assert not (build_statements.get_statement_dir(st) / 'macros.json').exists()
+
+        blocks = export.get_processed_statement_blocks(st)
+
+        assert '\\(' not in blocks.blocks['notes']
+        assert '$n \\le 10$' in blocks.blocks['notes']
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
 async def test_processed_blocks_skip_polygon_conversion_when_not_normalizing(
     cleandir_with_testdata,
 ):

@@ -8,6 +8,8 @@
 3. **Layout** (``AssetLayout`` and friends) -- where those assets and the
    documents citing them land, for this target.
 4. **Remap** (``derive_remap``) -- the reference rewrites the layout implies.
+5. **Bundle** (``build_statement_bundle``) -- the four stages assembled into a
+   ``StatementBundle``: rewritten blocks plus placed assets, for one target.
 
 Stages 2--4 are genuinely target-independent: they know only paths, and a target
 is expressed entirely as a layout. Stage 1 is not quite -- its final,
@@ -39,7 +41,7 @@ from rbx.box.statements.build_statements import (
 from rbx.box.statements.demacro_utils import MacroDefinitions
 from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import Statement, StatementType
-from rbx.box.statements.texsoup_utils import ASSET_EXTS
+from rbx.box.statements.texsoup_utils import ASSET_EXTS, rewrite_includegraphics
 
 
 def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
@@ -85,16 +87,13 @@ def get_processed_statement_blocks(
     macros_file = overlay_dir / 'macros.json'
     statement_dir = overlay_dir / 'export'
 
-    if not macros_file.is_file():
-        # NOTE: this returns BEFORE the conversion, so an explicit
-        # ``normalize=True`` silently does nothing when the build did not run the
-        # demacro pass. Polygon masks the quirk -- ``validate_statements`` re-checks
-        # the constructs and errors loudly -- but a future block-consuming packager
-        # would get un-normalized TeX with no signal at all.
-        return statement_blocks
-
-    # Get macros and additional macros from defs block.
-    macros = MacroDefinitions.from_json_file(macros_file)
+    # Only the *loading* is conditional. A build that did not run the demacro pass
+    # leaves no macros.json, and expanding against an empty set is a no-op -- but
+    # skipping the rest of the function would make an explicit ``normalize=True``
+    # silently return un-normalized TeX, with no signal to a consumer trusting it.
+    macros = MacroDefinitions()
+    if macros_file.is_file():
+        macros = MacroDefinitions.from_json_file(macros_file)
     if 'defs' in statement_blocks.blocks:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_file = pathlib.Path(temp_dir) / 'defs.tex'
@@ -579,3 +578,127 @@ def derive_remap(
         if ref != key:
             remap[key] = ref
     return remap
+
+
+@dataclasses.dataclass(frozen=True)
+class BundledAsset:
+    """An asset plus the destination this target's layout gave it."""
+
+    asset: ResolvedAsset
+    dest: pathlib.PurePosixPath
+
+    @property
+    def content(self) -> bytes:
+        """The asset's bytes, read on demand.
+
+        Deliberately not held in memory, unlike ``flattening.FlatFile.content``:
+        those are rewritten sources that only exist in memory, while these are
+        untouched files on disk that can run to megabytes (a figure PDF), and a
+        consumer typically reads each exactly once. ``materialize`` copies from
+        ``source`` for the same reason and never goes through this property, so
+        the two paths do not double-buffer each other.
+        """
+        return self.asset.source.read_bytes()
+
+
+def _check_destination_collisions(bundled: List[BundledAsset]) -> None:
+    """Reject two distinct sources placed on one destination.
+
+    ``resolve_assets`` dedupes on source but deliberately keeps entries that
+    share a ``rel``, since whether they actually land on top of each other is
+    only knowable once a layout has spoken. Here it is: an uploader would get an
+    ambiguous resource name and a tarball packager would silently overwrite one
+    file with the other.
+
+    This is not a ``FlatLayout`` concern. ``SubtreeLayout`` hits it too, whenever
+    several scopes share a root -- that collapses reference bases that are
+    genuinely unrelated (the statement dir, the overlay root, the package root),
+    so any relative path they have in common collides (design §4).
+
+    Complementary to the *reference* ambiguity ``_resolve_references`` rejects,
+    and neither subsumes the other: a ``d.png``/``d.pdf`` pair shares a reference
+    key but not a destination, and two same-named files from different scopes
+    share a destination while extension precedence has nothing to disagree about.
+    """
+    by_dest: Dict[pathlib.PurePosixPath, BundledAsset] = {}
+    for entry in bundled:
+        previous = by_dest.setdefault(entry.dest, entry)
+        if previous.asset.source != entry.asset.source:
+            raise ValueError(
+                f'Two different assets are placed at {entry.dest}: '
+                f'{previous.asset.source} and {entry.asset.source}. One would '
+                'overwrite the other. Rename one, drop one, or give their '
+                'scopes separate roots.'
+            )
+
+
+@dataclasses.dataclass
+class StatementBundle:
+    """A statement's blocks and assets, resolved for one target.
+
+    An uploader reads ``assets[i].content`` and never materializes; a tarball
+    packager calls ``materialize`` and never touches ``content``. Both get the
+    same rewritten blocks. Deliberately mirrors ``flattening.FlatNamespace``,
+    which solves the same problem for source files.
+
+    ``remaps`` is kept for consumers that render text of their own -- a packager
+    writing a statement document from a template still has to rewrite its
+    references, and re-deriving the remap would mean re-deriving the layout.
+    """
+
+    blocks: Dict[str, str]
+    explanations: Dict[int, str]
+    assets: List[BundledAsset]
+    remaps: Dict[DocumentSlot, Dict[str, str]]
+
+    def materialize(self, root: pathlib.Path) -> None:
+        """Write every asset under ``root``, creating directories as needed.
+
+        Destinations are unique (``build_statement_bundle`` rejects collisions)
+        and each write replaces whatever is there, so this is idempotent and
+        safe to call twice or over a partially populated tree.
+        """
+        for bundled in self.assets:
+            target = root / bundled.dest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(bundled.asset.source, target)
+
+
+def build_statement_bundle(
+    statement: Statement,
+    *,
+    layout: AssetLayout,
+    normalize: bool = True,
+) -> StatementBundle:
+    """Resolve ``statement`` into blocks + placed assets for one target.
+
+    The four stages assembled: read the built blocks, resolve the asset set, ask
+    ``layout`` where everything goes, and rewrite each document's references to
+    match. Every target-specific decision lives in ``layout``.
+    """
+    processed = get_processed_statement_blocks(statement, normalize=normalize)
+    assets = resolve_assets(statement, set(processed.explanations))
+
+    body_slot = DocumentSlot.body()
+    remaps = {body_slot: derive_remap(assets, layout, body_slot)}
+    for idx in processed.explanations:
+        slot = DocumentSlot.sample(idx)
+        remaps[slot] = derive_remap(assets, layout, slot)
+
+    bundled = [
+        BundledAsset(asset=asset, dest=layout.place_asset(asset)) for asset in assets
+    ]
+    _check_destination_collisions(bundled)
+
+    return StatementBundle(
+        blocks={
+            name: rewrite_includegraphics(content, remaps[body_slot])
+            for name, content in processed.blocks.items()
+        },
+        explanations={
+            idx: rewrite_includegraphics(text, remaps[DocumentSlot.sample(idx)])
+            for idx, text in processed.explanations.items()
+        },
+        assets=bundled,
+        remaps=remaps,
+    )
