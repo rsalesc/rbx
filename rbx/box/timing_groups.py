@@ -94,6 +94,12 @@ class GroupTimings(BaseModel):
     fastest: int
     slowest: int
     solution_count: int
+    # Upper-bound evidence: the fastest slow solution in this group, and which
+    # solution it was. None when the group has no usable slow measurement.
+    fastest_slow: Optional[int] = None
+    fastest_slow_solution: Optional[str] = None
+    slowest_solution: Optional[str] = None
+    dropped_upper: List[str] = []
 
 
 class ResolutionResult(BaseModel):
@@ -104,7 +110,10 @@ class ResolutionResult(BaseModel):
     defaulted_languages: List[str]
 
 
-EvalFn = Callable[[int, int], int]
+EvalFn = Callable[[GroupTimings], int]
+# Post-processes a time limit derived from a reference group (``whenEmpty`` or a
+# forced relative), given the deriving group's own timings when it has any.
+DeriveFn = Callable[[int, Optional[GroupTimings]], int]
 
 
 def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
@@ -163,8 +172,9 @@ def resolve_groups(
     pooled: Dict[int, GroupTimings],  # group index -> pooled timings (non-empty only)
     base: GroupTimings,
     eval_fn: EvalFn,
+    derive_fn: Optional[DeriveFn] = None,
 ) -> ResolutionResult:
-    base_tl = eval_fn(base.fastest, base.slowest)
+    base_tl = eval_fn(base)
     base_report = TimingGroupReport(
         languages=[],
         timeLimit=base_tl,
@@ -194,6 +204,8 @@ def resolve_groups(
             ref_tl = base_tl if ref is None else resolve(lang_index[ref])
             increment = fb.increment or 0
             tl = int(ref_tl * fb.multiplier + increment)
+            if derive_fn is not None:
+                tl = derive_fn(tl, timings)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -207,7 +219,7 @@ def resolve_groups(
                 isLeftover=group.is_leftover,
             )
         elif timings is not None:
-            tl = eval_fn(timings.fastest, timings.slowest)
+            tl = eval_fn(timings)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -222,6 +234,8 @@ def resolve_groups(
             ref_tl = base_tl if ref is None else resolve(lang_index[ref])
             increment = group.whenEmpty.increment or 0
             tl = int(ref_tl * group.whenEmpty.multiplier + increment)
+            if derive_fn is not None:
+                tl = derive_fn(tl, None)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,

@@ -50,9 +50,9 @@ def test_build_partition_no_leftover_when_all_grouped():
     assert [g.languages for g in groups] == [['c', 'cpp']]
 
 
-def _eval(fastest, slowest):
+def _eval(timings: GroupTimings):
     # simple deterministic formula for tests: max(fastest*3, slowest*2)
-    return max(fastest * 3, slowest * 2)
+    return max(timings.fastest * 3, timings.slowest * 2)
 
 
 def test_resolves_estimated_and_multiplier_and_default_groups():
@@ -73,14 +73,14 @@ def test_resolves_estimated_and_multiplier_and_default_groups():
 
     result = resolve_groups(groups, pooled, base, _eval)
 
-    assert result.base_time_limit == _eval(100, 500)  # 1000
+    assert result.base_time_limit == _eval(base)  # 1000
     by_lang = result.time_limit_per_language
-    assert by_lang['cpp'] == _eval(100, 200)  # 400
+    assert by_lang['cpp'] == _eval(pooled[0])  # 400
     assert by_lang['c'] == 400
     assert by_lang['java'] == int(400 * 4.0)
     assert by_lang['kotlin'] == int(400 * 4.0)
     assert 'go' not in by_lang  # DEFAULTED -> uses base, no modifier
-    assert by_lang['python'] == _eval(500, 500)  # 1500
+    assert by_lang['python'] == _eval(pooled[3])  # 1500
 
     origins = {tuple(r.languages): r.origin for r in result.reports}
     assert origins[('c', 'cpp')] == TimingGroupOrigin.ESTIMATED
@@ -323,9 +323,9 @@ def test_resolve_propagates_is_leftover():
     assert by_leftover[('go', 'java')] is True
 
 
-def _eval_slowest(fastest, slowest):
+def _eval_slowest(timings: GroupTimings):
     # simple deterministic formula for tests: just the slowest
-    return slowest
+    return timings.slowest
 
 
 def test_forced_relative_wins_over_pooled_timings():
@@ -375,5 +375,5 @@ def test_forced_relative_to_base_estimate():
     pooled = {0: GroupTimings(fastest=100, slowest=200, solution_count=1)}
     base = GroupTimings(fastest=100, slowest=200, solution_count=1)
     result = resolve_groups(groups, pooled, base, _eval_slowest)
-    # base_tl = _eval(100, 200) = 200; forced -> 3.0*200 = 600
+    # base_tl = _eval_slowest(base) = 200; forced -> 3.0*200 = 600
     assert result.reports[1].timeLimit == 600

@@ -79,8 +79,12 @@ def build_timing_profile(
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
-    def _eval(fastest: int, slowest: int) -> int:
-        return int(safeeval.eval_int(formula, {'fastest': fastest, 'slowest': slowest}))
+    def _eval(timings: timing_groups.GroupTimings) -> int:
+        return int(
+            safeeval.eval_int(
+                formula, {'fastest': timings.fastest, 'slowest': timings.slowest}
+            )
+        )
 
     if repartition is not None:
         groups = timing_groups.partition_from_assignment(repartition, relatives)
