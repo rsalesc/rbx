@@ -657,6 +657,18 @@ class Generator(CodeItem):
     name: str = Field(description="""The name of the generator.""")
 
 
+class InferenceRole(AutoEnum):
+    LOWER = alias('lower')  # type: ignore
+    """The solution bounds the inferred time limit from below.
+
+    The limit will be large enough for this solution to comfortably pass."""
+
+    UPPER = alias('upper')  # type: ignore
+    """The solution bounds the inferred time limit from above.
+
+    The limit will be small enough for this solution to comfortably time out."""
+
+
 PER_GROUP_OUTCOME_WILDCARD = '*'
 
 
@@ -703,6 +715,31 @@ solutions:
 """,
     )
 
+    inference: Optional[Union[Literal[False], InferenceRole]] = Field(
+        default=None,
+        description="""The role this solution plays when inferring the time limit.
+
+When unset, the role follows the expected outcomes of this solution: a solution
+expected to be `accepted` everywhere bounds the time limit from below, a
+solution expected to be slow (`tle`, `tle-or-rte`) anywhere bounds it from
+above, and anything else -- notably `accepted-or-tle` -- bounds neither side.
+
+Set it explicitly to override that:
+
+- `false`: the solution is still measured, but bounds neither side.
+- `lower`: the time limit must be large enough for this solution to pass. Not
+  allowed for solutions expected to be slow.
+- `upper`: the time limit must be small enough for this solution to time out.
+
+```yaml
+solutions:
+  - path: 'sols/borderline.cpp'
+    outcome: accepted-or-tle
+    inference: upper
+```
+""",
+    )
+
     tags: List[str] = Field(
         default=[],
         description="""Tags to be associated with this solution.""",
@@ -716,6 +753,17 @@ or a tuple of two integers, which means the solution should have a score between
 
 If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
     )
+
+    @model_validator(mode='after')
+    def _validate_inference_role(self):
+        if self.inference == InferenceRole.LOWER and any(
+            outcome.is_slow() for outcome in self.all_expected_outcomes()
+        ):
+            raise ValueError(
+                'a solution expected to be slow cannot bound the time limit from '
+                'below; use `inference: upper` or `inference: false`.'
+            )
+        return self
 
     def expected_outcome_for_group(self, group_name: str) -> Optional[ExpectedOutcome]:
         """The expectation for a single group, or None if the group has none."""
