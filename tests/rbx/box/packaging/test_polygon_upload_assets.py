@@ -60,7 +60,13 @@ def _simple_tree(tmp_path, monkeypatch, *, explanations=None, blocks=None):
 
 
 def _bundle(statement) -> export.StatementBundle:
-    return export.build_statement_bundle(statement, layout=export.FlatLayout())
+    """The bundle Polygon actually uploads.
+
+    Goes through `upload._build_bundle` rather than picking a layout here, so the
+    frozen resource names below stay pinned to the binding that ships: a change
+    of layout in `upload.py` must fail these tests, not slip past them.
+    """
+    return upload._build_bundle(statement)  # noqa: SLF001
 
 
 def test_polygon_bundle_reproduces_the_expected_flat_resource_set(
@@ -212,15 +218,40 @@ class _FakeProblem:
         self.saved.append((name, file))
 
 
-def test_resources_are_uploaded_by_flat_name_in_sorted_order(tmp_path, monkeypatch):
+def test_every_resource_is_uploaded_under_its_flat_name(tmp_path, monkeypatch):
+    bundle = _bundle(_realistic_tree(tmp_path, monkeypatch))
+    problem = _FakeProblem()
+
+    upload._upload_statement_resources(problem, bundle)  # pyright: ignore # noqa: SLF001
+
+    # Names AND bytes as one object: two assets swapping sources under the same
+    # pair of names would otherwise pass. `_realistic_tree` writes distinguishing
+    # bytes into every file for exactly this. Order is asserted separately --
+    # uploads run on a thread pool, so completion order is not deterministic.
+    assert dict(problem.saved) == {
+        'artifacts__tikz_figures__i_0.pdf': b'tikz',
+        'extra__deep__logo.png': b'logo',
+        'figure.svg': b'svg',
+        'img__d.png': b'd',
+        'pic.png': b'pic',
+        'sample_0__diagram.png': b'diagram',
+        'sample_0__sub__e.pdf': b'e',
+    }
+    assert sorted(name for name, _ in problem.saved) == _EXPECTED_UPLOADED_NAMES
+
+
+def test_resources_are_submitted_in_flat_name_order(tmp_path, monkeypatch):
+    # The submission order is the order the setter sees printed, and it was
+    # preserved deliberately across the export extraction. Pinning it needs a
+    # single worker: with the real pool the fake records completion order, which
+    # is a race, not a contract.
+    monkeypatch.setattr(upload, 'MAX_WORKERS', 1)
     bundle = _bundle(_realistic_tree(tmp_path, monkeypatch))
     problem = _FakeProblem()
 
     upload._upload_statement_resources(problem, bundle)  # pyright: ignore # noqa: SLF001
 
     assert [name for name, _ in problem.saved] == _EXPECTED_UPLOADED_NAMES
-    assert dict(problem.saved)['sample_0__diagram.png'] == b'diagram'
-    assert dict(problem.saved)['extra__deep__logo.png'] == b'logo'
 
 
 def test_oversized_resource_aborts_the_upload(tmp_path, monkeypatch):
@@ -232,8 +263,11 @@ def test_oversized_resource_aborts_the_upload(tmp_path, monkeypatch):
     with pytest.raises(typer.Exit):
         upload._upload_statement_resources(problem, bundle)  # pyright: ignore # noqa: SLF001
 
-    # Aborted before the offending resource was handed to the API.
-    assert 'pic.png' not in [name for name, _ in problem.saved]
+    # Aborted at the offending resource: neither it nor anything after it in
+    # submission order was handed to the API.
+    uploaded = [name for name, _ in problem.saved]
+    assert 'pic.png' not in uploaded
+    assert 'sample_0__diagram.png' not in uploaded
 
 
 # ---------------------------------------------------------------------------
@@ -241,11 +275,11 @@ def test_oversized_resource_aborts_the_upload(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_ambiguous_assets_exit_instead_of_raising(tmp_path, monkeypatch):
+def test_colliding_assets_exit_instead_of_raising(tmp_path, monkeypatch):
     _simple_tree(tmp_path, monkeypatch)
     # `extra/logo.png` and a root-level `extra__logo.png` flatten to the same
-    # uploaded name, which `export` rejects. A setter must see an error message,
-    # not a `ValueError` traceback.
+    # uploaded name, so `_check_destination_collisions` rejects the bundle. A
+    # setter must see an error message, not a `ValueError` traceback.
     (tmp_path / 'extra__logo.png').write_bytes(b'other')
     statement = Statement(
         language='en',

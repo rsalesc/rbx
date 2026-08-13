@@ -648,9 +648,7 @@ async def _upload_statement(
             f'Uploading statement for language [item]{language}[/item] (uploaded language: [item]{uploaded_language}[/item])...'
         )
         # The bundle arrives with every `\includegraphics` already rewritten to
-        # the uploaded flat names, blocks and sample explanations alike -- the
-        # per-explanation remap merge (sample wins over statement on a key
-        # collision) is `derive_remap`'s job now.
+        # the uploaded flat names, blocks and sample explanations alike.
         bundle = _build_bundle(statement)
         _upload_statement_resources(problem, bundle)
 
