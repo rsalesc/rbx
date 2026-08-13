@@ -48,7 +48,7 @@ class MojLanguageExtension(RejectsRemovedFields):
     template: typing.Optional[str] = Field(
         default=None,
         description='On-disk template dir under '
-        'rbx/resources/packagers/moj_next/scripts/ to source the per-language '
+        'rbx/resources/packagers/moj/scripts/ to source the per-language '
         'compile.sh and run.sh from. Required whenever `languages` is set.',
     )
     flags: typing.Optional[str] = Field(
