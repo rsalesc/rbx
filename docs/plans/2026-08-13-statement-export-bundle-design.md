@@ -130,6 +130,27 @@ in that case. No `rewrite=False` knob is added — it could only ever mean "plac
 the assets somewhere the references do not point," which is a bug, not an
 option.
 
+#### The extension caveat
+
+Reference *keys* are extensionless (`\includegraphics` is conventionally spelled
+without one, which is why the lookup strips extensions today), but a derived
+reference is a real path and carries its extension. So `relpath` alone does not
+reach identity: `docs/img/d.png` seen from `docs/` derives to `img/d.png`, which
+differs from the key `img/d` and would be rewritten.
+
+A layout therefore also declares whether the derived reference keeps its
+extension:
+
+- `FlatLayout` **must** keep it — the flat name *is* the uploaded Polygon
+  resource name (`img__d.png`), and dropping it would break the reference.
+- `SubtreeLayout(keep_extension=...)` chooses. `False` yields `img/d`, equal to
+  the key, so the entry drops out of the remap and nothing is rewritten — the
+  true identity case. `True` yields `img/d.png`, which is harmless in TeX and
+  *required* by markdown, at the cost of a rewrite pass.
+
+The default is `True`, since an explicit extension is valid in every target;
+`False` is the opt-in for consumers that want the blocks returned untouched.
+
 ### Which slots see which assets
 
 - `body` (legend/input/output/interaction/notes) sees `STATEMENT`, `TIKZ` and
