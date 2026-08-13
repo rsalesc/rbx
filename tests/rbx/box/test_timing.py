@@ -11,11 +11,21 @@ import yaml
 from rbx.box import schema, timing
 from rbx.box.deferred import Deferred
 from rbx.box.environment import LanguageGroupFallback
-from rbx.box.schema import ExpectedOutcome, Solution
+from rbx.box.schema import ExpectedOutcome, InferenceRole, Solution
 from rbx.box.solutions import EvaluationItem, RunSolutionResult
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.box.timing_config import TimingStrategy
+
+
+def only_lower_bound(solutions):
+    """`get_inference_solutions` stub for a package whose solutions all bound
+    the time limit from below, so no slow solution is run under the cap."""
+
+    def _get(role):
+        return list(solutions) if role == InferenceRole.LOWER else []
+
+    return _get
 
 
 class TestTimingProfile:
@@ -417,7 +427,7 @@ class TestComputeTimeLimits:
         # Mock get_inference_solutions
         mock_solution = mock.Mock()
         mock_solution.path = testing_pkg.path('sol.cpp')
-        mock_get_inference_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         # Mock run_solutions
         mock_result = mock.Mock()
@@ -457,7 +467,7 @@ class TestComputeTimeLimits:
 
         mock_solution = mock.Mock()
         mock_solution.path = pathlib.Path('sol.cpp')
-        mock_get_inference_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         mock_result = mock.Mock()
         mock_run_solutions.return_value = mock_result
@@ -533,7 +543,7 @@ class TestTimingIntegration:
         mock_solution = mock.Mock()
         mock_solution.path = pathlib.Path('sol.cpp')
         mock_solution.language = 'cpp'
-        mock_get_inference_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         # Mock the result structure
         mock_result = mock.Mock()
