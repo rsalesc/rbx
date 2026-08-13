@@ -1,6 +1,16 @@
+import re
+
 from typer.testing import CliRunner
 
 from rbx.box.packaging.main import app
+
+_ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _plain(output: str) -> str:
+    """Rich styles an option name in pieces (`-` then `-language`), so the flag
+    is only a literal substring once the escape codes are gone."""
+    return _ANSI.sub('', output)
 
 
 def test_moj_command_is_registered():
@@ -13,6 +23,14 @@ def test_moj_next_command_is_gone():
     # `moj-next` replaced the legacy packager outright rather than living beside it.
     result = CliRunner().invoke(app, ['--help'])
     assert 'moj-next' not in result.output
+
+
+def test_moj_command_takes_a_language():
+    # The body and the <h1> must never come from different languages, so the
+    # statement is selected once, by this flag, exactly as `package polygon` does.
+    result = CliRunner().invoke(app, ['moj', '--help'])
+    assert result.exit_code == 0
+    assert '--language' in _plain(result.output)
 
 
 def test_moj_command_has_no_legacy_boca_flag():

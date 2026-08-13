@@ -137,10 +137,20 @@ async def boca(
 @syncer.sync
 async def moj(
     verification: environment.VerificationParam,
+    language: Optional[str] = typer.Option(
+        None,
+        '--language',
+        '-l',
+        help='If set, will build the statement in the given language. '
+        'Leave unset if you want to use the language of the topmost statement.',
+        autocompletion=annotations._adapt('language'),  # noqa: SLF001
+    ),
 ):
     from rbx.box.packaging.moj.packager import MojPackager
 
-    await run_packager(MojPackager, verification=verification)
+    # A MOJ package holds one statement, and its `display_title` resolves from
+    # the same one, so the body and the rendered <h1> can never disagree.
+    await run_packager(MojPackager, verification=verification, main_language=language)
 
 
 @app.command('pkg', help='Build a package for PKG.')
