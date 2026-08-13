@@ -4,7 +4,7 @@ import pytest
 
 # Imported as a module: pytest's `python_functions` matches `test*`, so importing
 # `testcase_name` by name would make pytest try to collect it as a test.
-from rbx.box.packaging.moj_next import naming
+from rbx.box.packaging.moj import naming
 
 
 def test_sample_names_start_with_sample():

@@ -497,6 +497,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Which template variant of the preset to use. Omit to use the '
+                    'canonical template, or to be prompted when the preset offers '
+                    'variants.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--variant', '-v'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Whether to use a preset from the local version of rbx, instead '
                     'of the global one (not recommended).',
                     'kind': 'option',
@@ -1812,14 +1822,6 @@ SPEC = {
                             },
                         },
                         {
-                            'help': 'Build a package for BOCA instead of MOJ.',
-                            'kind': 'option',
-                            'multiple': False,
-                            'names': ['--for-boca', '--no-for-boca'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -1899,6 +1901,16 @@ SPEC = {
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--preset', '-p'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Which template variant of the preset to use. '
+                            'Omit to use the canonical template, or to be '
+                            'prompted when the preset offers variants.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--variant', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
                         },
@@ -2034,6 +2046,16 @@ SPEC = {
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--preset'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Which template variant of the preset to use. '
+                            'Omit to use the canonical template, or to be '
+                            'prompted when the preset offers variants.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--variant', '-v'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
                         },

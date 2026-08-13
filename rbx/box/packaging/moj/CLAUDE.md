@@ -1,20 +1,23 @@
-# CLAUDE.md — MojNext packager
+# CLAUDE.md — MOJ packager
 
-`MojNextPackager` (`rbx package moj-next`) targets **MOJ**
+`MojPackager` (`rbx package moj`) targets **MOJ**
 (`moj.naquadah.com.br`), judged by [`cd-moj/mojtools`](https://github.com/cd-moj/mojtools).
-It is a **separate** packager extending `BasePackager` directly. The legacy
-`rbx/box/packaging/moj/` packager (a `BocaPackager` subclass) is untouched and
-still owns interactive problems.
+It extends `BasePackager` directly and shares no code with BOCA.
 
 - Design doc: `docs/plans/2026-08-13-moj-next-packager-design.md`
 - Implementation plan: `docs/plans/2026-08-13-moj-next-packager.md`
 
-## Why separate
+  (Both were written while this lived as a second `moj-next` packager beside the
+  legacy one; it has since replaced it outright and taken the `moj` name.)
 
-The legacy packager targets a shape MOJ no longer accepts: it authors a time limit
-MOJ *measures*, bundles a private copy of the checker bridge that MOJ banned, emits
-`docs/enunciado.pdf` (not a recognized format), and names every test `001`/`002`,
-so a package has **no samples** and fails validation outright.
+## Why it replaced the old one
+
+The previous packager (a `BocaPackager` subclass) targeted a shape MOJ no longer
+accepts: it authored a time limit MOJ *measures*, bundled a private copy of the
+checker bridge that MOJ banned, emitted `docs/enunciado.pdf` (not a recognized
+format), and named every test `001`/`002`, so a package had **no samples** and failed
+validation outright. Interactive problems are the one thing it covered that this one
+does not yet — see [Out of scope](#out-of-scope).
 
 ## The two rules that shape everything
 
@@ -25,7 +28,7 @@ copy, because mojtools does not exist in there. A package carrying its own bridg
 copy is what replicated one `bwrap` bug into **198 packages**, where the fix in
 mojtools reached none of them. `scripts/compare.sh` is therefore a byte-copy of
 mojtools' canonical `compare-stub.sh`, vendored at
-`rbx/resources/packagers/moj_next/scripts/compare.sh` — a test asserts the emitted
+`rbx/resources/packagers/moj/scripts/compare.sh` — a test asserts the emitted
 file is byte-identical to it.
 
 **2. The checker is one file.** `checker-bridge.sh` compiles the package's checker
@@ -174,7 +177,7 @@ in that language). See `_report_submission_languages`.
 ## Running tests
 
 ```bash
-uv run pytest tests/rbx/box/packaging/moj_next/
+uv run pytest tests/rbx/box/packaging/moj/
 ```
 
 The checker-compilation tests skip without `g++`. To exercise the real bridge, clone

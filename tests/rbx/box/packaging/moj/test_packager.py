@@ -6,10 +6,10 @@ import subprocess
 import pytest
 import typer
 
-from rbx.box.packaging.moj_next.packager import MojNextPackager
+from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import ScoreType, TaskType
 from rbx.config import get_default_app_path
-from tests.rbx.box.packaging.moj_next.conftest import (
+from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
     SLOW_SOL,
     WRONG_SOL,
@@ -23,27 +23,27 @@ from tests.rbx.box.packaging.moj_next.conftest import (
 def test_only_supports_batch_problems():
     # MOJ's interactive support uses its own arbiter protocol, not a testlib
     # interactor, so the legacy `moj` packager keeps those.
-    assert MojNextPackager.task_types() == [TaskType.BATCH]
+    assert MojPackager.task_types() == [TaskType.BATCH]
 
 
 def test_builds_no_statements():
-    assert MojNextPackager(testcase_entries=[]).statement_types() == []
+    assert MojPackager(testcase_entries=[]).statement_types() == []
 
 
-def test_packager_is_named_moj_next():
-    assert MojNextPackager.name() == 'moj-next'
+def test_packager_is_named_moj():
+    assert MojPackager.name() == 'moj'
 
 
 # -- metadata ---------------------------------------------------------------
 
 
-def test_writes_the_mandatory_metadata_files(moj_next_package):
-    assert (moj_next_package / 'author').read_text().strip() != ''
-    assert (moj_next_package / 'tags').exists()
+def test_writes_the_mandatory_metadata_files(moj_package):
+    assert (moj_package / 'author').read_text().strip() != ''
+    assert (moj_package / 'tags').exists()
 
 
-def test_writes_a_statement_with_the_mandatory_sections(moj_next_package):
-    text = (moj_next_package / 'docs' / 'enunciado.md').read_text()
+def test_writes_a_statement_with_the_mandatory_sections(moj_package):
+    text = (moj_package / 'docs' / 'enunciado.md').read_text()
     # validate-problem.sh hard-fails without these two headings.
     assert '## Entrada' in text
     assert '## Saída' in text
@@ -53,21 +53,21 @@ def test_writes_a_statement_with_the_mandatory_sections(moj_next_package):
     assert not text.lstrip().startswith('%')
 
 
-def test_does_not_write_calibrated_files(moj_next_package):
+def test_does_not_write_calibrated_files(moj_package):
     # MOJ measures the time limit; it is never authored.
-    assert not (moj_next_package / 'tl').exists()
+    assert not (moj_package / 'tl').exists()
     # A scripts/testlib.h would take precedence over the mojtools-vendored one.
-    assert not (moj_next_package / 'scripts' / 'testlib.h').exists()
-    assert not (moj_next_package / 'scripts' / 'rbx.h').exists()
+    assert not (moj_package / 'scripts' / 'testlib.h').exists()
+    assert not (moj_package / 'scripts' / 'rbx.h').exists()
 
 
-def test_writes_moj_meta_with_a_display_title(moj_next_package):
-    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+def test_writes_moj_meta_with_a_display_title(moj_package):
+    meta = json.loads((moj_package / '.moj-meta.json').read_text())
     assert meta['display_title']
 
 
-def test_moj_meta_omits_server_owned_fields(moj_next_package):
-    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+def test_moj_meta_omits_server_owned_fields(moj_package):
+    meta = json.loads((moj_package / '.moj-meta.json').read_text())
     # The server never accepts these from a tar upload, and `public` is additionally
     # fail-closed in gen-problem-json.sh -- emitting it risks publishing an
     # unpublished problem to anonymous users.
@@ -77,10 +77,10 @@ def test_moj_meta_omits_server_owned_fields(moj_next_package):
     assert 'collections' not in meta
 
 
-def test_moj_meta_allows_languages_with_an_accepted_solution(moj_next_package):
+def test_moj_meta_allows_languages_with_an_accepted_solution(moj_package):
     # MOJ calibrates a time limit per language from sols/good, so a language without
     # an accepted solution can never be submitted in anyway.
-    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+    meta = json.loads((moj_package / '.moj-meta.json').read_text())
     assert meta['languages'] == ['cpp']
 
 
@@ -104,17 +104,17 @@ def test_moj_meta_languages_covers_every_accepted_language(testing_pkg, tmp_path
     assert meta['languages'] == ['cpp', 'py']
 
 
-def test_reports_which_languages_are_enabled(moj_next_package_output):
-    assert 'MOJ will accept submissions in' in moj_next_package_output
-    assert 'cpp' in moj_next_package_output
+def test_reports_which_languages_are_enabled(moj_package_output):
+    assert 'MOJ will accept submissions in' in moj_package_output
+    assert 'cpp' in moj_package_output
 
 
 def test_names_the_languages_skipped_for_lacking_an_accepted_solution(
-    moj_next_package_output,
+    moj_package_output,
 ):
     # The whitelist is derived, and it is a real restriction -- a setter shipping only
     # a C++ solution gets a C++-only problem. That must not be silent.
-    out = ' '.join(moj_next_package_output.split())
+    out = ' '.join(moj_package_output.split())
     assert 'ACCEPTED' in out
     for language in ['c', 'java', 'kt', 'py']:
         assert language in out
@@ -176,14 +176,14 @@ def test_display_title_reports_an_ambiguous_title(testing_pkg, tmp_path):
         run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
 
 
-def test_display_title_falls_back_to_the_problem_name(moj_next_package):
+def test_display_title_falls_back_to_the_problem_name(moj_package):
     # The fixture package declares no titles at all.
-    meta = json.loads((moj_next_package / '.moj-meta.json').read_text())
+    meta = json.loads((moj_package / '.moj-meta.json').read_text())
     assert meta['display_title'] == 'test-problem'
 
 
-def test_conf_uses_the_rss_memory_knob(moj_next_package):
-    conf = (moj_next_package / 'conf').read_text()
+def test_conf_uses_the_rss_memory_knob(moj_package):
+    conf = (moj_package / 'conf').read_text()
     assert 'MEMLIMITMB=' in conf
     # ULIMITS[-v] is the legacy knob; MEMLIMITMB deliberately replaces it, and MOJ
     # drops the virtual-memory limit when it is set.
@@ -192,8 +192,8 @@ def test_conf_uses_the_rss_memory_knob(moj_next_package):
     assert 'TLMOD[calibrafactor]=1.35' in conf
 
 
-def test_binary_problems_halt_at_the_first_failure(moj_next_binary_package):
-    conf = (moj_next_binary_package / 'conf').read_text()
+def test_binary_problems_halt_at_the_first_failure(moj_binary_package):
+    conf = (moj_binary_package / 'conf').read_text()
     assert 'STOPWHEN_WA=y' in conf
     assert 'STOPWHEN_TLE=y' in conf
     assert 'STOPWHEN_RE=y' in conf
@@ -225,15 +225,15 @@ def test_points_problems_never_halt_early(testing_pkg, tmp_path):
 # -- tests ------------------------------------------------------------------
 
 
-def test_samples_are_named_sample_and_sort_first(moj_next_package):
-    names = sorted(p.name for p in (moj_next_package / 'tests' / 'input').iterdir())
+def test_samples_are_named_sample_and_sort_first(moj_package):
+    names = sorted(p.name for p in (moj_package / 'tests' / 'input').iterdir())
     assert names[0].startswith('sample')
     assert any(name.startswith('t') for name in names)
 
 
-def test_every_input_has_a_paired_output(moj_next_package):
-    inputs = {p.name for p in (moj_next_package / 'tests' / 'input').iterdir()}
-    outputs = {p.name for p in (moj_next_package / 'tests' / 'output').iterdir()}
+def test_every_input_has_a_paired_output(moj_package):
+    inputs = {p.name for p in (moj_package / 'tests' / 'input').iterdir()}
+    outputs = {p.name for p in (moj_package / 'tests' / 'output').iterdir()}
     # validate-problem.sh checks the pairing in both directions.
     assert inputs == outputs
 
@@ -251,8 +251,8 @@ def test_refuses_a_package_without_samples(testing_pkg, tmp_path):
 # -- checker ----------------------------------------------------------------
 
 
-def test_checker_is_a_single_self_contained_file(moj_next_package):
-    text = (moj_next_package / 'scripts' / 'checker.cpp').read_text()
+def test_checker_is_a_single_self_contained_file(moj_package):
+    text = (moj_package / 'scripts' / 'checker.cpp').read_text()
     # The bridge binds only checker.cpp and testlib.h into the compile jail, so no
     # other quoted include can resolve there.
     assert '#include "testlib.h"' not in text
@@ -260,20 +260,16 @@ def test_checker_is_a_single_self_contained_file(moj_next_package):
     assert 'registerTestlibCmd' in text
 
 
-def test_compare_is_the_canonical_stub(moj_next_package):
-    emitted = moj_next_package / 'scripts' / 'compare.sh'
-    bundled = (
-        get_default_app_path() / 'packagers' / 'moj_next' / 'scripts' / 'compare.sh'
-    )
+def test_compare_is_the_canonical_stub(moj_package):
+    emitted = moj_package / 'scripts' / 'compare.sh'
+    bundled = get_default_app_path() / 'packagers' / 'moj' / 'scripts' / 'compare.sh'
     assert emitted.read_bytes() == bundled.read_bytes()
     # Without +x the judge gets "Permission denied" and every test is a judge error.
     assert emitted.stat().st_mode & 0o111
 
 
 @pytest.mark.skipif(shutil.which('g++') is None, reason='g++ not available')
-def test_amalgamated_checker_compiles_the_way_moj_compiles_it(
-    moj_next_package, tmp_path
-):
+def test_amalgamated_checker_compiles_the_way_moj_compiles_it(moj_package, tmp_path):
     proc = subprocess.run(
         [
             'g++',
@@ -287,7 +283,7 @@ def test_amalgamated_checker_compiles_the_way_moj_compiles_it(
             'cstdint',
             '-o',
             str(tmp_path / 'checker'),
-            str(moj_next_package / 'scripts' / 'checker.cpp'),
+            str(moj_package / 'scripts' / 'checker.cpp'),
         ],
         capture_output=True,
         text=True,
@@ -336,9 +332,9 @@ def test_refuses_an_unresolvable_checker_include(testing_pkg, tmp_path):
 # -- solutions --------------------------------------------------------------
 
 
-def test_accepted_solutions_go_to_good(moj_next_package):
+def test_accepted_solutions_go_to_good(moj_package):
     # MOJ calibrates the time limit from sols/good; without one it cannot calibrate.
-    assert list((moj_next_package / 'sols' / 'good').iterdir())
+    assert list((moj_package / 'sols' / 'good').iterdir())
 
 
 def test_outcomes_map_to_their_directories(testing_pkg, tmp_path):
@@ -414,36 +410,36 @@ def test_solutions_are_amalgamated(testing_pkg, tmp_path):
 # -- language scripts -------------------------------------------------------
 
 
-def test_emits_a_script_dir_per_declared_language(moj_next_package):
-    scripts = moj_next_package / 'scripts'
+def test_emits_a_script_dir_per_declared_language(moj_package):
+    scripts = moj_package / 'scripts'
     for language in ['c', 'cpp', 'py', 'java', 'kt']:
         assert (scripts / language / 'compile.sh').is_file()
         assert (scripts / language / 'run.sh').is_file()
 
 
-def test_emitted_scripts_are_executable(moj_next_package):
-    for path in (moj_next_package / 'scripts').rglob('*.sh'):
+def test_emitted_scripts_are_executable(moj_package):
+    for path in (moj_package / 'scripts').rglob('*.sh'):
         assert path.stat().st_mode & 0o111, path
 
 
-def test_flags_are_substituted(moj_next_package):
-    text = (moj_next_package / 'scripts' / 'cpp' / 'compile.sh').read_text()
+def test_flags_are_substituted(moj_package):
+    text = (moj_package / 'scripts' / 'cpp' / 'compile.sh').read_text()
     assert '{{rbxFlags}}' not in text
     assert '-std=c++20' in text
 
 
-def test_no_placeholder_survives_anywhere(moj_next_package):
-    for path in (moj_next_package / 'scripts').rglob('*.sh'):
+def test_no_placeholder_survives_anywhere(moj_package):
+    for path in (moj_package / 'scripts').rglob('*.sh'):
         assert '{{' not in path.read_text(), path
 
 
 # -- scoring ----------------------------------------------------------------
 
 
-def test_binary_problems_emit_no_score_file(moj_next_binary_package):
+def test_binary_problems_emit_no_score_file(moj_binary_package):
     # Without tests/score MOJ scores by percentage of tests and still requires all of
     # them to pass, which is the correct ICPC semantics.
-    assert not (moj_next_binary_package / 'tests' / 'score').exists()
+    assert not (moj_binary_package / 'tests' / 'score').exists()
 
 
 def test_points_problems_emit_a_score_file(testing_pkg, tmp_path):

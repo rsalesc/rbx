@@ -34,7 +34,7 @@ def test_build_flat_namespace_flat_source_is_byte_identical(testing_pkg):
     # A flat source whose only includes are builtins/system headers ships
     # unchanged under its reserved name with no extra files -- the byte-identical
     # regression guard for flat packages (#526). Per-target guards in
-    # test_polygon_flatten / test_boca_flatten / test_moj_flatten assert the same
+    # test_polygon_flatten / test_boca_flatten assert the same
     # invariant through each packager's materialized output.
     original = '#include "testlib.h"\n#include <cstdio>\nint main() { return 0; }\n'
     testing_pkg.add_file('check.cpp').write_text(original)
