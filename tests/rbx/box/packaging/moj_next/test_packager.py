@@ -319,6 +319,7 @@ def test_outcomes_map_to_their_directories(testing_pkg, tmp_path):
     testing_pkg.add_solution('slow.cpp', outcome='time-limit-exceeded').write_text(
         SLOW_SOL
     )
+    testing_pkg.add_solution('maybe.cpp', outcome='any').write_text('int main(){}\n')
     testing_pkg.save()
 
     root = (
@@ -328,6 +329,27 @@ def test_outcomes_map_to_their_directories(testing_pkg, tmp_path):
     assert (root / 'good' / 'sol.cpp').is_file()
     assert (root / 'wrong' / 'wrong.cpp').is_file()
     assert (root / 'slow' / 'slow.cpp').is_file()
+    # `any` asserts nothing about the outcome, so it is a draft rather than a claim
+    # that it passes or fails -- and shipping it beats dropping it.
+    assert (root / 'upcoming' / 'maybe.cpp').is_file()
+
+
+def test_any_solutions_do_not_enable_a_submission_language(testing_pkg, tmp_path):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_solution('draft.py', outcome='any').write_text('print(1)\n')
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    # Only an ACCEPTED solution gets a calibrated time limit, so a draft must not
+    # open its language up for submissions.
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['languages'] == ['cpp']
+    assert (into_path / 'sols' / 'upcoming' / 'draft.py').is_file()
 
 
 def test_refuses_a_package_without_an_accepted_solution(testing_pkg, tmp_path):

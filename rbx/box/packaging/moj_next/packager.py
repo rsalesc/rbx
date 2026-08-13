@@ -393,7 +393,19 @@ class MojNextPackager(BasePackager):
 
     # -- solutions ------------------------------------------------------------
 
-    def _tag_for(self, solution: Solution) -> Optional[str]:
+    def _tag_for(self, solution: Solution) -> str:
+        """The `sols/` directory a solution belongs in.
+
+        `ANY` asserts nothing about the outcome, so none of good/pass/slow/wrong
+        describes it -- shipping it under any of those would state an expectation the
+        package does not make. It goes to `upcoming/`, MOJ's home for drafts, which is
+        both the honest classification and better than dropping the file.
+
+        Note `upcoming/` is *not* executed by `calibreitor.sh`: it runs `sols/good`
+        for the time limit, then `pass`, `slow` and `wrong` for verification. Nor is
+        it covered by `tl-checksum.sh` (which hashes only `sols/good`), so adding or
+        changing a draft never forces a recalibration.
+        """
         outcome = solution.outcome
         if outcome == ExpectedOutcome.ACCEPTED:
             return 'good'
@@ -402,7 +414,7 @@ class MojNextPackager(BasePackager):
         if outcome.is_slow():
             return 'slow'
         if outcome == ExpectedOutcome.ANY:
-            return None
+            return 'upcoming'
         return 'wrong'
 
     def _solution_content(self, solution: Solution) -> bytes:
@@ -438,14 +450,6 @@ class MojNextPackager(BasePackager):
 
         for solution in package.get_solutions():
             tag = self._tag_for(solution)
-            if tag is None:
-                console.console.print(
-                    f'[warning]Skipping {solution.href()}: its expected outcome '
-                    '[item]any[/item] does not map to a MOJ solution '
-                    'directory.[/warning]'
-                )
-                continue
-
             basename = solution.path.name
             if basename in written[tag]:
                 console.console.print(

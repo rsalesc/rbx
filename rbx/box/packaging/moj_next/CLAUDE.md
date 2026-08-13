@@ -82,6 +82,19 @@ reading `score-summary.sh`:
   the checker *source* mentions them — checked on the source, never the amalgamated
   output, since testlib declares both itself.
 
+## Solutions
+
+`ACCEPTED` → `good/`, `ACCEPTED_OR_TLE` → `pass/`, `is_slow()` → `slow/`, the
+incorrect outcomes → `wrong/`, and `ANY` → `upcoming/`. `ANY` asserts nothing about
+the outcome, so filing it under any of the others would state an expectation the
+package does not make; `upcoming/` is MOJ's drafts directory.
+
+Bounding what `upcoming/` buys: `calibreitor.sh` runs `sols/good` (for the time limit)
+and then `pass`, `slow`, `wrong` (verification only, and skipped entirely under
+`CALIBRATE_ONLY_GOOD=1`) — it **never runs `upcoming/`**. `tl-checksum.sh` hashes only
+`sols/good` among the solution dirs, so a draft never forces a recalibration either.
+Shipping drafts is about not losing them, not about getting them executed.
+
 ## Languages
 
 `MojLanguageExtension` (key `moj`, in `rbx/box/extensions.py`) mirrors

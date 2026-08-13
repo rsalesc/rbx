@@ -227,7 +227,18 @@ amalgamation must inline them.
 | `ACCEPTED_OR_TLE` | `pass/` |
 | `outcome.is_slow()` | `slow/` |
 | `WRONG_ANSWER`, `INCORRECT`, `RUNTIME_ERROR`, `MEMORY_LIMIT_EXCEEDED`, `OUTPUT_LIMIT_EXCEEDED` | `wrong/` |
-| `ANY` | skipped, with a warning |
+| `ANY` | `upcoming/` |
+
+`ANY` asserts nothing about the outcome, so none of good/pass/slow/wrong describes it
+— filing it under any of those would state an expectation the package does not make.
+`upcoming/` is MOJ's home for drafts, which is both the honest classification and
+better than dropping the file (the first pass skipped it with a warning).
+
+Two facts about `upcoming/` worth knowing, since they bound what this buys: it is
+**not executed by `calibreitor.sh`**, which runs `sols/good` for the time limit and
+then `pass`, `slow` and `wrong` for verification; and it is **not covered by
+`tl-checksum.sh`**, which hashes only `sols/good`, so adding or editing a draft never
+forces a recalibration.
 
 All accepted solutions go to `good/`. Since calibration takes the *worst* time across
 `good/` per language, a deliberately near-TL accepted solution will produce a more
