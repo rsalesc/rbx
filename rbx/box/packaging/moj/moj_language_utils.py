@@ -1,7 +1,7 @@
 import typing
 
 from rbx.box.environment import get_environment, get_language_or_nil
-from rbx.box.packaging.moj_next.extension import MojLanguage, MojLanguageExtension
+from rbx.box.packaging.moj.extension import MojLanguage, MojLanguageExtension
 
 # MOJ unified Python under `py`; `py2`/`py3` survive only as legacy spellings, and the
 # server normalizes them away. Normalizing here keeps `.moj-meta.json` canonical.

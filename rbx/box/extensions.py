@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtension
-from rbx.box.packaging.moj_next.extension import MojLanguageExtension
+from rbx.box.packaging.moj.extension import MojLanguageExtension
 from rbx.box.packaging.polygon.extension import PolygonLanguageExtension
 
 
