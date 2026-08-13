@@ -1,7 +1,6 @@
 from TexSoup import TexSoup
 
 from rbx.box.statements.texsoup_utils import (
-    ASSET_EXTS,
     add_labels_to_tikz_nodes,
     get_tikz_node_label,
     get_top_level_labeled_tikz_nodes,
@@ -337,7 +336,12 @@ A
 
 
 def test_strip_asset_ext_drops_only_asset_extensions():
+    # Every recognized extension, asserted through behavior.
     assert strip_asset_ext('img/diagram.png') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.jpg') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.jpeg') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.pdf') == 'img/diagram'
+    # Matching is case-insensitive.
     assert strip_asset_ext('img/diagram.PDF') == 'img/diagram'
     assert strip_asset_ext('img/diagram') == 'img/diagram'
     # Not an asset extension: left alone, dots and all.
@@ -374,15 +378,31 @@ def test_rewrite_includegraphics_preserves_optional_arg():
     assert r'{pic.png}' in out
 
 
+def test_rewrite_includegraphics_handles_multiple_nodes_and_prefix_collisions():
+    # The claim the parser exists to satisfy: several nodes in one block, with a
+    # remap key that is a prefix of another. A naive str.replace of `pic` would
+    # corrupt `pic2` into `a.png2` (or vice versa, depending on ordering).
+    out = rewrite_includegraphics(
+        r'\includegraphics{pic} then \includegraphics{pic2}',
+        {'pic': 'a.png', 'pic2': 'b.png'},
+    )
+    assert r'\includegraphics{a.png}' in out
+    assert r'\includegraphics{b.png}' in out
+    assert 'a.png2' not in out
+    assert 'pic' not in out
+
+
 def test_rewrite_includegraphics_leaves_unmapped_untouched():
-    block = r'\includegraphics{other}'
-    assert rewrite_includegraphics(block, {'pic': 'pic.png'}) == block
+    # Regression guard: externalized-TikZ references emitted by
+    # replace_labeled_tikz_nodes must survive an asset remap untouched (and this
+    # exercises a multi-segment extensionless path through strip_asset_ext).
+    block = r'\includegraphics{artifacts/tikz_figures/0_0}'
+    assert rewrite_includegraphics(block, {'pic': 'pic.png'}).strip() == block
 
 
 def test_rewrite_includegraphics_empty_remap_is_identity():
+    # `is`, not `==`: a TexSoup parse/serialize round-trip is not guaranteed
+    # byte-identical, so returning the input untouched is a deliberate
+    # no-round-trip guarantee for callers with nothing to rewrite.
     block = r'\includegraphics{pic}'
     assert rewrite_includegraphics(block, {}) is block
-
-
-def test_asset_exts_contains_the_expected_set():
-    assert ASSET_EXTS == ('.png', '.jpg', '.jpeg', '.pdf')

@@ -1,10 +1,14 @@
 import pathlib
-from typing import Dict, List, Optional, Tuple
+from typing import List, Mapping, Optional, Tuple
 
 from TexSoup import TexSoup
 from TexSoup.data import BraceGroup, BracketGroup, TexNode
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
+
+# Extensions an ``\includegraphics`` argument may carry (LaTeX resolves the
+# reference with or without one).
+ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.pdf')
 
 # TexSoup bug workaround: \$ is valid LaTeX (literal dollar sign) but TexSoup
 # interprets the $ as opening math mode and fails with EOFError.
@@ -191,9 +195,6 @@ def replace_labeled_tikz_nodes(
         tikz_node.replace_with(*TexSoup(cmd_str).contents)
 
 
-ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.pdf')
-
-
 def strip_asset_ext(ref: str) -> str:
     """Drop a trailing image/PDF extension from an ``\\includegraphics`` argument
     so it lines up with an (extensionless) reference key."""
@@ -201,15 +202,20 @@ def strip_asset_ext(ref: str) -> str:
     return str(path.with_suffix('')) if path.suffix.lower() in ASSET_EXTS else ref
 
 
-def rewrite_includegraphics(block: str, remap: Dict[str, str]) -> str:
+def rewrite_includegraphics(block: str, remap: Mapping[str, str]) -> str:
     """Rewrite every ``\\includegraphics[opts]{ref}`` whose ``ref`` (with any
-    image/PDF extension stripped) is a key in ``remap`` to the mapped flat name,
+    image/PDF extension stripped) is a key in ``remap`` to the mapped reference,
     preserving optional arguments and all surrounding text.
 
-    Parser-based (TexSoup) rather than a naive ``str.replace`` (audit finding
-    #6): order-independent, free of substring collisions, and — by stripping the
-    extension before lookup — it never produces a double extension
-    (``imgs__fig.png.png``)."""
+    ``remap`` is keyed by extensionless reference and valued by whatever the
+    target layout calls the asset (a flattened ``img__diagram.png``, a relative
+    ``img/diagram.png`` — the rewrite does not care).
+
+    Parser-based (TexSoup) rather than a naive ``str.replace``: substitutions are
+    order-independent and free of substring collisions (remapping both ``pic``
+    and ``pic2`` cannot corrupt either), and — by stripping the extension before
+    lookup — a reference written *with* its extension never gains a second one
+    (``fig.png.png``)."""
     if not remap:
         return block
     soup = parse_latex(block)
