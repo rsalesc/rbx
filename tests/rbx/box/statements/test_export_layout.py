@@ -100,25 +100,72 @@ def test_sample_scope_asset_wins_a_key_collision_with_a_statement_asset():
     assert remap == {'diagram': 'sample_0__diagram.png'}
 
 
-# --- Ambiguity: two assets at the same shadow tier claiming one reference ---
+# --- Two assets at the same shadow tier claiming one reference --------------
 
 
-def test_two_statement_assets_sharing_a_reference_key_are_rejected():
-    # Distinct destinations (img__d.png vs img__d.pdf), so no dest-keyed check
-    # can catch this -- but `\includegraphics{img/d}` cannot name both.
+@pytest.mark.parametrize('order', [(0, 1), (1, 0)])
+def test_pdf_wins_the_reference_over_a_raster_of_the_same_name(order):
+    # graphicx resolves an extensionless \includegraphics{img/d} to the PDF
+    # under pdflatex, so that is the file the author's own build rendered.
     png = _asset(AssetScope.STATEMENT, 'img/d.png')
     pdf = _asset(AssetScope.STATEMENT, 'img/d.pdf')
-    with pytest.raises(ValueError, match='img/d'):
-        export.derive_remap([png, pdf], export.FlatLayout(), DocumentSlot.body())
+    both = [png, pdf]
+    remap = export.derive_remap(
+        [both[i] for i in order], export.FlatLayout(), DocumentSlot.body()
+    )
+    assert remap == {'img/d': 'img__d.pdf'}
 
 
-def test_ambiguity_error_names_both_sources():
+def test_losing_the_reference_does_not_remove_an_asset_from_the_list():
+    # The loser is still shipped, under its own distinct destination.
     png = _asset(AssetScope.STATEMENT, 'img/d.png')
     pdf = _asset(AssetScope.STATEMENT, 'img/d.pdf')
+    assets = [png, pdf]
+    export.derive_remap(assets, export.FlatLayout(), DocumentSlot.body())
+    assert assets == [png, pdf]
+    layout = export.FlatLayout()
+    assert layout.place_asset(png) != layout.place_asset(pdf)
+
+
+def test_raster_precedence_follows_the_graphicx_order():
+    png = _asset(AssetScope.STATEMENT, 'd.png')
+    jpg = _asset(AssetScope.STATEMENT, 'd.jpg')
+    jpeg = _asset(AssetScope.STATEMENT, 'd.jpeg')
+    remap = export.derive_remap(
+        [jpeg, jpg, png], export.FlatLayout(), DocumentSlot.body()
+    )
+    assert remap == {'d': 'd.png'}
+
+
+def test_an_unknown_extension_loses_to_a_known_one():
+    # A .svg only reaches the asset list through an explicit `assets` glob, and
+    # graphicx would not have picked it under pdflatex.
+    svg = _asset(AssetScope.STATEMENT, 'figure.svg')
+    png = _asset(AssetScope.STATEMENT, 'figure.png')
+    remap = export.derive_remap([svg, png], export.FlatLayout(), DocumentSlot.body())
+    assert remap == {'figure': 'figure.png'}
+
+
+def test_same_extension_different_destinations_is_undecidable():
+    statement = export.ResolvedAsset(
+        scope=AssetScope.STATEMENT,
+        source=pathlib.Path('/pkg/statement/logo.png'),
+        rel=pathlib.PurePosixPath('logo.png'),
+    )
+    external = export.ResolvedAsset(
+        scope=AssetScope.EXTERNAL,
+        source=pathlib.Path('/pkg/vendor/logo.png'),
+        rel=pathlib.PurePosixPath('logo.png'),
+    )
+    layout = export.SubtreeLayout(
+        asset_roots={AssetScope.STATEMENT: 'docs', AssetScope.EXTERNAL: 'vendor'}
+    )
     with pytest.raises(ValueError) as excinfo:
-        export.derive_remap([png, pdf], export.FlatLayout(), DocumentSlot.body())
-    assert str(png.source) in str(excinfo.value)
-    assert str(pdf.source) in str(excinfo.value)
+        export.derive_remap([statement, external], layout, DocumentSlot.body())
+    message = str(excinfo.value)
+    assert 'logo' in message
+    assert str(statement.source) in message
+    assert str(external.source) in message
 
 
 def test_two_assets_landing_on_the_same_destination_are_not_ambiguous():
@@ -227,6 +274,21 @@ def test_sample_explanation_document_dir_requires_an_index_placeholder():
         export.SubtreeLayout(
             document_dirs={'sample_explanation': 'docs/notes'}
         ).document_dir(DocumentSlot.sample(0))
+
+
+@pytest.mark.parametrize('template', ['docs/{index}', 'docs/{index:03d}'])
+def test_a_root_with_no_index_to_interpolate_rejects_the_placeholder(template):
+    # The mirror image of the two tests above: without this, a body dir spelled
+    # 'docs/{index}' silently becomes 'docs/None' and '{index:03d}' raises a raw
+    # TypeError out of str.format.
+    with pytest.raises(ValueError, match='index'):
+        export.SubtreeLayout(document_dirs={'body': template}).document_dir(
+            DocumentSlot.body()
+        )
+    with pytest.raises(ValueError, match='index'):
+        export.SubtreeLayout(asset_roots={AssetScope.STATEMENT: template}).place_asset(
+            STATEMENT_ASSET
+        )
 
 
 def test_unknown_placeholder_in_a_root_is_reported():

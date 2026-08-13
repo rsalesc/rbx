@@ -286,7 +286,8 @@ class SubtreeLayout:
     the statement is ``docs/enunciado.md`` and sample notes ship elsewhere.
 
     Roots are format strings; ``{index}`` (the sample index) is available to the
-    SAMPLE scope and the sample_explanation slot, and is REQUIRED there.
+    SAMPLE scope and the sample_explanation slot, where it is REQUIRED, and is
+    rejected anywhere else, where there is no index to interpolate.
 
     ``keep_extension=False`` yields a reference identical to the authored one --
     so that the entry drops out of the remap and no block is rewritten -- but
@@ -304,30 +305,41 @@ class SubtreeLayout:
     def _format(self, template: str, index: Optional[int], what: str) -> str:
         try:
             return template.format(index=index)
-        except (KeyError, IndexError) as e:
+        except (KeyError, IndexError, TypeError) as e:
             raise ValueError(f'Invalid placeholder in {what} root {template!r}.') from e
+
+    def _check_index_placeholder(self, template: str, what: str, needed: bool) -> None:
+        """``{index}`` is meaningful exactly where an index exists: required
+        there (or entries from different samples collide into one path) and
+        rejected everywhere else (where it could only interpolate ``None``)."""
+        if needed and '{index' not in template:
+            raise ValueError(
+                f'The {what} root must carry an {{index}} placeholder, otherwise '
+                f'entries from different samples collide; got {template!r}.'
+            )
+        if not needed and '{index' in template:
+            raise ValueError(
+                f'The {what} root has no sample index to interpolate, so it must '
+                f'not carry an {{index}} placeholder; got {template!r}.'
+            )
 
     def place_asset(self, asset: ResolvedAsset) -> pathlib.PurePosixPath:
         root = self.asset_roots.get(asset.scope, '')
-        if asset.scope == AssetScope.SAMPLE and '{index' not in root:
-            raise ValueError(
-                'The SAMPLE asset root must carry an {index} placeholder, '
-                'otherwise assets from different samples collide; '
-                f'got {root!r}.'
-            )
-        root = self._format(root, asset.sample_index, asset.scope.value)
+        self._check_index_placeholder(
+            root, f'{asset.scope.value} asset', asset.scope == AssetScope.SAMPLE
+        )
+        root = self._format(root, asset.sample_index, f'{asset.scope.value} asset')
         return pathlib.PurePosixPath(root) / asset.rel if root else asset.rel
 
     def document_dir(self, slot: DocumentSlot) -> pathlib.PurePosixPath:
         template = self.document_dirs.get(slot.kind, '')
-        if slot.kind == 'sample_explanation' and '{index' not in template:
-            raise ValueError(
-                'The sample_explanation document dir must carry an {index} '
-                'placeholder, otherwise every sample explanation collapses into '
-                f'one directory; got {template!r}.'
-            )
+        self._check_index_placeholder(
+            template,
+            f'{slot.kind} document',
+            slot.kind == 'sample_explanation',
+        )
         return pathlib.PurePosixPath(
-            self._format(template, slot.index, slot.kind) or '.'
+            self._format(template, slot.index, f'{slot.kind} document') or '.'
         )
 
 
@@ -345,35 +357,64 @@ def _shadow_tier(asset: ResolvedAsset) -> bool:
     return asset.scope == AssetScope.SAMPLE
 
 
+#: Extension precedence for an extensionless reference, mirroring pdflatex's
+#: default ``\DeclareGraphicsExtensions``: PDF beats the raster formats. An
+#: extension outside this list ranks last.
+_EXTENSION_PRECEDENCE = ('.pdf', '.png', '.jpg', '.jpeg')
+
+
+def _extension_rank(asset: ResolvedAsset) -> int:
+    """Lower ranks win the reference. See ``_EXTENSION_PRECEDENCE``."""
+    suffix = asset.rel.suffix.lower()
+    if suffix not in _EXTENSION_PRECEDENCE:
+        return len(_EXTENSION_PRECEDENCE)
+    return _EXTENSION_PRECEDENCE.index(suffix)
+
+
 def _resolve_references(
     assets: Iterable[ResolvedAsset], layout: AssetLayout, slot: DocumentSlot
 ) -> Dict[str, ResolvedAsset]:
     """The single asset each reference key names, for a document in ``slot``.
 
-    Sample-scope assets are considered last so they win a key collision with a
-    statement-scope asset of the same name. Two assets in the SAME tier claiming
-    one key are not a shadowing rule, they are an ambiguity: the reference cannot
-    name both, so it is rejected here -- the first place the clash is observable.
-    ``resolve_assets`` says so explicitly, and no later dest-keyed check can
-    catch it, since ``img/d.png`` and ``img/d.pdf`` have distinct destinations
-    and the same key.
+    References are extensionless, so several assets can claim one key -- and
+    routinely do, since ``resolve_assets`` sweeps up every image under the
+    statement dir whether or not a block cites it. Resolution mirrors what the
+    author's own build did:
+
+    1. A sample-scope asset shadows a non-sample one of the same key.
+    2. Within a tier, extension precedence decides (``_EXTENSION_PRECEDENCE``),
+       exactly as ``graphicx`` resolves ``\\includegraphics{fig}``. Shipping the
+       PDF of a ``fig.pdf``/``fig.png`` pair is therefore not a coin flip: it is
+       the file the locally rendered statement used.
+    3. Only a same-tier, same-extension, different-destination pair is left
+       undecidable, and that raises.
+
+    The loser is only denied the *reference*; it stays in the asset list and is
+    still shipped under its own destination.
     """
     winner: Dict[str, ResolvedAsset] = {}
     for asset in sorted(assets, key=_shadow_tier):
         if not _slot_sees(asset, slot):
             continue
         previous = winner.get(asset.ref_key)
-        if (
-            previous is not None
-            and _shadow_tier(previous) == _shadow_tier(asset)
-            and layout.place_asset(previous) != layout.place_asset(asset)
-        ):
+        if previous is None or _shadow_tier(previous) != _shadow_tier(asset):
+            winner[asset.ref_key] = asset
+            continue
+        if layout.place_asset(previous) == layout.place_asset(asset):
+            # One destination, so the reference is unambiguous whichever asset
+            # is recorded. Whether shipping two sources to one path is legal is
+            # the bundle's problem, not the reference's.
+            continue
+        if _extension_rank(asset) == _extension_rank(previous):
             raise ValueError(
-                f'Ambiguous statement asset reference {asset.ref_key!r}: '
-                f'{previous.source} and {asset.source} are both cited by it. '
-                'Rename one of them.'
+                f'Cannot decide which asset the reference {asset.ref_key!r} '
+                f'names: {previous.source} and {asset.source} both reduce to it '
+                'and share an extension, so extension precedence cannot choose '
+                'between them. Rename one, move one out of the statement '
+                'directory, or drop one.'
             )
-        winner[asset.ref_key] = asset
+        if _extension_rank(asset) < _extension_rank(previous):
+            winner[asset.ref_key] = asset
     return winner
 
 
