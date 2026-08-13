@@ -1,4 +1,4 @@
-"""One statement export pipeline, shared by every target, in four stages:
+"""One statement export pipeline, shared by every target, in five stages:
 
 1. **Blocks** (``get_substituted_statement_blocks`` /
    ``get_processed_statement_blocks``) -- read what the build left in the overlay,
@@ -11,7 +11,7 @@
 5. **Bundle** (``build_statement_bundle``) -- the four stages assembled into a
    ``StatementBundle``: rewritten blocks plus placed assets, for one target.
 
-Stages 2--4 are genuinely target-independent: they know only paths, and a target
+Stages 2--5 are genuinely target-independent: they know only paths, and a target
 is expressed entirely as a layout. Stage 1 is not quite -- its final,
 *optional* step converts to the Polygon TeX subset (see
 ``get_processed_statement_blocks``), which is why ``polygon_utils`` is imported
@@ -30,9 +30,7 @@ import shutil
 import tempfile
 from typing import Dict, Iterable, List, Literal, Optional, Protocol, Set
 
-import typer
-
-from rbx import console, utils
+from rbx import utils
 from rbx.box.statements import demacro_utils, polygon_utils, sample_staging
 from rbx.box.statements.build_statements import (
     get_produced_tikz_pdfs,
@@ -47,9 +45,14 @@ from rbx.box.statements.texsoup_utils import ASSET_EXTS, rewrite_includegraphics
 class StatementExportError(ValueError):
     """A statement's asset set cannot be exported as configured.
 
-    Raised by the two guards below -- reference ambiguity and destination
+    Raised by the two asset guards below -- reference ambiguity and destination
     collisions -- both of which are *setter* mistakes with actionable messages,
-    not programming errors. A ``ValueError`` subclass so a library consumer that
+    not programming errors; by the missing-artifact check in
+    ``get_substituted_statement_blocks``, which is a "run the build first"
+    mistake; and by ``SubtreeLayout``'s root checks, which are a *packager
+    author's* mistake -- still an error the consumer's CLI boundary should
+    render rather than a traceback it should let escape. A ``ValueError``
+    subclass so a library consumer that
     already catches ``ValueError`` keeps working, and its own type so a CLI
     consumer can turn exactly these into a clean error message without also
     swallowing the pydantic/YAML ``ValueError``s the pipeline may raise.
@@ -64,11 +67,15 @@ def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
     statement_dir = get_statement_dir(statement)
     substituted_blocks_path = statement_dir / 'blocks.sub.yml'
     if not substituted_blocks_path.is_file():
-        console.console.print(
-            f'Substituted blocks file [item]{substituted_blocks_path}[/item] does not exist. '
-            'Please run the command to build the statement again.',
+        # A library signals by raising, so this stays a StatementExportError even
+        # though it is not an asset problem: every consumer already renders that
+        # type at its CLI boundary, and a `typer.Exit` here would hand a non-Typer
+        # consumer a control-flow exception whose message was printed to someone
+        # else's console.
+        raise StatementExportError(
+            f'Substituted blocks file {substituted_blocks_path} does not exist. '
+            'Please run the command to build the statement again.'
         )
-        raise typer.Exit(1)
 
     statement_blocks = utils.model_from_yaml(
         StatementBlocks, substituted_blocks_path.read_text()
@@ -169,13 +176,20 @@ class AssetScope(enum.Enum):
     ``STATEMENT``   the statement ``file``'s directory          ``img/fig``
     ``TIKZ``        the overlay root (``get_statement_dir``)    ``artifacts/tikz_figures/i_0``
     ``SAMPLE``      ``<overlay>/.samples/<idx>/``               ``diagram``
-    ``EXTERNAL``    the package root                            n/a (no auto-rewrite)
+    ``EXTERNAL``    the package root                            ``extra/logo``
     ==============  ==========================================  =======================
 
     Sources, respectively: image/PDF under the statement dir plus ``assets``
     globs falling under it (any extension); the ``artifacts/tikz_figures/**.pdf``
     of the forced-externalize build; image/PDF under the staged sample folder;
     ``assets`` globs outside the statement dir.
+
+    ``EXTERNAL`` is a reference base like any other, not an exception: an
+    out-of-tree ``assets`` hit is referenced by its package-root-relative path
+    and IS remapped, exactly as the other three scopes are (an ``assets`` glob
+    landing outside the package entirely falls back to the bare file name). The
+    pre-extraction code left these unrewritten, forcing the author to spell the
+    uploaded name by hand; design §7 change 1 records the switch.
     """
 
     STATEMENT = 'statement'
@@ -209,7 +223,9 @@ class ResolvedAsset:
         """The extensionless reference a block uses to cite this asset.
 
         Beware the asymmetry with the lookup side: this strips *any* suffix,
-        while ``strip_asset_ext`` strips only ``ASSET_EXTS``. So a ``figure.svg``
+        while ``texsoup_utils.strip_asset_ext`` -- which is what
+        ``rewrite_includegraphics`` reduces an authored reference with before
+        looking it up in the remap -- strips only ``ASSET_EXTS``. So a ``figure.svg``
         asset keys as ``figure``, and a reference spelled
         ``\\includegraphics{figure.svg}`` -- which strips to itself -- never
         matches it. Pre-existing and intended; non-image extensions only reach
@@ -366,12 +382,6 @@ class DocumentSlot:
     def sample(cls, index: int) -> 'DocumentSlot':
         return cls(kind='sample_explanation', index=index)
 
-    @property
-    def sample_index(self) -> int:
-        """The sample index, for sample_explanation slots only."""
-        assert self.index is not None
-        return self.index
-
 
 class AssetLayout(Protocol):
     """Decides where assets and documents land. Both answers are *paths*, so a
@@ -422,7 +432,19 @@ class SubtreeLayout:
 
     Roots are format strings; ``{index}`` (the sample index) is available to the
     SAMPLE scope and the sample_explanation slot, where it is REQUIRED, and is
-    rejected anywhere else, where there is no index to interpolate.
+    rejected anywhere else, where there is no index to interpolate. So a layout
+    meant for statements with samples needs BOTH
+    ``asset_roots[AssetScope.SAMPLE]`` and
+    ``document_dirs['sample_explanation']``, each carrying ``{index}``.
+    ``document_dirs['sample_explanation']`` is the one easiest to forget:
+    ``build_statement_bundle`` calls ``derive_remap`` for *every* explanation
+    index, so a statement that has explanations at all -- images or not -- hits
+    it.
+
+    Roots are checked lazily, when a scope or slot is actually placed, rather
+    than in ``__post_init__``: which keys a layout needs depends on the
+    statement, and a package with no sample explanations legitimately configures
+    neither sample key. Eager validation would reject those layouts outright.
 
     ``keep_extension=False`` yields a reference identical to the authored one --
     so that the entry drops out of the remap and no block is rewritten -- but
@@ -441,40 +463,66 @@ class SubtreeLayout:
         try:
             return template.format(index=index)
         except (KeyError, IndexError, TypeError) as e:
-            raise ValueError(f'Invalid placeholder in {what} root {template!r}.') from e
+            raise StatementExportError(
+                f'Invalid placeholder in {what} root {template!r}.'
+            ) from e
 
-    def _check_index_placeholder(self, template: str, what: str, needed: bool) -> None:
+    def _check_index_placeholder(
+        self, template: Optional[str], what: str, key_hint: str, needed: bool
+    ) -> None:
         """``{index}`` is meaningful exactly where an index exists: required
         there (or entries from different samples collide into one path) and
-        rejected everywhere else (where it could only interpolate ``None``)."""
-        if needed and '{index' not in template:
-            raise ValueError(
-                f'The {what} root must carry an {{index}} placeholder, otherwise '
-                f'entries from different samples collide; got {template!r}.'
-            )
-        if not needed and '{index' in template:
-            raise ValueError(
-                f'The {what} root has no sample index to interpolate, so it must '
-                f'not carry an {{index}} placeholder; got {template!r}.'
+        rejected everywhere else (where it could only interpolate ``None``).
+
+        ``template is None`` means the key was never configured, which is a
+        different mistake from configuring it without ``{index}`` and gets its
+        own message: naming the missing key is the whole point, since the author
+        of a layout that simply omits it has no malformed template to look at.
+        """
+        if needed:
+            if template is None:
+                raise StatementExportError(
+                    f'This layout configures no {what} root, but the statement '
+                    f'has samples. Set {key_hint} to a template carrying an '
+                    '{index} placeholder.'
+                )
+            if '{index' not in template:
+                raise StatementExportError(
+                    f'The {what} root ({key_hint}) must carry an {{index}} '
+                    'placeholder, otherwise entries from different samples '
+                    f'collide; got {template!r}.'
+                )
+            return
+        if template is not None and '{index' in template:
+            raise StatementExportError(
+                f'The {what} root ({key_hint}) has no sample index to '
+                'interpolate, so it must not carry an {index} placeholder; got '
+                f'{template!r}.'
             )
 
     def place_asset(self, asset: ResolvedAsset) -> pathlib.PurePosixPath:
-        root = self.asset_roots.get(asset.scope, '')
+        what = f'{asset.scope.value} asset'
+        root = self.asset_roots.get(asset.scope)
         self._check_index_placeholder(
-            root, f'{asset.scope.value} asset', asset.scope == AssetScope.SAMPLE
+            root,
+            what,
+            f'asset_roots[AssetScope.{asset.scope.name}]',
+            asset.scope == AssetScope.SAMPLE,
         )
-        root = self._format(root, asset.sample_index, f'{asset.scope.value} asset')
+        root = self._format(root or '', asset.sample_index, what)
         return pathlib.PurePosixPath(root) / asset.rel if root else asset.rel
 
     def document_dir(self, slot: DocumentSlot) -> pathlib.PurePosixPath:
-        template = self.document_dirs.get(slot.kind, '')
+        what = f'{slot.kind} document'
+        template = self.document_dirs.get(slot.kind)
         self._check_index_placeholder(
             template,
-            f'{slot.kind} document',
+            what,
+            f'document_dirs[{slot.kind!r}]',
             slot.kind == 'sample_explanation',
         )
         return pathlib.PurePosixPath(
-            self._format(template, slot.index, f'{slot.kind} document') or '.'
+            self._format(template or '', slot.index, what) or '.'
         )
 
 

@@ -112,6 +112,43 @@ def test_bundle_materializes_the_root_when_there_are_no_assets(tmp_path, monkeyp
     assert into.is_dir()
 
 
+def test_materialized_bytes_match_the_content_property(tmp_path, monkeypatch):
+    # `.content` reads the source and `materialize` copies it: two deliberately
+    # separate read paths that "do not double-buffer each other". They must still
+    # agree, and only FlatLayout exercises the naming side of materialize.
+    statement = _setup(tmp_path, monkeypatch)
+    bundle = export.build_statement_bundle(statement, layout=export.FlatLayout())
+
+    into = tmp_path / 'out'
+    bundle.materialize(into)
+
+    assert bundle.assets
+    for bundled in bundle.assets:
+        assert (into / bundled.dest).read_bytes() == bundled.content
+
+
+def test_a_layout_missing_the_sample_explanation_dir_fails_on_any_explanation(
+    tmp_path, monkeypatch
+):
+    # `build_statement_bundle` derives a remap per explanation index, so this
+    # explodes on a statement that merely HAS an explanation -- images or not.
+    statement = _setup(
+        tmp_path,
+        monkeypatch,
+        blocks=StatementBlocks(blocks={'legend': ''}, explanations={0: 'no images'}),
+    )
+    layout = export.SubtreeLayout(
+        asset_roots={
+            AssetScope.STATEMENT: 'docs',
+            AssetScope.SAMPLE: 'docs/notes/{index:03d}',
+        },
+        document_dirs={'body': 'docs'},
+    )
+    with pytest.raises(export.StatementExportError) as excinfo:
+        export.build_statement_bundle(statement, layout=layout)
+    assert "document_dirs['sample_explanation']" in str(excinfo.value)
+
+
 def test_bundled_asset_exposes_content_without_materializing(tmp_path, monkeypatch):
     statement = _setup(tmp_path, monkeypatch)
     bundle = export.build_statement_bundle(statement, layout=export.FlatLayout())
@@ -162,7 +199,7 @@ def test_bundle_rejects_two_sources_landing_on_one_destination(tmp_path, monkeyp
             'sample_explanation': 'docs/notes/{index:03d}',
         },
     )
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(export.StatementExportError) as exc:
         export.build_statement_bundle(statement, layout=layout)
 
     message = str(exc.value)

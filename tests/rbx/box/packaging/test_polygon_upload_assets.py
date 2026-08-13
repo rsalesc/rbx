@@ -289,3 +289,21 @@ def test_colliding_assets_exit_instead_of_raising(tmp_path, monkeypatch):
 
     with pytest.raises(typer.Exit):
         upload._build_bundle(statement)  # noqa: SLF001
+
+
+def test_ambiguous_references_exit_instead_of_raising(tmp_path, monkeypatch):
+    _simple_tree(tmp_path, monkeypatch)
+    # `logo.svg` and `logo.eps` both reduce to the reference `logo` and rank the
+    # same (neither extension is in graphicx's precedence list), so precedence
+    # has nothing to decide with -- the other guard. It must reach the setter as
+    # a message too, not as a `ValueError` traceback.
+    (tmp_path / 'statement' / 'logo.svg').write_bytes(b'svg')
+    (tmp_path / 'statement' / 'logo.eps').write_bytes(b'eps')
+    statement = Statement(
+        language='en',
+        file=pathlib.Path('statement/statement.rbx.tex'),
+        assets=['statement/logo.svg', 'statement/logo.eps'],
+    )
+
+    with pytest.raises(typer.Exit):
+        upload._build_bundle(statement)  # noqa: SLF001

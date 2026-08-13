@@ -1,5 +1,6 @@
 from typing import Callable, List, Optional, Tuple
 
+import rich.markup
 import typer
 
 from rbx import console
@@ -7,7 +8,10 @@ from rbx.box import package
 from rbx.box.exception import RbxException
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.statements import polygon_utils
-from rbx.box.statements.export import get_processed_statement_blocks
+from rbx.box.statements.export import (
+    StatementExportError,
+    get_processed_statement_blocks,
+)
 from rbx.box.statements.schema import Statement, StatementType
 
 
@@ -80,7 +84,16 @@ def validate_statements(main_language: Optional[str], upload_as_english: bool):
         console.console.print(
             f'Validating statement [item]{_statement_label(statement)}[/item] for language [item]{language}[/item]...'
         )
-        blocks = get_processed_statement_blocks(statement)
+        # `export` is a library and signals by raising; this is the CLI boundary
+        # where that becomes the house convention, exactly as `upload._build_bundle`
+        # does. Only StatementExportError -- its messages are already addressed to
+        # a problem setter, and anything else from the pipeline is a bug that
+        # should keep its traceback.
+        try:
+            blocks = get_processed_statement_blocks(statement)
+        except StatementExportError as e:
+            console.console.print(f'[error]{rich.markup.escape(str(e))}[/error]')
+            raise typer.Exit(1) from None
 
         errors: List[Tuple[str, List[polygon_utils.PolygonInvalidConstruct]]] = []
         for block_name, block_content in blocks.blocks.items():

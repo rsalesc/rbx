@@ -190,7 +190,7 @@ def test_same_extension_different_destinations_is_undecidable():
     layout = export.SubtreeLayout(
         asset_roots={AssetScope.STATEMENT: 'docs', AssetScope.EXTERNAL: 'vendor'}
     )
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(export.StatementExportError) as excinfo:
         export.derive_remap([statement, external], layout, DocumentSlot.body())
     message = str(excinfo.value)
     assert 'logo' in message
@@ -291,7 +291,7 @@ def test_shadowing_survives_a_layout_that_reaches_identity():
 
 
 def test_sample_scope_root_requires_an_index_placeholder():
-    with pytest.raises(ValueError):
+    with pytest.raises(export.StatementExportError, match='must carry'):
         export.SubtreeLayout(
             asset_roots={AssetScope.SAMPLE: 'docs/notes'},
             document_dirs={},
@@ -300,10 +300,32 @@ def test_sample_scope_root_requires_an_index_placeholder():
 
 def test_sample_explanation_document_dir_requires_an_index_placeholder():
     # Without it every sample's notes collapse into one directory.
-    with pytest.raises(ValueError, match='index'):
+    with pytest.raises(export.StatementExportError, match='must carry'):
         export.SubtreeLayout(
             document_dirs={'sample_explanation': 'docs/notes'}
         ).document_dir(DocumentSlot.sample(0))
+
+
+def test_a_layout_missing_a_sample_root_names_the_missing_key():
+    # Omitting the key entirely is a different mistake from spelling it without
+    # {index}, and the message must not accuse the author of the latter.
+    with pytest.raises(export.StatementExportError) as excinfo:
+        export.SubtreeLayout(asset_roots={AssetScope.STATEMENT: 'docs'}).place_asset(
+            SAMPLE_ASSET
+        )
+    message = str(excinfo.value)
+    assert 'configures no sample asset root' in message
+    assert 'asset_roots[AssetScope.SAMPLE]' in message
+
+
+def test_a_layout_missing_a_sample_explanation_dir_names_the_missing_key():
+    with pytest.raises(export.StatementExportError) as excinfo:
+        export.SubtreeLayout(document_dirs={'body': 'docs'}).document_dir(
+            DocumentSlot.sample(0)
+        )
+    message = str(excinfo.value)
+    assert 'configures no sample_explanation document root' in message
+    assert "document_dirs['sample_explanation']" in message
 
 
 @pytest.mark.parametrize('template', ['docs/{index}', 'docs/{index:03d}'])
@@ -311,18 +333,18 @@ def test_a_root_with_no_index_to_interpolate_rejects_the_placeholder(template):
     # The mirror image of the two tests above: without this, a body dir spelled
     # 'docs/{index}' silently becomes 'docs/None' and '{index:03d}' raises a raw
     # TypeError out of str.format.
-    with pytest.raises(ValueError, match='index'):
+    with pytest.raises(export.StatementExportError, match='index'):
         export.SubtreeLayout(document_dirs={'body': template}).document_dir(
             DocumentSlot.body()
         )
-    with pytest.raises(ValueError, match='index'):
+    with pytest.raises(export.StatementExportError, match='index'):
         export.SubtreeLayout(asset_roots={AssetScope.STATEMENT: template}).place_asset(
             STATEMENT_ASSET
         )
 
 
 def test_unknown_placeholder_in_a_root_is_reported():
-    with pytest.raises(ValueError, match='placeholder'):
+    with pytest.raises(export.StatementExportError, match='placeholder'):
         export.SubtreeLayout(
             asset_roots={AssetScope.STATEMENT: 'docs/{bogus}'},
             document_dirs={},
@@ -337,10 +359,6 @@ def test_document_slot_index_is_set_iff_the_slot_is_a_sample_explanation():
         export.DocumentSlot(kind='sample_explanation')
     with pytest.raises(ValueError, match='sample_explanation'):
         export.DocumentSlot(kind='body', index=5)
-
-
-def test_document_slot_narrows_its_index_for_sample_slots():
-    assert DocumentSlot.sample(3).sample_index == 3
 
 
 def test_document_slot_is_hashable_so_a_bundle_can_key_on_it():
