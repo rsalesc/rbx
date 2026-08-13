@@ -1,6 +1,7 @@
 """Layouts decide where assets and documents land; the reference remap is derived
 from those two placements, never configured."""
 
+import itertools
 import pathlib
 
 import pytest
@@ -144,6 +145,35 @@ def test_an_unknown_extension_loses_to_a_known_one():
     png = _asset(AssetScope.STATEMENT, 'figure.png')
     remap = export.derive_remap([svg, png], export.FlatLayout(), DocumentSlot.body())
     assert remap == {'figure': 'figure.png'}
+
+
+@pytest.mark.parametrize('order', list(itertools.permutations(range(3))))
+def test_losing_candidates_cannot_make_a_decided_key_undecidable(order):
+    # Two .jpg files with different destinations would be undecidable between
+    # themselves, but a .png outranks both, so neither ever owns the reference.
+    # Every input order must reach the .png and none may raise.
+    jpg_a = export.ResolvedAsset(
+        scope=AssetScope.STATEMENT,
+        source=pathlib.Path('/pkg/statement/d.jpg'),
+        rel=pathlib.PurePosixPath('d.jpg'),
+    )
+    jpg_b = export.ResolvedAsset(
+        scope=AssetScope.EXTERNAL,
+        source=pathlib.Path('/pkg/vendor/d.jpg'),
+        rel=pathlib.PurePosixPath('d.jpg'),
+    )
+    png = export.ResolvedAsset(
+        scope=AssetScope.STATEMENT,
+        source=pathlib.Path('/pkg/statement/d.png'),
+        rel=pathlib.PurePosixPath('d.png'),
+    )
+    layout = export.SubtreeLayout(
+        asset_roots={AssetScope.STATEMENT: 'docs', AssetScope.EXTERNAL: 'vendor'},
+        document_dirs={'body': 'docs'},
+    )
+    assets = [jpg_a, jpg_b, png]
+    remap = export.derive_remap([assets[i] for i in order], layout, DocumentSlot.body())
+    assert remap == {'d': 'd.png'}
 
 
 def test_same_extension_different_destinations_is_undecidable():

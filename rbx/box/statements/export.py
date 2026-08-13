@@ -359,7 +359,10 @@ def _shadow_tier(asset: ResolvedAsset) -> bool:
 
 #: Extension precedence for an extensionless reference, mirroring pdflatex's
 #: default ``\DeclareGraphicsExtensions``: PDF beats the raster formats. An
-#: extension outside this list ranks last.
+#: extension outside this list ranks last. Matching is case-insensitive, which
+#: is where this stops mirroring graphicx exactly: ``pdftex.def`` lists every
+#: lowercase spelling ahead of any uppercase one, so for a ``fig.PNG``/``fig.jpg``
+#: pair graphicx picks the JPG where this picks the PNG.
 _EXTENSION_PRECEDENCE = ('.pdf', '.png', '.jpg', '.jpeg')
 
 
@@ -389,32 +392,40 @@ def _resolve_references(
     3. Only a same-tier, same-extension, different-destination pair is left
        undecidable, and that raises.
 
-    The loser is only denied the *reference*; it stays in the asset list and is
-    still shipped under its own destination.
+    Each key is decided from its whole candidate set rather than folded over the
+    running winner, so the answer -- including whether it raises -- does not
+    depend on the order the assets arrive in. Candidates that lose on tier or
+    rank are out of the running entirely and cannot make a decided key
+    undecidable.
     """
+    candidates: Dict[str, List[ResolvedAsset]] = {}
+    for asset in assets:
+        if _slot_sees(asset, slot):
+            candidates.setdefault(asset.ref_key, []).append(asset)
+
     winner: Dict[str, ResolvedAsset] = {}
-    for asset in sorted(assets, key=_shadow_tier):
-        if not _slot_sees(asset, slot):
-            continue
-        previous = winner.get(asset.ref_key)
-        if previous is None or _shadow_tier(previous) != _shadow_tier(asset):
-            winner[asset.ref_key] = asset
-            continue
-        if layout.place_asset(previous) == layout.place_asset(asset):
-            # One destination, so the reference is unambiguous whichever asset
-            # is recorded. Whether shipping two sources to one path is legal is
-            # the bundle's problem, not the reference's.
-            continue
-        if _extension_rank(asset) == _extension_rank(previous):
-            raise ValueError(
-                f'Cannot decide which asset the reference {asset.ref_key!r} '
-                f'names: {previous.source} and {asset.source} both reduce to it '
-                'and share an extension, so extension precedence cannot choose '
-                'between them. Rename one, move one out of the statement '
-                'directory, or drop one.'
-            )
-        if _extension_rank(asset) < _extension_rank(previous):
-            winner[asset.ref_key] = asset
+    for key, group in candidates.items():
+        tier = max(_shadow_tier(asset) for asset in group)
+        in_tier = [asset for asset in group if _shadow_tier(asset) == tier]
+        rank = min(_extension_rank(asset) for asset in in_tier)
+        finalists = [asset for asset in in_tier if _extension_rank(asset) == rank]
+
+        best = finalists[0]
+        best_dest = layout.place_asset(best)
+        for other in finalists[1:]:
+            # Same tier and same extension: precedence has nothing left to
+            # decide with. A shared destination is still fine -- the reference
+            # is unambiguous whichever asset is recorded, and whether shipping
+            # two sources to one path is legal is the bundle's problem.
+            if layout.place_asset(other) != best_dest:
+                raise ValueError(
+                    f'Cannot decide which asset the reference {key!r} names: '
+                    f'{best.source} and {other.source} both reduce to it and '
+                    'share an extension, so extension precedence cannot choose '
+                    'between them. Rename one, move one out of the statement '
+                    'directory, or drop one.'
+                )
+        winner[key] = best
     return winner
 
 
