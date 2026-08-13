@@ -1,3 +1,6 @@
+from typing import Dict
+from unittest import mock
+
 import pytest
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
@@ -10,7 +13,12 @@ from rbx.box.timing import (
     relevant_languages_for_estimation,
 )
 from rbx.box.timing_config import TimingStrategy
-from rbx.box.timing_groups import TimingRangeError, partition_from_assignment
+from rbx.box.timing_groups import (
+    GroupMeasurements,
+    TimingRangeError,
+    partition_from_assignment,
+    resolve_groups,
+)
 
 
 def _formula(formula: str) -> TimingStrategy:
@@ -19,6 +27,17 @@ def _formula(formula: str) -> TimingStrategy:
 
 def _multipliers(**kwargs) -> TimingStrategy:
     return TimingStrategy(multipliers=TimingMultipliers(**kwargs))
+
+
+def _measured_groups(profile_kwargs) -> Dict[int, GroupMeasurements]:
+    """The per-group measurements ``build_timing_profile`` hands to the
+    resolution layer, keyed by group index. This is the only place the dropped
+    slow solutions are attributed to a group, and nothing renders them yet."""
+    with mock.patch(
+        'rbx.box.timing_groups.resolve_groups', wraps=resolve_groups
+    ) as spy:
+        build_timing_profile(**profile_kwargs)
+    return spy.call_args.args[1]
 
 
 def test_build_timing_profile_groups_languages():
@@ -251,6 +270,83 @@ def test_dropped_upper_solutions_do_not_bound_the_limit():
     assert profile.timeLimit == 800
 
 
+def test_a_group_whose_slow_solutions_were_all_dropped_keeps_the_dropped_list():
+    # The group bounds nothing from above, but the drop still has to be
+    # attributable to it -- reconstructing that later from the per-language map
+    # would duplicate the pooling this layer exists to do.
+    profile_kwargs = dict(
+        timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
+        strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        slow_timing_per_solution_per_language={},
+        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    profile = build_timing_profile(**profile_kwargs)
+    assert profile.timeLimit == 800
+    upper = _measured_groups(profile_kwargs)[0].upper
+    assert upper is not None
+    assert upper.fastest_slow is None
+    assert upper.dropped_upper == ['sols/hopeless.cpp']
+
+
+def test_a_language_with_only_dropped_slow_solutions_still_forms_a_group():
+    # python has no measurement at all, only a dropped slow solution: its group
+    # must not be skipped, or the drop would be lost.
+    measured = _measured_groups(
+        dict(
+            timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
+            strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+            dropped_upper_per_language={'python': ['sols/hopeless.py']},
+            env_groups=[],
+            all_languages=['cpp', 'python'],
+            repartition={'cpp': 1, 'python': 2},
+        )
+    )
+    python_upper = measured[1].upper
+    assert python_upper is not None
+    assert python_upper.dropped_upper == ['sols/hopeless.py']
+
+
+def test_the_upper_bound_pools_every_language_of_a_single_group():
+    # cpp and python share ONE group: the group is capped by the fastest slow
+    # solution of either language, not by each language on its own.
+    with pytest.raises(TimingRangeError) as exc:
+        build_timing_profile(
+            timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
+            strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+            slow_timing_per_solution_per_language={
+                'cpp': {'sols/tle.cpp': 5000},
+                'python': {'sols/tle.py': 900},
+            },
+            env_groups=[],
+            all_languages=['cpp', 'python'],
+            repartition={'cpp': 1, 'python': 1},
+        )
+    # 400*2 = 800 > floor(900/1.5) = 600: the python solution binds the cpp
+    # measurement because they sit in the same group.
+    assert 'sols/tle.py' in str(exc.value)
+
+
+def test_formula_mode_ignores_slow_measurements():
+    # The formula bounds from below only, so passing slow measurements (or drops)
+    # to it must change nothing at all.
+    kwargs = dict(
+        timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
+        strategy=_formula('slowest * 2'),
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    plain = build_timing_profile(**kwargs)
+    with_slow = build_timing_profile(
+        **kwargs,
+        slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 500}},
+        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+    )
+    assert with_slow == plain
+    assert with_slow.timeLimit == 800
+
+
 def test_multipliers_bound_a_group_that_derives_its_limit():
     # The python group has no accepted solution of its own, so it derives its
     # limit from cpp -- but its own slow solution still caps it.
@@ -283,14 +379,27 @@ def test_no_lower_bound_measurements_raise_a_setter_facing_error():
 def test_strategy_is_described_as_a_formula_or_as_ratios():
     assert _describe_strategy(_formula('slowest * 2')) == 'Using formula: slowest * 2'
     described = _describe_strategy(
-        _multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
+        _multipliers(
+            acToTimeLimit=2.0,
+            timeLimitToTle=1.5,
+            timeResolution=100,
+            inferenceTimeout=8000,
+        )
     )
-    assert (
-        described
-        == 'Using ratios: acToTimeLimit 2.0, timeLimitToTle 1.5, timeResolution 100 ms'
-    )
-    # No upper bound configured -> the ratio that is not in effect is not shown.
-    assert 'timeLimitToTle' not in _describe_strategy(_multipliers(acToTimeLimit=2.0))
+    # Every number in effect is spelled out as the relation it imposes, with the
+    # YAML key it comes from in parentheses.
+    assert '2.0x the slowest accepted solution (acToTimeLimit)' in described
+    assert '1/1.5 of the fastest solution expected to be too slow' in described
+    assert 'capped at 8000 ms (inferenceTimeout)' in described
+    assert 'multiple of 100 ms (timeResolution)' in described
+
+
+def test_an_unbounded_estimate_says_the_slow_solutions_were_never_checked():
+    # The most important fact about a run without timeLimitToTle is what it did
+    # NOT do, so it is stated rather than left to the absence of a number.
+    described = _describe_strategy(_multipliers(acToTimeLimit=2.0))
+    assert 'NOT bounded from above' in described
+    assert 'were not run' in described
 
 
 def test_no_lower_bound_measurements_raise_in_formula_mode_too():

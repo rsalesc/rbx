@@ -271,7 +271,7 @@ class TestComputeTimeLimits:
         assert result is None
 
     @mock.patch('rbx.box.package.get_main_solution')
-    @mock.patch('rbx.box.timing.get_exact_matching_solutions')
+    @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     @mock.patch('rbx.box.timing.estimate_time_limit')
@@ -280,7 +280,7 @@ class TestComputeTimeLimits:
         mock_estimate_time_limit,
         mock_print_run_report,
         mock_run_solutions,
-        mock_get_exact_matching_solutions,
+        mock_get_inference_solutions,
         mock_get_main_solution,
         testing_pkg: testing_package.TestingPackage,
     ):
@@ -288,10 +288,10 @@ class TestComputeTimeLimits:
         # Mock main solution exists
         mock_get_main_solution.return_value = mock.Mock()
 
-        # Mock get_exact_matching_solutions
+        # Mock get_inference_solutions
         mock_solution = mock.Mock()
         mock_solution.path = testing_pkg.path('sol.cpp')
-        mock_get_exact_matching_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.return_value = [mock_solution]
 
         # Mock run_solutions
         mock_result = mock.Mock()
@@ -315,22 +315,23 @@ class TestComputeTimeLimits:
         assert limits_path.exists()
 
     @mock.patch('rbx.box.package.get_main_solution')
-    @mock.patch('rbx.box.timing.get_exact_matching_solutions')
+    @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     async def test_compute_time_limits_failed_run_report(
         self,
         mock_print_run_report,
         mock_run_solutions,
-        mock_get_exact_matching_solutions,
+        mock_get_inference_solutions,
         mock_get_main_solution,
+        testing_pkg: testing_package.TestingPackage,
     ):
         """Test compute_time_limits when run report fails."""
         mock_get_main_solution.return_value = mock.Mock()
 
         mock_solution = mock.Mock()
         mock_solution.path = pathlib.Path('sol.cpp')
-        mock_get_exact_matching_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.return_value = [mock_solution]
 
         mock_result = mock.Mock()
         mock_run_solutions.return_value = mock_result
@@ -382,7 +383,7 @@ class TestTimingIntegration:
 
     @pytest.mark.test_pkg('problems/box1')
     @mock.patch('rbx.box.package.get_main_solution')
-    @mock.patch('rbx.box.timing.get_exact_matching_solutions')
+    @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     @mock.patch('rbx.box.timing.estimate_time_limit')
@@ -391,7 +392,7 @@ class TestTimingIntegration:
         mock_estimate_time_limit,
         mock_print_run_report,
         mock_run_solutions,
-        mock_get_exact_matching_solutions,
+        mock_get_inference_solutions,
         mock_get_main_solution,
         pkg_from_testdata: pathlib.Path,
     ):
@@ -406,7 +407,7 @@ class TestTimingIntegration:
         mock_solution = mock.Mock()
         mock_solution.path = pathlib.Path('sol.cpp')
         mock_solution.language = 'cpp'
-        mock_get_exact_matching_solutions.return_value = [mock_solution]
+        mock_get_inference_solutions.return_value = [mock_solution]
 
         # Mock the result structure
         mock_result = mock.Mock()

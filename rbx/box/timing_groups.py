@@ -115,7 +115,10 @@ class UpperTimings(BaseModel):
     checked against this bound.
     """
 
-    fastest_slow: int
+    # Absent when every slow solution of the group was dropped: the group then
+    # bounds nothing from above, but still has to carry ``dropped_upper`` so the
+    # drop is reported against the group it happened in.
+    fastest_slow: Optional[int] = None
     fastest_slow_solution: Optional[str] = None
     # Slow solutions that were measured but cannot bound the limit (e.g. they
     # hit the inference timeout).

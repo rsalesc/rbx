@@ -2263,6 +2263,7 @@ async def _print_detailed_run_report(
     structured_evaluations: StructuredEvaluation,
     timing: bool = True,
     verification: VerificationLevel = VerificationLevel.NONE,
+    ok_solutions: Optional[Set[str]] = None,
 ) -> bool:
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
@@ -2292,7 +2293,8 @@ async def _print_detailed_run_report(
             verification=verification,
             print_scoring=True,
         )
-        ok = ok and report.status.ok()
+        if _gates_report(solution, ok_solutions):
+            ok = ok and report.status.ok()
         console.print()
 
     console.print()
@@ -2645,6 +2647,11 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         self.console.print()
 
 
+def _gates_report(solution: Solution, ok_solutions: Optional[Set[str]]) -> bool:
+    """Whether this solution's outcome decides the report's pass/fail verdict."""
+    return ok_solutions is None or str(solution.path) in ok_solutions
+
+
 async def print_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
@@ -2652,7 +2659,16 @@ async def print_run_report(
     detailed: bool = False,
     timing: bool = True,
     skip_printing_limits: bool = False,
+    ok_solutions: Optional[Set[str]] = None,
 ) -> bool:
+    """Run every tracked solution and report it.
+
+    ``ok_solutions`` restricts which solutions decide the returned verdict: every
+    solution is still run and reported, but only these ones can make it fail.
+    Time limit inference uses it to run solutions that are *expected* to hit the
+    cap without their timeouts aborting the estimate. ``None`` gates on all of
+    them.
+    """
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
 
@@ -2667,6 +2683,7 @@ async def print_run_report(
             reporter.structured_evaluations,
             verification=verification,
             timing=timing,
+            ok_solutions=ok_solutions,
         )
 
     ok = True
@@ -2685,7 +2702,8 @@ async def print_run_report(
                 reporter.finish_testcase(evaled)
             reporter.finish_group()
         cur_ok = reporter.finish_solution()
-        ok = ok and cur_ok
+        if _gates_report(solution, ok_solutions):
+            ok = ok and cur_ok
 
     if not single_solution:
         await _print_timing(
