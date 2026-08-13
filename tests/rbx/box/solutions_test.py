@@ -3,6 +3,9 @@ from typing import List, Optional
 from unittest.mock import patch
 
 import pytest
+import rich.console
+import rich.style
+from rich.text import Text
 
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -23,8 +26,11 @@ from rbx.box.solutions import (
     SolutionReportSkeleton,
     SolutionSkeleton,
     convert_list_of_solution_evaluations_to_dict,
+    get_full_outcome_markup_verdict,
     get_matching_solutions,
+    get_outcome_style_verdict,
     get_solution_outcome_report,
+    get_ui_friendly_outcome_style_verdict,
     run_solutions,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
@@ -713,3 +719,15 @@ def test_failed_to_compile_issue_generic_message_without_reason():
     msg = issue.get_detailed_message()
     assert 'could not be compiled and was skipped' in msg
     assert 'sols/wa.py' in msg
+
+
+@pytest.mark.parametrize('outcome', list(Outcome))
+def test_outcome_styles_are_valid_rich_styles(outcome: Outcome):
+    # Rich has no plain 'orange' color, and an invalid style blows up at render
+    # time (e.g. in the UI's test list), so every outcome must map to a
+    # parseable style.
+    rich.style.Style.parse(get_outcome_style_verdict(outcome))
+    rich.style.Style.parse(get_ui_friendly_outcome_style_verdict(outcome))
+    Text.from_markup(get_full_outcome_markup_verdict(outcome)).render(
+        rich.console.Console()
+    )
