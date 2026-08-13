@@ -431,11 +431,23 @@ class SubtreeLayout:
     the statement is ``docs/enunciado.md`` and sample notes ship elsewhere.
 
     Roots are format strings; ``{index}`` (the sample index) is available to the
-    SAMPLE scope and the sample_explanation slot, where it is REQUIRED, and is
-    rejected anywhere else, where there is no index to interpolate. So a layout
-    meant for statements with samples needs BOTH
-    ``asset_roots[AssetScope.SAMPLE]`` and
-    ``document_dirs['sample_explanation']``, each carrying ``{index}``.
+    SAMPLE scope and the sample_explanation slot, and is rejected anywhere else,
+    where there is no index to interpolate. So a layout meant for statements
+    with samples needs BOTH ``asset_roots[AssetScope.SAMPLE]`` and
+    ``document_dirs['sample_explanation']``.
+
+    ``{index}`` is **required** in the asset root and merely **permitted** in the
+    document dir, and the asymmetry is not an oversight. Many files land in an
+    asset root, so a constant one really would collide entries from different
+    samples. A document dir is not a destination: it is only the base a remap is
+    computed against, so two samples sharing one derive identical references for
+    shared statement-scope assets (correct -- it is the same file) and distinct
+    ones for their own sample-scope assets, which still live under an ``{index}``
+    root. The motivating case is MOJ, whose ``gen-problem-json.sh`` renders every
+    sample note with ``--resource-path=<pkg>/docs`` regardless of which sample it
+    belongs to; a per-sample base there would derive ``../assets/f.png`` and
+    break every note image. Do not re-add the requirement.
+
     ``document_dirs['sample_explanation']`` is the one easiest to forget:
     ``build_statement_bundle`` calls ``derive_remap`` for *every* explanation
     index, so a statement that has explanations at all -- images or not -- hits
@@ -468,25 +480,36 @@ class SubtreeLayout:
             ) from e
 
     def _check_index_placeholder(
-        self, template: Optional[str], what: str, key_hint: str, needed: bool
+        self,
+        template: Optional[str],
+        what: str,
+        key_hint: str,
+        has_index: bool,
+        require_index: bool = False,
     ) -> None:
-        """``{index}`` is meaningful exactly where an index exists: required
-        there (or entries from different samples collide into one path) and
-        rejected everywhere else (where it could only interpolate ``None``).
+        """``{index}`` is meaningful exactly where an index exists (``has_index``)
+        and rejected everywhere else, where it could only interpolate ``None``.
+
+        Where it is meaningful it is not always *mandatory*: ``require_index``
+        says so, and only ``asset_roots[AssetScope.SAMPLE]`` sets it. There many
+        files land in the directory, so a constant root really would collide
+        entries from different samples; a document dir is only the base a remap
+        is computed against, and sharing one is legitimate (see
+        ``document_dir``).
 
         ``template is None`` means the key was never configured, which is a
         different mistake from configuring it without ``{index}`` and gets its
         own message: naming the missing key is the whole point, since the author
         of a layout that simply omits it has no malformed template to look at.
         """
-        if needed:
+        if has_index:
             if template is None:
                 raise StatementExportError(
                     f'This layout configures no {what} root, but the statement '
                     f'has samples. Set {key_hint} to a template carrying an '
                     '{index} placeholder.'
                 )
-            if '{index' not in template:
+            if require_index and '{index' not in template:
                 raise StatementExportError(
                     f'The {what} root ({key_hint}) must carry an {{index}} '
                     'placeholder, otherwise entries from different samples '
@@ -507,7 +530,10 @@ class SubtreeLayout:
             root,
             what,
             f'asset_roots[AssetScope.{asset.scope.name}]',
-            asset.scope == AssetScope.SAMPLE,
+            has_index=asset.scope == AssetScope.SAMPLE,
+            # Many files land in this directory, so a constant root really would
+            # collide entries from different samples.
+            require_index=True,
         )
         root = self._format(root or '', asset.sample_index, what)
         return pathlib.PurePosixPath(root) / asset.rel if root else asset.rel
@@ -519,7 +545,7 @@ class SubtreeLayout:
             template,
             what,
             f'document_dirs[{slot.kind!r}]',
-            slot.kind == 'sample_explanation',
+            has_index=slot.kind == 'sample_explanation',
         )
         return pathlib.PurePosixPath(
             self._format(template or '', slot.index, what) or '.'
