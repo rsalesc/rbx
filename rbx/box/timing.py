@@ -880,7 +880,11 @@ async def compute_time_limits(
         # The slow solutions are only worth running when their timings bound
         # something, and they only terminate under a cap.
         upper_solutions = get_inference_solutions(InferenceRole.UPPER)
-        timelimit_override = multipliers.inferenceTimeout
+        if upper_solutions:
+            timelimit_override = multipliers.inferenceTimeout
+        # With no slow solution there is nothing to bound the limit from above,
+        # so the cap would buy nothing and only add a way for a legitimately
+        # slow accepted solution to fail the estimate.
 
     status = (
         'Running ACCEPTED solutions...'

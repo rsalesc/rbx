@@ -180,6 +180,29 @@ async def test_multipliers_with_tle_ratio_runs_both_capped(pkg):
     assert run.timelimit_override == 7000
 
 
+async def test_multipliers_with_tle_ratio_but_no_slow_solutions_stay_uncapped(pkg):
+    # The path most existing packages take once the default preset ships
+    # timeLimitToTle: nothing bounds the limit from above, so the cap would buy
+    # nothing and only add a way for a legitimately slow accepted solution to
+    # fail the estimate.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    run, result = await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[],
+    )
+    assert run.tracked == [str(ac.path)]
+    assert run.timelimit_override == -1
+    # And with no cap there is nothing to diagnose.
+    assert result is not None
+    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
+
+
 async def test_custom_formula_forces_formula_mode_over_multipliers(pkg):
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
