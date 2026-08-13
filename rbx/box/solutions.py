@@ -55,6 +55,7 @@ from rbx.box.sanitizers import compilation_warnings, issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
+    InferenceRole,
     ScoreType,
     Solution,
     TaskType,
@@ -218,6 +219,34 @@ def is_fast(solution: Solution) -> bool:
     # A solution expected to be slow anywhere -- for the whole testset or for a
     # single group -- is not a fast solution.
     return not any(outcome.is_slow() for outcome in solution.all_expected_outcomes())
+
+
+def inference_role_of(solution: Solution) -> Optional[InferenceRole]:
+    """Which bound this solution contributes to during time limit inference.
+
+    Mirrors the classification ``TimingSummary`` already uses: a solution that is
+    accepted everywhere bounds from below, a solution expected to be slow
+    anywhere bounds from above, and everything else -- notably
+    ``accepted-or-tle``, which is neither good nor slow -- bounds neither.
+    """
+    if solution.inference is False:
+        return None
+    if solution.inference is not None:
+        return solution.inference
+    expectations = solution.all_expected_outcomes()
+    if all(outcome == ExpectedOutcome.ACCEPTED for outcome in expectations):
+        return InferenceRole.LOWER
+    if any(outcome.is_slow() for outcome in expectations):
+        return InferenceRole.UPPER
+    return None
+
+
+def get_inference_solutions(role: InferenceRole) -> List[Solution]:
+    return [
+        solution
+        for solution in package.get_solutions()
+        if inference_role_of(solution) == role
+    ]
 
 
 def get_matching_solutions(
