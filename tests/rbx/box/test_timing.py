@@ -246,6 +246,69 @@ class TestEstimateTimeLimit:
             '[error]No timings collected from solutions.[/error]'
         )
 
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items')
+    @mock.patch('rbx.box.timing.find_language_name')
+    @mock.patch('rbx.box.environment.get_environment')
+    async def test_a_language_seen_only_on_the_slow_side_still_bounds_its_group(
+        self,
+        mock_env,
+        mock_find_lang,
+        mock_consume,
+        mock_console,
+        testing_pkg: testing_package.TestingPackage,
+    ):
+        """python has no accepted solution and is not even an environment
+        language: it shows up only as a slow measurement, and its cap must still
+        apply -- which it can only do if python gets a group of its own."""
+        from types import SimpleNamespace
+
+        ac = Solution(
+            path=testing_pkg.path('ac.cpp'),
+            language='cpp',
+            outcome=ExpectedOutcome.ACCEPTED,
+        )
+        tle = Solution(
+            path=testing_pkg.path('tle.py'),
+            language='py',
+            outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        )
+
+        def _eval(time_ms):
+            async def _get():
+                log = mock.Mock()
+                log.time = time_ms / 1000
+                return mock.Mock(log=log, result=mock.Mock(outcome='ACCEPTED'))
+
+            return Deferred(_get)
+
+        skeleton = mock.Mock()
+        skeleton.solutions = [ac, tle]
+        result = RunSolutionResult(skeleton=skeleton, items=[])
+        mock_consume.return_value = {
+            str(ac.path): {'g': [_eval(400)]},
+            str(tle.path): {'g': [_eval(900)]},
+        }
+        mock_find_lang.side_effect = lambda sol: sol.language
+        mock_env.return_value.timing.groups = []
+        mock_env.return_value.languages = [SimpleNamespace(name='cpp')]
+
+        # cpp needs 400*2 = 800 ms, and the base limit propagates to python --
+        # whose own slow solution caps it at floor(900/1.5) = 600 ms.
+        estimate = await timing.estimate_time_limit(
+            mock_console,
+            result,
+            strategy=TimingStrategy(
+                multipliers=schema.TimingMultipliers(
+                    acToTimeLimit=2.0, timeLimitToTle=1.5
+                )
+            ),
+            auto=True,
+        )
+        assert estimate is None
+        printed = ' '.join(str(call) for call in mock_console.print.call_args_list)
+        assert 'Invalid language groups' in printed
+        assert 'tle.py' in printed
+
     async def test_estimate_time_limit_no_solutions(self, mock_console):
         """Test time limit estimation with no solutions."""
         empty_skeleton = mock.Mock()
