@@ -8,7 +8,7 @@ TEMPLATES = ['c', 'cpp', 'py', 'java', 'kt']
 
 
 def _scripts():
-    return get_default_app_path() / 'packagers' / 'moj_next' / 'scripts'
+    return get_default_app_path() / 'packagers' / 'moj' / 'scripts'
 
 
 def test_compare_stub_delegates_to_mojtools():

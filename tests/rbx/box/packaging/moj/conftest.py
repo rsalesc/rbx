@@ -4,7 +4,7 @@ from typing import List
 import pytest
 
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
-from rbx.box.packaging.moj_next.packager import MojNextPackager
+from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 
@@ -54,12 +54,12 @@ def run_packager(
     into_path = tmp_path / 'package'
     build_path = tmp_path / 'build'
     build_path.mkdir(parents=True, exist_ok=True)
-    MojNextPackager(testcase_entries=entries).package(build_path, into_path, [])
+    MojPackager(testcase_entries=entries).package(build_path, into_path, [])
     return into_path
 
 
 @pytest.fixture
-def moj_next_binary_package(testing_pkg, tmp_path) -> pathlib.Path:
+def moj_binary_package(testing_pkg, tmp_path) -> pathlib.Path:
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text(ACCEPTED_SOL)
@@ -73,12 +73,12 @@ def moj_next_binary_package(testing_pkg, tmp_path) -> pathlib.Path:
 
 
 @pytest.fixture
-def moj_next_package(moj_next_binary_package) -> pathlib.Path:
-    return moj_next_binary_package
+def moj_package(moj_binary_package) -> pathlib.Path:
+    return moj_binary_package
 
 
 @pytest.fixture
-def moj_next_package_output(testing_pkg, tmp_path, capsys) -> str:
+def moj_package_output(testing_pkg, tmp_path, capsys) -> str:
     """Console output of packaging a problem whose only accepted solution is C++."""
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
