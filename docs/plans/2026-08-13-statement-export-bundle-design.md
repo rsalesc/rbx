@@ -151,6 +151,29 @@ extension:
 The default is `True`, since an explicit extension is valid in every target;
 `False` is the opt-in for consumers that want the blocks returned untouched.
 
+`keep_extension=False` is necessary but **not sufficient** for identity. The
+derived reference is `relpath(asset_dest, document_dir)`, so it equals the
+authored one only when the asset's root and its document's root are the same
+directory — formally, when `asset_roots[scope] == document_dirs[slot.kind]` for
+that pair. The MOJ binding reaches identity because it maps STATEMENT, TIKZ and
+EXTERNAL all onto `docs/`; give TIKZ a root of its own and its references become
+`../figs/artifacts/tikz_figures/i_0`. Identity is a property of the *binding*,
+not of the flag.
+
+That has a consequence worth stating: mapping several scopes onto one root
+collapses reference bases that are genuinely unrelated — the statement dir, the
+overlay root and the package root — so any relative path they share collides.
+The realistic case is a statement-dir `img/fig.png` meeting an `assets` glob on a
+package-root `img/fig.png`. This is why the collision guard in §5 is keyed on the
+placed destination across *all* scopes rather than per scope.
+
+`derive_remap` additionally raises when two assets at the same shadow tier claim
+one reference key with different destinations (`img/d.png` and `img/d.pdf` under
+the statement dir both key on `img/d`). A destination-keyed guard cannot see
+that case — the destinations differ — and the authored `\includegraphics{img/d}`
+genuinely cannot say which file it means, so it is an authoring error rather than
+something to resolve silently.
+
 ### Which slots see which assets
 
 - `body` (legend/input/output/interaction/notes) sees `STATEMENT`, `TIKZ` and
