@@ -774,6 +774,44 @@ class LimitModifiers(BaseModel):
     )
 
 
+class TimingMultipliersOverride(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    acToTimeLimit: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `acToTimeLimit` multiplier.""",
+    )
+
+    timeLimitToTle: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `timeLimitToTle` multiplier.""",
+    )
+
+    inferenceTimeout: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `inferenceTimeout`, in milliseconds.""",
+    )
+
+    timeResolution: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `timeResolution`, in milliseconds.""",
+    )
+
+
+class PackageTiming(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    multipliers: Optional[TimingMultipliersOverride] = Field(
+        default=None,
+        description="""Per-problem overrides of the environment's timing
+multipliers. Only the declared fields are overridden.""",
+    )
+
+
 class TimingGroupOrigin(str, enum.Enum):
     ESTIMATED = 'estimated'
     MULTIPLIER = 'multiplier'
@@ -1117,6 +1155,11 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     unitTests: UnitTests = Field(
         default_factory=UnitTests,
         description='Unit tests for components of this problem.',
+    )
+
+    timing: Optional[PackageTiming] = Field(
+        default=None,
+        description='Problem-level overrides for time limit inference.',
     )
 
     @property
