@@ -2,3 +2,8 @@
 */.box/
 */build/
 */rbx.h
+# Fixtures whose problems live one level deeper (a package per subdirectory).
+*/*/.rbx/
+*/*/.box/
+*/*/build/
+*/*/rbx.h

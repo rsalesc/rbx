@@ -1,0 +1,25 @@
+name: timing-empty-range
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  # Declared too slow, but it returns immediately: it caps the limit far below
+  # what the accepted solution requires, so no valid limit exists.
+  - path: sols/not_slow.cpp
+    outcome: tle
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4

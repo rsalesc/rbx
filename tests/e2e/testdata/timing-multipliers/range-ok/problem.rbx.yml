@@ -1,0 +1,25 @@
+name: timing-range-ok
+# The estimate replaces this; it only has to make `sols/slow.cpp` an honest
+# `tle` when the package is run on its own limits.
+timeLimit: 300
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/slow.cpp
+    outcome: tle
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4
