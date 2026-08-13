@@ -1,5 +1,6 @@
 import functools
 import math
+from fractions import Fraction
 from typing import Any, Callable, Dict, List, Optional
 
 import rich
@@ -72,20 +73,83 @@ def step_up(x: Any, step: int) -> int:
     return (x + step - 1) // step * step
 
 
-# Relative tolerance used to absorb binary floating-point representation error
-# when multiplying integer milliseconds by a ratio. Without it, ``50 * 1.1``
-# (55.00000000000001) would ceil to 56, and a limit that sits exactly on the
-# upper bound would be rejected.
-_RATIO_TOLERANCE = 1e-9
+def _exact(ratio: float) -> Fraction:
+    """The ratio the setter typed in YAML, as an exact rational.
+
+    ``str()`` yields the shortest repr that round-trips, so the 1.1 stored as
+    1.100000000000000088... comes back as exactly 11/10. Every bound is computed
+    in this arithmetic: the numbers end up serialized in the limits profile, so
+    a setter recomputing them by hand must get the same answer rbx did.
+    """
+    return Fraction(str(ratio))
 
 
-def _ceil_ms(value: float) -> int:
-    """Ceiling in milliseconds, treating a value within ``_RATIO_TOLERANCE`` of
-    an integer as that integer."""
-    nearest = round(value)
-    if math.isclose(value, nearest, rel_tol=_RATIO_TOLERANCE):
-        return int(nearest)
-    return math.ceil(value)
+class TimingBounds(BaseModel):
+    """The bounds that decide one group's time limit, in integer milliseconds.
+
+    Computed exactly, so these are the values the limits profile reports.
+    """
+
+    # Smallest limit the lower side allows, before quantization.
+    lower: int
+    lower_solution: Optional[str] = None
+    # ``lower`` rounded up to the configured ``timeResolution``.
+    time_limit: int
+    # Largest limit the group's slow solutions allow, when any bounds it.
+    upper: Optional[int] = None
+    upper_solution: Optional[str] = None
+    # Whether ``lower`` came from a reference group instead of this group's own
+    # accepted solutions.
+    derived: bool = False
+
+    @property
+    def fits(self) -> bool:
+        """Whether the quantized limit respects the upper bound."""
+        return self.upper is None or self.time_limit <= self.upper
+
+    @property
+    def quantization_is_binding(self) -> bool:
+        """Whether the raw lower bound fits but rounding it up does not -- i.e.
+        ``timeResolution``, not the ratios, is what makes the range unsatisfiable."""
+        return self.upper is not None and self.lower <= self.upper < self.time_limit
+
+
+def compute_bounds(
+    multipliers: schema.TimingMultipliers,
+    measured: timing_groups.GroupMeasurements,
+    derived_from: Optional[int] = None,
+) -> TimingBounds:
+    """The bounds a group's measurements impose on its time limit.
+
+    ``derived_from`` supplies the lower bound for a group whose limit did NOT
+    come from its own accepted solutions (a reference group or the base
+    estimate); otherwise the lower bound is this group's slowest accepted
+    solution scaled by ``acToTimeLimit``.
+    """
+    lower_solution = None
+    if derived_from is not None:
+        lower = derived_from
+    else:
+        assert measured.lower is not None
+        lower = math.ceil(measured.lower.slowest * _exact(multipliers.acToTimeLimit))
+        lower_solution = measured.lower.slowest_solution
+
+    upper = None
+    upper_solution = None
+    if multipliers.timeLimitToTle is not None and measured.upper is not None:
+        upper = math.floor(
+            measured.upper.fastest_slow / _exact(multipliers.timeLimitToTle)
+        )
+        upper_solution = measured.upper.fastest_slow_solution
+
+    return TimingBounds(
+        lower=lower,
+        lower_solution=lower_solution,
+        time_limit=step_up(lower, multipliers.timeResolution),
+        upper=upper,
+        upper_solution=upper_solution,
+        derived=derived_from is not None,
+    )
 
 
 def make_formula_eval(formula: str) -> timing_groups.EvalFn:
@@ -105,56 +169,52 @@ def make_formula_eval(formula: str) -> timing_groups.EvalFn:
     return _eval
 
 
-def _upper_bound(
-    multipliers: schema.TimingMultipliers,
-    measured: timing_groups.GroupMeasurements,
-) -> Optional[float]:
-    """The largest time limit the group's slow solutions allow, or None when
-    nothing bounds it from above."""
-    if multipliers.timeLimitToTle is None or measured.upper is None:
-        return None
-    return measured.upper.fastest_slow / multipliers.timeLimitToTle
-
-
-def _check_upper(
-    tl: int,
+def _check_bounds(
+    bounds: TimingBounds,
     multipliers: schema.TimingMultipliers,
     measured: timing_groups.GroupMeasurements,
 ) -> int:
-    """Return ``tl`` if the group's slow solutions allow it, else raise.
+    """Return the quantized limit if the group's slow solutions allow it, else
+    raise naming the binding solution on each side and the knob to turn."""
+    if bounds.fits:
+        return bounds.time_limit
+    assert bounds.upper is not None
 
-    The constraint is stated in the multiplied form the configuration uses --
-    ``tl * timeLimitToTle <= fastest_slow`` -- so that a limit sitting exactly on
-    the bound is accepted.
-    """
-    upper = _upper_bound(multipliers, measured)
-    if upper is None:
-        return tl
-    assert multipliers.timeLimitToTle is not None
-    assert measured.upper is not None
-    scaled = tl * multipliers.timeLimitToTle
-    fastest_slow = measured.upper.fastest_slow
-    if scaled <= fastest_slow or math.isclose(
-        scaled, fastest_slow, rel_tol=_RATIO_TOLERANCE
-    ):
-        return tl
-
-    if measured.lower is not None:
-        fast_solution = measured.lower.slowest_solution or 'the accepted solution'
+    if bounds.derived:
+        fast_solution = 'the accepted solutions of the group this limit derives from'
+        lower_side = f'the limit derived for this group is {bounds.lower} ms'
+    else:
+        fast_solution = bounds.lower_solution or 'the accepted solution'
+        assert measured.lower is not None
         lower_side = (
             f'{fast_solution} runs in {measured.lower.slowest} ms, which with '
-            f'acToTimeLimit {multipliers.acToTimeLimit} forces a limit of at least '
-            f'{tl} ms'
+            f'acToTimeLimit {multipliers.acToTimeLimit} requires a limit of at '
+            f'least {bounds.lower} ms'
         )
-    else:
-        fast_solution = 'the accepted solutions of the group this limit derives from'
-        lower_side = f'the limit derived for this group is {tl} ms'
-    slow_solution = measured.upper.fastest_slow_solution or 'the slow solution'
+    slow_solution = bounds.upper_solution or 'the slow solution'
+    assert measured.upper is not None
+    upper_side = (
+        f'{slow_solution} runs in {measured.upper.fastest_slow} ms, which with '
+        f'timeLimitToTle {multipliers.timeLimitToTle} caps the limit at '
+        f'{bounds.upper} ms'
+    )
+
+    if bounds.quantization_is_binding:
+        # The ratios are satisfiable on their own; only the rounding is not.
+        # Saying "relax the ratios" here would send the setter chasing a
+        # speedup that is not needed.
+        raise timing_groups.TimingRangeError(
+            f'no valid time limit exists for this group: {lower_side}, and '
+            f'timeResolution {multipliers.timeResolution} rounds that up to '
+            f'{bounds.time_limit} ms, but {upper_side}. The un-rounded bound of '
+            f'{bounds.lower} ms does fit under the cap: it is the rounding to '
+            f'timeResolution that does not. Lower timeResolution, speed up '
+            f'{fast_solution}, slow down {slow_solution}, or relax the ratios.'
+        )
     raise timing_groups.TimingRangeError(
         f'no valid time limit exists for this group: {lower_side}, but '
-        f'{slow_solution} runs in {fastest_slow} ms, which with timeLimitToTle '
-        f'{multipliers.timeLimitToTle} caps the limit at {int(upper)} ms. '
-        f'Speed up {fast_solution}, slow down {slow_solution}, or relax the ratios.'
+        f'{upper_side}. Speed up {fast_solution}, slow down {slow_solution}, '
+        f'or relax the ratios.'
     )
 
 
@@ -166,10 +226,8 @@ def make_multipliers_eval(
     upper bound its slow solutions impose."""
 
     def _eval(measured: timing_groups.GroupMeasurements) -> int:
-        assert measured.lower is not None
-        lower = _ceil_ms(measured.lower.slowest * multipliers.acToTimeLimit)
-        tl = step_up(lower, multipliers.timeResolution)
-        return _check_upper(tl, multipliers, measured)
+        bounds = compute_bounds(multipliers, measured)
+        return _check_bounds(bounds, multipliers, measured)
 
     return _eval
 
@@ -182,8 +240,8 @@ def make_multipliers_derive(
     the group's own upper bound."""
 
     def _derive(tl: int, measured: timing_groups.GroupMeasurements) -> int:
-        tl = step_up(tl, multipliers.timeResolution)
-        return _check_upper(tl, multipliers, measured)
+        bounds = compute_bounds(multipliers, measured, derived_from=tl)
+        return _check_bounds(bounds, multipliers, measured)
 
     return _derive
 

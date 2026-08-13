@@ -3,7 +3,11 @@ from typing import Optional
 import pytest
 
 from rbx.box.schema import TimingMultipliers
-from rbx.box.timing import make_multipliers_derive, make_multipliers_eval
+from rbx.box.timing import (
+    compute_bounds,
+    make_multipliers_derive,
+    make_multipliers_eval,
+)
 from rbx.box.timing_groups import (
     GroupMeasurements,
     GroupTimings,
@@ -51,9 +55,9 @@ def test_lower_bound_already_on_the_grid_is_unchanged():
     assert eval_fn(_measurements(slowest=400)) == 800
 
 
-def test_lower_bound_absorbs_float_representation_error():
-    # 50 * 1.1 is 55.00000000000001 in binary floating point; a naive ceil would
-    # push the limit to 56 and, with a coarser resolution, a whole bucket up.
+def test_lower_bound_is_exact_despite_float_representation():
+    # 50 * 1.1 is 55.00000000000001 in binary floating point; the bound is
+    # computed in exact rational arithmetic, so it is exactly 55.
     eval_fn = make_multipliers_eval(
         TimingMultipliers(acToTimeLimit=1.1, timeResolution=1)
     )
@@ -91,13 +95,30 @@ def test_limit_exactly_equal_to_the_upper_bound_is_valid():
     assert eval_fn(_measurements(slowest=400, fastest_slow=1200)) == 800
 
 
-def test_boundary_absorbs_float_representation_error():
-    # 1000 * 1.1 == 1100 mathematically, and 1100 / 1.1 is 999.9999999999999 in
-    # binary floating point; the boundary must still be accepted.
+def test_boundary_is_exact_despite_float_representation():
+    # 1100 / 1.1 is 999.9999999999999 in binary floating point but exactly 1000
+    # as a rational, so the limit sits exactly on the cap and is accepted.
     eval_fn = make_multipliers_eval(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.1, timeResolution=100)
     )
     assert eval_fn(_measurements(slowest=500, fastest_slow=1100)) == 1000
+    # One millisecond over the same cap is not.
+    strict = make_multipliers_eval(
+        TimingMultipliers(acToTimeLimit=1.0, timeLimitToTle=1.1, timeResolution=1)
+    )
+    assert strict(_measurements(slowest=1000, fastest_slow=1100)) == 1000
+    with pytest.raises(TimingRangeError):
+        strict(_measurements(slowest=1001, fastest_slow=1100))
+
+
+def test_one_millisecond_over_the_bound_raises_at_large_magnitudes():
+    # 222000 / 3.7 is exactly 60000: 60000 ms is allowed, 60001 ms is not.
+    eval_fn = make_multipliers_eval(
+        TimingMultipliers(acToTimeLimit=1.0, timeLimitToTle=3.7, timeResolution=1)
+    )
+    assert eval_fn(_measurements(slowest=60000, fastest_slow=222000)) == 60000
+    with pytest.raises(TimingRangeError):
+        eval_fn(_measurements(slowest=60001, fastest_slow=222000))
 
 
 def test_limit_one_step_past_the_upper_bound_raises():
@@ -128,6 +149,8 @@ def test_empty_range_raises_naming_both_binding_solutions():
     # The remedy is spelled out on both sides.
     assert 'speed up' in message.lower()
     assert 'slow down' in message.lower()
+    # The ratios really are unsatisfiable here, so the rounding is not blamed.
+    assert 'timeResolution' not in message
 
 
 def test_grid_miss_raises_even_though_the_range_is_not_empty():
@@ -136,8 +159,14 @@ def test_grid_miss_raises_even_though_the_range_is_not_empty():
     eval_fn = make_multipliers_eval(
         TimingMultipliers(acToTimeLimit=1.0, timeLimitToTle=1.0, timeResolution=100)
     )
-    with pytest.raises(TimingRangeError):
+    with pytest.raises(TimingRangeError) as exc:
         eval_fn(_measurements(slowest=510, fastest_slow=550))
+    message = str(exc.value)
+    # The ratios are satisfiable at 510 ms; the rounding is what is not, and the
+    # message must point at that knob rather than at a speedup nobody needs.
+    assert 'timeResolution' in message
+    assert '510 ms' in message
+    assert 'Lower timeResolution' in message
 
 
 def test_timing_range_error_is_a_group_validation_error():
@@ -167,3 +196,110 @@ def test_derive_accepts_a_relative_limit_inside_the_range():
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     assert derive_fn(2401, _measurements(fastest_slow=9000)) == 2500
+
+
+def test_message_falls_back_when_neither_solution_path_is_known():
+    eval_fn = make_multipliers_eval(
+        TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
+    )
+    with pytest.raises(TimingRangeError) as exc:
+        eval_fn(_measurements(slowest=400, fastest_slow=900))
+    message = str(exc.value)
+    assert 'the accepted solution runs in 400 ms' in message
+    assert 'the slow solution runs in 900 ms' in message
+    assert 'Speed up the accepted solution' in message
+    assert 'slow down the slow solution' in message
+
+
+def test_message_falls_back_on_one_side_at_a_time():
+    eval_fn = make_multipliers_eval(
+        TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
+    )
+    with pytest.raises(TimingRangeError) as exc:
+        eval_fn(
+            _measurements(slowest=400, slowest_solution='sols/ac.cpp', fastest_slow=900)
+        )
+    assert 'sols/ac.cpp runs in 400 ms' in str(exc.value)
+    assert 'the slow solution runs in 900 ms' in str(exc.value)
+
+    with pytest.raises(TimingRangeError) as exc:
+        eval_fn(
+            _measurements(
+                slowest=400, fastest_slow=900, fastest_slow_solution='sols/tle.cpp'
+            )
+        )
+    assert 'the accepted solution runs in 400 ms' in str(exc.value)
+    assert 'sols/tle.cpp runs in 900 ms' in str(exc.value)
+
+
+def test_derived_message_has_no_lower_side_solution():
+    derive_fn = make_multipliers_derive(
+        TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
+    )
+    with pytest.raises(TimingRangeError) as exc:
+        derive_fn(2401, _measurements(fastest_slow=3000))
+    message = str(exc.value)
+    # There is no accepted solution in this group to point at, so the message
+    # names the group the limit derives from instead of inventing one.
+    assert 'the limit derived for this group is 2401 ms' in message
+    assert 'acToTimeLimit' not in message
+    assert 'the accepted solutions of the group this limit derives from' in message
+
+
+def test_compute_bounds_exposes_both_sides_for_the_limits_profile():
+    bounds = compute_bounds(
+        TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100),
+        _measurements(
+            slowest=630,
+            slowest_solution='sols/slow_ac.cpp',
+            fastest_slow=6100,
+            fastest_slow_solution='sols/tle.cpp',
+        ),
+    )
+    assert bounds.lower == 1260
+    assert bounds.lower_solution == 'sols/slow_ac.cpp'
+    assert bounds.time_limit == 1300
+    assert bounds.upper == 4066  # floor(6100 / 1.5)
+    assert bounds.upper_solution == 'sols/tle.cpp'
+    assert not bounds.derived
+    assert bounds.fits
+    assert not bounds.quantization_is_binding
+
+
+def test_compute_bounds_leaves_the_upper_side_empty_when_unbounded():
+    bounds = compute_bounds(
+        TimingMultipliers(acToTimeLimit=2.0, timeResolution=100),
+        _measurements(slowest=400, fastest_slow=500),
+    )
+    assert bounds.upper is None
+    assert bounds.upper_solution is None
+    assert bounds.fits
+
+
+def test_compute_bounds_marks_a_derived_lower_bound():
+    bounds = compute_bounds(
+        TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100),
+        _measurements(fastest_slow=3000),
+        derived_from=2401,
+    )
+    assert bounds.derived
+    assert bounds.lower == 2401
+    assert bounds.lower_solution is None
+    assert bounds.time_limit == 2500
+    assert bounds.upper == 2000
+    assert not bounds.fits
+
+
+def test_compute_bounds_distinguishes_a_grid_miss_from_an_empty_range():
+    multipliers = TimingMultipliers(
+        acToTimeLimit=1.0, timeLimitToTle=1.0, timeResolution=100
+    )
+    grid_miss = compute_bounds(
+        multipliers, _measurements(slowest=510, fastest_slow=550)
+    )
+    assert not grid_miss.fits
+    assert grid_miss.quantization_is_binding
+
+    empty = compute_bounds(multipliers, _measurements(slowest=610, fastest_slow=550))
+    assert not empty.fits
+    assert not empty.quantization_is_binding
