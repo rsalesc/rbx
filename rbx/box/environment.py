@@ -360,28 +360,31 @@ DEFAULT_TIMING_FORMULA = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
 
 
 class TimingMultipliers(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid', frozen=True)
 
     acToTimeLimit: float = Field(
         gt=0,
-        description="""Minimum ratio between the time limit and the slowest solution
-used to estimate it from below: `slowest_good * acToTimeLimit <= timeLimit`.""",
+        description="""Minimum ratio between the time limit and the slowest accepted
+solution, used to estimate the time limit from below: the slowest accepted solution
+times `acToTimeLimit` must fit within the time limit.""",
     )
 
     timeLimitToTle: Optional[float] = Field(
         default=None,
         gt=0,
-        description="""Minimum ratio between the fastest slow solution and the time
-limit: `timeLimit * timeLimitToTle <= fastest_slow`. When omitted, slow solutions
-are not run and the time limit is not bounded from above.""",
+        description="""Minimum ratio between the fastest solution expected to be too
+slow and the time limit: the time limit times `timeLimitToTle` must fit within the
+fastest solution expected to be too slow. When omitted, solutions expected to be too
+slow are not run and the time limit is not bounded from above.""",
     )
 
     inferenceTimeout: int = Field(
         default=10000,
         gt=0,
         description="""Time limit (in milliseconds) enforced on solutions while
-estimating. Only used when `timeLimitToTle` is set. A slow solution that hits it
-is dropped from the upper bound; an accepted one that hits it is an error.""",
+estimating. Only used when `timeLimitToTle` is set. A solution expected to be too
+slow that hits it is dropped from the upper bound; an accepted one that hits it is
+an error.""",
     )
 
     timeResolution: int = Field(
@@ -397,6 +400,7 @@ class TimingConfig(BaseModel):
 
     formula: Optional[str] = Field(
         default=None,
+        min_length=1,
         description="""Formula to use to calculate the time limit for the environment.
 Mutually exclusive with `multipliers`. When neither is set, a default formula is
 used.""",
@@ -451,7 +455,9 @@ solutions. Mutually exclusive with `formula`.""",
         """The formula to estimate with, or None when multipliers are in use."""
         if self.multipliers is not None:
             return None
-        return self.formula or DEFAULT_TIMING_FORMULA
+        if self.formula is not None:
+            return self.formula
+        return DEFAULT_TIMING_FORMULA
 
 
 class Environment(BaseModel):
