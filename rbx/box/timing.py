@@ -53,6 +53,10 @@ class MissingLowerBoundError(RbxException):
         self.msg.append(message)
 
 
+# Solutions are verified during estimation, but never at FULL -- which is the
+# only level that turns `isDoubleTL` on (see `limits_info._get_limits_from_profile`).
+_INFERENCE_VERIFICATION = VerificationLevel.ALL_SOLUTIONS
+
 _NO_LOWER_BOUND_MESSAGE = (
     'Nothing bounds the time limit from below: no accepted solution was measured '
     'for the lower bound. At least one accepted solution must leave `inference` '
@@ -543,8 +547,8 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
     if multipliers.timeLimitToTle is not None:
         lines.append(
             f'  and at most 1/{multipliers.timeLimitToTle} of the fastest solution '
-            f'expected to be too slow (timeLimitToTle), which runs capped at '
-            f'{multipliers.inferenceTimeout} ms (inferenceTimeout)'
+            f'expected to be too slow (timeLimitToTle); those solutions run '
+            f'capped at {multipliers.inferenceTimeout} ms (inferenceTimeout)'
         )
     else:
         lines.append(
@@ -644,17 +648,23 @@ async def estimate_time_limit(
 
     console.rule('[status]Time report[/status]', style='status')
 
-    all_timings = _flatten(timing_per_solution_per_language) + _flatten(
-        slow_timing_per_solution_per_language
-    )
-    if not all_timings:
+    # Only the lower-bound measurements: the limit is computed from them, so
+    # pooling the slow ones in here would headline a number -- typically a slow
+    # solution sitting at the cap -- that no limit on screen derives from.
+    lower_timings = _flatten(timing_per_solution_per_language)
+    slow_timings = _flatten(slow_timing_per_solution_per_language)
+    if not lower_timings:
         console.print('[error]No timings collected from solutions.[/error]')
         return None
 
-    fastest_time = min(all_timings)
-    slowest_time = max(all_timings)
+    fastest_time = min(lower_timings)
+    slowest_time = max(lower_timings)
     console.print(f'Fastest solution: {fastest_time} ms')
     console.print(f'Slowest solution: {slowest_time} ms')
+    if slow_timings:
+        console.print(
+            f'Fastest solution expected to be too slow: {min(slow_timings)} ms'
+        )
 
     env = environment.get_environment()
     if strategy is None:
@@ -730,6 +740,25 @@ async def estimate_time_limit(
     return profile
 
 
+@dataclasses.dataclass(frozen=True)
+class _InferenceCap:
+    """The cap a capped estimation run enforced, with the ratio that justifies it.
+
+    Its presence *is* the answer to "was this run capped?", so no caller has to
+    re-derive that from a timelimit override or re-narrow an optional
+    multipliers block.
+    """
+
+    timeout: int
+    time_limit_to_tle: float
+
+    @property
+    def largest_bounded_limit(self) -> int:
+        """The largest limit a solution stopped at the cap could still justify.
+        Above it, the cap -- not the solution -- is what bounded the estimate."""
+        return math.floor(self.timeout / _exact(self.time_limit_to_tle))
+
+
 @dataclasses.dataclass
 class _InferenceDiagnosis:
     """What the capped estimation run says about the solutions it measured."""
@@ -744,14 +773,6 @@ class _InferenceDiagnosis:
     # Accepted solutions killed at the cap: the estimate would rest on a
     # truncated measurement.
     truncated_lower: List[Solution] = dataclasses.field(default_factory=list)
-
-    def dropped_per_language(self) -> Dict[str, List[str]]:
-        per_language: Dict[str, List[str]] = {}
-        for solution in self.dropped_upper:
-            per_language.setdefault(find_language_name(solution), []).append(
-                str(solution.path)
-            )
-        return per_language
 
 
 async def _diagnose_inference_run(result: RunSolutionResult) -> _InferenceDiagnosis:
@@ -785,30 +806,52 @@ async def _diagnose_inference_run(result: RunSolutionResult) -> _InferenceDiagno
     return diagnosis
 
 
+def _failed_upper_message(solution: Solution, outcome: Outcome) -> str:
+    """Diagnostic (3). A crash or a wrong answer leaves no timing evidence either
+    way, so both are errors -- but a solution that declared it might crash did
+    exactly what the setter said it would, and must not be accused of a bug it
+    does not have.
+
+    Note that `inference: false` excludes the solution from the estimation run
+    altogether: it is not run, not merely unused.
+    """
+    if any(
+        expectation.match(outcome) for expectation in solution.all_expected_outcomes()
+    ):
+        return (
+            f'[error]✗ {solution.href()} finished with [item]{outcome.value}[/item], '
+            f'which is what its expectation declares -- but a solution that stops '
+            f'early leaves no evidence of how long it would have run, so it cannot '
+            f'bound the time limit from above. Set [item]inference: false[/item] on '
+            f'it to leave it out of the estimation run, or expect '
+            f'[item]tle[/item] if it is genuinely meant to run out of time.[/error]'
+        )
+    return (
+        f'[error]✗ {solution.href()} failed with [item]{outcome.value}[/item] '
+        f'instead of running out of time, so how long it ran says nothing about '
+        f'the time limit. Fix the solution, or set [item]inference: false[/item] '
+        f'on it to leave it out of the estimation run.[/error]'
+    )
+
+
 def _report_inference_diagnosis(
-    diagnosis: _InferenceDiagnosis, inference_timeout: int
+    diagnosis: _InferenceDiagnosis, cap: _InferenceCap
 ) -> bool:
     """Print what the run says about each solution; return whether the estimate
     may proceed."""
     for solution in diagnosis.dropped_upper:
         console.console.print(
             f'[warning]⚠ {solution.href()} was still running at the inference '
-            f'timeout of {inference_timeout} ms, so it does not bound the time '
-            f'limit from above.[/warning]'
+            f'timeout of {cap.timeout} ms, so it does not bound the time limit '
+            f'from above.[/warning]'
         )
     for solution, outcome in diagnosis.failed_upper:
-        console.console.print(
-            f'[error]✗ {solution.href()} failed with [item]{outcome.value}[/item] '
-            f'instead of running out of time, so how long it ran says nothing '
-            f'about the time limit. Fix the solution, or set '
-            f'[item]inference: false[/item] on it to measure it without letting '
-            f'it bound the limit.[/error]'
-        )
+        console.console.print(_failed_upper_message(solution, outcome))
     for solution in diagnosis.truncated_lower:
         console.console.print(
             f'[error]✗ {solution.href()} was still running at the inference '
-            f'timeout of {inference_timeout} ms, so its measured time is '
-            f'truncated and cannot bound the time limit from below. Raise '
+            f'timeout of {cap.timeout} ms, so its measured time is truncated and '
+            f'cannot bound the time limit from below. Raise '
             f'[item]inferenceTimeout[/item], or speed the solution up.[/error]'
         )
     return not diagnosis.failed_upper and not diagnosis.truncated_lower
@@ -816,26 +859,150 @@ def _report_inference_diagnosis(
 
 def _warn_if_the_cap_bounded_the_estimate(
     estimated: TimingProfile,
-    multipliers: schema.TimingMultipliers,
+    cap: _InferenceCap,
+    dropped: List[Solution],
 ) -> None:
     """Diagnostic (2): something was dropped at the cap AND the resolved limit is
     above what the cap alone allows, so the cap -- not the slow solutions -- is
-    what bounded the estimate."""
-    assert multipliers.timeLimitToTle is not None
-    cap = math.floor(multipliers.inferenceTimeout / _exact(multipliers.timeLimitToTle))
-    resolved = max(
-        [estimated.timeLimit, *estimated.timeLimitPerLanguage.values()],
-    )
-    if resolved <= cap:
+    what bounded the estimate.
+
+    The drops themselves were reported before the run report and the estimation
+    tables, far enough up to have scrolled away, so they are named again here.
+    """
+    if not dropped:
         return
+    resolved = max([estimated.timeLimit, *estimated.timeLimitPerLanguage.values()])
+    if resolved <= cap.largest_bounded_limit:
+        return
+    names = ', '.join(solution.href() for solution in dropped)
     console.console.print(
         f'[warning]⚠ The upper bound of this estimate is not trustworthy: '
-        f'solutions were dropped at the inference timeout of '
-        f'{multipliers.inferenceTimeout} ms, and the resolved limit of '
-        f'{resolved} ms is above the {cap} ms that timeout allows on its own '
+        f'{names} stopped at the inference timeout of {cap.timeout} ms, and the '
+        f'resolved limit of {resolved} ms is above the '
+        f'{cap.largest_bounded_limit} ms that timeout allows on its own '
         f'(inferenceTimeout / timeLimitToTle). The cap, not the slow solutions, '
         f'is what bounded the estimate -- raise [item]inferenceTimeout[/item] to '
         f'measure them for real.[/warning]'
+    )
+
+
+@dataclasses.dataclass
+class _InferenceRun:
+    """A finished estimation run, ready to be estimated from."""
+
+    result: RunSolutionResult
+    strategy: timing_config.TimingStrategy
+    # The cap this run enforced, or None when it ran unbounded.
+    cap: Optional[_InferenceCap] = None
+    # Slow solutions the cap stopped, so they measure nothing usable.
+    dropped_upper: List[Solution] = dataclasses.field(default_factory=list)
+
+    def dropped_upper_per_language(self) -> Dict[str, List[str]]:
+        per_language: Dict[str, List[str]] = {}
+        for solution in self.dropped_upper:
+            per_language.setdefault(find_language_name(solution), []).append(
+                str(solution.path)
+            )
+        return per_language
+
+
+def _resolve_inference_strategy(
+    formula: Optional[str],
+) -> timing_config.TimingStrategy:
+    # A formula passed in here is the CLI's custom-formula escape hatch: it forces
+    # the formula path for this run regardless of what the environment configures.
+    if formula is not None:
+        return timing_config.TimingStrategy(formula=formula)
+    return timing_config.resolve_strategy(
+        environment.get_environment().timing,
+        package.find_problem_package_or_die().timing,
+    )
+
+
+async def _run_for_inference(
+    check: bool,
+    detailed: bool,
+    runs: int,
+    formula: Optional[str],
+) -> Optional[_InferenceRun]:
+    """Run the solutions the time limit is inferred from, report them, and say
+    what their verdicts mean. ``None`` when the estimate must not proceed."""
+    strategy = _resolve_inference_strategy(formula)
+    multipliers = strategy.multipliers
+
+    lower_solutions = get_inference_solutions(InferenceRole.LOWER)
+    if not lower_solutions:
+        # Knowable from `problem.rbx.yml` alone, so say so before running
+        # anything: no run and no grouping could rescue the estimate.
+        raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
+
+    upper_solutions: List[Solution] = []
+    cap: Optional[_InferenceCap] = None
+    if multipliers is not None and multipliers.timeLimitToTle is not None:
+        # The slow solutions are only worth running when their timings bound
+        # something, and they only terminate under a cap.
+        upper_solutions = get_inference_solutions(InferenceRole.UPPER)
+        if upper_solutions:
+            cap = _InferenceCap(
+                timeout=multipliers.inferenceTimeout,
+                time_limit_to_tle=multipliers.timeLimitToTle,
+            )
+        # With no slow solution there is nothing to bound the limit from above,
+        # so the cap would buy nothing and only add a way for a legitimately
+        # slow accepted solution to fail the estimate.
+
+    status = (
+        'Running solutions for time estimation...'
+        if upper_solutions
+        else 'Running ACCEPTED solutions...'
+    )
+    with utils.StatusProgress(status) as s:
+        tracked_solutions = OrderedSet(
+            str(solution.path) for solution in [*lower_solutions, *upper_solutions]
+        )
+        result = await run_solutions(
+            progress=s,
+            tracked_solutions=tracked_solutions,
+            check=check,
+            # ALL_SOLUTIONS keeps `isDoubleTL` off (only FULL turns it on):
+            # doubling the limit here would double the very cap that exists to
+            # bound the solutions running under it.
+            verification=_INFERENCE_VERIFICATION,
+            timelimit_override=cap.timeout if cap is not None else -1,
+            nruns=runs,
+        )
+
+    console.console.print()
+    console.console.rule(
+        '[status]Run report (for time estimation)[/status]', style='status'
+    )
+    ok = await print_run_report(
+        result,
+        console.console,
+        _INFERENCE_VERIFICATION,
+        detailed=detailed,
+        skip_printing_limits=True,
+        # An upper-bound solution is *supposed* to hit the cap, so only the
+        # solutions that bound the limit from below decide whether the run
+        # succeeded.
+        gating_solutions={str(solution.path) for solution in lower_solutions},
+    )
+
+    dropped_upper: List[Solution] = []
+    if cap is not None:
+        diagnosis = await _diagnose_inference_run(result)
+        if not _report_inference_diagnosis(diagnosis, cap):
+            return None
+        dropped_upper = diagnosis.dropped_upper
+
+    if not ok:
+        console.console.print(
+            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+        )
+        return None
+
+    return _InferenceRun(
+        result=result, strategy=strategy, cap=cap, dropped_upper=dropped_upper
     )
 
 
@@ -854,102 +1021,24 @@ async def compute_time_limits(
         )
         return None
 
-    verification = VerificationLevel.ALL_SOLUTIONS.value
-
-    # A formula passed in here is the CLI's custom-formula escape hatch: it forces
-    # the formula path for this run regardless of what the environment configures.
-    strategy = (
-        timing_config.TimingStrategy(formula=formula)
-        if formula is not None
-        else timing_config.resolve_strategy(
-            environment.get_environment().timing,
-            package.find_problem_package_or_die().timing,
-        )
+    run = await _run_for_inference(
+        check=check, detailed=detailed, runs=runs, formula=formula
     )
-    multipliers = strategy.multipliers
-
-    lower_solutions = get_inference_solutions(InferenceRole.LOWER)
-    if not lower_solutions:
-        # Knowable from `problem.rbx.yml` alone, so say so before running
-        # anything: no run and no grouping could rescue the estimate.
-        raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
-    upper_solutions: List[Solution] = []
-    # Unlimited, as long as nothing has to be bounded from above.
-    timelimit_override = -1
-    if multipliers is not None and multipliers.timeLimitToTle is not None:
-        # The slow solutions are only worth running when their timings bound
-        # something, and they only terminate under a cap.
-        upper_solutions = get_inference_solutions(InferenceRole.UPPER)
-        if upper_solutions:
-            timelimit_override = multipliers.inferenceTimeout
-        # With no slow solution there is nothing to bound the limit from above,
-        # so the cap would buy nothing and only add a way for a legitimately
-        # slow accepted solution to fail the estimate.
-
-    status = (
-        'Running ACCEPTED solutions...'
-        if not upper_solutions
-        else 'Running solutions for time estimation...'
-    )
-    with utils.StatusProgress(status) as s:
-        tracked_solutions = OrderedSet(
-            str(solution.path) for solution in [*lower_solutions, *upper_solutions]
-        )
-        solution_result = await run_solutions(
-            progress=s,
-            tracked_solutions=tracked_solutions,
-            check=check,
-            # ALL_SOLUTIONS keeps `isDoubleTL` off (only FULL turns it on):
-            # doubling the limit here would double the very cap that exists to
-            # bound the solutions running under it.
-            verification=VerificationLevel(verification),
-            timelimit_override=timelimit_override,
-            nruns=runs,
-        )
-
-    console.console.print()
-    console.console.rule(
-        '[status]Run report (for time estimation)[/status]', style='status'
-    )
-    ok = await print_run_report(
-        solution_result,
-        console.console,
-        VerificationLevel(verification),
-        detailed=detailed,
-        skip_printing_limits=True,
-        # An upper-bound solution is *supposed* to hit the cap, so only the
-        # solutions that bound the limit from below decide whether the run
-        # succeeded.
-        ok_solutions={str(solution.path) for solution in lower_solutions},
-    )
-
-    dropped_upper_per_language: Dict[str, List[str]] = {}
-    if timelimit_override != -1:
-        assert multipliers is not None
-        diagnosis = await _diagnose_inference_run(solution_result)
-        if not _report_inference_diagnosis(diagnosis, multipliers.inferenceTimeout):
-            return None
-        dropped_upper_per_language = diagnosis.dropped_per_language()
-
-    if not ok:
-        console.console.print(
-            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
-        )
+    if run is None:
         return None
 
     estimated_tl = await estimate_time_limit(
         console.console,
-        solution_result,
-        strategy,
+        run.result,
+        run.strategy,
         auto=auto,
-        dropped_upper_per_language=dropped_upper_per_language,
+        dropped_upper_per_language=run.dropped_upper_per_language(),
     )
     if estimated_tl is None:
         return None
 
-    if dropped_upper_per_language:
-        assert multipliers is not None
-        _warn_if_the_cap_bounded_the_estimate(estimated_tl, multipliers)
+    if run.cap is not None:
+        _warn_if_the_cap_bounded_the_estimate(estimated_tl, run.cap, run.dropped_upper)
 
     limits_path = package.get_limits_file(profile)
     console.console.print(
@@ -964,9 +1053,9 @@ async def compute_time_limits(
     if share is not None:
         rec = sharing.recording_console()
         await print_run_report(
-            solution_result,
+            run.result,
             rec,
-            VerificationLevel(verification),
+            _INFERENCE_VERIFICATION,
             detailed=detailed,
             skip_printing_limits=True,
         )

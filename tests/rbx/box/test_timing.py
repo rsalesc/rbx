@@ -249,6 +249,69 @@ class TestEstimateTimeLimit:
     @mock.patch('rbx.box.timing.consume_and_key_evaluation_items')
     @mock.patch('rbx.box.timing.find_language_name')
     @mock.patch('rbx.box.environment.get_environment')
+    async def test_the_time_report_headlines_the_measurements_the_limit_uses(
+        self,
+        mock_env,
+        mock_find_lang,
+        mock_consume,
+        mock_console,
+        testing_pkg: testing_package.TestingPackage,
+    ):
+        """Fastest/slowest describe the accepted solutions the limit is computed
+        from; a slow solution -- typically sitting at the cap -- is reported on
+        its own line rather than pooled into a headline no limit derives from."""
+        from types import SimpleNamespace
+
+        ac = Solution(
+            path=testing_pkg.path('ac.cpp'),
+            language='cpp',
+            outcome=ExpectedOutcome.ACCEPTED,
+        )
+        tle = Solution(
+            path=testing_pkg.path('tle.cpp'),
+            language='cpp',
+            outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        )
+
+        def _eval(time_ms):
+            async def _get():
+                log = mock.Mock()
+                log.time = time_ms / 1000
+                return mock.Mock(log=log, result=mock.Mock(outcome='ACCEPTED'))
+
+            return Deferred(_get)
+
+        skeleton = mock.Mock()
+        skeleton.solutions = [ac, tle]
+        mock_consume.return_value = {
+            str(ac.path): {'g': [_eval(400)]},
+            str(tle.path): {'g': [_eval(6000)]},
+        }
+        mock_find_lang.side_effect = lambda sol: sol.language
+        mock_env.return_value.timing.groups = []
+        mock_env.return_value.languages = [SimpleNamespace(name='cpp')]
+
+        estimate = await timing.estimate_time_limit(
+            mock_console,
+            RunSolutionResult(skeleton=skeleton, items=[]),
+            strategy=TimingStrategy(
+                multipliers=schema.TimingMultipliers(
+                    acToTimeLimit=2.0, timeLimitToTle=1.5
+                )
+            ),
+            auto=True,
+        )
+
+        assert estimate is not None and estimate.timeLimit == 800
+        mock_console.print.assert_any_call('Fastest solution: 400 ms')
+        mock_console.print.assert_any_call('Slowest solution: 400 ms')
+        mock_console.print.assert_any_call(
+            'Fastest solution expected to be too slow: 6000 ms'
+        )
+
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items')
+    @mock.patch('rbx.box.timing.find_language_name')
+    @mock.patch('rbx.box.environment.get_environment')
     async def test_a_language_seen_only_on_the_slow_side_still_bounds_its_group(
         self,
         mock_env,

@@ -6,6 +6,7 @@ diagnostics derived from their verdicts, so that is what these tests assert on.
 """
 
 import pathlib
+import re
 from typing import Dict, List, Optional
 from unittest import mock
 
@@ -18,6 +19,15 @@ from rbx.box.schema import ExpectedOutcome, Solution, TimingMultipliers
 from rbx.box.solutions import _gates_report  # noqa: SLF001
 from rbx.box.testing import testing_package
 from rbx.grading.steps import Outcome
+
+
+def _printed(capsys) -> str:
+    """Everything printed, without ANSI escapes and re-flowed onto one line, so
+    an assertion is not at the mercy of where rich wrapped a message."""
+    out = capsys.readouterr().out
+    out = re.sub(r'\x1b\]8;;[^\x1b]*\x1b\\\\?', '', out)  # hyperlinks
+    out = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', out)  # colors
+    return ' '.join(out.split())
 
 
 def _solution(pkg, name: str, outcome: ExpectedOutcome, **kwargs) -> Solution:
@@ -153,7 +163,7 @@ async def test_multipliers_without_tle_ratio_runs_only_lower_solutions(pkg):
     assert run.timelimit_override == -1
     # Nothing about the run differs from the formula path: every solution that
     # ran still gates the report, and nothing was dropped.
-    assert run.print_run_report.call_args.kwargs['ok_solutions'] == set(run.tracked)
+    assert run.print_run_report.call_args.kwargs['gating_solutions'] == set(run.tracked)
     assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
 
 
@@ -243,7 +253,7 @@ async def test_only_lower_solutions_gate_the_run_report(pkg):
             }
         ),
     )
-    assert run.print_run_report.call_args.kwargs['ok_solutions'] == {str(ac.path)}
+    assert run.print_run_report.call_args.kwargs['gating_solutions'] == {str(ac.path)}
 
 
 async def test_an_upper_solution_at_the_cap_is_dropped_with_a_warning(pkg, capsys):
@@ -269,13 +279,20 @@ async def test_an_upper_solution_at_the_cap_is_dropped_with_a_warning(pkg, capsy
     assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {
         'cpp': [str(tle.path)]
     }
-    out = capsys.readouterr().out
-    assert 'tle.cpp' in out
+    printed = _printed(capsys)
+    # A warning, not an error: the estimate goes on without this solution.
+    assert '⚠' in printed
+    assert '✗' not in printed
+    assert 'tle.cpp' in printed
+    assert 'does not bound the time limit from above' in printed
 
 
-async def test_an_upper_solution_failing_for_a_non_timing_reason_is_an_error(
+async def test_an_upper_solution_crashing_as_declared_is_an_error_without_blame(
     pkg, capsys
 ):
+    # `tle-or-rte` declares the crash, so the message must not accuse the setter
+    # of a bug -- but a solution that stopped early still measures nothing, so
+    # it stays an error the setter has to resolve deliberately.
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TLE_OR_RTE)
     run, result = await _compute(
@@ -294,9 +311,43 @@ async def test_an_upper_solution_failing_for_a_non_timing_reason_is_an_error(
     )
     assert result is None
     run.estimate.assert_not_called()
-    out = capsys.readouterr().out
-    assert 'tle.cpp' in out
-    assert 'inference' in out
+    printed = _printed(capsys)
+    assert '✗' in printed
+    assert 'tle.cpp' in printed
+    assert 'which is what its expectation declares' in printed
+    assert 'inference: false' in printed
+    # Nothing here says the solution is broken or asks for it to be fixed.
+    assert 'instead of running out of time' not in printed
+    assert 'Fix the solution' not in printed
+
+
+async def test_an_upper_solution_failing_for_an_undeclared_reason_is_an_error(
+    pkg, capsys
+):
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    run, result = await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
+        ),
+        lower=[ac],
+        upper=[tle],
+        structured=_structured(
+            {
+                ac: [_evaluation(400, Outcome.ACCEPTED)],
+                tle: [_evaluation(120, Outcome.WRONG_ANSWER)],
+            }
+        ),
+        run_report_ok=False,
+    )
+    assert result is None
+    run.estimate.assert_not_called()
+    printed = _printed(capsys)
+    assert '✗' in printed
+    assert 'tle.cpp' in printed
+    assert 'instead of running out of time' in printed
+    assert 'inference: false' in printed
 
 
 async def test_a_lower_solution_at_the_cap_is_an_error(pkg, capsys):
@@ -323,7 +374,41 @@ async def test_a_lower_solution_at_the_cap_is_an_error(pkg, capsys):
     )
     assert result is None
     run.estimate.assert_not_called()
-    assert 'ac.cpp' in capsys.readouterr().out
+    printed = _printed(capsys)
+    assert '✗' in printed
+    assert 'ac.cpp' in printed
+    assert 'cannot bound the time limit from below' in printed
+
+
+async def test_a_lower_solution_failing_for_a_non_timing_reason_uses_the_plain_gate(
+    pkg, capsys
+):
+    # A wrong accepted solution is the report's job, not inference's: no
+    # diagnostic claims anything about timing, and the generic gate stops it.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    run, result = await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[tle],
+        structured=_structured(
+            {
+                ac: [_evaluation(400, Outcome.WRONG_ANSWER)],
+                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
+            }
+        ),
+        run_report_ok=False,
+    )
+    assert result is None
+    run.estimate.assert_not_called()
+    printed = _printed(capsys)
+    assert '✗' not in printed
+    assert 'Failed to run ACCEPTED solutions' in printed
 
 
 async def test_a_cap_bounded_estimate_warns_that_the_upper_bound_is_untrustworthy(
@@ -351,8 +436,96 @@ async def test_a_cap_bounded_estimate_warns_that_the_upper_bound_is_untrustworth
         estimated=timing.TimingProfile(timeLimit=5000),
     )
     assert result is not None
-    out = capsys.readouterr().out
-    assert 'upper bound' in out
+    printed = _printed(capsys)
+    assert '⚠' in printed
+    assert 'upper bound' in printed
+    # The drop warning has scrolled past by now, so the solution is named again.
+    assert printed.count('tle.cpp') >= 2
+
+
+@pytest.mark.parametrize(
+    ('limit', 'warns'),
+    [
+        # floor(7000 / 1.5) = 4666 is exactly what the cap still justifies.
+        (4666, False),
+        (4667, True),
+    ],
+)
+async def test_the_cap_bounded_warning_fires_just_above_the_bound(
+    pkg, capsys, limit, warns
+):
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[tle],
+        structured=_structured(
+            {
+                ac: [_evaluation(2333, Outcome.ACCEPTED)],
+                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
+            }
+        ),
+        estimated=timing.TimingProfile(timeLimit=limit),
+    )
+    assert ('upper bound' in _printed(capsys)) is warns
+
+
+async def test_a_per_language_limit_can_trip_the_cap_bounded_warning(pkg, capsys):
+    # The base limit is under the bound but one language's is not, and that is
+    # the limit a solution would actually run under.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[tle],
+        structured=_structured(
+            {
+                ac: [_evaluation(2000, Outcome.ACCEPTED)],
+                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
+            }
+        ),
+        estimated=timing.TimingProfile(
+            timeLimit=4000, timeLimitPerLanguage={'py': 9000}
+        ),
+    )
+    assert 'upper bound' in _printed(capsys)
+
+
+async def test_nothing_dropped_means_no_cap_bounded_warning(pkg, capsys):
+    # A high limit alone is not suspicious; only a drop makes the cap the
+    # suspect.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[tle],
+        structured=_structured(
+            {
+                ac: [_evaluation(2500, Outcome.ACCEPTED)],
+                tle: [_evaluation(6900, Outcome.ACCEPTED)],
+            }
+        ),
+        estimated=timing.TimingProfile(timeLimit=5000),
+    )
+    assert 'upper bound' not in _printed(capsys)
 
 
 async def test_a_package_with_no_lower_bound_solution_fails_before_running(pkg):
@@ -368,7 +541,7 @@ async def test_a_package_with_no_lower_bound_solution_fails_before_running(pkg):
         )
 
 
-def test_the_report_gate_ignores_solutions_outside_ok_solutions():
+def test_the_report_gate_ignores_solutions_outside_gating_solutions():
     # The contract compute_time_limits relies on: with no restriction every
     # solution decides the verdict; with one, only the listed solutions do.
     ac = Solution(path=pathlib.Path('ac.cpp'), outcome=ExpectedOutcome.ACCEPTED)
