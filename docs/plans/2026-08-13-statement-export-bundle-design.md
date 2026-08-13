@@ -23,8 +23,14 @@ Only three things in that pipeline are actually Polygon's:
 
 Everything else — scope resolution, macro expansion, TikZ figure collection,
 reference rewriting — is target-independent and currently unreachable from any
-other packager. `moj_next` writes a dummy `docs/enunciado.md` today; a real MOJ
-statement needs exactly this machinery, arranged differently.
+other packager. The MOJ packager writes a dummy `docs/enunciado.md` today; a real
+MOJ statement needs exactly this machinery, arranged differently.
+
+> **Note.** This design was written while that packager lived as `moj_next`
+> beside a legacy `moj`. #641 replaced the legacy one outright, so it is now
+> `rbx/box/packaging/moj/` (`rbx package moj`). Nothing about the design changes —
+> the dummy `enunciado.md` and the mandatory `## Entrada` / `## Saída` shape are
+> unaffected by the rename.
 
 ### The correction that shapes the design
 
@@ -42,7 +48,7 @@ output, land it.
 
 **Out of scope, deliberately:**
 
-- **The moj-next real statement.** It becomes a follow-up that *consumes* this
+- **The real MOJ statement.** It becomes a follow-up that *consumes* this
   API. Keeping the refactor and the feature separate keeps both reviewable, and
   the feature has its own open questions (heading mapping to the mandatory
   `## Entrada` / `## Saída`, MOJ's injection of samples from `tests/input/sample*`,
