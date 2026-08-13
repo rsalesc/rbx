@@ -1,3 +1,5 @@
+from typing import List, Optional, Tuple
+
 import pytest
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
@@ -6,6 +8,7 @@ from rbx.box.timing_groups import (
     GroupTimings,
     GroupValidationError,
     ResolvedGroup,
+    UpperTimings,
     build_partition,
     partition_from_assignment,
     resolve_groups,
@@ -50,7 +53,7 @@ def test_build_partition_no_leftover_when_all_grouped():
     assert [g.languages for g in groups] == [['c', 'cpp']]
 
 
-def _eval(timings: GroupTimings):
+def _eval(timings: GroupTimings, upper: Optional[UpperTimings] = None):
     # simple deterministic formula for tests: max(fastest*3, slowest*2)
     return max(timings.fastest * 3, timings.slowest * 2)
 
@@ -323,7 +326,7 @@ def test_resolve_propagates_is_leftover():
     assert by_leftover[('go', 'java')] is True
 
 
-def _eval_slowest(timings: GroupTimings):
+def _eval_slowest(timings: GroupTimings, upper: Optional[UpperTimings] = None):
     # simple deterministic formula for tests: just the slowest
     return timings.slowest
 
@@ -377,3 +380,100 @@ def test_forced_relative_to_base_estimate():
     result = resolve_groups(groups, pooled, base, _eval_slowest)
     # base_tl = _eval_slowest(base) = 200; forced -> 3.0*200 = 600
     assert result.reports[1].timeLimit == 600
+
+
+class _RecordingDerive:
+    """A derive_fn stub that records every (time_limit, upper) it is handed."""
+
+    def __init__(self, returns: Optional[int] = None):
+        self.calls: List[Tuple[int, Optional[UpperTimings]]] = []
+        self.returns = returns
+
+    def __call__(self, tl: int, upper: Optional[UpperTimings]) -> int:
+        self.calls.append((tl, upper))
+        return self.returns if self.returns is not None else tl
+
+
+def test_when_empty_group_with_only_slow_solutions_is_upper_checked():
+    # 'python' has a slow solution but no accepted one, so it has no pooled
+    # timings and derives its limit from 'cpp' -- its upper bound must still
+    # reach derive_fn.
+    groups = [
+        ResolvedGroup(languages=['cpp']),
+        ResolvedGroup(
+            languages=['python'],
+            whenEmpty=LanguageGroupFallback(relativeTo='cpp', multiplier=3.0),
+        ),
+    ]
+    pooled = {0: GroupTimings(fastest=100, slowest=200, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=200, solution_count=1)
+    py_upper = UpperTimings(fastest_slow=400, fastest_slow_solution='sols/slow.py')
+    derive = _RecordingDerive()
+
+    result = resolve_groups(
+        groups, pooled, base, _eval_slowest, derive, upper={1: py_upper}
+    )
+
+    assert derive.calls == [(600, py_upper)]  # 3.0 * cpp's 200
+    assert result.reports[1].timeLimit == 600
+    assert result.reports[1].origin == TimingGroupOrigin.MULTIPLIER
+
+
+def test_defaulted_group_with_only_slow_solutions_is_upper_checked():
+    # 'python' has neither accepted solutions nor a whenEmpty, so it inherits
+    # the base limit -- its upper bound must still reach derive_fn.
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    pooled = {0: GroupTimings(fastest=100, slowest=200, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=200, solution_count=1)
+    py_upper = UpperTimings(fastest_slow=400, fastest_slow_solution='sols/slow.py')
+    derive = _RecordingDerive()
+
+    result = resolve_groups(
+        groups, pooled, base, _eval_slowest, derive, upper={1: py_upper}
+    )
+
+    assert derive.calls == [(200, py_upper)]  # base_tl
+    assert result.reports[1].origin == TimingGroupOrigin.DEFAULTED
+    assert result.defaulted_languages == ['python']
+    assert 'python' not in result.time_limit_per_language
+
+
+def test_defaulted_group_moved_off_base_keeps_its_own_limit():
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    pooled = {0: GroupTimings(fastest=100, slowest=200, solution_count=1)}
+    base = GroupTimings(fastest=100, slowest=200, solution_count=1)
+    derive = _RecordingDerive(returns=300)
+
+    result = resolve_groups(groups, pooled, base, _eval_slowest, derive)
+
+    assert result.reports[1].timeLimit == 300
+    assert result.defaulted_languages == []
+    assert result.time_limit_per_language['python'] == 300
+
+
+def test_estimated_groups_receive_their_own_upper_bound():
+    recorded: List[Tuple[GroupTimings, Optional[UpperTimings]]] = []
+
+    def _eval_recording(
+        timings: GroupTimings, upper: Optional[UpperTimings] = None
+    ) -> int:
+        recorded.append((timings, upper))
+        return timings.slowest
+
+    groups = [ResolvedGroup(languages=['cpp']), ResolvedGroup(languages=['python'])]
+    cpp = GroupTimings(fastest=100, slowest=200, solution_count=1)
+    py = GroupTimings(fastest=500, slowest=900, solution_count=1)
+    base = GroupTimings(fastest=100, slowest=900, solution_count=2)
+    cpp_upper = UpperTimings(fastest_slow=500)
+    base_upper = UpperTimings(fastest_slow=500, dropped_upper=['sols/timeout.py'])
+
+    resolve_groups(
+        groups,
+        {0: cpp, 1: py},
+        base,
+        _eval_recording,
+        upper={0: cpp_upper},
+        base_upper=base_upper,
+    )
+
+    assert recorded == [(base, base_upper), (cpp, cpp_upper), (py, None)]

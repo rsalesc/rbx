@@ -91,14 +91,28 @@ def partition_from_assignment(
 
 
 class GroupTimings(BaseModel):
+    """Lower-bound evidence: how long the group's accepted solutions took."""
+
     fastest: int
     slowest: int
     solution_count: int
-    # Upper-bound evidence: the fastest slow solution in this group, and which
-    # solution it was. None when the group has no usable slow measurement.
-    fastest_slow: Optional[int] = None
-    fastest_slow_solution: Optional[str] = None
+    # Which solution took ``slowest`` -- the one that drives the limit up.
     slowest_solution: Optional[str] = None
+
+
+class UpperTimings(BaseModel):
+    """Upper-bound evidence: how long the group's slow solutions took.
+
+    Tracked separately from ``GroupTimings`` because the two sides are populated
+    by disjoint sets of solutions: a group may have slow solutions and no
+    accepted ones (so no ``GroupTimings`` at all) and still must have its limit
+    checked against this bound.
+    """
+
+    fastest_slow: int
+    fastest_slow_solution: Optional[str] = None
+    # Slow solutions that were measured but cannot bound the limit (e.g. they
+    # hit the inference timeout).
     dropped_upper: List[str] = []
 
 
@@ -110,10 +124,14 @@ class ResolutionResult(BaseModel):
     defaulted_languages: List[str]
 
 
-EvalFn = Callable[[GroupTimings], int]
-# Post-processes a time limit derived from a reference group (``whenEmpty`` or a
-# forced relative), given the deriving group's own timings when it has any.
-DeriveFn = Callable[[int, Optional[GroupTimings]], int]
+# Estimates a group's limit from its own measurements, given the group's upper
+# bound when it has slow solutions.
+EvalFn = Callable[[GroupTimings, Optional[UpperTimings]], int]
+# Post-processes a limit that was NOT estimated from the group's own accepted
+# solutions -- derived from a reference group (``whenEmpty`` or a forced
+# relative) or inherited from the base estimate (``DEFAULTED``) -- so it can
+# still be checked against the group's own upper bound.
+DeriveFn = Callable[[int, Optional[UpperTimings]], int]
 
 
 def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
@@ -173,8 +191,13 @@ def resolve_groups(
     base: GroupTimings,
     eval_fn: EvalFn,
     derive_fn: Optional[DeriveFn] = None,
+    upper: Optional[
+        Dict[int, UpperTimings]
+    ] = None,  # group index -> upper bound (groups with slow solutions only)
+    base_upper: Optional[UpperTimings] = None,
 ) -> ResolutionResult:
-    base_tl = eval_fn(base)
+    upper = upper or {}
+    base_tl = eval_fn(base, base_upper)
     base_report = TimingGroupReport(
         languages=[],
         timeLimit=base_tl,
@@ -198,6 +221,7 @@ def resolve_groups(
         resolving.add(idx)
         group = groups[idx]
         timings = pooled.get(idx)
+        group_upper = upper.get(idx)
         if group.forced_relative is not None:
             fb = group.forced_relative
             ref = fb.relativeTo
@@ -205,7 +229,7 @@ def resolve_groups(
             increment = fb.increment or 0
             tl = int(ref_tl * fb.multiplier + increment)
             if derive_fn is not None:
-                tl = derive_fn(tl, timings)
+                tl = derive_fn(tl, group_upper)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -219,7 +243,7 @@ def resolve_groups(
                 isLeftover=group.is_leftover,
             )
         elif timings is not None:
-            tl = eval_fn(timings)
+            tl = eval_fn(timings, group_upper)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -235,7 +259,7 @@ def resolve_groups(
             increment = group.whenEmpty.increment or 0
             tl = int(ref_tl * group.whenEmpty.multiplier + increment)
             if derive_fn is not None:
-                tl = derive_fn(tl, None)
+                tl = derive_fn(tl, group_upper)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -248,6 +272,8 @@ def resolve_groups(
             )
         else:
             tl = base_tl
+            if derive_fn is not None:
+                tl = derive_fn(tl, group_upper)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -268,9 +294,11 @@ def resolve_groups(
     defaulted: List[str] = []
     for idx, group in enumerate(groups):
         report = resolved_report[idx]
-        if report.origin == TimingGroupOrigin.DEFAULTED:
+        if report.origin == TimingGroupOrigin.DEFAULTED and report.timeLimit == base_tl:
             defaulted.extend(group.languages)
             continue  # uses base TL -> no modifier
+        # A defaulted group whose derive_fn moved it off the base limit still
+        # needs a per-language modifier to carry that limit.
         for lang in group.languages:
             tl_per_language[lang] = report.timeLimit
     return ResolutionResult(

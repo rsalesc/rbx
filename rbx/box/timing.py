@@ -79,7 +79,10 @@ def build_timing_profile(
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
-    def _eval(timings: timing_groups.GroupTimings) -> int:
+    def _eval(
+        timings: timing_groups.GroupTimings,
+        upper: Optional[timing_groups.UpperTimings] = None,
+    ) -> int:
         return int(
             safeeval.eval_int(
                 formula, {'fastest': timings.fastest, 'slowest': timings.slowest}
