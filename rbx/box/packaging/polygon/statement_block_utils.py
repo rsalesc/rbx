@@ -7,6 +7,10 @@ from rbx.box import package
 from rbx.box.exception import RbxException
 from rbx.box.lang import code_to_langs, is_valid_lang_code
 from rbx.box.statements import polygon_utils
+
+# Transitional re-export: `upload.py` still imports these two from here. Drop it
+# once `upload.py` imports them from `rbx.box.statements.export` directly, so this
+# does not calcify into permanent indirection.
 from rbx.box.statements.export import (  # noqa: F401
     get_processed_statement_blocks,
     get_substituted_statement_blocks,

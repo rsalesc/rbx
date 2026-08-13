@@ -128,7 +128,9 @@ async def test_processed_blocks_skip_polygon_conversion_when_not_normalizing(
         normalized = export.get_processed_statement_blocks(st)
         raw = export.get_processed_statement_blocks(st, normalize=False)
 
-        # The Polygon conversion rewrites \( ... \) into $ ... $ ...
+        # The Polygon conversion rewrites \( ... \) into $ ... $ ... (the notes
+        # block is authored in
+        # rbx/testdata/contests/statements_v2_polygon/A/statement/statement.rbx.tex)
         assert '\\(' not in normalized.blocks['notes']
         assert '$n \\le 10$' in normalized.blocks['notes']
         # ... and normalize=False leaves it alone.
@@ -136,6 +138,40 @@ async def test_processed_blocks_skip_polygon_conversion_when_not_normalizing(
         # Macro expansion is not part of the conversion: it runs either way.
         assert '\\NN' not in raw.blocks['notes']
         assert 'mathbb' in raw.blocks['notes']
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_processed_blocks_dump_survives_a_non_normalizing_call(
+    cleandir_with_testdata,
+):
+    from rbx.box.statements import export
+    from rbx.box.statements.demacro_utils import MacroDefinitions
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        await build_statements.build_statement(
+            st,
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        MacroDefinitions().to_json_file(
+            build_statements.get_statement_dir(st) / 'macros.json'
+        )
+
+        export.get_processed_statement_blocks(st)
+
+        # The debug dump lands in <overlay>/export/, one file per block.
+        dump_dir = build_statements.get_statement_dir(st) / 'export'
+        assert (dump_dir / 'notes.tex').is_file()
+        dumped = (dump_dir / 'notes.tex').read_text()
+
+        # A call that writes nothing must not wipe what the last one wrote.
+        export.get_processed_statement_blocks(st, normalize=False)
+        assert (dump_dir / 'notes.tex').read_text() == dumped
 
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')

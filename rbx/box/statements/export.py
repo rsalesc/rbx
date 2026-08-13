@@ -1,5 +1,20 @@
-"""Target-independent statement export: resolve a statement's assets once, then
-let a layout decide where they land.
+"""One statement export pipeline, shared by every target, in four stages:
+
+1. **Blocks** (``get_substituted_statement_blocks`` /
+   ``get_processed_statement_blocks``) -- read what the build left in the overlay,
+   expand and filter macros, and optionally normalize the TeX.
+2. **Assets** (``resolve_assets``) -- every file the statement ships, tagged with
+   the scope its ``\\includegraphics`` references are relative to.
+3. **Layout** (``AssetLayout`` and friends) -- where those assets and the
+   documents citing them land, for this target.
+4. **Remap** (``derive_remap``) -- the reference rewrites the layout implies.
+
+Stages 2--4 are genuinely target-independent: they know only paths, and a target
+is expressed entirely as a layout. Stage 1 is not quite -- its final,
+*optional* step converts to the Polygon TeX subset (see
+``get_processed_statement_blocks``), which is why ``polygon_utils`` is imported
+here. That subset is the conservative one, so it is the default rather than a
+Polygon special case, and it is a parameter for consumers that want the raw TeX.
 
 Extracted from the Polygon upload path, which was the only consumer. See
 ``docs/plans/2026-08-13-statement-export-bundle-design.md``.
@@ -69,10 +84,13 @@ def get_processed_statement_blocks(
     overlay_dir = get_statement_dir(statement)
     macros_file = overlay_dir / 'macros.json'
     statement_dir = overlay_dir / 'export'
-    shutil.rmtree(statement_dir, ignore_errors=True)
-    statement_dir.mkdir(parents=True, exist_ok=True)
 
     if not macros_file.is_file():
+        # NOTE: this returns BEFORE the conversion, so an explicit
+        # ``normalize=True`` silently does nothing when the build did not run the
+        # demacro pass. Polygon masks the quirk -- ``validate_statements`` re-checks
+        # the constructs and errors loudly -- but a future block-consuming packager
+        # would get un-normalized TeX with no signal at all.
         return statement_blocks
 
     # Get macros and additional macros from defs block.
@@ -112,7 +130,11 @@ def get_processed_statement_blocks(
             for explanation_index, explanation in statement_blocks.explanations.items()
         }
 
-        # Save normalized blocks for debugging.
+        # Save normalized blocks for debugging. The wipe belongs to this branch,
+        # not the top of the function: a later non-normalizing call writes nothing,
+        # so an unconditional wipe would erase the dump a reader came looking for.
+        shutil.rmtree(statement_dir, ignore_errors=True)
+        statement_dir.mkdir(parents=True, exist_ok=True)
         for block_name, block_content in statement_blocks.blocks.items():
             (statement_dir / f'{block_name}.tex').write_text(block_content)
         for explanation_index, explanation in statement_blocks.explanations.items():
