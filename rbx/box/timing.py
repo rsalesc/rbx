@@ -1,4 +1,5 @@
 import functools
+import math
 from typing import Any, Callable, Dict, List, Optional
 
 import rich
@@ -71,6 +72,122 @@ def step_up(x: Any, step: int) -> int:
     return (x + step - 1) // step * step
 
 
+# Relative tolerance used to absorb binary floating-point representation error
+# when multiplying integer milliseconds by a ratio. Without it, ``50 * 1.1``
+# (55.00000000000001) would ceil to 56, and a limit that sits exactly on the
+# upper bound would be rejected.
+_RATIO_TOLERANCE = 1e-9
+
+
+def _ceil_ms(value: float) -> int:
+    """Ceiling in milliseconds, treating a value within ``_RATIO_TOLERANCE`` of
+    an integer as that integer."""
+    nearest = round(value)
+    if math.isclose(value, nearest, rel_tol=_RATIO_TOLERANCE):
+        return int(nearest)
+    return math.ceil(value)
+
+
+def make_formula_eval(formula: str) -> timing_groups.EvalFn:
+    """Estimator that evaluates the configured formula over the group's accepted
+    solutions. Bounded from below only: it never reads the upper measurements,
+    so no upper bound is measured for it."""
+
+    def _eval(measured: timing_groups.GroupMeasurements) -> int:
+        assert measured.lower is not None
+        timings = measured.lower
+        return int(
+            safeeval.eval_int(
+                formula, {'fastest': timings.fastest, 'slowest': timings.slowest}
+            )
+        )
+
+    return _eval
+
+
+def _upper_bound(
+    multipliers: schema.TimingMultipliers,
+    measured: timing_groups.GroupMeasurements,
+) -> Optional[float]:
+    """The largest time limit the group's slow solutions allow, or None when
+    nothing bounds it from above."""
+    if multipliers.timeLimitToTle is None or measured.upper is None:
+        return None
+    return measured.upper.fastest_slow / multipliers.timeLimitToTle
+
+
+def _check_upper(
+    tl: int,
+    multipliers: schema.TimingMultipliers,
+    measured: timing_groups.GroupMeasurements,
+) -> int:
+    """Return ``tl`` if the group's slow solutions allow it, else raise.
+
+    The constraint is stated in the multiplied form the configuration uses --
+    ``tl * timeLimitToTle <= fastest_slow`` -- so that a limit sitting exactly on
+    the bound is accepted.
+    """
+    upper = _upper_bound(multipliers, measured)
+    if upper is None:
+        return tl
+    assert multipliers.timeLimitToTle is not None
+    assert measured.upper is not None
+    scaled = tl * multipliers.timeLimitToTle
+    fastest_slow = measured.upper.fastest_slow
+    if scaled <= fastest_slow or math.isclose(
+        scaled, fastest_slow, rel_tol=_RATIO_TOLERANCE
+    ):
+        return tl
+
+    if measured.lower is not None:
+        fast_solution = measured.lower.slowest_solution or 'the accepted solution'
+        lower_side = (
+            f'{fast_solution} runs in {measured.lower.slowest} ms, which with '
+            f'acToTimeLimit {multipliers.acToTimeLimit} forces a limit of at least '
+            f'{tl} ms'
+        )
+    else:
+        fast_solution = 'the accepted solutions of the group this limit derives from'
+        lower_side = f'the limit derived for this group is {tl} ms'
+    slow_solution = measured.upper.fastest_slow_solution or 'the slow solution'
+    raise timing_groups.TimingRangeError(
+        f'no valid time limit exists for this group: {lower_side}, but '
+        f'{slow_solution} runs in {fastest_slow} ms, which with timeLimitToTle '
+        f'{multipliers.timeLimitToTle} caps the limit at {int(upper)} ms. '
+        f'Speed up {fast_solution}, slow down {slow_solution}, or relax the ratios.'
+    )
+
+
+def make_multipliers_eval(
+    multipliers: schema.TimingMultipliers,
+) -> timing_groups.EvalFn:
+    """Estimator that bounds the limit from below by the group's accepted
+    solutions, quantizes it to ``timeResolution``, and checks it against the
+    upper bound its slow solutions impose."""
+
+    def _eval(measured: timing_groups.GroupMeasurements) -> int:
+        assert measured.lower is not None
+        lower = _ceil_ms(measured.lower.slowest * multipliers.acToTimeLimit)
+        tl = step_up(lower, multipliers.timeResolution)
+        return _check_upper(tl, multipliers, measured)
+
+    return _eval
+
+
+def make_multipliers_derive(
+    multipliers: schema.TimingMultipliers,
+) -> timing_groups.DeriveFn:
+    """Post-processor for a limit that did NOT come from the group's own accepted
+    solutions: it is quantized to ``timeResolution`` and still checked against
+    the group's own upper bound."""
+
+    def _derive(tl: int, measured: timing_groups.GroupMeasurements) -> int:
+        tl = step_up(tl, multipliers.timeResolution)
+        return _check_upper(tl, multipliers, measured)
+
+    return _derive
+
+
 def build_timing_profile(
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
     formula: str,
@@ -79,16 +196,7 @@ def build_timing_profile(
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
-    def _eval(measured: timing_groups.GroupMeasurements) -> int:
-        # Formula mode is bounded from below only: it never reads
-        # ``measured.upper``, so no upper bound is measured for it.
-        assert measured.lower is not None
-        timings = measured.lower
-        return int(
-            safeeval.eval_int(
-                formula, {'fastest': timings.fastest, 'slowest': timings.slowest}
-            )
-        )
+    eval_fn = make_formula_eval(formula)
 
     if repartition is not None:
         groups = timing_groups.partition_from_assignment(repartition, relatives)
@@ -120,7 +228,7 @@ def build_timing_profile(
             solution_count=len(all_values),
         )
     )
-    result = timing_groups.resolve_groups(groups, measured, base, _eval)
+    result = timing_groups.resolve_groups(groups, measured, base, eval_fn)
     return TimingProfile(
         timeLimit=result.base_time_limit,
         formula=formula,

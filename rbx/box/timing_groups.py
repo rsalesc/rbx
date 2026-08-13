@@ -154,6 +154,15 @@ class GroupValidationError(ValueError):
     pass
 
 
+class TimingRangeError(GroupValidationError):
+    """No time limit satisfies both bounds of some group.
+
+    Subclasses ``GroupValidationError`` so the interactive group picker renders
+    it inline for the offending grouping, exactly as it does an invalid
+    partition.
+    """
+
+
 def validate_partition(groups: List[ResolvedGroup]) -> None:
     lang_index = _lang_to_group_index(groups)
     # reference target existence + not-self
