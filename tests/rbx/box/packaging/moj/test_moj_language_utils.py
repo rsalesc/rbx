@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from rbx.box.packaging.moj_next.extension import MojLanguageExtension
-from rbx.box.packaging.moj_next.moj_language_utils import (
+from rbx.box.packaging.moj.extension import MojLanguageExtension
+from rbx.box.packaging.moj.moj_language_utils import (
     get_emitted_moj_languages,
     get_moj_template_name,
     get_rbx_language_from_moj_language,

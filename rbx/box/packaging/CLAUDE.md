@@ -42,13 +42,13 @@ See the **Sibling tool** paragraph at the end of [Source Flattening](#source-fla
 
 ## Source Flattening (`flattening.py`)
 
-Polygon (offline + upload) and BOCA/MOJ are **flat** judges: they compile each source in a single flat file namespace. A source organized under the Phase-1 mirrored layout (`#522`/`#523`/`#524`) -- living in a subdirectory, using `#include "../lib.h"`, or relying on custom `compilationFiles` -- builds locally but breaks on these targets unless its compilation closure is shipped flat with includes rewritten. `flattening.py` is the shared machine that does this (issues #525/#526/#527).
+Polygon (offline + upload) and BOCA are **flat** judges: they compile each source in a single flat file namespace. A source organized under the Phase-1 mirrored layout (`#522`/`#523`/`#524`) -- living in a subdirectory, using `#include "../lib.h"`, or relying on custom `compilationFiles` -- builds locally but breaks on these targets unless its compilation closure is shipped flat with includes rewritten. `flattening.py` is the shared machine that does this (issues #525/#526/#527).
 
 - **`assign_flat_names(paths, *, reserved={}, enforce_stem_unique=False)`** -- pure, package-independent naming. A globally-unique basename (and stem, when `enforce_stem_unique`) keeps its **bare basename**, so flat packages stay byte-identical to pre-flattening output. Collisions get a `__`-joined sanitized path rendering (`gens/a/gen.cpp` -> `gens__a__gen.cpp`), with a deterministic `__<n>` counter for residual clashes. `reserved` pins specific sources to fixed names (e.g. the checker -> `check.cpp`); reserved values must be mutually distinct. This single scheme closes #527 (same-basename generators/solutions colliding across directories).
 - **`build_flat_namespace(sources, *, reserved, enforce_stem_unique)`** -> `FlatNamespace`. For each source `CodeItem` it collects the transitive quoted-`#include` closure (via `rbx.box.dependencies.graph.expand`, the #524 scanner) plus manual `compilationFiles`, assigns flat names, and rewrites C++ quoted includes to those names (`CppScanner.rewrite`). System/builtin headers (`<...>`, `testlib.h`, `rbx.h`, jngen/tgen) resolve to `target=None` and are left untouched. Out-of-package roots (e.g. the builtin checker) are read from their real path.
 - **`FlatNamespace`** -- `.files` (each `FlatFile` has `.flat_name` + rewritten `.content` bytes), `.root_files()`/`.dep_files()`, `.flat_name_for(code)`, `.content_for(code)`, `.materialize(into_dir)`.
 
-**Consumers:** Polygon offline (`polygon/packager.py:_flatten_sources` -> `files/` + `_get_files` declares deps), Polygon upload (`polygon/upload.py:_build_upload_namespace` -> one namespace over checker/interactor/validator/solutions/generators, deps shipped as RESOURCE, freemarker references flat **stems**), BOCA (`boca/packager.py:_embed_block` -> N heredocs in `checker.sh`/`interactor_compile.sh`), MOJ (`moj/packager.py` -> rewritten source + deps into `scripts/`).
+**Consumers:** Polygon offline (`polygon/packager.py:_flatten_sources` -> `files/` + `_get_files` declares deps), Polygon upload (`polygon/upload.py:_build_upload_namespace` -> one namespace over checker/interactor/validator/solutions/generators, deps shipped as RESOURCE, freemarker references flat **stems**), BOCA (`boca/packager.py:_embed_block` -> N heredocs in `checker.sh`/`interactor_compile.sh`). MOJ does not use flattening -- it amalgamates instead, see the sibling tool below.
 
 **Guardrails:** `build_flat_namespace` errors with an actionable message rather than shipping a broken package in two cases: (1) a non-rewritable source (e.g. a Python generator, `can_rewrite=False`) with a *cross-directory* resolving dependency cannot be flattened; (2) a *rewritable* source (or dep) has a quoted include that escapes the package root (`#include "../../shared/lib.h"`) -- it resolves locally against the file's real location (so the package builds green) but its target is outside the package, so it is never shipped and the `..` spelling cannot survive flattening. Only `..`-bearing unresolved spellings trip case (2): bare builtins (`testlib.h`/`rbx.h`/`jngen.h`/`tgen.h`) and quoted system headers resolve on the judge, and a forward-only subpath either resolves in-package or fails locally too. Same-directory and system/builtin deps are fine.
 
@@ -92,15 +92,7 @@ Supports interactive problems with special `run` scripts.
 
 ### MOJ (`moj/`)
 
-**`MojPackager`** (extends `BocaPackager`) -- Overrides BOCA methods for MOJ format:
-- `scripts/` directory with checker, testlib, per-language scripts
-- `sols/{good,wrong,slow}/` -- solutions categorized by outcome
-- `docs/enunciado.pdf` -- statement
-- Optional `--for-boca` mode that uses BOCA-style layout
-
-### MOJ Next (`moj_next/`)
-
-**`MojNextPackager`** (`rbx package moj-next`) -- a **separate** packager extending `BasePackager` directly, targeting MOJ as [`cd-moj/mojtools`](https://github.com/cd-moj/mojtools) actually consumes it. Shares no code with `moj/`, which stays as-is and keeps interactive problems. See [`moj_next/CLAUDE.md`](moj_next/CLAUDE.md) for the full picture; the load-bearing parts:
+**`MojPackager`** (`rbx package moj`) -- extends `BasePackager` directly, targeting MOJ as [`cd-moj/mojtools`](https://github.com/cd-moj/mojtools) actually consumes it. It replaced a legacy `BocaPackager` subclass that emitted a shape MOJ no longer accepts -- an authored `tl`, a bundled checker bridge, `docs/enunciado.pdf`, and `001`-style test names with no samples. See [`moj/CLAUDE.md`](moj/CLAUDE.md) for the full picture; the load-bearing parts:
 
 - **Calibration-only time limits.** MOJ *measures* the TL from `sols/good`; no `tl` is emitted, and `conf` carries `MEMLIMITMB` (peak RSS, replacing the legacy `ULIMITS[-v]`), `ULIMITS[-f]` and `TLMOD[calibrafactor]`.
 - **Stub vs copy.** `scripts/compare.sh` is a byte-copy of mojtools' canonical stub (the bridge stays upstream -- a bundled copy once replicated a bwrap bug into 198 packages); only the in-jail `scripts/<lang>/{compile,run}.sh` are real copies.
@@ -129,8 +121,7 @@ Reverse operation: `PolygonImporter` imports from Polygon packages into rbx form
 |---------|----------|---------------|
 | `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip`, `--upload-tests-raw` |
 | `rbx package boca` | `BocaPackager` | `--upload`, `--language` |
-| `rbx package moj` | `MojPackager` | `--for-boca` |
-| `rbx package moj-next` | `MojNextPackager` | (none) |
+| `rbx package moj` | `MojPackager` | (none) |
 | `rbx package pkg` | `PkgPackager` | (none) |
 
 All are guarded by `@package.within_problem`.
