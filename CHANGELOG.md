@@ -1,3 +1,9 @@
+## 0.38.2 (2026-08-13)
+
+### Fix
+
+- **solutions**: use a valid rich color for the OLE verdict (#638)
+
 ## 0.38.1 (2026-08-09)
 
 ### Fix
