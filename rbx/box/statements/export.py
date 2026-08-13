@@ -1,0 +1,152 @@
+"""Target-independent statement export: resolve a statement's blocks and assets
+once, then let a layout decide where they land.
+
+Extracted from the Polygon upload path, which was the only consumer. See
+``docs/plans/2026-08-13-statement-export-bundle-design.md``.
+"""
+
+import dataclasses
+import enum
+import pathlib
+from typing import List, Optional, Set
+
+from rbx import utils
+from rbx.box.statements import sample_staging
+from rbx.box.statements.build_statements import (
+    get_produced_tikz_pdfs,
+    get_statement_dir,
+)
+from rbx.box.statements.schema import Statement
+from rbx.box.statements.texsoup_utils import ASSET_EXTS
+
+
+class AssetScope(enum.Enum):
+    """The directory an asset's reference is relative to. See design §3."""
+
+    STATEMENT = 'statement'  # the statement `file`'s directory
+    TIKZ = 'tikz'  # the overlay root
+    SAMPLE = 'sample'  # <overlay>/.samples/<idx>/
+    EXTERNAL = 'external'  # the package root
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolvedAsset:
+    """An asset the statement ships, tagged with the base its references are
+    relative to. Carries no naming: that is a layout's job."""
+
+    scope: AssetScope
+    source: pathlib.Path  # absolute
+    rel: pathlib.PurePosixPath  # relative to the scope's reference base
+    sample_index: Optional[int] = None  # set iff scope is SAMPLE
+
+    @property
+    def ref_key(self) -> str:
+        """The extensionless reference a block uses to cite this asset."""
+        return str(self.rel.with_suffix(''))
+
+
+def _resolve_asset_globs(root: pathlib.Path, globs: List[str]) -> List[pathlib.Path]:
+    """Absolute paths of files matching ``globs`` under ``root`` (``Path.glob``,
+    so ``**`` recurses). Files only; deduped; deterministically sorted."""
+    seen: Set[pathlib.Path] = set()
+    for glob in globs:
+        for path in root.glob(glob):
+            if path.is_file():
+                seen.add(utils.abspath(path))
+    return sorted(seen)
+
+
+def _image_files_under(base: pathlib.Path) -> List[pathlib.Path]:
+    """Image/PDF files anywhere under ``base`` (recursive), deterministically
+    sorted. Empty when ``base`` is not a directory."""
+    if not base.is_dir():
+        return []
+    return sorted(
+        path
+        for path in base.rglob('*')
+        if path.is_file() and path.suffix.lower() in ASSET_EXTS
+    )
+
+
+def _rel(path: pathlib.Path, base: pathlib.Path) -> pathlib.PurePosixPath:
+    return pathlib.PurePosixPath(path.relative_to(base).as_posix())
+
+
+def resolve_assets(
+    statement: Statement, explanation_indices: Set[int]
+) -> List[ResolvedAsset]:
+    """Every asset the statement ships, tagged with the scope its references are
+    relative to. Naming and placement are a layout's job -- this is the same list
+    for every target.
+
+    Deduped on absolute source path (an ``assets`` glob may re-name a file the
+    image/PDF default already picked up) and deterministically ordered.
+    """
+    pkg_root = utils.abspath(pathlib.Path())
+    statement_dir = (
+        utils.abspath(statement.file).parent if statement.file is not None else pkg_root
+    )
+    overlay = get_statement_dir(statement)
+
+    out: List[ResolvedAsset] = []
+    seen: Set[pathlib.Path] = set()
+
+    def add(asset: ResolvedAsset) -> None:
+        if asset.source in seen:
+            return
+        seen.add(asset.source)
+        out.append(asset)
+
+    # 1. Statement-scope image/PDF defaults.
+    for abs_path in _image_files_under(statement_dir):
+        add(
+            ResolvedAsset(
+                scope=AssetScope.STATEMENT,
+                source=abs_path,
+                rel=_rel(abs_path, statement_dir),
+            )
+        )
+
+    # 2. Explicit `assets`: under the statement dir -> statement scope (any
+    #    extension); elsewhere -> external scope, referenced package-root
+    #    relative (or by bare name when outside the package entirely).
+    for abs_path in _resolve_asset_globs(pkg_root, statement.assets):
+        if abs_path.is_relative_to(statement_dir):
+            add(
+                ResolvedAsset(
+                    scope=AssetScope.STATEMENT,
+                    source=abs_path,
+                    rel=_rel(abs_path, statement_dir),
+                )
+            )
+            continue
+        try:
+            rel = _rel(abs_path, pkg_root)
+        except ValueError:
+            rel = pathlib.PurePosixPath(abs_path.name)
+        add(ResolvedAsset(scope=AssetScope.EXTERNAL, source=abs_path, rel=rel))
+
+    # 3. Externalized TikZ figure PDFs, referenced overlay-relative.
+    for abs_path, overlay_rel in get_produced_tikz_pdfs(statement):
+        add(
+            ResolvedAsset(
+                scope=AssetScope.TIKZ,
+                source=abs_path,
+                rel=pathlib.PurePosixPath(pathlib.Path(overlay_rel).as_posix()),
+            )
+        )
+
+    # 4. Per-sample scope: image/PDF under each staged .samples/<idx>/.
+    for idx in sorted(explanation_indices):
+        base = overlay / sample_staging.SAMPLES_DIRNAME / f'{idx:03d}'
+        for abs_path in _image_files_under(base):
+            add(
+                ResolvedAsset(
+                    scope=AssetScope.SAMPLE,
+                    source=abs_path,
+                    rel=_rel(abs_path, base),
+                    sample_index=idx,
+                )
+            )
+
+    return out
