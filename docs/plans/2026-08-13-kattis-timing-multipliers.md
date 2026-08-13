@@ -290,6 +290,30 @@ And on `Package`:
 
 **Step 4: Implement the resolution**
 
+`timing_config.py` owns the whole strategy decision — which mode is in effect
+*and* the default-formula fill-in. `TimingConfig.resolved_formula()` stays as a
+private-ish default filler; callers ask `resolve_strategy` instead, so the
+"exactly one of formula/multipliers is in effect" invariant lives in one place
+rather than being re-asserted at every call site:
+
+```python
+class TimingStrategy(BaseModel):
+    """Exactly one of these is set."""
+
+    formula: Optional[str] = None
+    multipliers: Optional[TimingMultipliers] = None
+
+
+def resolve_strategy(
+    env_timing: TimingConfig,
+    package_timing: Optional[PackageTiming],
+) -> TimingStrategy:
+    multipliers = resolve_multipliers(env_timing, package_timing)
+    if multipliers is not None:
+        return TimingStrategy(multipliers=multipliers)
+    return TimingStrategy(formula=env_timing.resolved_formula())
+```
+
 Create `rbx/box/timing_config.py`:
 
 ```python
