@@ -9,12 +9,18 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from rbx.box.environment import TimingConfig, TimingMultipliers
-from rbx.box.schema import PackageTiming
+from rbx.box.environment import TimingConfig
+from rbx.box.exception import RbxException
+from rbx.box.schema import PackageTiming, TimingMultipliers
 
 
-class ResolutionError(ValueError):
+class TimingStrategyError(RbxException):
     """The problem and the environment disagree on how to estimate."""
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+        self.msg.append(message)
 
 
 class TimingStrategy(BaseModel):
@@ -29,9 +35,24 @@ class TimingStrategy(BaseModel):
     def _validate_exactly_one_strategy(self):
         if (self.formula is None) == (self.multipliers is None):
             raise ValueError(
-                'a timing strategy must set exactly one of formula and multipliers.'
+                'A timing strategy must set exactly one of formula and multipliers.'
             )
         return self
+
+    @property
+    def uses_multipliers(self) -> bool:
+        """Whether this strategy estimates with multipliers rather than a formula."""
+        return self.multipliers is not None
+
+    def formula_or_die(self) -> str:
+        """The formula to estimate with. Only call in formula mode."""
+        assert self.formula is not None, 'This strategy estimates with multipliers.'
+        return self.formula
+
+    def multipliers_or_die(self) -> TimingMultipliers:
+        """The multipliers to estimate with. Only call in multipliers mode."""
+        assert self.multipliers is not None, 'This strategy estimates with a formula.'
+        return self.multipliers
 
 
 def resolve_multipliers(
@@ -42,9 +63,16 @@ def resolve_multipliers(
     override = package_timing.multipliers if package_timing is not None else None
     if env_timing.multipliers is None:
         if override is not None:
-            raise ResolutionError(
-                'this problem overrides timing.multipliers, but the environment '
-                'estimates with a formula; the two are mutually exclusive.'
+            how = (
+                f'with the formula `{env_timing.formula}`'
+                if env_timing.formula is not None
+                else 'with the default formula'
+            )
+            raise TimingStrategyError(
+                f'`problem.rbx.yml` sets `timing.multipliers`, but `env.rbx.yml` has '
+                f'no `timing.multipliers` block (it estimates {how}). Add '
+                f'`timing.multipliers` to the environment, or remove the override '
+                f'from the problem.'
             )
         return None
     if override is None:

@@ -774,31 +774,74 @@ class LimitModifiers(BaseModel):
     )
 
 
+class TimingMultipliers(BaseModel):
+    model_config = ConfigDict(extra='forbid', frozen=True)
+
+    acToTimeLimit: float = Field(
+        gt=0,
+        description="""Minimum ratio between the time limit and the slowest accepted
+solution, used to estimate the time limit from below: the slowest accepted solution
+times `acToTimeLimit` must fit within the time limit.""",
+    )
+
+    timeLimitToTle: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Minimum ratio between the fastest solution expected to be too
+slow and the time limit: the time limit times `timeLimitToTle` must fit within the
+fastest solution expected to be too slow. When omitted, solutions expected to be too
+slow are not run and the time limit is not bounded from above.""",
+    )
+
+    inferenceTimeout: int = Field(
+        default=10000,
+        gt=0,
+        description="""Time limit (in milliseconds) enforced on solutions while
+estimating. Only used when `timeLimitToTle` is set. A solution expected to be too
+slow that hits it is dropped from the upper bound; an accepted one that hits it is
+an error.""",
+    )
+
+    timeResolution: int = Field(
+        default=100,
+        gt=0,
+        description="""Granularity (in milliseconds) of the estimated time limit.
+The estimate is the smallest multiple of this value that is valid.""",
+    )
+
+
 class TimingMultipliersOverride(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     acToTimeLimit: Optional[float] = Field(
         default=None,
         gt=0,
-        description="""Overrides the environment `acToTimeLimit` multiplier.""",
+        description="""Overrides the environment `acToTimeLimit`: the minimum ratio
+between the time limit and the slowest accepted solution, which bounds the estimated
+time limit from below.""",
     )
 
     timeLimitToTle: Optional[float] = Field(
         default=None,
         gt=0,
-        description="""Overrides the environment `timeLimitToTle` multiplier.""",
+        description="""Overrides the environment `timeLimitToTle`: the minimum ratio
+between the fastest solution expected to be too slow and the time limit, which bounds
+the estimated time limit from above.""",
     )
 
     inferenceTimeout: Optional[int] = Field(
         default=None,
         gt=0,
-        description="""Overrides the environment `inferenceTimeout`, in milliseconds.""",
+        description="""Overrides the environment `inferenceTimeout`: the time limit
+(in milliseconds) enforced on solutions while estimating. Raise it for a problem whose
+solutions are slower than the environment expects.""",
     )
 
     timeResolution: Optional[int] = Field(
         default=None,
         gt=0,
-        description="""Overrides the environment `timeResolution`, in milliseconds.""",
+        description="""Overrides the environment `timeResolution`: the granularity
+(in milliseconds) the estimated time limit is rounded up to.""",
     )
 
 
@@ -1060,6 +1103,11 @@ class Package(BaseModel):
         default=4 * 1024, description='Output limit of the problem, in KB.'
     )
 
+    timing: Optional[PackageTiming] = Field(
+        default=None,
+        description='Problem-level overrides for time limit inference.',
+    )
+
     modifiers: Dict[str, LimitModifiers] = Field(
         default={},
         description="""
@@ -1155,11 +1203,6 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     unitTests: UnitTests = Field(
         default_factory=UnitTests,
         description='Unit tests for components of this problem.',
-    )
-
-    timing: Optional[PackageTiming] = Field(
-        default=None,
-        description='Problem-level overrides for time limit inference.',
     )
 
     @property

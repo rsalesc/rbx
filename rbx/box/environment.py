@@ -22,6 +22,7 @@ from rbx import config, console
 from rbx.box import presets, safeeval
 from rbx.box.extensions import Extensions, LanguageExtensions
 from rbx.box.linters.asset_kind import AssetKind
+from rbx.box.schema import TimingMultipliers
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
@@ -359,42 +360,6 @@ class LanguageGroup(BaseModel):
 DEFAULT_TIMING_FORMULA = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
 
 
-class TimingMultipliers(BaseModel):
-    model_config = ConfigDict(extra='forbid', frozen=True)
-
-    acToTimeLimit: float = Field(
-        gt=0,
-        description="""Minimum ratio between the time limit and the slowest accepted
-solution, used to estimate the time limit from below: the slowest accepted solution
-times `acToTimeLimit` must fit within the time limit.""",
-    )
-
-    timeLimitToTle: Optional[float] = Field(
-        default=None,
-        gt=0,
-        description="""Minimum ratio between the fastest solution expected to be too
-slow and the time limit: the time limit times `timeLimitToTle` must fit within the
-fastest solution expected to be too slow. When omitted, solutions expected to be too
-slow are not run and the time limit is not bounded from above.""",
-    )
-
-    inferenceTimeout: int = Field(
-        default=10000,
-        gt=0,
-        description="""Time limit (in milliseconds) enforced on solutions while
-estimating. Only used when `timeLimitToTle` is set. A solution expected to be too
-slow that hits it is dropped from the upper bound; an accepted one that hits it is
-an error.""",
-    )
-
-    timeResolution: int = Field(
-        default=100,
-        gt=0,
-        description="""Granularity (in milliseconds) of the estimated time limit.
-The estimate is the smallest multiple of this value that is valid.""",
-    )
-
-
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -406,6 +371,8 @@ Mutually exclusive with `multipliers`. When neither is set, a default formula is
 used.""",
     )
 
+    # TimingMultipliers is defined in `schema.py` so problem-level models can embed
+    # it too: `schema.py` cannot import this module back without a cycle.
     multipliers: Optional[TimingMultipliers] = Field(
         default=None,
         description="""Ratios used to infer the time limit from the measured
