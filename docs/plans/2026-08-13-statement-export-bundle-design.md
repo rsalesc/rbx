@@ -272,16 +272,38 @@ externalize+demacro steps rather than copying them.
 today; it becomes `<overlay>/export/`, since the blocks are no longer necessarily
 Polygon's.
 
-## 7. One deliberate behavior change
+## 7. Deliberate behavior changes
 
-`EXTERNAL` assets get **no** remap today: they are uploaded under a flat name and
-the author must spell that flat name in `\includegraphics` by hand. Under the
-derived rule they gain a remap keyed on their package-root-relative path.
+Three, all verified against the pre-port code by running both paths over the
+same trees and diffing the resulting `{uploaded_name: source}` maps and remaps.
+**Uploaded names and bytes are identical in every case** — only reference
+resolution and error behavior differ.
 
-Uploaded bytes are unchanged. The only reference whose meaning changes is one
-that is broken today. This is taken as an improvement; suppressing `EXTERNAL`
-from the remap is a one-line change if strict behavior preservation is ever
-wanted.
+**1. `EXTERNAL` assets gain a remap.** They are uploaded under a flat name and
+the author previously had to spell that flat name in `\includegraphics` by hand.
+Under the derived rule they gain a remap keyed on their package-root-relative
+path. The only reference whose meaning changes is one that is broken today.
+
+**2. A `.pdf`/`.png` pair now resolves by precedence rather than by iteration
+order.** Old: `img/d` → `img__d.png`, because the last write in path-sorted order
+won. New: `img__d.pdf`, per §4's graphicx rule. Both files ship either way; this
+changes which one an extensionless reference resolves to, and it now matches what
+the setter's local pdflatex build rendered.
+
+**3. Two distinct sources landing on one uploaded name now fail loudly.** Old:
+`uploads[flat] = abs_path` silently overwrote, so one file was never uploaded and
+the surviving name pointed at the wrong image. New: `_check_destination_collisions`
+raises. This replaces a silent wrong upload with an actionable error.
+
+Changes 2 and 3 both replace order-dependent or silently-lossy behavior; neither
+can turn a correct package into a broken one, and both are pinned by tests.
+
+**Error surface.** `export.py` raises `StatementExportError(ValueError)`, which
+`upload.py` catches at its boundary and re-renders as a console error plus
+`typer.Exit(1)`. The subclass exists because the library must stay usable from
+non-CLI callers — a packager, not just a Typer command — while a bare `ValueError`
+catch at the boundary would also swallow pydantic's `ValidationError` (itself a
+`ValueError`) and render a validation dump as a setter-facing asset error.
 
 ## 8. Testing
 
