@@ -911,6 +911,30 @@ EOF
 - Modify: `rbx/box/statements/export.py`
 - Create: `tests/rbx/box/statements/test_export_bundle.py`
 
+**Carried in from Task 4's review — two items that must land here:**
+
+1. **Make `normalize=True` mean something when `macros.json` is absent.**
+   `get_processed_statement_blocks` currently returns early in that case, skipping
+   the Polygon-TeX conversion even though the caller explicitly asked for it. That
+   was tolerable while Polygon was the only consumer — its `validate_statements`
+   re-checks the constructs and errors loudly — but a bundle consumer that trusts
+   `normalize` gets un-normalized TeX and no signal. Guard only the macro
+   *loading* on `macros_file.is_file()` and let the conversion run regardless
+   (expanding against an empty `MacroDefinitions` is a no-op). Add a test with no
+   `macros.json` asserting the conversion still happens.
+
+2. **The distinct-source destination collision guard.** Two different sources can
+   place to the same `dest` — `resolve_assets` deliberately keeps both, where the
+   old `_collect_assets` silently last-wins via `uploads[flat] = abs_path`. Raise
+   here, in bundle assembly, where it covers every layout and both failure modes
+   (a file silently overwritten in `materialize`, and an ambiguous upload name).
+   This is NOT `FlatLayout`'s job — `SubtreeLayout` hits the same collision when
+   several scopes share a root, which §4 of the design explains. Note that
+   `derive_remap` already raises on *reference* ambiguity by extension precedence;
+   this guard is about destinations, and the two are complementary — a same-key
+   pair with different extensions passes the reference check but may still collide
+   on dest, and vice versa.
+
 **Step 1: Write the failing test**
 
 ```python
