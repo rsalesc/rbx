@@ -1,9 +1,9 @@
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
-from rbx.box.schema import TimingGroupOrigin, TimingGroupReport
+from rbx.box.schema import TimingBound, TimingGroupOrigin, TimingGroupReport
 
 
 class ResolvedGroup(BaseModel):
@@ -142,13 +142,42 @@ class ResolutionResult(BaseModel):
     defaulted_languages: List[str]
 
 
+class EvalResult(BaseModel):
+    """A group's estimated limit and the bounds that produced it.
+
+    An estimator that computes bounds returns them here rather than leaving the
+    reporting layer to recompute them: two implementations of that arithmetic is
+    exactly where the recorded provenance and the limit it explains would
+    silently diverge.
+    """
+
+    time_limit: int
+    lower_bound: Optional[TimingBound] = None
+    upper_bound: Optional[TimingBound] = None
+
+
+# An estimator that derives no bounds at all (the formula path) may return the
+# limit on its own.
+EvalOutcome = Union[int, EvalResult]
+
 # Estimates a group's limit from its own measurements.
-EvalFn = Callable[[GroupMeasurements], int]
+EvalFn = Callable[[GroupMeasurements], EvalOutcome]
 # Post-processes a limit that was NOT estimated from the group's own accepted
 # solutions -- derived from a reference group (``whenEmpty`` or a forced
 # relative) or inherited from the base estimate (``DEFAULTED``) -- so it can
 # still be checked against the group's own upper bound.
-DeriveFn = Callable[[int, GroupMeasurements], int]
+DeriveFn = Callable[[int, GroupMeasurements], EvalOutcome]
+
+
+def _limit_of(outcome: EvalOutcome) -> int:
+    return outcome.time_limit if isinstance(outcome, EvalResult) else outcome
+
+
+def _provenance_of(outcome: EvalOutcome) -> Optional[EvalResult]:
+    """Only an estimator that reports its bounds records provenance: a bare limit
+    (the formula path) knows nothing about the slow solutions, so its group
+    reports must say nothing about them either."""
+    return outcome if isinstance(outcome, EvalResult) else None
 
 
 def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
@@ -157,6 +186,22 @@ def _lang_to_group_index(groups: List[ResolvedGroup]) -> Dict[str, int]:
         for lang in group.languages:
             out[lang] = idx
     return out
+
+
+def _record_provenance(
+    report: TimingGroupReport,
+    result: Optional[EvalResult],
+    measured: GroupMeasurements,
+) -> None:
+    """Stamp onto a report what decided its limit: the bounds the estimator
+    computed and the slow solutions that were measured but bound nothing.
+    Presentation-only -- nothing here feeds limit resolution."""
+    if result is None:
+        return
+    report.lowerBound = result.lower_bound
+    report.upperBound = result.upper_bound
+    if measured.upper is not None:
+        report.droppedUpper = list(measured.upper.dropped_upper)
 
 
 class GroupValidationError(ValueError):
@@ -218,7 +263,8 @@ def resolve_groups(
     eval_fn: EvalFn,
     derive_fn: Optional[DeriveFn] = None,
 ) -> ResolutionResult:
-    base_tl = eval_fn(base)
+    base_outcome = eval_fn(base)
+    base_tl = _limit_of(base_outcome)
     base_report = TimingGroupReport(
         languages=[],
         timeLimit=base_tl,
@@ -227,6 +273,7 @@ def resolve_groups(
         fastest=base.lower.fastest if base.lower else None,
         slowest=base.lower.slowest if base.lower else None,
     )
+    _record_provenance(base_report, _provenance_of(base_outcome), base)
     lang_index = _lang_to_group_index(groups)
 
     resolved_tl: Dict[int, int] = {}
@@ -243,6 +290,8 @@ def resolve_groups(
         group = groups[idx]
         group_measured = measured.get(idx) or GroupMeasurements()
         timings = group_measured.lower
+        # The bounds the estimator computed for this group, when it computes any.
+        result: Optional[EvalResult] = None
         if group.forced_relative is not None:
             fb = group.forced_relative
             ref = fb.relativeTo
@@ -250,7 +299,9 @@ def resolve_groups(
             increment = fb.increment or 0
             tl = int(ref_tl * fb.multiplier + increment)
             if derive_fn is not None:
-                tl = derive_fn(tl, group_measured)
+                outcome = derive_fn(tl, group_measured)
+                tl = _limit_of(outcome)
+                result = _provenance_of(outcome)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -264,7 +315,9 @@ def resolve_groups(
                 isLeftover=group.is_leftover,
             )
         elif timings is not None:
-            tl = eval_fn(group_measured)
+            outcome = eval_fn(group_measured)
+            tl = _limit_of(outcome)
+            result = _provenance_of(outcome)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -280,7 +333,9 @@ def resolve_groups(
             increment = group.whenEmpty.increment or 0
             tl = int(ref_tl * group.whenEmpty.multiplier + increment)
             if derive_fn is not None:
-                tl = derive_fn(tl, group_measured)
+                outcome = derive_fn(tl, group_measured)
+                tl = _limit_of(outcome)
+                result = _provenance_of(outcome)
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -298,9 +353,9 @@ def resolve_groups(
                 # group fell back to the base limit, so it must not move off it
                 # -- and requantizing an already-quantized base_tl is identity
                 # anyway. derive_fn runs solely so it can raise when the group's
-                # own upper bound rules the base limit out; its return value is
-                # deliberately discarded.
-                derive_fn(tl, group_measured)
+                # own upper bound rules the base limit out; its *limit* is
+                # deliberately discarded -- only the bounds it reports are kept.
+                result = _provenance_of(derive_fn(tl, group_measured))
             report = TimingGroupReport(
                 languages=list(group.languages),
                 timeLimit=tl,
@@ -308,6 +363,7 @@ def resolve_groups(
                 solutionCount=0,
                 isLeftover=group.is_leftover,
             )
+        _record_provenance(report, result, group_measured)
         resolving.discard(idx)
         resolved_tl[idx] = tl
         resolved_report[idx] = report

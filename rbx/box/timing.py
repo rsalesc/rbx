@@ -188,6 +188,24 @@ def compute_bounds(
     )
 
 
+def _as_eval_result(bounds: TimingBounds, time_limit: int) -> timing_groups.EvalResult:
+    """The estimated limit together with the bounds that produced it, so the
+    group report can record them without computing them a second time."""
+    return timing_groups.EvalResult(
+        time_limit=time_limit,
+        # A derived lower bound names no solution: it is the limit of the group
+        # this one derives from, not a measurement of its own.
+        lower_bound=schema.TimingBound(
+            value=bounds.lower, solution=bounds.lower_solution
+        ),
+        upper_bound=(
+            None
+            if bounds.upper is None
+            else schema.TimingBound(value=bounds.upper, solution=bounds.upper_solution)
+        ),
+    )
+
+
 def make_formula_eval(formula: str) -> timing_groups.EvalFn:
     """Estimator that evaluates the configured formula over the group's accepted
     solutions. Bounded from below only: it never reads the upper measurements,
@@ -261,9 +279,9 @@ def make_multipliers_eval(
     solutions, quantizes it to ``timeResolution``, and checks it against the
     upper bound its slow solutions impose."""
 
-    def _eval(measured: timing_groups.GroupMeasurements) -> int:
+    def _eval(measured: timing_groups.GroupMeasurements) -> timing_groups.EvalResult:
         bounds = compute_bounds(multipliers, measured)
-        return _check_bounds(bounds, multipliers, measured)
+        return _as_eval_result(bounds, _check_bounds(bounds, multipliers, measured))
 
     return _eval
 
@@ -275,9 +293,11 @@ def make_multipliers_derive(
     solutions: it is quantized to ``timeResolution`` and still checked against
     the group's own upper bound."""
 
-    def _derive(tl: int, measured: timing_groups.GroupMeasurements) -> int:
+    def _derive(
+        tl: int, measured: timing_groups.GroupMeasurements
+    ) -> timing_groups.EvalResult:
         bounds = compute_bounds(multipliers, measured, derived_from=tl)
-        return _check_bounds(bounds, multipliers, measured)
+        return _as_eval_result(bounds, _check_bounds(bounds, multipliers, measured))
 
     return _derive
 
@@ -561,6 +581,24 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
         f'(timeResolution)'
     )
     return '\n'.join(lines)
+
+
+def describe_strategy_briefly(strategy: timing_config.TimingStrategy) -> str:
+    """The strategy in effect on a single line, to complete a sentence like
+    "Estimate time limits ...".
+
+    The full block ``_describe_strategy`` prints does not fit a menu entry, and
+    re-deriving the prose at the call site is how the two drift apart.
+    """
+    if not strategy.uses_multipliers:
+        return f'based on the formula {strategy.formula_or_die()}'
+    multipliers = strategy.multipliers_or_die()
+    ratios = f'acToTimeLimit {multipliers.acToTimeLimit}'
+    if multipliers.timeLimitToTle is not None:
+        ratios += f' and timeLimitToTle {multipliers.timeLimitToTle}'
+    else:
+        ratios += ' and no upper bound'
+    return f'with ratios {ratios}, rounded up to {multipliers.timeResolution} ms'
 
 
 async def _timings_per_language(
@@ -857,6 +895,44 @@ def _report_inference_diagnosis(
     return not diagnosis.failed_upper and not diagnosis.truncated_lower
 
 
+def _bounded_scopes(
+    estimated: TimingProfile, dropped: List[Solution]
+) -> List[Tuple[str, int, List[str]]]:
+    """Every (name, resolved limit, solutions dropped inside it) an estimate
+    resolved: one per language group, plus the pooled base limit.
+
+    Scopes resolving to the same limit from the same drops are reported once --
+    a single-group problem would otherwise say the same thing twice, as its
+    group and its base limit are the same estimate seen from two sides.
+    """
+    scopes: List[Tuple[str, int, List[str]]] = []
+    for report in estimated.groups or []:
+        scopes.append(
+            (', '.join(report.languages), report.timeLimit, report.droppedUpper)
+        )
+    base = estimated.baseEstimate
+    scopes.append(
+        (
+            'the base time limit',
+            estimated.timeLimit,
+            # Without a base report there is no record of what the pooled
+            # estimate saw, and every drop reached it by definition.
+            list(base.droppedUpper)
+            if base is not None
+            else [str(solution.path) for solution in dropped],
+        )
+    )
+    seen = set()
+    unique: List[Tuple[str, int, List[str]]] = []
+    for name, time_limit, dropped_paths in scopes:
+        key = (time_limit, tuple(sorted(dropped_paths)))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((name, time_limit, dropped_paths))
+    return unique
+
+
 def _warn_if_the_cap_bounded_the_estimate(
     estimated: TimingProfile,
     cap: _InferenceCap,
@@ -866,24 +942,36 @@ def _warn_if_the_cap_bounded_the_estimate(
     above what the cap alone allows, so the cap -- not the slow solutions -- is
     what bounded the estimate.
 
+    Checked per language group, because that is the scope a drop bounds: a slow
+    C++ solution stopped at the cap says nothing about the limit resolved for
+    Python, and blaming the cap for it would send the setter after a solution
+    that bounds a different group entirely. The pooled base limit is one more
+    such scope -- it is what DEFAULTED languages and the packagers run under,
+    and it pools every drop.
+
     The drops themselves were reported before the run report and the estimation
     tables, far enough up to have scrolled away, so they are named again here.
     """
     if not dropped:
         return
-    resolved = max([estimated.timeLimit, *estimated.timeLimitPerLanguage.values()])
-    if resolved <= cap.largest_bounded_limit:
-        return
-    names = ', '.join(solution.href() for solution in dropped)
-    console.console.print(
-        f'[warning]⚠ The upper bound of this estimate is not trustworthy: '
-        f'{names} stopped at the inference timeout of {cap.timeout} ms, and the '
-        f'resolved limit of {resolved} ms is above the '
-        f'{cap.largest_bounded_limit} ms that timeout allows on its own '
-        f'(inferenceTimeout / timeLimitToTle). The cap, not the slow solutions, '
-        f'is what bounded the estimate -- raise [item]inferenceTimeout[/item] to '
-        f'measure them for real.[/warning]'
-    )
+    by_path = {str(solution.path): solution for solution in dropped}
+    for languages, time_limit, dropped_paths in _bounded_scopes(estimated, dropped):
+        if not dropped_paths:
+            continue
+        if time_limit <= cap.largest_bounded_limit:
+            continue
+        names = ', '.join(
+            by_path[path].href() if path in by_path else path for path in dropped_paths
+        )
+        console.console.print(
+            f'[warning]⚠ The upper bound of this estimate is not trustworthy for '
+            f'[item]{languages}[/item]: {names} stopped at the inference timeout '
+            f'of {cap.timeout} ms, and the limit of {time_limit} ms resolved '
+            f'for it is above the {cap.largest_bounded_limit} ms that '
+            f'timeout allows on its own (inferenceTimeout / timeLimitToTle). The '
+            f'cap, not the slow solutions, is what bounded the estimate -- raise '
+            f'[item]inferenceTimeout[/item] to measure them for real.[/warning]'
+        )
 
 
 @dataclasses.dataclass

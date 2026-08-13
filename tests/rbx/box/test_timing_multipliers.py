@@ -17,6 +17,21 @@ from rbx.box.timing_groups import (
 )
 
 
+def _eval_limit(multipliers: TimingMultipliers):
+    """Just the limit the estimator lands on. It also reports the bounds that
+    produced it, so the group reports can record them without recomputing them;
+    that provenance is asserted in the estimation tests, while every case here
+    is about the limit itself."""
+    eval_fn = make_multipliers_eval(multipliers)
+    return lambda measured: eval_fn(measured).time_limit
+
+
+def _derive_limit(multipliers: TimingMultipliers):
+    """Same, for the post-processor of a limit derived from another group."""
+    derive_fn = make_multipliers_derive(multipliers)
+    return lambda tl, measured: derive_fn(tl, measured).time_limit
+
+
 def _measurements(
     slowest: Optional[int] = None,
     slowest_solution: Optional[str] = None,
@@ -40,17 +55,13 @@ def _measurements(
 
 
 def test_lower_bound_rounds_up_to_the_resolution():
-    eval_fn = make_multipliers_eval(
-        TimingMultipliers(acToTimeLimit=2.0, timeResolution=100)
-    )
+    eval_fn = _eval_limit(TimingMultipliers(acToTimeLimit=2.0, timeResolution=100))
     # 410 * 2 = 820 -> 900.
     assert eval_fn(_measurements(slowest=410)) == 900
 
 
 def test_lower_bound_already_on_the_grid_is_unchanged():
-    eval_fn = make_multipliers_eval(
-        TimingMultipliers(acToTimeLimit=2.0, timeResolution=100)
-    )
+    eval_fn = _eval_limit(TimingMultipliers(acToTimeLimit=2.0, timeResolution=100))
     # 400 * 2 = 800, already a multiple of 100.
     assert eval_fn(_measurements(slowest=400)) == 800
 
@@ -58,29 +69,25 @@ def test_lower_bound_already_on_the_grid_is_unchanged():
 def test_lower_bound_is_exact_despite_float_representation():
     # 50 * 1.1 is 55.00000000000001 in binary floating point; the bound is
     # computed in exact rational arithmetic, so it is exactly 55.
-    eval_fn = make_multipliers_eval(
-        TimingMultipliers(acToTimeLimit=1.1, timeResolution=1)
-    )
+    eval_fn = _eval_limit(TimingMultipliers(acToTimeLimit=1.1, timeResolution=1))
     assert eval_fn(_measurements(slowest=50)) == 55
 
 
 def test_no_upper_bound_when_time_limit_to_tle_is_unset():
-    eval_fn = make_multipliers_eval(
-        TimingMultipliers(acToTimeLimit=2.0, timeResolution=100)
-    )
+    eval_fn = _eval_limit(TimingMultipliers(acToTimeLimit=2.0, timeResolution=100))
     # 500 would be way past any upper bound derived from a 500ms slow solution.
     assert eval_fn(_measurements(slowest=400, fastest_slow=500)) == 800
 
 
 def test_no_upper_bound_when_there_are_no_upper_measurements():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     assert eval_fn(_measurements(slowest=400)) == 800
 
 
 def test_limit_comfortably_inside_the_range():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     # lower 800, upper 6000 / 1.5 = 4000.
@@ -88,7 +95,7 @@ def test_limit_comfortably_inside_the_range():
 
 
 def test_limit_exactly_equal_to_the_upper_bound_is_valid():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     # lower 800, upper 1200 / 1.5 = 800: the boundary is inclusive.
@@ -98,12 +105,12 @@ def test_limit_exactly_equal_to_the_upper_bound_is_valid():
 def test_boundary_is_exact_despite_float_representation():
     # 1100 / 1.1 is 999.9999999999999 in binary floating point but exactly 1000
     # as a rational, so the limit sits exactly on the cap and is accepted.
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.1, timeResolution=100)
     )
     assert eval_fn(_measurements(slowest=500, fastest_slow=1100)) == 1000
     # One millisecond over the same cap is not.
-    strict = make_multipliers_eval(
+    strict = _eval_limit(
         TimingMultipliers(acToTimeLimit=1.0, timeLimitToTle=1.1, timeResolution=1)
     )
     assert strict(_measurements(slowest=1000, fastest_slow=1100)) == 1000
@@ -113,7 +120,7 @@ def test_boundary_is_exact_despite_float_representation():
 
 def test_one_millisecond_over_the_bound_raises_at_large_magnitudes():
     # 222000 / 3.7 is exactly 60000: 60000 ms is allowed, 60001 ms is not.
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=1.0, timeLimitToTle=3.7, timeResolution=1)
     )
     assert eval_fn(_measurements(slowest=60000, fastest_slow=222000)) == 60000
@@ -122,7 +129,7 @@ def test_one_millisecond_over_the_bound_raises_at_large_magnitudes():
 
 
 def test_limit_one_step_past_the_upper_bound_raises():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     # lower 800, upper 1199 / 1.5 = 799.33.
@@ -131,7 +138,7 @@ def test_limit_one_step_past_the_upper_bound_raises():
 
 
 def test_empty_range_raises_naming_both_binding_solutions():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     with pytest.raises(TimingRangeError) as exc:
@@ -156,7 +163,7 @@ def test_empty_range_raises_naming_both_binding_solutions():
 def test_grid_miss_raises_even_though_the_range_is_not_empty():
     # lower 510 -> rounds up to 600, upper 550: the range [510, 550] is not
     # empty, but holds no multiple of 100.
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=1.0, timeLimitToTle=1.0, timeResolution=100)
     )
     with pytest.raises(TimingRangeError) as exc:
@@ -175,14 +182,14 @@ def test_timing_range_error_is_a_group_validation_error():
 
 
 def test_derive_quantizes_a_relative_limit():
-    derive_fn = make_multipliers_derive(
+    derive_fn = _derive_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     assert derive_fn(2401, GroupMeasurements()) == 2500
 
 
 def test_derive_upper_checks_a_relative_limit():
-    derive_fn = make_multipliers_derive(
+    derive_fn = _derive_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     # 2401 quantizes to 2500, but 3000 / 1.5 = 2000 caps it.
@@ -192,14 +199,14 @@ def test_derive_upper_checks_a_relative_limit():
 
 
 def test_derive_accepts_a_relative_limit_inside_the_range():
-    derive_fn = make_multipliers_derive(
+    derive_fn = _derive_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     assert derive_fn(2401, _measurements(fastest_slow=9000)) == 2500
 
 
 def test_message_falls_back_when_neither_solution_path_is_known():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     with pytest.raises(TimingRangeError) as exc:
@@ -212,7 +219,7 @@ def test_message_falls_back_when_neither_solution_path_is_known():
 
 
 def test_message_falls_back_on_one_side_at_a_time():
-    eval_fn = make_multipliers_eval(
+    eval_fn = _eval_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     with pytest.raises(TimingRangeError) as exc:
@@ -233,7 +240,7 @@ def test_message_falls_back_on_one_side_at_a_time():
 
 
 def test_derived_message_has_no_lower_side_solution():
-    derive_fn = make_multipliers_derive(
+    derive_fn = _derive_limit(
         TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
     )
     with pytest.raises(TimingRangeError) as exc:

@@ -911,6 +911,22 @@ class TimingGroupOrigin(str, enum.Enum):
     DEFAULTED = 'defaulted'
 
 
+class TimingBound(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    value: int = Field(
+        description="""The bound, in milliseconds. A lower bound is the smallest
+time limit it allows, before it is rounded up to `timeResolution`; an upper bound is
+the largest time limit it allows."""
+    )
+
+    solution: Optional[str] = Field(
+        default=None,
+        description="""The solution that set this bound, when it came from a measured
+solution of the group. Absent when the bound was derived from another group's limit.""",
+    )
+
+
 class TimingGroupReport(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -924,6 +940,26 @@ class TimingGroupReport(BaseModel):
     multiplier: Optional[float] = None
     increment: Optional[int] = None
     isLeftover: bool = False
+
+    lowerBound: Optional[TimingBound] = Field(
+        default=None,
+        description="""The lower bound this group's time limit had to respect, when it
+was estimated from multipliers. Presentation-only.""",
+    )
+
+    upperBound: Optional[TimingBound] = Field(
+        default=None,
+        description="""The upper bound this group's time limit had to respect, when it
+was estimated from multipliers and some slow solution of the group bounded it.
+Presentation-only.""",
+    )
+
+    droppedUpper: List[str] = Field(
+        default=[],
+        description="""Solutions of this group that were expected to be too slow but
+were still running at `inferenceTimeout`, so they bound nothing from above.
+Presentation-only.""",
+    )
 
 
 class ValidatorTest(BaseModel):

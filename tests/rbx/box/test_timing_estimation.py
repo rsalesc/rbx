@@ -4,12 +4,18 @@ from unittest import mock
 import pytest
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
-from rbx.box.schema import TimingGroupOrigin, TimingMultipliers
+from rbx.box.schema import (
+    LimitsProfile,
+    TimingBound,
+    TimingGroupOrigin,
+    TimingMultipliers,
+)
 from rbx.box.timing import (
     MissingLowerBoundError,
     _describe_strategy,  # noqa: SLF001
     build_timing_profile,
     default_assignment,
+    describe_strategy_briefly,
     relevant_languages_for_estimation,
 )
 from rbx.box.timing_config import TimingStrategy
@@ -31,8 +37,8 @@ def _multipliers(**kwargs) -> TimingStrategy:
 
 def _measured_groups(profile_kwargs) -> Dict[int, GroupMeasurements]:
     """The per-group measurements ``build_timing_profile`` hands to the
-    resolution layer, keyed by group index. This is the only place the dropped
-    slow solutions are attributed to a group, and nothing renders them yet."""
+    resolution layer, keyed by group index. This is where the dropped slow
+    solutions are attributed to a group, before the reports carry them out."""
     with mock.patch(
         'rbx.box.timing_groups.resolve_groups', wraps=resolve_groups
     ) as spy:
@@ -394,6 +400,28 @@ def test_strategy_is_described_as_a_formula_or_as_ratios():
     assert 'multiple of 100 ms (timeResolution)' in described
 
 
+def test_the_brief_description_fits_one_menu_line():
+    # The `rbx time` menu offers the strategy in effect as a single choice, so
+    # the block `_describe_strategy` prints cannot be reused there.
+    assert (
+        describe_strategy_briefly(_formula('slowest * 2'))
+        == 'based on the formula slowest * 2'
+    )
+    brief = describe_strategy_briefly(
+        _multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100)
+    )
+    assert '\n' not in brief
+    assert 'acToTimeLimit 2.0' in brief
+    assert 'timeLimitToTle 1.5' in brief
+    assert '100 ms' in brief
+
+
+def test_the_brief_description_says_when_nothing_bounds_from_above():
+    brief = describe_strategy_briefly(_multipliers(acToTimeLimit=2.0))
+    assert '\n' not in brief
+    assert 'no upper bound' in brief
+
+
 def test_an_unbounded_estimate_says_the_slow_solutions_were_never_checked():
     # The most important fact about a run without timeLimitToTle is what it did
     # NOT do, so it is stated rather than left to the absence of a number.
@@ -410,3 +438,117 @@ def test_no_lower_bound_measurements_raise_in_formula_mode_too():
             env_groups=[],
             all_languages=['cpp'],
         )
+
+
+def test_the_profile_records_the_bounds_and_the_solutions_that_set_them():
+    profile = build_timing_profile(
+        timing_per_solution_per_language={
+            'cpp': {'sols/fast.cpp': 100, 'sols/slow_ac.cpp': 630}
+        },
+        strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6100}},
+        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    assert profile.groups is not None
+    (group,) = profile.groups
+    # 630 * 2.0 = 1260, rounded up to 1300 by the 100 ms resolution.
+    assert group.timeLimit == 1300
+    assert group.lowerBound == TimingBound(value=1260, solution='sols/slow_ac.cpp')
+    # floor(6100 / 1.5) = 4066: the LARGEST limit the slow solution still allows.
+    assert group.upperBound == TimingBound(value=4066, solution='sols/tle.cpp')
+    assert group.droppedUpper == ['sols/hopeless.cpp']
+
+
+def test_a_group_with_no_upper_bound_records_only_its_drops():
+    # Every slow solution of the group hit the cap: it bounds nothing from
+    # above, and the serialized report must still say so.
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
+        strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    assert profile.groups is not None
+    (group,) = profile.groups
+    assert group.upperBound is None
+    assert group.droppedUpper == ['sols/hopeless.cpp']
+
+
+def test_formula_mode_records_no_bounds():
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
+        strategy=_formula('slowest * 2'),
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    assert profile.groups is not None
+    (group,) = profile.groups
+    assert group.lowerBound is None
+    assert group.upperBound is None
+    assert group.droppedUpper == []
+
+
+def test_the_recorded_bounds_are_computed_exactly_once_per_group():
+    # A second computation at the serialization layer is where the recorded
+    # provenance would silently drift from the limit it explains.
+    from rbx.box import timing
+
+    with mock.patch(
+        'rbx.box.timing.compute_bounds', wraps=timing.compute_bounds
+    ) as spy:
+        build_timing_profile(
+            timing_per_solution_per_language={
+                'cpp': {'sols/ac.cpp': 400},
+                'python': {'sols/ac.py': 400},
+            },
+            strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+            env_groups=[],
+            all_languages=['cpp', 'python'],
+            repartition={'cpp': 1, 'python': 2},
+        )
+    # The pooled base estimate plus the two groups, and nothing more.
+    assert spy.call_count == 3
+
+
+def test_the_base_estimate_records_its_own_bounds():
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'sols/slow_ac.cpp': 630}},
+        strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6100}},
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    assert profile.baseEstimate is not None
+    assert profile.baseEstimate.lowerBound == TimingBound(
+        value=1260, solution='sols/slow_ac.cpp'
+    )
+    assert profile.baseEstimate.upperBound == TimingBound(
+        value=4066, solution='sols/tle.cpp'
+    )
+
+
+def test_the_limits_profile_round_trips_the_multipliers_and_the_bounds():
+    import yaml
+
+    from rbx import utils
+
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'sols/slow_ac.cpp': 630}},
+        strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6100}},
+        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        env_groups=[],
+        all_languages=['cpp'],
+    )
+    limits = profile.to_limits()
+    reloaded = LimitsProfile(**yaml.safe_load(utils.model_to_yaml(limits)))
+    assert reloaded == limits
+    assert reloaded.multipliers is not None
+    assert reloaded.multipliers.acToTimeLimit == 2.0
+    assert reloaded.groups is not None
+    assert reloaded.groups[0].upperBound == TimingBound(
+        value=4066, solution='sols/tle.cpp'
+    )

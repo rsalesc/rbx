@@ -2,6 +2,7 @@ from rbx.box.limits_info import build_limits_table_rows
 from rbx.box.schema import (
     LimitModifiers,
     LimitsProfile,
+    TimingBound,
     TimingGroupOrigin,
     TimingGroupReport,
 )
@@ -282,6 +283,38 @@ def test_highlight_ms_leaves_non_time_text_untouched():
     assert _highlight_ms('DEFAULTED to base') == 'DEFAULTED to base'
 
 
+def test_highlight_ms_leaves_solution_names_alone():
+    from rbx.box.limits_info import _highlight_ms
+
+    # A solution path is an ordinary thing to find in the Source column now that
+    # it names the bounding solutions, and `tle_2000ms.cpp` is an ordinary name.
+    assert _highlight_ms('from sols/tle_2000ms.cpp') == 'from sols/tle_2000ms.cpp'
+    assert _highlight_ms('from sols/ac500ms.py') == 'from sols/ac500ms.py'
+
+
+def test_bounding_solution_names_survive_rendering(capsys):
+    from rbx.box.limits_info import render_limits_table
+
+    # Square brackets in a path would otherwise be eaten as rich markup.
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=1,
+                fastest=630,
+                slowest=630,
+                upperBound=TimingBound(value=4066, solution='sols/tle[x].cpp'),
+            ),
+        ],
+    )
+    render_limits_table(profile)
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'sols/tle[x].cpp' in out
+
+
 def test_estimated_time_renders_cyan_with_ms():
     import rbx.console as console_module
     from rbx.box.limits_info import build_limits_table
@@ -475,3 +508,93 @@ def test_defaulted_leftover_renders_asterisk_and_warning(capsys):
     assert '⚠' in out
     assert 'DEFAULTED' in out
     assert 'go, java' in out
+
+
+def test_estimated_row_names_the_solutions_that_bound_it():
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['c', 'cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=2,
+                fastest=100,
+                slowest=630,
+                lowerBound=TimingBound(value=1260, solution='sols/slow_ac.cpp'),
+                upperBound=TimingBound(value=4066, solution='sols/tle.cpp'),
+            ),
+        ],
+    )
+    source = build_limits_table_rows(profile)[1].source
+    # "why is the limit 1300?" -- both sides of the range and who set them.
+    assert '1260 ms' in source
+    assert 'sols/slow_ac.cpp' in source
+    assert '4066 ms' in source
+    assert 'sols/tle.cpp' in source
+
+
+def test_a_derived_lower_bound_is_not_restated():
+    # A group that derives its limit has a lower bound naming no solution: it is
+    # the limit it derives from, already spelled out by the multiplier source.
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['python'],
+                timeLimit=2600,
+                origin=TimingGroupOrigin.MULTIPLIER,
+                relativeToLanguage='cpp',
+                multiplier=2.0,
+                lowerBound=TimingBound(value=2600),
+                upperBound=TimingBound(value=4066, solution='sols/tle.py'),
+            ),
+        ],
+    )
+    source = build_limits_table_rows(profile)[1].source
+    assert '2600 ms' not in source
+    assert '4066 ms' in source
+    assert 'sols/tle.py' in source
+
+
+def test_caption_notes_the_dropped_slow_solutions():
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=1,
+                fastest=630,
+                slowest=630,
+                droppedUpper=['sols/hopeless.cpp'],
+            ),
+        ],
+    )
+    caption = build_limits_table(profile).caption or ''
+    # Terse: the run already warned about each dropped solution by name.
+    assert 'droppedUpper' in caption
+    assert 'sols/hopeless.cpp' not in caption
+    assert '[warning]' in caption
+
+
+def test_no_dropped_caption_without_dropped_solutions():
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=1,
+                fastest=630,
+                slowest=630,
+            ),
+        ],
+    )
+    assert 'droppedUpper' not in (build_limits_table(profile).caption or '')

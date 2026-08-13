@@ -15,7 +15,13 @@ import pytest
 from rbx.box import limits_info, timing
 from rbx.box.deferred import Deferred
 from rbx.box.environment import TimingConfig, VerificationLevel
-from rbx.box.schema import ExpectedOutcome, Solution, TimingMultipliers
+from rbx.box.schema import (
+    ExpectedOutcome,
+    Solution,
+    TimingGroupOrigin,
+    TimingGroupReport,
+    TimingMultipliers,
+)
 from rbx.box.solutions import _gates_report  # noqa: SLF001
 from rbx.box.testing import testing_package
 from rbx.grading.steps import Outcome
@@ -127,6 +133,22 @@ async def _compute(
             check=True, detailed=False, formula=formula, auto=True
         )
     return run, result
+
+
+def _group(
+    time_limit: int,
+    languages: Optional[List[str]] = None,
+    dropped: Optional[List[Solution]] = None,
+) -> TimingGroupReport:
+    """One resolved language group of an estimated profile, as
+    ``build_timing_profile`` records it: the group's limit and the slow solutions
+    the cap stopped inside THAT group."""
+    return TimingGroupReport(
+        languages=languages or ['cpp'],
+        timeLimit=time_limit,
+        origin=TimingGroupOrigin.ESTIMATED,
+        droppedUpper=[str(solution.path) for solution in dropped or []],
+    )
 
 
 @pytest.fixture
@@ -433,7 +455,9 @@ async def test_a_cap_bounded_estimate_warns_that_the_upper_bound_is_untrustworth
                 tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
             }
         ),
-        estimated=timing.TimingProfile(timeLimit=5000),
+        estimated=timing.TimingProfile(
+            timeLimit=5000, groups=[_group(5000, dropped=[tle])]
+        ),
     )
     assert result is not None
     printed = _printed(capsys)
@@ -471,7 +495,9 @@ async def test_the_cap_bounded_warning_fires_just_above_the_bound(
                 tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
             }
         ),
-        estimated=timing.TimingProfile(timeLimit=limit),
+        estimated=timing.TimingProfile(
+            timeLimit=limit, groups=[_group(limit, dropped=[tle])]
+        ),
     )
     assert ('upper bound' in _printed(capsys)) is warns
 
@@ -479,6 +505,84 @@ async def test_the_cap_bounded_warning_fires_just_above_the_bound(
 async def test_a_per_language_limit_can_trip_the_cap_bounded_warning(pkg, capsys):
     # The base limit is under the bound but one language's is not, and that is
     # the limit a solution would actually run under.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    tle_py = Solution(
+        path=pkg.path('tle.py'),
+        language='py',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+    )
+    await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[tle, tle_py],
+        structured=_structured(
+            {
+                ac: [_evaluation(2000, Outcome.ACCEPTED)],
+                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
+                tle_py: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
+            }
+        ),
+        estimated=timing.TimingProfile(
+            timeLimit=4000,
+            timeLimitPerLanguage={'py': 9000},
+            groups=[
+                _group(4000, dropped=[tle]),
+                _group(9000, languages=['py'], dropped=[tle_py]),
+            ],
+        ),
+    )
+    printed = _printed(capsys)
+    assert 'upper bound' in printed
+    # The py group is the untrustworthy one; the cpp group sits under the bound.
+    assert 'tle.py' in printed
+
+
+async def test_the_pooled_base_limit_is_checked_too(pkg, capsys):
+    # No single group is both above the bound and short of evidence, but the
+    # base limit -- the one DEFAULTED languages and the packagers run under --
+    # pools every drop, so it is checked in its own right.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    await _compute(
+        pkg,
+        timing_config=TimingConfig(
+            multipliers=TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
+            )
+        ),
+        lower=[ac],
+        upper=[tle],
+        structured=_structured(
+            {
+                ac: [_evaluation(3000, Outcome.ACCEPTED)],
+                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
+            }
+        ),
+        estimated=timing.TimingProfile(
+            timeLimit=6000,
+            groups=[_group(1000, dropped=[tle]), _group(6000, languages=['java'])],
+            baseEstimate=TimingGroupReport(
+                languages=[],
+                timeLimit=6000,
+                origin=TimingGroupOrigin.ESTIMATED,
+                droppedUpper=[str(tle.path)],
+            ),
+        ),
+    )
+    assert 'upper bound' in _printed(capsys)
+
+
+async def test_a_drop_does_not_taint_another_groups_limit(pkg, capsys):
+    # The cpp group had the drop and its limit is under what the cap justifies;
+    # the python group is above it but nothing of its own was dropped. Blaming
+    # the cap for python's limit would send the setter after a solution that
+    # bounds a different group entirely.
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
     await _compute(
@@ -497,10 +601,15 @@ async def test_a_per_language_limit_can_trip_the_cap_bounded_warning(pkg, capsys
             }
         ),
         estimated=timing.TimingProfile(
-            timeLimit=4000, timeLimitPerLanguage={'py': 9000}
+            timeLimit=4000,
+            timeLimitPerLanguage={'py': 9000},
+            groups=[
+                _group(4000, dropped=[tle]),
+                _group(9000, languages=['py']),
+            ],
         ),
     )
-    assert 'upper bound' in _printed(capsys)
+    assert 'upper bound' not in _printed(capsys)
 
 
 async def test_nothing_dropped_means_no_cap_bounded_warning(pkg, capsys):
@@ -523,7 +632,7 @@ async def test_nothing_dropped_means_no_cap_bounded_warning(pkg, capsys):
                 tle: [_evaluation(6900, Outcome.ACCEPTED)],
             }
         ),
-        estimated=timing.TimingProfile(timeLimit=5000),
+        estimated=timing.TimingProfile(timeLimit=5000, groups=[_group(5000)]),
     )
     assert 'upper bound' not in _printed(capsys)
 
