@@ -351,6 +351,13 @@ def test_rewrite_includegraphics_subdir_reference():
     assert r'\includegraphics{img__diagram.png}' in out
 
 
+def test_rewrite_includegraphics_root_level_reference():
+    # Audit finding #6: an unqualified (no subdirectory) reference is rewritten to
+    # the flat name instead of relying on the judge resolving the bare stem.
+    out = rewrite_includegraphics(r'\includegraphics{pic}', {'pic': 'pic.png'})
+    assert out.strip() == r'\includegraphics{pic.png}'
+
+
 def test_rewrite_includegraphics_no_double_extension():
     out = rewrite_includegraphics(
         r'\includegraphics{img/diagram.png}', {'img/diagram': 'img__diagram.png'}
