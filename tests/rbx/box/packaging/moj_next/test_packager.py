@@ -147,11 +147,11 @@ def test_says_nothing_about_skipping_when_every_language_is_enabled(
     assert 'no ACCEPTED solution' not in ' '.join(capsys.readouterr().out.split())
 
 
-def test_display_title_prefers_portuguese(testing_pkg, tmp_path):
+def test_display_title_uses_the_package_title(testing_pkg, tmp_path):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
-    testing_pkg.yml.titles = {'en': 'Sum of Two', 'pt': 'Soma de Dois'}
+    testing_pkg.yml.titles = {'pt': 'Soma de Dois'}
     testing_pkg.save()
 
     into_path = run_packager(
@@ -160,6 +160,20 @@ def test_display_title_prefers_portuguese(testing_pkg, tmp_path):
 
     meta = json.loads((into_path / '.moj-meta.json').read_text())
     assert meta['display_title'] == 'Soma de Dois'
+
+
+def test_display_title_reports_an_ambiguous_title(testing_pkg, tmp_path):
+    # Resolution goes through naming.get_problem_title, so several titles with no
+    # statement to disambiguate them is a clear error rather than an arbitrary pick --
+    # the same behavior the BOCA packager has.
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.yml.titles = {'en': 'Sum of Two', 'pt': 'Soma de Dois'}
+    testing_pkg.save()
+
+    with pytest.raises(typer.Exit):
+        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
 
 
 def test_display_title_falls_back_to_the_problem_name(moj_next_package):

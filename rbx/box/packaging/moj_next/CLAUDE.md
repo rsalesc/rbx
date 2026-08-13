@@ -118,7 +118,7 @@ So the packager writes the content fields it can know and omits the rest:
 
 | Field | Emitted? | Why |
 |---|---|---|
-| `display_title` | always | Required and never empty. From `pkg.titles`, preferring `pt`/`pt-br`/`en` (MOJ is a Brazilian judge), then the lowest language code, then `pkg.name`. |
+| `display_title` | always | Required and never empty. Resolved with `naming.get_problem_title(...)`, the same helper BOCA uses — statement title override, then the package title, then `pkg.name`, with an actionable error when a package has several titles and no statement to disambiguate. |
 | `languages` | when non-empty | The languages with an **accepted solution** — see below. |
 | `collections` | never | rbx has no notion of them; absent keeps the server's. |
 | `public`, `public_at`, `owner`, `gitea` | never | Server-owned and ignored from a tar. `public` is additionally **fail-closed** in `gen-problem-json.sh` (absent = private); emitting it is how an unpublished problem leaks into an index served to anonymous users. |

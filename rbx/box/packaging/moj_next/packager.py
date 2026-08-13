@@ -8,6 +8,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import header, package
+from rbx.box import naming as box_naming
 from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
@@ -21,7 +22,7 @@ from rbx.box.packaging.moj_next.moj_language_utils import (
 )
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import CodeItem, ExpectedOutcome, ScoreType, Solution, TaskType
-from rbx.box.statements.schema import StatementType
+from rbx.box.statements.schema import Statement, StatementType
 from rbx.config import get_default_app_path, get_testlib
 
 # rbx has no author field, and MOJ hard-requires the file, so a visible placeholder
@@ -56,11 +57,6 @@ DEFAULT_FLAGS = {
 # Suffixes the amalgamator can reduce to a single translation unit.
 _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
 
-# Statement languages preferred when picking `display_title`. MOJ is a Brazilian
-# judge, so Portuguese wins; the lowest language code breaks any remaining tie, to
-# keep the emitted file deterministic.
-_TITLE_LANGUAGE_PREFERENCE = ('pt', 'pt-br', 'en')
-
 
 class MojNextPackager(BasePackager):
     """Packager for the MOJ format as `mojtools` consumes it.
@@ -94,15 +90,29 @@ class MojNextPackager(BasePackager):
 
     # -- metadata -------------------------------------------------------------
 
-    def _display_title(self) -> str:
+    def _get_main_statement(self) -> Optional[Statement]:
+        """The statement the title is taken from: the topmost declared one.
+
+        Statements are not *built* for MOJ (`statement_types()` is empty), but a
+        package still declares them, and the first one is what every other packager
+        treats as the main one.
+        """
         pkg = package.find_problem_package_or_die()
-        for language in _TITLE_LANGUAGE_PREFERENCE:
-            title = pkg.titles.get(language)
-            if title:
-                return title
-        if pkg.titles:
-            return pkg.titles[sorted(pkg.titles)[0]]
-        return pkg.name
+        if not pkg.expanded_statements:
+            return None
+        return pkg.expanded_statements[0]
+
+    def _display_title(self) -> str:
+        """MOJ's `display_title`, resolved through the shared naming helper.
+
+        `naming.get_problem_title` is what BOCA uses: it honors a statement's own
+        `title` override, falls back to the package title and then to the package
+        name, and raises an actionable error when a package has several titles and no
+        statement to disambiguate them.
+        """
+        statement = self._get_main_statement()
+        language = statement.language if statement is not None else None
+        return box_naming.get_problem_title(language, statement, fallback_to_title=True)
 
     def _submission_languages(self) -> List[str]:
         """The MOJ ids to allow submissions in: the languages with an accepted

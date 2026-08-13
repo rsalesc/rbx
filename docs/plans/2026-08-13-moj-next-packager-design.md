@@ -317,8 +317,11 @@ applies **two-tier** logic:
 
 So the packager writes the content fields it can know:
 
-- `display_title` — required, never empty. From `pkg.titles`, preferring `pt`/`pt-br`/
-  `en`, then the lowest language code, then `pkg.name`.
+- `display_title` — required, never empty. Resolved through
+  `naming.get_problem_title(...)`, the shared helper the BOCA packager already uses,
+  rather than a packager-local rule: it honors a statement's `title` override, falls
+  back to the package title and then `pkg.name`, and errors actionably when a package
+  has several titles and no statement to disambiguate them.
 - `languages` — the whitelist of permitted submission languages; the API rejects
   anything outside it. Derived from the languages that have an **accepted solution**,
   which is MOJ's own criterion: it calibrates a time limit per language from
