@@ -1016,6 +1016,14 @@ When `timeLimitToTle` is unset, `upper_solutions` stays empty and the run is
 byte-for-byte what it is today. Pass `tracked_solutions` as the union, keeping
 the existing `OrderedSet` of paths.
 
+**Behavior delta to call out in this commit's message.** The current selection at
+`timing.py:369` is `get_exact_matching_solutions(ExpectedOutcome.ACCEPTED)`,
+which looks only at `outcome` and ignores `outcomePerGroup`. `inference_role_of`
+consults `all_expected_outcomes()`, so a solution declaring `outcome: accepted`
+plus a per-group non-accepted expectation is tracked today and stops being a
+lower bound after this task. That is what the design asks for, but it is a real
+change in which solutions set the floor and must not land silently.
+
 Suppress `doubleTL` for this run — it would silently double the cap for exactly
 the solutions the cap exists to bound. Verify how `isDoubleTL` is derived
 (`rbx/box/limits_info.py:109`, from the verification level) and pass whatever

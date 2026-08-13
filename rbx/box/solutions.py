@@ -221,6 +221,15 @@ def is_fast(solution: Solution) -> bool:
     return not any(outcome.is_slow() for outcome in solution.all_expected_outcomes())
 
 
+def is_good(solution: Solution) -> bool:
+    # A solution is good when every expectation it declares -- for the whole
+    # testset or for a single group -- is a plain AC.
+    return all(
+        outcome == ExpectedOutcome.ACCEPTED
+        for outcome in solution.all_expected_outcomes()
+    )
+
+
 def inference_role_of(solution: Solution) -> Optional[InferenceRole]:
     """Which bound this solution contributes to during time limit inference.
 
@@ -233,10 +242,9 @@ def inference_role_of(solution: Solution) -> Optional[InferenceRole]:
         return None
     if solution.inference is not None:
         return solution.inference
-    expectations = solution.all_expected_outcomes()
-    if all(outcome == ExpectedOutcome.ACCEPTED for outcome in expectations):
+    if is_good(solution):
         return InferenceRole.LOWER
-    if any(outcome.is_slow() for outcome in expectations):
+    if not is_fast(solution):
         return InferenceRole.UPPER
     return None
 
@@ -2038,7 +2046,7 @@ async def _print_timing(
         # the set is then just `{solution.outcome}`.
         expectations = solution.all_expected_outcomes()
         # Get solution timings.
-        if all(outcome == ExpectedOutcome.ACCEPTED for outcome in expectations):
+        if is_good(solution):
             summary.add_good(solution_time, solution)
             summary_per_language[language].add_good(solution_time, solution)
         if all(

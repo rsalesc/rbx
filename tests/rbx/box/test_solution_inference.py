@@ -1,10 +1,11 @@
 import pathlib
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
 
 from rbx.box.schema import ExpectedOutcome, InferenceRole, Solution
-from rbx.box.solutions import inference_role_of
+from rbx.box.solutions import get_inference_solutions, inference_role_of
 
 
 def _solution(**kwargs) -> Solution:
@@ -27,12 +28,12 @@ def test_inference_rejects_true():
 
 
 def test_lower_role_rejects_a_slow_solution():
-    with pytest.raises(ValidationError, match='lower'):
+    with pytest.raises(ValidationError, match='bound the time limit from below'):
         _solution(outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED, inference='lower')
 
 
 def test_lower_role_rejects_a_per_group_slow_solution():
-    with pytest.raises(ValidationError, match='lower'):
+    with pytest.raises(ValidationError, match='bound the time limit from below'):
         _solution(
             outcome=ExpectedOutcome.ACCEPTED,
             outcomePerGroup={'g1': ExpectedOutcome.TIME_LIMIT_EXCEEDED},
@@ -78,3 +79,29 @@ def test_explicit_roles_win():
         )
         == InferenceRole.UPPER
     )
+
+
+def test_get_inference_solutions_filters_by_role():
+    good = Solution(
+        path=pathlib.Path('sols/good.cpp'), outcome=ExpectedOutcome.ACCEPTED
+    )
+    slow = Solution(
+        path=pathlib.Path('sols/slow.cpp'),
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+    )
+    neither = Solution(
+        path=pathlib.Path('sols/borderline.cpp'),
+        outcome=ExpectedOutcome.ACCEPTED_OR_TLE,
+    )
+    excluded = Solution(
+        path=pathlib.Path('sols/flaky.cpp'),
+        outcome=ExpectedOutcome.ACCEPTED,
+        inference=False,
+    )
+
+    with patch(
+        'rbx.box.solutions.package.get_solutions',
+        return_value=[good, slow, neither, excluded],
+    ):
+        assert get_inference_solutions(InferenceRole.LOWER) == [good]
+        assert get_inference_solutions(InferenceRole.UPPER) == [slow]

@@ -755,13 +755,15 @@ If one of the integers is set to be null, it means that the solution should have
     )
 
     @model_validator(mode='after')
-    def _validate_inference_role(self):
+    def check_inference_role(self):
         if self.inference == InferenceRole.LOWER and any(
             outcome.is_slow() for outcome in self.all_expected_outcomes()
         ):
-            raise ValueError(
-                'a solution expected to be slow cannot bound the time limit from '
-                'below; use `inference: upper` or `inference: false`.'
+            raise PydanticCustomError(
+                'INFERENCE_LOWER_NOT_ALLOWED_FOR_SLOW',
+                'Solution {path} is expected to be slow, so it cannot bound the time '
+                'limit from below; use `inference: upper` or `inference: false`.',
+                {'path': str(self.path)},
             )
         return self
 
