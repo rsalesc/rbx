@@ -75,7 +75,7 @@ timing:
   multipliers:
     acToTimeLimit: 2.0        # required whenever the block is present
     timeLimitToTle: 1.5       # optional
-    inferenceTimeout: 10000   # required iff timeLimitToTle is set
+    inferenceTimeout: 10000   # defaults to 10s; only used when timeLimitToTle is set
     timeResolution: 100       # ms
 ```
 
