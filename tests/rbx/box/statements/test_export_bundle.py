@@ -98,11 +98,33 @@ def test_bundle_materialize_is_idempotent(tmp_path, monkeypatch):
     assert (into / 'docs' / 'img' / 'd.png').read_bytes() == b'PNGDATA'
 
 
+def test_bundle_materializes_the_root_when_there_are_no_assets(tmp_path, monkeypatch):
+    statement = _setup(tmp_path, monkeypatch)
+    # A statement with no images at all: whoever tars the root still needs it.
+    (tmp_path / 'statement' / 'img' / 'd.png').unlink()
+    (tmp_path / 'overlay' / '.samples' / '000' / 'diagram.png').unlink()
+    bundle = export.build_statement_bundle(statement, layout=_subtree_layout())
+
+    into = tmp_path / 'out'
+    bundle.materialize(into)
+
+    assert bundle.assets == []
+    assert into.is_dir()
+
+
 def test_bundled_asset_exposes_content_without_materializing(tmp_path, monkeypatch):
     statement = _setup(tmp_path, monkeypatch)
     bundle = export.build_statement_bundle(statement, layout=export.FlatLayout())
     by_dest = {str(a.dest): a for a in bundle.assets}
     assert by_dest['img__d.png'].content == b'PNGDATA'
+
+
+def test_bundled_asset_reports_its_size_without_reading_it(tmp_path, monkeypatch):
+    statement = _setup(tmp_path, monkeypatch)
+    bundle = export.build_statement_bundle(statement, layout=export.FlatLayout())
+    by_dest = {str(a.dest): a for a in bundle.assets}
+    assert by_dest['img__d.png'].size == len(b'PNGDATA')
+    assert by_dest['sample_0__diagram.png'].size == len(b'SAMPLEDATA')
 
 
 def test_bundle_without_explanations_ships_no_sample_assets(tmp_path, monkeypatch):
@@ -173,6 +195,9 @@ def test_bundle_accepts_one_source_reached_twice(tmp_path, monkeypatch):
 
     bundle = export.build_statement_bundle(statement, layout=export.FlatLayout())
 
+    # Counted, not just set-compared: a set of destinations would hide a duplicate
+    # entry, and a duplicate is exactly what the guard must keep tolerating.
+    assert len(bundle.assets) == 2
     assert {str(a.dest) for a in bundle.assets} == {
         'img__d.png',
         'sample_0__diagram.png',

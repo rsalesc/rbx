@@ -600,6 +600,17 @@ class BundledAsset:
         """
         return self.asset.source.read_bytes()
 
+    @property
+    def size(self) -> int:
+        """The asset's size in bytes, without reading it.
+
+        Exists so a size check does not become a read: the obvious spelling of
+        Polygon's per-resource cap, ``len(bundled.content) >= LIMIT``, pulls a
+        multi-megabyte PDF into memory only to throw it away, and then again to
+        upload it.
+        """
+        return self.asset.source.stat().st_size
+
 
 def _check_destination_collisions(bundled: List[BundledAsset]) -> None:
     """Reject two distinct sources placed on one destination.
@@ -619,6 +630,18 @@ def _check_destination_collisions(bundled: List[BundledAsset]) -> None:
     and neither subsumes the other: a ``d.png``/``d.pdf`` pair shares a reference
     key but not a destination, and two same-named files from different scopes
     share a destination while extension precedence has nothing to disagree about.
+
+    The source comparison cannot fire today -- ``resolve_assets`` dedupes on
+    absolute source, so no two entries can share one -- and is kept as the
+    statement of what this guard is about: destinations shared by *different*
+    files. One file reached twice is not a collision, and must not start raising
+    if the dedupe above ever moves.
+
+    A packager holds the layout, so a remedy phrased in terms of scope roots
+    would be addressed to a developer inside a message a problem setter reads.
+    Hence the wording mirrors ``_resolve_references``, down to spelling out what
+    "drop one" concretely means: an unwanted image under the statement directory
+    is auto-collected by extension, so removing it from ``assets`` is not enough.
     """
     by_dest: Dict[pathlib.PurePosixPath, BundledAsset] = {}
     for entry in bundled:
@@ -627,8 +650,8 @@ def _check_destination_collisions(bundled: List[BundledAsset]) -> None:
             raise ValueError(
                 f'Two different assets are placed at {entry.dest}: '
                 f'{previous.asset.source} and {entry.asset.source}. One would '
-                'overwrite the other. Rename one, drop one, or give their '
-                'scopes separate roots.'
+                'overwrite the other. Rename one, move one out of the statement '
+                'directory, or drop one.'
             )
 
 
@@ -654,10 +677,16 @@ class StatementBundle:
     def materialize(self, root: pathlib.Path) -> None:
         """Write every asset under ``root``, creating directories as needed.
 
+        ``root`` itself included, as in ``flattening.FlatNamespace.materialize``,
+        so a caller may tar or copy it afterwards without checking: a statement
+        with no images at all is a common package shape, not an edge case, and it
+        would otherwise leave ``root`` absent.
+
         Destinations are unique (``build_statement_bundle`` rejects collisions)
         and each write replaces whatever is there, so this is idempotent and
         safe to call twice or over a partially populated tree.
         """
+        root.mkdir(parents=True, exist_ok=True)
         for bundled in self.assets:
             target = root / bundled.dest
             target.parent.mkdir(parents=True, exist_ok=True)

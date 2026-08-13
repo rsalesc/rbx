@@ -129,6 +129,11 @@ async def test_processed_blocks_normalize_without_a_macros_file(
 
         assert '\\(' not in blocks.blocks['notes']
         assert '$n \\le 10$' in blocks.blocks['notes']
+        # The defs block is collected and expanded here too: it lives in
+        # blocks.sub.yml, not in macros.json, so its absence never justified
+        # leaving \NN unexpanded.
+        assert '\\NN' not in blocks.blocks['notes']
+        assert 'mathbb' in blocks.blocks['notes']
 
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
