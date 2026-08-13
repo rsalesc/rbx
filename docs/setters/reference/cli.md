@@ -895,6 +895,22 @@ rbx package moj [OPTIONS]
 
 ---
 
+### moj-next
+
+Build a package for MOJ (new format).
+
+**Usage:**
+```bash
+rbx package moj-next [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+
+
+---
+
 ### pkg
 
 Build a package for PKG.

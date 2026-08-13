@@ -31,7 +31,9 @@ with `\subimport`. There is **no migration** from v1.
   `type`, `params` (own namespace), `samples`, `assets`. `expanded_params`
   expands `params`. `assets` (#595) is a list of package-root globs naming extra
   statement resources (images/PDFs) to upload; inherited via `extends` (child
-  replaces parent), consumed only by the Polygon upload path so far.
+  replaces parent), consumed by `export.py`'s `resolve_assets` (STATEMENT scope
+  when under the statement dir, EXTERNAL otherwise) — whose only consumer so far
+  is the Polygon upload path.
 - **`Statement`** (problem) — no `name`; identified by `(language, variant)`
   (unique within a problem). `extends` by language string or `{language, variant}`.
 - **`ContestStatement`** (contest) — adds `name` (unique),
@@ -138,11 +140,11 @@ export path, #568) owns every live build:
   is `ConversionType` / `ConversionStep` / `rbxToTeX` / `TexToPDF` (the packager's
   externalize/demacro toggles — design §2 decision 6).
 
-## Polygon export (S12, #568) — `build_statements` + `polygon/statement_block_utils`
+## Statement export (S12, #568) — `build_statements` + `export.py`
 
 The Polygon API upload (`rbx package polygon --upload` / `--validate-statement`)
 consumes the v2 overlay directly. The standalone overlay root
-(`build/statements/st/<lang>-<variant>/`) **is** the Polygon "statement dir":
+(`build/statements/st/<lang>-<variant>/`) **is** the export "statement dir":
 
 - The packager forces `externalize`+`demacro` via
   `PolygonPackager.statement_export_params()`; `run_packager` builds every
@@ -153,10 +155,26 @@ consumes the v2 overlay directly. The standalone overlay root
   `blocks.ext.yml` (labeled) / `blocks.sub.yml` (TikZ → `\includegraphics`).
 - `build_statements.get_statement_dir(statement)` returns that overlay root;
   `get_produced_tikz_pdfs` globs its `artifacts/tikz_figures/*.pdf`.
-- `polygon/statement_block_utils.get_processed_statement_blocks` reads
+- `export.get_processed_statement_blocks(statement, normalize=True)` reads
   `blocks.sub.yml` + `macros.json` from that single dir, expands/filters macros
-  and converts to Polygon TeX (`polygon_utils.py`). No per-builder subdirs, no
-  absolute/temp paths.
+  and (when `normalize`) converts to Polygon TeX (`polygon_utils.py`). No
+  per-builder subdirs, no absolute/temp paths. Its debug dump of the normalized
+  blocks moved from `<overlay>/polygon/` to **`<overlay>/export/`**.
+
+**The block pipeline and asset resolution live in `export.py`, not in the Polygon
+package.** They used to sit in `packaging/polygon/{statement_block_utils,upload}.py`,
+where no other packager could reach them; `export.py` is the whole pipeline —
+blocks → `resolve_assets` → `AssetLayout` → `derive_remap` →
+`build_statement_bundle` — with every target-specific decision confined to a
+layout. Stages 2–5 know only paths, so they are genuinely target-independent;
+stage 1's final Polygon-TeX conversion is the one Polygon-flavored step, and it
+is a parameter (`normalize=False` yields raw macro-expanded TeX). See
+[`packaging/CLAUDE.md`](../packaging/CLAUDE.md#statement-export-bundle-rbxboxstatementsexportpy)
+for the consumer-facing contract and
+`docs/plans/2026-08-13-statement-export-bundle-design.md` for the design.
+`polygon/statement_block_utils.py` now holds only `process_statements` /
+`validate_statements` (the language-iteration + `validate_polygon_tex` driver),
+importing `get_processed_statement_blocks` from `export` for its own use.
 
 **Template contract (#590):** TikZ externalization depends on the statement
 template. A block's or explanation's TikZ (or static image) is uploaded to
@@ -214,4 +232,5 @@ Per-sample handles: `sample.input`/`output` (root-relative), `sample.dir` +
 
 Helpers extracting/validating statement sections for Polygon upload
 (`convert_to_polygon_tex`, `validate_polygon_tex`, `PolygonTeXConfig`) — consumed
-by the S12 export path (see "Polygon export" above).
+by the S12 export path (see "Statement export" above), which applies them as
+`export.py`'s optional `normalize` step.
