@@ -52,6 +52,22 @@ authored `timeLimit` is advisory. There is a **TODO** in `_write_conf` to derive
 factor from `timeLimit / measured model-solution runtime` so the calibrated limit
 lands near rbx's number instead of 1.35x the model solution.
 
+### `STOPWHEN_*`
+
+BINARY problems get `STOPWHEN_WA/TLE/RE=y`: the verdict is decided by the first
+failing test, so the rest only cost judge time.
+
+POINTS problems deliberately get **none of them**, and this is correctness rather than
+taste. `build-and-test.sh` checks `STOPWHEN_*` *before* the `RUNALL` guard, so it
+breaks out of the test loop even when the caller asked for every test.
+`score-summary.sh` then finds a group with no executed tests and scores it `null`,
+counted as failed — a submission that failed group 1 but would have passed group 2
+silently loses group 2's points. Never enable these alongside `tests/score`.
+
+Worth knowing: the early break only fires from inside the `JOBSCOUNT > NPROC-1` branch
+of the loop, so with fewer tests than cores nothing stops early. It is a best-effort
+speed optimization, not a guarantee.
+
 ## Test naming (`naming.py`)
 
 Samples are `sample001…`; everything else is `t<NN>_<group>_<NNN>` with `NN` the

@@ -242,7 +242,38 @@ class MojNextPackager(BasePackager):
             'TLMOD[calibrafactor]=1.35',
             '',
         ]
+        lines.extend(self._stopwhen_lines())
         (into_path / 'conf').write_text('\n'.join(lines))
+
+    def _stopwhen_lines(self) -> List[str]:
+        """The `STOPWHEN_*` block, which halts a run at the first failing test.
+
+        Enabled for BINARY problems: the verdict is already decided by the first
+        failure, so running the rest only burns judge time.
+
+        **Not** enabled for POINTS problems, and that is a correctness matter rather
+        than a preference. `build-and-test.sh` checks `STOPWHEN_*` *before* the
+        `RUNALL` guard, so it breaks out of the test loop even when the caller asked
+        for every test. `score-summary.sh` then sees a group with no executed tests
+        and scores it `null` -- counted as failed. A solution that legitimately failed
+        group 1 but would have passed group 2 would silently lose group 2's points.
+        """
+        pkg = package.find_problem_package_or_die()
+        if pkg.scoring != ScoreType.BINARY:
+            return [
+                '# STOPWHEN_* is deliberately unset: this problem scores by groups, and',
+                '# halting early leaves later groups unexecuted, which score-summary.sh',
+                '# counts as failed -- the submission would lose points it had earned.',
+                '',
+            ]
+        return [
+            '# Halt at the first failing test. The verdict of an all-or-nothing problem',
+            '# is already decided by then, so the remaining tests only cost judge time.',
+            'STOPWHEN_WA=y',
+            'STOPWHEN_TLE=y',
+            'STOPWHEN_RE=y',
+            '',
+        ]
 
     # -- tests ----------------------------------------------------------------
 

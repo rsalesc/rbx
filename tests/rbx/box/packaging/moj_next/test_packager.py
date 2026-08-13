@@ -192,6 +192,36 @@ def test_conf_uses_the_rss_memory_knob(moj_next_package):
     assert 'TLMOD[calibrafactor]=1.35' in conf
 
 
+def test_binary_problems_halt_at_the_first_failure(moj_next_binary_package):
+    conf = (moj_next_binary_package / 'conf').read_text()
+    assert 'STOPWHEN_WA=y' in conf
+    assert 'STOPWHEN_TLE=y' in conf
+    assert 'STOPWHEN_RE=y' in conf
+
+
+def test_points_problems_never_halt_early(testing_pkg, tmp_path):
+    # build-and-test.sh checks STOPWHEN_* before the RUNALL guard, so it breaks even
+    # when every test was requested. score-summary.sh then scores an unexecuted group
+    # as failed, and a submission would lose points it had actually earned.
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.yml.scoring = ScoreType.POINTS
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.add_testgroup_with_manual_testcases('easy', [])
+    testing_pkg.yml.testcases[-1].score = 100
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples', 'easy'])
+    )
+
+    conf = (into_path / 'conf').read_text()
+    assert 'STOPWHEN_WA=y' not in conf
+    assert 'STOPWHEN_TLE=y' not in conf
+    assert 'STOPWHEN_RE=y' not in conf
+
+
 # -- tests ------------------------------------------------------------------
 
 

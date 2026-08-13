@@ -94,7 +94,20 @@ ULIMITS[-f]=<pkg.outputLimit>
 # TODO(rbx): derive this from the authored timeLimit divided by the measured
 # model-solution runtime, so the calibrated TL lands near rbx's number.
 TLMOD[calibrafactor]=1.35
+
+# BINARY problems only:
+STOPWHEN_WA=y
+STOPWHEN_TLE=y
+STOPWHEN_RE=y
 ```
+
+`STOPWHEN_*` halts a run at the first failing test. It is emitted for BINARY problems,
+where the verdict is already decided by then, and deliberately **withheld from POINTS
+problems** — a correctness matter, not a preference. `build-and-test.sh` checks
+`STOPWHEN_*` *before* the `RUNALL` guard, so it breaks the test loop even when every
+test was requested, and `score-summary.sh` scores an unexecuted group as `null`,
+counted as failed. A submission that failed group 1 but would have passed group 2
+would silently lose group 2's points.
 
 `MEMLIMITMB` replaces the legacy `ULIMITS[-v]`: it is the RSS-based knob, it feeds the
 JVM's `-Xmx` through `binfile.sh`, and setting it makes `build-and-test.sh` drop the
