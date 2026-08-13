@@ -51,7 +51,7 @@ async def test_get_produced_tikz_pdfs_globs_externalization_dir(
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
 async def test_get_processed_statement_blocks_reads_overlay(cleandir_with_testdata):
-    from rbx.box.packaging.polygon import statement_block_utils as sbu
+    from rbx.box.statements import export as sbu
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()
@@ -77,7 +77,7 @@ async def test_get_processed_statement_blocks_reads_overlay(cleandir_with_testda
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
 async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdata):
-    from rbx.box.packaging.polygon import statement_block_utils as sbu
+    from rbx.box.statements import export as sbu
     from rbx.box.statements.demacro_utils import MacroDefinitions
 
     with cd.new_package_cd(pathlib.Path('A')):
@@ -101,6 +101,41 @@ async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdat
         blocks = sbu.get_processed_statement_blocks(st)
         assert '\\NN' not in blocks.blocks['notes']
         assert 'mathbb' in blocks.blocks['notes']
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_processed_blocks_skip_polygon_conversion_when_not_normalizing(
+    cleandir_with_testdata,
+):
+    from rbx.box.statements import export
+    from rbx.box.statements.demacro_utils import MacroDefinitions
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        await build_statements.build_statement(
+            st,
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        MacroDefinitions().to_json_file(
+            build_statements.get_statement_dir(st) / 'macros.json'
+        )
+
+        normalized = export.get_processed_statement_blocks(st)
+        raw = export.get_processed_statement_blocks(st, normalize=False)
+
+        # The Polygon conversion rewrites \( ... \) into $ ... $ ...
+        assert '\\(' not in normalized.blocks['notes']
+        assert '$n \\le 10$' in normalized.blocks['notes']
+        # ... and normalize=False leaves it alone.
+        assert '\\(n \\le 10\\)' in raw.blocks['notes']
+        # Macro expansion is not part of the conversion: it runs either way.
+        assert '\\NN' not in raw.blocks['notes']
+        assert 'mathbb' in raw.blocks['notes']
 
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')

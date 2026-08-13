@@ -9,16 +9,118 @@ import dataclasses
 import enum
 import pathlib
 import posixpath
+import shutil
+import tempfile
 from typing import Dict, Iterable, List, Literal, Optional, Protocol, Set
 
-from rbx import utils
-from rbx.box.statements import sample_staging
+import typer
+
+from rbx import console, utils
+from rbx.box.statements import demacro_utils, polygon_utils, sample_staging
 from rbx.box.statements.build_statements import (
     get_produced_tikz_pdfs,
     get_statement_dir,
 )
-from rbx.box.statements.schema import Statement
+from rbx.box.statements.demacro_utils import MacroDefinitions
+from rbx.box.statements.render import StatementBlocks
+from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.statements.texsoup_utils import ASSET_EXTS
+
+
+def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
+    assert statement.type == StatementType.rbxTeX
+    # The v2 overlay root is the single export source dir; the substituted blocks
+    # (TikZ -> \includegraphics) live in blocks.sub.yml, written by the forced
+    # externalize build.
+    statement_dir = get_statement_dir(statement)
+    substituted_blocks_path = statement_dir / 'blocks.sub.yml'
+    if not substituted_blocks_path.is_file():
+        console.console.print(
+            f'Substituted blocks file [item]{substituted_blocks_path}[/item] does not exist. '
+            'Please run the command to build the statement again.',
+        )
+        raise typer.Exit(1)
+
+    statement_blocks = utils.model_from_yaml(
+        StatementBlocks, substituted_blocks_path.read_text()
+    )
+    return statement_blocks
+
+
+def get_processed_statement_blocks(
+    statement: Statement, normalize: bool = True
+) -> StatementBlocks:
+    """Read the built blocks, expand and filter macros, and (by default) convert
+    to Polygon TeX.
+
+    ``normalize`` controls only that last conversion. It defaults on because the
+    Polygon subset is the well-behaved one -- it is what pandoc and browser TeX
+    renderers handle cleanly -- but a consumer wanting the raw macro-expanded TeX
+    can turn it off.
+
+    The macro *filter* runs either way, even though its allowlist comes from
+    ``PolygonTeXConfig``: it decides which macros stay unexpanded, and every name
+    on that list is a plain LaTeX command any TeX consumer already understands.
+    Dropping it under ``normalize=False`` would change the blocks' macro
+    semantics, not their TeX dialect, and the two modes would no longer be
+    comparable.
+    """
+    statement_blocks = get_substituted_statement_blocks(statement)
+    overlay_dir = get_statement_dir(statement)
+    macros_file = overlay_dir / 'macros.json'
+    statement_dir = overlay_dir / 'export'
+    shutil.rmtree(statement_dir, ignore_errors=True)
+    statement_dir.mkdir(parents=True, exist_ok=True)
+
+    if not macros_file.is_file():
+        return statement_blocks
+
+    # Get macros and additional macros from defs block.
+    macros = MacroDefinitions.from_json_file(macros_file)
+    if 'defs' in statement_blocks.blocks:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file = pathlib.Path(temp_dir) / 'defs.tex'
+            temp_file.write_text(statement_blocks.blocks['defs'])
+            defs_macros = demacro_utils.collect_macro_definitions(temp_file)
+            macros.merge(defs_macros)
+
+    # Filter out commands that are accepted by Polygon.
+    macros = macros.filter(polygon_utils.PolygonTeXConfig.default().allowed_commands)
+
+    # Expand macros in statement blocks and explanations.
+    statement_blocks.blocks = {
+        block_name: demacro_utils.expand_macros(block_content, macros)
+        for block_name, block_content in statement_blocks.blocks.items()
+    }
+    statement_blocks.explanations = {
+        explanation_index: demacro_utils.expand_macros(explanation, macros)
+        for explanation_index, explanation in statement_blocks.explanations.items()
+    }
+
+    if normalize:
+        # For last, try to convert to Polygon TeX.
+        statement_blocks.blocks = {
+            block_name: polygon_utils.convert_to_polygon_tex(
+                block_content, ignore_macros=True
+            )
+            for block_name, block_content in statement_blocks.blocks.items()
+        }
+        statement_blocks.explanations = {
+            explanation_index: polygon_utils.convert_to_polygon_tex(
+                explanation, ignore_macros=True
+            )
+            for explanation_index, explanation in statement_blocks.explanations.items()
+        }
+
+        # Save normalized blocks for debugging.
+        for block_name, block_content in statement_blocks.blocks.items():
+            (statement_dir / f'{block_name}.tex').write_text(block_content)
+        for explanation_index, explanation in statement_blocks.explanations.items():
+            (statement_dir / f'explanation_{explanation_index}.tex').write_text(
+                explanation
+            )
+
+    return statement_blocks
 
 
 class AssetScope(enum.Enum):
