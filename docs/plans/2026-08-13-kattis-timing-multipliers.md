@@ -860,8 +860,9 @@ Append to `tests/rbx/box/test_timing_estimation.py`:
 def test_build_profile_with_multipliers_uses_both_bounds():
     profile = build_timing_profile(
         timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
-        formula=None,
-        multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        strategy=TimingStrategy(
+            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
+        ),
         slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6000}},
         env_groups=[],
         all_languages=['cpp'],
@@ -875,8 +876,9 @@ def test_build_profile_with_multipliers_rejects_an_empty_range():
     with pytest.raises(TimingRangeError):
         build_timing_profile(
             timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
-            formula=None,
-            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+            strategy=TimingStrategy(
+                multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
+            ),
             slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 900}},
             env_groups=[],
             all_languages=['cpp'],
@@ -890,11 +892,11 @@ Expected: FAIL with `TypeError: unexpected keyword argument 'multipliers'`.
 
 **Step 3: Implement**
 
-Change the signature to take `formula: Optional[str]`, `multipliers:
-Optional[TimingMultipliers]`, `slow_timing_per_solution_per_language:
-Optional[Dict[str, Dict[str, int]]] = None` and `dropped_upper:
-Optional[Dict[str, List[str]]] = None`. Exactly one of `formula`/`multipliers`
-must be set — assert it.
+Change the signature to take `strategy: TimingStrategy` (from
+`rbx/box/timing_config.py` — it already guarantees that exactly one of
+formula/multipliers is set, so do NOT re-assert that here),
+`slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] =
+None` and `dropped_upper: Optional[Dict[str, List[str]]] = None`.
 
 Per group, alongside the existing `values` pooling, pool the slow measurements
 and record which solution set each bound:
@@ -982,16 +984,16 @@ Expected: FAIL — slow solutions are not tracked and the override is `-1`.
 
 **Step 3: Implement**
 
-In `compute_time_limits`, resolve the multipliers first:
+In `compute_time_limits`, resolve the strategy first:
 
 ```python
-    multipliers = timing_config.resolve_multipliers(
-        environment.get_environment().timing,
-        package.find_problem_package_or_die().timing,
-    )
-    formula = formula or (
-        None if multipliers is not None
-        else environment.get_environment().timing.resolved_formula()
+    strategy = (
+        timing_config.TimingStrategy(formula=formula)
+        if formula is not None
+        else timing_config.resolve_strategy(
+            environment.get_environment().timing,
+            package.find_problem_package_or_die().timing,
+        )
     )
 ```
 
@@ -1001,6 +1003,7 @@ formula mode and drops the multipliers.
 Then build the tracked set and the override:
 
 ```python
+    multipliers = strategy.multipliers
     lower_solutions = solutions.get_inference_solutions(InferenceRole.LOWER)
     upper_solutions: List[Solution] = []
     timelimit_override = -1  # unlimited
@@ -1142,9 +1145,10 @@ resolved strategy:
 
 ```python
     env_timing = environment.get_environment().timing
-    multipliers = timing_config.resolve_multipliers(
+    strategy = timing_config.resolve_strategy(
         env_timing, package.find_problem_package_or_die().timing
     )
+    multipliers = strategy.multipliers
     if multipliers is not None:
         recommended = (
             f'Estimate time limits with ratios acToTimeLimit={multipliers.acToTimeLimit}'
@@ -1155,7 +1159,7 @@ resolved strategy:
     else:
         recommended = (
             f'Estimate time limits based on the formula '
-            f'{env_timing.resolved_formula()} (recommended)'
+            f'{strategy.formula_or_die()} (recommended)'
         )
 ```
 
@@ -1267,6 +1271,14 @@ ratios, the per-solution `inference` field and the per-problem override as user
 knobs. No internals: no group-timings plumbing, no estimator strategies, no
 mention of how the run is capped beyond "slow solutions are run with a timeout
 you control".
+
+Two carried-over items from earlier reviews:
+- `docs/setters/reference/environment/index.md:190` duplicates the default
+  formula string verbatim. It is now `DEFAULT_TIMING_FORMULA` in code; make the
+  doc stop restating a value that can drift.
+- The formula/multipliers exclusivity is invisible in the published JSON schema
+  (no `oneOf`), so editors happily autocomplete both keys. Either express it in
+  the schema or state it plainly in the reference page.
 
 Verify with a non-strict build (`--strict` has ~9 pre-existing unrelated
 warnings):
