@@ -928,6 +928,16 @@ Pick the estimator:
 `TimingProfile` gains `multipliers: Optional[TimingMultipliers] = None` and
 passes it through `to_limits()` (Task 8 adds the field on `LimitsProfile`).
 
+**Raise a real error when nothing bounds the limit from below.** `resolve_groups`
+always calls `eval_fn(base)`, and both estimators assert `measured.lower is not
+None`. That assert is now reachable from ordinary YAML — a package where every
+accepted solution is marked `inference: false` — and it surfaces as a bare
+`AssertionError` with no message (or, under `python -O`, a `TypeError` on
+`None.slowest`). Detect the condition where the measurements are assembled and
+fail with a setter-facing message: no solution bounds the time limit from below,
+so at least one accepted solution must leave `inference` unset or set it to
+`lower`.
+
 Thread the same two new arguments through `build_preview_renderer`,
 `_prompt_repartition` and `estimate_time_limit`, replacing their `formula: str`
 parameters with the pair. In `estimate_time_limit`, replace the
