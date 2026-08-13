@@ -1104,8 +1104,10 @@ async def compute_time_limits(
     share: Optional[str] = None,
 ):
     if package.get_main_solution() is None:
+        # An error, not a warning: with no accepted solution nothing bounds the
+        # limit from below, so no profile is written and the command fails.
         console.console.print(
-            '[warning]No main solution found, so cannot estimate a time limit.[/warning]'
+            '[error]No main solution found, so cannot estimate a time limit.[/error]'
         )
         return None
 

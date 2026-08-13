@@ -27,9 +27,10 @@ scenarios:
     steps:
       - cmd: time --auto
         cwd: empty-range
-        # The estimation is refused, not aborted: `rbx time` reports the range
-        # and leaves the profile untouched.
-        expect_exit: 0
+        # The estimation is refused: `rbx time` reports the range, leaves the
+        # profile untouched, and fails -- a limit was asked for and none was
+        # produced, which a pipeline running `rbx time` has to see.
+        expect_exit: 1
         expect:
           stdout_contains:
             - 'no valid time limit exists'

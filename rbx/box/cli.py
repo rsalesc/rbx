@@ -664,9 +664,16 @@ async def time(
     ):
         raise typer.Exit(1)
 
-    await timing.compute_time_limits(
+    estimated = await timing.compute_time_limits(
         check, detailed, runs, formula=formula, profile=profile, auto=auto, share=share
     )
+    if estimated is None:
+        # Every failure of the estimation -- an unsatisfiable range, a solution
+        # that bounds nothing, a failed run, a cancelled picker -- leaves the
+        # limits profile untouched, and `rbx time` must not report success for a
+        # limit it did not produce. The reasons were printed where they were
+        # found; this only turns them into an exit code a pipeline can see.
+        raise typer.Exit(1)
 
 
 @app.command(
