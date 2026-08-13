@@ -100,6 +100,45 @@ def test_sample_scope_asset_wins_a_key_collision_with_a_statement_asset():
     assert remap == {'diagram': 'sample_0__diagram.png'}
 
 
+# --- Ambiguity: two assets at the same shadow tier claiming one reference ---
+
+
+def test_two_statement_assets_sharing_a_reference_key_are_rejected():
+    # Distinct destinations (img__d.png vs img__d.pdf), so no dest-keyed check
+    # can catch this -- but `\includegraphics{img/d}` cannot name both.
+    png = _asset(AssetScope.STATEMENT, 'img/d.png')
+    pdf = _asset(AssetScope.STATEMENT, 'img/d.pdf')
+    with pytest.raises(ValueError, match='img/d'):
+        export.derive_remap([png, pdf], export.FlatLayout(), DocumentSlot.body())
+
+
+def test_ambiguity_error_names_both_sources():
+    png = _asset(AssetScope.STATEMENT, 'img/d.png')
+    pdf = _asset(AssetScope.STATEMENT, 'img/d.pdf')
+    with pytest.raises(ValueError) as excinfo:
+        export.derive_remap([png, pdf], export.FlatLayout(), DocumentSlot.body())
+    assert str(png.source) in str(excinfo.value)
+    assert str(pdf.source) in str(excinfo.value)
+
+
+def test_two_assets_landing_on_the_same_destination_are_not_ambiguous():
+    # Same key AND same dest: the reference is unambiguous. Whether shipping two
+    # files to one path is legal is the bundle's dest guard's problem, not this
+    # function's.
+    a = export.ResolvedAsset(
+        scope=AssetScope.EXTERNAL,
+        source=pathlib.Path('/one/logo.png'),
+        rel=pathlib.PurePosixPath('logo.png'),
+    )
+    b = export.ResolvedAsset(
+        scope=AssetScope.EXTERNAL,
+        source=pathlib.Path('/two/logo.png'),
+        rel=pathlib.PurePosixPath('logo.png'),
+    )
+    remap = export.derive_remap([a, b], export.FlatLayout(), DocumentSlot.body())
+    assert remap == {'logo': 'logo.png'}
+
+
 # --- SubtreeLayout: directories, several roots (MOJ) ------------------------
 
 
@@ -160,6 +199,20 @@ def test_subtree_layout_sample_reference_is_relative_to_the_explanation():
     assert remap == {'img/d': '../../img/d'}
 
 
+def test_shadowing_survives_a_layout_that_reaches_identity():
+    # The sample asset shadows the statement one AND derives an identity. If the
+    # identity were dropped before the shadowing were resolved, the statement
+    # asset would survive and point the explanation at the wrong image.
+    layout = _moj_layout(keep_extension=False)
+    statement_named_like_the_sample = _asset(AssetScope.STATEMENT, 'diagram.png')
+    remap = export.derive_remap(
+        [SAMPLE_ASSET, statement_named_like_the_sample],
+        layout,
+        DocumentSlot.sample(0),
+    )
+    assert remap == {}
+
+
 def test_sample_scope_root_requires_an_index_placeholder():
     with pytest.raises(ValueError):
         export.SubtreeLayout(
@@ -168,9 +221,38 @@ def test_sample_scope_root_requires_an_index_placeholder():
         ).place_asset(SAMPLE_ASSET)
 
 
+def test_sample_explanation_document_dir_requires_an_index_placeholder():
+    # Without it every sample's notes collapse into one directory.
+    with pytest.raises(ValueError, match='index'):
+        export.SubtreeLayout(
+            document_dirs={'sample_explanation': 'docs/notes'}
+        ).document_dir(DocumentSlot.sample(0))
+
+
 def test_unknown_placeholder_in_a_root_is_reported():
     with pytest.raises(ValueError, match='placeholder'):
         export.SubtreeLayout(
             asset_roots={AssetScope.STATEMENT: 'docs/{bogus}'},
             document_dirs={},
         ).place_asset(STATEMENT_ASSET)
+
+
+# --- DocumentSlot invariant -------------------------------------------------
+
+
+def test_document_slot_index_is_set_iff_the_slot_is_a_sample_explanation():
+    with pytest.raises(ValueError, match='sample_explanation'):
+        export.DocumentSlot(kind='sample_explanation')
+    with pytest.raises(ValueError, match='sample_explanation'):
+        export.DocumentSlot(kind='body', index=5)
+
+
+def test_document_slot_narrows_its_index_for_sample_slots():
+    assert DocumentSlot.sample(3).sample_index == 3
+
+
+def test_document_slot_is_hashable_so_a_bundle_can_key_on_it():
+    assert {DocumentSlot.body(): 'a', DocumentSlot.sample(0): 'b'} == {
+        DocumentSlot.body(): 'a',
+        DocumentSlot.sample(0): 'b',
+    }

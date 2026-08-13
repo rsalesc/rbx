@@ -9,7 +9,7 @@ import dataclasses
 import enum
 import pathlib
 import posixpath
-from typing import Dict, Iterable, List, Literal, NamedTuple, Optional, Protocol, Set
+from typing import Dict, Iterable, List, Literal, Optional, Protocol, Set
 
 from rbx import utils
 from rbx.box.statements import sample_staging
@@ -202,12 +202,26 @@ def resolve_assets(
     return out
 
 
-class DocumentSlot(NamedTuple):
-    """Where a piece of referencing text will end up. The remap is derived per
-    slot, because a reference's meaning depends on where the text sits."""
+DocumentKind = Literal['body', 'sample_explanation']
 
-    kind: Literal['body', 'sample_explanation']
+
+@dataclasses.dataclass(frozen=True)
+class DocumentSlot:
+    """Where a piece of referencing text will end up. The remap is derived per
+    slot, because a reference's meaning depends on where the text sits.
+
+    Frozen (and therefore hashable) so a bundle can key its documents on a slot.
+    """
+
+    kind: DocumentKind
     index: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if (self.kind == 'sample_explanation') != (self.index is not None):
+            raise ValueError(
+                'index must be set iff kind is sample_explanation; '
+                f'got kind={self.kind!r}, index={self.index!r}'
+            )
 
     @classmethod
     def body(cls) -> 'DocumentSlot':
@@ -217,14 +231,23 @@ class DocumentSlot(NamedTuple):
     def sample(cls, index: int) -> 'DocumentSlot':
         return cls(kind='sample_explanation', index=index)
 
+    @property
+    def sample_index(self) -> int:
+        """The sample index, for sample_explanation slots only."""
+        assert self.index is not None
+        return self.index
+
 
 class AssetLayout(Protocol):
     """Decides where assets and documents land. Both answers are *paths*, so a
     layout with several roots needs no extra concept -- see design §4."""
 
-    keep_extension: bool
+    @property
+    def keep_extension(self) -> bool:
+        """Whether a derived reference carries the asset's extension."""
+        ...
 
-    def place_asset(self, asset: 'ResolvedAsset') -> pathlib.PurePosixPath: ...
+    def place_asset(self, asset: ResolvedAsset) -> pathlib.PurePosixPath: ...
 
     def document_dir(self, slot: DocumentSlot) -> pathlib.PurePosixPath: ...
 
@@ -238,6 +261,9 @@ class FlatLayout:
 
     ``keep_extension`` is fixed True: the flat name IS the uploaded resource
     name, so a reference without it would not resolve.
+
+    ``sep`` is Polygon's uploaded-name convention; changing it changes the name
+    of every uploaded resource, so there is no reason to touch it for Polygon.
     """
 
     sep: str = '__'
@@ -262,12 +288,17 @@ class SubtreeLayout:
     Roots are format strings; ``{index}`` (the sample index) is available to the
     SAMPLE scope and the sample_explanation slot, and is REQUIRED there.
 
-    ``keep_extension=False`` yields references identical to the authored ones, so
-    the remap comes out empty and no block is rewritten.
+    ``keep_extension=False`` yields a reference identical to the authored one --
+    so that the entry drops out of the remap and no block is rewritten -- but
+    only for an asset whose scope root equals the citing document's dir
+    (``asset_roots[scope] == document_dirs[slot.kind]``). Identity is a property
+    of the *binding*, which ``keep_extension=False`` merely permits: an asset
+    placed in a root the document does not sit in still derives a ``../`` path
+    and is still rewritten.
     """
 
     asset_roots: Dict[AssetScope, str] = dataclasses.field(default_factory=dict)
-    document_dirs: Dict[str, str] = dataclasses.field(default_factory=dict)
+    document_dirs: Dict[DocumentKind, str] = dataclasses.field(default_factory=dict)
     keep_extension: bool = True
 
     def _format(self, template: str, index: Optional[int], what: str) -> str:
@@ -289,6 +320,12 @@ class SubtreeLayout:
 
     def document_dir(self, slot: DocumentSlot) -> pathlib.PurePosixPath:
         template = self.document_dirs.get(slot.kind, '')
+        if slot.kind == 'sample_explanation' and '{index' not in template:
+            raise ValueError(
+                'The sample_explanation document dir must carry an {index} '
+                'placeholder, otherwise every sample explanation collapses into '
+                f'one directory; got {template!r}.'
+            )
         return pathlib.PurePosixPath(
             self._format(template, slot.index, slot.kind) or '.'
         )
@@ -302,6 +339,44 @@ def _slot_sees(asset: ResolvedAsset, slot: DocumentSlot) -> bool:
     return slot.kind == 'sample_explanation' and asset.sample_index == slot.index
 
 
+def _shadow_tier(asset: ResolvedAsset) -> bool:
+    """The tier a reference key is resolved in: a sample-scope asset shadows a
+    non-sample one of the same key, and only a same-tier clash is ambiguous."""
+    return asset.scope == AssetScope.SAMPLE
+
+
+def _resolve_references(
+    assets: Iterable[ResolvedAsset], layout: AssetLayout, slot: DocumentSlot
+) -> Dict[str, ResolvedAsset]:
+    """The single asset each reference key names, for a document in ``slot``.
+
+    Sample-scope assets are considered last so they win a key collision with a
+    statement-scope asset of the same name. Two assets in the SAME tier claiming
+    one key are not a shadowing rule, they are an ambiguity: the reference cannot
+    name both, so it is rejected here -- the first place the clash is observable.
+    ``resolve_assets`` says so explicitly, and no later dest-keyed check can
+    catch it, since ``img/d.png`` and ``img/d.pdf`` have distinct destinations
+    and the same key.
+    """
+    winner: Dict[str, ResolvedAsset] = {}
+    for asset in sorted(assets, key=_shadow_tier):
+        if not _slot_sees(asset, slot):
+            continue
+        previous = winner.get(asset.ref_key)
+        if (
+            previous is not None
+            and _shadow_tier(previous) == _shadow_tier(asset)
+            and layout.place_asset(previous) != layout.place_asset(asset)
+        ):
+            raise ValueError(
+                f'Ambiguous statement asset reference {asset.ref_key!r}: '
+                f'{previous.source} and {asset.source} are both cited by it. '
+                'Rename one of them.'
+            )
+        winner[asset.ref_key] = asset
+    return winner
+
+
 def derive_remap(
     assets: Iterable[ResolvedAsset], layout: AssetLayout, slot: DocumentSlot
 ) -> Dict[str, str]:
@@ -313,20 +388,18 @@ def derive_remap(
     which is what makes rewriting optional: an identity-preserving layout yields
     an empty remap and every block comes back untouched.
 
-    Sample-scope entries are added last so they win a key collision with a
-    statement-scope asset of the same name.
+    Which asset a key names is settled BEFORE identities are dropped. The other
+    order silently inverts the shadowing rule: a sample asset that lands on its
+    own explanation's dir derives an identity and would drop out, leaving the
+    statement-scope asset it shadows to rewrite the reference to the wrong image.
     """
     doc_dir = layout.document_dir(slot)
     remap: Dict[str, str] = {}
-    ordered = sorted(assets, key=lambda a: a.scope == AssetScope.SAMPLE)
-    for asset in ordered:
-        if not _slot_sees(asset, slot):
-            continue
+    for key, asset in _resolve_references(assets, layout, slot).items():
         dest = layout.place_asset(asset)
         if not layout.keep_extension:
             dest = dest.with_suffix('')
         ref = posixpath.relpath(str(dest), str(doc_dir))
-        if ref == asset.ref_key:
-            continue
-        remap[asset.ref_key] = ref
+        if ref != key:
+            remap[key] = ref
     return remap
