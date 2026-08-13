@@ -151,7 +151,7 @@ rbx summary [OPTIONS]
 
 ## time (t)
 
-Estimate a time limit for the problem based on a time limit formula and timings of accepted solutions.
+Estimate a time limit for the problem using the timings of its solutions and the estimation strategy configured in the environment.
 
 **Usage:**
 ```bash
@@ -891,6 +891,22 @@ rbx package moj [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 | `--for-boca` | BOOLEAN | Build a package for BOCA instead of MOJ. | `False` |
+
+
+---
+
+### moj-next
+
+Build a package for MOJ (new format).
+
+**Usage:**
+```bash
+rbx package moj-next [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
 
 
 ---

@@ -184,10 +184,44 @@ And you also have available to you a `@glob:...` command that is expanded into a
 
 ## Timing estimation
 
-Last but not least, you can configure a timing formula to be used when estimating time limits after running
-`rbx time` or `rbx run -t`.
+Last but not least, you can configure how time limits are estimated when running `rbx time` or
+`rbx run -t`. There are two strategies, and they are **mutually exclusive**: declaring both
+`timing.multipliers` and `timing.formula` is an error. The published JSON schema does not
+express that exclusivity, so your editor will happily autocomplete both keys — {{rbx}} rejects
+the file at load time.
 
-By default, the formula is `step_up(max(fastest * 3, slowest * 1.5), 100)`. The following variables/functions are available to you:
+### Ratios
+
+`timing.multipliers` bounds the time limit from both sides:
+
+```yaml
+timing:
+  multipliers:
+    acToTimeLimit: 2.0        # required whenever the block is present
+    timeLimitToTle: 1.5       # optional; omit to leave the limit unbounded above
+    timeResolution: 100       # ms; defaults to 100
+    inferenceTimeout: 10000   # ms; defaults to 10s
+```
+
+- `acToTimeLimit`: the limit is at least this multiple of the slowest accepted solution.
+- `timeLimitToTle`: the limit times this must still fit within the fastest solution expected
+  to be too slow. When it is unset, those solutions are not run at all.
+- `timeResolution`: the limit is rounded up to a multiple of this.
+- `inferenceTimeout`: solutions expected to be too slow are run with this timeout. One that
+  hits it is dropped from the upper bound, with a warning.
+
+If no limit satisfies the ratios, the estimation fails naming the solution that binds each
+side, and nothing is written to the limits profile. A problem may override any subset of the
+ratios under `timing.multipliers` in its `problem.rbx.yml`, and a solution may opt into (or
+out of) either side with its `inference` field — see the
+[Profiling](/setters/profiling#time-limit-ratios) guide.
+
+This is what the bundled default preset configures.
+
+### Formula
+
+`timing.formula` is the alternative: an expression over the timings of the accepted solutions,
+which bounds the limit from below only. The following variables/functions are available to you:
 
 - `fastest`: The time of the fastest solution among all AC solutions.
 - `slowest`: The time of the slowest solution among all AC solutions.
@@ -196,17 +230,20 @@ By default, the formula is `step_up(max(fastest * 3, slowest * 1.5), 100)`. The 
 - `max(a, b)`: Returns the maximum of `a` and `b`.
 - `min(a, b)`: Returns the minimum of `a` and `b`.
 
-You might specify a different formula by using the `timing` field:
-
 ```yaml
 timing:
   formula: "step_up(max(fastest * 2, slowest * 1.5), 100)"
 ```
 
+When the environment declares neither strategy, a built-in default formula over `fastest` and
+`slowest` is used, so an `env.rbx.yml` written before the ratios existed keeps estimating
+exactly as it did.
+
 ### Language groups
 
-By default, the time limit is estimated once from the pooled timings of all accepted
-solutions and applied to every language. With `timing.groups` you can instead estimate a
+Whichever strategy above is in use, the time limit is by default estimated once from the
+pooled timings of all accepted solutions and applied to every language. With `timing.groups`
+you can instead estimate a
 separate time limit per group of languages, which is useful when languages with very
 different performance characteristics (e.g. compiled vs. interpreted) should not share a
 single limit.

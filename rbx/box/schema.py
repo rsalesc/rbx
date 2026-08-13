@@ -726,7 +726,8 @@ above, and anything else -- notably `accepted-or-tle` -- bounds neither side.
 
 Set it explicitly to override that:
 
-- `false`: the solution is still measured, but bounds neither side.
+- `false`: the solution is left out of the estimation entirely -- it is not run
+  and bounds neither side.
 - `lower`: the time limit must be large enough for this solution to pass. Not
   allowed for solutions expected to be slow.
 - `upper`: the time limit must be small enough for this solution to time out.

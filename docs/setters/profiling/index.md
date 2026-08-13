@@ -17,7 +17,7 @@ that is generous enough for intended solutions but tight enough to reject slow o
 ## Quick start
 
 ```bash
-# Estimate a time limit using the default formula (interactive)
+# Estimate a time limit using the configured strategy (interactive)
 rbx time
 
 # Estimate automatically (no prompts)
@@ -32,21 +32,22 @@ rbx time --integrate
 
 ## The `rbx time` command
 
-The `rbx time` command (alias: `rbx t`) estimates a time limit for the problem by running all accepted
-solutions and applying a formula to their timings.
+The `rbx time` command (alias: `rbx t`) estimates a time limit for the problem by running its
+solutions and applying the estimation strategy configured in the environment: either the
+[time limit ratios](#time-limit-ratios) (the default) or a [formula](#time-limit-formulas).
 
 ### How it works
 
 1. **Displays current profile** -- If a profile already exists for the given name, its current limits are shown.
 2. **Strategy selection** -- You are prompted to choose how to define the time limit (unless `--auto` or `--strategy` is used).
-3. **Solution execution** -- For formula-based strategies, all accepted solutions are run against all testcases with no time limit enforced, so that the true execution times can be measured.
+3. **Solution execution** -- For estimating strategies, the solutions the limit is inferred from are run against all testcases, so that their true execution times can be measured. Accepted solutions run with no time limit enforced; solutions expected to be too slow, which only run when the ratios bound the limit from above, are capped at `inferenceTimeout`.
 4. **Time report** -- The fastest and slowest solution times are shown, along with per-language breakdowns if solutions in multiple languages exist.
-5. **Formula evaluation** -- The formula is applied to compute the estimated time limit.
+5. **Estimation** -- The ratios (or the formula) are applied to compute the estimated time limit.
 6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a sensible limit instead of falling back to the base. See [Language groups](#language-groups).
 7. **Profile persistence** -- The result is written to `.limits/<profile>.yml`, together with the chosen grouping as metadata.
 
 All seven steps in one run, taking the recommended **Estimate** strategy and the default
-grouping — note the preview table updating as the languages are bucketed, and the formula
+grouping — note the preview table updating as the languages are bucketed, and the strategy
 printed just above the limits that get written:
 
 {{ asciinema("time-estimate", speed=2) }}
@@ -57,7 +58,7 @@ When you run `rbx time`, you are prompted to choose a strategy:
 
 | Strategy | Description |
 | :--- | :--- |
-| **Estimate** (recommended) | Runs all accepted solutions and applies the default formula to estimate the time limit. |
+| **Estimate** (recommended) | Runs the solutions and estimates the time limit with whatever the environment configures: the ratios or a formula. |
 | **Inherit from package** | Creates a profile that inherits all limits directly from `problem.rbx.yml`. |
 | **Estimate with custom formula** | Same as Estimate, but prompts you for a custom formula. |
 | **Custom time limit** | Prompts you for an explicit time limit in milliseconds. |
@@ -65,7 +66,7 @@ When you run `rbx time`, you are prompted to choose a strategy:
 You can skip the interactive prompt by using `--strategy` or `--auto`:
 
 ```bash
-# Use the default formula without prompts
+# Use the configured strategy without prompts
 rbx time --auto
 
 # Directly select a strategy
@@ -80,7 +81,7 @@ rbx time --strategy=estimate_custom
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `--profile` | `-p` | `local` | Name of the profile to create or update. |
-| `--auto` | `-a` | `false` | Automatically estimate using the default formula (no prompts). |
+| `--auto` | `-a` | `false` | Automatically estimate using the configured strategy (no prompts). |
 | `--strategy` | `-s` | _(interactive)_ | Strategy to use: `estimate`, `inherit`, `estimate_custom`, or `custom`. |
 | `--integrate` | `-i` | `false` | Write the profile's limits back into `problem.rbx.yml` (see [Integrating profiles](#integrating-profiles-into-the-package)). |
 | `--runs` | `-r` | `0` | Number of runs per solution. `0` uses the environment default. |
@@ -99,14 +100,74 @@ rbx time --runs=3
 
 The maximum time across all runs for each testcase is used as the timing for that testcase.
 
+## Time limit ratios
+
+This is how {{rbx}} estimates by default. Instead of an expression over the measured timings,
+you state how much room the accepted solutions get and how little room the solutions expected
+to be too slow are allowed:
+
+| Ratio | Meaning |
+| :--- | :--- |
+| `acToTimeLimit` | The time limit is **at least** this multiple of the slowest accepted solution. |
+| `timeLimitToTle` | The time limit times this must still fit within the fastest solution expected to be too slow. Omit it to leave the limit unbounded from above. |
+| `timeResolution` | The time limit is rounded up to a multiple of this, in milliseconds. |
+| `inferenceTimeout` | Solutions expected to be too slow are run with this timeout, in milliseconds. One that hits it is dropped from the upper bound, with a warning. |
+
+Unlike a formula, the ratios bound the time limit from **both** sides, so a limit that would
+let a solution meant to time out pass is caught while estimating: when no limit satisfies the
+ratios, `rbx time` says which solution binds each side and writes nothing to the profile.
+
+Configure them environment-wide in `env.rbx.yml`:
+
+```yaml
+timing:
+  multipliers:
+    acToTimeLimit: 2.0
+    timeLimitToTle: 1.5
+    timeResolution: 100
+    inferenceTimeout: 10000
+```
+
+A single problem can override any subset of them in its `problem.rbx.yml`; the ratios it does
+not mention are inherited from the environment:
+
+```yaml
+timing:
+  multipliers:
+    inferenceTimeout: 60000   # this problem's solutions are slower than most
+```
+
+### Which solutions bound which side
+
+By default, a solution expected to be accepted everywhere bounds the limit from below, a
+solution expected to be too slow (`tle`, `tle-or-rte`) anywhere bounds it from above, and
+anything else — `accepted-or-tle` in particular — bounds neither side. Override that per
+solution with `inference`:
+
+```yaml
+solutions:
+  - path: sols/flaky.cpp
+    outcome: accepted
+    inference: false      # left out of the estimation entirely; it is not run
+
+  - path: sols/borderline.cpp
+    outcome: accepted-or-tle
+    inference: upper      # opt in explicitly as an upper bound
+```
+
+`inference: lower` on a solution expected to be too slow is rejected: a solution meant to
+time out cannot bound the limit from below.
+
 ## Time limit formulas
 
-Formula-based estimation is the recommended approach. A formula is a mathematical expression that
-takes the timing data from accepted solutions and produces a time limit.
+A formula is the alternative to the ratios above: a mathematical expression that takes the
+timing data from accepted solutions and produces a time limit. It bounds the limit from below
+only — nothing checks it against the solutions expected to be too slow. Set `timing.formula`
+in `env.rbx.yml` to use it; it is mutually exclusive with `timing.multipliers`.
 
 ### Default formula
 
-The default formula is:
+When the environment configures neither ratios nor a formula, the default formula is:
 
 ```text
 step_up(max(fastest * 3, slowest * 1.5), 100)
@@ -279,8 +340,13 @@ modifiers:
   java:
     timeMultiplier: 2.0  # Java gets 2x the base time limit
 
-# The formula that was used to estimate the time limit (informational)
-formula: "step_up(max(fastest * 3, slowest * 1.5), 100)"
+# What the time limit was estimated with (informational): the ratios, or the
+# formula when the environment configures one instead.
+multipliers:
+  acToTimeLimit: 2.0
+  timeLimitToTle: 1.5
+  timeResolution: 100
+  inferenceTimeout: 10000
 
 # How languages were grouped during estimation (presentation-only metadata,
 # written automatically by `rbx time`; never used for limit resolution).

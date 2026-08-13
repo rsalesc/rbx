@@ -56,7 +56,7 @@ A solution overrides its role with a new field:
 solutions:
   - path: sols/flaky.cpp
     outcome: accepted
-    inference: false      # measured, but bounds nothing
+    inference: false      # left out of the estimation run; bounds nothing
   - path: sols/borderline.cpp
     outcome: accepted-or-tle
     inference: upper      # opt in explicitly
