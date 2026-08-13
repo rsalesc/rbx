@@ -90,6 +90,12 @@ def partition_from_assignment(
     return result
 
 
+# One solution's measurement: (time in ms, solution path). Ordered by time
+# first, so min/max pick the extreme measurement -- and, on a tie, a stable
+# solution path.
+Measurement = Tuple[int, str]
+
+
 class GroupTimings(BaseModel):
     """Lower-bound evidence: how long the group's accepted solutions took."""
 

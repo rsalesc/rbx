@@ -15,6 +15,7 @@ from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.box.solutions import EvaluationItem, RunSolutionResult
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
+from rbx.box.timing_config import TimingStrategy
 
 
 class TestTimingProfile:
@@ -190,7 +191,10 @@ class TestEstimateTimeLimit:
 
         # auto=True skips the interactive repartition prompt
         result = await timing.estimate_time_limit(
-            mock_console, sample_solution_result, formula='slowest * 2', auto=True
+            mock_console,
+            sample_solution_result,
+            strategy=TimingStrategy(formula='slowest * 2'),
+            auto=True,
         )
 
         assert result is not None
@@ -455,7 +459,7 @@ class TestForcedRelativeIntegration:
                 'cpp': {'a.cpp': 100},
                 'python': {'b.py': 900},
             },
-            formula='slowest',
+            strategy=TimingStrategy(formula='slowest'),
             env_groups=[],
             all_languages=['cpp', 'python'],
             repartition={'cpp': 1, 'python': 2},

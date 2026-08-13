@@ -18,11 +18,13 @@ from rbx.box import (
     safeeval,
     schema,
     sharing,
+    timing_config,
     timing_group_picker,
     timing_groups,
 )
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
+from rbx.box.exception import RbxException
 from rbx.box.formatting import href
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.solutions import (
@@ -34,9 +36,31 @@ from rbx.box.solutions import (
 )
 
 
+class MissingLowerBoundError(RbxException):
+    """No measurement bounds the time limit from below.
+
+    Reachable from ordinary YAML -- a package whose every accepted solution opts
+    out of inference -- so it must read as a setter-facing message rather than a
+    bare assertion.
+    """
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+        self.msg.append(message)
+
+
+_NO_LOWER_BOUND_MESSAGE = (
+    'Nothing bounds the time limit from below: no accepted solution was measured '
+    'for the lower bound. At least one accepted solution must leave `inference` '
+    'unset or set it to `lower`.'
+)
+
+
 class TimingProfile(BaseModel):
     timeLimit: int
     formula: Optional[str] = None
+    multipliers: Optional[schema.TimingMultipliers] = None
     timeLimitPerLanguage: Dict[str, int] = Field(default_factory=dict)
     groups: Optional[List[schema.TimingGroupReport]] = None
     baseEstimate: Optional[schema.TimingGroupReport] = None
@@ -45,6 +69,7 @@ class TimingProfile(BaseModel):
         return schema.LimitsProfile(
             timeLimit=self.timeLimit,
             formula=self.formula,
+            multipliers=self.multipliers,
             modifiers={
                 lang: schema.LimitModifiers(time=tl)
                 for lang, tl in self.timeLimitPerLanguage.items()
@@ -246,15 +271,70 @@ def make_multipliers_derive(
     return _derive
 
 
+def _pooled(
+    per_solution_per_language: Dict[str, Dict[str, int]],
+    languages: List[str],
+) -> List[timing_groups.Measurement]:
+    """Every (time, solution) measurement of the given languages, pooled."""
+    pooled: List[timing_groups.Measurement] = []
+    for lang in languages:
+        for path, time in (per_solution_per_language.get(lang) or {}).items():
+            pooled.append((time, path))
+    return pooled
+
+
+def _lower_timings(
+    pooled: List[timing_groups.Measurement],
+) -> Optional[timing_groups.GroupTimings]:
+    if not pooled:
+        return None
+    slowest, slowest_solution = max(pooled)
+    return timing_groups.GroupTimings(
+        fastest=min(pooled)[0],
+        slowest=slowest,
+        solution_count=len(pooled),
+        slowest_solution=slowest_solution,
+    )
+
+
+def _upper_timings(
+    pooled: List[timing_groups.Measurement],
+    dropped: List[str],
+) -> Optional[timing_groups.UpperTimings]:
+    if not pooled:
+        # A group whose every slow solution was dropped bounds nothing, so it
+        # has no upper measurement to carry the dropped list on.
+        return None
+    fastest_slow, fastest_slow_solution = min(pooled)
+    return timing_groups.UpperTimings(
+        fastest_slow=fastest_slow,
+        fastest_slow_solution=fastest_slow_solution,
+        dropped_upper=dropped,
+    )
+
+
 def build_timing_profile(
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
-    formula: str,
+    strategy: timing_config.TimingStrategy,
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
+    slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
+    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
-    eval_fn = make_formula_eval(formula)
+    multipliers = strategy.multipliers
+    if multipliers is not None:
+        eval_fn = make_multipliers_eval(multipliers)
+        derive_fn: Optional[timing_groups.DeriveFn] = make_multipliers_derive(
+            multipliers
+        )
+    else:
+        eval_fn = make_formula_eval(strategy.formula_or_die())
+        derive_fn = None
+
+    slow_per_language = slow_timing_per_solution_per_language or {}
+    dropped_per_language = dropped_upper_per_language or {}
 
     if repartition is not None:
         groups = timing_groups.partition_from_assignment(repartition, relatives)
@@ -263,33 +343,39 @@ def build_timing_profile(
     timing_groups.validate_partition(groups)
 
     measured: Dict[int, timing_groups.GroupMeasurements] = {}
-    all_values: List[int] = []
+    all_values: List[timing_groups.Measurement] = []
+    all_slow_values: List[timing_groups.Measurement] = []
+    all_dropped: List[str] = []
     for idx, group in enumerate(groups):
-        values: List[int] = []
-        count = 0
-        for lang in group.languages:
-            per_sol = timing_per_solution_per_language.get(lang, {})
-            values.extend(per_sol.values())
-            count += len(per_sol)
-        if values:
-            measured[idx] = timing_groups.GroupMeasurements(
-                lower=timing_groups.GroupTimings(
-                    fastest=min(values), slowest=max(values), solution_count=count
-                )
-            )
-            all_values.extend(values)
+        values = _pooled(timing_per_solution_per_language, group.languages)
+        slow_values = _pooled(slow_per_language, group.languages)
+        dropped = [
+            path
+            for lang in group.languages
+            for path in (dropped_per_language.get(lang) or [])
+        ]
+        if not values and not slow_values:
+            continue
+        measured[idx] = timing_groups.GroupMeasurements(
+            lower=_lower_timings(values),
+            upper=_upper_timings(slow_values, dropped),
+        )
+        all_values.extend(values)
+        all_slow_values.extend(slow_values)
+        all_dropped.extend(dropped)
+
+    if not all_values:
+        raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
 
     base = timing_groups.GroupMeasurements(
-        lower=timing_groups.GroupTimings(
-            fastest=min(all_values),
-            slowest=max(all_values),
-            solution_count=len(all_values),
-        )
+        lower=_lower_timings(all_values),
+        upper=_upper_timings(all_slow_values, all_dropped),
     )
-    result = timing_groups.resolve_groups(groups, measured, base, eval_fn)
+    result = timing_groups.resolve_groups(groups, measured, base, eval_fn, derive_fn)
     return TimingProfile(
         timeLimit=result.base_time_limit,
-        formula=formula,
+        formula=strategy.formula,
+        multipliers=multipliers,
         timeLimitPerLanguage=result.time_limit_per_language,
         groups=result.reports,
         baseEstimate=result.base_report,
@@ -333,9 +419,11 @@ def default_relatives(
 
 def build_preview_renderer(
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
-    formula: str,
+    strategy: timing_config.TimingStrategy,
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
+    slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
+    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
     width: Optional[int] = None,
 ) -> Callable[..., ANSI]:
     """Return a memoized callback mapping a picker assignment (and optional
@@ -350,9 +438,11 @@ def build_preview_renderer(
         try:
             profile = build_timing_profile(
                 timing_per_solution_per_language=timing_per_solution_per_language,
-                formula=formula,
+                strategy=strategy,
                 env_groups=env_groups,
                 all_languages=all_languages,
+                slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
+                dropped_upper_per_language=dropped_upper_per_language,
                 repartition=assignment,
                 relatives=relatives,
             )
@@ -362,6 +452,10 @@ def build_preview_renderer(
                     f'[warning]⚠ Invalid grouping: {e}[/warning]', width=width
                 )
             )
+        except MissingLowerBoundError as e:
+            # Grouping-independent, so no regrouping can fix it -- but the picker
+            # must still render rather than crash under the setter's cursor.
+            return ANSI(console.capture_ansi(f'[error]⚠ {e}[/error]', width=width))
         table = limits_info.build_limits_table(profile.to_limits(), title='Preview')
         return ANSI(console.capture_ansi(table, width=width))
 
@@ -382,13 +476,17 @@ async def _prompt_repartition(
     all_languages: List[str],
     env_groups: List[environment.LanguageGroup],
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
-    formula: str,
+    strategy: timing_config.TimingStrategy,
+    slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
+    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
 ) -> Optional[timing_group_picker.GroupAssignment]:
     preview = build_preview_renderer(
         timing_per_solution_per_language=timing_per_solution_per_language,
-        formula=formula,
+        strategy=strategy,
         env_groups=env_groups,
         all_languages=all_languages,
+        slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
+        dropped_upper_per_language=dropped_upper_per_language,
         width=console.console.size.width,
     )
     langs_with_solutions = {
@@ -417,10 +515,21 @@ def relevant_languages_for_estimation(
     return ordered
 
 
+def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
+    if not strategy.uses_multipliers:
+        return f'Using formula: {strategy.formula_or_die()}'
+    multipliers = strategy.multipliers_or_die()
+    parts = [f'acToTimeLimit {multipliers.acToTimeLimit}']
+    if multipliers.timeLimitToTle is not None:
+        parts.append(f'timeLimitToTle {multipliers.timeLimitToTle}')
+    parts.append(f'timeResolution {multipliers.timeResolution} ms')
+    return f'Using ratios: {", ".join(parts)}'
+
+
 async def estimate_time_limit(
     console: rich.console.Console,
     result: RunSolutionResult,
-    formula: Optional[str] = None,
+    strategy: Optional[timing_config.TimingStrategy] = None,
     auto: bool = False,
 ) -> Optional[TimingProfile]:
     structured_evaluations = consume_and_key_evaluation_items(
@@ -468,8 +577,10 @@ async def estimate_time_limit(
     console.print(f'Slowest solution: {slowest_time} ms')
 
     env = environment.get_environment()
-    if formula is None:
-        formula = env.timing.resolved_formula()
+    if strategy is None:
+        strategy = timing_config.resolve_strategy(
+            env.timing, package.find_problem_package_or_die().timing
+        )
     env_groups = env.timing.groups
 
     all_languages = relevant_languages_for_estimation(
@@ -484,7 +595,7 @@ async def estimate_time_limit(
             all_languages,
             env_groups,
             timing_per_solution_per_language,
-            formula,
+            strategy,
         )
         if picked is None:
             console.print('[error]Time limit estimation cancelled.[/error]')
@@ -494,12 +605,12 @@ async def estimate_time_limit(
 
     console.print()
     console.rule('[status]Time estimation[/status]', style='status')
-    console.print(f'Using formula: {formula}')
+    console.print(_describe_strategy(strategy))
 
     try:
         profile = build_timing_profile(
             timing_per_solution_per_language=timing_per_solution_per_language,
-            formula=formula,
+            strategy=strategy,
             env_groups=env_groups,
             all_languages=all_languages,
             repartition=repartition,
@@ -574,8 +685,13 @@ async def compute_time_limits(
         )
         return None
 
+    # A formula passed in here is the CLI's custom-formula escape hatch: it forces
+    # the formula path for this run regardless of what the environment configures.
+    strategy = (
+        timing_config.TimingStrategy(formula=formula) if formula is not None else None
+    )
     estimated_tl = await estimate_time_limit(
-        console.console, solution_result, formula, auto=auto
+        console.console, solution_result, strategy, auto=auto
     )
     if estimated_tl is None:
         return None

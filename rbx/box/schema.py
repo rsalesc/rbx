@@ -1083,6 +1083,14 @@ A formula to estimate the time limit for the problem.
 """,
     )
 
+    multipliers: Optional[TimingMultipliers] = Field(
+        default=None,
+        description="""
+The multipliers this profile was estimated from, when it was estimated from
+ratios instead of a formula. Presentation-only; never used for limit resolution.
+""",
+    )
+
     groups: Optional[List[TimingGroupReport]] = Field(
         default=None,
         description="""
