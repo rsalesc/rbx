@@ -34,6 +34,7 @@ from rbx.box.solutions import (
     SolutionSkeleton,
     TimingIssue,
     TraditionalRunReporter,
+    _AbortGate,  # noqa: SLF001
     _gates_report,  # noqa: SLF001
     convert_list_of_solution_evaluations_to_dict,
     get_full_outcome_markup_verdict,
@@ -1705,3 +1706,36 @@ def test_skipped_outcome_does_not_fall_through_to_the_unknown_verdict_style():
     # out rather than landing on the catch-all used for unrecognized verdicts.
     assert get_outcome_style_verdict(Outcome.SKIPPED) != 'magenta'
     assert '✗' not in get_outcome_markup_verdict(Outcome.SKIPPED)
+
+
+def _group(name: str, deps: List[str]) -> GroupSkeleton:
+    return GroupSkeleton(name=name, score=100, deps=deps, testcases=[])
+
+
+def test_binary_scoring_aborts_the_whole_testset():
+    skeleton = [_group('a', []), _group('b', []), _group('c', [])]
+    gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.BINARY)
+    gate.trip('a')
+    assert all(gate.is_skipped(group.name) for group in skeleton)
+
+
+def test_points_scoring_aborts_the_group_and_its_dependents():
+    # c depends on b, b depends on a; d is independent.
+    skeleton = [
+        _group('a', []),
+        _group('b', ['a']),
+        _group('c', ['b']),
+        _group('d', []),
+    ]
+    gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.POINTS)
+    gate.trip('a')
+    assert gate.is_skipped('a')
+    assert gate.is_skipped('b')
+    assert gate.is_skipped('c')  # indirect dependency
+    assert not gate.is_skipped('d')
+
+
+def test_gate_is_not_skipped_before_tripping():
+    skeleton = [_group('a', [])]
+    gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.POINTS)
+    assert not gate.is_skipped('a')
