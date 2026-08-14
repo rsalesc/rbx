@@ -100,3 +100,25 @@ run = "python scripts/record.py"
 [tasks.record-check]
 description = "Lint asciinema references against committed casts (local only)"
 run = "python scripts/record.py --check"
+
+# The VS Code extension is a separate npm project under vscode/ -- its toolchain
+# is deliberately independent of the Python one, and its CI must not gate ours.
+[tasks."vscode:install"]
+description = "Install the VS Code extension's npm dependencies"
+dir = "vscode"
+run = "npm install"
+
+[tasks."vscode:build"]
+description = "Bundle the VS Code extension"
+dir = "vscode"
+run = "npm run compile"
+
+[tasks."vscode:typecheck"]
+description = "Typecheck the VS Code extension"
+dir = "vscode"
+run = "npm run typecheck"
+
+[tasks."vscode:package"]
+description = "Build the VS Code extension for publishing"
+dir = "vscode"
+run = "npm run package"
