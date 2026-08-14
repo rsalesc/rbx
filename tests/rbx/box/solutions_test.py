@@ -8,6 +8,8 @@ import rich.console
 import rich.style
 from rich.text import Text
 
+from rbx import utils
+from rbx.box import package
 from rbx.box import solutions as solutions_module
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
@@ -1832,3 +1834,59 @@ async def test_abort_skips_dependent_groups_but_not_independent_ones(
     # The gate belongs to one solution: the next one is judged from scratch.
     for group in groups:
         assert outcomes(2, group) == [Outcome.ACCEPTED] * len(res[2][group])
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_skipped_testcase_writes_a_readable_eval_artifact(
+    pkg_from_testdata: pathlib.Path,
+):
+    # The run explorer reads evaluations off disk, and its only signal that a
+    # testcase has not run is a missing `.eval`. A skipped test must leave one
+    # behind, at the very path the skeleton points the TUI at.
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    result = await run_solutions(
+        verification=VerificationLevel.FULL,
+        abort_on=lambda ctx: ctx.evaluation.result.outcome != Outcome.ACCEPTED,
+    )
+    await convert_list_of_solution_evaluations_to_dict(result.skeleton, result.items)
+
+    skeleton = result.skeleton
+    solution = skeleton.find_solution_skeleton(
+        next(sol for sol in package.get_solutions() if sol.path.name == 'wa.sol.cpp')
+    )
+    assert solution is not None
+
+    skipped_entries = [
+        entry.group_entry
+        for entry in skeleton.entries
+        if entry.group_entry.group in ('mid', 'late')
+    ]
+    assert skipped_entries
+
+    for entry in skipped_entries:
+        path = skeleton.get_solution_entry_prefix(solution, entry).with_suffix('.eval')
+        assert path.is_file()
+        evaluation = utils.model_from_yaml(Evaluation, path.read_text())
+        assert evaluation.result.outcome == Outcome.SKIPPED
+        assert evaluation.log.eval_absolute_path == path.absolute()
+
+    # And the skipped artifacts land where the real ones do: a testcase that
+    # actually ran is readable from the same skeleton-derived path.
+    ran_entry = next(
+        entry.group_entry
+        for entry in skeleton.entries
+        if entry.group_entry.group == 'independent'
+    )
+    ran_path = skeleton.get_solution_entry_prefix(solution, ran_entry).with_suffix(
+        '.eval'
+    )
+    assert ran_path.is_file()
+    assert (
+        utils.model_from_yaml(Evaluation, ran_path.read_text()).result.outcome
+        == Outcome.ACCEPTED
+    )
