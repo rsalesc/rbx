@@ -731,6 +731,84 @@ async def test_skipped_evaluations_contribute_no_timing(pkg, capsys):
     assert per_language == {'cpp': {str(ac.path): 400}}
 
 
+async def _time_a_real_package(*, abort: bool, profile: str):
+    """One real ``compute_time_limits`` over the package in the cwd, under a
+    500 ms inference timeout. With ``abort`` off, the abort predicate is dropped
+    on its way to the runner, reproducing the pre-abort behavior exactly."""
+    from rbx.box import environment, solutions
+    from rbx.box.generators import (
+        generate_outputs_for_testcases,
+        generate_testcases,
+    )
+    from rbx.box.testcase_extractors import (
+        extract_generation_testcases_from_groups,
+    )
+
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    env = environment.get_environment()
+    capped = env.timing.model_copy(
+        update={
+            'multipliers': TimingMultipliers(
+                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=500
+            ),
+            'formula': None,
+        }
+    )
+
+    real_run_solutions = timing.run_solutions
+
+    async def without_abort(*args, **kwargs):
+        kwargs['abort_on'] = None
+        return await real_run_solutions(*args, **kwargs)
+
+    real_run_on_testcase = solutions.run_solution_on_testcase
+
+    with (
+        mock.patch.object(env, 'timing', capped),
+        mock.patch.object(
+            solutions, 'run_solution_on_testcase', wraps=real_run_on_testcase
+        ) as spy,
+    ):
+        if abort:
+            estimated = await timing.compute_time_limits(
+                check=False, detailed=False, auto=True, profile=profile
+            )
+        else:
+            with mock.patch('rbx.box.timing.run_solutions', without_abort):
+                estimated = await timing.compute_time_limits(
+                    check=False, detailed=False, auto=True, profile=profile
+                )
+
+    slow_runs = sum(
+        1 for call in spy.call_args_list if call.args[0].path.name == 'slow.cpp'
+    )
+    return estimated, slow_runs
+
+
+@pytest.mark.test_pkg('problems/inference-abort')
+async def test_a_solution_that_hits_the_inference_timeout_stops_running(
+    pkg_from_testdata: pathlib.Path,
+):
+    # `inference-abort` has three testcases and one hopeless solution that burns
+    # far more than the 500 ms cap on each of them. Its measurement is dropped
+    # from the upper bound either way, so the runs after the first one only cost
+    # wall clock.
+    aborted, aborted_runs = await _time_a_real_package(abort=True, profile='aborted')
+    full, full_runs = await _time_a_real_package(abort=False, profile='full')
+
+    assert full_runs == 3
+    assert aborted_runs == 1
+
+    # The property the whole feature rests on: stopping early is a pure speedup.
+    assert aborted is not None
+    assert aborted == full
+
+
 def test_the_report_gate_ignores_solutions_outside_gating_solutions():
     # The contract compute_time_limits relies on: with no restriction every
     # solution decides the verdict; with one, only the listed solutions do.

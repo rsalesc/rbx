@@ -1072,6 +1072,15 @@ async def _run_for_inference(
             verification=_INFERENCE_VERIFICATION,
             timelimit_override=cap.timeout if cap is not None else -1,
             nruns=runs,
+            # A solution killed at the cap has its measurement dropped either
+            # way -- an upper-bound one bounds nothing, a lower-bound one fails
+            # the estimate outright -- so its remaining tests only cost wall
+            # clock. With no cap there is no timeout to hit.
+            abort_on=(
+                (lambda ctx: ctx.evaluation.result.outcome.is_slow())
+                if cap is not None
+                else None
+            ),
         )
 
     console.console.print()
