@@ -13,9 +13,10 @@ from unittest import mock
 import pytest
 import rich.console
 
-from rbx.box import limits_info, timing
+from rbx.box import environment, limits_info, solutions, timing
 from rbx.box.deferred import Deferred
 from rbx.box.environment import TimingConfig, VerificationLevel
+from rbx.box.generators import generate_outputs_for_testcases, generate_testcases
 from rbx.box.schema import (
     ExpectedOutcome,
     Solution,
@@ -24,6 +25,7 @@ from rbx.box.schema import (
     TimingMultipliers,
 )
 from rbx.box.solutions import _gates_report  # noqa: SLF001
+from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testing import testing_package
 from rbx.box.timing import (
     _diagnose_inference_run,  # noqa: SLF001
@@ -735,15 +737,6 @@ async def _time_a_real_package(*, abort: bool, profile: str):
     """One real ``compute_time_limits`` over the package in the cwd, under a
     500 ms inference timeout. With ``abort`` off, the abort predicate is dropped
     on its way to the runner, reproducing the pre-abort behavior exactly."""
-    from rbx.box import environment, solutions
-    from rbx.box.generators import (
-        generate_outputs_for_testcases,
-        generate_testcases,
-    )
-    from rbx.box.testcase_extractors import (
-        extract_generation_testcases_from_groups,
-    )
-
     await generate_testcases()
     entries = [
         entry.group_entry for entry in await extract_generation_testcases_from_groups()
