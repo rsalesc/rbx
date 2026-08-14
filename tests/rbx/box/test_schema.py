@@ -6,10 +6,12 @@ from pydantic import ValidationError
 
 from rbx.box.schema import (
     RESERVED_VAR_NAMES,
+    ExpectedOutcome,
     LimitModifiers,
     LimitsProfile,
     ScoreType,
 )
+from rbx.grading.steps import Outcome
 
 
 class TestLimitsProfile:
@@ -1022,3 +1024,20 @@ class TestReservedStatementVarNamesOnModels:
         )
 
         assert package.expanded_vars == {'N.max': 100}
+
+
+class TestExpectedOutcomeMatch:
+    """Test how expectations react to the SKIPPED verdict."""
+
+    @pytest.mark.parametrize('expected', list(ExpectedOutcome))
+    def test_skipped_matches_everything_but_accepted(self, expected: ExpectedOutcome):
+        assert expected.match(Outcome.SKIPPED) == (expected != ExpectedOutcome.ACCEPTED)
+
+    @pytest.mark.parametrize('expected', list(ExpectedOutcome))
+    def test_skipped_is_not_an_awardable_match(self, expected: ExpectedOutcome):
+        # `get_matches` enumerates verdicts a run can actually be awarded, so
+        # disjoint bad expectations stay disjoint.
+        assert Outcome.SKIPPED not in expected.get_matches()
+
+    def test_disjoint_bad_expectations_do_not_intersect(self):
+        assert not ExpectedOutcome.WRONG_ANSWER.intersect(ExpectedOutcome.RUNTIME_ERROR)

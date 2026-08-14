@@ -36,7 +36,12 @@ MAX_STDOUT_LEN = 1024 * 1024 * 128  # 128 MB
 
 
 class Outcome(Enum):
+    # Members are declared from best to worst: `worst_outcome` ranks them by
+    # declaration index. SKIPPED sits right after ACCEPTED so that a skipped
+    # testcase is worse than a passing one (it was not awarded), but never
+    # masks the real verdict that caused the remaining tests to be skipped.
     ACCEPTED = 'accepted'
+    SKIPPED = 'skipped'
     WRONG_ANSWER = 'wrong-answer'
     MEMORY_LIMIT_EXCEEDED = 'memory-limit-exceeded'
     TIME_LIMIT_EXCEEDED = 'time-limit-exceeded'
@@ -71,6 +76,8 @@ class Outcome(Enum):
     def short_name(self) -> str:
         if self == Outcome.ACCEPTED:
             return 'AC'
+        if self == Outcome.SKIPPED:
+            return 'SKIP'
         if self == Outcome.WRONG_ANSWER:
             return 'WA'
         if self == Outcome.TIME_LIMIT_EXCEEDED:
@@ -292,6 +299,12 @@ class PreprocessLog(RunLog):
 
 
 class TestcaseLog(RunLog):
+    # Unmeasured by default, unlike `RunLog`: an evaluation is persisted to a
+    # `.eval` artifact with its `None` fields omitted, so a testcase that never
+    # ran must read back as unmeasured rather than as an instantaneous run.
+    time: Optional[float] = None
+    wall_time: Optional[float] = None
+    memory: Optional[int] = None
     stdout_absolute_path: Optional[pathlib.Path] = None
     stderr_absolute_path: Optional[pathlib.Path] = None
     log_absolute_path: Optional[pathlib.Path] = None

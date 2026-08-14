@@ -16,14 +16,18 @@ from rbx.box.schema import ExpectedOutcome, ScoreType, Solution, Testcase
 from rbx.box.solutions import (
     SolutionReportSkeleton,
     SolutionSkeleton,
+    get_outcome_markup_verdict,
 )
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.ui.utils.run_ui import (
     get_entries_options,
     get_main_badge,
+    get_run_testcase_markup,
+    get_run_testcase_metadata_markup,
     get_skeleton,
     get_solution_eval,
     get_solution_evals,
+    get_solution_evals_or_null,
     get_solution_markup,
     has_run,
     is_main_solution,
@@ -375,3 +379,77 @@ def test_get_skeleton_loads_skeleton_when_present(tmp_path):
     with mock.patch('rbx.box.package.get_problem_runs_dir', return_value=runs_dir):
         assert has_run() is True
         assert get_skeleton() == skeleton
+
+
+def _write_skipped_eval(prefix: pathlib.Path) -> None:
+    """The artifact a skipped testcase leaves behind: a verdict, no measurements."""
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    eval = Evaluation(
+        result=CheckerResult(outcome=Outcome.SKIPPED),
+        log=TestcaseLog(
+            exitcode=-1,
+            exitstatus='skipped',
+            time=None,
+            wall_time=None,
+            memory=None,
+        ),
+        testcase=TestcaseIO(index=0),
+    )
+    prefix.with_suffix('.eval').write_text(utils.model_to_yaml(eval))
+
+
+def test_run_testcase_markup_shows_the_skipped_verdict(tmp_path):
+    """A skipped testcase has an `.eval`, so the list shows its verdict.
+
+    Without the artifact the entry would render bare, with no verdict at all --
+    indistinguishable from a testcase that was never reached.
+    """
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
+    )
+    sol = skeleton.solutions[0]
+    _write_skipped_eval(sol.runs_dir / 'main' / '1-gen-000')
+
+    markup = get_run_testcase_markup(skeleton, sol, skeleton.entries[0])
+    entry_markup = str(skeleton.entries[0].group_entry)
+    assert markup != entry_markup
+    assert markup == f'{get_outcome_markup_verdict(Outcome.SKIPPED)} {entry_markup}'
+
+
+def test_solution_row_is_not_incomplete_when_a_testcase_was_skipped(tmp_path):
+    """Persisting the skipped `.eval` keeps the row on the normal path.
+
+    ``get_solution_evals_or_null`` returns ``None`` as soon as one `.eval` is
+    missing, and the row then reads INCOMPLETE. A skipped run leaves no gaps.
+    """
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000', '1-gen-001']
+    )
+    sol = skeleton.solutions[0]
+    _write_eval(sol.runs_dir / 'main' / '1-gen-000', Outcome.WRONG_ANSWER)
+    _write_skipped_eval(sol.runs_dir / 'main' / '1-gen-001')
+
+    assert get_solution_evals_or_null(skeleton, sol) is not None
+    with (
+        mock.patch('rbx.box.package.get_main_solution', return_value=None),
+        mock.patch('rbx.box.package.get_scoring', return_value=ScoreType.BINARY),
+    ):
+        markup = get_solution_markup(skeleton, sol)
+    assert 'INCOMPLETE' not in markup
+
+
+def test_run_testcase_metadata_does_not_time_a_skipped_testcase(tmp_path):
+    """A skipped testcase never ran, so the metadata pane must not claim 0 ms."""
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
+    )
+    sol = skeleton.solutions[0]
+    _write_skipped_eval(sol.runs_dir / 'main' / '1-gen-000')
+
+    markup = get_run_testcase_metadata_markup(
+        skeleton, sol, skeleton.entries[0].group_entry
+    )
+    assert markup is not None
+    assert 'SKIPPED' in markup
+    assert '0 ms' not in markup
+    assert '0 B' not in markup
