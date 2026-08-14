@@ -1347,9 +1347,9 @@ def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
     return get_full_outcome_markup_verdict(eval.result.outcome)
 
 
-def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
+def _get_evals_time_in_ms(evals: List[Evaluation]) -> Optional[int]:
     if not evals:
-        return 0
+        return None
     evals_with_ile = [
         eval for eval in evals if eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
     ]
@@ -1363,7 +1363,13 @@ def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
                 return expanded_tl
         if eval.log.metadata.timeLimit is not None:
             return eval.log.metadata.timeLimit
-    return max(int((eval.log.time or 0.0) * 1000) for eval in evals)
+    # An evaluation without a time never ran -- a skipped testcase, most
+    # notably. Coalescing it to zero would report 'instant' for a run that did
+    # not happen, so it contributes nothing to the maximum instead.
+    times = [eval.log.time for eval in evals if eval.log.time is not None]
+    if not times:
+        return None
+    return max(int(time * 1000) for time in times)
 
 
 def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
@@ -1372,14 +1378,21 @@ def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
     return sum((eval.log.wall_time or 0.0) for eval in evals)
 
 
-def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
-    if not evals:
-        return 0
-    return max(int(eval.log.memory or 0) for eval in evals)
+def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
+    memories = [eval.log.memory for eval in evals if eval.log.memory is not None]
+    if not memories:
+        return None
+    return max(int(memory) for memory in memories)
+
+
+# What a formatted time or memory reads as when nothing was measured at all.
+UNMEASURED = '-'
 
 
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
+    if max_time is None:
+        return UNMEASURED
     return get_formatted_time(max_time)
 
 
@@ -1394,6 +1407,8 @@ def get_capped_evals_formatted_time(
     verification: VerificationLevel,
 ) -> str:
     max_time = _get_evals_time_in_ms(evals)
+    if max_time is None:
+        return UNMEASURED
     has_tle = any(eval.result.outcome.is_slow() for eval in evals)
     has_ile = any(
         eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED for eval in evals
@@ -1422,6 +1437,8 @@ def get_capped_evals_formatted_time(
 
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
+    if max_memory is None:
+        return UNMEASURED
     return get_formatted_memory(max_memory)
 
 
@@ -1785,6 +1802,8 @@ def _get_verdict_report(
         and Outcome.TIME_LIMIT_EXCEEDED in matched_bad_verdicts
         # The solution runs in double TL.
         and limits.time is not None
+        # Without a measured run there is no evidence it fits in double TL.
+        and evals_time is not None
         and evals_time < limits.time * 2
     ):
         other_verdicts = (bad_verdicts | no_tle_bad_verdicts) - {
@@ -2159,6 +2178,9 @@ async def _print_timing(
 
         # Get solution TL.
         solution_time = _get_evals_time_in_ms(all_evals)
+        if solution_time is None:
+            # Nothing measurable is left to summarize for this solution.
+            continue
         tls = [
             eval.log.metadata.limits.time
             for eval in all_evals
