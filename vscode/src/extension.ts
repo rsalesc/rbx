@@ -18,11 +18,17 @@ import { RunTreeProvider } from './runTree';
 /**
  * Map a changed path back to the package it belongs to.
  *
- * Events arrive as `<pkg>/.rbx/runs/...`, so the package root is the parent of
- * the `.rbx` segment.
+ * Events arrive either as `<pkg>/.rbx/runs/...` during a run, or as the bare
+ * `<pkg>/.rbx` when the whole cache directory goes away -- `rbx clean` rmtree's
+ * it in one call, and the watcher reports the top removed directory rather than
+ * each descendant. Both spellings must resolve to the package root.
  */
 function packageRootOf(fsPath: string): string | undefined {
-  const marker = `${path.sep}${CACHE_DIR}${path.sep}`;
+  const suffix = `${path.sep}${CACHE_DIR}`;
+  if (fsPath.endsWith(suffix)) {
+    return fsPath.slice(0, -suffix.length);
+  }
+  const marker = `${suffix}${path.sep}`;
   const index = fsPath.indexOf(marker);
   return index === -1 ? undefined : fsPath.slice(0, index);
 }
@@ -46,7 +52,6 @@ export function activate(context: vscode.ExtensionContext): void {
   // the tree live progress without any streaming protocol: each new `.eval`
   // fills in one testcase. Refreshes are debounced because a run drops many
   // files in quick succession.
-  const watcher = vscode.workspace.createFileSystemWatcher(`**/${CACHE_DIR}/runs/**`);
   const pending = new Set<string>();
   let timer: NodeJS.Timeout | undefined;
 
@@ -62,16 +67,28 @@ export function activate(context: vscode.ExtensionContext): void {
     timer = setTimeout(() => {
       timer = undefined;
       for (const changed of pending) {
+        log(`Artifacts changed under ${changed}; reloading.`);
         tree.invalidate(changed);
       }
       pending.clear();
     }, 200);
   };
 
-  watcher.onDidCreate(touched);
-  watcher.onDidChange(touched);
-  watcher.onDidDelete(touched);
-  context.subscriptions.push(watcher, new vscode.Disposable(() => {
+  const watch = (glob: string) => {
+    const watcher = vscode.workspace.createFileSystemWatcher(glob);
+    watcher.onDidCreate(touched);
+    watcher.onDidChange(touched);
+    watcher.onDidDelete(touched);
+    context.subscriptions.push(watcher);
+  };
+
+  // Two globs, because they catch different things: the first sees individual
+  // artifacts appearing during a run, the second sees the cache directory
+  // itself being created or removed -- which is all `rbx clean` produces.
+  watch(`**/${CACHE_DIR}/**`);
+  watch(`**/${CACHE_DIR}`);
+
+  context.subscriptions.push(new vscode.Disposable(() => {
     if (timer !== undefined) {
       clearTimeout(timer);
     }
