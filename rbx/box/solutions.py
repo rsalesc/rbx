@@ -83,8 +83,11 @@ from rbx.grading import grading_context, steps
 from rbx.grading.async_executor import AsyncStreamer
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
+    CheckerResult,
     Evaluation,
     Outcome,
+    TestcaseIO,
+    TestcaseLog,
 )
 from rbx.utils import StatusProgress
 
@@ -459,19 +462,39 @@ async def compile_solutions(
     return compiled_solutions
 
 
+def _skipped_evaluation(testcase: Testcase, index: int) -> Evaluation:
+    return Evaluation(
+        result=CheckerResult(
+            outcome=Outcome.SKIPPED,
+            message='Skipped: an earlier testcase already decided this run.',
+        ),
+        testcase=TestcaseIO(
+            index=index, input=testcase.inputPath, output=testcase.outputPath
+        ),
+        # No time/memory: this never ran, and the timing consumers must not
+        # read a 0 out of it.
+        log=TestcaseLog(time=None, wall_time=None, memory=None),
+    )
+
+
 def _run_solution(
     solution: Solution,
     compiled_digest: str,
     checker_digest: Optional[str],
     runs_dir: pathlib.Path,
     entries: List[GenerationTestcaseEntry],
+    groups: List[GroupSkeleton],
     interactor_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
     nruns: int = 0,
     capture_pipes: bool = False,
+    gate: Optional['_AbortGate'] = None,
+    abort_on: Optional[AbortPredicate] = None,
 ) -> List[Deferred[Evaluation]]:
+    groups_by_name = {group.name: group for group in groups}
+
     res: List[Deferred[Evaluation]] = []
     for i, entry in enumerate(entries):
         testcase = entry.metadata.copied_to
@@ -485,8 +508,11 @@ def _run_solution(
                 f'Running solution {href(solution.path)} on test [item]{entry}[/item]...'
             )
 
-        async def run_fn(i=i, testcase=testcase, output_path=output_path):
-            return await run_solution_on_testcase(
+        async def run_fn(i=i, testcase=testcase, output_path=output_path, entry=entry):
+            group_name = entry.group_entry.group
+            if gate is not None and gate.is_skipped(group_name):
+                return _skipped_evaluation(testcase, i)
+            evaluation = await run_solution_on_testcase(
                 solution,
                 compiled_digest,
                 checker_digest,
@@ -499,6 +525,21 @@ def _run_solution(
                 nruns=nruns,
                 capture_pipes=capture_pipes,
             )
+            group = groups_by_name.get(group_name)
+            if gate is not None and abort_on is not None and group is not None:
+                context = AbortContext(
+                    solution=solution,
+                    group=group,
+                    entry=entry.group_entry,
+                    expected_outcome=solution.outcome,
+                    group_expected_outcome=solution.expected_outcome_for_group(
+                        group_name
+                    ),
+                    evaluation=evaluation,
+                )
+                if abort_on(context):
+                    gate.trip(group_name)
+            return evaluation
 
         res.append(Deferred(run_fn))
 
@@ -641,6 +682,7 @@ async def _produce_solution_items(
     check: bool = True,
     timelimit_override: Optional[int] = None,
     nruns: int = 0,
+    abort_on: Optional[AbortPredicate] = None,
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
@@ -656,7 +698,9 @@ async def _produce_solution_items(
         interactor_digest = None
 
     def yield_items(
-        solution: SolutionSkeleton, entries: List[GenerationTestcaseEntry]
+        solution: SolutionSkeleton,
+        entries: List[GenerationTestcaseEntry],
+        gate: Optional[_AbortGate],
     ) -> List[EvaluationItem]:
         res: List[EvaluationItem] = []
         for entry, eval in zip(
@@ -667,12 +711,15 @@ async def _produce_solution_items(
                 checker_digest,
                 solution.runs_dir,
                 entries,
+                skeleton.groups,
                 interactor_digest=interactor_digest,
                 progress=progress,
                 verification=verification,
                 timelimit_override=timelimit_override,
                 nruns=nruns,
                 capture_pipes=skeleton.capture_pipes,
+                gate=gate,
+                abort_on=abort_on,
             ),
         ):
             res.append(
@@ -689,9 +736,16 @@ async def _produce_solution_items(
 
     # Just ensure the iteration is (solution, group) order.
     for solution in skeleton.solutions:
+        # One gate per solution: `_run_solution` is called once per group, so a
+        # gate built inside it would forget every group boundary.
+        gate = (
+            _AbortGate(skeleton.groups, package.get_scoring())
+            if abort_on is not None
+            else None
+        )
         for group in skeleton.groups:
             res.extend(
-                yield_items(solution, skeleton.get_entries_for_group(group.name))
+                yield_items(solution, skeleton.get_entries_for_group(group.name), gate)
             )
 
     return res
@@ -705,6 +759,7 @@ async def run_solutions(
     timelimit_override: Optional[int] = None,
     sanitized: bool = False,
     nruns: int = 0,
+    abort_on: Optional[AbortPredicate] = None,
 ) -> RunSolutionResult:
     skeleton = await _get_report_skeleton(
         progress=progress,
@@ -722,6 +777,7 @@ async def run_solutions(
             check=check,
             timelimit_override=timelimit_override,
             nruns=nruns,
+            abort_on=abort_on,
         ),
     )
     return result

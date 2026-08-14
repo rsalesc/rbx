@@ -8,6 +8,7 @@ import rich.console
 import rich.style
 from rich.text import Text
 
+from rbx.box import solutions as solutions_module
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -1739,3 +1740,47 @@ def test_gate_is_not_skipped_before_tripping():
     skeleton = [_group('a', [])]
     gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.POINTS)
     assert not gate.is_skipped('a')
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_abort_skips_every_later_testcase_of_that_solution(
+    pkg_from_testdata: pathlib.Path,
+):
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    real_run = solutions_module.run_solution_on_testcase
+    with patch.object(
+        solutions_module, 'run_solution_on_testcase', wraps=real_run
+    ) as spy:
+        result = await run_solutions(
+            verification=VerificationLevel.FULL,
+            tracked_solutions=['sol.cpp', 'wa.sol.cpp'],
+            abort_on=lambda ctx: ctx.evaluation.result.outcome != Outcome.ACCEPTED,
+        )
+        res = await convert_list_of_solution_evaluations_to_dict(
+            result.skeleton, result.items
+        )
+        runs = spy.call_count
+
+    accepted_outcomes = [ev.result.outcome for ev in res[0]['gen1']]
+    aborted_outcomes = [ev.result.outcome for ev in res[1]['gen1']]
+
+    # The accepted solution never trips the gate.
+    assert Outcome.SKIPPED not in accepted_outcomes
+    assert accepted_outcomes == [Outcome.ACCEPTED] * len(accepted_outcomes)
+
+    # Everything after the first bad verdict is skipped, and nothing is missing:
+    # a skipped slot still holds a real evaluation, keeping the positions aligned.
+    assert Outcome.SKIPPED in aborted_outcomes
+    first_skip = aborted_outcomes.index(Outcome.SKIPPED)
+    assert first_skip > 0
+    assert aborted_outcomes[first_skip - 1] != Outcome.ACCEPTED
+    assert all(outcome == Outcome.SKIPPED for outcome in aborted_outcomes[first_skip:])
+    assert len(aborted_outcomes) == len(accepted_outcomes)
+
+    # The sandbox is never entered for a skipped testcase.
+    assert runs == len(accepted_outcomes) + first_skip
