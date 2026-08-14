@@ -1354,8 +1354,6 @@ def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
 
 
 def _get_evals_time_in_ms(evals: List[Evaluation]) -> Optional[int]:
-    if not evals:
-        return None
     evals_with_ile = [
         eval for eval in evals if eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
     ]
@@ -1392,13 +1390,13 @@ def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
 
 
 # What a formatted time or memory reads as when nothing was measured at all.
-UNMEASURED = '-'
+_UNMEASURED = '-'
 
 
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
     if max_time is None:
-        return UNMEASURED
+        return _UNMEASURED
     return get_formatted_time(max_time)
 
 
@@ -1414,7 +1412,7 @@ def get_capped_evals_formatted_time(
 ) -> str:
     max_time = _get_evals_time_in_ms(evals)
     if max_time is None:
-        return UNMEASURED
+        return _UNMEASURED
     has_tle = any(eval.result.outcome.is_slow() for eval in evals)
     has_ile = any(
         eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED for eval in evals
@@ -1444,7 +1442,7 @@ def get_capped_evals_formatted_time(
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
     if max_memory is None:
-        return UNMEASURED
+        return _UNMEASURED
     return get_formatted_memory(max_memory)
 
 
