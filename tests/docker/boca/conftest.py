@@ -1,4 +1,12 @@
-"""Pytest configuration for E2E tests."""
+"""Pytest configuration for the docker-backed BOCA E2E tests.
+
+This suite used to live under ``tests/rbx/box/packaging/e2e/`` and inherited
+fixtures from ``tests/rbx/conftest.py`` and ``tests/rbx/box/conftest.py``.
+Now that it lives outside that tree, those fixtures are re-exported here
+explicitly so the tests keep behaving the same way.
+
+Collection is gated by ``tests/docker/conftest.py`` -- see that file.
+"""
 
 import asyncio
 import pathlib
@@ -7,6 +15,29 @@ from typing import Iterator
 import pytest
 
 from rbx.box.testing import testing_package
+from tests.rbx.box.conftest import (  # noqa: F401
+    mock_pdflatex,
+    mock_setter_config,
+    pkg_cder,
+    pkg_cleandir,
+    pkg_from_resources,
+    pkg_from_testdata,
+    precompilation_should_use_tmp_cache,
+    testing_pkg,
+    testing_pkg_factory,
+    testing_pkg_from_testdata,
+)
+from tests.rbx.conftest import (  # noqa: F401
+    _isolate_global_state,
+    cder,
+    cleandir,
+    cleandir_with_testdata,
+    mock_app_path,
+    monkeysession,
+    resources_path,
+    rich_no_markup,
+    testdata_path,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -91,7 +122,7 @@ def docker_cleanup():
 @pytest.fixture
 def preset_testing_pkg_from_resources(
     request,
-    pkg_from_resources: pathlib.Path,
+    pkg_from_resources: pathlib.Path,  # noqa: F811 - fixture request, not a redefinition
 ) -> Iterator[testing_package.TestingPackage]:
     marker = request.node.get_closest_marker('preset_path')
     if marker is None:

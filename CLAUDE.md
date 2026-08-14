@@ -33,6 +33,8 @@ uv run pytest --ignore=tests/rbx/box/cli --cov=rbx --cov-branch --cov-report=xml
 
 Test markers: `e2e`, `slow`, `docker` (these are excluded from default CI runs via `mise run test`).
 
+Docker-backed suites live under `tests/docker/` (currently only the BOCA upload e2e test) and are **disabled by default**: `tests/docker/conftest.py` skips collection of that subtree unless `RBX_DOCKER_TESTS=1` is set, and the test modules carry a matching module-level `skipif`. Do not run or re-enable them as part of ordinary work -- they need a docker daemon, docker-compose and network access. `mise run test-docker` is the only supported entry point.
+
 End-to-end CLI scenarios live under `tests/e2e/` and are written in a YAML DSL (one `e2e.rbx.yml` per fixture package). Run them with `mise run test-e2e`. See [`tests/e2e/README.md`](tests/e2e/README.md) for the schema and authoring guide.
 
 ### Linting and Formatting
