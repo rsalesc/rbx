@@ -1141,6 +1141,8 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
         return 'orange1'
     if outcome == Outcome.COMPILATION_ERROR:
         return 'blue'
+    if outcome == Outcome.SKIPPED:
+        return 'bright_black'
     return 'magenta'
 
 
@@ -1159,6 +1161,8 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
         res = '⧖'
     if outcome == Outcome.RUNTIME_ERROR:
         res = '✗'
+    if outcome == Outcome.SKIPPED:
+        res = '⊘'
     style = get_outcome_style_verdict(outcome)
     res = f'[{style}]{res}[/{style}]'
     return res

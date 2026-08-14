@@ -38,6 +38,7 @@ from rbx.box.solutions import (
     convert_list_of_solution_evaluations_to_dict,
     get_full_outcome_markup_verdict,
     get_matching_solutions,
+    get_outcome_markup_verdict,
     get_outcome_style_verdict,
     get_solution_outcome_report,
     get_ui_friendly_outcome_style_verdict,
@@ -1697,3 +1698,8 @@ def test_outcome_styles_are_valid_rich_styles(outcome: Outcome):
     Text.from_markup(get_full_outcome_markup_verdict(outcome)).render(
         rich.console.Console()
     )
+
+
+def test_skipped_outcome_has_its_own_style_and_icon():
+    assert get_outcome_style_verdict(Outcome.SKIPPED) == 'bright_black'
+    assert '⊘' in get_outcome_markup_verdict(Outcome.SKIPPED)
