@@ -713,6 +713,25 @@ async def test_skipped_evaluations_do_not_truncate_a_lower_bound_solution(pkg):
     assert diagnosis == timing._InferenceDiagnosis()  # noqa: SLF001
 
 
+async def test_an_aborted_lower_bound_solution_is_still_truncated(pkg):
+    # The shape an aborted lower-bound run actually produces: the abort trips on
+    # the very timeout that stopped the solution, so that TLE is the first
+    # evaluation and every later one is skipped. Ignoring the skips must not
+    # ignore the TLE with them -- an accepted solution killed at the cap leaves
+    # the estimate resting on a truncated measurement, which is fatal.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    diagnosis = await _diagnose(
+        {
+            ac: [
+                _evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED),
+                _evaluation(None, Outcome.SKIPPED),
+                _evaluation(None, Outcome.SKIPPED),
+            ]
+        }
+    )
+    assert diagnosis == timing._InferenceDiagnosis(truncated_lower=[ac])  # noqa: SLF001
+
+
 async def test_skipped_evaluations_contribute_no_timing(pkg, capsys):
     # A skipped evaluation records no time today, but the exclusion must rest on
     # the verdict rather than on that: a testcase that never ran can never
