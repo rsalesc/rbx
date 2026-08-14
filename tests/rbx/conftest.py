@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import pathlib
 from collections.abc import Iterator
@@ -91,11 +92,13 @@ def _isolate_global_state() -> Iterator[None]:
 
     original_cwd = os.getcwd()
     original_temp_dir = _package.TEMP_DIR
-    # The root Typer callback sets this and never clears it, so a test that
-    # invokes the CLI leaves every later test in the same worker process looking
-    # like a CLI run -- which turns on checks (the macOS stack limit one, say)
-    # that then fail unrelated tests.
-    original_run_through_cli = _state.STATE.run_through_cli
+    # The root Typer callback writes to this global and never clears it, so a
+    # test that invokes the CLI leaves every later test in the same worker
+    # process looking like a CLI run -- which turns on checks (the macOS stack
+    # limit one, say) that then fail unrelated tests. Every field leaks the same
+    # way, so snapshot the whole dataclass rather than the fields that have bit
+    # us so far.
+    original_state = dataclasses.replace(_state.STATE)
     context_vars = [
         _gc.cache_level_var,
         _gc.compression_level_var,
@@ -113,7 +116,9 @@ def _isolate_global_state() -> Iterator[None]:
         except (FileNotFoundError, OSError):
             pass
         _package.TEMP_DIR = original_temp_dir
-        _state.STATE.run_through_cli = original_run_through_cli
+        # In place: the singleton is imported by reference all over rbx.
+        for field in dataclasses.fields(original_state):
+            setattr(_state.STATE, field.name, getattr(original_state, field.name))
         for var, value in snapshots:
             var.set(value)
         testing_utils.clear_all_functools_cache()
