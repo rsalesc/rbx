@@ -1,0 +1,16 @@
+# A deliberately tiny package for exercising the time limit inference run: one
+# accepted solution to bound the limit from below, and one hopeless solution
+# that hits the inference timeout on every testcase it is given.
+name: "inference-abort"
+timeLimit: 1000
+memoryLimit: 256
+
+solutions:
+  - path: "sol.cpp"
+    outcome: "ac"
+  - path: "slow.cpp"
+    outcome: "tle"
+
+testcases:
+  - name: "main"
+    testcaseGlob: "tests/*.in"
