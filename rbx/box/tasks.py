@@ -45,6 +45,39 @@ class TooMuchStderrIssue(Issue):
         return f'{self.solution.href()} produces too much stderr.'
 
 
+def get_testcase_output_path(
+    testcase: Testcase,
+    output_dir: Optional[pathlib.Path] = None,
+    filestem: Optional[str] = None,
+) -> pathlib.Path:
+    """The `.out` path a run of `testcase` writes to.
+
+    Every sibling artifact (`.err`, `.log`, `.eval`, ...) is derived from it, so
+    callers that need one of those -- including the ones that never enter the
+    sandbox -- must go through here instead of rebuilding the stem.
+    """
+    if output_dir is None:
+        assert testcase.outputPath is not None
+        return testcase.outputPath
+    stem = filestem or testcase.inputPath.stem
+    return output_dir / pathlib.PosixPath(stem).with_suffix('.out')
+
+
+def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> pathlib.Path:
+    """Persist `eval` to its `.eval` artifact and point its log at the result.
+
+    The run explorer never sees the in-memory evaluations: it reads these files,
+    and a missing one is its only signal that a testcase has not run. So a
+    skipped evaluation has to land here too, at exactly the path a real run
+    would have used.
+    """
+    eval_path = output_path.with_suffix('.eval')
+    eval.log.eval_absolute_path = eval_path.absolute()
+    eval_path.parent.mkdir(parents=True, exist_ok=True)
+    eval_path.write_text(model_to_yaml(eval))
+    return eval_path
+
+
 def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):
     # The stderr file is absent when the program failed to even start (e.g. a
     # missing interpreter/runtime), in which case there is no stderr to inspect.
@@ -136,15 +169,9 @@ async def run_solution_on_testcase(
         )
         extra_config = _get_execution_config(limits, sandbox_type, language)
 
-        if output_dir is None:
-            assert testcase.outputPath is not None
-            output_path = testcase.outputPath
-        else:
-            stem = filestem or testcase.inputPath.stem
-            output_path = output_dir / pathlib.PosixPath(stem).with_suffix('.out')
+        output_path = get_testcase_output_path(testcase, output_dir, filestem)
         error_path = output_path.with_suffix('.err')
         log_path = output_path.with_suffix('.log')
-        eval_path = output_path.with_suffix('.eval')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # When interleaving is requested, tee stdout/stderr into a merged '.pio'
@@ -191,12 +218,11 @@ async def run_solution_on_testcase(
                 stdout_absolute_path=output_path.absolute(),
                 stderr_absolute_path=error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
-                eval_absolute_path=eval_path.absolute(),
             ),
         )
 
+        write_evaluation(eval, output_path)
         log_path.write_text(model_to_yaml(eval))
-        eval_path.write_text(model_to_yaml(eval))
         return eval
 
     if not use_retries:
@@ -290,16 +316,10 @@ async def _run_communication_solution_on_testcase(
         # neither process gets one, so the interactor still outlives the
         # solution; the override above is correctly skipped.
 
-        if output_dir is None:
-            assert testcase.outputPath is not None
-            output_path = testcase.outputPath
-        else:
-            stem = filestem or testcase.inputPath.stem
-            output_path = output_dir / pathlib.PosixPath(stem).with_suffix('.out')
+        output_path = get_testcase_output_path(testcase, output_dir, filestem)
         solution_error_path = output_path.with_suffix('.sol.err')
         interactor_error_path = output_path.with_suffix('.int.err')
         log_path = output_path.with_suffix('.log')
-        eval_path = output_path.with_suffix('.eval')
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         interactor_capture_path = (
@@ -384,12 +404,11 @@ async def _run_communication_solution_on_testcase(
                 stdout_absolute_path=output_path.absolute(),
                 stderr_absolute_path=solution_error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
-                eval_absolute_path=eval_path.absolute(),
             ),
         )
 
+        write_evaluation(eval, output_path)
         log_path.write_text(model_to_yaml(eval))
-        eval_path.write_text(model_to_yaml(eval))
         interactor_log_path = output_path.with_suffix('.int.log')
         interactor_log_path.unlink(missing_ok=True)
         if interactor_run_log is not None:

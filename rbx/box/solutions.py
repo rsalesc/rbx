@@ -64,8 +64,10 @@ from rbx.box.schema import (
 )
 from rbx.box.tasks import (
     get_limits_for_language,
+    get_testcase_output_path,
     run_solution_on_testcase,
     should_capture_pipes,
+    write_evaluation,
 )
 from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_generic_entries,
@@ -467,8 +469,10 @@ async def compile_solutions(
     return compiled_solutions
 
 
-def _skipped_evaluation(testcase: Testcase, index: int) -> Evaluation:
-    return Evaluation(
+def _skipped_evaluation(
+    testcase: Testcase, index: int, output_dir: pathlib.Path
+) -> Evaluation:
+    eval = Evaluation(
         result=CheckerResult(
             outcome=Outcome.SKIPPED,
             message='Skipped: an earlier testcase already decided this run.',
@@ -488,6 +492,11 @@ def _skipped_evaluation(testcase: Testcase, index: int) -> Evaluation:
             memory=None,
         ),
     )
+    # The run explorer reads `.eval` files, not the in-memory evaluations, and
+    # takes a missing one as 'never ran'. Persisting through the same helper the
+    # real runs use keeps the skipped artifact at the very path it looks at.
+    write_evaluation(eval, get_testcase_output_path(testcase, output_dir))
+    return eval
 
 
 def _run_solution(
@@ -524,7 +533,7 @@ def _run_solution(
         async def run_fn(i=i, testcase=testcase, output_path=output_path, entry=entry):
             group_name = entry.group_entry.group
             if gate is not None and gate.is_skipped(group_name):
-                return _skipped_evaluation(testcase, i)
+                return _skipped_evaluation(testcase, i, output_path)
             evaluation = await run_solution_on_testcase(
                 solution,
                 compiled_digest,
