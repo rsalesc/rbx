@@ -5,6 +5,7 @@ The whole behavior of the inference run lives in the arguments handed to
 diagnostics derived from their verdicts, so that is what these tests assert on.
 """
 
+import dataclasses
 import pathlib
 import re
 from typing import Dict, List, Optional
@@ -31,6 +32,7 @@ from rbx.box.timing import (
     _diagnose_inference_run,  # noqa: SLF001
     _timings_per_language,  # noqa: SLF001
 )
+from rbx.grading import grading_context, steps
 from rbx.grading.steps import Outcome
 
 
@@ -733,10 +735,26 @@ async def test_skipped_evaluations_contribute_no_timing(pkg, capsys):
     assert per_language == {'cpp': {str(ac.path): 400}}
 
 
-async def _time_a_real_package(*, abort: bool, profile: str):
+@dataclasses.dataclass(frozen=True)
+class _RealRun:
+    """What one real estimation run produced, and how much it actually ran."""
+
+    estimate: Optional[timing.TimingProfile]
+    slow_runs: int  # testcases dispatched for `slow.cpp`
+    executions: int  # sandbox executions, cached ones excluded
+
+
+async def _time_a_real_package(*, abort: bool, profile: str) -> _RealRun:
     """One real ``compute_time_limits`` over the package in the cwd, under a
     500 ms inference timeout. With ``abort`` off, the abort predicate is dropped
-    on its way to the runner, reproducing the pre-abort behavior exactly."""
+    on its way to the runner, reproducing the pre-abort behavior exactly.
+
+    The estimation run itself is executed under ``CACHE_COMPILATION``, so no run
+    is served from the grading cache: two arms of the same test would otherwise
+    share one dependency cache (it is keyed by content, not by directory, and
+    the fixtures share it session-wide), and the second arm would replay the
+    first arm's measurements instead of producing its own. Compilation stays
+    cached -- it is not what is being compared."""
     await generate_testcases()
     entries = [
         entry.group_entry for entry in await extract_generation_testcases_from_groups()
@@ -761,11 +779,21 @@ async def _time_a_real_package(*, abort: bool, profile: str):
 
     real_run_on_testcase = solutions.run_solution_on_testcase
 
+    real_steps_run = steps.run
+    executions = 0
+
+    async def counting_run(*args, **kwargs):
+        nonlocal executions
+        executions += 1
+        return await real_steps_run(*args, **kwargs)
+
     with (
         mock.patch.object(env, 'timing', capped),
+        mock.patch.object(steps, 'run', counting_run),
         mock.patch.object(
             solutions, 'run_solution_on_testcase', wraps=real_run_on_testcase
         ) as spy,
+        grading_context.cache_level(grading_context.CacheLevel.CACHE_COMPILATION),
     ):
         if abort:
             estimated = await timing.compute_time_limits(
@@ -780,7 +808,7 @@ async def _time_a_real_package(*, abort: bool, profile: str):
     slow_runs = sum(
         1 for call in spy.call_args_list if call.args[0].path.name == 'slow.cpp'
     )
-    return estimated, slow_runs
+    return _RealRun(estimate=estimated, slow_runs=slow_runs, executions=executions)
 
 
 @pytest.mark.test_pkg('problems/inference-abort')
@@ -791,15 +819,28 @@ async def test_a_solution_that_hits_the_inference_timeout_stops_running(
     # far more than the 500 ms cap on each of them. Its measurement is dropped
     # from the upper bound either way, so the runs after the first one only cost
     # wall clock.
-    aborted, aborted_runs = await _time_a_real_package(abort=True, profile='aborted')
-    full, full_runs = await _time_a_real_package(abort=False, profile='full')
+    aborted = await _time_a_real_package(abort=True, profile='aborted')
+    full = await _time_a_real_package(abort=False, profile='full')
 
-    assert full_runs == 3
-    assert aborted_runs == 1
+    assert full.slow_runs == 3
+    assert aborted.slow_runs == 1
+
+    # Both arms measured what they report. The no-abort arm runs strictly more
+    # of them, so if it were replaying the first arm's cached evaluations --
+    # which would make the comparison below vacuous -- it would execute fewer,
+    # not more.
+    assert full.executions > aborted.executions
 
     # The property the whole feature rests on: stopping early is a pure speedup.
-    assert aborted is not None
-    assert aborted == full
+    # Compared on the limits, not on the whole profile: now that each arm
+    # measures for itself, the millisecond of jitter between two real runs of
+    # the same solution shows up verbatim in the profile's bookkeeping
+    # (`fastest`, `slowest`, `lowerBound`), and that is not what "aborting does
+    # not change the estimate" means. What must not move is what rbx writes.
+    assert aborted.estimate is not None
+    assert full.estimate is not None
+    assert aborted.estimate.timeLimit == full.estimate.timeLimit
+    assert aborted.estimate.timeLimitPerLanguage == full.estimate.timeLimitPerLanguage
 
 
 def test_the_report_gate_ignores_solutions_outside_gating_solutions():
