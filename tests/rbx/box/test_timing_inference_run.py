@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from unittest import mock
 
 import pytest
+import rich.console
 
 from rbx.box import limits_info, timing
 from rbx.box.deferred import Deferred
@@ -24,6 +25,10 @@ from rbx.box.schema import (
 )
 from rbx.box.solutions import _gates_report  # noqa: SLF001
 from rbx.box.testing import testing_package
+from rbx.box.timing import (
+    _diagnose_inference_run,  # noqa: SLF001
+    _timings_per_language,  # noqa: SLF001
+)
 from rbx.grading.steps import Outcome
 
 
@@ -648,6 +653,82 @@ async def test_a_package_with_no_lower_bound_solution_fails_before_running(pkg):
             lower=[],
             upper=[tle],
         )
+
+
+async def _diagnose(structured: Dict) -> timing._InferenceDiagnosis:  # noqa: SLF001
+    """``_diagnose_inference_run`` over an already-computed run."""
+    result = mock.Mock()
+    result.skeleton.solutions = list(structured)
+    with mock.patch(
+        'rbx.box.timing.consume_and_key_evaluation_items',
+        return_value=_structured(structured),
+    ):
+        return await _diagnose_inference_run(result)
+
+
+async def test_skipped_evaluations_do_not_fail_an_upper_bound_solution(pkg):
+    # A solution stopped at the cap has every later testcase skipped. SKIPPED is
+    # both non-accepted and non-slow, so without a guard it reads as a solution
+    # that broke for a non-timing reason -- a fatal error -- when it is only the
+    # consequence of the timeout that was already diagnosed.
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    diagnosis = await _diagnose(
+        {
+            tle: [
+                _evaluation(400, Outcome.ACCEPTED),
+                _evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED),
+                _evaluation(None, Outcome.SKIPPED),
+                _evaluation(None, Outcome.SKIPPED),
+            ]
+        }
+    )
+    assert diagnosis.failed_upper == []
+    assert diagnosis.dropped_upper == [tle]
+
+
+async def test_a_real_failure_is_still_diagnosed_next_to_skipped_evaluations(pkg):
+    # Ignoring skipped evaluations must not swallow the verdict that caused them.
+    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    diagnosis = await _diagnose(
+        {
+            tle: [
+                _evaluation(120, Outcome.WRONG_ANSWER),
+                _evaluation(None, Outcome.SKIPPED),
+            ]
+        }
+    )
+    assert diagnosis.failed_upper == [(tle, Outcome.WRONG_ANSWER)]
+    assert diagnosis.dropped_upper == []
+
+
+async def test_skipped_evaluations_do_not_truncate_a_lower_bound_solution(pkg):
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    diagnosis = await _diagnose(
+        {ac: [_evaluation(400, Outcome.ACCEPTED), _evaluation(None, Outcome.SKIPPED)]}
+    )
+    assert diagnosis == timing._InferenceDiagnosis()  # noqa: SLF001
+
+
+async def test_skipped_evaluations_contribute_no_timing(pkg, capsys):
+    # A skipped evaluation records no time today, but the exclusion must rest on
+    # the verdict rather than on that: a testcase that never ran can never
+    # measure anything, whatever its log happens to hold.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    structured = _structured(
+        {
+            ac: [
+                _evaluation(400, Outcome.ACCEPTED),
+                _evaluation(9999, Outcome.SKIPPED),
+            ]
+        }
+    )
+    with mock.patch(
+        'rbx.box.timing.find_language_name', side_effect=lambda sol: sol.language
+    ):
+        per_language = await _timings_per_language(
+            rich.console.Console(), structured, [ac]
+        )
+    assert per_language == {'cpp': {str(ac.path): 400}}
 
 
 def test_the_report_gate_ignores_solutions_outside_gating_solutions():

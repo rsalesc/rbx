@@ -2147,6 +2147,13 @@ async def _print_timing(
         all_evals: List[Evaluation] = []
         for evals in evaluations[str(solution.path)].values():
             all_evals.extend([await eval() for eval in evals if eval is not None])
+        # A skipped testcase never ran, so it measures nothing: it is the
+        # consequence of an earlier verdict, not evidence about how long this
+        # solution takes. Dropping it here also keeps a fully skipped solution
+        # out of the summary rather than reporting it as instant.
+        all_evals = [
+            eval for eval in all_evals if eval.result.outcome != Outcome.SKIPPED
+        ]
         if not all_evals:
             continue
 
