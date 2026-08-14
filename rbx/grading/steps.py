@@ -299,6 +299,12 @@ class PreprocessLog(RunLog):
 
 
 class TestcaseLog(RunLog):
+    # Unmeasured by default, unlike `RunLog`: an evaluation is persisted to a
+    # `.eval` artifact with its `None` fields omitted, so a testcase that never
+    # ran must read back as unmeasured rather than as an instantaneous run.
+    time: Optional[float] = None
+    wall_time: Optional[float] = None
+    memory: Optional[int] = None
     stdout_absolute_path: Optional[pathlib.Path] = None
     stderr_absolute_path: Optional[pathlib.Path] = None
     log_absolute_path: Optional[pathlib.Path] = None
