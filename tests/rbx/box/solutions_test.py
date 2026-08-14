@@ -39,6 +39,7 @@ from rbx.box.solutions import (
     TraditionalRunReporter,
     _AbortGate,  # noqa: SLF001
     _gates_report,  # noqa: SLF001
+    _render_detailed_group_table,  # noqa: SLF001
     convert_list_of_solution_evaluations_to_dict,
     get_full_outcome_markup_verdict,
     get_matching_solutions,
@@ -1890,3 +1891,59 @@ async def test_skipped_testcase_writes_a_readable_eval_artifact(
         utils.model_from_yaml(Evaluation, ran_path.read_text()).result.outcome
         == Outcome.ACCEPTED
     )
+
+
+async def test_detailed_table_marks_a_skipped_testcase_instead_of_pending(
+    mock_problem_root, mock_binary_scoring
+):
+    """A skipped testcase carries a real evaluation, so the detailed table shows
+    its verdict. Had the skipped slots been left empty, the cell would read
+    '...' -- exactly what a testcase that has not been awaited yet renders."""
+    solution = Solution(path=pathlib.Path('wa.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.WRONG_ANSWER, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    await _render_detailed_group_table(
+        skeleton.groups[0],
+        skeleton,
+        reporter.structured_evaluations,
+        console,
+        verification=VerificationLevel.FULL,
+    )
+
+    text = console.export_text(clear=False)
+    assert '#1 ⊘' in ' '.join(text.split())
+    assert '...' not in text
+
+
+async def test_live_reporter_counts_a_skipped_testcase_as_evaluated(
+    mock_problem_root, mock_binary_scoring
+):
+    """The live line marks a skipped testcase and moves on. A slot left empty
+    would have frozen the line at `1/..`, which is how a testcase that is still
+    running renders."""
+    solution = Solution(path=pathlib.Path('wa.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 3})
+    result = make_run_result(
+        skeleton,
+        {
+            ('group1', 0): Outcome.ACCEPTED,
+            ('group1', 1): Outcome.WRONG_ANSWER,
+            ('group1', 2): Outcome.SKIPPED,
+        },
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    assert reporter.post_evaluated == 3
+    (group_line,) = rendered_group_lines(console)
+    assert '/..' not in group_line
+    assert group_line.startswith('group1 (3) 1/✗ 2/⊘ ')
