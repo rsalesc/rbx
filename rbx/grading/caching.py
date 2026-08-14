@@ -13,7 +13,6 @@ from sqlitedict import SqliteDict
 
 from rbx import console
 from rbx.grading import grading_context
-from rbx.grading.judge import digester
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.digester import digest_cooperatively
 from rbx.grading.judge.lock import make_async_file_lock
@@ -236,9 +235,6 @@ async def _build_cache_input(
             if input.src is None:
                 continue
             inferred_digest = await cacher.digest_from_symlink(input.src)
-            if inferred_digest is None and input.src.is_file():
-                # SPIKE: key on content instead of the absolute path.
-                inferred_digest = digester.digest_file(input.src)
             if inferred_digest is not None:
                 # Consume cache from digest instead of file.
                 input.digest = DigestHolder(value=inferred_digest)
