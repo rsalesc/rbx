@@ -7,7 +7,7 @@ import shutil
 import typing
 from collections.abc import AsyncIterator
 from enum import Enum
-from typing import Collection, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Callable, Collection, Dict, Iterable, List, Optional, Set, Tuple
 
 import rich
 import rich.live
@@ -103,6 +103,71 @@ class GroupSkeleton(BaseModel):
     score: int
     deps: List[str]
     testcases: List[Testcase]
+
+
+@dataclasses.dataclass(frozen=True)
+class AbortContext:
+    """What a caller may use to decide that a solution's remaining testcases
+    cannot change its outcome."""
+
+    solution: Solution
+    group: GroupSkeleton
+    entry: TestcaseEntry
+    expected_outcome: ExpectedOutcome
+    group_expected_outcome: Optional[ExpectedOutcome]
+    evaluation: Evaluation
+
+
+AbortPredicate = Callable[[AbortContext], bool]
+
+
+class _AbortGate:
+    """Tracks which groups of a single solution must no longer run.
+
+    Safe because the run loop is sequential: nothing in `solutions.py` or
+    `tasks.py` schedules evaluations concurrently.
+
+    The caller's predicate must only trip on an outcome that already dooms the
+    group -- the skipped groups are reported as failed, not as unmeasured.
+    """
+
+    def __init__(self, skeleton: List[GroupSkeleton], scoring: ScoreType):
+        self.skeleton = skeleton
+        self.scoring = scoring
+        self.skipped_groups: Set[str] = set()
+
+    def is_skipped(self, group_name: str) -> bool:
+        return group_name in self.skipped_groups
+
+    def trip(self, group_name: str) -> None:
+        if self.scoring != ScoreType.POINTS:
+            # `deps` only exist under POINTS, and a binary verdict is
+            # all-or-nothing, so nothing later can change the outcome.
+            self.skipped_groups.update(group.name for group in self.skeleton)
+            return
+        self.skipped_groups.add(group_name)
+        self.skipped_groups.update(self._dependents_of(group_name))
+
+    def _dependents_of(self, group_name: str) -> Set[str]:
+        """Groups that depend on `group_name`, directly or indirectly.
+
+        They would score 0 anyway -- `_check_deps` zeroes a group whenever any
+        of its dependencies failed.
+        """
+        dependents: Dict[str, List[str]] = collections.defaultdict(list)
+        for group in self.skeleton:
+            for dep in group.deps:
+                dependents[dep].append(group.name)
+
+        res: Set[str] = set()
+        stack = list(dependents[group_name])
+        while stack:
+            name = stack.pop()
+            if name in res:
+                continue
+            res.add(name)
+            stack.extend(dependents[name])
+        return res
 
 
 class SolutionSkeleton(Solution):
