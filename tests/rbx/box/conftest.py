@@ -2,7 +2,7 @@ import os
 import pathlib
 import subprocess
 from collections.abc import Iterator
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import pytest
 
@@ -11,6 +11,9 @@ from rbx.box import package, setter_config
 from rbx.box.statements.latex import LatexResult
 from rbx.box.testing import testing_package
 from rbx.config import CACHE_DIR_NAME, LEGACY_CACHE_DIR_NAME
+from rbx.grading.caching import DependencyCache
+from rbx.grading.judge import storage as storage_module
+from rbx.grading.judge.cacher import FileCacher
 from rbx.utils import copytree_honoring_gitignore
 
 
@@ -110,6 +113,64 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
         'rbx.box.global_package.get_global_cache_dir_path',
         lambda: cache_dir / CACHE_DIR_NAME,
     )
+
+
+@pytest.fixture(autouse=True, scope='session')
+def shared_problem_cache(monkeysession, tmp_path_factory) -> Dict[str, Any]:
+    """Back the problem-level dependency cache with a session-wide directory.
+
+    Every test gets a fresh problem directory, and the problem cache lives
+    inside it (`<problem>/.rbx`), so each test would otherwise start with an
+    empty cache DB and recompile the same handful of sources from scratch.
+    Cache keys are content-addressed, so one cache shared across problems is
+    still correct -- it just turns those recompilations into hits.
+
+    Returns the original accessors so `no_shared_cache` can restore them.
+    """
+    cache_dir = tmp_path_factory.mktemp('problem_cache')
+    storage = storage_module.FilesystemStorage(cache_dir / '.storage', compress=False)
+    cacher = FileCacher(storage)
+    dependency_cache = DependencyCache(cache_dir, cacher)
+
+    originals = {
+        name: getattr(package, name)
+        for name in ('get_cache_storage', 'get_file_cacher', 'get_dependency_cache')
+    }
+    monkeysession.setattr(package, 'get_cache_storage', lambda *a, **k: storage)
+    monkeysession.setattr(package, 'get_file_cacher', lambda *a, **k: cacher)
+    monkeysession.setattr(
+        package, 'get_dependency_cache', lambda *a, **k: dependency_cache
+    )
+    return originals
+
+
+@pytest.fixture(autouse=True)
+def no_shared_cache(request, shared_problem_cache: Dict[str, Any]):
+    """Restore the per-problem cache for tests marked `no_shared_cache`.
+
+    Tests that assert a compilation actually happened (compilation output,
+    warnings, failures) must opt out, since a warm shared cache would turn the
+    compilation they are checking for into a silent cache hit.
+
+    Patching is done by hand rather than through the `monkeypatch` fixture:
+    requesting `monkeypatch` from an autouse conftest fixture would make it be
+    set up before the test's own autouse fixtures, flipping the teardown order
+    of any `monkeypatch.setattr` a test stacks on top of a `mock.patch`.
+    """
+    if request.node.get_closest_marker('no_shared_cache') is None:
+        yield
+        return
+    shared = {name: getattr(package, name) for name in shared_problem_cache}
+    for name, original in shared_problem_cache.items():
+        original.cache_clear()
+        setattr(package, name, original)
+    try:
+        yield
+    finally:
+        for name, patched in shared.items():
+            setattr(package, name, patched)
+        for original in shared_problem_cache.values():
+            original.cache_clear()
 
 
 @pytest.fixture(autouse=True, scope='session')
