@@ -44,6 +44,7 @@ from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.schema import ExpectedOutcome, GeneratorScript, TestcaseGroup
 from rbx.box.solutions import (
+    fail_fast_abort_predicate,
     get_exact_matching_solutions,
     get_matching_solutions,
     pick_solutions,
@@ -382,6 +383,13 @@ async def run(
         help='Capture the run report and copy it to the clipboard. '
         'Pass a format: --share png or --share text.',
     ),
+    fail_fast: bool = typer.Option(
+        False,
+        '--fail-fast',
+        '--ff',
+        help='Whether to stop running a solution as soon as it gets a non-accepted verdict. '
+        'Only meant for quick experimentation, as the remaining tests are reported as failed.',
+    ),
 ):
     if share is not None and share not in ('png', 'text'):
         console.console.print(
@@ -459,6 +467,7 @@ async def run(
             check=check,
             verification=VerificationLevel(verification),
             sanitized=sanitized,
+            abort_on=fail_fast_abort_predicate if fail_fast else None,
         )
 
     console.console.print()
@@ -481,6 +490,13 @@ async def run(
             skip_printing_limits=sanitized,
         )
         sharing.capture_and_share(rec, fmt=share, title='rbx run report')
+
+    if fail_fast:
+        console.console.print()
+        console.console.print(
+            '[warning]The [item]--fail-fast / --ff[/item] flag should only be used for quick experimentation, '
+            'and should not be trusted for full validation of the problem.[/warning]'
+        )
 
     if not ok:
         raise typer.Exit(1)

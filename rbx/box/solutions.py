@@ -126,6 +126,18 @@ class AbortContext:
 AbortPredicate = Callable[[AbortContext], bool]
 
 
+def fail_fast_abort_predicate(context: AbortContext) -> bool:
+    """Stops running a solution's group as soon as a testcase is not accepted.
+
+    This is a deliberately coarse predicate: a non-accepted verdict does not
+    necessarily doom the group (a solution expected to be WA is *supposed* to
+    fail some testcase), so the skipped testcases are reported as failed even
+    though they were never measured. It exists to cut the wall clock of a quick
+    experimental run, and its report must not be trusted to validate a problem.
+    """
+    return context.evaluation.result.outcome != Outcome.ACCEPTED
+
+
 class _AbortGate:
     """Tracks which groups of a single solution must no longer run.
 
