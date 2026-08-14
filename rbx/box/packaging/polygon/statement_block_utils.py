@@ -1,18 +1,17 @@
-import pathlib
-import shutil
-import tempfile
 from typing import Callable, List, Optional, Tuple
 
+import rich.markup
 import typer
 
-from rbx import console, utils
+from rbx import console
 from rbx.box import package
 from rbx.box.exception import RbxException
 from rbx.box.lang import code_to_langs, is_valid_lang_code
-from rbx.box.statements import demacro_utils, polygon_utils
-from rbx.box.statements.build_statements import get_statement_dir
-from rbx.box.statements.demacro_utils import MacroDefinitions
-from rbx.box.statements.render import StatementBlocks
+from rbx.box.statements import polygon_utils
+from rbx.box.statements.export import (
+    StatementExportError,
+    get_processed_statement_blocks,
+)
 from rbx.box.statements.schema import Statement, StatementType
 
 
@@ -20,82 +19,6 @@ def _statement_label(statement: Statement) -> str:
     """A human-readable id for a problem statement (which has no ``name`` in v2 —
     it is identified by ``(language, variant)``)."""
     return f'{statement.language}/{statement.variant}'
-
-
-def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
-    assert statement.type == StatementType.rbxTeX
-    # The v2 overlay root is the single Polygon source dir; the substituted blocks
-    # (TikZ -> \includegraphics) live in blocks.sub.yml, written by the forced
-    # externalize build.
-    statement_dir = get_statement_dir(statement)
-    substituted_blocks_path = statement_dir / 'blocks.sub.yml'
-    if not substituted_blocks_path.is_file():
-        console.console.print(
-            f'Substituted blocks file [item]{substituted_blocks_path}[/item] does not exist. '
-            'Please run the command to build the statement again.',
-        )
-        raise typer.Exit(1)
-
-    statement_blocks = utils.model_from_yaml(
-        StatementBlocks, substituted_blocks_path.read_text()
-    )
-    return statement_blocks
-
-
-def get_processed_statement_blocks(statement: Statement) -> StatementBlocks:
-    statement_blocks = get_substituted_statement_blocks(statement)
-    overlay_dir = get_statement_dir(statement)
-    macros_file = overlay_dir / 'macros.json'
-    statement_dir = overlay_dir / 'polygon'
-    shutil.rmtree(statement_dir, ignore_errors=True)
-    statement_dir.mkdir(parents=True, exist_ok=True)
-
-    if not macros_file.is_file():
-        return statement_blocks
-
-    # Get macros and additional macros from defs block.
-    macros = MacroDefinitions.from_json_file(macros_file)
-    if 'defs' in statement_blocks.blocks:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_file = pathlib.Path(temp_dir) / 'defs.tex'
-            temp_file.write_text(statement_blocks.blocks['defs'])
-            defs_macros = demacro_utils.collect_macro_definitions(temp_file)
-            macros.merge(defs_macros)
-
-    # Filter out commands that are accepted by Polygon.
-    macros = macros.filter(polygon_utils.PolygonTeXConfig.default().allowed_commands)
-
-    # Expand macros in statement blocks and explanations.
-    statement_blocks.blocks = {
-        block_name: demacro_utils.expand_macros(block_content, macros)
-        for block_name, block_content in statement_blocks.blocks.items()
-    }
-    statement_blocks.explanations = {
-        explanation_index: demacro_utils.expand_macros(explanation, macros)
-        for explanation_index, explanation in statement_blocks.explanations.items()
-    }
-
-    # For last, try to convert to Polygon TeX.
-    statement_blocks.blocks = {
-        block_name: polygon_utils.convert_to_polygon_tex(
-            block_content, ignore_macros=True
-        )
-        for block_name, block_content in statement_blocks.blocks.items()
-    }
-    statement_blocks.explanations = {
-        explanation_index: polygon_utils.convert_to_polygon_tex(
-            explanation, ignore_macros=True
-        )
-        for explanation_index, explanation in statement_blocks.explanations.items()
-    }
-
-    # Save polygon blocks for debugging.
-    for block_name, block_content in statement_blocks.blocks.items():
-        (statement_dir / f'{block_name}.tex').write_text(block_content)
-    for explanation_index, explanation in statement_blocks.explanations.items():
-        (statement_dir / f'explanation_{explanation_index}.tex').write_text(explanation)
-
-    return statement_blocks
 
 
 def _get_statement_for_language(language: str) -> Optional[Statement]:
@@ -161,7 +84,16 @@ def validate_statements(main_language: Optional[str], upload_as_english: bool):
         console.console.print(
             f'Validating statement [item]{_statement_label(statement)}[/item] for language [item]{language}[/item]...'
         )
-        blocks = get_processed_statement_blocks(statement)
+        # `export` is a library and signals by raising; this is the CLI boundary
+        # where that becomes the house convention, exactly as `upload._build_bundle`
+        # does. Only StatementExportError -- its messages are already addressed to
+        # a problem setter, and anything else from the pipeline is a bug that
+        # should keep its traceback.
+        try:
+            blocks = get_processed_statement_blocks(statement)
+        except StatementExportError as e:
+            console.console.print(f'[error]{rich.markup.escape(str(e))}[/error]')
+            raise typer.Exit(1) from None
 
         errors: List[Tuple[str, List[polygon_utils.PolygonInvalidConstruct]]] = []
         for block_name, block_content in blocks.blocks.items():

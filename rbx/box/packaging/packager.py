@@ -85,8 +85,14 @@ class BasePackager(ABC):
 
     def statement_export_params(self) -> List[ConversionStep]:
         """Packager-forced statement conversion toggles applied at export time
-        (design §2 decision 6: externalize/demacro are not user schema). Default
-        is none; the Polygon packager overrides this."""
+        (design §2 decision 6: externalize/demacro are not user schema).
+
+        Returning the externalize+demacro steps is how a packager declares "I
+        consume statement *blocks*, not a PDF": the forced build is what writes
+        the ``blocks.sub.yml`` / ``macros.json`` / externalized TikZ PDFs that
+        ``rbx.box.statements.export.build_statement_bundle`` reads. A packager
+        that ships a PDF wants the default, which is none.
+        """
         return []
 
     @abstractmethod

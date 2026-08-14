@@ -7,6 +7,8 @@ from rbx.box.statements.texsoup_utils import (
     get_top_level_tikz_nodes,
     inject_externalization_for_tikz,
     inject_in_preamble,
+    rewrite_includegraphics,
+    strip_asset_ext,
 )
 
 
@@ -331,3 +333,76 @@ A
     s = str(soup)
     assert r'\begin{center}' not in s
     assert r'\includegraphics{p/nc_0}' in s
+
+
+def test_strip_asset_ext_drops_only_asset_extensions():
+    # Every recognized extension, asserted through behavior.
+    assert strip_asset_ext('img/diagram.png') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.jpg') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.jpeg') == 'img/diagram'
+    assert strip_asset_ext('img/diagram.pdf') == 'img/diagram'
+    # Matching is case-insensitive.
+    assert strip_asset_ext('img/diagram.PDF') == 'img/diagram'
+    assert strip_asset_ext('img/diagram') == 'img/diagram'
+    # Not an asset extension: left alone, dots and all.
+    assert strip_asset_ext('data.v2') == 'data.v2'
+
+
+def test_rewrite_includegraphics_subdir_reference():
+    out = rewrite_includegraphics(
+        r'see \includegraphics{img/diagram}.', {'img/diagram': 'img__diagram.png'}
+    )
+    assert r'\includegraphics{img__diagram.png}' in out
+
+
+def test_rewrite_includegraphics_root_level_reference():
+    # Audit finding #6: an unqualified (no subdirectory) reference is rewritten to
+    # the flat name instead of relying on the judge resolving the bare stem.
+    out = rewrite_includegraphics(r'\includegraphics{pic}', {'pic': 'pic.png'})
+    assert out.strip() == r'\includegraphics{pic.png}'
+
+
+def test_rewrite_includegraphics_no_double_extension():
+    out = rewrite_includegraphics(
+        r'\includegraphics{img/diagram.png}', {'img/diagram': 'img__diagram.png'}
+    )
+    assert r'\includegraphics{img__diagram.png}' in out
+    assert '.png.png' not in out
+
+
+def test_rewrite_includegraphics_preserves_optional_arg():
+    out = rewrite_includegraphics(
+        r'\includegraphics[width=0.5\textwidth]{pic}', {'pic': 'pic.png'}
+    )
+    assert r'[width=0.5\textwidth]' in out
+    assert r'{pic.png}' in out
+
+
+def test_rewrite_includegraphics_handles_multiple_nodes_and_prefix_collisions():
+    # The claim the parser exists to satisfy: several nodes in one block, with a
+    # remap key that is a prefix of another. A naive str.replace of `pic` would
+    # corrupt `pic2` into `a.png2` (or vice versa, depending on ordering).
+    out = rewrite_includegraphics(
+        r'\includegraphics{pic} then \includegraphics{pic2}',
+        {'pic': 'a.png', 'pic2': 'b.png'},
+    )
+    assert r'\includegraphics{a.png}' in out
+    assert r'\includegraphics{b.png}' in out
+    assert 'a.png2' not in out
+    assert 'pic' not in out
+
+
+def test_rewrite_includegraphics_leaves_unmapped_untouched():
+    # Regression guard: externalized-TikZ references emitted by
+    # replace_labeled_tikz_nodes must survive an asset remap untouched (and this
+    # exercises a multi-segment extensionless path through strip_asset_ext).
+    block = r'\includegraphics{artifacts/tikz_figures/0_0}'
+    assert rewrite_includegraphics(block, {'pic': 'pic.png'}).strip() == block
+
+
+def test_rewrite_includegraphics_empty_remap_is_identity():
+    # `is`, not `==`: a TexSoup parse/serialize round-trip is not guaranteed
+    # byte-identical, so returning the input untouched is a deliberate
+    # no-round-trip guarantee for callers with nothing to rewrite.
+    block = r'\includegraphics{pic}'
+    assert rewrite_includegraphics(block, {}) is block

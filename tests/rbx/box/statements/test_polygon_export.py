@@ -51,7 +51,7 @@ async def test_get_produced_tikz_pdfs_globs_externalization_dir(
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
 async def test_get_processed_statement_blocks_reads_overlay(cleandir_with_testdata):
-    from rbx.box.packaging.polygon import statement_block_utils as sbu
+    from rbx.box.statements import export as sbu
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()
@@ -77,7 +77,7 @@ async def test_get_processed_statement_blocks_reads_overlay(cleandir_with_testda
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
 async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdata):
-    from rbx.box.packaging.polygon import statement_block_utils as sbu
+    from rbx.box.statements import export as sbu
     from rbx.box.statements.demacro_utils import MacroDefinitions
 
     with cd.new_package_cd(pathlib.Path('A')):
@@ -104,8 +104,112 @@ async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdat
 
 
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
-async def test_collect_assets_scopes_statement_subtree(cleandir_with_testdata):
-    from rbx.box.packaging.polygon.upload import _collect_assets
+async def test_processed_blocks_normalize_without_a_macros_file(
+    cleandir_with_testdata,
+):
+    from rbx.box.statements import export
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        await build_statements.build_statement(
+            st,
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        # No macros.json: the demacro pass did not run. `normalize=True` must
+        # still mean what it says -- expanding against an empty macro set is a
+        # no-op, but the Polygon conversion is not.
+        assert not (build_statements.get_statement_dir(st) / 'macros.json').exists()
+
+        blocks = export.get_processed_statement_blocks(st)
+
+        assert '\\(' not in blocks.blocks['notes']
+        assert '$n \\le 10$' in blocks.blocks['notes']
+        # The defs block is collected and expanded here too: it lives in
+        # blocks.sub.yml, not in macros.json, so its absence never justified
+        # leaving \NN unexpanded.
+        assert '\\NN' not in blocks.blocks['notes']
+        assert 'mathbb' in blocks.blocks['notes']
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_processed_blocks_skip_polygon_conversion_when_not_normalizing(
+    cleandir_with_testdata,
+):
+    from rbx.box.statements import export
+    from rbx.box.statements.demacro_utils import MacroDefinitions
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        await build_statements.build_statement(
+            st,
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        MacroDefinitions().to_json_file(
+            build_statements.get_statement_dir(st) / 'macros.json'
+        )
+
+        normalized = export.get_processed_statement_blocks(st)
+        raw = export.get_processed_statement_blocks(st, normalize=False)
+
+        # The Polygon conversion rewrites \( ... \) into $ ... $ ... (the notes
+        # block is authored in
+        # rbx/testdata/contests/statements_v2_polygon/A/statement/statement.rbx.tex)
+        assert '\\(' not in normalized.blocks['notes']
+        assert '$n \\le 10$' in normalized.blocks['notes']
+        # ... and normalize=False leaves it alone.
+        assert '\\(n \\le 10\\)' in raw.blocks['notes']
+        # Macro expansion is not part of the conversion: it runs either way.
+        assert '\\NN' not in raw.blocks['notes']
+        assert 'mathbb' in raw.blocks['notes']
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_processed_blocks_dump_survives_a_non_normalizing_call(
+    cleandir_with_testdata,
+):
+    from rbx.box.statements import export
+    from rbx.box.statements.demacro_utils import MacroDefinitions
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        await build_statements.build_statement(
+            st,
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        MacroDefinitions().to_json_file(
+            build_statements.get_statement_dir(st) / 'macros.json'
+        )
+
+        export.get_processed_statement_blocks(st)
+
+        # The debug dump lands in <overlay>/export/, one file per block.
+        dump_dir = build_statements.get_statement_dir(st) / 'export'
+        assert (dump_dir / 'notes.tex').is_file()
+        dumped = (dump_dir / 'notes.tex').read_text()
+
+        # A call that writes nothing must not wipe what the last one wrote.
+        export.get_processed_statement_blocks(st, normalize=False)
+        assert (dump_dir / 'notes.tex').read_text() == dumped
+
+
+@pytest.mark.test_pkg('contests/statements_v2_polygon')
+async def test_resolved_assets_scope_statement_subtree(cleandir_with_testdata):
+    from rbx.box.statements import export
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()
@@ -117,12 +221,15 @@ async def test_collect_assets_scopes_statement_subtree(cleandir_with_testdata):
         (pathlib.Path('statement') / 'imgs' / 'fig.png').write_bytes(b'x')
         (pathlib.Path('statement') / 'notes.txt').write_bytes(b'x')
 
-        uploads, remaps = _collect_assets(st, set())
+        assets = export.resolve_assets(st, set())
+        layout = export.FlatLayout()
+        names = {str(layout.place_asset(asset)): asset.source for asset in assets}
+        remap = export.derive_remap(assets, layout, export.DocumentSlot.body())
 
         # The image is uploaded under a flattened name and remapped by its
         # statement-dir-relative, extensionless reference.
-        assert 'imgs__fig.png' in uploads
-        assert uploads['imgs__fig.png'].is_file()
-        assert remaps.statement['imgs/fig'] == 'imgs__fig.png'
+        assert 'imgs__fig.png' in names
+        assert names['imgs__fig.png'].is_file()
+        assert remap['imgs/fig'] == 'imgs__fig.png'
         # The statement source and the non-image source are NOT resources.
-        assert not any(name.endswith(('.rbx.tex', '.txt')) for name in uploads)
+        assert not any(name.endswith(('.rbx.tex', '.txt')) for name in names)

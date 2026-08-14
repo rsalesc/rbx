@@ -1,169 +1,309 @@
-"""Unit tests for the scoped statement-resource collection + reference rewriting
-that backs the explicit `assets` field (#595, audit findings #5/#6)."""
+"""The Polygon upload's statement resources, asserted through the bundle it now
+consumes (#595, audit findings #5/#6).
+
+These are port guards: `upload.py` used to resolve, name and rewrite its own
+assets, and the extraction into `rbx.box.statements.export` must not change a
+single uploaded resource name -- a live Polygon problem references them by name.
+The one intended difference is pinned in
+`test_out_of_tree_assets_are_now_remapped` (design §7).
+"""
 
 import pathlib
+from typing import List, Tuple
 
-from rbx import utils
+import pytest
+import typer
+
 from rbx.box.packaging.polygon import upload
+from rbx.box.statements import export
+from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import Statement
 
-# ---------------------------------------------------------------------------
-# Pure helpers: glob resolution + flat naming (Task 3)
-# ---------------------------------------------------------------------------
 
-
-def test_resolve_asset_globs_dedup_sorted_files_only(tmp_path):
-    (tmp_path / 'a').mkdir()
-    (tmp_path / 'a' / 'x.png').touch()
-    (tmp_path / 'a' / 'y.png').touch()
-    (tmp_path / 'b.png').touch()
-    (tmp_path / 'a' / 'sub').mkdir()  # a directory matched by ** but skipped
-
-    out = upload._resolve_asset_globs(tmp_path, ['**/*.png', 'a/*.png'])  # noqa: SLF001
-
-    assert out == [
-        utils.abspath(tmp_path / 'a' / 'x.png'),
-        utils.abspath(tmp_path / 'a' / 'y.png'),
-        utils.abspath(tmp_path / 'b.png'),
-    ]
-
-
-def test_flat_name_and_remap_key():
-    assert upload._flat_name(pathlib.Path('img/diagram.png')) == 'img__diagram.png'  # noqa: SLF001
-    assert upload._flat_name(pathlib.Path('pic.png')) == 'pic.png'  # noqa: SLF001
-    assert upload._remap_key(pathlib.Path('img/diagram.png')) == 'img/diagram'  # noqa: SLF001
-    assert upload._remap_key(pathlib.Path('pic.png')) == 'pic'  # noqa: SLF001
-
-
-def test_image_files_under_filters_non_images(tmp_path):
-    (tmp_path / 'p.png').touch()
-    (tmp_path / 'doc.PDF').touch()  # case-insensitive extension
-    (tmp_path / 's.in').touch()
-    (tmp_path / 'e.rbx.tex').touch()
-
-    assert upload._image_files_under(tmp_path) == [  # noqa: SLF001
-        tmp_path / 'doc.PDF',
-        tmp_path / 'p.png',
-    ]
-
-
-def test_image_files_under_missing_dir_returns_empty(tmp_path):
-    assert upload._image_files_under(tmp_path / 'nope') == []  # noqa: SLF001
-
-
-# ---------------------------------------------------------------------------
-# TexSoup-based \includegraphics rewrite (Task 4, fixes audit finding #6)
-# ---------------------------------------------------------------------------
-
-
-def _rewrite(block, remap):
-    return upload._rewrite_includegraphics(block, remap)  # noqa: SLF001
-
-
-def test_rewrite_subdir_reference():
-    out = _rewrite(
-        r'see \includegraphics{img/diagram}.', {'img/diagram': 'img__diagram.png'}
+def _stub_blocks(monkeypatch, blocks=None, explanations=None):
+    monkeypatch.setattr(
+        export,
+        'get_processed_statement_blocks',
+        lambda statement, normalize=True: StatementBlocks(
+            blocks=dict(blocks or {}),
+            explanations=dict(explanations or {}),
+        ),
     )
-    assert r'\includegraphics{img__diagram.png}' in out
 
 
-def test_rewrite_root_level_reference():
-    # Finding #6 uniformity: a root-level reference is rewritten to the flat name
-    # instead of relying on Polygon resolving the bare stem.
-    out = _rewrite(r'\includegraphics{pic}', {'pic': 'pic.png'})
-    assert out.strip() == r'\includegraphics{pic.png}'
-
-
-def test_rewrite_with_extension_no_double_ext():
-    # Finding #6: a sub-dir asset referenced WITH its extension must not become
-    # `imgs__fig.png.png`.
-    out = _rewrite(r'\includegraphics{imgs/fig.png}', {'imgs/fig': 'imgs__fig.png'})
-    assert 'imgs__fig.png.png' not in out
-    assert r'\includegraphics{imgs__fig.png}' in out
-
-
-def test_rewrite_preserves_optional_arg():
-    out = _rewrite(r'\includegraphics[width=1cm]{pic}', {'pic': 'pic.png'})
-    assert r'\includegraphics[width=1cm]{pic.png}' in out
-
-
-def test_rewrite_leaves_unmapped_untouched():
-    src = r'\includegraphics{artifacts/tikz_figures/0_0}'
-    assert _rewrite(src, {'pic': 'pic.png'}).strip() == src
-
-
-def test_rewrite_empty_remap_is_identity():
-    src = r'text \includegraphics{pic} more'
-    assert _rewrite(src, {}) == src
-
-
-# ---------------------------------------------------------------------------
-# Scoped collection: statement / sample / out-of-tree (Task 5, findings #5/#6)
-# ---------------------------------------------------------------------------
-
-
-def test_collect_assets_three_scopes(tmp_path, monkeypatch):
-    # Package root layout.
+def _simple_tree(tmp_path, monkeypatch, *, explanations=None, blocks=None):
+    """The fixture the pre-extraction test used, verbatim."""
     (tmp_path / 'statement' / 'img').mkdir(parents=True)
     (tmp_path / 'statement' / 'img' / 'd.png').touch()
     (tmp_path / 'statement' / 'pic.png').touch()
+    (tmp_path / 'statement' / 'statement.rbx.tex').touch()  # source, dropped
     (tmp_path / 'statement' / 'samples').mkdir()
-    (tmp_path / 'statement' / 'samples' / '000.in').touch()  # noise, must be dropped
-    (tmp_path / 'statement' / 'statement.rbx.tex').touch()  # source, must be dropped
+    (tmp_path / 'statement' / 'samples' / '000.in').touch()  # noise, dropped
     (tmp_path / 'extra').mkdir()
     (tmp_path / 'extra' / 'logo.png').touch()  # out-of-tree, declared via assets
 
-    # Fake built overlay with a staged external sample image.
     overlay = tmp_path / 'build' / 'overlay'
     (overlay / '.samples' / '000').mkdir(parents=True)
     (overlay / '.samples' / '000' / 'diagram.png').touch()
-    (overlay / '.samples' / '000' / 'in').touch()  # noise, must be dropped
+    (overlay / '.samples' / '000' / 'in').touch()  # noise, dropped
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(upload, 'get_statement_dir', lambda statement: overlay)
-    monkeypatch.setattr(upload, 'get_produced_tikz_pdfs', lambda statement: [])
+    monkeypatch.setattr(export, 'get_statement_dir', lambda statement: overlay)
+    monkeypatch.setattr(export, 'get_produced_tikz_pdfs', lambda statement: [])
+    _stub_blocks(monkeypatch, blocks=blocks, explanations=explanations or {0: ''})
 
-    statement = Statement(
+    return Statement(
         language='en',
         file=pathlib.Path('statement/statement.rbx.tex'),
         assets=['extra/logo.png'],
     )
 
-    uploads, remaps = upload._collect_assets(statement, {0})  # noqa: SLF001
 
-    assert set(uploads) == {
+def _bundle(statement) -> export.StatementBundle:
+    """The bundle Polygon actually uploads.
+
+    Goes through `upload._build_bundle` rather than picking a layout here, so the
+    frozen resource names below stay pinned to the binding that ships: a change
+    of layout in `upload.py` must fail these tests, not slip past them.
+    """
+    return upload._build_bundle(statement)  # noqa: SLF001
+
+
+def test_polygon_bundle_reproduces_the_expected_flat_resource_set(
+    tmp_path, monkeypatch
+):
+    bundle = _bundle(_simple_tree(tmp_path, monkeypatch))
+
+    assert {str(a.dest) for a in bundle.assets} == {
         'img__d.png',
         'pic.png',
         'extra__logo.png',
         'sample_0__diagram.png',
     }
     # No sample I/O or statement source leaks in (finding #5).
-    assert not any(name.endswith(('.in', '.rbx.tex')) for name in uploads)
-    # Statement-scope remap is statement-dir-relative; out-of-tree is NOT remapped.
-    assert remaps.statement == {'img/d': 'img__d.png', 'pic': 'pic.png'}
-    # Sample-scope remap is per-index, sample-dir-relative, namespaced.
-    assert remaps.samples == {0: {'diagram': 'sample_0__diagram.png'}}
+    assert not any(str(a.dest).endswith(('.in', '.rbx.tex')) for a in bundle.assets)
 
 
-def test_collect_assets_explicit_asset_under_statement_dir(tmp_path, monkeypatch):
-    # A non-default extension under the statement dir is shipped only because it
-    # is declared via `assets` (defaults cover image/PDF only).
-    (tmp_path / 'statement').mkdir()
+def test_out_of_tree_assets_are_now_remapped(tmp_path, monkeypatch):
+    # Design §7: previously the author had to spell the uploaded flat name by
+    # hand, because out-of-tree `assets` got no remap at all. They now get one,
+    # keyed on their package-root-relative path.
+    bundle = _bundle(_simple_tree(tmp_path, monkeypatch))
+
+    assert bundle.remaps[export.DocumentSlot.body()] == {
+        'img/d': 'img__d.png',
+        'pic': 'pic.png',
+        'extra/logo': 'extra__logo.png',
+    }
+
+
+# ---------------------------------------------------------------------------
+# Name preservation on a realistic tree
+# ---------------------------------------------------------------------------
+
+
+def _realistic_tree(tmp_path, monkeypatch, *, blocks=None, explanations=None):
+    """Every scope at once: statement images in a subdir, a non-image asset
+    declared explicitly, a recursive out-of-tree glob, externalized TikZ, and a
+    sample with a nested image."""
+    (tmp_path / 'statement' / 'img').mkdir(parents=True)
+    (tmp_path / 'statement' / 'img' / 'd.png').write_bytes(b'd')
+    (tmp_path / 'statement' / 'pic.png').write_bytes(b'pic')
+    (tmp_path / 'statement' / 'figure.svg').write_bytes(b'svg')
     (tmp_path / 'statement' / 'statement.rbx.tex').touch()
-    (tmp_path / 'statement' / 'figure.svg').touch()
+    (tmp_path / 'statement' / 'samples').mkdir()
+    (tmp_path / 'statement' / 'samples' / '000.in').touch()
+    (tmp_path / 'extra' / 'deep').mkdir(parents=True)
+    (tmp_path / 'extra' / 'deep' / 'logo.png').write_bytes(b'logo')
 
-    overlay = tmp_path / 'overlay'
-    overlay.mkdir()
+    overlay = tmp_path / 'build' / 'overlay'
+    (overlay / '.samples' / '000' / 'sub').mkdir(parents=True)
+    (overlay / '.samples' / '000' / 'diagram.png').write_bytes(b'diagram')
+    (overlay / '.samples' / '000' / 'sub' / 'e.pdf').write_bytes(b'e')
+    (overlay / '.samples' / '000' / 'in').touch()
+    tikz = overlay / 'artifacts' / 'tikz_figures'
+    tikz.mkdir(parents=True)
+    (tikz / 'i_0.pdf').write_bytes(b'tikz')
+
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(upload, 'get_statement_dir', lambda statement: overlay)
-    monkeypatch.setattr(upload, 'get_produced_tikz_pdfs', lambda statement: [])
+    monkeypatch.setattr(export, 'get_statement_dir', lambda statement: overlay)
+    monkeypatch.setattr(
+        export,
+        'get_produced_tikz_pdfs',
+        lambda statement: [
+            (tikz / 'i_0.pdf', pathlib.Path('artifacts/tikz_figures/i_0.pdf'))
+        ],
+    )
+    _stub_blocks(monkeypatch, blocks=blocks, explanations=explanations or {0: ''})
 
+    return Statement(
+        language='en',
+        file=pathlib.Path('statement/statement.rbx.tex'),
+        # A recursive glob, a non-image extension, and a duplicate of a file the
+        # image/PDF default already picks up.
+        assets=['extra/**/*.png', 'statement/figure.svg', 'statement/img/d.png'],
+    )
+
+
+#: What `upload.py:_collect_assets` produced for `_realistic_tree` before the
+#: extraction. Frozen on purpose: these strings are the resource names a live
+#: Polygon problem's statement references.
+_EXPECTED_UPLOADED_NAMES = [
+    'artifacts__tikz_figures__i_0.pdf',
+    'extra__deep__logo.png',
+    'figure.svg',
+    'img__d.png',
+    'pic.png',
+    'sample_0__diagram.png',
+    'sample_0__sub__e.pdf',
+]
+
+
+def test_uploaded_resource_names_are_unchanged_on_a_realistic_tree(
+    tmp_path, monkeypatch
+):
+    bundle = _bundle(_realistic_tree(tmp_path, monkeypatch))
+
+    assert sorted(str(a.dest) for a in bundle.assets) == _EXPECTED_UPLOADED_NAMES
+
+
+def test_realistic_tree_remaps_preserve_the_old_rewrites(tmp_path, monkeypatch):
+    bundle = _bundle(_realistic_tree(tmp_path, monkeypatch))
+
+    # The old `_AssetRemaps.statement` (statement + TikZ scopes), plus the
+    # out-of-tree entry it lacked (design §7).
+    assert bundle.remaps[export.DocumentSlot.body()] == {
+        'img/d': 'img__d.png',
+        'pic': 'pic.png',
+        'figure': 'figure.svg',
+        'artifacts/tikz_figures/i_0': 'artifacts__tikz_figures__i_0.pdf',
+        'extra/deep/logo': 'extra__deep__logo.png',
+    }
+    # The old per-explanation merge (statement remap updated with the sample's)
+    # is now what `derive_remap` yields for the sample slot.
+    assert bundle.remaps[export.DocumentSlot.sample(0)] == {
+        'img/d': 'img__d.png',
+        'pic': 'pic.png',
+        'figure': 'figure.svg',
+        'artifacts/tikz_figures/i_0': 'artifacts__tikz_figures__i_0.pdf',
+        'extra/deep/logo': 'extra__deep__logo.png',
+        'diagram': 'sample_0__diagram.png',
+        'sub/e': 'sample_0__sub__e.pdf',
+    }
+
+
+def test_blocks_and_explanations_arrive_rewritten(tmp_path, monkeypatch):
+    statement = _realistic_tree(
+        tmp_path,
+        monkeypatch,
+        blocks={'legend': r'A \includegraphics[width=1cm]{img/d} B'},
+        explanations={0: r'See \includegraphics{diagram}.'},
+    )
+    bundle = _bundle(statement)
+
+    assert bundle.blocks['legend'] == r'A \includegraphics[width=1cm]{img__d.png} B'
+    assert bundle.explanations[0] == r'See \includegraphics{sample_0__diagram.png}.'
+
+
+# ---------------------------------------------------------------------------
+# The upload itself (`_upload_statement_resources`)
+# ---------------------------------------------------------------------------
+
+
+class _FakeProblem:
+    def __init__(self):
+        self.saved: List[Tuple[str, bytes]] = []
+
+    def save_statement_resource(self, name, file):
+        self.saved.append((name, file))
+
+
+def test_every_resource_is_uploaded_under_its_flat_name(tmp_path, monkeypatch):
+    bundle = _bundle(_realistic_tree(tmp_path, monkeypatch))
+    problem = _FakeProblem()
+
+    upload._upload_statement_resources(problem, bundle)  # pyright: ignore # noqa: SLF001
+
+    # Names AND bytes as one object: two assets swapping sources under the same
+    # pair of names would otherwise pass. `_realistic_tree` writes distinguishing
+    # bytes into every file for exactly this. Order is asserted separately --
+    # uploads run on a thread pool, so completion order is not deterministic.
+    assert dict(problem.saved) == {
+        'artifacts__tikz_figures__i_0.pdf': b'tikz',
+        'extra__deep__logo.png': b'logo',
+        'figure.svg': b'svg',
+        'img__d.png': b'd',
+        'pic.png': b'pic',
+        'sample_0__diagram.png': b'diagram',
+        'sample_0__sub__e.pdf': b'e',
+    }
+    assert sorted(name for name, _ in problem.saved) == _EXPECTED_UPLOADED_NAMES
+
+
+def test_resources_are_submitted_in_flat_name_order(tmp_path, monkeypatch):
+    # The submission order is the order the setter sees printed, and it was
+    # preserved deliberately across the export extraction. Pinning it needs a
+    # single worker: with the real pool the fake records completion order, which
+    # is a race, not a contract.
+    monkeypatch.setattr(upload, 'MAX_WORKERS', 1)
+    bundle = _bundle(_realistic_tree(tmp_path, monkeypatch))
+    problem = _FakeProblem()
+
+    upload._upload_statement_resources(problem, bundle)  # pyright: ignore # noqa: SLF001
+
+    assert [name for name, _ in problem.saved] == _EXPECTED_UPLOADED_NAMES
+
+
+def test_oversized_resource_aborts_the_upload(tmp_path, monkeypatch):
+    statement = _simple_tree(tmp_path, monkeypatch)
+    (tmp_path / 'statement' / 'pic.png').write_bytes(b'x' * (1024 * 1024))
+    bundle = _bundle(statement)
+    problem = _FakeProblem()
+
+    with pytest.raises(typer.Exit):
+        upload._upload_statement_resources(problem, bundle)  # pyright: ignore # noqa: SLF001
+
+    # Aborted at the offending resource: neither it nor anything after it in
+    # submission order was handed to the API.
+    uploaded = [name for name, _ in problem.saved]
+    assert 'pic.png' not in uploaded
+    assert 'sample_0__diagram.png' not in uploaded
+
+
+# ---------------------------------------------------------------------------
+# Error surface at the CLI boundary
+# ---------------------------------------------------------------------------
+
+
+def test_colliding_assets_exit_instead_of_raising(tmp_path, monkeypatch):
+    _simple_tree(tmp_path, monkeypatch)
+    # `extra/logo.png` and a root-level `extra__logo.png` flatten to the same
+    # uploaded name, so `_check_destination_collisions` rejects the bundle. A
+    # setter must see an error message, not a `ValueError` traceback.
+    (tmp_path / 'extra__logo.png').write_bytes(b'other')
     statement = Statement(
         language='en',
         file=pathlib.Path('statement/statement.rbx.tex'),
-        assets=['statement/figure.svg'],
+        assets=['extra/logo.png', 'extra__logo.png'],
     )
-    uploads, remaps = upload._collect_assets(statement, set())  # noqa: SLF001
 
-    assert set(uploads) == {'figure.svg'}
-    assert remaps.statement == {'figure': 'figure.svg'}
+    with pytest.raises(typer.Exit):
+        upload._build_bundle(statement)  # noqa: SLF001
+
+
+def test_ambiguous_references_exit_instead_of_raising(tmp_path, monkeypatch):
+    _simple_tree(tmp_path, monkeypatch)
+    # `logo.svg` and `logo.eps` both reduce to the reference `logo` and rank the
+    # same (neither extension is in graphicx's precedence list), so precedence
+    # has nothing to decide with -- the other guard. It must reach the setter as
+    # a message too, not as a `ValueError` traceback.
+    (tmp_path / 'statement' / 'logo.svg').write_bytes(b'svg')
+    (tmp_path / 'statement' / 'logo.eps').write_bytes(b'eps')
+    statement = Statement(
+        language='en',
+        file=pathlib.Path('statement/statement.rbx.tex'),
+        assets=['statement/logo.svg', 'statement/logo.eps'],
+    )
+
+    with pytest.raises(typer.Exit):
+        upload._build_bundle(statement)  # noqa: SLF001

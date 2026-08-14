@@ -1,9 +1,14 @@
-from typing import List, Optional, Tuple
+import pathlib
+from typing import List, Mapping, Optional, Tuple
 
 from TexSoup import TexSoup
-from TexSoup.data import TexNode
+from TexSoup.data import BraceGroup, BracketGroup, TexNode
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
+
+# Extensions an ``\includegraphics`` argument may carry (LaTeX resolves the
+# reference with or without one).
+ASSET_EXTS = ('.png', '.jpg', '.jpeg', '.pdf')
 
 # TexSoup bug workaround: \$ is valid LaTeX (literal dollar sign) but TexSoup
 # interprets the $ as opening math mode and fails with EOFError.
@@ -188,3 +193,41 @@ def replace_labeled_tikz_nodes(
             cmd_str = f'\\begin{{center}}{cmd_str}\\end{{center}}'
         label_node.delete()
         tikz_node.replace_with(*TexSoup(cmd_str).contents)
+
+
+def strip_asset_ext(ref: str) -> str:
+    """Drop a trailing image/PDF extension from an ``\\includegraphics`` argument
+    so it lines up with an (extensionless) reference key."""
+    path = pathlib.Path(ref)
+    return str(path.with_suffix('')) if path.suffix.lower() in ASSET_EXTS else ref
+
+
+def rewrite_includegraphics(block: str, remap: Mapping[str, str]) -> str:
+    """Rewrite every ``\\includegraphics[opts]{ref}`` whose ``ref`` (with any
+    image/PDF extension stripped) is a key in ``remap`` to the mapped reference,
+    preserving optional arguments and all surrounding text.
+
+    ``remap`` is keyed by extensionless reference and valued by whatever the
+    target layout calls the asset (a flattened ``img__diagram.png``, a relative
+    ``img/diagram.png`` — the rewrite does not care).
+
+    Parser-based (TexSoup) rather than a naive ``str.replace``: substitutions are
+    order-independent and free of substring collisions (remapping both ``pic``
+    and ``pic2`` cannot corrupt either), and — by stripping the extension before
+    lookup — a reference written *with* its extension never gains a second one
+    (``fig.png.png``)."""
+    if not remap:
+        return block
+    soup = parse_latex(block)
+    for node in list(soup.find_all('includegraphics')):
+        brace = next((arg for arg in node.args if isinstance(arg, BraceGroup)), None)
+        if brace is None:
+            continue
+        target = remap.get(strip_asset_ext(str(brace.string)))
+        if target is None:
+            continue
+        opts = ''.join(
+            f'[{arg.string}]' for arg in node.args if isinstance(arg, BracketGroup)
+        )
+        node.replace_with(*parse_latex(f'\\includegraphics{opts}{{{target}}}').contents)
+    return str(soup)
