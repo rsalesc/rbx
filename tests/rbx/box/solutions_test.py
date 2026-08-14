@@ -249,8 +249,8 @@ def mock_skeleton(tmp_path, mock_limits):
 
 def make_evaluation(
     outcome: Outcome,
-    time_ms: int = 100,
-    memory_bytes: int = 1024,
+    time_ms: Optional[int] = 100,
+    memory_bytes: Optional[int] = 1024,
     message: str = '',
     no_tle_outcome: Optional[Outcome] = None,
     sanitizer_warnings: bool = False,
@@ -265,7 +265,7 @@ def make_evaluation(
             sanitizer_warnings=sanitizer_warnings,
         ),
         log=TestcaseLog(
-            time=time_ms / 1000.0,
+            time=time_ms / 1000.0 if time_ms is not None else None,
             memory=memory_bytes,
         ),
         testcase=TestcaseIO(index=testcase_index),
@@ -369,6 +369,17 @@ def make_run_result(
 
         return Deferred(fn)
 
+    def make(outcome: Outcome, index: int) -> Evaluation:
+        # A skipped testcase never entered the sandbox, so it carries no time
+        # and no memory -- exactly what the runner records for one.
+        unmeasured = outcome == Outcome.SKIPPED
+        return make_evaluation(
+            outcome,
+            time_ms=None if unmeasured else 100,
+            memory_bytes=None if unmeasured else 1024,
+            testcase_index=index,
+        )
+
     return RunSolutionResult(
         skeleton=skeleton,
         items=[
@@ -376,9 +387,9 @@ def make_run_result(
                 solution=solution,
                 testcase_entry=entry.group_entry,
                 eval=resolved(
-                    make_evaluation(
+                    make(
                         verdicts[entry.group_entry.key()],
-                        testcase_index=entry.group_entry.index,
+                        entry.group_entry.index,
                     )
                 ),
             )
@@ -1979,3 +1990,77 @@ async def test_live_reporter_counts_a_skipped_testcase_as_evaluated(
     (group_line,) = rendered_group_lines(console)
     assert '/..' not in group_line
     assert group_line.startswith('group1 (3) 1/✗ 2/⊘ ')
+
+
+async def test_fully_skipped_group_reports_no_time_instead_of_zero(
+    mock_problem_root, mock_binary_scoring
+):
+    """Nothing ran, so there is nothing to report. A `0 ms` here would read as
+    'instant' -- the most flattering number available -- for a group that was
+    never even attempted."""
+    solution = Solution(
+        path=pathlib.Path('slow.cpp'), outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    (group_line,) = rendered_group_lines(console)
+    assert '0 ms' not in group_line
+    assert '0 B' not in group_line
+    assert group_line.endswith('(-, -)')
+
+
+async def test_partially_skipped_group_still_reports_the_measured_maximum(
+    mock_problem_root, mock_binary_scoring
+):
+    """Dropping the unmeasured testcases must not drop the measured ones."""
+    solution = Solution(path=pathlib.Path('wa.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.WRONG_ANSWER, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    (group_line,) = rendered_group_lines(console)
+    assert group_line.endswith('(100 ms, 1 KiB)')
+
+
+async def test_detailed_table_does_not_time_a_fully_skipped_group(
+    mock_problem_root, mock_binary_scoring
+):
+    """The summary row of the detailed table reads the same helpers."""
+    solution = Solution(
+        path=pathlib.Path('slow.cpp'), outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    await _render_detailed_group_table(
+        skeleton.groups[0],
+        skeleton,
+        reporter.structured_evaluations,
+        console,
+        verification=VerificationLevel.FULL,
+    )
+
+    text = ' '.join(console.export_text(clear=False).split())
+    assert '0 ms' not in text
+    assert '0 B' not in text
