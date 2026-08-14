@@ -1784,3 +1784,51 @@ async def test_abort_skips_every_later_testcase_of_that_solution(
 
     # The sandbox is never entered for a skipped testcase.
     assert runs == len(accepted_outcomes) + first_skip
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_abort_skips_dependent_groups_but_not_independent_ones(
+    pkg_from_testdata: pathlib.Path,
+):
+    # `abort-groups` is points-scored with `small` <- `mid` <- `late` and a
+    # fourth group depending on nothing, so this crosses group boundaries: it is
+    # what tells a per-solution gate apart from a per-group one.
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    result = await run_solutions(
+        verification=VerificationLevel.FULL,
+        abort_on=lambda ctx: ctx.evaluation.result.outcome != Outcome.ACCEPTED,
+    )
+    res = await convert_list_of_solution_evaluations_to_dict(
+        result.skeleton, result.items
+    )
+
+    def outcomes(solution_index: int, group: str) -> List[Outcome]:
+        return [ev.result.outcome for ev in res[solution_index][group]]
+
+    groups = ['small', 'mid', 'late', 'independent']
+
+    # The main solution passes everything and never trips the gate.
+    for group in groups:
+        assert outcomes(0, group) == [Outcome.ACCEPTED] * len(res[0][group])
+
+    # `wa.sol.cpp` is wrong on the very first testcase of `small`.
+    assert outcomes(1, 'small') == [
+        Outcome.WRONG_ANSWER,
+        Outcome.SKIPPED,
+        Outcome.SKIPPED,
+    ]
+    # The direct dependent is skipped whole, even though it is a later group.
+    assert outcomes(1, 'mid') == [Outcome.SKIPPED, Outcome.SKIPPED]
+    # And so is the indirect one.
+    assert outcomes(1, 'late') == [Outcome.SKIPPED, Outcome.SKIPPED]
+    # But a group that depends on nothing can still score, so it still runs.
+    assert outcomes(1, 'independent') == [Outcome.ACCEPTED, Outcome.ACCEPTED]
+
+    # The gate belongs to one solution: the next one is judged from scratch.
+    for group in groups:
+        assert outcomes(2, group) == [Outcome.ACCEPTED] * len(res[2][group])
