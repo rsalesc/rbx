@@ -47,8 +47,9 @@ description = "Run slow tests"
 run = "pytest -m 'slow and not docker'"
 
 [tasks.test-docker]
-description = "Run docker tests"
-run = "pytest -m 'docker' -v -s"
+description = "Run docker tests (disabled by default, opt in via RBX_DOCKER_TESTS)"
+env = { RBX_DOCKER_TESTS = "1" }
+run = "pytest tests/docker -m 'docker' -v -s"
 
 [tasks.bump]
 description = "Commitizen bump (asks to confirm) + push tags"

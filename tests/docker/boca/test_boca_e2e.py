@@ -1,4 +1,10 @@
-"""End-to-end tests for BOCA packaging functionality."""
+"""End-to-end tests for BOCA packaging functionality.
+
+Disabled by default: ``tests/docker/conftest.py`` skips collection of this
+whole subtree unless ``RBX_DOCKER_TESTS=1`` is set, and the module-level
+``skipif`` below is a second gate in case collection happens anyway.
+Run them with ``mise run test-docker``.
+"""
 
 import datetime
 import os
@@ -25,6 +31,9 @@ from rbx.box.schema import Solution
 from rbx.box.testing import testing_package
 from rbx.box.tooling.boca import scraper
 from rbx.box.tooling.boca.scraper import BocaScraper
+from tests.docker.conftest import DISABLED_REASON, DOCKER_TESTS_ENABLED
+
+pytestmark = pytest.mark.skipif(not DOCKER_TESTS_ENABLED, reason=DISABLED_REASON)
 
 
 @pytest.fixture(scope='session')
