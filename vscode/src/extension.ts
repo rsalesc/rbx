@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
+import { initLog, log } from './log';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
 import { RunTreeProvider } from './runTree';
 
@@ -27,6 +28,8 @@ function packageRootOf(fsPath: string): string | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  initLog(context);
+  log('rbx extension activated.');
   const tree = new RunTreeProvider();
 
   context.subscriptions.push(

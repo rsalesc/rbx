@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { discoverPackages, packageLabel } from './discovery';
+import { log } from './log';
 import { PackageLayout } from './rbx/layout';
 import { expectedShortName, isAccepted, matches, shortName } from './rbx/outcome';
 import {
@@ -177,10 +178,38 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
 
   private packages: PackageLayout[] = [];
   private readonly stores = new Map<string, ArtifactStore>();
+  /**
+   * In-flight or completed discovery.
+   *
+   * Discovery must be tracked explicitly rather than inferred from
+   * `packages.length`: a workspace with no rbx package is a legitimate steady
+   * state, and re-running discovery whenever the list is empty would have
+   * `getChildren` fire the change event, which makes VS Code call `getChildren`
+   * again -- an endless loop behind a permanently empty view.
+   */
+  private discovery?: Promise<void>;
 
   /** Reload everything: rediscover packages and drop all cached artifacts. */
   async refresh(): Promise<void> {
+    this.discovery = this.discover();
+    await this.discovery;
+    this.changed.fire(undefined);
+  }
+
+  private async ensureDiscovered(): Promise<void> {
+    if (this.discovery === undefined) {
+      this.discovery = this.discover();
+    }
+    await this.discovery;
+  }
+
+  private async discover(): Promise<void> {
     this.packages = await discoverPackages();
+    log(
+      this.packages.length === 0
+        ? 'No problem.rbx.yml found in the workspace.'
+        : `Found ${this.packages.length} package(s): ${this.packages.map((p) => p.root).join(', ')}`,
+    );
     const roots = new Set(this.packages.map((pkg) => pkg.root));
     for (const root of this.stores.keys()) {
       if (!roots.has(root)) {
@@ -190,7 +219,6 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
     for (const store of this.stores.values()) {
       store.invalidate();
     }
-    this.changed.fire(undefined);
   }
 
   /** Drop cached artifacts for one package, in response to a filesystem event. */
@@ -236,9 +264,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
 
   async getChildren(node?: RunNode): Promise<RunNode[]> {
     if (node === undefined) {
-      if (this.packages.length === 0) {
-        await this.refresh();
-      }
+      await this.ensureDiscovered();
       // A single-problem workspace is the common case; skip the package level
       // entirely rather than making the user expand one node forever.
       if (this.packages.length === 1) {
@@ -272,8 +298,10 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
   private async solutionsOf(pkg: PackageLayout): Promise<SolutionNode[]> {
     const report = await this.report(pkg);
     if (report === undefined) {
+      log(`No readable run for ${pkg.root} -- run \`rbx run\` in that directory.`);
       return [];
     }
+    log(`${pkg.root}: ${report.solutions.length} solution(s) in the last run.`);
     return report.solutions.map((run): SolutionNode => ({ kind: 'solution', pkg, run }));
   }
 }

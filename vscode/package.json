@@ -17,7 +17,8 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:**/problem.rbx.yml"
+    "workspaceContains:**/problem.rbx.yml",
+    "onView:rbx.run"
   ],
   "main": "./dist/extension.js",
   "contributes": {
