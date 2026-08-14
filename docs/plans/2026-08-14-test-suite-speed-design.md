@@ -163,31 +163,72 @@ generators and validators in `rbx/testdata/` (one 167-byte generator is compiled
 36 times, costing 98s).
 
 The cache *keys* already match: two consecutive tests were verified to produce
-byte-identical cache inputs. The miss happens later, in
-`_build_output_fingerprint_list` (`rbx/grading/caching.py:164-177`). It digests
-each non-hash, non-intermediate output at its `dest` path. In a fresh package
-the compiled binary does not exist yet, so it fingerprints as `''`, mismatches
-the stored fingerprint, and `find_in_cache` **evicts the entry** rather than
-materializing the artifact from storage.
+byte-identical cache inputs.
 
-Fix: when the only discrepancy is that an output is absent, materialize it from
-content-addressed storage instead of evicting.
+**This section originally blamed `_build_output_fingerprint_list` and proposed
+relaxing its eviction rule. That diagnosis was wrong, and the proposed fix would
+have been a no-op that deleted a dormant safety check.** It is recorded here
+because the correction is the useful part.
 
-This is the subtlest change in the plan -- it modifies the invariant that
-guarantees on-disk artifacts are current. Land it isolated, with its own tests
-covering: output absent (materialize), output present and matching (hit),
-output present but modified (evict, as today).
+`_build_output_fingerprint_list` skips every output that is `hash`,
+`intermediate`, or has no `dest`. `GradingFileOutput.hash` defaults to `True`
+(`rbx/grading/steps.py:193`) and nothing in `rbx/` ever sets it `False` on an
+output -- the single `hash=False` in the tree (`rbx/box/code.py:602`) is on a
+`GradingFileInput`. The list is therefore structurally always empty, so
+`_output_fingerprints_match` is always trivially true and evicts nothing.
 
-## Phase 3 -- Stop declaring libraries tests do not use
+Instrumenting every miss branch of `find_in_cache` over a real compile-heavy run
+settled it:
+
+```
+key_lookup: 175   key_HIT: 109   key_MISS: 66
+input_fingerprint_MISMATCH: 0
+output_fingerprint_MISMATCH: 0
+artifacts_NOT_OK: 0
+```
+
+No entry is evicted by any post-key validation. All 66 misses are **cold** --
+the key is simply absent from the database. The cause is fixture layout, not
+cache correctness: `cleandir` mints a fresh `tmp_path` per test, and the
+problem-level `DependencyCache` and `FilesystemStorage` live under
+`<problem>/.rbx` (`rbx/box/package.py`), so every test starts with an empty
+cache DB and an empty content-addressed store. Only the precompilation cache is
+session-scoped, which is exactly why Phase 1 moved the header precompiles from
+98x to 7x while ordinary program compiles kept repeating.
+
+**Actual fix: session-scope the problem dependency cache and storage in the test
+fixtures**, mirroring what `precompilation_should_use_tmp_cache` already does.
+This is a test-only change and safe *because* Phase 1 made keys
+content-addressed rather than path-addressed. A `no_shared_cache` marker exists
+as an escape hatch for tests that need to observe a real compilation.
+
+Measured: full suite 101s -> 61s, `generators_test.py` 52.7s -> 18.9s.
+
+## Phases 3 and 4 -- descoped after re-measuring
+
+**Not implemented.** Phases 1 and 2 changed the profile they were sized against,
+so they were re-measured and dropped rather than executed on stale numbers.
+
+After Phases 1-2, suite CPU fell from 992s to 351s and the number of tests over
+3s fell from 108 to 22. Compilation is no longer the dominant cost, because
+almost every compile is now a cache hit:
+
+- **Phase 3** (jngen/tgen opt-in) targeted header precompiles that Phase 1
+  already took from 98x to 7x each. Remaining value ~2s of wall time.
+- **Phase 4** (Python programs for orchestration tests) targeted a 2.6s C++
+  compile per program that is now a cache hit. It would have touched ~100 tests
+  and traded away real-compiler coverage for a few seconds.
+
+Both remain reasonable ideas if the profile shifts again; neither earns its
+churn today. The analysis is kept below for that case.
+
+### Phase 3 (not implemented) -- stop declaring libraries tests do not use
 
 `testing_package._declare_standard_libraries` declares testlib, jngen and tgen
 for every test package. Almost every test uses only testlib. Make jngen and tgen
 opt-in via an argument to `TestingPackage`.
 
-Independent of Phases 1-2, and removes two-thirds of header precompilation even
-if those phases regress.
-
-## Phase 4 -- Python program helpers, and convert the obvious tests
+### Phase 4 (not implemented) -- Python program helpers
 
 The contracts rbx enforces are protocol-only, so Python equivalents are exact
 substitutes rather than approximations:
@@ -219,19 +260,28 @@ end-to-end tests, not a hundred.
 
 Correcting the ~36 pre-existing failures is explicitly out of scope.
 
-## Phase 5 -- Two cheap wins
+## Phase 5 -- the tail split
 
-**`-O0` in the test environment.** Test packages copy the shipped preset
-`env.rbx.yml` verbatim (`TestingPreset.initialize` copies
-`presets/default/env.rbx.yml`), inheriting `-O2`. Overriding the C and C++
-compilation commands to `-O0` in the test preset measured 21% faster on
-`generators_test` before the cache fix. Test-only; tests that assert on program
-performance must opt out.
+**`-O0` in the test environment: not implemented.** It measured 21% faster on
+`generators_test` before the cache fixes, but compiles are cache hits now, so
+there is little compilation left to make cheaper.
 
-**Split the two mega-tests.** `test_get_solution_outcome_report` (44s) and
-`test_solutions` (41s) are the xdist tail. The suite cannot finish faster than
-its longest single test, so splitting them is what closes the 196s-versus-124s
-gap.
+**Split the mega-tests: implemented, with a caveat.** `test_solutions` and
+`test_get_solution_outcome_report` each ran all seven `problems/box1` solutions
+in one shot; they are now seven tests, one per solution, sharing setup through a
+fixture. All 22 original assertions were mapped 1:1 onto the new tests.
+
+The caveat is honest: this was predicted to be worth ~15s of wall time and
+delivered ~3s, inside this machine's run-to-run noise. At 8 workers the suite is
+CPU-bound, not tail-bound -- 351s of CPU over 8 workers plus per-worker startup
+and collection already puts the floor near 55s, so removing the 30s test mostly
+removed slack. It costs ~3s of extra CPU (~1%) because shared setup now runs
+seven times instead of two.
+
+It was kept for structure rather than speed: seven tests named for the outcome
+they check beat two grab-bags, and it removes a serialisation point that would
+bite on more workers or faster hardware. Revert it cleanly if that trade is
+unwanted.
 
 ## Out of scope
 
@@ -239,9 +289,19 @@ gap.
 - Fixing the 36-37 pre-existing test failures.
 - The `tests/e2e`, `tests/casts` and `tests/docker` suites.
 
-## Expected outcome
+## Outcome
 
-Phase 1 alone is validated at 196s -> 116s. With Phases 2-5, compilation should
-stop being the dominant cost and wall time should land well under 90s on 8
-cores, with the tail-latency fix mattering proportionally more as total CPU
-falls.
+| Run | Before | After |
+| --- | --- | --- |
+| `tests/rbx -n 8`, fixed order | 196s | **59-62s** |
+| `tests/rbx -n 8`, random order | 238s | **73s** |
+| Suite CPU | 992s | 351s |
+| C++ compiles | 498 | 219 |
+| Tests over 3s | 108 | 22 |
+
+Failure count did not increase: 37 failed / 4512 passed before, 36 failed /
+4520 passed after in fixed order (37 in random order, matching its own
+baseline). The extra passes are the new cache tests and the solution split.
+
+Two commits produced essentially all of the gain, and both are production
+caching fixes that benefit real users, not just the test suite.
