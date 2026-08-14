@@ -1,0 +1,38 @@
+# A deliberately tiny package for exercising the abort gate across testgroup
+# boundaries. It uses points scoring so that `deps` are legal, and its groups
+# form a chain (`small` <- `mid` <- `late`) plus one group that depends on
+# nothing, so a trip in `small` must skip the chain and leave `independent`
+# alone.
+name: "abort-groups"
+timeLimit: 1000
+memoryLimit: 256
+scoring: points
+
+solutions:
+  - path: "sol.cpp"
+    outcome: "ac"
+  # Wrong only for the small inputs, i.e. only in the `small` group.
+  - path: "wa.sol.cpp"
+    outcome: "incorrect"
+    outcomePerGroup:
+      "*": ac
+      small: wa
+  # Comes after the failing solution, so the gate must not leak into it.
+  - path: "sol2.cpp"
+    outcome: "ac"
+
+testcases:
+  - name: "small"
+    score: 25
+    testcaseGlob: "tests/small/*.in"
+  - name: "mid"
+    score: 25
+    deps: ["small"]
+    testcaseGlob: "tests/mid/*.in"
+  - name: "late"
+    score: 25
+    deps: ["mid"]
+    testcaseGlob: "tests/late/*.in"
+  - name: "independent"
+    score: 25
+    testcaseGlob: "tests/independent/*.in"
