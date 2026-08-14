@@ -24,7 +24,7 @@ grading/judge/cacher.py + storage.py (file storage and caching)
 
 ### `Outcome` (Enum)
 Verdict values ordered from best to worst:
-`ACCEPTED` > `WRONG_ANSWER` > `MEMORY_LIMIT_EXCEEDED` > `TIME_LIMIT_EXCEEDED` > `IDLENESS_LIMIT_EXCEEDED` > `RUNTIME_ERROR` > `OUTPUT_LIMIT_EXCEEDED` > `JUDGE_FAILED` > `INTERNAL_ERROR` > `COMPILATION_ERROR`
+`ACCEPTED` > `SKIPPED` > `WRONG_ANSWER` > `MEMORY_LIMIT_EXCEEDED` > `TIME_LIMIT_EXCEEDED` > `IDLENESS_LIMIT_EXCEEDED` > `RUNTIME_ERROR` > `OUTPUT_LIMIT_EXCEEDED` > `JUDGE_FAILED` > `INTERNAL_ERROR` > `COMPILATION_ERROR`
 
 Key methods: `worst_outcome(outcomes)`, `is_slow()`, `is_limit_exceeded()`, `short_name()`.
 
