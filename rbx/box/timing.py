@@ -621,6 +621,12 @@ async def _timings_per_language(
                 if ev is None:
                     continue
                 ev = await ev()
+                # A skipped testcase never ran, so it measures nothing. The
+                # exclusion rests on the verdict rather than on the absent time:
+                # a skipped run is the consequence of an earlier failure, and
+                # nothing its log happens to carry says anything about timing.
+                if ev.result.outcome == Outcome.SKIPPED:
+                    continue
                 if ev.log.time is not None:
                     timings.append(int(ev.log.time * 1000))
 
@@ -827,7 +833,15 @@ async def _diagnose_inference_run(result: RunSolutionResult) -> _InferenceDiagno
             for ev in evals:
                 if ev is None:
                     continue
-                outcomes.append((await ev()).result.outcome)
+                outcome = (await ev()).result.outcome
+                # A skipped testcase is the CONSEQUENCE of an earlier verdict,
+                # never evidence of its own. SKIPPED is both non-accepted and
+                # non-slow, so counting it would classify every aborted run as a
+                # solution that broke for a non-timing reason -- fatal -- and
+                # would mask the timeout that actually stopped it.
+                if outcome == Outcome.SKIPPED:
+                    continue
+                outcomes.append(outcome)
         timed_out = any(outcome.is_slow() for outcome in outcomes)
         broken = [
             outcome

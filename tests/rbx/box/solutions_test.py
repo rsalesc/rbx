@@ -39,6 +39,7 @@ from rbx.box.solutions import (
     TraditionalRunReporter,
     _AbortGate,  # noqa: SLF001
     _gates_report,  # noqa: SLF001
+    _print_timing,  # noqa: SLF001
     _render_detailed_group_table,  # noqa: SLF001
     convert_list_of_solution_evaluations_to_dict,
     get_full_outcome_markup_verdict,
@@ -1891,6 +1892,37 @@ async def test_skipped_testcase_writes_a_readable_eval_artifact(
         utils.model_from_yaml(Evaluation, ran_path.read_text()).result.outcome
         == Outcome.ACCEPTED
     )
+
+
+async def test_timing_summary_ignores_skipped_testcases(
+    mock_problem_root, mock_binary_scoring
+):
+    """A skipped testcase never ran, so it measures nothing. The exclusion rests
+    on the verdict, not on the absent time a skipped evaluation happens to
+    record today."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+
+    def resolved(evaluation: Evaluation) -> Deferred[Evaluation]:
+        async def fn() -> Evaluation:
+            return evaluation
+
+        return Deferred(fn)
+
+    evaluations = {
+        str(skeleton.solutions[0].path): {
+            'group1': [
+                resolved(make_evaluation(Outcome.ACCEPTED, time_ms=400)),
+                resolved(make_evaluation(Outcome.SKIPPED, time_ms=9999)),
+            ]
+        }
+    }
+    console = recording_console()
+    await _print_timing(console, skeleton, evaluations)
+
+    text = ' '.join(console.export_text(clear=False).split())
+    assert '400 ms' in text
+    assert '9999 ms' not in text
 
 
 async def test_detailed_table_marks_a_skipped_testcase_instead_of_pending(
