@@ -8,6 +8,9 @@ import rich.console
 import rich.style
 from rich.text import Text
 
+from rbx import utils
+from rbx.box import package
+from rbx.box import solutions as solutions_module
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -34,10 +37,14 @@ from rbx.box.solutions import (
     SolutionSkeleton,
     TimingIssue,
     TraditionalRunReporter,
+    _AbortGate,  # noqa: SLF001
     _gates_report,  # noqa: SLF001
+    _print_timing,  # noqa: SLF001
+    _render_detailed_group_table,  # noqa: SLF001
     convert_list_of_solution_evaluations_to_dict,
     get_full_outcome_markup_verdict,
     get_matching_solutions,
+    get_outcome_markup_verdict,
     get_outcome_style_verdict,
     get_solution_outcome_report,
     get_ui_friendly_outcome_style_verdict,
@@ -242,8 +249,8 @@ def mock_skeleton(tmp_path, mock_limits):
 
 def make_evaluation(
     outcome: Outcome,
-    time_ms: int = 100,
-    memory_bytes: int = 1024,
+    time_ms: Optional[int] = 100,
+    memory_bytes: Optional[int] = 1024,
     message: str = '',
     no_tle_outcome: Optional[Outcome] = None,
     sanitizer_warnings: bool = False,
@@ -258,7 +265,7 @@ def make_evaluation(
             sanitizer_warnings=sanitizer_warnings,
         ),
         log=TestcaseLog(
-            time=time_ms / 1000.0,
+            time=time_ms / 1000.0 if time_ms is not None else None,
             memory=memory_bytes,
         ),
         testcase=TestcaseIO(index=testcase_index),
@@ -362,6 +369,17 @@ def make_run_result(
 
         return Deferred(fn)
 
+    def make(outcome: Outcome, index: int) -> Evaluation:
+        # A skipped testcase never entered the sandbox, so it carries no time
+        # and no memory -- exactly what the runner records for one.
+        unmeasured = outcome == Outcome.SKIPPED
+        return make_evaluation(
+            outcome,
+            time_ms=None if unmeasured else 100,
+            memory_bytes=None if unmeasured else 1024,
+            testcase_index=index,
+        )
+
     return RunSolutionResult(
         skeleton=skeleton,
         items=[
@@ -369,9 +387,9 @@ def make_run_result(
                 solution=solution,
                 testcase_entry=entry.group_entry,
                 eval=resolved(
-                    make_evaluation(
+                    make(
                         verdicts[entry.group_entry.key()],
-                        testcase_index=entry.group_entry.index,
+                        entry.group_entry.index,
                     )
                 ),
             )
@@ -1697,3 +1715,356 @@ def test_outcome_styles_are_valid_rich_styles(outcome: Outcome):
     Text.from_markup(get_full_outcome_markup_verdict(outcome)).render(
         rich.console.Console()
     )
+
+
+def test_skipped_outcome_does_not_fall_through_to_the_unknown_verdict_style():
+    # The palette itself may change; what matters is that SKIPPED is spelled
+    # out rather than landing on the catch-all used for unrecognized verdicts.
+    assert get_outcome_style_verdict(Outcome.SKIPPED) != 'magenta'
+    assert '✗' not in get_outcome_markup_verdict(Outcome.SKIPPED)
+
+
+def _group(name: str, deps: List[str]) -> GroupSkeleton:
+    return GroupSkeleton(name=name, score=100, deps=deps, testcases=[])
+
+
+def test_binary_scoring_aborts_the_whole_testset():
+    groups = [_group('a', []), _group('b', []), _group('c', [])]
+    gate = _AbortGate(groups=groups, scoring=ScoreType.BINARY)
+    gate.trip('a')
+    assert all(gate.is_skipped(group.name) for group in groups)
+
+
+def test_points_scoring_aborts_the_group_and_its_dependents():
+    # c depends on b, b depends on a; d is independent.
+    groups = [
+        _group('a', []),
+        _group('b', ['a']),
+        _group('c', ['b']),
+        _group('d', []),
+    ]
+    gate = _AbortGate(groups=groups, scoring=ScoreType.POINTS)
+    gate.trip('a')
+    assert gate.is_skipped('a')
+    assert gate.is_skipped('b')
+    assert gate.is_skipped('c')  # indirect dependency
+    assert not gate.is_skipped('d')
+
+
+def test_gate_is_not_skipped_before_tripping():
+    groups = [_group('a', [])]
+    gate = _AbortGate(groups=groups, scoring=ScoreType.POINTS)
+    assert not gate.is_skipped('a')
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_abort_skips_every_later_testcase_of_that_solution(
+    pkg_from_testdata: pathlib.Path,
+):
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    real_run = solutions_module.run_solution_on_testcase
+    with patch.object(
+        solutions_module, 'run_solution_on_testcase', wraps=real_run
+    ) as spy:
+        result = await run_solutions(
+            verification=VerificationLevel.FULL,
+            tracked_solutions=['sol.cpp', 'wa.sol.cpp'],
+            abort_on=lambda ctx: ctx.evaluation.result.outcome != Outcome.ACCEPTED,
+        )
+        res = await convert_list_of_solution_evaluations_to_dict(
+            result.skeleton, result.items
+        )
+        runs = spy.call_count
+
+    accepted_outcomes = [ev.result.outcome for ev in res[0]['gen1']]
+    aborted_outcomes = [ev.result.outcome for ev in res[1]['gen1']]
+
+    # The accepted solution never trips the gate.
+    assert Outcome.SKIPPED not in accepted_outcomes
+    assert accepted_outcomes == [Outcome.ACCEPTED] * len(accepted_outcomes)
+
+    # Everything after the first bad verdict is skipped, and nothing is missing:
+    # a skipped slot still holds a real evaluation, keeping the positions aligned.
+    assert Outcome.SKIPPED in aborted_outcomes
+    first_skip = aborted_outcomes.index(Outcome.SKIPPED)
+    assert first_skip > 0
+    assert aborted_outcomes[first_skip - 1] != Outcome.ACCEPTED
+    assert all(outcome == Outcome.SKIPPED for outcome in aborted_outcomes[first_skip:])
+    assert len(aborted_outcomes) == len(accepted_outcomes)
+
+    # The sandbox is never entered for a skipped testcase.
+    assert runs == len(accepted_outcomes) + first_skip
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_abort_skips_dependent_groups_but_not_independent_ones(
+    pkg_from_testdata: pathlib.Path,
+):
+    # `abort-groups` is points-scored with `small` <- `mid` <- `late` and a
+    # fourth group depending on nothing, so this crosses group boundaries: it is
+    # what tells a per-solution gate apart from a per-group one.
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    result = await run_solutions(
+        verification=VerificationLevel.FULL,
+        abort_on=lambda ctx: ctx.evaluation.result.outcome != Outcome.ACCEPTED,
+    )
+    res = await convert_list_of_solution_evaluations_to_dict(
+        result.skeleton, result.items
+    )
+
+    def outcomes(solution_index: int, group: str) -> List[Outcome]:
+        return [ev.result.outcome for ev in res[solution_index][group]]
+
+    groups = ['small', 'mid', 'late', 'independent']
+
+    # The main solution passes everything and never trips the gate.
+    for group in groups:
+        assert outcomes(0, group) == [Outcome.ACCEPTED] * len(res[0][group])
+
+    # `wa.sol.cpp` is wrong on the very first testcase of `small`.
+    assert outcomes(1, 'small') == [
+        Outcome.WRONG_ANSWER,
+        Outcome.SKIPPED,
+        Outcome.SKIPPED,
+    ]
+    # The direct dependent is skipped whole, even though it is a later group.
+    assert outcomes(1, 'mid') == [Outcome.SKIPPED, Outcome.SKIPPED]
+    # And so is the indirect one.
+    assert outcomes(1, 'late') == [Outcome.SKIPPED, Outcome.SKIPPED]
+    # But a group that depends on nothing can still score, so it still runs.
+    assert outcomes(1, 'independent') == [Outcome.ACCEPTED, Outcome.ACCEPTED]
+
+    # The gate belongs to one solution: the next one is judged from scratch.
+    for group in groups:
+        assert outcomes(2, group) == [Outcome.ACCEPTED] * len(res[2][group])
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_skipped_testcase_writes_a_readable_eval_artifact(
+    pkg_from_testdata: pathlib.Path,
+):
+    # The run explorer reads evaluations off disk, and its only signal that a
+    # testcase has not run is a missing `.eval`. A skipped test must leave one
+    # behind, at the very path the skeleton points the TUI at.
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
+
+    result = await run_solutions(
+        verification=VerificationLevel.FULL,
+        abort_on=lambda ctx: ctx.evaluation.result.outcome != Outcome.ACCEPTED,
+    )
+    await convert_list_of_solution_evaluations_to_dict(result.skeleton, result.items)
+
+    skeleton = result.skeleton
+    solution = skeleton.find_solution_skeleton(
+        next(sol for sol in package.get_solutions() if sol.path.name == 'wa.sol.cpp')
+    )
+    assert solution is not None
+
+    skipped_entries = [
+        entry.group_entry
+        for entry in skeleton.entries
+        if entry.group_entry.group in ('mid', 'late')
+    ]
+    assert skipped_entries
+
+    for entry in skipped_entries:
+        path = skeleton.get_solution_entry_prefix(solution, entry).with_suffix('.eval')
+        assert path.is_file()
+        evaluation = utils.model_from_yaml(Evaluation, path.read_text())
+        assert evaluation.result.outcome == Outcome.SKIPPED
+        assert evaluation.log.eval_absolute_path == path.absolute()
+        # The artifact drops its `None` fields, so the round trip must not turn
+        # a testcase that never ran into one that ran instantly.
+        assert evaluation.log.time is None
+        assert evaluation.log.memory is None
+
+    # And the skipped artifacts land where the real ones do: a testcase that
+    # actually ran is readable from the same skeleton-derived path.
+    ran_entry = next(
+        entry.group_entry
+        for entry in skeleton.entries
+        if entry.group_entry.group == 'independent'
+    )
+    ran_path = skeleton.get_solution_entry_prefix(solution, ran_entry).with_suffix(
+        '.eval'
+    )
+    assert ran_path.is_file()
+    assert (
+        utils.model_from_yaml(Evaluation, ran_path.read_text()).result.outcome
+        == Outcome.ACCEPTED
+    )
+
+
+async def test_timing_summary_ignores_skipped_testcases(
+    mock_problem_root, mock_binary_scoring
+):
+    """A skipped testcase never ran, so it measures nothing. The exclusion rests
+    on the verdict, not on the absent time a skipped evaluation happens to
+    record today."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+
+    def resolved(evaluation: Evaluation) -> Deferred[Evaluation]:
+        async def fn() -> Evaluation:
+            return evaluation
+
+        return Deferred(fn)
+
+    evaluations = {
+        str(skeleton.solutions[0].path): {
+            'group1': [
+                resolved(make_evaluation(Outcome.ACCEPTED, time_ms=400)),
+                resolved(make_evaluation(Outcome.SKIPPED, time_ms=9999)),
+            ]
+        }
+    }
+    console = recording_console()
+    await _print_timing(console, skeleton, evaluations)
+
+    text = ' '.join(console.export_text(clear=False).split())
+    assert '400 ms' in text
+    assert '9999 ms' not in text
+
+
+async def test_detailed_table_marks_a_skipped_testcase_instead_of_pending(
+    mock_problem_root, mock_binary_scoring
+):
+    """A skipped testcase carries a real evaluation, so the detailed table shows
+    its verdict. Had the skipped slots been left empty, the cell would read
+    '...' -- exactly what a testcase that has not been awaited yet renders."""
+    solution = Solution(path=pathlib.Path('wa.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.WRONG_ANSWER, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    await _render_detailed_group_table(
+        skeleton.groups[0],
+        skeleton,
+        reporter.structured_evaluations,
+        console,
+        verification=VerificationLevel.FULL,
+    )
+
+    text = console.export_text(clear=False)
+    assert '#1 ⊘' in ' '.join(text.split())
+    assert '...' not in text
+
+
+async def test_live_reporter_counts_a_skipped_testcase_as_evaluated(
+    mock_problem_root, mock_binary_scoring
+):
+    """The live line marks a skipped testcase and moves on. A slot left empty
+    would have frozen the line at `1/..`, which is how a testcase that is still
+    running renders."""
+    solution = Solution(path=pathlib.Path('wa.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 3})
+    result = make_run_result(
+        skeleton,
+        {
+            ('group1', 0): Outcome.ACCEPTED,
+            ('group1', 1): Outcome.WRONG_ANSWER,
+            ('group1', 2): Outcome.SKIPPED,
+        },
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    assert reporter.post_evaluated == 3
+    (group_line,) = rendered_group_lines(console)
+    assert '/..' not in group_line
+    assert group_line.startswith('group1 (3) 1/✗ 2/⊘ ')
+
+
+async def test_fully_skipped_group_reports_no_time_instead_of_zero(
+    mock_problem_root, mock_binary_scoring
+):
+    """Nothing ran, so there is nothing to report. A `0 ms` here would read as
+    'instant' -- the most flattering number available -- for a group that was
+    never even attempted."""
+    solution = Solution(
+        path=pathlib.Path('slow.cpp'), outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    (group_line,) = rendered_group_lines(console)
+    assert '0 ms' not in group_line
+    assert '0 B' not in group_line
+    assert group_line.endswith('(-, -)')
+
+
+async def test_partially_skipped_group_still_reports_the_measured_maximum(
+    mock_problem_root, mock_binary_scoring
+):
+    """Dropping the unmeasured testcases must not drop the measured ones."""
+    solution = Solution(path=pathlib.Path('wa.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.WRONG_ANSWER, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    (group_line,) = rendered_group_lines(console)
+    assert group_line.endswith('(100 ms, 1 KiB)')
+
+
+async def test_detailed_table_does_not_time_a_fully_skipped_group(
+    mock_problem_root, mock_binary_scoring
+):
+    """The summary row of the detailed table reads the same helpers."""
+    solution = Solution(
+        path=pathlib.Path('slow.cpp'), outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED},
+    )
+    console = recording_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    await _render_detailed_group_table(
+        skeleton.groups[0],
+        skeleton,
+        reporter.structured_evaluations,
+        console,
+        verification=VerificationLevel.FULL,
+    )
+
+    text = ' '.join(console.export_text(clear=False).split())
+    assert '0 ms' not in text
+    assert '0 B' not in text

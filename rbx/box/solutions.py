@@ -7,7 +7,7 @@ import shutil
 import typing
 from collections.abc import AsyncIterator
 from enum import Enum
-from typing import Collection, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Callable, Collection, Dict, Iterable, List, Optional, Set, Tuple
 
 import rich
 import rich.live
@@ -64,8 +64,10 @@ from rbx.box.schema import (
 )
 from rbx.box.tasks import (
     get_limits_for_language,
+    get_testcase_output_path,
     run_solution_on_testcase,
     should_capture_pipes,
+    write_evaluation,
 )
 from rbx.box.testcase_extractors import (
     extract_generation_testcases_from_generic_entries,
@@ -83,8 +85,11 @@ from rbx.grading import grading_context, steps
 from rbx.grading.async_executor import AsyncStreamer
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
+    CheckerResult,
     Evaluation,
     Outcome,
+    TestcaseIO,
+    TestcaseLog,
 )
 from rbx.utils import StatusProgress
 
@@ -103,6 +108,76 @@ class GroupSkeleton(BaseModel):
     score: int
     deps: List[str]
     testcases: List[Testcase]
+
+
+@dataclasses.dataclass(frozen=True)
+class AbortContext:
+    """What a caller may use to decide that a solution's remaining testcases
+    cannot change its outcome."""
+
+    solution: Solution
+    group: GroupSkeleton
+    entry: TestcaseEntry
+    expected_outcome: ExpectedOutcome
+    group_expected_outcome: Optional[ExpectedOutcome]
+    evaluation: Evaluation
+
+
+AbortPredicate = Callable[[AbortContext], bool]
+
+
+class _AbortGate:
+    """Tracks which groups of a single solution must no longer run.
+
+    A mutable gate is only correct because every consumer forces the deferred
+    evaluations sequentially, in entry order: `print_run_report`,
+    `_print_detailed_run_report`/`_render_detailed_group_table` and
+    `convert_list_of_solution_evaluations_to_dict`. Parallelizing any of those
+    loops would let a testcase run before the verdict that should have skipped
+    it -- the producer's own sequencing is not what makes this safe.
+
+    The caller's predicate must only trip on an outcome that already dooms the
+    group -- the skipped groups are reported as failed, not as unmeasured.
+    """
+
+    def __init__(self, groups: List[GroupSkeleton], scoring: ScoreType):
+        self.groups = groups
+        self.scoring = scoring
+        self.skipped_groups: Set[str] = set()
+        # The group graph is fixed for the gate's lifetime, so the reverse
+        # adjacency is built once here rather than on every trip.
+        self.dependents: Dict[str, List[str]] = collections.defaultdict(list)
+        for group in groups:
+            for dep in group.deps:
+                self.dependents[dep].append(group.name)
+
+    def is_skipped(self, group_name: str) -> bool:
+        return group_name in self.skipped_groups
+
+    def trip(self, group_name: str) -> None:
+        if self.scoring != ScoreType.POINTS:
+            # `deps` only exist under POINTS, and a binary verdict is
+            # all-or-nothing, so nothing later can change the outcome.
+            self.skipped_groups.update(group.name for group in self.groups)
+            return
+        self.skipped_groups.add(group_name)
+        self.skipped_groups.update(self._dependents_of(group_name))
+
+    def _dependents_of(self, group_name: str) -> Set[str]:
+        """Groups that depend on `group_name`, directly or indirectly.
+
+        They would score 0 anyway -- `_check_deps` zeroes a group whenever any
+        of its dependencies failed.
+        """
+        res: Set[str] = set()
+        stack = list(self.dependents[group_name])
+        while stack:
+            name = stack.pop()
+            if name in res:
+                continue
+            res.add(name)
+            stack.extend(self.dependents[name])
+        return res
 
 
 class SolutionSkeleton(Solution):
@@ -394,19 +469,60 @@ async def compile_solutions(
     return compiled_solutions
 
 
+def _record_skipped_evaluation(
+    testcase: Testcase, index: int, output_dir: pathlib.Path
+) -> Evaluation:
+    """Build the evaluation of a testcase that was never run, and persist it."""
+    eval = Evaluation(
+        result=CheckerResult(
+            outcome=Outcome.SKIPPED,
+            message='Skipped: an earlier testcase already decided this run.',
+        ),
+        testcase=TestcaseIO(
+            index=index, input=testcase.inputPath, output=testcase.outputPath
+        ),
+        # No time/memory: this never ran, and the timing consumers must not
+        # read a 0 out of it. The exit fields are spelled out for the same
+        # reason -- `RunLog` defaults to a zero exit code and a 'sandbox error'
+        # status, neither of which happened here.
+        log=TestcaseLog(
+            exitcode=-1,
+            exitstatus='skipped',
+            time=None,
+            wall_time=None,
+            memory=None,
+        ),
+    )
+    # The run explorer reads `.eval` files, not the in-memory evaluations, and
+    # takes a missing one as 'never ran'. Persisting through the same helper the
+    # real runs use keeps the skipped artifact at the very path it looks at.
+    #
+    # Only the `.eval` is written, unlike the real run paths, which also write a
+    # `.log`. The sibling artifacts (`.log`, `.err`, `.out`) are the output of a
+    # sandbox run, and there was none: an empty one would claim otherwise. The
+    # log viewer already renders a missing file as '(does not exist)'.
+    write_evaluation(eval, get_testcase_output_path(testcase, output_dir))
+    return eval
+
+
 def _run_solution(
     solution: Solution,
     compiled_digest: str,
     checker_digest: Optional[str],
     runs_dir: pathlib.Path,
     entries: List[GenerationTestcaseEntry],
+    groups: List[GroupSkeleton],
     interactor_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     timelimit_override: Optional[int] = None,
     nruns: int = 0,
     capture_pipes: bool = False,
+    gate: Optional['_AbortGate'] = None,
+    abort_on: Optional[AbortPredicate] = None,
 ) -> List[Deferred[Evaluation]]:
+    groups_by_name = {group.name: group for group in groups}
+
     res: List[Deferred[Evaluation]] = []
     for i, entry in enumerate(entries):
         testcase = entry.metadata.copied_to
@@ -420,8 +536,11 @@ def _run_solution(
                 f'Running solution {href(solution.path)} on test [item]{entry}[/item]...'
             )
 
-        async def run_fn(i=i, testcase=testcase, output_path=output_path):
-            return await run_solution_on_testcase(
+        async def run_fn(i=i, testcase=testcase, output_path=output_path, entry=entry):
+            group_name = entry.group_entry.group
+            if gate is not None and gate.is_skipped(group_name):
+                return _record_skipped_evaluation(testcase, i, output_path)
+            evaluation = await run_solution_on_testcase(
                 solution,
                 compiled_digest,
                 checker_digest,
@@ -434,6 +553,25 @@ def _run_solution(
                 nruns=nruns,
                 capture_pipes=capture_pipes,
             )
+            if gate is not None and abort_on is not None:
+                # Every entry belongs to a group of the skeleton. Assert rather
+                # than skip: a refactor that broke this would silently turn the
+                # abort off instead of failing.
+                group = groups_by_name.get(group_name)
+                assert group is not None
+                context = AbortContext(
+                    solution=solution,
+                    group=group,
+                    entry=entry.group_entry,
+                    expected_outcome=solution.outcome,
+                    group_expected_outcome=solution.expected_outcome_for_group(
+                        group_name
+                    ),
+                    evaluation=evaluation,
+                )
+                if abort_on(context):
+                    gate.trip(group_name)
+            return evaluation
 
         res.append(Deferred(run_fn))
 
@@ -576,6 +714,7 @@ async def _produce_solution_items(
     check: bool = True,
     timelimit_override: Optional[int] = None,
     nruns: int = 0,
+    abort_on: Optional[AbortPredicate] = None,
 ) -> List[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
@@ -591,7 +730,9 @@ async def _produce_solution_items(
         interactor_digest = None
 
     def yield_items(
-        solution: SolutionSkeleton, entries: List[GenerationTestcaseEntry]
+        solution: SolutionSkeleton,
+        entries: List[GenerationTestcaseEntry],
+        gate: Optional[_AbortGate],
     ) -> List[EvaluationItem]:
         res: List[EvaluationItem] = []
         for entry, eval in zip(
@@ -602,12 +743,15 @@ async def _produce_solution_items(
                 checker_digest,
                 solution.runs_dir,
                 entries,
+                skeleton.groups,
                 interactor_digest=interactor_digest,
                 progress=progress,
                 verification=verification,
                 timelimit_override=timelimit_override,
                 nruns=nruns,
                 capture_pipes=skeleton.capture_pipes,
+                gate=gate,
+                abort_on=abort_on,
             ),
         ):
             res.append(
@@ -624,9 +768,16 @@ async def _produce_solution_items(
 
     # Just ensure the iteration is (solution, group) order.
     for solution in skeleton.solutions:
+        # One gate per solution: `_run_solution` is called once per group, so a
+        # gate built inside it would forget every group boundary.
+        gate = (
+            _AbortGate(skeleton.groups, package.get_scoring())
+            if abort_on is not None
+            else None
+        )
         for group in skeleton.groups:
             res.extend(
-                yield_items(solution, skeleton.get_entries_for_group(group.name))
+                yield_items(solution, skeleton.get_entries_for_group(group.name), gate)
             )
 
     return res
@@ -640,6 +791,7 @@ async def run_solutions(
     timelimit_override: Optional[int] = None,
     sanitized: bool = False,
     nruns: int = 0,
+    abort_on: Optional[AbortPredicate] = None,
 ) -> RunSolutionResult:
     skeleton = await _get_report_skeleton(
         progress=progress,
@@ -657,6 +809,7 @@ async def run_solutions(
             check=check,
             timelimit_override=timelimit_override,
             nruns=nruns,
+            abort_on=abort_on,
         ),
     )
     return result
@@ -1141,6 +1294,8 @@ def get_outcome_style_verdict(outcome: Outcome) -> str:
         return 'orange1'
     if outcome == Outcome.COMPILATION_ERROR:
         return 'blue'
+    if outcome == Outcome.SKIPPED:
+        return 'bright_black'
     return 'magenta'
 
 
@@ -1159,6 +1314,8 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
         res = '⧖'
     if outcome == Outcome.RUNTIME_ERROR:
         res = '✗'
+    if outcome == Outcome.SKIPPED:
+        res = '⊘'
     style = get_outcome_style_verdict(outcome)
     res = f'[{style}]{res}[/{style}]'
     return res
@@ -1196,9 +1353,7 @@ def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
     return get_full_outcome_markup_verdict(eval.result.outcome)
 
 
-def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
-    if not evals:
-        return 0
+def _get_evals_time_in_ms(evals: List[Evaluation]) -> Optional[int]:
     evals_with_ile = [
         eval for eval in evals if eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
     ]
@@ -1212,7 +1367,13 @@ def _get_evals_time_in_ms(evals: List[Evaluation]) -> int:
                 return expanded_tl
         if eval.log.metadata.timeLimit is not None:
             return eval.log.metadata.timeLimit
-    return max(int((eval.log.time or 0.0) * 1000) for eval in evals)
+    # An evaluation without a time never ran -- a skipped testcase, most
+    # notably. Coalescing it to zero would report 'instant' for a run that did
+    # not happen, so it contributes nothing to the maximum instead.
+    times = [eval.log.time for eval in evals if eval.log.time is not None]
+    if not times:
+        return None
+    return max(int(time * 1000) for time in times)
 
 
 def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
@@ -1221,14 +1382,21 @@ def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
     return sum((eval.log.wall_time or 0.0) for eval in evals)
 
 
-def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> int:
-    if not evals:
-        return 0
-    return max(int(eval.log.memory or 0) for eval in evals)
+def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
+    memories = [eval.log.memory for eval in evals if eval.log.memory is not None]
+    if not memories:
+        return None
+    return max(int(memory) for memory in memories)
+
+
+# What a formatted time or memory reads as when nothing was measured at all.
+_UNMEASURED = '-'
 
 
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
+    if max_time is None:
+        return _UNMEASURED
     return get_formatted_time(max_time)
 
 
@@ -1243,6 +1411,8 @@ def get_capped_evals_formatted_time(
     verification: VerificationLevel,
 ) -> str:
     max_time = _get_evals_time_in_ms(evals)
+    if max_time is None:
+        return _UNMEASURED
     has_tle = any(eval.result.outcome.is_slow() for eval in evals)
     has_ile = any(
         eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED for eval in evals
@@ -1271,6 +1441,8 @@ def get_capped_evals_formatted_time(
 
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
+    if max_memory is None:
+        return _UNMEASURED
     return get_formatted_memory(max_memory)
 
 
@@ -1634,6 +1806,8 @@ def _get_verdict_report(
         and Outcome.TIME_LIMIT_EXCEEDED in matched_bad_verdicts
         # The solution runs in double TL.
         and limits.time is not None
+        # Without a measured run there is no evidence it fits in double TL.
+        and evals_time is not None
         and evals_time < limits.time * 2
     ):
         other_verdicts = (bad_verdicts | no_tle_bad_verdicts) - {
@@ -1996,11 +2170,21 @@ async def _print_timing(
         all_evals: List[Evaluation] = []
         for evals in evaluations[str(solution.path)].values():
             all_evals.extend([await eval() for eval in evals if eval is not None])
+        # A skipped testcase never ran, so it measures nothing: it is the
+        # consequence of an earlier verdict, not evidence about how long this
+        # solution takes. Dropping it here also keeps a fully skipped solution
+        # out of the summary rather than reporting it as instant.
+        all_evals = [
+            eval for eval in all_evals if eval.result.outcome != Outcome.SKIPPED
+        ]
         if not all_evals:
             continue
 
         # Get solution TL.
         solution_time = _get_evals_time_in_ms(all_evals)
+        if solution_time is None:
+            # Nothing measurable is left to summarize for this solution.
+            continue
         tls = [
             eval.log.metadata.limits.time
             for eval in all_evals

@@ -198,7 +198,9 @@ class RunTestExplorerScreen(TestListSearchMixin, Screen):
             return None
 
         def predicate(entry: GenerationTestcaseEntry) -> bool:
-            # Keep non-AC; a missing eval (incomplete run) is treated as not-AC.
+            # Keep non-AC. A skipped testcase was not awarded either, so it
+            # stays; so does a missing eval, which is how an incomplete run --
+            # one that was interrupted, not one that was skipped -- shows up.
             return self._entry_outcome(entry) != Outcome.ACCEPTED
 
         return predicate
