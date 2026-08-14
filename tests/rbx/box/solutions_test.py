@@ -1887,6 +1887,10 @@ async def test_skipped_testcase_writes_a_readable_eval_artifact(
         evaluation = utils.model_from_yaml(Evaluation, path.read_text())
         assert evaluation.result.outcome == Outcome.SKIPPED
         assert evaluation.log.eval_absolute_path == path.absolute()
+        # The artifact drops its `None` fields, so the round trip must not turn
+        # a testcase that never ran into one that ran instantly.
+        assert evaluation.log.time is None
+        assert evaluation.log.memory is None
 
     # And the skipped artifacts land where the real ones do: a testcase that
     # actually ran is readable from the same skeleton-derived path.

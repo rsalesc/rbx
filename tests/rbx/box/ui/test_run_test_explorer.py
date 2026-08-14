@@ -253,6 +253,27 @@ async def test_f_filters_to_failing_tests_and_drops_ac_and_empty_headers(
             assert str(screen.query_one('#test-list').border_title) == 'Tests'
 
 
+async def test_f_keeps_a_skipped_test_among_the_failing_ones(tmp_path, monkeypatch):
+    """A skipped testcase was not awarded, so it is not passing."""
+    from rbx.box.ui.main import rbxApp
+
+    entries = [_gen_entry('g1', 0), _gen_entry('g1', 1), _gen_entry('g2', 0)]
+    outcomes = [Outcome.ACCEPTED, Outcome.TIME_LIMIT_EXCEEDED, Outcome.SKIPPED]
+    screen, patches = _mounted_filterable(tmp_path, monkeypatch, entries, outcomes)
+    with patches:
+        async with rbxApp().run_test() as pilot:
+            await pilot.app.push_screen(screen)
+            await pilot.pause()
+
+            await pilot.press('f')
+            await pilot.pause()
+
+            texts = ' '.join(_row_texts(screen))
+            assert 'g1/1' in texts
+            assert 'g2/0' in texts
+            assert 'g1/0' not in texts
+
+
 async def test_slash_opens_and_focuses_search_box(tmp_path, monkeypatch):
     from rbx.box.ui.main import rbxApp
 
