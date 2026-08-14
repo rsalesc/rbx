@@ -63,7 +63,7 @@ def get_testcase_output_path(
     return output_dir / pathlib.PosixPath(stem).with_suffix('.out')
 
 
-def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> pathlib.Path:
+def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> None:
     """Persist `eval` to its `.eval` artifact and point its log at the result.
 
     The run explorer never sees the in-memory evaluations: it reads these files,
@@ -75,7 +75,6 @@ def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> pathlib.Pat
     eval.log.eval_absolute_path = eval_path.absolute()
     eval_path.parent.mkdir(parents=True, exist_ok=True)
     eval_path.write_text(model_to_yaml(eval))
-    return eval_path
 
 
 def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):

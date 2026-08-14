@@ -469,9 +469,10 @@ async def compile_solutions(
     return compiled_solutions
 
 
-def _skipped_evaluation(
+def _record_skipped_evaluation(
     testcase: Testcase, index: int, output_dir: pathlib.Path
 ) -> Evaluation:
+    """Build the evaluation of a testcase that was never run, and persist it."""
     eval = Evaluation(
         result=CheckerResult(
             outcome=Outcome.SKIPPED,
@@ -495,6 +496,11 @@ def _skipped_evaluation(
     # The run explorer reads `.eval` files, not the in-memory evaluations, and
     # takes a missing one as 'never ran'. Persisting through the same helper the
     # real runs use keeps the skipped artifact at the very path it looks at.
+    #
+    # Only the `.eval` is written, unlike the real run paths, which also write a
+    # `.log`. The sibling artifacts (`.log`, `.err`, `.out`) are the output of a
+    # sandbox run, and there was none: an empty one would claim otherwise. The
+    # log viewer already renders a missing file as '(does not exist)'.
     write_evaluation(eval, get_testcase_output_path(testcase, output_dir))
     return eval
 
@@ -533,7 +539,7 @@ def _run_solution(
         async def run_fn(i=i, testcase=testcase, output_path=output_path, entry=entry):
             group_name = entry.group_entry.group
             if gate is not None and gate.is_skipped(group_name):
-                return _skipped_evaluation(testcase, i, output_path)
+                return _record_skipped_evaluation(testcase, i, output_path)
             evaluation = await run_solution_on_testcase(
                 solution,
                 compiled_digest,
