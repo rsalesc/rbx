@@ -7,6 +7,7 @@ import tempfile
 from typing import Annotated, List, Optional, Union
 
 import rich
+import rich.console
 import rich.prompt
 import syncer
 import typer
@@ -478,7 +479,22 @@ async def run(
         VerificationLevel(verification),
         detailed=detailed,
         skip_printing_limits=sanitized,
+        # A solution that stopped at its first bad verdict was not timed on the
+        # testcases that never ran, so every extreme in the timing summary --
+        # and the time limit picked off it -- would rest on a lower bound.
+        timing=not fail_fast,
     )
+
+    def _print_fail_fast_warning(to: rich.console.Console) -> None:
+        to.print()
+        to.print(
+            '[warning]The [item]--fail-fast / --ff[/item] flag should only be used for quick experimentation, '
+            'and should not be trusted for full validation of the problem.[/warning]'
+        )
+        to.print(
+            '[warning]The timing summary was omitted: a solution that stopped early '
+            'is only timed on the testcases that ran.[/warning]'
+        )
 
     if share is not None:
         rec = sharing.recording_console()
@@ -488,15 +504,16 @@ async def run(
             VerificationLevel(verification),
             detailed=detailed,
             skip_printing_limits=sanitized,
+            timing=not fail_fast,
         )
+        # The shared report is the copy that leaves this machine, and whoever
+        # reads it never sees the warning printed below.
+        if fail_fast:
+            _print_fail_fast_warning(rec)
         sharing.capture_and_share(rec, fmt=share, title='rbx run report')
 
     if fail_fast:
-        console.console.print()
-        console.console.print(
-            '[warning]The [item]--fail-fast / --ff[/item] flag should only be used for quick experimentation, '
-            'and should not be trusted for full validation of the problem.[/warning]'
-        )
+        _print_fail_fast_warning(console.console)
 
     if not ok:
         raise typer.Exit(1)

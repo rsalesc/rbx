@@ -1761,12 +1761,14 @@ def _get_verdict_report(
     verification: VerificationLevel,
 ) -> VerdictReport:
     has_plain_tle = False
+    has_skipped = False
     all_verdicts = set()
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
     has_sanitizer_warnings = False
     for eval in evals:
         all_verdicts.add(eval.result.outcome)
+        has_skipped = has_skipped or eval.result.outcome == Outcome.SKIPPED
         if eval.result.outcome != Outcome.ACCEPTED:
             bad_verdicts.add(eval.result.outcome)
         if (
@@ -1814,6 +1816,12 @@ def _get_verdict_report(
         and expected_outcome_is_tle
         # Solution does not have a plain TLE.
         and not has_plain_tle
+        # Every testcase of the report actually ran. A skipped one leaves the
+        # measurement a lower bound over a prefix of the testset, and a testcase
+        # that never ran could well be the one that does not fit in double TL.
+        # SKIPPED also lands in `other_verdicts` below, which suppresses both
+        # messages anyway -- this states the reason instead of relying on it.
+        and not has_skipped
         # A TLE has happened.
         and Outcome.TIME_LIMIT_EXCEEDED in matched_bad_verdicts
         # The solution runs in double TL.
@@ -2025,7 +2033,17 @@ def get_solution_outcome_report(
             status = SolutionOutcomeStatus.UNEXPECTED_SCORE
 
     limits = skeleton.get_solution_limits(solution)
-    if report_issues and limits.profile is None and has_unmatched_slow_verdict:
+    # A truncated run is read the same way a partial one is (see the docstring):
+    # a solution expected to be slow that failed early for another reason never
+    # reaches the testcase that would have timed out, so it looks "too fast" only
+    # because the rest never ran. Blaming the limits for that is misleading.
+    has_skipped_eval = any(eval.result.outcome == Outcome.SKIPPED for eval in evals)
+    if (
+        report_issues
+        and not has_skipped_eval
+        and limits.profile is None
+        and has_unmatched_slow_verdict
+    ):
         issue_stack.add_issue(TimingIssue())
 
     return SolutionOutcomeReport(
@@ -2864,6 +2882,11 @@ async def print_run_report(
     Time limit inference uses it to run solutions that are *expected* to hit the
     cap without their timeouts aborting the estimate. ``None`` gates on all of
     them.
+
+    ``timing`` drops the timing summary, in both the detailed and the plain
+    report. Pass ``False`` when the run may stop early: every line of that
+    summary is an extreme over the solutions, and a solution that did not run to
+    the end only measures a lower bound.
     """
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
@@ -2901,7 +2924,7 @@ async def print_run_report(
         if _gates_report(solution, gating_solutions):
             ok = ok and cur_ok
 
-    if not single_solution:
+    if not single_solution and timing:
         await _print_timing(
             console,
             result.skeleton,
