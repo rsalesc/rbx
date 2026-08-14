@@ -4,10 +4,8 @@ import subprocess
 from typing import Optional
 
 import chardet
-import typer
 
-from rbx import console
-from rbx.utils import command_exists
+from rbx import tooling
 
 MAX_PDFLATEX_RUNS = 3
 
@@ -39,11 +37,7 @@ class Latex:
         self.latex = latex
 
     def build_pdf(self, temp_dir: pathlib.Path) -> LatexResult:
-        if not command_exists('pdflatex', flags=['-v']):
-            console.console.print(
-                '[error][item]pdflatex[/item] not found. Please install it and try again.[/error]'
-            )
-            raise typer.Exit(1)
+        tooling.PDFLATEX.ensure()
 
         temp_path = pathlib.Path('statement.tex')
         output_path = temp_path.with_suffix('.pdf')
@@ -65,7 +59,10 @@ class Latex:
 
 
 def install_tex_packages(path: pathlib.Path, cwd: pathlib.Path):
-    if not command_exists('texliveonfly'):
+    # `is_available`, not `ensure`: texliveonfly is a best-effort convenience, and a
+    # machine with a complete TeX Live install never needs it. Its absence is not an
+    # error, so it stays a silent no-op.
+    if not tooling.TEXLIVEONFLY.is_available():
         return
     subprocess.run(
         ['texliveonfly', path],

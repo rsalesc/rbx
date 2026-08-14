@@ -8,13 +8,18 @@ import typer
 
 from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import ScoreType, TaskType
+from rbx.box.statements.schema import ConversionType, StatementType
 from rbx.config import get_default_app_path
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
+    EN_AND_PT_BLOCKS,
+    PT_BLOCKS,
     SLOW_SOL,
     WRONG_SOL,
     build_entries,
+    minimal_package,
     run_packager,
+    with_statements,
 )
 
 # -- shape ------------------------------------------------------------------
@@ -26,8 +31,24 @@ def test_only_supports_batch_problems():
     assert MojPackager.task_types() == [TaskType.BATCH]
 
 
-def test_builds_no_statements():
-    assert MojPackager(testcase_entries=[]).statement_types() == []
+def test_builds_pdf_statements_even_though_it_consumes_blocks():
+    # `statement_types()` names the OUTPUT a statement is built into, and v2 emits
+    # only pdf/tex/md. Consuming blocks is declared by `statement_export_params()`
+    # below, and the PDF build is what writes the artifacts it asks for -- both
+    # externalization and demacro run inside `render.compile_pdf`.
+    assert MojPackager(testcase_entries=[]).statement_types() == [StatementType.PDF]
+
+
+def test_export_params_force_externalize_and_demacro():
+    # Without these the overlay carries no blocks.sub.yml/macros.json and the
+    # export pipeline has nothing to read. Mirrors PolygonPackager.
+    steps = MojPackager(testcase_entries=[]).statement_export_params()
+    assert [step.type for step in steps] == [
+        ConversionType.rbxToTex,
+        ConversionType.TexToPDF,
+    ]
+    assert all(step.externalize for step in steps)
+    assert steps[1].demacro
 
 
 def test_packager_is_named_moj():
@@ -40,6 +61,13 @@ def test_packager_is_named_moj():
 def test_writes_the_mandatory_metadata_files(moj_package):
     assert (moj_package / 'author').read_text().strip() != ''
     assert (moj_package / 'tags').exists()
+
+
+def test_falls_back_to_the_dummy_statement_without_statements(moj_package):
+    # MOJ requires the two headings, so a package that declares no statement at
+    # all must still produce a valid enunciado.md.
+    text = (moj_package / 'docs' / 'enunciado.md').read_text()
+    assert 'ainda não disponível' in text
 
 
 def test_writes_a_statement_with_the_mandatory_sections(moj_package):
@@ -468,3 +496,105 @@ def test_points_problems_emit_a_score_file(testing_pkg, tmp_path):
     for path in (into_path / 'tests' / 'input').iterdir():
         matched = [g for g in globs if fnmatch.fnmatch(path.name, g)]
         assert len(matched) == 1, f'{path.name} matched {matched}'
+
+
+# -- statements -------------------------------------------------------------
+
+
+def test_package_writes_a_real_enunciado(testing_pkg, tmp_path, monkeypatch):
+    minimal_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, PT_BLOCKS)
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    text = (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'Some os inteiros' in text
+    assert '## Entrada' in text
+    assert '## Saída' in text
+    assert 'ainda não disponível' not in text
+    # The reference was rewritten to where the asset actually landed, relative to
+    # the document's own directory.
+    assert '![](assets/fig.png)' in text
+    assert (into_path / 'docs' / 'assets' / 'fig.png').exists()
+
+
+def test_package_writes_sample_notes_by_test_name(testing_pkg, tmp_path, monkeypatch):
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        PT_BLOCKS,
+        explanations={0: 'Veja \\includegraphics{diagram}.'},
+    )
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    note = (into_path / 'docs' / 'notes' / 'sample001.md').read_text()
+    assert 'Veja' in note
+    # gen-problem-json.sh renders the note with --resource-path=<pkg>/docs, so the
+    # reference is relative to docs/, NOT to the note's own directory.
+    # The sample ASSET root is keyed by the 0-based explanation index, not by the
+    # test name -- it only has to be unique per sample and agree with the derived
+    # reference, which it does.
+    assert '![](samples/000/diagram.png)' in note
+    assert (into_path / 'docs' / 'samples' / '000' / 'diagram.png').exists()
+    # And the note pairs by name with a test that exists.
+    assert (into_path / 'tests' / 'input' / 'sample001').exists()
+
+
+def test_language_option_selects_the_statement(testing_pkg, tmp_path, monkeypatch):
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        EN_AND_PT_BLOCKS,
+        languages=('pt', 'en'),
+        titles={'pt': 'Soma', 'en': 'Sum'},
+    )
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples']), main_language='en'
+    )
+
+    text = (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'In English.' in text
+    assert '## Input' in text
+
+
+def test_display_title_comes_from_the_selected_statement(
+    testing_pkg, tmp_path, monkeypatch
+):
+    # The body and the injected <h1> must never come from different languages.
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        EN_AND_PT_BLOCKS,
+        languages=('pt', 'en'),
+        titles={'pt': 'Soma', 'en': 'Sum'},
+    )
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples']), main_language='en'
+    )
+
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['display_title'] == 'Sum'
+    assert 'In English.' in (into_path / 'docs' / 'enunciado.md').read_text()
+
+
+def test_an_unknown_language_is_an_error(testing_pkg, tmp_path, monkeypatch):
+    minimal_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, PT_BLOCKS)
+
+    with pytest.raises(typer.Exit):
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            main_language='fr',
+        )

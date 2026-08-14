@@ -1,11 +1,15 @@
+import base64
 import pathlib
-from typing import List
+from typing import List, Optional
 
 import pytest
 
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import Testcase
+from rbx.box.statements import export
+from rbx.box.statements.render import StatementBlocks
+from rbx.box.statements.schema import Statement
 from rbx.box.testcase_schema import TestcaseEntry
 
 CHECKER = '#include "testlib.h"\nint main(){ quitf(_ok, "ok"); }\n'
@@ -49,13 +53,94 @@ def build_entries(
 
 
 def run_packager(
-    testing_pkg, tmp_path: pathlib.Path, entries: List[GenerationTestcaseEntry]
+    testing_pkg,
+    tmp_path: pathlib.Path,
+    entries: List[GenerationTestcaseEntry],
+    main_language: Optional[str] = None,
 ) -> pathlib.Path:
     into_path = tmp_path / 'package'
     build_path = tmp_path / 'build'
     build_path.mkdir(parents=True, exist_ok=True)
-    MojPackager(testcase_entries=entries).package(build_path, into_path, [])
+    MojPackager(testcase_entries=entries, main_language=main_language).package(
+        build_path, into_path, []
+    )
     return into_path
+
+
+# A 1x1 PNG. A real one, because the end-to-end test hands it to pandoc's
+# `--embed-resources`, which reads the file to base64 it.
+TINY_PNG = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAE'
+    'hQGAhKmMIQAAAABJRU5ErkJggg=='
+)
+
+
+def minimal_package(testing_pkg) -> None:
+    """The smallest package MOJ accepts: a checker and one accepted solution."""
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+
+
+def with_statements(
+    testing_pkg,
+    monkeypatch,
+    blocks,
+    explanations=None,
+    languages=('pt',),
+    titles=None,
+) -> None:
+    """Declare statements and fake the artifacts a statement build would leave.
+
+    The export pipeline reads `blocks.sub.yml` and the TikZ PDFs out of the v2
+    standalone overlay, which only a real statement build (pdflatex included)
+    writes. Faking those three reads keeps these tests about the packager.
+    """
+    statement_dir = testing_pkg.root / 'statement'
+    statement_dir.mkdir(parents=True, exist_ok=True)
+    (statement_dir / 'fig.png').write_bytes(TINY_PNG)
+
+    overlay = testing_pkg.root / 'overlay'
+    (overlay / '.samples' / '000').mkdir(parents=True, exist_ok=True)
+    (overlay / '.samples' / '000' / 'diagram.png').write_bytes(TINY_PNG)
+
+    statements = []
+    for language in languages:
+        path = statement_dir / f'statement-{language}.rbx.tex'
+        path.touch()
+        statements.append(
+            Statement(
+                language=language,
+                title=(titles or {}).get(language),
+                file=pathlib.Path('statement') / path.name,
+            )
+        )
+    testing_pkg.yml.statements = statements
+    testing_pkg.save()
+
+    def _blocks(statement, normalize=True):
+        return StatementBlocks(
+            blocks=dict(blocks.get(statement.language, blocks['pt'])),
+            explanations=dict(explanations or {}),
+        )
+
+    monkeypatch.setattr(export, 'get_statement_dir', lambda statement: overlay)
+    monkeypatch.setattr(export, 'get_produced_tikz_pdfs', lambda statement: [])
+    monkeypatch.setattr(export, 'get_processed_statement_blocks', _blocks)
+
+
+PT_BLOCKS = {
+    'pt': {
+        'legend': 'Some os inteiros $a$ e $b$. \\includegraphics{fig}',
+        'input': 'Uma linha com $a$ e $b$.',
+        'output': 'A soma.',
+    }
+}
+
+EN_AND_PT_BLOCKS = {
+    'pt': {'legend': 'Em português.', 'input': 'Entrada.', 'output': 'Saída.'},
+    'en': {'legend': 'In English.', 'input': 'Input.', 'output': 'Output.'},
+}
 
 
 @pytest.fixture

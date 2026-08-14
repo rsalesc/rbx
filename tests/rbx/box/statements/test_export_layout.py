@@ -298,12 +298,29 @@ def test_sample_scope_root_requires_an_index_placeholder():
         ).place_asset(SAMPLE_ASSET)
 
 
-def test_sample_explanation_document_dir_requires_an_index_placeholder():
-    # Without it every sample's notes collapse into one directory.
-    with pytest.raises(export.StatementExportError, match='must carry'):
-        export.SubtreeLayout(
-            document_dirs={'sample_explanation': 'docs/notes'}
-        ).document_dir(DocumentSlot.sample(0))
+def test_sample_explanation_dir_may_be_constant():
+    """MOJ renders every note with --resource-path=<pkg>/docs, so the note slot's
+    remap base is constant across samples even though the note FILES are
+    per-sample. A document dir is only the base a remap is computed against, so
+    two samples sharing it derive identical references for shared assets --
+    correct, it is the same file -- and distinct ones for their own sample-scope
+    assets, which do live under an {index} root."""
+    layout = export.SubtreeLayout(
+        asset_roots={AssetScope.SAMPLE: 'docs/samples/{index:03d}'},
+        document_dirs={'body': 'docs', 'sample_explanation': 'docs'},
+    )
+    assert layout.document_dir(DocumentSlot.sample(1)) == pathlib.PurePosixPath('docs')
+    assert layout.document_dir(DocumentSlot.sample(2)) == pathlib.PurePosixPath('docs')
+
+
+def test_sample_explanation_dir_may_still_carry_an_index():
+    layout = export.SubtreeLayout(
+        asset_roots={AssetScope.SAMPLE: 'docs/samples/{index:03d}'},
+        document_dirs={'sample_explanation': 'notes/{index:03d}'},
+    )
+    assert layout.document_dir(DocumentSlot.sample(7)) == pathlib.PurePosixPath(
+        'notes/007'
+    )
 
 
 def test_a_layout_missing_a_sample_root_names_the_missing_key():

@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Literal, TypeVar
 
 from pydantic import BaseModel, Field
 
-from rbx import console
+from rbx import console, tooling
 from rbx.box.statements import texsoup_utils
 from rbx.box.statements.context import (
     ContestRenderContext,
@@ -260,6 +260,10 @@ def md_to_pdf(root: pathlib.Path, md: bytes) -> bytes:
     """Convert Markdown to PDF via pandoc (for plain ``md`` statements)."""
     import pypandoc
 
+    # pypandoc raises a bare OSError when the binary is absent; the registry says
+    # what is missing and how to install it.
+    tooling.PANDOC.ensure()
+
     output = root / 'statement.pdf'
     pypandoc.convert_text(
         md.decode(),
@@ -276,6 +280,8 @@ def md_blocks_to_rbxtex(blocks: StatementBlocks) -> bytes:
     pandoc-converted to LaTeX), so an rbxMarkdown statement can reuse the LaTeX
     rendering path (mirrors the v1 rbxMarkdown->rbxTeX builder)."""
     import pypandoc
+
+    tooling.PANDOC.ensure()
 
     result = ''
     for name, content in blocks.blocks.items():

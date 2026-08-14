@@ -12,7 +12,9 @@ from rbx.box import naming as box_naming
 from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
+from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj import naming
+from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj.extension import MojLanguageExtension
 from rbx.box.packaging.moj.moj_language_utils import (
     get_emitted_moj_languages,
@@ -20,9 +22,18 @@ from rbx.box.packaging.moj.moj_language_utils import (
     get_moj_language_from_rbx_language,
     get_moj_template_name,
 )
+from rbx.box.packaging.moj.statement_assets import rasterize_pdf_assets
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import CodeItem, ExpectedOutcome, ScoreType, Solution, TaskType
-from rbx.box.statements.schema import Statement, StatementType
+from rbx.box.statements import export
+from rbx.box.statements.markdown_export import MojGateError
+from rbx.box.statements.schema import (
+    ConversionStep,
+    ConversionType,
+    Statement,
+    TexToPDF,
+    rbxToTeX,
+)
 from rbx.config import get_default_app_path, get_testlib
 
 # rbx has no author field, and MOJ hard-requires the file, so a visible placeholder
@@ -72,6 +83,16 @@ class MojPackager(BasePackager):
       its headers.
     """
 
+    def __init__(
+        self,
+        testcase_entries: List[GenerationTestcaseEntry],
+        main_language: Optional[str] = None,
+    ):
+        super().__init__(testcase_entries)
+        # A MOJ package holds ONE statement, so the language is chosen here and
+        # used for both the body and `display_title` -- see `_get_main_statement`.
+        self.main_language = main_language
+
     @classmethod
     def name(cls) -> str:
         return 'moj'
@@ -83,24 +104,56 @@ class MojPackager(BasePackager):
         # Interactive problems are not supported yet; it deserves its own design.
         return [TaskType.BATCH]
 
-    def statement_types(self) -> List[StatementType]:
-        # MOJ's statement format is not supported by rbx yet; a dummy enunciado.md is
-        # written instead, so no statement is built.
-        return []
+    # NOTE: `statement_types()` is deliberately NOT overridden, so the default
+    # `[StatementType.PDF]` applies -- exactly as for `PolygonPackager`, the other
+    # block-consuming packager. `statement_types` names the *output* a statement is
+    # built into, and v2 can only emit pdf/tex/md (`build_statements._emit_output`);
+    # `rbxTeX` is a *source* type and returning it fails the build outright. What
+    # declares "I consume blocks, not a PDF" is `statement_export_params` below --
+    # and the PDF build is what produces the artifacts it asks for, since both
+    # externalization and demacro live inside `render.compile_pdf`. Asking for TeX
+    # or Markdown output would skip that call entirely and leave no macros.json and
+    # no externalized TikZ.
+
+    def statement_export_params(self) -> List[ConversionStep]:
+        # Declaring these is what makes `run_packager` build every statement with
+        # TikZ externalized (so each figure becomes a PDF the bundle can place) and
+        # macros extracted (so the blocks reduce to the Polygon TeX subset the
+        # markdown converter expects). Without them the overlay carries no
+        # blocks.sub.yml/macros.json and there is nothing to read. Mirrors
+        # `PolygonPackager.statement_export_params`.
+        return [
+            rbxToTeX(type=ConversionType.rbxToTex, externalize=True),
+            TexToPDF(type=ConversionType.TexToPDF, externalize=True, demacro=True),
+        ]
 
     # -- metadata -------------------------------------------------------------
 
     def _get_main_statement(self) -> Optional[Statement]:
-        """The statement the title is taken from: the topmost declared one.
+        """The single statement this package ships.
 
-        Statements are not *built* for MOJ (`statement_types()` is empty), but a
-        package still declares them, and the first one is what every other packager
-        treats as the main one.
+        MOJ holds one statement per problem, so this is the one choice that
+        matters: the body and `display_title` both resolve from it, and they must
+        never come from different languages. `--language` picks it; without one,
+        the topmost declared statement wins, as everywhere else in rbx.
         """
         pkg = package.find_problem_package_or_die()
         if not pkg.expanded_statements:
             return None
-        return pkg.expanded_statements[0]
+        if self.main_language is None:
+            return pkg.expanded_statements[0]
+        for statement in pkg.expanded_statements:
+            if statement.language == self.main_language:
+                return statement
+        available = '[/item], [item]'.join(
+            sorted({statement.language for statement in pkg.expanded_statements})
+        )
+        console.console.print(
+            f'[error]No statement in language [item]{self.main_language}[/item].'
+            f'[/error]\n[error]This problem has statements in: '
+            f'[item]{available}[/item].[/error]'
+        )
+        raise typer.Exit(1)
 
     def _display_title(self) -> str:
         """MOJ's `display_title`, resolved through the shared naming helper.
@@ -215,10 +268,54 @@ class MojPackager(BasePackager):
         (into_path / 'author').write_text(DEFAULT_AUTHOR)
         (into_path / 'tags').write_text('')
         self._write_moj_meta(into_path)
+        self._write_statement(into_path)
 
+    def _write_statement(self, into_path: pathlib.Path) -> None:
+        """Write `docs/enunciado.md`, its assets and the per-sample notes.
+
+        The whole shape is dictated by mojtools; see
+        `rbx.box.packaging.moj.statement`. A package that declares no statement
+        falls back to `DUMMY_STATEMENT`: MOJ hard-requires the two headings, and
+        a statement-less package must still package.
+        """
         docs_path = into_path / 'docs'
         docs_path.mkdir(parents=True, exist_ok=True)
-        (docs_path / 'enunciado.md').write_text(DUMMY_STATEMENT)
+
+        main_statement = self._get_main_statement()
+        if main_statement is None:
+            (docs_path / 'enunciado.md').write_text(DUMMY_STATEMENT)
+            return
+
+        try:
+            bundle = export.build_statement_bundle(
+                main_statement, layout=moj_statement.moj_layout()
+            )
+        except export.StatementExportError as e:
+            console.console.print(f'[error]{e}[/error]')
+            raise typer.Exit(1) from e
+
+        bundle.materialize(into_path)
+        # After materialize, so the PDFs are on disk under the .png names the
+        # layout already rewrote every reference to.
+        rasterize_pdf_assets(bundle, into_path)
+
+        try:
+            body = moj_statement.build_enunciado(
+                bundle.blocks, language=main_statement.language
+            )
+            notes = moj_statement.build_notes(bundle.explanations)
+        except MojGateError as e:
+            console.console.print(
+                f'[error]Cannot package this statement for MOJ.[/error]\n'
+                f'[error]{e}[/error]'
+            )
+            raise typer.Exit(1) from e
+
+        (docs_path / 'enunciado.md').write_text(body)
+        for name, content in notes.items():
+            note_path = into_path / moj_statement.note_path(name)
+            note_path.parent.mkdir(parents=True, exist_ok=True)
+            note_path.write_text(content)
 
     def _write_conf(self, into_path: pathlib.Path) -> None:
         pkg = package.find_problem_package_or_die()

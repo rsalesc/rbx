@@ -161,6 +161,28 @@ consumes the v2 overlay directly. The standalone overlay root
   per-builder subdirs, no absolute/temp paths. Its debug dump of the normalized
   blocks moved from `<overlay>/polygon/` to **`<overlay>/export/`**.
 
+**Two consumers, two layouts (#640, #642).** The Polygon upload uses
+`FlatLayout`; the **MOJ packager** uses `SubtreeLayout` wrapped in a
+`RasterizingLayout` (`packaging/moj/statement.py`), and is what proves the seam
+is not Polygon-shaped. Two things it taught the layout:
+
+- A **document dir may be constant** across samples. `{index}` stays *required*
+  in `asset_roots[AssetScope.SAMPLE]` -- many files land in that directory, so a
+  constant root really would collide entries from different samples -- but a
+  document dir is not a destination, only the base a remap is computed against.
+  MOJ needs a constant `docs` for both slots because `gen-problem-json.sh`
+  renders every sample note with `--resource-path=<pkg>/docs` regardless of which
+  sample it belongs to, even though the note *file* lives in `docs/notes/`.
+- **Extension mangling is a layout concern**, not a post-processing one:
+  `derive_remap` reads `place_asset`, so a `.pdf` -> `.png` rewrite has to happen
+  in the layout or every reference keeps citing a file that is no longer there.
+
+`markdown_export.py` converts a block from the Polygon TeX subset to
+**pandoc-flavored Markdown** (via the pandoc JSON AST, clearing `Image` alt text
+so MOJ's `implicit_figures` does not caption every figure "image"). MOJ renders
+statements by running pandoc over them, so that dialect is the target rather than
+a lossy fallback.
+
 **The block pipeline and asset resolution live in `export.py`, not in the Polygon
 package.** They used to sit in `packaging/polygon/{statement_block_utils,upload}.py`,
 where no other packager could reach them; `export.py` is the whole pipeline —

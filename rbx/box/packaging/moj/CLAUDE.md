@@ -126,12 +126,92 @@ Java and Kotlin build a **manifest jar** so `run.sh` is just `java -jar`. This f
 `lang/java/compile.sh`, which elects the main class by grepping for `main` and falling
 back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`.
 
+## Statements (`statement.py`, `statement_assets.py`)
+
+`statement_export_params()` forces externalize+demacro exactly as
+`PolygonPackager` does, so the build leaves the `blocks.sub.yml` / `macros.json`
+/ TikZ PDFs that [`statements/export.py`](../../statements/export.py) reads. The
+packager then converts each block TeX → Markdown with pandoc and writes
+`docs/enunciado.md` plus `docs/notes/<sample>.md`.
+
+**`statement_types()` is deliberately not overridden**, so the default
+`[StatementType.PDF]` applies — as for `PolygonPackager`, the other
+block-consuming packager. That hook names the *output* a statement is built into,
+and statements v2 emits only pdf/tex/md (`build_statements._emit_output`);
+returning the *source* type `rbxTeX` fails the build outright with "statements v2
+cannot yet emit output type rbxTeX. See #569 (S13)". Nor would TeX or Markdown
+output do: externalization and demacro both run inside `render.compile_pdf`, so
+anything other than the PDF build leaves no `macros.json` and no externalized
+TikZ for the bundle to read. Consuming blocks is declared by
+`statement_export_params()`, never here — `tests/rbx/box/packaging/test_statement_types.py`
+pins this for every packager.
+
+**MOJ renders statements with pandoc itself** (`render-statement.sh`, the single
+source shared by the editor's *Pré-visualizar*, `gen-problem-json.sh` and
+`validate-problem.sh`). So pandoc-flavored Markdown is the *target dialect*, not
+a compromise: fenced divs, grid tables and attribute spans round-trip, and `$…$`
+reaches the student as MathML with no conversion. `docs/enunciado.tex` was
+rejected as an alternative -- MOJ would accept it, but the mandatory-heading
+check greps markdown headings out of the raw source, so a `.tex` statement can
+never pass the gate however well it renders.
+
+What the packager owes the gate (`validate-problem.sh`):
+
+- `## Entrada` / `## Saída`, **hard-required**, grepped from the raw file. Emitted
+  unconditionally, even when the block is empty. Heading text follows the
+  statement language (`entrada|input`, `saída|saida|output`, matched case
+  insensitively), defaulting to Portuguese.
+- **No title.** `render-statement.sh` injects the `<h1>` from `display_title` and
+  strips a legacy `% Title` first line.
+- **No examples section and no ``` fence** -- both land in `render_warnings`,
+  since MOJ builds the examples itself from `tests/input/sample*`. `check_moj_gate`
+  refuses to package rather than shipping a statement that warns.
+
+### `--language`
+
+`rbx package moj --language <lang>` picks the statement, mirroring
+`rbx package polygon --language`; unset means the topmost one. `display_title`
+resolves from **the same** statement, so the body and the rendered `<h1>` can
+never come from different languages.
+
+### The `docs/` remap base — read before touching `moj_layout()`
+
+```
+docs/enunciado.md              body
+docs/notes/sample001.md        per-sample explanations, paired BY NAME
+docs/assets/…                  statement-scope assets
+docs/samples/{index}/…         sample-scope assets
+```
+
+`document_dirs['sample_explanation']` is a constant **`docs`**, not `docs/notes`,
+even though that is where the note file lands. `gen-problem-json.sh` renders each
+note with `--resource-path="$PKG/docs"` regardless of which sample it belongs to,
+so `docs` is what its image references resolve against; a base of `docs/notes`
+would derive `../assets/f.png` and break every note image. Expressing this needed
+relaxing `SubtreeLayout`'s `{index}` requirement on document dirs (still required
+for `asset_roots[SAMPLE]`, where many files land in the directory).
+
+Note names come from `naming.testcase_name(..., is_sample=True)` rather than a
+hand-spelled `sample%03d`, so a note can never stop pairing with its test.
+
+### PDF figures need poppler
+
+MOJ renders to HTML and base64-embeds every image, so an `<img src="fig.pdf">` is
+broken in every browser -- and rbx's TikZ externalization produces exactly that.
+`RasterizingLayout` maps a `.pdf` placement to `.png` (in the *layout*, so the
+derived remap already cites the rasterized name), and `rasterize_pdf_assets`
+converts with `pdftoppm -png -r 300 -singlefile` after `materialize`. A statement
+with no PDF figure never probes for poppler; one that has them and no poppler
+**refuses to package**, naming the figures. SVG passes through untouched.
+
+### Known limitation: no math in sample notes
+
+`gen-problem-json.sh` renders notes **without** `--mathml`, unlike the body, so
+math inside an explanation reaches the student as a literal `\(x\)`. Nothing in
+the package can fix it; rbx warns when a note contains math.
+
 ## Out of scope
 
-- **Statements.** `statement_types()` returns `[]`, so nothing is built; a dummy
-  `docs/enunciado.md` with the mandatory `## Entrada`/`## Saída` is written instead.
-  It carries no title, no examples and no fenced blocks (a fence trips
-  `validate-problem.sh`'s hand-written-example warning).
 - **Interactive.** `task_types()` is `[BATCH]`. MOJ's arbiter protocol (test in
   `argv[1]`, last stderr line `WRONG <reason>`, FIFO driver, per-language SIGPIPE
   handling) is structurally unlike a testlib interactor and deserves its own design.
@@ -183,3 +263,16 @@ uv run pytest tests/rbx/box/packaging/moj/
 The checker-compilation tests skip without `g++`. To exercise the real bridge, clone
 `cd-moj/mojtools` and run the emitted `scripts/compare.sh` with `MOJTOOLS_DIR` set:
 correct output must exit 4, wrong output 6.
+
+`test_statement_e2e.py` runs mojtools' actual `validate-problem.sh` and
+`render-statement.sh` over an emitted package, asserting the hard statement
+checks pass with **empty** `render_warnings` and that both the statement figure
+and the sample-note figure come back as embedded `data:` URIs. It is the only
+check that the remap and the notes' resource-path base are right rather than
+merely self-consistent, and it skips without `MOJTOOLS_DIR` (or without
+`bash`/`jq`/`pandoc`):
+
+```bash
+MOJTOOLS_DIR=/path/to/mojtools uv run pytest \
+  tests/rbx/box/packaging/moj/test_statement_e2e.py
+```
