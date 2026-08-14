@@ -250,6 +250,10 @@ class ExpectedOutcome(AutoEnum):
     def match(self, outcome: Outcome) -> bool:
         if self == ExpectedOutcome.ANY:
             return True
+        # A skipped testcase was not awarded, so it satisfies any expectation
+        # that does not demand success.
+        if outcome == Outcome.SKIPPED:
+            return self != ExpectedOutcome.ACCEPTED
         if self == ExpectedOutcome.COMPILATION_ERROR:
             return outcome == Outcome.COMPILATION_ERROR
         if self == ExpectedOutcome.ACCEPTED:
@@ -284,7 +288,14 @@ class ExpectedOutcome(AutoEnum):
         return False
 
     def get_matches(self) -> List[Outcome]:
-        return [outcome for outcome in Outcome if self.match(outcome)]
+        # SKIPPED is not a verdict a run can be awarded, and it satisfies almost
+        # every expectation, so including it here would make every pair of bad
+        # expectations look compatible in `intersect`.
+        return [
+            outcome
+            for outcome in Outcome
+            if outcome != Outcome.SKIPPED and self.match(outcome)
+        ]
 
     def intersect(self, rhs: 'ExpectedOutcome') -> bool:
         return bool(set(self.get_matches()) & set(rhs.get_matches()))
