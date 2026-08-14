@@ -1714,21 +1714,21 @@ def _group(name: str, deps: List[str]) -> GroupSkeleton:
 
 
 def test_binary_scoring_aborts_the_whole_testset():
-    skeleton = [_group('a', []), _group('b', []), _group('c', [])]
-    gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.BINARY)
+    groups = [_group('a', []), _group('b', []), _group('c', [])]
+    gate = _AbortGate(groups=groups, scoring=ScoreType.BINARY)
     gate.trip('a')
-    assert all(gate.is_skipped(group.name) for group in skeleton)
+    assert all(gate.is_skipped(group.name) for group in groups)
 
 
 def test_points_scoring_aborts_the_group_and_its_dependents():
     # c depends on b, b depends on a; d is independent.
-    skeleton = [
+    groups = [
         _group('a', []),
         _group('b', ['a']),
         _group('c', ['b']),
         _group('d', []),
     ]
-    gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.POINTS)
+    gate = _AbortGate(groups=groups, scoring=ScoreType.POINTS)
     gate.trip('a')
     assert gate.is_skipped('a')
     assert gate.is_skipped('b')
@@ -1737,8 +1737,8 @@ def test_points_scoring_aborts_the_group_and_its_dependents():
 
 
 def test_gate_is_not_skipped_before_tripping():
-    skeleton = [_group('a', [])]
-    gate = _AbortGate(skeleton=skeleton, scoring=ScoreType.POINTS)
+    groups = [_group('a', [])]
+    gate = _AbortGate(groups=groups, scoring=ScoreType.POINTS)
     assert not gate.is_skipped('a')
 
 

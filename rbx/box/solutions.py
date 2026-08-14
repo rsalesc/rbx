@@ -127,17 +127,27 @@ AbortPredicate = Callable[[AbortContext], bool]
 class _AbortGate:
     """Tracks which groups of a single solution must no longer run.
 
-    Safe because the run loop is sequential: nothing in `solutions.py` or
-    `tasks.py` schedules evaluations concurrently.
+    A mutable gate is only correct because every consumer forces the deferred
+    evaluations sequentially, in entry order: `print_run_report`,
+    `_print_detailed_run_report`/`_render_detailed_group_table` and
+    `convert_list_of_solution_evaluations_to_dict`. Parallelizing any of those
+    loops would let a testcase run before the verdict that should have skipped
+    it -- the producer's own sequencing is not what makes this safe.
 
     The caller's predicate must only trip on an outcome that already dooms the
     group -- the skipped groups are reported as failed, not as unmeasured.
     """
 
-    def __init__(self, skeleton: List[GroupSkeleton], scoring: ScoreType):
-        self.skeleton = skeleton
+    def __init__(self, groups: List[GroupSkeleton], scoring: ScoreType):
+        self.groups = groups
         self.scoring = scoring
         self.skipped_groups: Set[str] = set()
+        # The group graph is fixed for the gate's lifetime, so the reverse
+        # adjacency is built once here rather than on every trip.
+        self.dependents: Dict[str, List[str]] = collections.defaultdict(list)
+        for group in groups:
+            for dep in group.deps:
+                self.dependents[dep].append(group.name)
 
     def is_skipped(self, group_name: str) -> bool:
         return group_name in self.skipped_groups
@@ -146,7 +156,7 @@ class _AbortGate:
         if self.scoring != ScoreType.POINTS:
             # `deps` only exist under POINTS, and a binary verdict is
             # all-or-nothing, so nothing later can change the outcome.
-            self.skipped_groups.update(group.name for group in self.skeleton)
+            self.skipped_groups.update(group.name for group in self.groups)
             return
         self.skipped_groups.add(group_name)
         self.skipped_groups.update(self._dependents_of(group_name))
@@ -157,19 +167,14 @@ class _AbortGate:
         They would score 0 anyway -- `_check_deps` zeroes a group whenever any
         of its dependencies failed.
         """
-        dependents: Dict[str, List[str]] = collections.defaultdict(list)
-        for group in self.skeleton:
-            for dep in group.deps:
-                dependents[dep].append(group.name)
-
         res: Set[str] = set()
-        stack = list(dependents[group_name])
+        stack = list(self.dependents[group_name])
         while stack:
             name = stack.pop()
             if name in res:
                 continue
             res.add(name)
-            stack.extend(dependents[name])
+            stack.extend(self.dependents[name])
         return res
 
 
@@ -472,8 +477,16 @@ def _skipped_evaluation(testcase: Testcase, index: int) -> Evaluation:
             index=index, input=testcase.inputPath, output=testcase.outputPath
         ),
         # No time/memory: this never ran, and the timing consumers must not
-        # read a 0 out of it.
-        log=TestcaseLog(time=None, wall_time=None, memory=None),
+        # read a 0 out of it. The exit fields are spelled out for the same
+        # reason -- `RunLog` defaults to a zero exit code and a 'sandbox error'
+        # status, neither of which happened here.
+        log=TestcaseLog(
+            exitcode=-1,
+            exitstatus='skipped',
+            time=None,
+            wall_time=None,
+            memory=None,
+        ),
     )
 
 
@@ -525,8 +538,12 @@ def _run_solution(
                 nruns=nruns,
                 capture_pipes=capture_pipes,
             )
-            group = groups_by_name.get(group_name)
-            if gate is not None and abort_on is not None and group is not None:
+            if gate is not None and abort_on is not None:
+                # Every entry belongs to a group of the skeleton. Assert rather
+                # than skip: a refactor that broke this would silently turn the
+                # abort off instead of failing.
+                group = groups_by_name.get(group_name)
+                assert group is not None
                 context = AbortContext(
                     solution=solution,
                     group=group,
