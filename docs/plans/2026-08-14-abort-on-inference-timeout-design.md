@@ -186,6 +186,41 @@ solution with any non-AC, non-slow outcome as `failed_upper` (fatal), and
 `_timings_per_language` and `_print_timing`, which have no timing data to read
 from them.
 
+## Accepted tradeoff: aborting can hide a fatal diagnosis
+
+Aborting destroys evidence, and in one case that evidence would have changed
+the verdict of the estimation run. This is known and accepted; it is not a bug
+report.
+
+`_diagnose_inference_run` ranks `broken` above `timed_out`: an upper-bound
+solution that fails for a NON-timing reason (a wrong answer, a crash) is
+**fatal** (`failed_upper`, the run stops and no profile is written), while one
+that is merely too slow is a **warning** (`dropped_upper`, the profile is
+written without it). Under BINARY scoring the gate skips every remaining
+testcase of the solution, so once it trips on a slow verdict, no later
+testcase can ever contribute the wrong answer that would have made the run
+fatal.
+
+Concretely, with an upper-bound solution that hits the cap on test 1 and is
+wrong on tests 2-3, under `check=True`:
+
+- before this change: fatal, no profile written, the setter is told the
+  solution is broken;
+- after this change: a `dropped_upper` warning, and the profile is written.
+
+It is **order-dependent**. Put the wrong-answer testcase first and the abort
+trips only after the wrong answer is already in `outcomes`, so the fatal path
+returns. The same package can therefore be diagnosed either way depending on
+testcase order alone.
+
+We accept this. The estimate itself is unaffected either way -- a dropped
+solution bounds nothing, so the number rbx writes is the same number it would
+have written -- and what is lost is a diagnostic about a solution the setter
+mislabeled, which the ordinary `rbx run` reports on the full testset without a
+cap. The alternative -- running every remaining testcase of a hopeless
+solution purely to keep classifying it -- is exactly the wall clock this
+change exists to stop spending. The warning text is deliberately left as is.
+
 ## Consumers that must classify `SKIPPED`
 
 Adding an enum member makes most of these compile-time or review-visible:
