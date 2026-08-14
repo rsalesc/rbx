@@ -1,0 +1,34 @@
+name: inference-abort
+# Replaced by the estimate; it only has to make `sols/hopeless.cpp` an honest
+# `tle` when the package is run on its own limits.
+timeLimit: 300
+memoryLimit: 256
+
+timing:
+  multipliers:
+    # Small enough to keep the scenario quick: the hopeless solution is killed
+    # at the cap on the very first testcase, and the ones after it are skipped
+    # instead of costing another cap each.
+    inferenceTimeout: 500
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/hopeless.cpp
+    outcome: tle
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4
+          - name: gen
+            args: 5 6

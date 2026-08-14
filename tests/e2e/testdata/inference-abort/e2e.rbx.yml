@@ -1,0 +1,32 @@
+# One accepted solution and one hopeless one, under a 500 ms `inferenceTimeout`
+# the hopeless solution cannot possibly meet. It is dropped from the upper
+# bound the moment it hits the cap, so the testcases after that are pure wasted
+# wall clock -- the run stops instead, and the estimate is the same one the
+# accepted solution alone bounds.
+scenarios:
+  - name: abort-at-inference-timeout
+    description: >
+      `rbx time --auto` stops running a solution once it hits the inference
+      timeout. The first testcase is measured and killed at the cap; every
+      later one resolves to a skipped evaluation without entering the sandbox,
+      and the written limit still comes from the accepted solution.
+    steps:
+      - cmd: time --auto
+        expect:
+          stdout_contains:
+            - 'inference timeout of 500 ms'
+            - 'bounds nothing from above'
+          files_exist:
+            - '.limits/local.yml'
+          file_contains:
+            # A multiple of 100ms (timeResolution), bounded from below by the
+            # accepted solution, with the hopeless one dropped from the bound.
+            .limits/local.yml: '/(?ms)^timeLimit: [0-9]*00$.*solution: sols/main\.cpp$.*droppedUpper:.*hopeless\.cpp/'
+            # `.rbx/runs/1` is the second declared solution, sols/hopeless.cpp.
+            # It is killed at the cap on the first testcase...
+            .rbx/runs/1/main/1-gen-000.eval: 'outcome: time-limit-exceeded'
+            # ...and never runs again: the rest are skipped, not measured.
+            .rbx/runs/1/main/1-gen-001.eval: 'outcome: skipped'
+            .rbx/runs/1/main/1-gen-002.eval: 'outcome: skipped'
+            # The accepted solution is untouched by the other one's abort.
+            .rbx/runs/0/main/1-gen-002.eval: 'outcome: accepted'
