@@ -63,6 +63,13 @@ from rbx.grading.steps import (
     TestcaseLog,
 )
 
+# The heaviest file in the suite: every test re-runs the same `box1` solutions
+# in a fresh problem directory. Sharing the problem cache takes it from 84s to
+# 42s. Compilation is a means here, never the assertion -- the two compilation
+# tests in this file exercise `FailedToCompileSolutionIssue` messages built by
+# hand, without compiling anything.
+pytestmark = pytest.mark.shared_cache
+
 
 class Box1Run(NamedTuple):
     """One solution of `problems/box1`, run over the whole testset."""

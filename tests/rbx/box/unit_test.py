@@ -9,6 +9,12 @@ from rbx.box.schema import CodeItem, ExpectedOutcome, ValidatorOutcome
 from rbx.box.testing import testing_package
 from rbx.utils import StatusProgress
 
+# Every unit test here compiles the same validators and checkers from scratch in
+# a fresh problem directory; sharing the problem cache takes the file from 62s to
+# 19s. The assertions are all about unit-test outcomes, never about a
+# compilation running.
+pytestmark = pytest.mark.shared_cache
+
 
 @pytest.fixture
 def mock_progress():

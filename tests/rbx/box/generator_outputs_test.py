@@ -7,6 +7,11 @@ from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 from rbx.grading import steps
 
+# Sharing the problem cache across these tests takes the file from 32s to 13s:
+# they all rebuild the same generator and solutions. The two tests that assert
+# on a compilation failure message opt back out below.
+pytestmark = pytest.mark.shared_cache
+
 _SOL_DOUBLE_NUMBER = """
 #include <iostream>
 
@@ -115,6 +120,8 @@ async def test_generator_outputs_no_main_solution_and_does_not_need_output(
     ).read_bytes() == b'246\n'
 
 
+# Asserts on a compilation failure message, so it needs a cold cache.
+@pytest.mark.shared_cache(False)
 async def test_generator_outputs_main_solution_does_not_compile_and_needs_output(
     testing_pkg: testing_package.TestingPackage,
     capsys: pytest.CaptureFixture[str],
@@ -248,6 +255,8 @@ async def test_generator_outputs_with_multiple_model_solutions(
     ).read_bytes() == b'912\n'
 
 
+# Asserts on a compilation failure message, so it needs a cold cache.
+@pytest.mark.shared_cache(False)
 async def test_generator_outputs_model_solution_compilation_failure(
     testing_pkg: testing_package.TestingPackage,
     capsys: pytest.CaptureFixture[str],

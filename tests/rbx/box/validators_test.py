@@ -16,6 +16,11 @@ from rbx.box.validators import (
     validate_testcases,
 )
 
+# Every test here rebuilds the same generators and validators from scratch in a
+# fresh problem directory; sharing the problem cache takes the file from 61s to
+# 28s. No test here asserts on a compilation actually running.
+pytestmark = pytest.mark.shared_cache
+
 
 async def test_no_validator_does_not_validate(
     testing_pkg: testing_package.TestingPackage,

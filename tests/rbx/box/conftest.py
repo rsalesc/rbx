@@ -115,61 +115,63 @@ def precompilation_should_use_tmp_cache(monkeysession, tmp_path_factory):
     )
 
 
-@pytest.fixture(autouse=True, scope='session')
-def shared_problem_cache(monkeysession, tmp_path_factory) -> Dict[str, Any]:
-    """Back the problem-level dependency cache with a session-wide directory.
+@pytest.fixture(scope='session')
+def shared_problem_cache(tmp_path_factory) -> Dict[str, Any]:
+    """Build the session-wide problem cache accessors, one set per worker.
 
     Every test gets a fresh problem directory, and the problem cache lives
-    inside it (`<problem>/.rbx`), so each test would otherwise start with an
-    empty cache DB and recompile the same handful of sources from scratch.
-    Cache keys are content-addressed, so one cache shared across problems is
-    still correct -- it just turns those recompilations into hits.
+    inside it (`<problem>/.rbx`), so each test starts with an empty cache DB
+    and recompiles the same handful of sources from scratch. Cache keys are
+    content-addressed, so a cache shared across problems is still correct -- it
+    just turns those recompilations into hits.
 
-    Returns the original accessors so `no_shared_cache` can restore them.
+    Sharing is opt-in, so this fixture is not autouse: it is only instantiated
+    the first time a test carrying the `shared_cache` marker runs.
     """
     cache_dir = tmp_path_factory.mktemp('problem_cache')
     storage = storage_module.FilesystemStorage(cache_dir / '.storage', compress=False)
     cacher = FileCacher(storage)
     dependency_cache = DependencyCache(cache_dir, cacher)
 
-    originals = {
-        name: getattr(package, name)
-        for name in ('get_cache_storage', 'get_file_cacher', 'get_dependency_cache')
+    return {
+        'get_cache_storage': lambda *a, **k: storage,
+        'get_file_cacher': lambda *a, **k: cacher,
+        'get_dependency_cache': lambda *a, **k: dependency_cache,
     }
-    monkeysession.setattr(package, 'get_cache_storage', lambda *a, **k: storage)
-    monkeysession.setattr(package, 'get_file_cacher', lambda *a, **k: cacher)
-    monkeysession.setattr(
-        package, 'get_dependency_cache', lambda *a, **k: dependency_cache
-    )
-    return originals
 
 
 @pytest.fixture(autouse=True)
-def no_shared_cache(request, shared_problem_cache: Dict[str, Any]):
-    """Restore the per-problem cache for tests marked `no_shared_cache`.
+def maybe_shared_problem_cache(request):
+    """Install the session-wide problem cache for tests marked `shared_cache`.
 
-    Tests that assert a compilation actually happened (compilation output,
-    warnings, failures) must opt out, since a warm shared cache would turn the
-    compilation they are checking for into a silent cache hit.
+    Unmarked tests are left completely untouched: `package.get_cache_storage`,
+    `get_file_cacher` and `get_dependency_cache` keep pointing at the problem
+    directory, so each test gets its own isolated cache. A single test inside a
+    module that opts in can opt back out with `@pytest.mark.shared_cache(False)`.
+
+    The accessors are `functools.cache`d, so their caches have to be cleared
+    both when installing and when restoring -- otherwise a cache object built
+    for one side leaks across the boundary.
 
     Patching is done by hand rather than through the `monkeypatch` fixture:
     requesting `monkeypatch` from an autouse conftest fixture would make it be
     set up before the test's own autouse fixtures, flipping the teardown order
     of any `monkeypatch.setattr` a test stacks on top of a `mock.patch`.
     """
-    if request.node.get_closest_marker('no_shared_cache') is None:
+    marker = request.node.get_closest_marker('shared_cache')
+    if marker is None or marker.args == (False,):
         yield
         return
-    shared = {name: getattr(package, name) for name in shared_problem_cache}
-    for name, original in shared_problem_cache.items():
-        original.cache_clear()
-        setattr(package, name, original)
+    shared = request.getfixturevalue('shared_problem_cache')
+    originals = {name: getattr(package, name) for name in shared}
+    for name, patched in shared.items():
+        originals[name].cache_clear()
+        setattr(package, name, patched)
     try:
         yield
     finally:
-        for name, patched in shared.items():
-            setattr(package, name, patched)
-        for original in shared_problem_cache.values():
+        for name, original in originals.items():
+            setattr(package, name, original)
             original.cache_clear()
 
 
