@@ -16,7 +16,6 @@ import {
   skeletonPath,
   testArtifactPath,
 } from './layout';
-import { worstOutcome } from './outcome';
 import {
   Evaluation,
   Skeleton,
@@ -50,6 +49,8 @@ export interface TestcaseRun {
 
 export interface GroupRun {
   readonly name: string;
+  /** Points the group is worth, from the skeleton; 0 under binary scoring. */
+  readonly score: number;
   readonly testcases: readonly TestcaseRun[];
 }
 
@@ -109,6 +110,7 @@ async function loadSolutionRun(
   skeleton: Skeleton,
   solution: SolutionEntry,
 ): Promise<SolutionRun> {
+  const scores = new Map(skeleton.groups.map((group) => [group.name, group.score ?? 0]));
   const groups = await Promise.all(
     orderedGroups(skeleton).map(async (name): Promise<GroupRun> => {
       const testcases = await Promise.all(
@@ -116,7 +118,7 @@ async function loadSolutionRun(
           loadTestcaseRun(pkg, solution.index, entry),
         ),
       );
-      return { name, testcases };
+      return { name, score: scores.get(name) ?? 0, testcases };
     }),
   );
   return { solution, groups };
@@ -155,25 +157,4 @@ export class ArtifactStore {
     );
     return { skeleton, solutions };
   }
-}
-
-/** Worst outcome observed across a solution's testcases so far. */
-export function solutionOutcome(solution: SolutionRun): string | undefined {
-  const outcomes: (string | undefined)[] = [];
-  for (const group of solution.groups) {
-    for (const testcase of group.testcases) {
-      outcomes.push(testcase.evaluation?.outcome);
-    }
-  }
-  return worstOutcome(outcomes);
-}
-
-export function groupOutcome(group: GroupRun): string | undefined {
-  return worstOutcome(group.testcases.map((testcase) => testcase.evaluation?.outcome));
-}
-
-export function isComplete(solution: SolutionRun): boolean {
-  return solution.groups.every((group) =>
-    group.testcases.every((testcase) => testcase.evaluation !== undefined),
-  );
 }

@@ -11,17 +11,21 @@ import * as vscode from 'vscode';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
-import { expectedShortName, isAccepted, matches, shortName } from './rbx/outcome';
+import { expectedShortName, isAccepted, shortName } from './rbx/outcome';
+import { ArtifactStore, GroupRun, RunReport, SolutionRun, TestcaseRun } from './rbx/store';
 import {
-  ArtifactStore,
-  GroupRun,
-  RunReport,
-  SolutionRun,
-  TestcaseRun,
-  groupOutcome,
+  RunSummary,
+  failingGroups,
+  formatCounts,
+  formatMemory,
+  formatScore,
+  formatTime,
+  groupDescription,
   isComplete,
-  solutionOutcome,
-} from './rbx/store';
+  solutionDescription,
+  summarizeGroup,
+  summarizeSolution,
+} from './rbx/summary';
 
 export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
 
@@ -34,6 +38,13 @@ export interface SolutionNode {
   readonly kind: 'solution';
   readonly pkg: PackageLayout;
   readonly run: SolutionRun;
+  /**
+   * This package's run covered only this solution, so the user is focused on
+   * it and the tree opens it. Mirrors how `rbx run` itself picks
+   * `SingleSolutionRunReporter` -- the only reporter that prints per-testcase
+   * lines -- on `len(skeleton.solutions) == 1`.
+   */
+  readonly solo: boolean;
 }
 
 export interface GroupNode {
@@ -49,22 +60,6 @@ export interface TestcaseNode {
   readonly run: SolutionRun;
   readonly group: GroupRun;
   readonly testcase: TestcaseRun;
-}
-
-/** Milliseconds, from the seconds rbx records. */
-function formatTime(seconds: number | undefined): string | undefined {
-  if (seconds === undefined) {
-    return undefined;
-  }
-  return `${Math.round(seconds * 1000)}ms`;
-}
-
-/** MiB, from the bytes rbx records. */
-function formatMemory(bytes: number | undefined): string | undefined {
-  if (bytes === undefined) {
-    return undefined;
-  }
-  return `${Math.round(bytes / (1024 * 1024))}MB`;
 }
 
 function outcomeIcon(outcome: string | undefined): vscode.ThemeIcon {
@@ -105,7 +100,7 @@ function testcaseItem(node: TestcaseNode): vscode.TreeItem {
   if (evaluation?.message !== undefined && evaluation.message !== '') {
     parts.push(evaluation.message);
   }
-  item.description = evaluation === undefined ? 'pending' : parts.join('  ');
+  item.description = evaluation === undefined ? 'pending' : parts.join(' · ');
 
   const tooltip = new vscode.MarkdownString();
   tooltip.appendMarkdown(`**${node.group.name}/${testcase.entry.index}** \`${testcase.stem}\`\n\n`);
@@ -130,20 +125,41 @@ function testcaseItem(node: TestcaseNode): vscode.TreeItem {
   return item;
 }
 
+/** The aggregate lines both solution and group tooltips share. */
+function appendSummary(tooltip: vscode.MarkdownString, summary: RunSummary): void {
+  tooltip.appendMarkdown(`Verdict: **${shortName(summary.outcome)}**\n\n`);
+  if (summary.maxScore > 0 && isComplete(summary)) {
+    tooltip.appendMarkdown(`Score: ${formatScore(summary.score, summary.maxScore)}\n\n`);
+  }
+  tooltip.appendMarkdown(`Tests: ${summary.done}/${summary.total}`);
+  if (summary.counts.size > 0) {
+    tooltip.appendMarkdown(` (${formatCounts(summary)})`);
+  }
+  tooltip.appendMarkdown('\n\n');
+  // Max, not total: the slowest test is what the time limit is judged against.
+  tooltip.appendMarkdown(`Max time: ${formatTime(summary.time) ?? '-'}\n\n`);
+  tooltip.appendMarkdown(`Max memory: ${formatMemory(summary.memory) ?? '-'}\n`);
+}
+
 function groupItem(node: GroupNode): vscode.TreeItem {
+  // Groups stay expanded even under a collapsed solution: collapsing them too
+  // would put two clicks between the user and any testcase, and the group
+  // breakdown is the reason to open a solution at all.
   const item = new vscode.TreeItem(
     node.group.name,
     vscode.TreeItemCollapsibleState.Expanded,
   );
   item.id = `${node.pkg.root}::${node.run.solution.index}::${node.group.name}`;
   item.contextValue = 'rbx.group';
-  const outcome = groupOutcome(node.group);
-  item.iconPath = outcomeIcon(outcome);
-  const done = node.group.testcases.filter((t) => t.evaluation !== undefined).length;
-  item.description =
-    done === node.group.testcases.length
-      ? shortName(outcome)
-      : `${done}/${node.group.testcases.length}`;
+
+  const summary = summarizeGroup(node.group);
+  item.iconPath = outcomeIcon(summary.outcome);
+  item.description = groupDescription(summary);
+
+  const tooltip = new vscode.MarkdownString();
+  tooltip.appendMarkdown(`**${node.group.name}**\n\n`);
+  appendSummary(tooltip, summary);
+  item.tooltip = tooltip;
   return item;
 }
 
@@ -151,24 +167,30 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
   const { solution } = node.run;
   const item = new vscode.TreeItem(
     solution.path,
-    vscode.TreeItemCollapsibleState.Expanded,
+    node.solo
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.Collapsed,
   );
   item.id = `${node.pkg.root}::${solution.index}`;
   item.contextValue = 'rbx.solution';
   item.resourceUri = vscode.Uri.file(path.join(node.pkg.root, solution.path));
 
-  const outcome = solutionOutcome(node.run);
-  item.iconPath = outcomeIcon(outcome);
+  const summary = summarizeSolution(node.run);
+  item.iconPath = outcomeIcon(summary.outcome);
+  item.description = solutionDescription(summary, solution.expectedOutcome);
 
-  if (!isComplete(node.run)) {
-    item.description = 'running…';
-  } else if (outcome !== undefined && !matches(solution.expectedOutcome, outcome)) {
-    // The headline finding of a run: a solution that did not behave as declared.
-    item.description = `expected ${expectedShortName(solution.expectedOutcome)}, got ${shortName(outcome)}`;
-  } else {
-    item.description = shortName(outcome);
+  const tooltip = new vscode.MarkdownString();
+  tooltip.appendMarkdown(`**${solution.path}**\n\n`);
+  tooltip.appendMarkdown(`Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`);
+  appendSummary(tooltip, summary);
+  const failing = failingGroups(node.run);
+  if (failing.length > 0) {
+    const names = failing
+      .map((group) => `${group.name} (${shortName(summarizeGroup(group).outcome)})`)
+      .join(', ');
+    tooltip.appendMarkdown(`\nFailing groups: ${names}\n`);
   }
-  item.tooltip = `Expected ${expectedShortName(solution.expectedOutcome)}`;
+  item.tooltip = tooltip;
   return item;
 }
 
@@ -302,6 +324,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
       return [];
     }
     log(`${pkg.root}: ${report.solutions.length} solution(s) in the last run.`);
-    return report.solutions.map((run): SolutionNode => ({ kind: 'solution', pkg, run }));
+    const solo = report.solutions.length === 1;
+    return report.solutions.map((run): SolutionNode => ({ kind: 'solution', pkg, run, solo }));
   }
 }

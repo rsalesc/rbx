@@ -64,12 +64,20 @@ export function isSlow(outcome: string): boolean {
 }
 
 /**
- * Worst of a set of outcomes, mirroring `Outcome.worst_outcome()` -- which ranks
- * by declaration index, so SKIPPED is worse than ACCEPTED but better than any
- * real failure.
+ * How bad an outcome is, by the declaration index rbx ranks with.
  *
  * Outcomes this extension does not know come from a newer rbx and rank worst,
  * so they surface instead of hiding behind a green group.
+ */
+export function outcomeRank(outcome: string): number {
+  const known = OUTCOMES.indexOf(outcome as Outcome);
+  return known === -1 ? OUTCOMES.length : known;
+}
+
+/**
+ * Worst of a set of outcomes, mirroring `Outcome.worst_outcome()` -- which ranks
+ * by declaration index, so SKIPPED is worse than ACCEPTED but better than any
+ * real failure.
  */
 export function worstOutcome(outcomes: Iterable<string | undefined>): string | undefined {
   let worst: string | undefined;
@@ -78,8 +86,7 @@ export function worstOutcome(outcomes: Iterable<string | undefined>): string | u
     if (outcome === undefined) {
       continue;
     }
-    const known = OUTCOMES.indexOf(outcome as Outcome);
-    const rank = known === -1 ? OUTCOMES.length : known;
+    const rank = outcomeRank(outcome);
     if (rank > worstRank) {
       worstRank = rank;
       worst = outcome;

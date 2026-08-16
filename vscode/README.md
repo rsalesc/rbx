@@ -9,6 +9,17 @@ Execution stays in the terminal. You type `rbx run`; the extension watches
 every `rbx` invocation has side effects on the package cache and could race a
 run already in flight.
 
+## The run tree
+
+Every solution and every group carries its own summary: the worst verdict
+underneath it, the points it earned, and the **max** time and memory across its
+testcases -- the slowest test being the one the time limit is judged against.
+Units and wording follow `rbx run` itself, so the two never disagree.
+
+A run of a single solution opens expanded, the way `rbx run` prints per-testcase
+lines only when there is one solution to print them for. A run of several opens
+with the solutions collapsed; expanding one reveals its groups already open.
+
 ## Status
 
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):
@@ -29,14 +40,20 @@ folder containing a `problem.rbx.yml`.
 
 ```bash
 npm run typecheck  # tsc --noEmit
+npm test           # node --test, over esbuild-compiled sources
 npm run package    # production bundle
 ```
+
+The tests cover the pure logic only -- summarising a run, formatting a verdict
+-- which is why it lives in modules that never import `vscode` (`src/rbx/`).
+Anything touching the extension host is left to the F5 development host.
 
 From the repository root, the same via mise:
 
 ```bash
 mise run vscode:build
 mise run vscode:typecheck
+mise run vscode:test
 mise run vscode:package
 ```
 
