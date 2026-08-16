@@ -1,0 +1,173 @@
+{
+  "name": "rbx-vscode",
+  "displayName": "rbx",
+  "description": "Browse rbx testcases and solution verdicts without leaving the editor.",
+  "version": "0.1.0",
+  "publisher": "rsalesc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rsalesc/rbx.git",
+    "directory": "vscode"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/problem.rbx.yml",
+    "onView:rbx.run"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rbx",
+          "title": "rbx",
+          "icon": "resources/rbx.svg"
+        }
+      ]
+    },
+    "views": {
+      "rbx": [
+        {
+          "id": "rbx.run",
+          "name": "Run",
+          "contextualTitle": "rbx"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "rbx.run",
+        "contents": "No rbx run found in this workspace.\n\nRun `rbx run` in the terminal and the results will show up here."
+      }
+    ],
+    "commands": [
+      {
+        "command": "rbx.refresh",
+        "title": "Refresh",
+        "category": "rbx",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "rbx.openInput",
+        "title": "Open Input",
+        "category": "rbx",
+        "icon": "$(file)"
+      },
+      {
+        "command": "rbx.openOutput",
+        "title": "Open Output",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openAnswer",
+        "title": "Open Expected Answer",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openStderr",
+        "title": "Open Stderr",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.diffOutput",
+        "title": "Diff Output against Expected Answer",
+        "category": "rbx",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "rbx.revealInExplorer",
+        "title": "Reveal Package in Explorer",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.copyPath",
+        "title": "Copy Path",
+        "category": "rbx"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "rbx.refresh",
+          "when": "view == rbx.run",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "rbx.diffOutput",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "inline"
+        },
+        {
+          "command": "rbx.openInput",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "rbx.openOutput",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "rbx.openAnswer",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "rbx.openStderr",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "1_open@4"
+        },
+        {
+          "command": "rbx.diffOutput",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "2_compare@1"
+        },
+        {
+          "command": "rbx.copyPath",
+          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "rbx.revealInExplorer",
+          "when": "view == rbx.run && viewItem == rbx.package",
+          "group": "3_copy@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "rbx",
+      "properties": {
+        "rbx.packageSearchDepth": {
+          "type": "number",
+          "default": 3,
+          "markdownDescription": "How deep to search workspace folders for `problem.rbx.yml` files."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "node esbuild.mjs --production",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "vscode:prepublish": "npm run package"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -2,7 +2,33 @@
 
 Issue: [#25](https://github.com/rsalesc/rbx/issues/25)
 Date: 2026-08-11
-Status: design approved, not implemented
+Status: design approved; M1 implemented under `vscode/`
+
+## Correction (2026-08-14)
+
+The paths this document quoted were wrong, and D2 makes them the contract. As
+verified against a real `rbx run`:
+
+- The cache directory is **`.rbx/`**, not `.box/`. It was renamed in #542;
+  `.box` survives only as `LEGACY_CACHE_DIR_NAME`, and nothing writes there.
+- Generated testcases live in **`<pkg>/build/tests/<group>/<stem>.in|.out`**,
+  not under the cache directory. The expected answer is **`.out`** -- there is
+  no `.ans` artifact; that suffix is a convention for user-supplied manual
+  answers, not something a build emits.
+- `.in`, `.out` and `.err` are **symlinks into `.rbx/.storage/<sha1>`**, which
+  is content-addressed. Only `.eval` and `.log` are regular files. This is
+  load-bearing for the watcher: rbx replaces the link rather than rewriting the
+  target, so artifact content never changes under an open editor.
+- Communication tasks write the solution's stderr to `<stem>.sol.err`, not
+  `<stem>.err`.
+- `ExpectedOutcome` and `Outcome` are different vocabularies on the wire. A
+  solution's declared outcome serializes as the member name (`WRONG_ANSWER`,
+  `TLE_OR_RTE`); an evaluation's actual outcome serializes as the kebab value
+  (`wrong-answer`). Comparing them needs a port of `ExpectedOutcome.match()`,
+  not a string equality.
+
+The tables below are left as originally written for the record; where they
+disagree with this section, this section is right.
 
 ## Goal
 
@@ -211,8 +237,8 @@ stack trace.
 
 | # | Scope |
 |---|---|
-| M0 | **rbx:** persist `.box/tests/entries.yml` during build (D6); document the artifact layout in `docs/internal/`; e2e tests pinning the layout |
-| M1 | Extension skeleton, package discovery, run tree from `skeleton.yml` + `.eval`, read-only editors, diff |
+| M0 | **rbx:** persist `build/tests/entries.yml` during build (D6); document the artifact layout in `docs/internal/`; e2e tests pinning the layout |
+| M1 | Extension skeleton, package discovery, run tree from `skeleton.yml` + `.eval`, read-only editors, diff — **done**, see `vscode/` |
 | M2 | Build tree from `entries.yml`, live progress via the watcher, "run finished" notification, status bar item |
 | M3 | Polish: failed-only filter, fuzzy search, POINTS totals, MAIN badge, keybindings, interaction view for communication tasks |
 
