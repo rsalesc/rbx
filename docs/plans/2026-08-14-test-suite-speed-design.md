@@ -196,13 +196,60 @@ cache DB and an empty content-addressed store. Only the precompilation cache is
 session-scoped, which is exactly why Phase 1 moved the header precompiles from
 98x to 7x while ordinary program compiles kept repeating.
 
-**Actual fix: session-scope the problem dependency cache and storage in the test
+**Actual fix: a session-wide problem dependency cache and storage in the test
 fixtures**, mirroring what `precompilation_should_use_tmp_cache` already does.
 This is a test-only change and safe *because* Phase 1 made keys
-content-addressed rather than path-addressed. A `no_shared_cache` marker exists
-as an escape hatch for tests that need to observe a real compilation.
+content-addressed rather than path-addressed.
 
-Measured: full suite 101s -> 61s, `generators_test.py` 52.7s -> 18.9s.
+### Sharing is opt-in, not the default
+
+It was first built as the default, with an opt-out. That was rejected on review,
+and rightly: sharing a compile cache across problems by default weakens
+isolation everywhere, and a future bug in cache keying would mask itself across
+the whole suite rather than failing loudly in one place. Correctness defaults
+should be conservative; speed is the thing to opt into.
+
+So the default is a per-problem cache -- exactly the pre-existing behaviour --
+and a `shared_cache` marker opts specific modules in. It is applied only where
+the measured gain is large *and* the tests do not depend on a compile actually
+running:
+
+| File | Isolated | Shared | Marked |
+| --- | --- | --- | --- |
+| `solutions_test.py` | 83.8s | 41.8s | yes |
+| `unit_test.py` | 62.1s | 18.5s | yes |
+| `validators_test.py` | 61.2s | 28.4s | yes |
+| `generators_test.py` | 57.8s | 21.0s | yes, 1 test opts out |
+| `generator_outputs_test.py` | 32.1s | 13.1s | yes, 2 tests opt out |
+| `testcases/test_promote.py` | 23.1s | 8.8s | yes |
+| `test_header.py` | 30.8s | 28.4s | no -- compiles via raw `g++` |
+| `code_run_test.py` | 15.0s | 13.5s | no -- gain too small |
+| `checkers_test.py` | 8.5s | 6.7s | no -- see below |
+| `code_compile_integration_test.py` | 7.2s | 6.9s | no -- real-compile coverage |
+
+The three tests that opt back out individually are the ones asserting on
+compilation output or failure messages, which a warm cache would turn into
+silent hits.
+
+Cost of keeping isolation everywhere else: about 10s (roughly 60s -> 70s),
+against ~119s with no sharing at all.
+
+### A trap worth knowing about
+
+`maybe_shared_problem_cache` is function-scoped, so the shared cache is only
+installed for the duration of each test. A **module- or session-scoped fixture
+that compiles runs before it**, writing into the isolated per-problem storage;
+the marked tests then look for that digest in the shared storage and fail with
+an opaque `KeyError: 'File not found.'`.
+
+`checkers_test.py` is the live example -- marking it fails 14 of its 43 tests,
+because `pkg_with_compiled_checker` is `scope='module'`. This is a property of
+the opt-in mechanism, not evidence that sharing is unsafe for those tests: under
+the original session-scoped-autouse version they passed. It costs nothing here,
+since sharing was only worth 1.8s in that file. The constraint is documented on
+the marker and in the fixture docstring.
+
+Measured: `generators_test.py` 57.8s -> 21.0s on the marked path.
 
 ## Phases 3 and 4 -- descoped after re-measuring
 
@@ -293,11 +340,13 @@ unwanted.
 
 | Run | Before | After |
 | --- | --- | --- |
-| `tests/rbx -n 8`, fixed order | 196s | **59-62s** |
-| `tests/rbx -n 8`, random order | 238s | **73s** |
+| `tests/rbx -n 8`, fixed order | 196s | **69-78s** |
 | Suite CPU | 992s | 351s |
 | C++ compiles | 498 | 219 |
 | Tests over 3s | 108 | 22 |
+
+(An earlier revision shared the cache globally and reached ~60s. Restoring
+per-problem isolation by default costs ~10s of that, deliberately.)
 
 Failure count did not increase: 37 failed / 4512 passed before, 36 failed /
 4520 passed after in fixed order (37 in random order, matching its own

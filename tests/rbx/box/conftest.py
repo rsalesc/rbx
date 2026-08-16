@@ -157,6 +157,18 @@ def maybe_shared_problem_cache(request):
     requesting `monkeypatch` from an autouse conftest fixture would make it be
     set up before the test's own autouse fixtures, flipping the teardown order
     of any `monkeypatch.setattr` a test stacks on top of a `mock.patch`.
+
+    LIMITATION -- this fixture is function-scoped, so the shared cache is only
+    installed for the duration of each test. A module- or session-scoped
+    fixture that compiles something runs BEFORE this one and therefore writes
+    into the isolated per-problem storage; the marked tests then look for that
+    digest in the shared storage and do not find it. The failure surfaces as an
+    opaque `KeyError: 'File not found.'`.
+
+    So do NOT mark a module whose package fixture is module- or session-scoped.
+    `checkers_test.py` is the live example: marking it fails 14 tests because
+    its `pkg_with_compiled_checker` is `scope='module'`. It is left unmarked --
+    which costs nothing, since sharing was only worth 1.8s there anyway.
     """
     marker = request.node.get_closest_marker('shared_cache')
     if marker is None or marker.args == (False,):
