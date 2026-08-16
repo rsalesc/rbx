@@ -1,6 +1,6 @@
 import contextlib
 import pathlib
-from typing import Dict, Iterator, List, Optional, Set, Tuple
+from typing import Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -63,114 +63,140 @@ from rbx.grading.steps import (
     TestcaseLog,
 )
 
+# The heaviest file in the suite: every test re-runs the same `box1` solutions
+# in a fresh problem directory. Sharing the problem cache takes it from 84s to
+# 42s. Compilation is a means here, never the assertion -- the two compilation
+# tests in this file exercise `FailedToCompileSolutionIssue` messages built by
+# hand, without compiling anything.
+pytestmark = pytest.mark.shared_cache
 
-@pytest.mark.test_pkg('problems/box1')
-async def test_solutions(pkg_from_testdata: pathlib.Path):
+
+class Box1Run(NamedTuple):
+    """One solution of `problems/box1`, run over the whole testset."""
+
+    skeleton: SolutionReportSkeleton
+    solution: SolutionSkeleton
+    evals: List[Evaluation]
+
+    def report(self):
+        return get_solution_outcome_report(
+            self.solution, self.skeleton, self.evals, VerificationLevel.FULL
+        )
+
+
+@pytest.fixture
+async def run_box1_solution(pkg_from_testdata: pathlib.Path):
+    """Build `box1`'s testset once, then run one solution at a time.
+
+    Every solution of this package is checked, but each in its own test: running
+    them all in a single test made it by far the longest test in the suite, and
+    `tracked_solutions` keeps each test's cost to the solution it is about.
+    """
     await generate_testcases()
     entries = [
         entry.group_entry for entry in await extract_generation_testcases_from_groups()
     ]
     await generate_outputs_for_testcases(entries)
 
-    result = await run_solutions(verification=VerificationLevel.FULL)
-    res = await convert_list_of_solution_evaluations_to_dict(
-        result.skeleton, result.items
-    )
+    async def _run(path: str) -> Box1Run:
+        result = await run_solutions(
+            verification=VerificationLevel.FULL, tracked_solutions=[path]
+        )
+        res = await convert_list_of_solution_evaluations_to_dict(
+            result.skeleton, result.items
+        )
+        return Box1Run(result.skeleton, result.skeleton.solutions[0], res[0]['gen1'])
 
-    # First solution should pass all tests.
-    assert all(chk.result.outcome == Outcome.ACCEPTED for chk in res[0]['gen1'])
-    # 25 test should be WA for the second solution.
-    assert res[1]['gen1'][3].result.outcome == Outcome.WRONG_ANSWER
-    # Runtime error for third solution.
-    assert all(chk.result.outcome == Outcome.RUNTIME_ERROR for chk in res[2]['gen1'])
-    # 1e9 test should be TLE for the fourth solution (soft TLE)
-    assert res[3]['gen1'][4].result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-    # no TLE outcome should be WA (soft TLE)
-    assert res[4]['gen1'][4].result.no_tle_outcome == Outcome.WRONG_ANSWER
-    # hard TLE
-    assert res[5]['gen1'][4].result.outcome == Outcome.TIME_LIMIT_EXCEEDED
-    assert res[5]['gen1'][4].result.no_tle_outcome is None
-    # OLE
-    assert all(
-        chk.result.outcome == Outcome.OUTPUT_LIMIT_EXCEEDED for chk in res[6]['gen1']
-    )
+    return _run
 
 
 @pytest.mark.test_pkg('problems/box1')
-async def test_get_solution_outcome_report(pkg_from_testdata: pathlib.Path):
-    await generate_testcases()
-    entries = [
-        entry.group_entry for entry in await extract_generation_testcases_from_groups()
-    ]
-    await generate_outputs_for_testcases(entries)
+async def test_accepted_solution_passes_every_testcase(run_box1_solution):
+    run = await run_box1_solution('sol.cpp')
 
-    result = await run_solutions(verification=VerificationLevel.FULL)
-    res = await convert_list_of_solution_evaluations_to_dict(
-        result.skeleton, result.items
-    )
+    assert all(chk.result.outcome == Outcome.ACCEPTED for chk in run.evals)
 
-    # Test AC solution (expected AC, got AC)
-    ac_solution = result.skeleton.solutions[0]
-    ac_evals = res[0]['gen1']
-    ac_report = get_solution_outcome_report(
-        ac_solution, result.skeleton, ac_evals, VerificationLevel.FULL
-    )
-    assert ac_report.status == SolutionOutcomeStatus.OK
-    assert ac_report.expectedOutcome == ExpectedOutcome.ACCEPTED
-    assert ac_report.gotVerdicts == set()
+    report = run.report()
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.expectedOutcome == ExpectedOutcome.ACCEPTED
+    assert report.gotVerdicts == set()
 
-    # Test WA solution (expected fail, got WA) - should pass since it matches expectation
-    wa_solution = result.skeleton.solutions[1]
-    wa_evals = res[1]['gen1']
-    wa_report = get_solution_outcome_report(
-        wa_solution, result.skeleton, wa_evals, VerificationLevel.FULL
-    )
-    assert wa_report.status == SolutionOutcomeStatus.OK
-    assert wa_report.expectedOutcome == ExpectedOutcome.INCORRECT
 
-    # Test RTE solution (expected RTE, got RTE)
-    rte_solution = result.skeleton.solutions[2]
-    rte_evals = res[2]['gen1']
-    rte_report = get_solution_outcome_report(
-        rte_solution, result.skeleton, rte_evals, VerificationLevel.FULL
-    )
-    assert rte_report.status == SolutionOutcomeStatus.OK
-    assert rte_report.expectedOutcome == ExpectedOutcome.RUNTIME_ERROR
+@pytest.mark.test_pkg('problems/box1')
+async def test_incorrect_solution_is_wrong_on_the_big_testcase(run_box1_solution):
+    run = await run_box1_solution('wa.sol.cpp')
 
-    # Test TLE solution with double TL warning
-    tle_solution = result.skeleton.solutions[3]
-    tle_evals = res[3]['gen1']
-    tle_report = get_solution_outcome_report(
-        tle_solution, result.skeleton, tle_evals, VerificationLevel.FULL
-    )
-    assert tle_report.status == SolutionOutcomeStatus.OK
-    assert tle_report.expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
-    # Should have double TL warning for soft TLE
-    assert tle_report.runUnderDoubleTl is True
+    # The 25 test is the one it gets wrong.
+    assert run.evals[3].result.outcome == Outcome.WRONG_ANSWER
+
+    # Expected to fail, and it does: that matches the expectation.
+    report = run.report()
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.expectedOutcome == ExpectedOutcome.INCORRECT
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_runtime_error_solution_fails_every_testcase(run_box1_solution):
+    run = await run_box1_solution('re.sol.cpp')
+
+    assert all(chk.result.outcome == Outcome.RUNTIME_ERROR for chk in run.evals)
+
+    report = run.report()
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.expectedOutcome == ExpectedOutcome.RUNTIME_ERROR
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_soft_tle_solution_warns_it_still_passed_in_double_tl(run_box1_solution):
+    run = await run_box1_solution('tle.sol.cpp')
+
+    # The 1e9 test times out, but only softly.
+    assert run.evals[4].result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+
+    report = run.report()
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    assert report.runUnderDoubleTl is True
     assert (
         'still passed in double TL'
-        in Text.from_markup(tle_report.get_verdict_markup_with_warnings()).plain
+        in Text.from_markup(report.get_verdict_markup_with_warnings()).plain
     )
 
-    # Solution that is within double TL but is *also* wrong there: the warning
-    # must name the verdict instead of staying silent (#607).
-    tle_incorrect_solution = result.skeleton.solutions[4]
-    tle_incorrect_evals = res[4]['gen1']
-    tle_incorrect_report = get_solution_outcome_report(
-        tle_incorrect_solution,
-        result.skeleton,
-        tle_incorrect_evals,
-        VerificationLevel.FULL,
-    )
-    assert tle_incorrect_report.status == SolutionOutcomeStatus.OK
-    assert tle_incorrect_report.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
-    warning = Text.from_markup(
-        tle_incorrect_report.get_verdict_markup_with_warnings()
-    ).plain
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_soft_tle_solution_that_is_also_wrong_names_the_verdict(
+    run_box1_solution,
+):
+    """A solution that is within double TL but is *also* wrong there: the warning
+    must name the verdict instead of staying silent (#607)."""
+    run = await run_box1_solution('tle-and-incorrect.sol.cpp')
+
+    assert run.evals[4].result.no_tle_outcome == Outcome.WRONG_ANSWER
+
+    report = run.report()
+    assert report.status == SolutionOutcomeStatus.OK
+    assert report.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
+    warning = Text.from_markup(report.get_verdict_markup_with_warnings()).plain
     assert warning.splitlines()[-1] == (
         'WARNING The solution still finished in double TL, '
         'but failed with WRONG_ANSWER.'
     )
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_hard_tle_solution_has_no_outcome_within_double_tl(run_box1_solution):
+    run = await run_box1_solution('hard-tle.sol.cpp')
+
+    assert run.evals[4].result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+    # It never finished, not even in double TL, so there is nothing to report.
+    assert run.evals[4].result.no_tle_outcome is None
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_output_limit_exceeded_solution_fails_every_testcase(run_box1_solution):
+    run = await run_box1_solution('ole.cpp')
+
+    assert all(chk.result.outcome == Outcome.OUTPUT_LIMIT_EXCEEDED for chk in run.evals)
 
 
 # Unit tests with custom inputs

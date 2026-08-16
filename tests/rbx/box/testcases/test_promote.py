@@ -7,6 +7,11 @@ from typer.testing import CliRunner
 from rbx.box.testcases import main as testcases_main
 from rbx.box.testing import testing_package
 
+# Promotion rebuilds the same generators and solutions in every test; sharing
+# the problem cache takes the file from 23s to 9s. The assertions are about the
+# promoted testcases and the prompts, never about a compilation running.
+pytestmark = pytest.mark.shared_cache
+
 
 def _scripted_prompt(*values):
     """Build a mock questionary prompt factory.
