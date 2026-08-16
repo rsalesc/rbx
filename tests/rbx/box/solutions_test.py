@@ -26,6 +26,7 @@ from rbx.box.schema import (
     Testcase,
 )
 from rbx.box.solutions import (
+    AbortContext,
     EvaluationItem,
     FailedToCompileSolutionIssue,
     GroupOutcomeReport,
@@ -42,6 +43,7 @@ from rbx.box.solutions import (
     _print_timing,  # noqa: SLF001
     _render_detailed_group_table,  # noqa: SLF001
     convert_list_of_solution_evaluations_to_dict,
+    fail_fast_abort_predicate,
     get_full_outcome_markup_verdict,
     get_matching_solutions,
     get_outcome_markup_verdict,
@@ -49,6 +51,7 @@ from rbx.box.solutions import (
     get_solution_outcome_report,
     get_ui_friendly_outcome_style_verdict,
     is_fast,
+    print_run_report,
     run_solutions,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
@@ -1873,6 +1876,155 @@ async def test_abort_skips_dependent_groups_but_not_independent_ones(
     # The gate belongs to one solution: the next one is judged from scratch.
     for group in groups:
         assert outcomes(2, group) == [Outcome.ACCEPTED] * len(res[2][group])
+
+
+def _fail_fast_context(
+    outcome: Outcome,
+    expected_outcome: ExpectedOutcome = ExpectedOutcome.ACCEPTED,
+) -> AbortContext:
+    return AbortContext(
+        solution=Solution(path=pathlib.Path('sol.cpp'), outcome=expected_outcome),
+        group=_group('group1', []),
+        entry=TestcaseEntry(group='group1', index=0),
+        expected_outcome=expected_outcome,
+        group_expected_outcome=None,
+        evaluation=make_evaluation(outcome),
+    )
+
+
+def test_fail_fast_trips_on_every_verdict_but_accepted():
+    assert not fail_fast_abort_predicate(_fail_fast_context(Outcome.ACCEPTED))
+
+    for outcome in Outcome:
+        if outcome == Outcome.ACCEPTED:
+            continue
+        assert fail_fast_abort_predicate(_fail_fast_context(outcome)), outcome
+
+
+def test_fail_fast_trips_even_on_the_verdict_the_solution_declared():
+    """The coarseness is the point, and the reason the command warns about the
+    flag: a solution declared `wa` is *supposed* to fail somewhere, so its
+    remaining testcases are not doomed at all -- they are dropped anyway."""
+    context = _fail_fast_context(
+        Outcome.WRONG_ANSWER, expected_outcome=ExpectedOutcome.WRONG_ANSWER
+    )
+    assert context.expected_outcome.match(context.evaluation.result.outcome)
+    assert fail_fast_abort_predicate(context)
+
+
+def test_double_tl_is_not_claimed_off_a_truncated_run(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """A run that stopped early only measures a prefix of the testset, and a
+    testcase that never ran could well be the one that does not fit in double
+    TL.
+
+    Two things suppress the claim today -- the explicit skipped check, and
+    SKIPPED landing among the other bad verdicts -- so this pins the behavior
+    rather than either mechanism.
+    """
+    solution = Solution(
+        path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution])
+    soft_tle = make_evaluation(
+        Outcome.TIME_LIMIT_EXCEEDED, time_ms=1500, no_tle_outcome=Outcome.ACCEPTED
+    )
+    skipped = make_evaluation(Outcome.SKIPPED, time_ms=None, memory_bytes=None)
+
+    complete = get_solution_outcome_report(
+        solution,
+        skeleton,
+        [soft_tle, make_evaluation(Outcome.ACCEPTED, time_ms=200)],
+        VerificationLevel.FULL,
+    )
+    assert complete.runUnderDoubleTl is True
+
+    truncated = get_solution_outcome_report(
+        solution, skeleton, [soft_tle, skipped], VerificationLevel.FULL
+    )
+    assert truncated.runUnderDoubleTl is False
+    assert 'double TL' not in truncated.get_verdict_markup_with_warnings()
+
+
+def test_double_tl_verdicts_are_not_claimed_off_a_truncated_run(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(
+        path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution])
+    soft_tle_with_wa = make_evaluation(
+        Outcome.TIME_LIMIT_EXCEEDED, time_ms=1500, no_tle_outcome=Outcome.WRONG_ANSWER
+    )
+
+    complete = get_solution_outcome_report(
+        solution, skeleton, [soft_tle_with_wa], VerificationLevel.FULL
+    )
+    assert complete.doubleTlVerdicts == {Outcome.WRONG_ANSWER}
+
+    truncated = get_solution_outcome_report(
+        solution,
+        skeleton,
+        [soft_tle_with_wa, make_evaluation(Outcome.SKIPPED, time_ms=None)],
+        VerificationLevel.FULL,
+    )
+    assert truncated.doubleTlVerdicts == set()
+
+
+def test_timing_issues_are_not_raised_off_a_truncated_run(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """A solution expected to be slow that fails early for another reason never
+    reaches the testcase that would have timed out, so it looks 'too fast' only
+    because the rest never ran. Blaming the limits for that is misleading --
+    same rule as the partial reports, which is why they pass
+    ``report_issues=False``."""
+    solution = Solution(
+        path=tmp_path / 'tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution])
+    wrong_answer = make_evaluation(Outcome.WRONG_ANSWER)
+
+    # Ran to the end and never timed out: the limits really may be untuned.
+    with fresh_issue_stack() as issues:
+        get_solution_outcome_report(
+            solution, skeleton, [wrong_answer], VerificationLevel.FULL
+        )
+    assert any(isinstance(issue, TimingIssue) for issue in issues.issues)
+
+    # Same verdicts, but the run stopped: the missing TLE says nothing.
+    with fresh_issue_stack() as issues:
+        get_solution_outcome_report(
+            solution,
+            skeleton,
+            [wrong_answer, make_evaluation(Outcome.SKIPPED, time_ms=None)],
+            VerificationLevel.FULL,
+        )
+    assert [issue for issue in issues.issues if isinstance(issue, TimingIssue)] == []
+
+
+async def test_plain_report_drops_the_timing_summary_when_timing_is_off(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`rbx run --ff` turns `timing` off, since every line of that summary is an
+    extreme over the solutions and a solution that stopped early is only timed
+    on the testcases that ran. Only the detailed report used to honor the flag,
+    so the plain one kept printing the summary."""
+    solutions = [
+        Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+        Solution(path=pathlib.Path('other.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+    ]
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+
+    console = recording_console()
+    await print_run_report(result, console, VerificationLevel.FULL, timing=True)
+    assert 'Timing summary' in console.export_text(clear=False)
+
+    console = recording_console()
+    await print_run_report(result, console, VerificationLevel.FULL, timing=False)
+    assert 'Timing summary' not in console.export_text(clear=False)
 
 
 @pytest.mark.test_pkg('problems/abort-groups')
