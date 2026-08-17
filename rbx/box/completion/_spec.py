@@ -209,6 +209,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Whether to stop running a solution as soon as it gets a '
+                    'non-accepted verdict. Only meant for quick experimentation, as '
+                    'the remaining tests are reported as failed.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--fail-fast', '--ff'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -1820,6 +1830,16 @@ SPEC = {
                                 'completer': 'verification_level',
                                 'kind': 'completer',
                             },
+                        },
+                        {
+                            'help': 'If set, will build the statement in the given '
+                            'language. Leave unset if you want to use the '
+                            'language of the topmost statement.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--language', '-l'],
+                            'takes_value': True,
+                            'value': {'completer': 'language', 'kind': 'completer'},
                         },
                         {
                             'help': 'Show this message and exit.',
