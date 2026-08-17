@@ -11,10 +11,20 @@ run already in flight.
 
 ## The run tree
 
-Every solution and every group carries its own summary: the worst verdict
-underneath it, the points it earned, and the **max** time and memory across its
-testcases -- the slowest test being the one the time limit is judged against.
-Units and wording follow `rbx run` itself, so the two never disagree.
+Every solution and every group carries its own summary: the verdict underneath
+it, the points it earned, and the **max** time and memory across its testcases
+-- the slowest test being the one the time limit is judged against.
+
+**None of that is computed here.** rbx decides it and publishes it to
+`.rbx/runs/report.yml`; the extension reads it and renders it. That is
+deliberate: outcome ranking, expectation matching and dependency-gated scoring
+are subtle, they live in `rbx/box/run_report.py`, and a second implementation in
+TypeScript is a second implementation to keep in step. See
+[the design](../docs/plans/2026-08-16-run-report-artifact-design.md).
+
+The visible consequence is that rbx writes the report as each solution
+*finishes*, so a solution still running shows how far it has got (`12/40`) and
+no verdict. Individual testcase rows fill in live, from their own `.eval` files.
 
 A run of a single solution opens expanded, the way `rbx run` prints per-testcase
 lines only when there is one solution to print them for. A run of several opens
@@ -65,6 +75,7 @@ Everything comes from files rbx already writes. The layout is a contract, and
 | Path | Contents |
 |---|---|
 | `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance |
+| `<pkg>/.rbx/runs/report.yml` | **every aggregate**: verdicts, scores, max time/memory, per-group expectation results |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.out` | solution stdout |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.err` | solution stderr (`.sol.err` for communication tasks) |
@@ -79,3 +90,7 @@ Two things are easy to get wrong here:
   real rbx bug once (#418 / #429).
 - A missing `.eval` means *pending*, not *failed*. That is what gives the tree
   live progress during a run for free.
+- A missing `report.yml` means *no solution has finished yet*, never *stale*:
+  rbx deletes it when it writes a new skeleton. A `version` it does not
+  recognise is ignored outright, because rendering a run without aggregates is
+  recoverable and rendering the wrong verdict is not.

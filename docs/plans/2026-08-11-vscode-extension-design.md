@@ -64,6 +64,22 @@ The escape hatch remains: if the extension ever needs something genuinely not
 derivable from disk, rbx persists it — as D6 does — rather than growing a query
 command.
 
+> **Superseded in part (2026-08-16).** The third objection held; the first two
+> did not. Verdicts, expectation matching and dependency-gated scoring *are*
+> derivable from disk, but only by re-implementing
+> `get_solution_outcome_report` in TypeScript — 888 lines of `vscode/src/rbx/`
+> mirroring Python with no test comparing them. rbx now publishes
+> `.rbx/runs/report.yml` per solution, and the extension reads it instead of
+> deciding anything. Live progress is preserved where it matters (per-testcase
+> rows still come from `.eval`); a solution still running shows a progress
+> counter and no verdict, which is the accepted cost. See
+> [the report artifact design](2026-08-16-run-report-artifact-design.md).
+>
+> D2's rationale also understated itself: `rbx/box/cli.py:198-207` `rmtree`s
+> `build/` and `.rbx/` when the cache fingerprint does not match the installed
+> version, so an extension shelling out to a version-skewed rbx would destroy
+> the user's cache — not merely race it.
+
 ## Architecture
 
 ```

@@ -11,20 +11,23 @@ import * as vscode from 'vscode';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
-import { expectedShortName, isAccepted, shortName } from './rbx/outcome';
-import { ArtifactStore, GroupRun, RunReport, SolutionRun, TestcaseRun } from './rbx/store';
+import { expectedShortName, isAccepted, isSkipped, shortName } from './rbx/outcome';
 import {
-  RunSummary,
-  failingGroups,
+  ArtifactStore,
+  GroupRun,
+  PackageRun,
+  SolutionRun,
+  TestcaseRun,
+} from './rbx/store';
+import {
+  Progress,
   formatCounts,
   formatMemory,
   formatScore,
   formatTime,
   groupDescription,
-  isComplete,
+  progressOf,
   solutionDescription,
-  summarizeGroup,
-  summarizeSolution,
 } from './rbx/summary';
 
 export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
@@ -68,10 +71,10 @@ function outcomeIcon(outcome: string | undefined): vscode.ThemeIcon {
     // interrupted. Indistinguishable in v1; both read as pending.
     return new vscode.ThemeIcon('circle-outline');
   }
-  if (outcome === 'accepted') {
+  if (isAccepted(outcome)) {
     return new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
   }
-  if (outcome === 'skipped') {
+  if (isSkipped(outcome)) {
     return new vscode.ThemeIcon('debug-step-over', new vscode.ThemeColor('testing.iconSkipped'));
   }
   return new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed'));
@@ -125,20 +128,46 @@ function testcaseItem(node: TestcaseNode): vscode.TreeItem {
   return item;
 }
 
-/** The aggregate lines both solution and group tooltips share. */
-function appendSummary(tooltip: vscode.MarkdownString, summary: RunSummary): void {
-  tooltip.appendMarkdown(`Verdict: **${shortName(summary.outcome)}**\n\n`);
-  if (summary.maxScore > 0 && isComplete(summary)) {
-    tooltip.appendMarkdown(`Score: ${formatScore(summary.score, summary.maxScore)}\n\n`);
+/**
+ * The aggregate tooltip lines, from rbx's report.
+ *
+ * `aggregates` is absent until the solution finishes -- rbx publishes the
+ * report per solution -- so mid-run the tooltip says how far it has got and
+ * nothing about verdicts.
+ */
+function appendSummary(
+  tooltip: vscode.MarkdownString,
+  aggregates:
+    | {
+        outcome?: string;
+        score: number;
+        maxScore: number;
+        maxTime?: number;
+        maxMemory?: number;
+      }
+    | undefined,
+  progress: Progress,
+  testcases: readonly TestcaseRun[],
+): void {
+  if (aggregates === undefined) {
+    tooltip.appendMarkdown(`Still running: ${progress.done}/${progress.total} tests\n`);
+    return;
   }
-  tooltip.appendMarkdown(`Tests: ${summary.done}/${summary.total}`);
-  if (summary.counts.size > 0) {
-    tooltip.appendMarkdown(` (${formatCounts(summary)})`);
+  tooltip.appendMarkdown(`Verdict: **${shortName(aggregates.outcome)}**\n\n`);
+  if (aggregates.maxScore > 0) {
+    tooltip.appendMarkdown(
+      `Score: ${formatScore(aggregates.score, aggregates.maxScore)}\n\n`,
+    );
+  }
+  tooltip.appendMarkdown(`Tests: ${progress.done}/${progress.total}`);
+  const counts = formatCounts(testcases);
+  if (counts !== '') {
+    tooltip.appendMarkdown(` (${counts})`);
   }
   tooltip.appendMarkdown('\n\n');
   // Max, not total: the slowest test is what the time limit is judged against.
-  tooltip.appendMarkdown(`Max time: ${formatTime(summary.time) ?? '-'}\n\n`);
-  tooltip.appendMarkdown(`Max memory: ${formatMemory(summary.memory) ?? '-'}\n`);
+  tooltip.appendMarkdown(`Max time: ${formatTime(aggregates.maxTime) ?? '-'}\n\n`);
+  tooltip.appendMarkdown(`Max memory: ${formatMemory(aggregates.maxMemory) ?? '-'}\n`);
 }
 
 function groupItem(node: GroupNode): vscode.TreeItem {
@@ -152,13 +181,17 @@ function groupItem(node: GroupNode): vscode.TreeItem {
   item.id = `${node.pkg.root}::${node.run.solution.index}::${node.group.name}`;
   item.contextValue = 'rbx.group';
 
-  const summary = summarizeGroup(node.group);
-  item.iconPath = outcomeIcon(summary.outcome);
-  item.description = groupDescription(summary);
+  const report = node.group.report;
+  const progress = progressOf(node.group.testcases);
+  item.iconPath = outcomeIcon(report?.outcome);
+  item.description = groupDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();
   tooltip.appendMarkdown(`**${node.group.name}**\n\n`);
-  appendSummary(tooltip, summary);
+  if (report?.expectedOutcome !== undefined) {
+    tooltip.appendMarkdown(`Expected: ${expectedShortName(report.expectedOutcome)}\n\n`);
+  }
+  appendSummary(tooltip, report, progress, node.group.testcases);
   item.tooltip = tooltip;
   return item;
 }
@@ -175,20 +208,21 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
   item.contextValue = 'rbx.solution';
   item.resourceUri = vscode.Uri.file(path.join(node.pkg.root, solution.path));
 
-  const summary = summarizeSolution(node.run);
-  item.iconPath = outcomeIcon(summary.outcome);
-  item.description = solutionDescription(summary, solution.expectedOutcome);
+  const report = node.run.report;
+  const testcases = node.run.groups.flatMap((group) => group.testcases);
+  const progress = progressOf(testcases);
+  item.iconPath = outcomeIcon(report?.outcome);
+  item.description = solutionDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();
   tooltip.appendMarkdown(`**${solution.path}**\n\n`);
+  // The skeleton's declared expectation, which is there even before the report.
   tooltip.appendMarkdown(`Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`);
-  appendSummary(tooltip, summary);
-  const failing = failingGroups(node.run);
-  if (failing.length > 0) {
-    const names = failing
-      .map((group) => `${group.name} (${shortName(summarizeGroup(group).outcome)})`)
-      .join(', ');
-    tooltip.appendMarkdown(`\nFailing groups: ${names}\n`);
+  appendSummary(tooltip, report, progress, testcases);
+  // rbx names the groups that missed their own expectation; which layer caught
+  // the solution -- pooled or per-group -- is its call, already made.
+  if (report !== undefined && report.failedGroups.length > 0) {
+    tooltip.appendMarkdown(`\nFailing groups: ${report.failedGroups.join(', ')}\n`);
   }
   item.tooltip = tooltip;
   return item;
@@ -258,7 +292,7 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
     return store;
   }
 
-  report(pkg: PackageLayout): Promise<RunReport | undefined> {
+  report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
   }
 
