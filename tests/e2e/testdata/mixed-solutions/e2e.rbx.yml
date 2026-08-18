@@ -1,4 +1,50 @@
 scenarios:
+  - name: fail-fast
+    description: >
+      `rbx run --ff` stops each solution at its first non-accepted verdict, and
+      the report drops what a truncated run cannot support: the timing summary
+      goes, and the command says the flag is not to be trusted for validation.
+      `sols/wa.cpp` is wrong on the samples testcase, so this is also the shape
+      that makes the warning necessary -- it still reports OK, off one testcase.
+    steps:
+      - cmd: run --ff
+        expect:
+          stdout_contains:
+            - '--fail-fast / --ff'
+            - 'should not be trusted for full validation of the problem'
+            - 'The timing summary was omitted'
+          # Not a word about the slowest/fastest solutions: every line of that
+          # summary is an extreme, and a solution that stopped early is only
+          # timed on the testcases that ran.
+          stdout_not_contains:
+            - 'Timing summary:'
+            - 'Fastest'
+            - 'Slowest'
+          file_contains:
+            # `.rbx/runs/1` is the second declared solution, sols/wa.cpp: wrong
+            # on samples, so the `main` group never runs. Binary scoring, so the
+            # abort takes the whole testset, not just the failing group.
+            .rbx/runs/1/samples/1-gen-000.eval: 'outcome: wrong-answer'
+            .rbx/runs/1/main/1-gen-000.eval: 'outcome: skipped'
+            .rbx/runs/1/main/1-gen-001.eval: 'outcome: skipped'
+            # The accepted solution never trips its gate, so it runs in full.
+            .rbx/runs/0/main/1-gen-001.eval: 'outcome: accepted'
+
+  - name: fail-fast-off-by-default
+    description: >
+      Without the flag the run is complete, so the report keeps the timing
+      summary and says nothing about fail-fast.
+    steps:
+      - cmd: run
+        expect:
+          stdout_contains:
+            - 'Timing summary:'
+          stdout_not_contains:
+            - '--fail-fast / --ff'
+            - 'The timing summary was omitted'
+          file_contains:
+            .rbx/runs/1/main/1-gen-000.eval: 'outcome: wrong-answer'
+
   - name: verdict-matrix
     description: |
       Exercises the full solution matcher syntax: bare verdict, '*' with

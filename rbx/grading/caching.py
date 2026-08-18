@@ -13,6 +13,7 @@ from sqlitedict import SqliteDict
 
 from rbx import console
 from rbx.grading import grading_context
+from rbx.grading.judge import digester
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.digester import digest_cooperatively
 from rbx.grading.judge.lock import make_async_file_lock
@@ -235,6 +236,11 @@ async def _build_cache_input(
             if input.src is None:
                 continue
             inferred_digest = await cacher.digest_from_symlink(input.src)
+            if inferred_digest is None and input.src.is_file():
+                # Key on content, not on the absolute path. Two byte-identical
+                # files are interchangeable: the compiler command references
+                # `dest`, which stays in the key, so nothing is lost.
+                inferred_digest = digester.digest_file_memoized(input.src)
             if inferred_digest is not None:
                 # Consume cache from digest instead of file.
                 input.digest = DigestHolder(value=inferred_digest)
@@ -331,6 +337,7 @@ class DependencyCacheBlock:
         self.artifact_list = artifact_list
         self.extra_params = extra_params
         self._key = None
+        self._hit = False
 
     async def __aenter__(self):
         with Profiler('enter_in_cache'):
@@ -350,13 +357,17 @@ class DependencyCacheBlock:
             found = await self.cache.find_in_cache(
                 self.commands, self.artifact_list, self.extra_params, key=self._key
             )
+            self._hit = found
             return found
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         with Profiler('exit_in_cache'):
             if grading_context.is_no_cache():
                 return True if exc_type is NoCacheException else None
-            if exc_type is None:
+            if exc_type is None and not self._hit:
+                # On a hit, `find_in_cache` already validated every fingerprint
+                # it would rewrite, so re-storing is a pure duplicate of the
+                # read path.
                 await self.cache.store_in_cache(
                     self.commands, self.artifact_list, self.extra_params, key=self._key
                 )
@@ -417,13 +428,15 @@ class DependencyCache:
         key: Optional[str] = None,
     ) -> bool:
         async with self.lock:
-            input = await _build_cache_input(
-                commands=commands,
-                artifact_list=artifact_list,
-                extra_params=extra_params,
-                cacher=self.cacher,
-            )
-            key = key or _build_cache_key(input)
+            if key is None:
+                key = _build_cache_key(
+                    await _build_cache_input(
+                        commands=commands,
+                        artifact_list=artifact_list,
+                        extra_params=extra_params,
+                        cacher=self.cacher,
+                    )
+                )
 
             fingerprint = self._find_in_cache(key)
             if fingerprint is None:
@@ -492,13 +505,15 @@ class DependencyCache:
         key: Optional[str] = None,
     ):
         async with self.lock:
-            input = await _build_cache_input(
-                commands=commands,
-                artifact_list=artifact_list,
-                extra_params=extra_params,
-                cacher=self.cacher,
-            )
-            key = key or _build_cache_key(input)
+            if key is None:
+                key = _build_cache_key(
+                    await _build_cache_input(
+                        commands=commands,
+                        artifact_list=artifact_list,
+                        extra_params=extra_params,
+                        cacher=self.cacher,
+                    )
+                )
 
             if not await are_artifacts_ok(artifact_list, self.cacher):
                 return

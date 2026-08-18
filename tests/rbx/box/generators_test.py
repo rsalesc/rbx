@@ -19,6 +19,12 @@ from rbx.box.testcase_extractors import (
 from rbx.box.testing import testing_package
 from rbx.grading import steps
 
+# These tests recompile the same handful of generators and validators in every
+# fresh problem directory; sharing the problem cache across them takes the file
+# from 58s to 21s. They only care about the generated testcases, not about a
+# compilation actually running -- the one test that does opts back out below.
+pytestmark = pytest.mark.shared_cache
+
 
 async def test_generator_in_testplan(
     testing_pkg: testing_package.TestingPackage,
@@ -282,6 +288,8 @@ async def test_generator_non_existent(
     )
 
 
+# Asserts on the compilation output itself, so it needs a cold cache.
+@pytest.mark.shared_cache(False)
 async def test_generator_not_compile(
     testing_pkg: testing_package.TestingPackage,
     capsys: pytest.CaptureFixture[str],
