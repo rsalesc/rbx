@@ -19,7 +19,7 @@ only the emitted strings are in seconds, the unit mojtools uses.
 """
 
 import math
-from typing import Dict, List, NamedTuple
+from typing import Dict, List, NamedTuple, Optional
 
 # The constant `calibreitor.sh` adds to every limit it writes. Subtracted from the
 # pinned base so a fixed limit lands exactly on the number rbx estimated instead of
@@ -59,14 +59,26 @@ def calibrafactor_for_fixed_limit(base_ms: int) -> str:
     return f'{fmt_seconds(pinned)}+0'
 
 
-def calibration_tl_seconds(limits: FixedTimeLimits) -> int:
+def calibration_tl_seconds(
+    limits: FixedTimeLimits, inference_timeout_ms: Optional[int] = None
+) -> int:
     """The `CALIBRATIONTL` a package with these limits needs, in whole seconds.
 
-    An accepted solution is allowed to run up to the problem's own limit, so the
-    dummy limit calibration enforces must not be tighter than the largest of them.
+    The largest pinned limit is the floor that matters: an accepted solution is
+    allowed to run right up to its own language's limit, so a tighter dummy limit
+    would TLE it during calibration and abort the run.
+
+    It is additionally never below mojtools' own 5s default, nor below
+    `inferenceTimeout` -- the cap rbx enforced while *estimating*, which is how long
+    a solution it measured was allowed to take. Calibration re-runs those same
+    solutions (`pass`/`slow`/`wrong` after `good`), so anything rbx was willing to
+    wait for, calibration must be too.
     """
     largest_ms = max([limits.base_ms, *limits.per_language_ms.values()])
-    return max(DEFAULT_CALIBRATION_TL_SECONDS, math.ceil(largest_ms / 1000))
+    floor_seconds = DEFAULT_CALIBRATION_TL_SECONDS
+    if inference_timeout_ms is not None:
+        floor_seconds = max(floor_seconds, math.ceil(inference_timeout_ms / 1000))
+    return max(floor_seconds, math.ceil(largest_ms / 1000))
 
 
 def build_fixed_limits(
@@ -87,7 +99,9 @@ def build_fixed_limits(
     return FixedTimeLimits(base_ms=base, per_language_ms=per_language)
 
 
-def fixed_limit_lines(limits: FixedTimeLimits) -> List[str]:
+def fixed_limit_lines(
+    limits: FixedTimeLimits, inference_timeout_ms: Optional[int] = None
+) -> List[str]:
     """The `conf` block pinning the limits, as commented lines."""
     lines = [
         '# Time limits are PINNED here, not calibrated: they come from the `moj`',
@@ -114,14 +128,15 @@ def fixed_limit_lines(limits: FixedTimeLimits) -> List[str]:
             )
         lines.append('')
 
-    calibration_tl = calibration_tl_seconds(limits)
+    calibration_tl = calibration_tl_seconds(limits, inference_timeout_ms)
     if calibration_tl > DEFAULT_CALIBRATION_TL_SECONDS:
         lines.extend(
             [
-                '# Dummy limit calibreitor.sh enforces while it measures the accepted',
-                "# solutions. Its default of 5s is below this problem's own limit, so",
-                '# a legitimately slow accepted solution would time out during',
-                '# calibration and abort it.',
+                '# Dummy limit calibreitor.sh enforces while it runs the solutions. Its',
+                '# default of 5s is below what this problem allows -- its own pinned',
+                '# limits, and the inferenceTimeout rbx measured under -- so a solution',
+                '# that legitimately takes that long would time out during calibration',
+                '# and abort it.',
                 f'CALIBRATIONTL={calibration_tl}',
                 '',
             ]

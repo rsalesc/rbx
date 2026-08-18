@@ -27,7 +27,14 @@ from rbx.box.packaging.moj.moj_language_utils import (
 )
 from rbx.box.packaging.moj.statement_assets import rasterize_pdf_assets
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
-from rbx.box.schema import CodeItem, ExpectedOutcome, ScoreType, Solution, TaskType
+from rbx.box.schema import (
+    CodeItem,
+    ExpectedOutcome,
+    ScoreType,
+    Solution,
+    TaskType,
+    TimingMultipliers,
+)
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import MojGateError
 from rbx.box.statements.schema import (
@@ -76,6 +83,27 @@ _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
 LIMITS_PROFILE = 'moj'
 
 
+def _resolved_multipliers() -> Optional[TimingMultipliers]:
+    """The problem's timing multipliers, or None when it estimates with a formula."""
+    strategy = timing_config.resolve_strategy(
+        environment.get_environment().timing,
+        package.find_problem_package_or_die().timing,
+    )
+    if not strategy.uses_multipliers:
+        return None
+    return strategy.multipliers_or_die()
+
+
+def _inference_timeout_ms() -> Optional[int]:
+    """The cap rbx enforced on a solution while estimating, when there is one.
+
+    Fed to `CALIBRATIONTL` so calibration waits at least as long as estimation did;
+    a formula-mode problem defines no such cap, and the 5s default stands.
+    """
+    multipliers = _resolved_multipliers()
+    return multipliers.inferenceTimeout if multipliers is not None else None
+
+
 def _ac_to_time_limit_or_die() -> float:
     """The ratio `--calibrate` hands MOJ as `TLMOD[calibrafactor]`.
 
@@ -83,11 +111,8 @@ def _ac_to_time_limit_or_die() -> float:
     single ratio between the slowest accepted solution and the limit, so there is
     nothing to hand the judge and the setter has to pin the limits instead.
     """
-    strategy = timing_config.resolve_strategy(
-        environment.get_environment().timing,
-        package.find_problem_package_or_die().timing,
-    )
-    if not strategy.uses_multipliers:
+    multipliers = _resolved_multipliers()
+    if multipliers is None:
         console.console.print(
             '[error][item]--calibrate[/item] needs an [item]acToTimeLimit[/item], but '
             'this problem estimates time limits with a formula.[/error]\n'
@@ -98,7 +123,7 @@ def _ac_to_time_limit_or_die() -> float:
             '[item]--calibrate[/item] to pin the limits instead.[/error]'
         )
         raise typer.Exit(1)
-    return strategy.multipliers_or_die().acToTimeLimit
+    return multipliers.acToTimeLimit
 
 
 def _require_limits_profile() -> None:
@@ -424,7 +449,9 @@ class MojPackager(BasePackager):
         if self.calibrate:
             return moj_timing.calibrated_limit_lines(_ac_to_time_limit_or_die())
         _require_limits_profile()
-        return moj_timing.fixed_limit_lines(self._fixed_time_limits())
+        return moj_timing.fixed_limit_lines(
+            self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
+        )
 
     def _fixed_time_limits(self) -> moj_timing.FixedTimeLimits:
         """The limits of the `moj` profile, as a base plus per-language increments.

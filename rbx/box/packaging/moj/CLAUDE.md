@@ -65,9 +65,13 @@ the **tightest** limit involved (the profile's own base included, since a langua
 package ships no scripts for falls back to `TL[default]`), so no increment is ever
 negative.
 
-`CALIBRATIONTL` is raised alongside them when the largest pinned limit exceeds 5s:
-that is the dummy limit calibration enforces while measuring, and an accepted solution
-the problem legitimately allows 8s would otherwise TLE during calibration and abort it.
+`CALIBRATIONTL` is raised alongside them: it is the dummy limit calibration enforces
+while it runs the solutions, and its 5s default can be tighter than what this problem
+allows. It is emitted as **max(largest pinned limit, 5s, `inferenceTimeout`)** --
+the pinned limits because an accepted solution is allowed to run right up to its
+language's limit, and `inferenceTimeout` because that is how long rbx itself waited
+for a solution while estimating, and calibration re-runs the same ones
+(`pass`/`slow`/`wrong` after `good`). Below the 5s default nothing is emitted.
 
 **Without a profile the packager refuses**, rather than silently falling back to a
 factor nobody chose: run `rbx time -p moj`, or pass `--calibrate`.

@@ -91,11 +91,31 @@ def test_conf_pins_a_single_limit_when_every_language_agrees(moj_package):
     assert not [key for key in _keys(conf) if key.endswith('.sum]')]
 
 
+def test_calibration_tl_covers_the_largest_pinned_limit():
+    limits = timing.FixedTimeLimits(base_ms=2000, per_language_ms={'py': 8000})
+    assert timing.calibration_tl_seconds(limits) == 8
+
+
+def test_calibration_tl_never_drops_below_the_mojtools_default():
+    limits = timing.FixedTimeLimits(base_ms=1000, per_language_ms={})
+    assert timing.calibration_tl_seconds(limits) == 5
+
+
+def test_calibration_tl_covers_the_inference_timeout():
+    # rbx was willing to wait `inferenceTimeout` for a solution while estimating, and
+    # calibration re-runs those same solutions, so it must wait at least as long.
+    limits = timing.FixedTimeLimits(base_ms=1000, per_language_ms={})
+    assert timing.calibration_tl_seconds(limits, inference_timeout_ms=10000) == 10
+    # The largest pinned limit still wins when it is the bigger of the two.
+    slow = timing.FixedTimeLimits(base_ms=2000, per_language_ms={'py': 15000})
+    assert timing.calibration_tl_seconds(slow, inference_timeout_ms=10000) == 15
+
+
 def test_conf_raises_the_calibration_limit_for_a_slow_problem(testing_pkg, tmp_path):
-    # calibreitor.sh enforces a 5s dummy limit while it measures; an accepted
-    # solution allowed 8s by the problem would time out during calibration.
+    # calibreitor.sh enforces a 5s dummy limit while it runs the solutions; an
+    # accepted solution allowed 12s by the problem would time out during calibration.
     minimal_package(testing_pkg)
-    with_limits_profile(testing_pkg, time_limit=2000, per_language={'py': 8000})
+    with_limits_profile(testing_pkg, time_limit=2000, per_language={'py': 12000})
     testing_pkg.save()
 
     conf = (
@@ -103,12 +123,13 @@ def test_conf_raises_the_calibration_limit_for_a_slow_problem(testing_pkg, tmp_p
         / 'conf'
     ).read_text()
 
-    assert _conf_value(conf, 'CALIBRATIONTL') == '8'
+    assert _conf_value(conf, 'CALIBRATIONTL') == '12'
 
 
-def test_conf_leaves_the_calibration_limit_alone_by_default(moj_package):
-    # The default 5s already covers a 1s problem; a redundant knob is noise.
-    assert 'CALIBRATIONTL' not in _keys((moj_package / 'conf').read_text())
+def test_conf_raises_the_calibration_limit_to_the_inference_timeout(moj_package):
+    # Every limit here is 1s, but the environment's inferenceTimeout is 10s -- the
+    # cap the slow solutions were measured under.
+    assert _conf_value((moj_package / 'conf').read_text(), 'CALIBRATIONTL') == '10'
 
 
 def test_packaging_without_a_limits_profile_fails(testing_pkg, tmp_path):
