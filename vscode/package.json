@@ -160,16 +160,20 @@
     "typecheck": "tsc --noEmit",
     "pretest": "node esbuild.test.mjs",
     "test": "node --test \"out-test/**/*.test.js\"",
-    "lint": "eslint src",
+    "lint": "eslint .",
     "vscode:prepublish": "npm run package"
   },
   "dependencies": {
     "yaml": "^2.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.23.0",
-    "typescript": "^5.5.0"
+    "eslint": "^9.39.5",
+    "globals": "^17.11.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.67.0"
   }
 }
