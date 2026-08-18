@@ -12,11 +12,11 @@ import { parse as parseYaml } from 'yaml';
 import {
   Ext,
   PackageLayout,
+  reportPath,
   runArtifactPath,
   skeletonPath,
   testArtifactPath,
 } from './layout';
-import { worstOutcome } from './outcome';
 import {
   Evaluation,
   Skeleton,
@@ -28,6 +28,7 @@ import {
   parseEvaluation,
   parseSkeleton,
 } from './model';
+import { GroupReport, SolutionReport, parseReport } from './report';
 
 /** One (solution, testcase) pair, with wherever its artifacts live. */
 export interface TestcaseRun {
@@ -51,14 +52,21 @@ export interface TestcaseRun {
 export interface GroupRun {
   readonly name: string;
   readonly testcases: readonly TestcaseRun[];
+  /**
+   * rbx's aggregates for this group. Absent until the solution finishes, since
+   * that is when rbx publishes them -- so absence means "still running", and
+   * the tree shows progress instead of a verdict.
+   */
+  readonly report?: GroupReport;
 }
 
 export interface SolutionRun {
   readonly solution: SolutionEntry;
   readonly groups: readonly GroupRun[];
+  readonly report?: SolutionReport;
 }
 
-export interface RunReport {
+export interface PackageRun {
   readonly skeleton: Skeleton;
   readonly solutions: readonly SolutionRun[];
 }
@@ -108,7 +116,11 @@ async function loadSolutionRun(
   pkg: PackageLayout,
   skeleton: Skeleton,
   solution: SolutionEntry,
+  report: SolutionReport | undefined,
 ): Promise<SolutionRun> {
+  const groupReports = new Map(
+    (report?.groups ?? []).map((group) => [group.name, group]),
+  );
   const groups = await Promise.all(
     orderedGroups(skeleton).map(async (name): Promise<GroupRun> => {
       const testcases = await Promise.all(
@@ -116,10 +128,10 @@ async function loadSolutionRun(
           loadTestcaseRun(pkg, solution.index, entry),
         ),
       );
-      return { name, testcases };
+      return { name, testcases, report: groupReports.get(name) };
     }),
   );
-  return { solution, groups };
+  return { solution, groups, report };
 }
 
 /**
@@ -130,7 +142,7 @@ async function loadSolutionRun(
  * cheaper than tracking which of them a filesystem event referred to.
  */
 export class ArtifactStore {
-  private cached?: Promise<RunReport | undefined>;
+  private cached?: Promise<PackageRun | undefined>;
 
   constructor(private readonly pkg: PackageLayout) {}
 
@@ -138,42 +150,29 @@ export class ArtifactStore {
     this.cached = undefined;
   }
 
-  load(): Promise<RunReport | undefined> {
+  load(): Promise<PackageRun | undefined> {
     if (this.cached === undefined) {
       this.cached = this.read();
     }
     return this.cached;
   }
 
-  private async read(): Promise<RunReport | undefined> {
+  private async read(): Promise<PackageRun | undefined> {
     const skeleton = parseSkeleton(await readYamlFile(skeletonPath(this.pkg)));
     if (skeleton === undefined) {
       return undefined;
     }
+    // The report is matched to solutions by index, not by position: mid-run it
+    // holds only the solutions that have finished, in the order they finished.
+    const report = parseReport(await readYamlFile(reportPath(this.pkg)));
+    const reports = new Map(
+      (report?.solutions ?? []).map((solution) => [solution.index, solution]),
+    );
     const solutions = await Promise.all(
-      skeleton.solutions.map((solution) => loadSolutionRun(this.pkg, skeleton, solution)),
+      skeleton.solutions.map((solution) =>
+        loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index)),
+      ),
     );
     return { skeleton, solutions };
   }
-}
-
-/** Worst outcome observed across a solution's testcases so far. */
-export function solutionOutcome(solution: SolutionRun): string | undefined {
-  const outcomes: (string | undefined)[] = [];
-  for (const group of solution.groups) {
-    for (const testcase of group.testcases) {
-      outcomes.push(testcase.evaluation?.outcome);
-    }
-  }
-  return worstOutcome(outcomes);
-}
-
-export function groupOutcome(group: GroupRun): string | undefined {
-  return worstOutcome(group.testcases.map((testcase) => testcase.evaluation?.outcome));
-}
-
-export function isComplete(solution: SolutionRun): boolean {
-  return solution.groups.every((group) =>
-    group.testcases.every((testcase) => testcase.evaluation !== undefined),
-  );
 }

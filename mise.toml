@@ -118,6 +118,11 @@ description = "Typecheck the VS Code extension"
 dir = "vscode"
 run = "npm run typecheck"
 
+[tasks."vscode:test"]
+description = "Run the VS Code extension's unit tests"
+dir = "vscode"
+run = "npm test"
+
 [tasks."vscode:package"]
 description = "Build the VS Code extension for publishing"
 dir = "vscode"

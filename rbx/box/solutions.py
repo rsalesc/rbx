@@ -25,6 +25,7 @@ from rbx.box import (
     limits_info,
     package,
     remote,
+    run_report,
     setter_config,
     visualizers,
 )
@@ -715,6 +716,10 @@ async def _get_report_skeleton(
 
     skeleton_file = runs_dir / 'skeleton.yml'
     skeleton_file.write_text(utils.model_to_yaml(skeleton))
+    # A new skeleton is what marks a new run. Drop the previous run's report so
+    # an interrupted run cannot leave stale verdicts that a reader would take
+    # for current ones.
+    run_report.clear_report(runs_dir)
 
     return skeleton
 
@@ -2491,7 +2496,10 @@ async def _print_detailed_run_report(
         )
 
     ok = True
-    for solution in result.skeleton.solutions:
+    # `--detailed` bypasses the reporters entirely, so it has to publish the
+    # report itself or `rbx run -d` would leave none behind.
+    report_writer = run_report.RunReportWriter(package.get_problem_runs_dir())
+    for index, solution in enumerate(result.skeleton.solutions):
         all_evals = []
         for evals in structured_evaluations[str(solution.path)].values():
             all_evals.extend(evals)
@@ -2506,6 +2514,9 @@ async def _print_detailed_run_report(
             console,
             verification=verification,
             print_scoring=True,
+        )
+        report_writer.add(
+            run_report.build_solution_report(index, result.skeleton, report)
         )
         if _gates_report(solution, gating_solutions):
             ok = ok and report.status.ok()
@@ -2582,6 +2593,7 @@ class TraditionalRunReporter:
         self.current_solution_evals = []
         self.current_group_evals = []
         self.current_group_evals_per_index = {}
+        self.report_writer = run_report.RunReportWriter(package.get_problem_runs_dir())
 
     def get_limits(self, solution: Solution) -> Limits:
         return self.limits_per_solution[str(solution.path)]
@@ -2637,13 +2649,41 @@ class TraditionalRunReporter:
 
     def finish_solution(self) -> bool:
         assert self.current_solution is not None
-        ok = self.render_solution_end(self.current_solution)
+        report = self.render_solution_end(self.current_solution)
+        if report is not None:
+            self.report_writer.add(
+                run_report.build_solution_report(
+                    self.solution_index(self.current_solution),
+                    self.result.skeleton,
+                    report,
+                )
+            )
         self.current_solution = None
         self.current_solution_evals = []
-        return ok
+        return report is None or report.status.ok()
 
-    def render_solution_end(self, solution: Solution) -> bool:
-        return True
+    def render_solution_end(
+        self, solution: Solution
+    ) -> Optional[SolutionOutcomeReport]:
+        """Render the solution's verdict, and hand back the report it rendered.
+
+        The report is returned rather than reduced to a boolean because
+        ``finish_solution`` publishes it (see ``run_report``). Recomputing it
+        there instead would push every issue onto the stack a second time --
+        ``get_solution_outcome_report`` reports issues unless told not to.
+        """
+        return None
+
+    def solution_index(self, solution: Solution) -> int:
+        """Position in the skeleton, which is also the runs directory name.
+
+        Clients resolve artifact paths from it, so a wrong index would point at
+        another solution's output -- hence the assert rather than a default.
+        """
+        for index, candidate in enumerate(self.result.skeleton.solutions):
+            if str(candidate.path) == str(solution.path):
+                return index
+        raise ValueError(f'Solution {solution.path} is not in the skeleton')
 
     def start_group(self, group: GroupSkeleton):
         self.current_group = group
@@ -2708,7 +2748,9 @@ class LiveRunReporter(TraditionalRunReporter):
             self.console,
         )
 
-    def render_solution_end(self, solution: Solution) -> bool:
+    def render_solution_end(
+        self, solution: Solution
+    ) -> Optional[SolutionOutcomeReport]:
         report = _print_solution_outcome(
             solution,
             self.result.skeleton,
@@ -2718,7 +2760,7 @@ class LiveRunReporter(TraditionalRunReporter):
             print_message=True,
         )
         self.console.print()
-        return report.status.ok()
+        return report
 
     def _update_live(self, finished: bool = False):
         if self.live is None:
@@ -2813,7 +2855,9 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         _print_solution_header(solution_skeleton, self.console)
         self.console.print()
 
-    def render_solution_end(self, solution: Solution) -> bool:
+    def render_solution_end(
+        self, solution: Solution
+    ) -> Optional[SolutionOutcomeReport]:
         report = _print_solution_outcome(
             solution,
             self.result.skeleton,
@@ -2823,7 +2867,7 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
             print_message=False,
         )
         self.console.print()
-        return report.status.ok()
+        return report
 
     def render_group_end(self, group: GroupSkeleton):
         self.console.print(f'  [status]{group.name}[/status]', end=' ')

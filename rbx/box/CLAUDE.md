@@ -114,6 +114,34 @@ Solutions expecting TLE run with 2x time limit. Warns if a "TLE" solution passes
 - **`StructuredEvaluation`** -- 3D dict: `solution_path -> group_name -> [Deferred[Evaluation]]`
 - **`SolutionOutcomeReport`** -- Status (OK/UNEXPECTED_SCORE/UNEXPECTED_VERDICTS), expected/actual, scoring
 
+### The published run report (`run_report.py`)
+
+`SolutionOutcomeReport` used to be rendered and discarded, so anything outside
+Python that wanted to show a run had to re-derive verdicts from the raw `.eval`
+files -- outcome ranking, `ExpectedOutcome.match()` and dependency-gated scoring
+all re-implemented, with nothing catching the copies drifting. `run_report.py`
+is the on-disk form of that answer, written to `.rbx/runs/report.yml` once per
+solution as it finishes (from `TraditionalRunReporter.finish_solution`, the hook
+both reporters share, and from the `--detailed` path separately). Writing a new
+skeleton clears it, so its absence means "nothing has finished", never "stale".
+
+It is a **published contract**, so three rules hold:
+
+- **Structured, never rendered.** Enum values, seconds, bytes, integers. No
+  `AC`, no `120 ms`, no `[70/100 pts]` -- formatting is the client's business.
+- **Read off, never recomputed.** Every field comes from the existing
+  `SolutionOutcomeReport`; the scores come from `gotScorePerGroup`, which has
+  already applied the `_check_deps` gate. Recomputing anything defeats the point.
+  Note `gotVerdicts` holds only the verdicts that *offended* the expectation, so
+  the published `outcome` is the worst over `evals` instead.
+- **Versioned.** Bump `REPORT_VERSION` when a change would make an older reader
+  misread the file. Readers ignore versions they do not know.
+
+Lean on purpose: `SolutionOutcomeReport` embeds the solution, its limits and
+every evaluation, which either live on disk already or are internal shape that
+must not harden into a contract. Consumed by `vscode/src/rbx/report.ts`; see
+`docs/plans/2026-08-16-run-report-artifact-design.md`.
+
 ## Test Generation (`generators.py`, `generation_schema.py`, `stressing/generator_script_parser.py`)
 
 ### Generator Types

@@ -158,6 +158,8 @@
     "watch": "node esbuild.mjs --watch",
     "package": "node esbuild.mjs --production",
     "typecheck": "tsc --noEmit",
+    "pretest": "node esbuild.test.mjs",
+    "test": "node --test \"out-test/**/*.test.js\"",
     "lint": "eslint src",
     "vscode:prepublish": "npm run package"
   },

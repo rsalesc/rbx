@@ -68,6 +68,16 @@ export function skeletonPath(pkg: PackageLayout): string {
   return path.join(runsDir(pkg), 'skeleton.yml');
 }
 
+/**
+ * The aggregates rbx publishes for the last run (`rbx.box.run_report`).
+ *
+ * Written once per solution as it finishes, and removed when a new skeleton is
+ * written -- so its absence means "no solution has finished yet", never "stale".
+ */
+export function reportPath(pkg: PackageLayout): string {
+  return path.join(runsDir(pkg), 'report.yml');
+}
+
 export function testsDir(pkg: PackageLayout): string {
   return path.join(pkg.root, BUILD_DIR, 'tests');
 }
