@@ -217,7 +217,8 @@ def test_conf_uses_the_rss_memory_knob(moj_package):
     # drops the virtual-memory limit when it is set.
     assert 'ULIMITS[-v]' not in conf
     assert 'ULIMITS[-f]=' in conf
-    assert 'TLMOD[calibrafactor]=1.35' in conf
+    # The time limits are pinned from the `moj` limits profile; see test_timing.py.
+    assert 'TLMOD[calibrafactor]=' in conf
 
 
 def test_binary_problems_halt_at_the_first_failure(moj_binary_package):

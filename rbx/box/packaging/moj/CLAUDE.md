@@ -41,19 +41,46 @@ deliberately *not* shipped: a local copy takes precedence in the bridge.
 
 Solutions get the same treatment, since MOJ compiles a submission from one file too.
 
-## Time limits: calibration only
+## Time limits: pinned, or calibrated on demand
 
-**MOJ measures the time limit; it is never authored.** `calibreitor.sh` runs every
-`sols/good` solution, takes the worst time per language, scales it by
-`TLMOD[calibrafactor]`, and writes `tl`/`tl.<host>`. So no `tl` is emitted and `conf`
-carries the only knobs: `MEMLIMITMB` (peak RSS — setting it also makes MOJ drop the
-virtual-memory ulimit and feeds the JVM `-Xmx` via `binfile.sh`), `ULIMITS[-f]`, and
-`TLMOD[calibrafactor]=1.35`.
+**MOJ measures the time limit; rbx pins it.** `calibreitor.sh` runs every `sols/good`
+solution, takes the worst time per language, and writes
 
-**Consequence:** the package is unjudgeable until a judge calibrates it, and rbx's
-authored `timeLimit` is advisory. There is a **TODO** in `_write_conf` to derive the
-factor from `timeLimit / measured model-solution runtime` so the calibrated limit
-lands near rbx's number instead of 1.35x the model solution.
+```
+TL[<lang>] = <TLMOD[calibrafactor]> * <worst measured time> + 0.02
+```
+
+into `tl`, with `TL[default]` the smallest of those; `build-and-test.sh` then adds
+`TLMOD[<lang>.sum]` before judging. Both knobs are spliced into `bc` expressions as
+**text**, which is what makes a fixed limit expressible at all -- see
+[`timing.py`](timing.py), which owns every expression here.
+
+**Default (`rbx package moj`): the limits are pinned from the `moj` limits profile.**
+`rbx time -p moj` estimates them; the packager emits
+`TLMOD[calibrafactor]=<base - 0.02>+0`, so the expression becomes
+`<base - 0.02> + 0 * worst + 0.02` -- a line with slope zero. Every language, and
+`TL[default]` with them, lands on the same base whatever the judge measured. Each
+language above that base then gets `TLMOD[<lang>.sum]=<its limit - base>`. The base is
+the **tightest** limit involved (the profile's own base included, since a language the
+package ships no scripts for falls back to `TL[default]`), so no increment is ever
+negative.
+
+`CALIBRATIONTL` is raised alongside them when the largest pinned limit exceeds 5s:
+that is the dummy limit calibration enforces while measuring, and an accepted solution
+the problem legitimately allows 8s would otherwise TLE during calibration and abort it.
+
+**Without a profile the packager refuses**, rather than silently falling back to a
+factor nobody chose: run `rbx time -p moj`, or pass `--calibrate`.
+
+**`rbx package moj --calibrate`** hands the decision back to MOJ, emitting
+`TLMOD[calibrafactor]=<acToTimeLimit>` -- rbx's own ratio, so the judge's measurements
+land where `rbx time` would have put the limit, but measured on the judge machine
+rather than the setter's. It needs `timing.multipliers` in `env.rbx.yml`: a problem
+estimating with a *formula* defines no such ratio, and packaging errors out saying so.
+
+`tl` itself is still never emitted -- the package remains unjudgeable until a judge
+calibrates it, since mojtools refuses to judge without that file. Pinning removes
+rbx's dependence on *what* calibration measures, not on it running.
 
 ### `STOPWHEN_*`
 
@@ -238,8 +265,10 @@ So the packager writes the content fields it can know and omits the rest:
 **Why `languages` comes from `sols/good`.** It is the whitelist of submission
 languages, and the API rejects anything outside it. MOJ measures a time limit per
 language from the accepted solutions, and mojtools' guide is explicit: put a good
-solution in every language you want to enable, because a language without one never
-gets a time limit and the student cannot use it. Deriving the list from the emitted
+solution in every language you want to enable. (With pinned limits a language without
+an accepted solution would still be *judgeable* -- it falls back to `TL[default]`,
+which is the same pinned base -- but it is one nothing has ever been shown to solve,
+so the whitelist deliberately stays keyed to the accepted solutions.) Deriving the list from the emitted
 `scripts/<lang>/` dirs instead would key it off the setter's `env.rbx.yml`, which says
 nothing about who may submit what — and would silently *narrow* the default (absent =
 all languages) to whatever the preset happens to declare.

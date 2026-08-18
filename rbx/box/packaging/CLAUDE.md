@@ -94,7 +94,7 @@ Supports interactive problems with special `run` scripts.
 
 **`MojPackager`** (`rbx package moj`) -- extends `BasePackager` directly, targeting MOJ as [`cd-moj/mojtools`](https://github.com/cd-moj/mojtools) actually consumes it. It replaced a legacy `BocaPackager` subclass that emitted a shape MOJ no longer accepts -- an authored `tl`, a bundled checker bridge, `docs/enunciado.pdf`, and `001`-style test names with no samples. See [`moj/CLAUDE.md`](moj/CLAUDE.md) for the full picture; the load-bearing parts:
 
-- **Calibration-only time limits.** MOJ *measures* the TL from `sols/good`; no `tl` is emitted, and `conf` carries `MEMLIMITMB` (peak RSS, replacing the legacy `ULIMITS[-v]`), `ULIMITS[-f]` and `TLMOD[calibrafactor]`.
+- **Time limits live in `conf`, never in `tl`.** MOJ *measures* the TL from `sols/good`, so no `tl` is emitted; `conf` carries `MEMLIMITMB` (peak RSS, replacing the legacy `ULIMITS[-v]`), `ULIMITS[-f]` and the `TLMOD` knobs. By default `rbx package moj` **pins** the limits estimated by `rbx time -p moj` -- `TLMOD[calibrafactor]=<base - 0.02>+0` is a zero-slope `bc` expression, so calibration cannot move them, and `TLMOD[<lang>.sum]` lifts each language to its own limit. Without that profile packaging refuses; `--calibrate` instead emits `TLMOD[calibrafactor]=<acToTimeLimit>` and lets the judge decide. See `moj/timing.py`.
 - **Stub vs copy.** `scripts/compare.sh` is a byte-copy of mojtools' canonical stub (the bridge stays upstream -- a bundled copy once replicated a bwrap bug into 198 packages); only the in-jail `scripts/<lang>/{compile,run}.sh` are real copies.
 - **Single-file checker.** The bridge binds only `checker.cpp` + `testlib.h` into the compile jail, so the checker (and every C/C++ solution) is amalgamated -- see [Source Amalgamation](#source-amalgamation-dependenciesamalgamationpy). Packaging refuses rather than shipping something that judge-errors on every test.
 - **Naming/scoring.** `sample001…` plus `t<NN>_<group>_<NNN>`, so samples sort first in MOJ's lexicographic judging loop; `tests/score` for POINTS only.
@@ -121,7 +121,7 @@ Reverse operation: `PolygonImporter` imports from Polygon packages into rbx form
 |---------|----------|---------------|
 | `rbx package polygon` | `PolygonPackager` | `--upload`, `--language`, `--upload-as-english`, `--upload-only`, `--upload-skip`, `--upload-tests-raw` |
 | `rbx package boca` | `BocaPackager` | `--upload`, `--language` |
-| `rbx package moj` | `MojPackager` | `--language` |
+| `rbx package moj` | `MojPackager` | `--language`, `--calibrate` |
 | `rbx package pkg` | `PkgPackager` | (none) |
 
 All are guarded by `@package.within_problem`.
