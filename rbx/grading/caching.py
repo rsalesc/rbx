@@ -301,7 +301,7 @@ async def is_artifact_ok(artifact: GradingArtifacts, cacher: FileCacher) -> bool
                 output.digest.value
             ):
                 return False
-            return True
+            continue
         assert output.dest is not None
         file_path: pathlib.Path = artifact.root / output.dest
         if not file_path.is_file():
