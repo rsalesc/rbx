@@ -1,4 +1,5 @@
 import contextvars
+import functools
 import pathlib
 import re
 from typing import Callable, Dict, List, Optional
@@ -111,13 +112,42 @@ def _get_limits_from_profile(
     )
 
 
+@functools.lru_cache(maxsize=64)
+def _parse_limits_profile(limits_path: pathlib.Path, source: str) -> LimitsProfile:
+    """Parse one limits profile, memoized on the file's own contents.
+
+    ``source`` is in the key -- not the path plus an mtime -- so the cache is
+    incapable of going stale: a rewritten profile is a different key, and two
+    packages whose profiles happen to be byte-identical share a result that is
+    identical anyway. That matters because the writers here are in-process
+    (``rbx timing``, the TUI limits editor) and the key would otherwise need an
+    invalidation hook at every one of them.
+
+    The path is kept in the key only so diagnostics raised by
+    ``load_yaml_model`` name the right file; it does not affect the value.
+    """
+    return load_yaml_model(limits_path, LimitsProfile)
+
+
 def get_saved_limits_profile(
     profile: str = 'local', root: pathlib.Path = pathlib.Path()
 ) -> Optional[LimitsProfile]:
+    """The profile saved under ``.limits/<profile>.yml``, or None if there is none.
+
+    ``rbx run`` asks for this once per testcase, where the YAML parse plus
+    pydantic validation dominated the call (#658); the read below is roughly two
+    orders of magnitude cheaper than the parse it now usually replaces.
+
+    The returned model is shared between callers -- treat it as read-only.
+    """
     limits_path = package.get_limits_file(profile, root=root)
-    if not limits_path.exists():
+    try:
+        source = limits_path.read_text()
+    except OSError:
+        # Missing profile: the overwhelmingly common case, and the one the
+        # per-testcase path hits on a package that never ran `rbx timing`.
         return None
-    return load_yaml_model(limits_path, LimitsProfile)
+    return _parse_limits_profile(limits_path, source)
 
 
 def get_display_limits_profile(

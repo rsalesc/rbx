@@ -1195,3 +1195,86 @@ class TestExpandLimitsProfileBehavior:
             rust_result = limits_info.get_limits(language='rust', profile='new_lang')
             assert rust_result.time == 1620
             assert rust_result.memory == 800
+
+
+class TestGetSavedLimitsProfileCaching:
+    """The parse is memoized on file contents (#658): `rbx run` asks for the
+    saved profile once per testcase, and the YAML parse dominated that call."""
+
+    def _write(self, tmp_path, profile: schema.LimitsProfile):
+        test_dir = tmp_path / 'test_problem'
+        limits_dir = test_dir / '.limits'
+        limits_dir.mkdir(parents=True, exist_ok=True)
+        (limits_dir / 'local.yml').write_text(model_to_yaml(profile))
+        return test_dir
+
+    def test_repeated_reads_parse_the_file_once(self, pkg_cder, tmp_path):
+        test_dir = self._write(
+            tmp_path, schema.LimitsProfile(inheritFromPackage=False, timeLimit=1500)
+        )
+
+        with (
+            pkg_cder(test_dir),
+            mock.patch(
+                'rbx.box.limits_info.load_yaml_model',
+                side_effect=limits_info.load_yaml_model,
+            ) as parse_mock,
+        ):
+            first = limits_info.get_saved_limits_profile('local')
+            second = limits_info.get_saved_limits_profile('local')
+
+        assert first is not None and first.timeLimit == 1500
+        assert second is first
+        parse_mock.assert_called_once()
+
+    def test_rewritten_profile_is_not_served_from_the_cache(self, pkg_cder, tmp_path):
+        """The cache is keyed by contents, so an in-process rewrite -- what
+        `rbx timing` and the TUI limits editor do -- is picked up with no
+        invalidation hook at the writer."""
+        test_dir = self._write(
+            tmp_path, schema.LimitsProfile(inheritFromPackage=False, timeLimit=1500)
+        )
+
+        with pkg_cder(test_dir):
+            before = limits_info.get_saved_limits_profile('local')
+            assert before is not None and before.timeLimit == 1500
+
+            self._write(
+                tmp_path, schema.LimitsProfile(inheritFromPackage=False, timeLimit=2500)
+            )
+            after = limits_info.get_saved_limits_profile('local')
+
+        assert after is not None
+        assert after.timeLimit == 2500
+
+    def test_profile_written_after_a_miss_is_picked_up(self, pkg_cder, tmp_path):
+        test_dir = tmp_path / 'test_problem'
+        test_dir.mkdir()
+
+        with pkg_cder(test_dir):
+            assert limits_info.get_saved_limits_profile('local') is None
+
+            self._write(
+                tmp_path, schema.LimitsProfile(inheritFromPackage=False, timeLimit=900)
+            )
+            after = limits_info.get_saved_limits_profile('local')
+
+        assert after is not None
+        assert after.timeLimit == 900
+
+    def test_same_contents_in_two_packages_do_not_collide(self, pkg_cder, tmp_path):
+        """Two packages with byte-identical profiles resolve independently: the
+        parsed model is shared, but expansion still happens per package."""
+        for name in ('a', 'b'):
+            limits_dir = tmp_path / name / '.limits'
+            limits_dir.mkdir(parents=True)
+            (limits_dir / 'local.yml').write_text(
+                model_to_yaml(schema.LimitsProfile(inheritFromPackage=True))
+            )
+
+        with pkg_cder(tmp_path):
+            a = limits_info.get_saved_limits_profile('local', root=tmp_path / 'a')
+            b = limits_info.get_saved_limits_profile('local', root=tmp_path / 'b')
+
+        assert a is not None and b is not None
+        assert a.inheritFromPackage and b.inheritFromPackage
