@@ -1,24 +1,27 @@
 /**
- * The expectation channel: a badge saying what a row was declared to do, and a
- * colour saying whether it did it.
+ * The expectation channel: a badge and a hue saying what a row was declared to
+ * do.
  *
  * A thin wrapper over `rbx/outcome.ts` and `rbx/expectation.ts`, the way
  * runTree.ts is thin over the same modules -- all the logic worth testing lives
  * there, without a `vscode` import.
  *
  * Decorations rather than the icon because the icon is already spoken for:
- * #664 gave every verdict its own codicon, and that channel must keep reporting
- * what *happened* so the tree and the terminal beside it agree. The badge is
- * plain text (`FileDecoration.badge` cannot hold a codicon), which is why the
- * two marks are different shapes for the same fact -- they are chosen to rhyme:
- * `pass` is a tick in a circle beside a `✓` badge, `close` a cross beside `✗`.
+ * #664 gave every verdict its own codicon, and that channel keeps reporting
+ * what *happened*. Note what this file therefore does not carry: whether the
+ * declaration held. That is the icon's business, which grows a mark in its
+ * corner on a miss -- so a mismatch shows in the Run view, where there is an
+ * icon, and not on an Explorer entry or an editor tab, where there is not.
+ *
+ * Everything here is read from problem.rbx.yml by way of the skeleton, so none
+ * of it is a claim about the last run and none of it goes stale when the
+ * solution is edited.
  */
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { PackageLayout, reportPath } from './rbx/layout';
-import { Expectation, groupExpectation, solutionExpectation } from './rbx/expectation';
+import { groupExpectation, solutionExpectation } from './rbx/expectation';
+import { PackageLayout } from './rbx/layout';
 import { expectationBadge, expectationColor, expectationTooltip } from './rbx/outcome';
 import { PackageRun } from './rbx/store';
 
@@ -54,31 +57,6 @@ export interface RunSource {
   readonly onDidChangeTreeData: vscode.Event<unknown>;
 }
 
-/**
- * Has this solution been edited since the run that judged it?
- *
- * The badge is a declaration read from problem.rbx.yml and can never go stale,
- * but the colour is run-derived -- and because solutions are decorated by their
- * real file URI, that colour also rides along on the Explorer entry and the
- * editor tab, where it would go on accusing a file the user has already fixed.
- * So a solution newer than the report keeps its badge and loses its colour: it
- * still says what it promises, and stops claiming anything about what it last
- * did.
- */
-async function isStale(pkg: PackageLayout, filePath: string): Promise<boolean> {
-  try {
-    const [solution, report] = await Promise.all([
-      fs.stat(filePath),
-      fs.stat(reportPath(pkg)),
-    ]);
-    return solution.mtimeMs > report.mtimeMs;
-  } catch {
-    // No report, or no such solution file on this host. Neither is a reason to
-    // suppress a colour the report does justify.
-    return false;
-  }
-}
-
 export class ExpectationDecorationProvider implements vscode.FileDecorationProvider {
   private readonly changed = new vscode.EventEmitter<undefined>();
   readonly onDidChangeFileDecorations = this.changed.event;
@@ -100,12 +78,11 @@ export class ExpectationDecorationProvider implements vscode.FileDecorationProvi
   async provideFileDecoration(
     uri: vscode.Uri,
   ): Promise<vscode.FileDecoration | undefined> {
-    const resolved =
+    const expectation =
       uri.scheme === RUN_SCHEME ? await this.forGroup(uri) : await this.forSolution(uri);
-    if (resolved === undefined) {
+    if (expectation === undefined) {
       return undefined;
     }
-    const { expectation, stale } = resolved;
     const badge = expectationBadge(expectation.declared);
     if (badge === undefined) {
       // `ANY`, or a declaration from an rbx newer than this extension. Both
@@ -121,19 +98,17 @@ export class ExpectationDecorationProvider implements vscode.FileDecorationProvi
         expectation.failedGroups,
       ),
     );
-    const color = stale ? undefined : expectationColor(expectation.status);
+    const color = expectationColor(expectation.declared);
     if (color !== undefined) {
       decoration.color = new vscode.ThemeColor(color);
     }
-    // Otherwise a mismatched solution paints its `sols/` directory red as well,
-    // in a tree where every sibling is also a solution.
+    // Otherwise a decorated solution paints its `sols/` directory too, in a
+    // tree where every sibling is also a solution.
     decoration.propagate = false;
     return decoration;
   }
 
-  private async forSolution(
-    uri: vscode.Uri,
-  ): Promise<{ expectation: Expectation; stale: boolean } | undefined> {
+  private async forSolution(uri: vscode.Uri) {
     if (uri.scheme !== 'file') {
       return undefined;
     }
@@ -145,28 +120,23 @@ export class ExpectationDecorationProvider implements vscode.FileDecorationProvi
       const run = (await this.source.report(pkg))?.solutions.find(
         (candidate) => candidate.solution.path === relative,
       );
-      if (run === undefined) {
-        continue;
+      if (run !== undefined) {
+        return solutionExpectation(run);
       }
-      const expectation = solutionExpectation(run);
-      if (expectation === undefined) {
-        return undefined;
-      }
-      return { expectation, stale: await isStale(pkg, uri.fsPath) };
     }
     return undefined;
   }
 
-  private async forGroup(
-    uri: vscode.Uri,
-  ): Promise<{ expectation: Expectation; stale: boolean } | undefined> {
+  private async forGroup(uri: vscode.Uri) {
     const [, index, ...rest] = uri.path.split('/');
     const solutionIndex = Number(index);
     const name = rest.join('/');
     if (!Number.isInteger(solutionIndex) || name === '') {
       return undefined;
     }
-    const pkg = this.source.knownPackages().find((candidate) => candidate.root === uri.query);
+    const pkg = this.source
+      .knownPackages()
+      .find((candidate) => candidate.root === uri.query);
     if (pkg === undefined) {
       return undefined;
     }
@@ -174,12 +144,6 @@ export class ExpectationDecorationProvider implements vscode.FileDecorationProvi
       (candidate) => candidate.solution.index === solutionIndex,
     );
     const group = run?.groups.find((candidate) => candidate.name === name);
-    if (group === undefined) {
-      return undefined;
-    }
-    const expectation = groupExpectation(group);
-    // A group row is only ever read inside the Run view, never on a tab that
-    // outlives the run, so it has no staleness problem to correct for.
-    return expectation === undefined ? undefined : { expectation, stale: false };
+    return group === undefined ? undefined : groupExpectation(group);
   }
 }

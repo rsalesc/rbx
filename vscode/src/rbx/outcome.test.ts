@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import { test } from 'node:test';
 
 import {
@@ -92,56 +94,126 @@ test('expectation names are unchanged by the move to a table', () => {
   assert.strictEqual(expectedShortName('TELEPORTED'), 'XX');
 });
 
-test('badges use the same alphabet rbx marks outcomes with', () => {
-  // One vocabulary across both axes, as in the CLI, where an *expected* WA and
-  // a *got* WA both read the same mark. A badge outside this set means the two
-  // tables have grown apart.
-  const alphabet = new Set(['\u2713', '\u2717', '\u29d6', '\u2298']);
+test('a badge is at most two characters, which VS Code enforces at runtime', () => {
+  // `FileDecoration.validate` throws on a longer badge, so an over-long entry
+  // is a crash in the view rather than a cosmetic slip.
   for (const expected of EXPECTED_OUTCOMES) {
     const badge = expectationBadge(expected);
     if (badge !== undefined) {
-      assert.ok(alphabet.has(badge), `${expected} -> ${badge}`);
+      assert.ok(badge.length <= 2, `${expected} -> ${badge}`);
     }
   }
 });
 
-test('a compound expectation is marked by what it wants, not by what it allows', () => {
-  // Both are traps for deriving the glyph from the outcomes an expectation
-  // matches: ACCEPTED_OR_TLE matches TLE but wants a pass, and INCORRECT
-  // matches five outcomes including slow ones but wants a failure.
-  assert.strictEqual(expectationBadge('ACCEPTED_OR_TLE'), '\u2713');
-  assert.strictEqual(expectationBadge('TLE_OR_RTE'), '\u29d6');
-  assert.strictEqual(expectationBadge('INCORRECT'), '\u2717');
+test('badges are the two-letter spelling rbx itself accepts in the YAML', () => {
+  // Not a vocabulary of the view's own: these are the aliases a setter types
+  // into problem.rbx.yml, so the mark echoes their own file.
+  assert.strictEqual(expectationBadge('ACCEPTED'), 'AC');
+  assert.strictEqual(expectationBadge('WRONG_ANSWER'), 'WA');
+  assert.strictEqual(expectationBadge('TIME_LIMIT_EXCEEDED'), 'TL');
+  assert.strictEqual(expectationBadge('MEMORY_LIMIT_EXCEEDED'), 'ML');
+  assert.strictEqual(expectationBadge('OUTPUT_LIMIT_EXCEEDED'), 'OL');
+  assert.strictEqual(expectationBadge('RUNTIME_ERROR'), 'RE');
+  assert.strictEqual(expectationBadge('JUDGE_FAILED'), 'JF');
+  assert.strictEqual(expectationBadge('COMPILATION_ERROR'), 'CE');
 });
 
-test('nothing declared and nothing known are both left unbadged', () => {
-  // `ANY` promises nothing, and an expectation newer than this extension is
-  // not guessed at -- inventing a mark is worse than leaving the row alone.
-  assert.strictEqual(expectationBadge('ANY'), undefined);
-  assert.strictEqual(expectationBadge(undefined), undefined);
-  assert.strictEqual(expectationBadge('TELEPORTED'), undefined);
+test('a compound expectation keeps rbx `+` spelling for "or"', () => {
+  // From rbx's own `ac+tle` and `tle+re` aliases, and honest besides: `A+`
+  // says accepted, and more is tolerated.
+  assert.strictEqual(expectationBadge('ACCEPTED_OR_TLE'), 'A+');
+  assert.strictEqual(expectationBadge('TLE_OR_RTE'), 'T+');
 });
 
-test('only a miss is coloured, so misses are the only coloured rows', () => {
-  assert.strictEqual(expectationColor('missed'), 'charts.red');
-  assert.strictEqual(expectationColor('met'), undefined);
-  assert.strictEqual(expectationColor('unknown'), undefined);
+test('badges carry no symbols, the row already having a codicon', () => {
+  // A second symbolic alphabet beside the verdict codicon reads as noise, and
+  // a codicon cannot go here anyway -- `FileDecoration.badge` is a string.
+  for (const expected of EXPECTED_OUTCOMES) {
+    const badge = expectationBadge(expected);
+    if (badge !== undefined) {
+      assert.match(badge, /^[A-Z][A-Z+]$/, `${expected} -> ${badge}`);
+    }
+  }
+});
+
+test('a declaration is coloured by its own hue, as rbx prints it', () => {
+  // `ExpectedOutcome.style()` transposed onto `charts.*`: a solution declared
+  // TLE is yellow here exactly as `rbx run` prints it yellow.
+  assert.strictEqual(expectationColor('ACCEPTED'), 'charts.green');
+  assert.strictEqual(expectationColor('ACCEPTED_OR_TLE'), 'charts.green');
+  assert.strictEqual(expectationColor('WRONG_ANSWER'), 'charts.red');
+  assert.strictEqual(expectationColor('INCORRECT'), 'charts.red');
+  assert.strictEqual(expectationColor('TIME_LIMIT_EXCEEDED'), 'charts.yellow');
+  assert.strictEqual(expectationColor('MEMORY_LIMIT_EXCEEDED'), 'charts.yellow');
+  assert.strictEqual(expectationColor('RUNTIME_ERROR'), 'charts.blue');
+  assert.strictEqual(expectationColor('COMPILATION_ERROR'), 'charts.blue');
+  // rbx's own style() has no branch for OLE and falls through to magenta, so
+  // this is purple rather than the orange an OLE *outcome* draws.
+  assert.strictEqual(expectationColor('OUTPUT_LIMIT_EXCEEDED'), 'charts.purple');
+  assert.strictEqual(expectationColor('ANY'), undefined);
+  assert.strictEqual(expectationColor(undefined), undefined);
+});
+
+test('a met expectation leaves #664 icon exactly as it was', () => {
+  for (const [outcome, color] of Object.entries(CLI_PALETTE)) {
+    assert.deepStrictEqual(outcomeIcon(outcome, 'met'), outcomeIcon(outcome), outcome);
+    assert.strictEqual(outcomeIcon(outcome, 'met').color, color, outcome);
+  }
+});
+
+test('a missed expectation swaps in the marked variant of the same verdict', () => {
+  // The verdict stays legible -- a solution that missed by timing out still
+  // shows a clock -- but the row stops claiming the run went to plan.
+  assert.deepStrictEqual(outcomeIcon('time-limit-exceeded', 'missed'), {
+    icon: 'rbx-watch-mismatch',
+    color: 'charts.red',
+  });
+  assert.deepStrictEqual(outcomeIcon('accepted', 'missed'), {
+    icon: 'rbx-pass-mismatch',
+    color: 'charts.red',
+  });
+});
+
+test('a pending row has no mismatch icon, having nothing to have missed', () => {
+  // There is no glyph for it in the font, and naming one that does not exist
+  // renders as blank rather than as an error.
+  assert.deepStrictEqual(outcomeIcon(undefined, 'missed'), outcomeIcon(undefined));
+});
+
+test('every verdict the tree can draw has a contributed mismatch icon', () => {
+  // The font is generated by scripts/build-mismatch-font.py from its own list
+  // of icon ids. If DISPLAY grows a verdict that the generator and
+  // package.json do not know about, the mismatched row renders *blank* -- VS
+  // Code does not complain about an unknown icon id. This is that guard.
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'),
+  ) as { contributes: { icons: Record<string, { default: { fontCharacter: string } }> } };
+  const contributed = manifest.contributes.icons;
+
+  for (const outcome of [...Object.keys(CLI_PALETTE), 'teleported']) {
+    const { icon } = outcomeIcon(outcome, 'missed');
+    assert.ok(icon in contributed, `${outcome} -> ${icon} is not contributed`);
+  }
+
+  const characters = Object.values(contributed).map((i) => i.default.fontCharacter);
+  assert.strictEqual(
+    new Set(characters).size,
+    characters.length,
+    'two icons share a font character',
+  );
 });
 
 test('the hover names both sides in rbx own spelling', () => {
   assert.strictEqual(
     expectationTooltip('WRONG_ANSWER', 'wrong-answer', 'met'),
-    'Expected \u2717 WA, got \u2717 WA',
+    'Expected WA, got WA',
   );
   assert.strictEqual(
     expectationTooltip('ACCEPTED', 'time-limit-exceeded', 'missed'),
-    'Expected \u2713 AC, but got \u29d6 TLE',
+    'Expected AC, but got TLE',
   );
   // Nothing is claimed about an outcome that does not exist yet.
-  assert.strictEqual(
-    expectationTooltip('ACCEPTED', undefined, 'unknown'),
-    'Expected \u2713 AC',
-  );
+  assert.strictEqual(expectationTooltip('ACCEPTED', undefined, 'unknown'), 'Expected AC');
 });
 
 test('a miss caught only per group does not accuse the pooled expectation', () => {
@@ -150,6 +222,6 @@ test('a miss caught only per group does not accuse the pooled expectation', () =
   // catches it, so naming INCORRECT as the broken promise would be wrong.
   assert.strictEqual(
     expectationTooltip('INCORRECT', 'wrong-answer', 'missed', ['small', 'big']),
-    'Declared \u2717 INCORRECT, but small, big did not match',
+    'Declared INCORRECT, but small, big did not match',
   );
 });

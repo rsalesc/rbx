@@ -13,7 +13,13 @@ import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { groupExpectation, solutionExpectation } from './rbx/expectation';
 import { PackageLayout } from './rbx/layout';
-import { expectedShortName, isAccepted, outcomeIcon, shortName } from './rbx/outcome';
+import {
+  ExpectationStatus,
+  expectedShortName,
+  isAccepted,
+  outcomeIcon,
+  shortName,
+} from './rbx/outcome';
 import {
   ArtifactStore,
   GroupRun,
@@ -68,16 +74,22 @@ export interface TestcaseNode {
 }
 
 /**
- * The verdict's own icon, from the table in outcome.ts.
+ * The row's icon: which verdict, and whether it was the declared one.
  *
- * Note this reads the *outcome*, not `matchesExpectation`: a solution declared
- * `WRONG_ANSWER` that answers wrongly is doing its job, and still gets the WA
- * icon. Whether that met the expectation is what the description and the
- * tooltip say -- same split the CLI makes, which also colors the verdict by
- * what happened rather than by whether it was wanted.
+ * Both facts land here because the row has nowhere else to put the second one.
+ * The decoration channel carries the *declaration* -- its badge and hue say
+ * what the solution promised -- and a `FileDecoration` has one colour, no font
+ * styling and no icon, so it cannot also say whether the promise was kept.
+ *
+ * On a match this is #664 unchanged. On a miss the verdict's mismatch variant
+ * draws the same codicon with a circled cross in its corner, in red; see
+ * `outcomeIcon`.
  */
-function themeIconFor(outcome: string | undefined): vscode.ThemeIcon {
-  const { icon, color } = outcomeIcon(outcome);
+function themeIconFor(
+  outcome: string | undefined,
+  status: ExpectationStatus = 'unknown',
+): vscode.ThemeIcon {
+  const { icon, color } = outcomeIcon(outcome, status);
   return new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 }
 
@@ -188,12 +200,12 @@ function groupItem(node: GroupNode): vscode.TreeItem {
 
   const report = node.group.report;
   const progress = progressOf(node.group.testcases);
-  item.iconPath = themeIconFor(report?.outcome);
+  const expectation = groupExpectation(node.group);
+  item.iconPath = themeIconFor(report?.outcome, expectation?.status);
   item.description = groupDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();
   tooltip.appendMarkdown(`**${node.group.name}**\n\n`);
-  const expectation = groupExpectation(node.group);
   if (expectation !== undefined) {
     tooltip.appendMarkdown(
       expectation.status === 'missed'
@@ -225,7 +237,7 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
     expectation?.status === 'missed' ? 'rbx.solution.mismatch' : 'rbx.solution';
   const testcases = node.run.groups.flatMap((group) => group.testcases);
   const progress = progressOf(testcases);
-  item.iconPath = themeIconFor(report?.outcome);
+  item.iconPath = themeIconFor(report?.outcome, expectation?.status);
   item.description = solutionDescription(report, progress, solution.expectedOutcome);
 
   const tooltip = new vscode.MarkdownString();
