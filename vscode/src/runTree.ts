@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
-import { expectedShortName, isAccepted, isSkipped, shortName } from './rbx/outcome';
+import { expectedShortName, isAccepted, outcomeIcon, shortName } from './rbx/outcome';
 import {
   ArtifactStore,
   GroupRun,
@@ -65,19 +65,18 @@ export interface TestcaseNode {
   readonly testcase: TestcaseRun;
 }
 
-function outcomeIcon(outcome: string | undefined): vscode.ThemeIcon {
-  if (outcome === undefined) {
-    // No evaluation on disk yet: either still running, or the run was
-    // interrupted. Indistinguishable in v1; both read as pending.
-    return new vscode.ThemeIcon('circle-outline');
-  }
-  if (isAccepted(outcome)) {
-    return new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
-  }
-  if (isSkipped(outcome)) {
-    return new vscode.ThemeIcon('debug-step-over', new vscode.ThemeColor('testing.iconSkipped'));
-  }
-  return new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconFailed'));
+/**
+ * The verdict's own icon, from the table in outcome.ts.
+ *
+ * Note this reads the *outcome*, not `matchesExpectation`: a solution declared
+ * `WRONG_ANSWER` that answers wrongly is doing its job, and still gets the WA
+ * icon. Whether that met the expectation is what the description and the
+ * tooltip say -- same split the CLI makes, which also colors the verdict by
+ * what happened rather than by whether it was wanted.
+ */
+function themeIconFor(outcome: string | undefined): vscode.ThemeIcon {
+  const { icon, color } = outcomeIcon(outcome);
+  return new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 }
 
 function testcaseItem(node: TestcaseNode): vscode.TreeItem {
@@ -88,7 +87,7 @@ function testcaseItem(node: TestcaseNode): vscode.TreeItem {
     vscode.TreeItemCollapsibleState.None,
   );
   item.id = `${node.pkg.root}::${node.run.solution.index}::${node.group.name}::${testcase.stem}`;
-  item.iconPath = outcomeIcon(evaluation?.outcome);
+  item.iconPath = themeIconFor(evaluation?.outcome);
   item.contextValue = 'rbx.testcase';
 
   const parts = [shortName(evaluation?.outcome)];
@@ -183,7 +182,7 @@ function groupItem(node: GroupNode): vscode.TreeItem {
 
   const report = node.group.report;
   const progress = progressOf(node.group.testcases);
-  item.iconPath = outcomeIcon(report?.outcome);
+  item.iconPath = themeIconFor(report?.outcome);
   item.description = groupDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();
@@ -211,7 +210,7 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
   const report = node.run.report;
   const testcases = node.run.groups.flatMap((group) => group.testcases);
   const progress = progressOf(testcases);
-  item.iconPath = outcomeIcon(report?.outcome);
+  item.iconPath = themeIconFor(report?.outcome);
   item.description = solutionDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();

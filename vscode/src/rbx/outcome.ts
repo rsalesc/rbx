@@ -19,26 +19,96 @@
  *     typed, and not the `Outcome` spelling either.
  */
 
-/** Mirrors `Outcome.short_name()`; unknown values render `XX`, as rbx does. */
-const SHORT_NAMES: Record<string, string> = {
-  accepted: 'AC',
-  skipped: 'SKIP',
-  'wrong-answer': 'WA',
-  'time-limit-exceeded': 'TLE',
-  'idleness-limit-exceeded': 'ILE',
-  'memory-limit-exceeded': 'MLE',
-  'runtime-error': 'RTE',
-  'output-limit-exceeded': 'OLE',
-  'judge-failed': 'FL',
-  'internal-error': 'IE',
-  'compilation-error': 'CE',
+/** A codicon id and a theme color id -- what the tree needs to draw a verdict. */
+export interface OutcomeIcon {
+  readonly icon: string;
+  readonly color: string;
+}
+
+interface OutcomeDisplay {
+  /** Mirrors `Outcome.short_name()`. */
+  readonly short: string;
+  readonly icon: string;
+  readonly color: string;
+}
+
+/**
+ * How each verdict is spelled and drawn.
+ *
+ * The colors are the terminal palette of `get_outcome_style_verdict`
+ * (rbx/box/solutions.py) transposed onto VS Code's `charts.*` hues, which is
+ * the only family that offers all six the CLI uses. Deliberately the whole
+ * palette and not a pass/fail pair: the tree sits next to the terminal that
+ * printed the same run, and a TLE that is yellow there must not be red here.
+ * `magenta`, which the CLI keeps for verdicts that are nobody's fault but the
+ * setup's, becomes `charts.purple`; `bright_black` becomes the dim foreground
+ * VS Code already uses for de-emphasized text.
+ *
+ * The icon, unlike the color, is one per verdict -- the whole point is that WA,
+ * TLE and RTE stop looking alike -- so keep them distinguishable at 16px and
+ * prefer a codicon whose usual meaning already fits.
+ */
+const DISPLAY: Record<string, OutcomeDisplay> = {
+  accepted: { short: 'AC', icon: 'pass', color: 'charts.green' },
+  skipped: {
+    short: 'SKIP',
+    icon: 'debug-step-over',
+    color: 'descriptionForeground',
+  },
+  'wrong-answer': { short: 'WA', icon: 'close', color: 'charts.red' },
+  'time-limit-exceeded': { short: 'TLE', icon: 'watch', color: 'charts.yellow' },
+  'idleness-limit-exceeded': {
+    short: 'ILE',
+    icon: 'debug-pause',
+    color: 'charts.yellow',
+  },
+  'memory-limit-exceeded': {
+    short: 'MLE',
+    icon: 'server',
+    color: 'charts.yellow',
+  },
+  'runtime-error': { short: 'RTE', icon: 'zap', color: 'charts.blue' },
+  'output-limit-exceeded': {
+    short: 'OLE',
+    icon: 'arrow-both',
+    color: 'charts.orange',
+  },
+  'judge-failed': { short: 'FL', icon: 'law', color: 'charts.purple' },
+  'internal-error': { short: 'IE', icon: 'alert', color: 'charts.purple' },
+  'compilation-error': { short: 'CE', icon: 'tools', color: 'charts.blue' },
 };
 
-export function shortName(outcome: string | undefined): string {
+/** A verdict this extension is too old to know; `XX`, as rbx renders it too. */
+const UNKNOWN: OutcomeDisplay = {
+  short: 'XX',
+  icon: 'question',
+  color: 'charts.purple',
+};
+
+/**
+ * No evaluation on disk yet: either still running, or the run was interrupted.
+ * Indistinguishable in v1; both read as pending.
+ */
+const PENDING: OutcomeDisplay = {
+  short: '?',
+  icon: 'circle-outline',
+  color: 'descriptionForeground',
+};
+
+function display(outcome: string | undefined): OutcomeDisplay {
   if (outcome === undefined) {
-    return '?';
+    return PENDING;
   }
-  return SHORT_NAMES[outcome] ?? 'XX';
+  return DISPLAY[outcome] ?? UNKNOWN;
+}
+
+export function shortName(outcome: string | undefined): string {
+  return display(outcome).short;
+}
+
+export function outcomeIcon(outcome: string | undefined): OutcomeIcon {
+  const { icon, color } = display(outcome);
+  return { icon, color };
 }
 
 export function isAccepted(outcome: string | undefined): boolean {
