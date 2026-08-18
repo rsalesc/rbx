@@ -123,6 +123,23 @@ an expectation matches, because the CLI's own mapping is not that derivation:
 `INCORRECT` matches five outcomes but shows `✗`. A derivation would get both
 wrong.
 
+### The hover, and the two layers of expectation
+
+The decoration's tooltip names both sides -- `Expected ✓ AC, got ⧖ TLE` -- a
+port of `ExpectedOutcome.full_markup()` joined to
+`get_full_outcome_markup_verdict`, minus the colour the decoration already
+carries.
+
+A solution declares expectations in two layers, pooled and per-group, and rbx
+checks both, so a miss must say *which layer* caught it.
+`sols/mislabeled.cpp` in the `outcome-per-group` fixture is the case that
+matters: its pooled `INCORRECT` is satisfied -- it does fail -- and only its
+`outcomePerGroup` catches it. Rendering that as "expected INCORRECT, but got
+WA" would accuse an expectation that was in fact met. So when `failedGroups` is
+non-empty the hover names the groups instead: `Declared ✗ INCORRECT, but small,
+big did not match`. This is the same distinction `solutionVerdict`
+(summary.ts) already draws, for the same reason.
+
 ### Where decorations attach
 
 - **Solutions** -- the existing `resourceUri` (`runTree.ts:208`), the real file.

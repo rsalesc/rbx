@@ -179,3 +179,18 @@ test('formatCounts groups testcases by outcome, most frequent first', () => {
   );
   assert.strictEqual(formatCounts([tc(), tc()]), '');
 });
+
+test('a running solution says what it promised before it has a verdict', () => {
+  // The declaration is in the skeleton, so this is the one thing a row can say
+  // while rbx has published no report for it.
+  assert.strictEqual(
+    solutionDescription(undefined, { done: 3, total: 10 }, 'ACCEPTED'),
+    'expects AC \u00b7 3/10',
+  );
+  // `ANY` promises nothing, so it adds nothing.
+  assert.strictEqual(
+    solutionDescription(undefined, { done: 3, total: 10 }, 'ANY'),
+    '3/10',
+  );
+  assert.strictEqual(solutionDescription(undefined, { done: 0, total: 0 }), 'pending');
+});

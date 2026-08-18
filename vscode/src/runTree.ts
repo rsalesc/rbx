@@ -8,8 +8,10 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { groupUri } from './decorations';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
+import { groupExpectation, solutionExpectation } from './rbx/expectation';
 import { PackageLayout } from './rbx/layout';
 import { expectedShortName, isAccepted, outcomeIcon, shortName } from './rbx/outcome';
 import {
@@ -179,6 +181,10 @@ function groupItem(node: GroupNode): vscode.TreeItem {
   );
   item.id = `${node.pkg.root}::${node.run.solution.index}::${node.group.name}`;
   item.contextValue = 'rbx.group';
+  // A group has no file, so it gets a synthetic URI purely to be addressable by
+  // the decoration provider. Set unconditionally: the provider returns nothing
+  // for a group that declared no expectation of its own.
+  item.resourceUri = groupUri(node.pkg, node.run.solution.index, node.group.name);
 
   const report = node.group.report;
   const progress = progressOf(node.group.testcases);
@@ -187,8 +193,13 @@ function groupItem(node: GroupNode): vscode.TreeItem {
 
   const tooltip = new vscode.MarkdownString();
   tooltip.appendMarkdown(`**${node.group.name}**\n\n`);
-  if (report?.expectedOutcome !== undefined) {
-    tooltip.appendMarkdown(`Expected: ${expectedShortName(report.expectedOutcome)}\n\n`);
+  const expectation = groupExpectation(node.group);
+  if (expectation !== undefined) {
+    tooltip.appendMarkdown(
+      expectation.status === 'missed'
+        ? `**Missed its expectation**: ${expectedShortName(expectation.declared)}\n\n`
+        : `Expected: ${expectedShortName(expectation.declared)}\n\n`,
+    );
   }
   appendSummary(tooltip, report, progress, node.group.testcases);
   item.tooltip = tooltip;
@@ -204,19 +215,27 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
       : vscode.TreeItemCollapsibleState.Collapsed,
   );
   item.id = `${node.pkg.root}::${solution.index}`;
-  item.contextValue = 'rbx.solution';
   item.resourceUri = vscode.Uri.file(path.join(node.pkg.root, solution.path));
 
   const report = node.run.report;
+  const expectation = solutionExpectation(node.run);
+  // Suffixed rather than replaced: the existing menu `when` clauses match
+  // `viewItem` by prefix regex, so they keep applying to a mismatched row.
+  item.contextValue =
+    expectation?.status === 'missed' ? 'rbx.solution.mismatch' : 'rbx.solution';
   const testcases = node.run.groups.flatMap((group) => group.testcases);
   const progress = progressOf(testcases);
   item.iconPath = themeIconFor(report?.outcome);
-  item.description = solutionDescription(report, progress);
+  item.description = solutionDescription(report, progress, solution.expectedOutcome);
 
   const tooltip = new vscode.MarkdownString();
   tooltip.appendMarkdown(`**${solution.path}**\n\n`);
   // The skeleton's declared expectation, which is there even before the report.
-  tooltip.appendMarkdown(`Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`);
+  tooltip.appendMarkdown(
+    expectation?.status === 'missed'
+      ? `**Missed its expectation**: ${expectedShortName(solution.expectedOutcome)}\n\n`
+      : `Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`,
+  );
   appendSummary(tooltip, report, progress, testcases);
   // rbx names the groups that missed their own expectation; which layer caught
   // the solution -- pooled or per-group -- is its call, already made.
@@ -293,6 +312,12 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
 
   report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
+  }
+
+  /** Packages discovered so far. For the decoration provider, which is addressed
+   * by URI and so has to map one back to the package that owns it. */
+  knownPackages(): readonly PackageLayout[] {
+    return this.packages;
   }
 
   getTreeItem(node: RunNode): vscode.TreeItem {

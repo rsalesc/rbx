@@ -81,8 +81,19 @@ function scorePart(score: number, maxScore: number): string | undefined {
  * the deliberate cost of having no aggregation here: a "worst verdict so far"
  * computed in this file is exactly the duplication the report exists to remove.
  */
-export function pendingDescription(progress: Progress): string {
-  return progress.total === 0 ? 'pending' : `${progress.done}/${progress.total}`;
+export function pendingDescription(
+  progress: Progress,
+  expected?: string,
+): string {
+  const done = progress.total === 0 ? 'pending' : `${progress.done}/${progress.total}`;
+  // What a solution promises comes from the skeleton, so it is known before the
+  // run starts and all the way through it -- the one thing a row can say while
+  // it has no verdict yet. `ANY` promises nothing and is left out.
+  const declared =
+    expected === undefined || expected === 'ANY'
+      ? undefined
+      : `expects ${expectedShortName(expected)}`;
+  return join([declared, done]);
 }
 
 export function groupDescription(
@@ -109,9 +120,10 @@ export function groupDescription(
 export function solutionDescription(
   report: SolutionReport | undefined,
   progress: Progress,
+  expected?: string,
 ): string {
   if (report === undefined) {
-    return pendingDescription(progress);
+    return pendingDescription(progress, expected);
   }
   return join([
     progressPart(progress),
