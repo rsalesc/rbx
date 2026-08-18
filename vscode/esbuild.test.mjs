@@ -7,7 +7,7 @@
  * must never reach the `vscode` module at all -- which is the point of keeping
  * the logic they cover in plain modules.
  */
-import { readdirSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 
 import * as esbuild from 'esbuild';
 
@@ -20,6 +20,12 @@ const entryPoints = readdirSync('src', { recursive: true })
 if (entryPoints.length === 0) {
   throw new Error('No test files found under src/.');
 }
+
+// Wipe the outdir first. esbuild only ever writes, so a test file that was
+// renamed -- or that belongs to a branch no longer checked out -- leaves its
+// last bundle behind and `node --test` happily runs it, reporting passes for
+// source that is not there. Cheap to rebuild; expensive to be misled by.
+rmSync('out-test', { recursive: true, force: true });
 
 await esbuild.build({
   entryPoints,
