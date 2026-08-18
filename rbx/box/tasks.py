@@ -63,7 +63,7 @@ def get_testcase_output_path(
     return output_dir / pathlib.PosixPath(stem).with_suffix('.out')
 
 
-def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> None:
+def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> str:
     """Persist `eval` to its `.eval` artifact and point its log at the result.
 
     The run explorer never sees the in-memory evaluations: it reads these files,
@@ -74,7 +74,11 @@ def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> None:
     eval_path = output_path.with_suffix('.eval')
     eval.log.eval_absolute_path = eval_path.absolute()
     eval_path.parent.mkdir(parents=True, exist_ok=True)
-    eval_path.write_text(model_to_yaml(eval))
+    rendered = model_to_yaml(eval)
+    eval_path.write_text(rendered)
+    # The `.log` artifact next to it is byte-identical, so hand the rendered
+    # text back rather than paying for a second dump of the same object.
+    return rendered
 
 
 def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):
@@ -220,8 +224,7 @@ async def run_solution_on_testcase(
             ),
         )
 
-        write_evaluation(eval, output_path)
-        log_path.write_text(model_to_yaml(eval))
+        log_path.write_text(write_evaluation(eval, output_path))
         return eval
 
     if not use_retries:
@@ -406,8 +409,7 @@ async def _run_communication_solution_on_testcase(
             ),
         )
 
-        write_evaluation(eval, output_path)
-        log_path.write_text(model_to_yaml(eval))
+        log_path.write_text(write_evaluation(eval, output_path))
         interactor_log_path = output_path.with_suffix('.int.log')
         interactor_log_path.unlink(missing_ok=True)
         if interactor_run_log is not None:

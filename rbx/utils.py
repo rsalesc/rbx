@@ -345,6 +345,10 @@ def uploaded_schema_path(model: Type[BaseModel]) -> str:
     return f'https://rsalesc.github.io/rbx/schemas/{model.__name__}.json'
 
 
+# libyaml-backed emitter when available: same output, several times faster.
+_SAFE_DUMPER = getattr(yaml, 'CSafeDumper', yaml.SafeDumper)
+
+
 def model_to_yaml(
     model: BaseModel, root: Optional[pathlib.Path] = None, **kwargs
 ) -> str:
@@ -366,8 +370,12 @@ def model_to_yaml(
     path = schema_url(model.__class__, root or pathlib.Path())
     schema_comment = f'# yaml-language-server: $schema={path}\n\n'
 
-    yaml_content = yaml.safe_dump(
-        json_safe_data, sort_keys=False, allow_unicode=True, **kwargs
+    yaml_content = yaml.dump(
+        json_safe_data,
+        Dumper=_SAFE_DUMPER,
+        sort_keys=False,
+        allow_unicode=True,
+        **kwargs,
     )
 
     return schema_comment + yaml_content

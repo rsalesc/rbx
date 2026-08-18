@@ -1,6 +1,7 @@
 import dataclasses
 import io
 import logging
+import os
 import pathlib
 import tempfile
 import typing
@@ -257,25 +258,24 @@ class FilesystemStorage(Storage):
 
     async def get_file(self, filename: str) -> IO[bytes]:
         """See FileCacherBackend.get_file()."""
-        async with self.lock:
-            file_path = self.path / filename
+        file_path = self.path / filename
 
-            if not file_path.is_file():
-                raise KeyError('File not found.')
+        if not file_path.is_file():
+            raise KeyError('File not found.')
 
-            compression_metadata = await self.get_metadata(
-                filename, 'compression', CompressionMetadata
+        compression_metadata = await self.get_metadata(
+            filename, 'compression', CompressionMetadata
+        )
+        if compression_metadata is not None:
+            return typing.cast(
+                IO[bytes],
+                lz4.frame.open(
+                    file_path,
+                    mode='rb',
+                    compression_level=compression_metadata.compression_level,
+                ),
             )
-            if compression_metadata is not None:
-                return typing.cast(
-                    IO[bytes],
-                    lz4.frame.open(
-                        file_path,
-                        mode='rb',
-                        compression_level=compression_metadata.compression_level,
-                    ),
-                )
-            return file_path.open('rb')
+        return file_path.open('rb')
 
     async def create_file(self, filename: str) -> Optional[PendingFile]:
         """See FileCacherBackend.create_file()."""
@@ -353,7 +353,18 @@ class FilesystemStorage(Storage):
         else:
             metadata_path = self._get_metadata_path(filename, key)
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
-            metadata_path.write_text(value.model_dump_json())
+            # Write through a temporary and rename, so a concurrent reader
+            # never observes a half-written sidecar. This is what lets the
+            # read paths below run without taking the lock.
+            with tempfile.NamedTemporaryFile(
+                'w',
+                delete=False,
+                dir=metadata_path.parent,
+                prefix=f'.tmp.{metadata_path.name}.',
+            ) as f:
+                f.write(value.model_dump_json())
+                tmp_name = f.name
+            os.replace(tmp_name, metadata_path)
 
     async def set_metadata(self, filename: str, key: str, value: Optional[BaseModel]):
         async with self.lock:
@@ -365,37 +376,31 @@ class FilesystemStorage(Storage):
     async def get_metadata(
         self, filename: str, key: str, model_cls: Type[BaseModelT]
     ) -> Optional[BaseModelT]:
-        async with self.lock:
-            path = self._get_metadata_path(filename, key)
-            if not path.is_file():
-                return None
-            return model_cls.model_validate_json(path.read_text())
+        path = self._get_metadata_path(filename, key)
+        if not path.is_file():
+            return None
+        return model_cls.model_validate_json(path.read_text())
 
     async def list_metadata(self, filename: str) -> List[str]:
-        async with self.lock:
-            return [
-                path.stem.split('__')[1]
-                for path in sorted(
-                    (self.path / '.metadata').glob(f'{filename}__*.json')
-                )
-            ]
+        return [
+            path.stem.split('__')[1]
+            for path in sorted((self.path / '.metadata').glob(f'{filename}__*.json'))
+        ]
 
     async def exists(self, filename: str) -> bool:
         """See FileCacherBackend.exists()."""
-        async with self.lock:
-            file_path: pathlib.Path = self.path / filename
+        file_path: pathlib.Path = self.path / filename
 
-            return file_path.is_file()
+        return file_path.is_file()
 
     async def get_size(self, filename: str) -> int:
         """See FileCacherBackend.get_size()."""
-        async with self.lock:
-            file_path: pathlib.Path = self.path / filename
+        file_path: pathlib.Path = self.path / filename
 
-            if not file_path.is_file():
-                raise KeyError('File not found.')
+        if not file_path.is_file():
+            raise KeyError('File not found.')
 
-            return file_path.stat().st_size
+        return file_path.stat().st_size
 
     async def delete(self, filename: str):
         """See FileCacherBackend.delete()."""
@@ -408,71 +413,68 @@ class FilesystemStorage(Storage):
 
     async def list(self) -> List[FileWithMetadata]:
         """See FileCacherBackend.list()."""
-        async with self.lock:
-            res = []
-            for path in self.path.glob('*'):
-                if not path.is_file():
-                    continue
-                filename = str(path.relative_to(self.path))
-                res.append(
-                    FileWithMetadata(
-                        filename=filename,
-                        metadata=await self.list_metadata(filename),
-                    )
+        res = []
+        for path in self.path.glob('*'):
+            if not path.is_file():
+                continue
+            filename = str(path.relative_to(self.path))
+            res.append(
+                FileWithMetadata(
+                    filename=filename,
+                    metadata=await self.list_metadata(filename),
                 )
-            return res
+            )
+        return res
 
     async def path_for_symlink(self, filename: str) -> Optional[pathlib.Path]:
-        async with self.lock:
-            file_path = self.path / filename
-            if not file_path.is_file():
-                raise KeyError('File not found.')
+        file_path = self.path / filename
+        if not file_path.is_file():
+            raise KeyError('File not found.')
 
-            compression_metadata = await self.get_metadata(
-                filename, 'compression', CompressionMetadata
-            )
-            if compression_metadata is not None:
-                return None
-            return file_path
+        compression_metadata = await self.get_metadata(
+            filename, 'compression', CompressionMetadata
+        )
+        if compression_metadata is not None:
+            return None
+        return file_path
 
     async def filename_from_symlink(self, link: pathlib.Path) -> Optional[str]:
-        async with self.lock:
-            if not link.is_symlink():
+        if not link.is_symlink():
+            return None
+
+        # Track visited symlinks to detect circular references
+        visited = set()
+        current = link
+        max_depth = 100  # Reasonable limit to prevent infinite loops
+        depth = 0
+
+        while current.is_symlink() and depth < max_depth:
+            # Convert to absolute path for consistent comparison
+            abs_current = utils.abspath(current)
+
+            # Check for circular reference
+            if abs_current in visited:
                 return None
 
-            # Track visited symlinks to detect circular references
-            visited = set()
-            current = link
-            max_depth = 100  # Reasonable limit to prevent infinite loops
-            depth = 0
+            visited.add(abs_current)
 
-            while current.is_symlink() and depth < max_depth:
-                # Convert to absolute path for consistent comparison
-                abs_current = utils.abspath(current)
+            # Read the target of the symlink
+            target = current.readlink()
 
-                # Check for circular reference
-                if abs_current in visited:
-                    return None
+            # If target is relative, resolve it relative to the symlink's parent directory
+            if not target.is_absolute():
+                current = utils.abspath(current.parent / target)
+            else:
+                current = utils.abspath(target)
 
-                visited.add(abs_current)
+            depth += 1
 
-                # Read the target of the symlink
-                target = current.readlink()
+        # If we hit the depth limit, assume circular reference
+        if depth >= max_depth:
+            return None
 
-                # If target is relative, resolve it relative to the symlink's parent directory
-                if not target.is_absolute():
-                    current = utils.abspath(current.parent / target)
-                else:
-                    current = utils.abspath(target)
-
-                depth += 1
-
-            # If we hit the depth limit, assume circular reference
-            if depth >= max_depth:
-                return None
-
-            if not current.is_file():
-                return None
-            if not current.is_relative_to(self.path):
-                return None
-            return str(current.relative_to(self.path))
+        if not current.is_file():
+            return None
+        if not current.is_relative_to(self.path):
+            return None
+        return str(current.relative_to(self.path))
