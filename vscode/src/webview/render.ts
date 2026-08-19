@@ -20,6 +20,7 @@ import type {
   Mismatched,
   Row,
   RunViewModel,
+  RunWarning,
   ScoreMismatch,
   SolutionDetail,
   Span,
@@ -80,6 +81,52 @@ function gutterCell(row: Row): string {
     case 'none':
       return '<span class="gutter"></span>';
   }
+}
+
+/**
+ * A warning about a run that *passed*, in one line.
+ *
+ * The words are the console's own, shortened to a row that has to fit a path
+ * and two measurements beside them. Which run gets one is rbx's decision -- see
+ * `RunWarning` -- so nothing here inspects an outcome to reach it.
+ */
+function warningText(warning: RunWarning): string {
+  const where = warning.groups.length === 0 ? '' : ` on ${warning.groups.join(', ')}`;
+  switch (warning.kind) {
+    case 'double-tl-passed':
+      return `Still passed in double TL${where}.`;
+    case 'double-tl-verdicts': {
+      const verdicts = warning.verdicts.map((verdict) => verdict.text).join(' ');
+      return `Still finished in double TL, but failed with ${verdicts}${where}.`;
+    }
+  }
+}
+
+/**
+ * The warning mark, and nothing else.
+ *
+ * A clock rather than the gutter's triangle, and in its own column: the two say
+ * different things and drawing both as ⚠ would read as one axis. The triangle
+ * means a declaration was missed; this means the declaration held but the run
+ * only just fits, which is a fact about time and is drawn as one.
+ *
+ * Unlike the gutter the cell collapses when empty. The gutter earns its
+ * permanent column by being on the majority of rows; a warning is rare, and 16px
+ * taken from every row for it is 16px the label does not get.
+ *
+ * That is only safe because it is the *last* cell in the row: an absent element
+ * anywhere earlier would let every cell after it slide one grid column left, and
+ * the columns of an unwarned row would stop lining up with a warned one. The
+ * verdict is the only other cell that may be absent, and it is absent exactly on
+ * package rows, which are never warned -- so the two can never both go missing
+ * in a way that reorders anything.
+ */
+function warningCell(row: Row): string {
+  if (row.warnings.length === 0) {
+    return '';
+  }
+  const title = row.warnings.map(warningText).join(' ');
+  return `<span class="warn" title="${escapeAttr(title)}">${codicon('watch')}</span>`;
 }
 
 function twistyCell(row: Row, expanded: boolean): string {
@@ -237,6 +284,7 @@ function renderRow(
     metaCell(row.meta) +
     expectationCell(row) +
     verdictCell(row) +
+    warningCell(row) +
     '</div>'
   );
 }
@@ -324,6 +372,29 @@ function mismatchCard(mismatch: MismatchDetail): string {
   );
 }
 
+/**
+ * What a passing run still warned about.
+ *
+ * Its own card rather than a clause inside `mismatchCard`: that card only ever
+ * appears on a solution that missed something, and these warnings appear on
+ * solutions that missed nothing at all -- which is the whole reason they were
+ * invisible here before.
+ */
+function warningCard(warnings: readonly RunWarning[]): string {
+  if (warnings.length === 0) {
+    return '';
+  }
+  const body = warnings
+    .map((warning) => `<p class="mismatch-line">${escapeHtml(warningText(warning))}</p>`)
+    .join('');
+  return (
+    '<div class="warning-card">' +
+    codicon('watch') +
+    `<div class="mismatch-text">${body}</div>` +
+    '</div>'
+  );
+}
+
 /** A percentage with no trailing zeroes, so 3 of 4 reads `75%` and not `75.00%`. */
 function percent(count: number, total: number): string {
   return `${Number(((count / total) * 100).toFixed(2))}%`;
@@ -383,6 +454,7 @@ function valuesCard(detail: SolutionDetail): string {
 function renderDetail(row: Row, detail: SolutionDetail, id: string): string {
   const body =
     (detail.mismatch === undefined ? '' : mismatchCard(detail.mismatch)) +
+    warningCard(detail.warnings ?? []) +
     histogramCard(detail.histogram) +
     valuesCard(detail);
   if (body === '') {
@@ -549,14 +621,27 @@ export function renderTree(model: RunViewModel, state: UiState): string {
  * filter box therefore cannot live here -- see `renderFilter`.
  */
 export function renderHeader(model: RunViewModel, _state: UiState): string {
-  if (model.mismatches === 0) {
+  if (model.mismatches === 0 && model.warned === 0) {
     return '';
   }
   const solutions = model.rows.filter((row) => row.kind === 'solution').length;
+  // Two counts, never merged: a solution that missed its declaration and one
+  // that met it on a run rbx warned about are different news, and a single
+  // number covering both would let the second hide inside the first.
+  const counts =
+    (model.mismatches === 0
+      ? ''
+      : `<span class="header-count">${codicon('warning')}${model.mismatches} of ${solutions} did not match</span>`) +
+    (model.warned === 0
+      ? ''
+      : `<span class="header-count header-warned">${codicon('watch')}${model.warned} warned</span>`);
   return (
     '<div class="header">' +
-    `<span class="header-count">${codicon('warning')}${model.mismatches} of ${solutions} did not match</span>` +
-    '<button id="next-mismatch">next ›</button>' +
+    counts +
+    // Only when there is a mismatch to walk to: the button steps through the
+    // `mismatch` rows, and offering it on a run that has none is a control that
+    // does nothing.
+    (model.mismatches === 0 ? '' : '<button id="next-mismatch">next ›</button>') +
     '</div>'
   );
 }

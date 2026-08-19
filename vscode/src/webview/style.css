@@ -87,6 +87,13 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Only the mismatch count stretches. The warned count sits beside it at its
+   natural width, so the two never split the bar down the middle. */
+.header-warned {
+  flex: 0 0 auto;
+  color: var(--vscode-charts-yellow);
+}
+
 .header button {
   font-family: inherit;
   font-size: inherit;
@@ -136,7 +143,10 @@ body {
 
 .row {
   display: grid;
-  grid-template-columns: 16px 16px 1fr auto auto auto;
+  /* The last column is the warning mark, which is absent on most rows -- safe
+     only because it is last, so a row without one simply ends a column early
+     instead of shifting everything after it. */
+  grid-template-columns: 16px 16px 1fr auto auto auto auto;
   align-items: center;
   gap: 6px;
   height: 22px;
@@ -180,6 +190,20 @@ body {
 }
 
 .gutter-missed { color: var(--vscode-charts-red); }
+
+/* Yellow, and a clock rather than a triangle: this row met its declaration and
+   is only being flagged for how close to the time limit it ran. Red here would
+   read as the mismatch the gutter is drawing two columns to the left. */
+.warn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-charts-yellow);
+}
+
+.warn .codicon {
+  font-size: 14px;
+}
 .twisty { color: var(--vscode-icon-foreground); }
 
 .label {
@@ -334,6 +358,20 @@ body {
 
 .mismatch-card > .codicon {
   color: var(--vscode-charts-red);
+}
+
+/* Shares the mismatch card's layout -- and its text classes -- because it is
+   the same kind of object in the same place; only the icon and its colour say
+   which of the two the reader is looking at. */
+.warning-card {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--vscode-foreground);
+}
+
+.warning-card > .codicon {
+  color: var(--vscode-charts-yellow);
 }
 
 .mismatch-text {

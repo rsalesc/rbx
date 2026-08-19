@@ -112,3 +112,55 @@ test('a solution missing its identity is dropped, not defaulted', () => {
   });
   assert.deepStrictEqual(report?.solutions.map((s) => s.path), ['ok.cpp']);
 });
+
+test('the double-TL facts are read off the report rather than re-derived', () => {
+  const report = parseReport({
+    version: 1,
+    solutions: [
+      {
+        path: 'sols/slow.cpp',
+        index: 0,
+        status: 'OK',
+        matchesExpectation: true,
+        runUnderDoubleTl: true,
+        doubleTlVerdicts: ['wrong-answer'],
+        groups: [{ name: 'big', runUnderDoubleTl: true, doubleTlVerdicts: ['wrong-answer'] }],
+      },
+    ],
+  });
+  const solution = report!.solutions[0];
+  assert.strictEqual(solution.runUnderDoubleTl, true);
+  assert.deepStrictEqual(solution.doubleTlVerdicts, ['wrong-answer']);
+  assert.strictEqual(solution.groups[0].runUnderDoubleTl, true);
+  assert.deepStrictEqual(solution.groups[0].doubleTlVerdicts, ['wrong-answer']);
+});
+
+test('a report predating the double-TL fields warns about nothing', () => {
+  // Under-warning against an old report is the safe direction; inventing a
+  // warning the run never raised is not.
+  const report = parseReport({
+    version: 1,
+    solutions: [{ path: 's.cpp', index: 0, status: 'OK', groups: [{ name: 'g' }] }],
+  });
+  const solution = report!.solutions[0];
+  assert.strictEqual(solution.runUnderDoubleTl, false);
+  assert.deepStrictEqual(solution.doubleTlVerdicts, []);
+  assert.strictEqual(solution.groups[0].runUnderDoubleTl, false);
+  assert.deepStrictEqual(solution.groups[0].doubleTlVerdicts, []);
+});
+
+test('an unusable entry in doubleTlVerdicts is dropped, not defaulted', () => {
+  const report = parseReport({
+    version: 1,
+    solutions: [
+      {
+        path: 's.cpp',
+        index: 0,
+        status: 'OK',
+        doubleTlVerdicts: ['wrong-answer', 7, null],
+        groups: [],
+      },
+    ],
+  });
+  assert.deepStrictEqual(report!.solutions[0].doubleTlVerdicts, ['wrong-answer']);
+});

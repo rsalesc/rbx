@@ -87,6 +87,39 @@ export interface GroupMismatch {
   readonly observedHue: Hue;
 }
 
+/**
+ * What a run warned about while still *passing*.
+ *
+ * A fourth channel, alongside the gutter, the chip and the label hue, and it
+ * exists because none of those three can carry this. All of them answer some
+ * form of "did the declaration hold", and for a double-TL warning the answer is
+ * yes: rbx sets `status: OK` and `matchesExpectation: true` on exactly these
+ * solutions. A view built only on those three draws `sols/slow.cpp` as a clean
+ * green row while rbx is printing a WARNING about it in the terminal.
+ *
+ * Which run deserves a warning is rbx's decision, published in `report.yml`; the
+ * only thing decided here is which words and which glyph carry it.
+ */
+export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts';
+
+export interface WarningVerdict {
+  readonly text: string;
+  readonly hue: Hue;
+}
+
+export interface RunWarning {
+  readonly kind: WarningKind;
+  /** Set for `double-tl-verdicts`, empty otherwise. */
+  readonly verdicts: readonly WarningVerdict[];
+  /**
+   * The groups this fact came from, when any group is narrower than "the whole
+   * solution" about it -- the same attribution `_on_groups_markup` prints.
+   * Empty on a group row, where the row itself is already the attribution, and
+   * on a solution whose pooled layer raised the warning with no group doing so.
+   */
+  readonly groups: readonly string[];
+}
+
 export interface Mismatched {
   readonly declared: string;
   readonly declaredHue: Hue;
@@ -126,6 +159,14 @@ export interface MismatchDetail {
 
 export interface SolutionDetail {
   readonly mismatch?: MismatchDetail;
+  /**
+   * Warnings about a run that passed -- see `RunWarning`.
+   *
+   * Optional like every other clause of this card, which the renderer prints
+   * only when it is set; `Row.warnings` is the required one, because a row that
+   * forgot to answer the question would silently draw no mark.
+   */
+  readonly warnings?: readonly RunWarning[];
   readonly histogram: readonly HistogramSlice[];
   readonly maxTime?: string;
   readonly maxMemory?: string;
@@ -164,6 +205,14 @@ export interface Row {
    */
   readonly expectation?: ExpectationDisplay;
   readonly verdict?: VerdictChip;
+  /**
+   * Warnings this row carries, in the order the console prints them.
+   *
+   * Deliberately not folded into `mismatch`: a warned row still matched its
+   * declaration, and counting it as a mismatch would report a working package
+   * as broken -- the same reason `mismatches` counts misses and not failures.
+   */
+  readonly warnings: readonly RunWarning[];
   readonly mismatch: boolean;
   readonly expandable: boolean;
   readonly defaultExpanded: boolean;
@@ -178,6 +227,8 @@ export interface Row {
 export interface RunViewModel {
   readonly rows: readonly Row[];
   readonly mismatches: number;
+  /** Solutions that passed but carry at least one warning. */
+  readonly warned: number;
   readonly empty: boolean;
 }
 
@@ -300,12 +351,23 @@ function haystack(
   verdict: VerdictChip | undefined,
   mismatch: boolean,
   expectation?: ExpectationDisplay,
+  warnings: readonly RunWarning[] = [],
 ): string {
   // The declaration joins the haystack so `tle` finds the groups that *wanted*
   // a TLE as well as the ones that got one -- which, on a solution declared
   // slow, are not the same rows. Deduplicated because on the common row the
   // two agree, and `sols/main.cpp ac ac` is a haystack that says nothing twice.
-  const parts = [subject, verdict?.short, expectation?.label, mismatch ? 'mismatch' : undefined]
+  // `warning` and `double-tl` both filter to a warned row: the first is what a
+  // user scanning for anything wrong types, the second what someone who already
+  // knows what they are hunting types.
+  const parts = [
+    subject,
+    verdict?.short,
+    expectation?.label,
+    mismatch ? 'mismatch' : undefined,
+    ...(warnings.length === 0 ? [] : ['warning', 'double-tl']),
+    ...warnings.flatMap((warning) => warning.verdicts.map((verdict) => verdict.text)),
+  ]
     .filter((part): part is string => part !== undefined)
     .map((part) => part.toLowerCase());
   return [...new Set(parts)].join(' ');
@@ -351,6 +413,62 @@ function scoreRange(range: readonly [number, number]): string {
 function outcomeOf(outcome: string | undefined): { text: string; hue: Hue } {
   const { short, hue } = chip(outcome);
   return { text: short, hue };
+}
+
+/**
+ * The groups that raised one of the two double-TL facts.
+ *
+ * The same attribution `_on_groups_markup` prints beside the console warning,
+ * and read off the group records for the reason `groupMismatches` reads off
+ * them too: `failedGroups` has no equivalent here, and a warning that cannot
+ * say where it came from sends the reader through every group looking.
+ */
+function warnedGroups(
+  report: SolutionReport,
+  raised: (group: GroupReport) => boolean,
+): string[] {
+  return report.groups.filter(raised).map((group) => group.name);
+}
+
+/**
+ * The warnings on a report, pooled or per-group.
+ *
+ * The two facts are independent and each gets its own entry, never one merged
+ * sentence: both are unions over the pooled layer and every group, so two
+ * different groups can each contribute one, and attributing both to a single
+ * group list is how the second was lost entirely on the console side (#607).
+ *
+ * `groups` is empty for a group's own report, where the row already says where
+ * the warning came from.
+ */
+function warningsOf(
+  report: SolutionReport | GroupReport | undefined,
+  attribute: boolean,
+): RunWarning[] {
+  if (report === undefined) {
+    return [];
+  }
+  const solution = attribute ? (report as SolutionReport) : undefined;
+  const warnings: RunWarning[] = [];
+  if (report.runUnderDoubleTl) {
+    warnings.push({
+      kind: 'double-tl-passed',
+      verdicts: [],
+      groups:
+        solution === undefined ? [] : warnedGroups(solution, (group) => group.runUnderDoubleTl),
+    });
+  }
+  if (report.doubleTlVerdicts.length > 0) {
+    warnings.push({
+      kind: 'double-tl-verdicts',
+      verdicts: report.doubleTlVerdicts.map((outcome) => outcomeOf(outcome)),
+      groups:
+        solution === undefined
+          ? []
+          : warnedGroups(solution, (group) => group.doubleTlVerdicts.length > 0),
+    });
+  }
+  return warnings;
 }
 
 /**
@@ -433,11 +551,16 @@ function mismatchDetail(run: SolutionRun, report: SolutionReport): MismatchDetai
   };
 }
 
-function solutionDetail(run: SolutionRun, mismatch: boolean): SolutionDetail {
+function solutionDetail(
+  run: SolutionRun,
+  mismatch: boolean,
+  warnings: readonly RunWarning[],
+): SolutionDetail {
   const report = run.report;
   const testcases = run.groups.flatMap((group) => group.testcases);
   return {
     mismatch: mismatch && report !== undefined ? mismatchDetail(run, report) : undefined,
+    warnings,
     histogram: histogram(testcases),
     maxTime: report === undefined ? undefined : formatTime(report.maxTime),
     maxMemory: report === undefined ? undefined : formatMemory(report.maxMemory),
@@ -465,6 +588,7 @@ function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
     label,
     labelBold: false,
     meta: [],
+    warnings: [],
     mismatch: false,
     expandable: true,
     defaultExpanded: true,
@@ -480,6 +604,7 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
   const declared = declaredExpectation(run.solution.expectedOutcome);
   const testcases = run.groups.flatMap((group) => group.testcases);
   const verdict = chip(run.report?.outcome);
+  const warnings = warningsOf(run.report, true);
   return {
     id: nodeId(node),
     parentId,
@@ -493,13 +618,14 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
     meta: aggregateMeta(run.report, progressOf(testcases)),
     expectation: declared,
     verdict,
+    warnings,
     mismatch,
     expandable: true,
     // Mirrors the tree, which mirrors rbx's own `len(skeleton.solutions) == 1`
     // choice of the reporter that prints per-testcase lines.
     defaultExpanded: solo,
-    detail: solutionDetail(run, mismatch),
-    search: haystack(run.solution.path, verdict, mismatch, declared),
+    detail: solutionDetail(run, mismatch, warnings),
+    search: haystack(run.solution.path, verdict, mismatch, declared, warnings),
     section: 'rbx.solution',
   };
 }
@@ -514,6 +640,8 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   // Leaving the group level out of both is what made a run of groups that all
   // wanted a TLE look like four ordinary rows with a warning next to them.
   const declared = declaredExpectation(group.report?.expectedOutcome);
+  // No group attribution on a group row: the row is the attribution.
+  const warnings = warningsOf(group.report, false);
   return {
     id: nodeId(node),
     parentId,
@@ -526,12 +654,13 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
     meta: aggregateMeta(group.report, progressOf(group.testcases)),
     expectation: declared,
     verdict,
+    warnings,
     mismatch,
     expandable: true,
     // Groups stay open even under a collapsed solution: the group breakdown is
     // the reason to open a solution at all.
     defaultExpanded: true,
-    search: haystack(group.name, verdict, mismatch, declared),
+    search: haystack(group.name, verdict, mismatch, declared, warnings),
     section: 'rbx.group',
   };
 }
@@ -559,6 +688,10 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
       span(formatMemory(evaluation?.memory), 'dim', 'memory'),
     ]),
     verdict,
+    // A double-TL fact is decided over a whole group or a whole solution, never
+    // over one testcase: a single soft TLE says nothing until it is weighed
+    // against the expectation the layer above it declared.
+    warnings: [],
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
@@ -645,6 +778,11 @@ export function buildViewModel(
     // working, and counting it would report the package's own test suite as a
     // problem.
     mismatches: rows.filter((row) => row.kind === 'solution' && row.gutter === 'missed').length,
+    // Warned *and* matching: a solution that already reads as a mismatch is
+    // counted once, in the channel that is the more serious of the two.
+    warned: rows.filter(
+      (row) => row.kind === 'solution' && row.gutter !== 'missed' && row.warnings.length > 0,
+    ).length,
     empty: !rows.some((row) => row.kind === 'solution'),
   };
 }

@@ -193,8 +193,37 @@ class _AbortGate:
         return res
 
 
+def _resolve_solution_limits(
+    solution: Solution,
+    limits: Dict[str, Limits],
+    verification: VerificationLevel,
+) -> Limits:
+    """The limits one solution is judged under, given the per-language table.
+
+    Shared by the skeleton's own accessor and by the per-solution copy stamped
+    onto each ``SolutionSkeleton``, so the two can never disagree about which
+    time limit a solution ran with.
+    """
+    lang = code.find_language_name(solution)
+    if lang is None:
+        return limits_info.get_package_limits(verification)
+    return limits[lang]
+
+
 class SolutionSkeleton(Solution):
     runs_dir: pathlib.Path
+    # The limits this solution is judged under, already resolved through its
+    # language.
+    #
+    # ``SolutionReportSkeleton.limits`` is keyed by language, and mapping a
+    # solution onto one of its entries needs ``find_language_name`` -- a lookup
+    # over the environment's language table that an external reader of
+    # ``skeleton.yml`` has no way to perform. Stamping the answer here is what
+    # lets such a reader show a time limit beside a measured time without
+    # reimplementing language resolution.
+    #
+    # Optional so a skeleton written by an older rbx still parses.
+    limits: Optional[Limits] = None
 
     def get_entry_prefix(
         self, entry: TestcaseEntry, stem: Optional[str] = None
@@ -223,10 +252,7 @@ class SolutionReportSkeleton(BaseModel):
     merge_stderr: bool = False
 
     def get_solution_limits(self, solution: Solution) -> Limits:
-        lang = code.find_language_name(solution)
-        if lang is None:
-            return limits_info.get_package_limits(self.verification)
-        return self.limits[lang]
+        return _resolve_solution_limits(solution, self.limits, self.verification)
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -703,6 +729,7 @@ async def _get_report_skeleton(
             SolutionSkeleton(
                 **solution.model_dump(),
                 runs_dir=package.get_problem_runs_dir() / f'{i}',
+                limits=_resolve_solution_limits(solution, limits, verification),
             )
             for i, solution in enumerate(solutions)
         ],
@@ -1060,6 +1087,7 @@ async def _get_interactive_skeleton(
             SolutionSkeleton(
                 **solution.model_dump(),
                 runs_dir=irun_dir / f'{i}',
+                limits=_resolve_solution_limits(solution, limits, verification),
             )
             for i, solution in enumerate(solutions)
         ],

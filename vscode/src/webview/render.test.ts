@@ -27,6 +27,7 @@ function row(over: Partial<Row> & Pick<Row, 'id'>): Row {
     label: over.id,
     labelBold: false,
     meta: [],
+    warnings: [],
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
@@ -40,6 +41,8 @@ function model(rows: readonly Row[]): RunViewModel {
   return {
     rows,
     mismatches: rows.filter((r) => r.kind === 'solution' && r.mismatch).length,
+    warned: rows.filter((r) => r.kind === 'solution' && !r.mismatch && r.warnings.length > 0)
+      .length,
     empty: !rows.some((r) => r.kind === 'solution'),
   };
 }
@@ -592,4 +595,108 @@ test('a shortened label carries its full path as a tooltip, escaped', () => {
 test('a row whose label is already the whole path gets no tooltip', () => {
   const html = renderTree(model([MAIN]), state());
   assert.ok(!html.includes('title='), html);
+});
+
+const WARNED = row({
+  id: 'sol3',
+  kind: 'solution',
+  label: 'sols/slow.cpp',
+  gutter: 'met',
+  expandable: true,
+  verdict: { icon: 'watch', hue: 'yellow', short: 'TLE' },
+  warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['big'] }],
+  detail: {
+    histogram: [],
+    warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['big'] }],
+  },
+});
+
+test('a warned row draws a mark that is not the mismatch triangle', () => {
+  const html = renderTree(model([WARNED]), state());
+  assert.ok(html.includes('class="warn"'));
+  assert.ok(html.includes('codicon-watch'));
+  // The gutter still says the declaration held.
+  assert.ok(html.includes('gutter-met'));
+  assert.ok(!html.includes('gutter-missed'));
+});
+
+test('the warning mark is the last cell, so an unwarned row keeps its columns', () => {
+  // Every cell that may be absent has to be at the end, or the grid slides the
+  // cells after it one column left and warned and unwarned rows stop lining up.
+  const html = renderTree(model([WARNED]), state());
+  const warn = html.indexOf('class="warn"');
+  assert.ok(warn > html.indexOf('class="expectation'));
+  assert.ok(warn > html.indexOf('class="verdict '));
+});
+
+test('an unwarned row emits no warning cell at all', () => {
+  assert.ok(!renderTree(model([MAIN]), state()).includes('class="warn"'));
+});
+
+test('the warning mark carries the sentence as its tooltip', () => {
+  const html = renderTree(model([WARNED]), state());
+  assert.ok(html.includes('Still passed in double TL on big.'));
+});
+
+test('an expanded warned solution gets a card of its own', () => {
+  const html = renderTree(model([WARNED]), state({ expanded: new Set(['sol3']) }));
+  assert.ok(html.includes('class="warning-card"'));
+  // Not folded into the mismatch card: this solution missed nothing.
+  assert.ok(!html.includes('class="mismatch-card"'));
+});
+
+test('the double-TL verdicts warning names the verdicts it found', () => {
+  const warned = row({
+    id: 'sol4',
+    kind: 'solution',
+    expandable: true,
+    detail: {
+      histogram: [],
+      warnings: [
+        {
+          kind: 'double-tl-verdicts',
+          verdicts: [{ text: 'WA', hue: 'red' }],
+          groups: ['big'],
+        },
+      ],
+    },
+  });
+  const html = renderTree(model([warned]), state({ expanded: new Set(['sol4']) }));
+  assert.ok(html.includes('Still finished in double TL, but failed with WA on big.'));
+});
+
+test('a warning with no group attribution says nothing about groups', () => {
+  const warned = row({
+    id: 'sol5',
+    kind: 'solution',
+    expandable: true,
+    detail: { histogram: [], warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: [] }] },
+  });
+  const html = renderTree(model([warned]), state({ expanded: new Set(['sol5']) }));
+  assert.ok(html.includes('Still passed in double TL.'));
+});
+
+test('a group name in a warning cannot escape into markup', () => {
+  const warned = row({
+    id: 'sol6',
+    kind: 'solution',
+    warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['<script>'] }],
+  });
+  const html = renderTree(model([warned]), state());
+  assert.ok(!html.includes('<script>'));
+  assert.ok(html.includes('&lt;script&gt;'));
+});
+
+test('a run that warned but matched everywhere still gets a header strip', () => {
+  // The whole point: before this, a package whose declarations all held showed
+  // no strip at all, and rbx was printing a WARNING about it in the terminal.
+  const html = renderHeader(model([WARNED]), state());
+  assert.ok(html.includes('1 warned'));
+  assert.ok(!html.includes('did not match'));
+  // Nothing to walk to, so the button that walks mismatches is not offered.
+  assert.ok(!html.includes('next-mismatch'));
+});
+
+test('a clean run with nothing warned still gets no header strip', () => {
+  assert.strictEqual(renderHeader(model([MAIN]), state()), '');
 });
