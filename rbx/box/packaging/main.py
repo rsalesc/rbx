@@ -145,12 +145,27 @@ async def moj(
         'Leave unset if you want to use the language of the topmost statement.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
+    calibrate: bool = typer.Option(
+        False,
+        '--calibrate',
+        help='If set, let MOJ calibrate the time limits on the judge machine '
+        'instead of pinning the ones estimated by `rbx time -p moj`.',
+    ),
 ):
-    from rbx.box.packaging.moj.packager import MojPackager
+    from rbx.box.packaging.moj.packager import MojPackager, check_timing_setup
+
+    # Before the build, not after it: a setter who has not estimated the limits yet
+    # should not pay for a full verification run to hear about it.
+    check_timing_setup(calibrate)
 
     # A MOJ package holds one statement, and its `display_title` resolves from
     # the same one, so the body and the rendered <h1> can never disagree.
-    await run_packager(MojPackager, verification=verification, main_language=language)
+    await run_packager(
+        MojPackager,
+        verification=verification,
+        main_language=language,
+        calibrate=calibrate,
+    )
 
 
 @app.command('pkg', help='Build a package for PKG.')

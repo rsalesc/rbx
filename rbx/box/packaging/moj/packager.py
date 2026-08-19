@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 import typer
 
 from rbx import console, utils
-from rbx.box import header, package
+from rbx.box import environment, header, limits_info, package, timing_config
 from rbx.box import naming as box_naming
 from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
@@ -15,16 +15,26 @@ from rbx.box.dependencies.scanner import DependencyKind
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj import naming
 from rbx.box.packaging.moj import statement as moj_statement
+from rbx.box.packaging.moj import timing as moj_timing
 from rbx.box.packaging.moj.extension import MojLanguageExtension
 from rbx.box.packaging.moj.moj_language_utils import (
     get_emitted_moj_languages,
     get_moj_language_extension,
     get_moj_language_from_rbx_language,
     get_moj_template_name,
+    get_rbx_language_from_moj_language,
+    normalize_moj_language,
 )
 from rbx.box.packaging.moj.statement_assets import rasterize_pdf_assets
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
-from rbx.box.schema import CodeItem, ExpectedOutcome, ScoreType, Solution, TaskType
+from rbx.box.schema import (
+    CodeItem,
+    ExpectedOutcome,
+    ScoreType,
+    Solution,
+    TaskType,
+    TimingMultipliers,
+)
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import MojGateError
 from rbx.box.statements.schema import (
@@ -68,6 +78,92 @@ DEFAULT_FLAGS = {
 # Suffixes the amalgamator can reduce to a single translation unit.
 _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
 
+# The limits profile whose estimated time limits get pinned into `conf`. Named after
+# the packager, as `rbx package boca` does with its own.
+LIMITS_PROFILE = 'moj'
+
+
+def _resolved_multipliers() -> Optional[TimingMultipliers]:
+    """The problem's timing multipliers, or None when it estimates with a formula."""
+    strategy = timing_config.resolve_strategy(
+        environment.get_environment().timing,
+        package.find_problem_package_or_die().timing,
+    )
+    if not strategy.uses_multipliers:
+        return None
+    return strategy.multipliers_or_die()
+
+
+def _inference_timeout_ms() -> Optional[int]:
+    """The cap rbx enforced on a solution while estimating, when there is one.
+
+    Fed to `CALIBRATIONTL` so calibration waits at least as long as estimation did;
+    a formula-mode problem defines no such cap, and the 5s default stands.
+    """
+    multipliers = _resolved_multipliers()
+    return multipliers.inferenceTimeout if multipliers is not None else None
+
+
+def _ac_to_time_limit_or_die() -> float:
+    """The ratio `--calibrate` hands MOJ as `TLMOD[calibrafactor]`.
+
+    It only exists in multiplier mode: a problem estimating with a formula has no
+    single ratio between the slowest accepted solution and the limit, so there is
+    nothing to hand the judge and the setter has to pin the limits instead.
+    """
+    multipliers = _resolved_multipliers()
+    if multipliers is None:
+        console.console.print(
+            '[error][item]--calibrate[/item] needs an [item]acToTimeLimit[/item], but '
+            'this problem estimates time limits with a formula.[/error]\n'
+            '[error]MOJ scales the measured runtime of the accepted solutions by a '
+            'single ratio, which a formula does not define.[/error]\n'
+            '[error]Set [item]timing.multipliers[/item] in [item]env.rbx.yml[/item], '
+            f'or run [item]rbx time -p {LIMITS_PROFILE}[/item] and package without '
+            '[item]--calibrate[/item] to pin the limits instead.[/error]'
+        )
+        raise typer.Exit(1)
+    return multipliers.acToTimeLimit
+
+
+def _require_limits_profile() -> None:
+    """Fail unless the `moj` profile exists to pin the time limits from.
+
+    MOJ is the one target where rbx does not own the time limit, so the two ways to
+    settle it are made explicit rather than defaulted: the estimated profile pins
+    them, or `--calibrate` leaves them to the judge.
+    """
+    if limits_info.get_saved_limits_profile(LIMITS_PROFILE) is not None:
+        return
+    console.console.print(
+        f'[error]Required limits profile [item]{LIMITS_PROFILE}[/item] not '
+        'found.[/error]\n'
+        f'[error]Run [item]rbx time -p {LIMITS_PROFILE}[/item] to estimate the '
+        'time limits this package should pin, or pass [item]--calibrate[/item] to '
+        'let MOJ measure them on the judge machine.[/error]'
+    )
+    raise typer.Exit(1)
+
+
+def check_timing_setup(calibrate: bool) -> None:
+    """Reject a packaging run whose time limits cannot be decided, before building.
+
+    Called from the CLI, so a setter who has not run `rbx time` hears about it
+    before a full build rather than after one. The same failures are checked again
+    while `conf` is written, which is what covers every other caller.
+    """
+    if not calibrate:
+        _require_limits_profile()
+        return
+
+    _ac_to_time_limit_or_die()
+    if limits_info.get_saved_limits_profile(LIMITS_PROFILE) is not None:
+        console.console.print(
+            f'[warning]A [item]{LIMITS_PROFILE}[/item] limits profile exists, but '
+            '[item]--calibrate[/item] hands the time limits to MOJ, so its estimated '
+            'limits are not pinned into the package.[/warning]'
+        )
+
 
 class MojPackager(BasePackager):
     """Packager for the MOJ format as `mojtools` consumes it.
@@ -75,9 +171,11 @@ class MojPackager(BasePackager):
     Extends `BasePackager` directly and shares no code with BOCA. Two decisions
     shape everything else:
 
-    - **Calibration-only time limits.** MOJ measures the limit by running every
-      `sols/good` solution and scaling by `TLMOD[calibrafactor]`; it is never
-      authored. So no `tl` is emitted and `conf` carries the only limit knobs.
+    - **Time limits go through `conf`, never `tl`.** MOJ measures the limit by
+      running every `sols/good` solution and scaling by `TLMOD[calibrafactor]`, so
+      `conf` carries the only limit knobs: by default rbx pins them there from the
+      `moj` limits profile, and `--calibrate` leaves them to the judge. See
+      `rbx.box.packaging.moj.timing`.
     - **A single-file checker.** MOJ's bridge compiles `scripts/checker.cpp` with only
       `testlib.h` reachable, so the checker is amalgamated rather than shipped with
       its headers.
@@ -87,11 +185,15 @@ class MojPackager(BasePackager):
         self,
         testcase_entries: List[GenerationTestcaseEntry],
         main_language: Optional[str] = None,
+        calibrate: bool = False,
     ):
         super().__init__(testcase_entries)
         # A MOJ package holds ONE statement, so the language is chosen here and
         # used for both the body and `display_title` -- see `_get_main_statement`.
         self.main_language = main_language
+        # Whether the judge measures the time limits instead of rbx pinning them;
+        # see `_time_limit_lines`.
+        self.calibrate = calibrate
 
     @classmethod
     def name(cls) -> str:
@@ -230,10 +332,9 @@ class MojPackager(BasePackager):
         console.console.print(
             f'[warning]Not enabling [item]{"[/item], [item]".join(skipped)}[/item]: '
             'no [item]ACCEPTED[/item] solution in those languages.[/warning]\n'
-            '[warning]MOJ calibrates a time limit per language from the accepted '
-            'solutions, so a language without one never gets a limit and students '
-            'cannot submit in it. Add an accepted solution in a language to enable '
-            'it.[/warning]'
+            '[warning]MOJ takes the submission whitelist from the languages with an '
+            'accepted solution -- they are the ones it has seen solved and can time. '
+            'Add an accepted solution in a language to enable it.[/warning]'
         )
 
     def _write_moj_meta(self, into_path: pathlib.Path) -> None:
@@ -330,17 +431,68 @@ class MojPackager(BasePackager):
             '# Output limit, in KB on both sides.',
             f'ULIMITS[-f]={pkg.outputLimit}',
             '',
-            '# MOJ MEASURES the time limit; it is never authored. The judge runs every',
-            '# sols/good solution, takes the worst time per language, and scales it by',
-            '# this factor.',
-            '# TODO(rbx): derive this from the authored timeLimit divided by the',
-            '# measured model-solution runtime, so the calibrated limit lands near the',
-            "# problem's own time limit instead of 1.35x the model solution.",
-            'TLMOD[calibrafactor]=1.35',
-            '',
         ]
+        lines.extend(self._time_limit_lines())
         lines.extend(self._stopwhen_lines())
         (into_path / 'conf').write_text('\n'.join(lines))
+
+    # -- time limits ----------------------------------------------------------
+
+    def _time_limit_lines(self) -> List[str]:
+        """The `conf` block that decides the time limits.
+
+        Two modes, and the packager refuses to guess between them: either the `moj`
+        limits profile pins them (the default), or `--calibrate` hands the decision
+        to the judge. Both preconditions are checked here rather than only in the
+        CLI, so no caller can emit a `conf` with limits nothing decided.
+        """
+        if self.calibrate:
+            return moj_timing.calibrated_limit_lines(_ac_to_time_limit_or_die())
+        _require_limits_profile()
+        return moj_timing.fixed_limit_lines(
+            self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
+        )
+
+    def _fixed_time_limits(self) -> moj_timing.FixedTimeLimits:
+        """The limits of the `moj` profile, as a base plus per-language increments.
+
+        Keyed by MOJ language id, since that is what mojtools keys `TLMOD` by -- and
+        under the legacy spelling too when a package emits one, because
+        `build-and-test.sh` looks the entry up under whatever id the submission's
+        file extension yields.
+        """
+        limits_by_language: Dict[str, int] = {}
+        for moj_language in get_emitted_moj_languages():
+            rbx_language = get_rbx_language_from_moj_language(moj_language)
+            limits = limits_info.get_limits(
+                rbx_language, profile=LIMITS_PROFILE, fallback_to_package_profile=False
+            )
+            assert limits.time is not None
+            limits_by_language[moj_language] = limits.time
+            normalized = normalize_moj_language(moj_language)
+            limits_by_language.setdefault(normalized, limits.time)
+
+        base_limits = limits_info.get_limits(
+            profile=LIMITS_PROFILE, fallback_to_package_profile=False
+        )
+        assert base_limits.time is not None
+        return moj_timing.build_fixed_limits(limits_by_language, base_limits.time)
+
+    def _report_time_limits(self) -> None:
+        """Show what the package will be judged with.
+
+        The pinned limits are the profile's, so the profile's own table is the honest
+        report -- exactly as `BocaPackager` does. Under `--calibrate` there is
+        nothing to show: the numbers are the judge's to measure.
+        """
+        if self.calibrate:
+            return
+        profile = limits_info.get_display_limits_profile(LIMITS_PROFILE)
+        if profile is None:
+            return
+        limits_info.render_limits_table(
+            profile, title='MOJ time limits (per language group)'
+        )
 
     def _stopwhen_lines(self) -> List[str]:
         """The `STOPWHEN_*` block, which halts a run at the first failing test.
@@ -661,6 +813,7 @@ class MojPackager(BasePackager):
         self._write_checker(into_path)
         self._write_solutions(into_path)
         self._write_language_scripts(into_path)
+        self._report_time_limits()
 
         shutil.make_archive(str(build_path / self.package_basename()), 'zip', into_path)
         return (build_path / self.package_basename()).with_suffix('.zip')

@@ -1,12 +1,13 @@
 import base64
 import pathlib
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pytest
 
+from rbx import utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.packaging.moj.packager import MojPackager
-from rbx.box.schema import Testcase
+from rbx.box.schema import LimitModifiers, LimitsProfile, Testcase
 from rbx.box.statements import export
 from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import Statement
@@ -52,18 +53,47 @@ def build_entries(
     return entries
 
 
+def with_limits_profile(
+    testing_pkg,
+    time_limit: int = 1000,
+    per_language: Optional[Dict[str, int]] = None,
+) -> None:
+    """Save the `moj` limits profile `rbx time -p moj` would have written.
+
+    Packaging requires it: MOJ would otherwise measure the limits itself, and the
+    packager refuses to pick between pinning and calibrating on the setter's behalf.
+    """
+    profile = LimitsProfile(
+        timeLimit=time_limit,
+        modifiers={
+            language: LimitModifiers(time=limit)
+            for language, limit in (per_language or {}).items()
+        },
+    )
+    limits_path = testing_pkg.root / '.limits' / 'moj.yml'
+    limits_path.parent.mkdir(parents=True, exist_ok=True)
+    limits_path.write_text(utils.model_to_yaml(profile))
+
+
 def run_packager(
     testing_pkg,
     tmp_path: pathlib.Path,
     entries: List[GenerationTestcaseEntry],
     main_language: Optional[str] = None,
+    calibrate: bool = False,
+    pin_limits: bool = True,
 ) -> pathlib.Path:
+    # Packaging needs the time limits settled one way or the other, so the default
+    # profile is written here for the tests that are about something else. The tests
+    # that ARE about it (test_timing.py) write their own or pass pin_limits=False.
+    if pin_limits and not (testing_pkg.root / '.limits' / 'moj.yml').is_file():
+        with_limits_profile(testing_pkg)
     into_path = tmp_path / 'package'
     build_path = tmp_path / 'build'
     build_path.mkdir(parents=True, exist_ok=True)
-    MojPackager(testcase_entries=entries, main_language=main_language).package(
-        build_path, into_path, []
-    )
+    MojPackager(
+        testcase_entries=entries, main_language=main_language, calibrate=calibrate
+    ).package(build_path, into_path, [])
     return into_path
 
 
@@ -80,6 +110,7 @@ def minimal_package(testing_pkg) -> None:
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    with_limits_profile(testing_pkg)
 
 
 def with_statements(
