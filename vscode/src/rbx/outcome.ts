@@ -99,7 +99,10 @@ function display(outcome: string | undefined): OutcomeDisplay {
   if (outcome === undefined) {
     return PENDING;
   }
-  return DISPLAY[outcome] ?? UNKNOWN;
+  // `hasOwn`, not `??`: the key comes out of a `.eval` file, and a malformed
+  // one naming `constructor` would otherwise reach Object.prototype's, which is
+  // truthy -- so the fallback never fires and every field reads `undefined`.
+  return Object.hasOwn(DISPLAY, outcome) ? DISPLAY[outcome] : UNKNOWN;
 }
 
 export function shortName(outcome: string | undefined): string {

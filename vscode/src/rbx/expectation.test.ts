@@ -1,54 +1,53 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { expectationDisplay } from './expectation';
+import { ExpectationDisplay, expectationDisplay } from './expectation';
 
-// Transcribed by hand from `ExpectedOutcome` in rbx/box/schema.py. When rbx
-// grows a member this list stops matching and the test below fails loudly --
-// which is the whole point: the extension must never silently render a
-// declaration it does not understand as if it were undeclared.
-const MEMBERS = [
-  'ANY',
-  'ACCEPTED',
-  'ACCEPTED_OR_TLE',
-  'WRONG_ANSWER',
-  'INCORRECT',
-  'RUNTIME_ERROR',
-  'TIME_LIMIT_EXCEEDED',
-  'MEMORY_LIMIT_EXCEEDED',
-  'OUTPUT_LIMIT_EXCEEDED',
-  'TLE_OR_RTE',
-  'JUDGE_FAILED',
-  'COMPILATION_ERROR',
-];
+/**
+ * Every member of `ExpectedOutcome`, with the display each one's `style()`,
+ * `full_style()` and `icon()` produce, transcribed by hand from
+ * rbx/box/schema.py as of 2026-08-19.
+ *
+ * Asserted as one whole table rather than member by member, because the
+ * columns that are easiest to get wrong are the ones a spot check skips:
+ * MEMORY_LIMIT_EXCEEDED sits between two `⧖` rows and Python decides its glyph
+ * via `is_slow()`, which MLE fails. Pinning every column of every row is one
+ * assertion and catches all of them.
+ *
+ * Note what this does *not* do: rbx growing a thirteenth member cannot fail a
+ * list maintained by hand on this side. The new member would take the neutral
+ * raw-label fallback, which is the designed graceful degradation -- so what
+ * this table guards is a member being dropped or mistranscribed here, not rbx
+ * moving underneath it. Re-check it against schema.py when bumping rbx.
+ */
+const EXPECTED: Record<string, ExpectationDisplay> = {
+  ANY: { label: 'ANY', hue: 'neutral', bold: true, glyph: '?' },
+  ACCEPTED: { label: 'AC', hue: 'green', bold: true, glyph: '✓' },
+  ACCEPTED_OR_TLE: { label: 'AC or TLE', hue: 'green', bold: false, glyph: '✓' },
+  WRONG_ANSWER: { label: 'WA', hue: 'red', bold: false, glyph: '✗' },
+  INCORRECT: { label: 'INCORRECT', hue: 'red', bold: false, glyph: '✗' },
+  RUNTIME_ERROR: { label: 'RTE', hue: 'blue', bold: false, glyph: '✗' },
+  TIME_LIMIT_EXCEEDED: { label: 'TLE', hue: 'yellow', bold: false, glyph: '⧖' },
+  MEMORY_LIMIT_EXCEEDED: { label: 'MLE', hue: 'yellow', bold: false, glyph: '✗' },
+  OUTPUT_LIMIT_EXCEEDED: { label: 'OLE', hue: 'purple', bold: false, glyph: '✗' },
+  TLE_OR_RTE: { label: 'TLE or RTE', hue: 'yellow', bold: false, glyph: '⧖' },
+  JUDGE_FAILED: { label: 'FL', hue: 'purple', bold: false, glyph: '✗' },
+  COMPILATION_ERROR: { label: 'CE', hue: 'blue', bold: false, glyph: '✗' },
+};
 
-test('every ExpectedOutcome member declared in rbx has a display', () => {
-  for (const member of MEMBERS) {
-    const display = expectationDisplay(member);
-    assert.notStrictEqual(display, undefined, `no display for ${member}`);
-    // The unknown fallback is exactly a neutral, non-bold, raw-labelled row;
-    // a member that lands on it is one the table forgot. ANY and INCORRECT
-    // are legitimately labelled with their own name, hence the whole shape.
-    assert.notDeepStrictEqual(
-      display,
-      { label: member, hue: 'neutral', bold: false, glyph: '✗' },
-      `${member} fell through to the unknown fallback`,
-    );
-  }
+const MEMBERS = Object.keys(EXPECTED);
+
+test('every ExpectedOutcome member is displayed exactly as rbx draws it', () => {
+  const actual = Object.fromEntries(
+    MEMBERS.map((member) => [member, expectationDisplay(member)]),
+  );
+  assert.deepStrictEqual(actual, EXPECTED);
 });
 
 test('nothing declared reads as undeclared, not as a display', () => {
   assert.strictEqual(expectationDisplay(undefined), undefined);
 });
 
-test('ACCEPTED is the bold green check', () => {
-  assert.deepStrictEqual(expectationDisplay('ACCEPTED'), {
-    label: 'AC',
-    hue: 'green',
-    bold: true,
-    glyph: '✓',
-  });
-});
 
 test('a member from a newer rbx still renders, labelled with its raw name', () => {
   assert.deepStrictEqual(expectationDisplay('PARTIALLY_ACCEPTED'), {
@@ -68,38 +67,5 @@ test('a name off Object.prototype is unknown, not whatever it inherits', () => {
   });
 });
 
-test('the compound expectations keep rbx spelling and hue', () => {
-  assert.deepStrictEqual(expectationDisplay('ACCEPTED_OR_TLE'), {
-    label: 'AC or TLE',
-    hue: 'green',
-    bold: false,
-    glyph: '✓',
-  });
-  assert.deepStrictEqual(expectationDisplay('TLE_OR_RTE'), {
-    label: 'TLE or RTE',
-    hue: 'yellow',
-    bold: false,
-    glyph: '⧖',
-  });
-});
 
-test('hues follow ExpectedOutcome.style()', () => {
-  assert.strictEqual(expectationDisplay('ANY')?.hue, 'neutral');
-  assert.strictEqual(expectationDisplay('WRONG_ANSWER')?.hue, 'red');
-  assert.strictEqual(expectationDisplay('INCORRECT')?.hue, 'red');
-  assert.strictEqual(expectationDisplay('TIME_LIMIT_EXCEEDED')?.hue, 'yellow');
-  assert.strictEqual(expectationDisplay('MEMORY_LIMIT_EXCEEDED')?.hue, 'yellow');
-  assert.strictEqual(expectationDisplay('RUNTIME_ERROR')?.hue, 'blue');
-  assert.strictEqual(expectationDisplay('COMPILATION_ERROR')?.hue, 'blue');
-  assert.strictEqual(expectationDisplay('OUTPUT_LIMIT_EXCEEDED')?.hue, 'purple');
-  assert.strictEqual(expectationDisplay('JUDGE_FAILED')?.hue, 'purple');
-});
 
-test('ANY is the bold question mark', () => {
-  assert.deepStrictEqual(expectationDisplay('ANY'), {
-    label: 'ANY',
-    hue: 'neutral',
-    bold: true,
-    glyph: '?',
-  });
-});

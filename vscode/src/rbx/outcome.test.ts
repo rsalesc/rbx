@@ -47,3 +47,13 @@ test('an outcome rbx grew after this extension shipped is not called a pass', ()
     color: 'charts.purple',
   });
 });
+
+test('a verdict named off Object.prototype is unknown, not what it inherits', () => {
+  // A malformed `.eval` can name anything, and an inherited member is truthy --
+  // so a `??` fallback would never fire and every field would read `undefined`.
+  assert.strictEqual(shortName('constructor'), 'XX');
+  assert.deepStrictEqual(outcomeIcon('constructor'), {
+    icon: 'question',
+    color: 'charts.purple',
+  });
+});
