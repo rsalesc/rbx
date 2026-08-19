@@ -38,7 +38,7 @@ export interface UiState {
  * down a column.
  */
 function indent(depth: number): number {
-  return 12 + depth * 12;
+  return 16 + depth * 12;
 }
 
 export function escapeHtml(text: string): string {

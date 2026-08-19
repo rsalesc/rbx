@@ -218,10 +218,15 @@ body {
 
 /* Wide enough for the longest short name outcome.ts spells (`SKIP`), so every
    verdict icon lands on the same x and the column can be read straight down --
-   the right-hand counterpart to what the gutter does on the left. */
+   the right-hand counterpart to what the gutter does on the left.
+
+   Right-aligned within that width, not left: `AC` in a four-character box would
+   otherwise trail two characters of empty space before the panel edge, which
+   reads as a wide and uneven right margin on exactly the rows that have the
+   shortest verdicts. */
 .verdict-name {
   min-width: 4ch;
-  text-align: left;
+  text-align: right;
 }
 
 .mismatch {
