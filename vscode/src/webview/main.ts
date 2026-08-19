@@ -93,13 +93,33 @@ function render(): void {
 
 /** Re-render everything, including the filter box, and restore its caret. */
 function renderAll(): void {
-  const active = document.activeElement === filterInput();
+  const input = filterInput();
+  const inFilter = input !== null && document.activeElement === input;
+  // The caret, not just the focus: the host re-posts the model on every
+  // file-watcher tick during a run, and putting the caret back at the end would
+  // move it out from under someone editing the middle of a filter.
+  const start = inFilter ? input.selectionStart : null;
+  const end = inFilter ? input.selectionEnd : null;
+  // A row can hold the focus too, and `render` is about to replace the element
+  // holding it -- which would drop a keyboard or screen-reader user out to
+  // `<body>` on every tick of a run.
+  const inTree = tree.contains(document.activeElement);
   filterHost.innerHTML = renderFilter(uiState());
   render();
-  if (active) {
-    const input = filterInput();
-    input?.focus();
-    input?.setSelectionRange(filter.length, filter.length);
+  if (inFilter) {
+    const next = filterInput();
+    next?.focus();
+    if (start !== null && end !== null) {
+      next?.setSelectionRange(start, end);
+    }
+  } else if (inTree) {
+    if (elementFor(selected) === null) {
+      // The focused row went away with the refresh; the container keeps the
+      // focus inside the view so the next arrow key still reaches the tree.
+      tree.focus({ preventScroll: true });
+    } else {
+      focusSelected();
+    }
   }
 }
 
@@ -161,7 +181,18 @@ function seedExpansion(next: RunViewModel): void {
     }
   }
   // Rows that no longer exist would otherwise accumulate forever across runs.
+  // `touched` is pruned with `expanded` and for the same reason: it is only
+  // ever read for rows of the current model, and the persisted blob is
+  // rewritten on every scroll. Keeping it would remember the collapse of a
+  // solution that disappears and comes back, but rows here come from the
+  // package's solution list and are present for the whole run -- so that case
+  // is a state file that grows without bound in exchange for nothing.
   expanded = new Set([...expanded].filter((id) => ids.has(id)));
+  for (const id of [...touched]) {
+    if (!ids.has(id)) {
+      touched.delete(id);
+    }
+  }
   if (selected !== undefined && !ids.has(selected)) {
     selected = undefined;
   }
@@ -191,7 +222,10 @@ function revealAncestors(id: string): void {
 }
 
 function cycleMismatch(): void {
-  const misses = model.rows.filter((row) => row.mismatch);
+  // Solutions only, to agree with the header's count: a group that missed its
+  // `outcomePerGroup` is also `mismatch`, so cycling over every mismatched row
+  // would make "1 of 2 did not match" and the number of stops disagree.
+  const misses = model.rows.filter((row) => row.kind === 'solution' && row.mismatch);
   if (misses.length === 0) {
     return;
   }
@@ -214,11 +248,14 @@ tree.addEventListener('click', (event) => {
     return;
   }
   select(id);
-});
-
-tree.addEventListener('dblclick', (event) => {
-  const element = (event.target as HTMLElement).closest('.row') as HTMLElement | null;
-  invoke(rowById(element?.dataset.id));
+  // A single click opens, as it did when this view was a `TreeView` and the
+  // row carried `TreeItem.command` -- VS Code fires that on the first click,
+  // and every tree in the product opens a testcase the same way. `detail` is
+  // the click count, so the second click of a double click selects without
+  // opening the same testcase twice.
+  if (event.detail <= 1) {
+    invoke(rowById(id));
+  }
 });
 
 tree.addEventListener('keydown', (event) => {
