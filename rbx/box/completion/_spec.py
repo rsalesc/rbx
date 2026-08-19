@@ -1842,6 +1842,16 @@ SPEC = {
                             'value': {'completer': 'language', 'kind': 'completer'},
                         },
                         {
+                            'help': 'If set, let MOJ calibrate the time limits on the '
+                            'judge machine instead of pinning the ones '
+                            'estimated by `rbx time -p moj`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--calibrate'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,

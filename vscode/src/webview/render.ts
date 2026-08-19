@@ -445,8 +445,8 @@ function value(label: string, text: string | undefined, hue?: string): string {
 }
 
 function valuesCard(detail: SolutionDetail): string {
-  // No denominators: the extension reads only `.rbx` artifacts, never
-  // problem.rbx.yml, so there is no limit here to divide by.
+  // No denominators: see `solutionDetail`, which decides what these are. The
+  // limits exist on the skeleton now; rendering against them does not.
   const values = [
     value('Max time', detail.maxTime),
     value('Max memory', detail.maxMemory),

@@ -63,6 +63,18 @@ export class RunDataProvider {
     }
   }
 
+  /**
+   * The discovered packages, waiting for discovery if it has not run yet.
+   *
+   * Exposed so the Explorer decorations reuse this discovery rather than
+   * globbing the workspace a second time, and so both surfaces always agree on
+   * which directories are rbx packages.
+   */
+  async discovered(): Promise<readonly PackageLayout[]> {
+    await this.ensureDiscovered();
+    return this.packages;
+  }
+
   /** Drop cached artifacts for one package, in response to a filesystem event. */
   invalidate(root: string): void {
     this.stores.get(root)?.invalidate();

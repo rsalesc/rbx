@@ -646,8 +646,10 @@ function solutionDetail(
     histogram: histogram(testcases),
     maxTime: report === undefined ? undefined : formatTime(report.maxTime),
     maxMemory: report === undefined ? undefined : formatMemory(report.maxMemory),
-    // No limit denominator: the extension reads only `.rbx` artifacts and never
-    // problem.rbx.yml, so there is nothing here to divide by.
+    // No limit denominator yet. There is now one to divide by -- `skeleton.yml`
+    // carries each solution's resolved limits -- but showing a time against it
+    // is a decision about what "close to the limit" means, and nobody has made
+    // it. Absence here is a gap, no longer an impossibility.
     score:
       report === undefined || report.maxScore === 0
         ? undefined
