@@ -36,3 +36,21 @@ export function hueOfThemeColor(color: string): Hue {
   // Object.prototype, which a plain lookup would return instead of 'neutral'.
   return Object.hasOwn(HUES, color) ? HUES[color] : 'neutral';
 }
+
+/**
+ * The hue of a `[X/Y]` score, mirroring `get_solution_score_style` in
+ * `rbx.box.solutions`: a full score is `success`, anything above zero is
+ * `warning`, and zero is `error`. The console theme resolves those three to
+ * green, yellow and red, which is what this returns so that a score reads the
+ * same in the sidebar as it does under `rbx run`.
+ *
+ * Nothing here divides by `maxScore`, so a zero maximum is not a special case:
+ * `score >= maxScore` holds and the score reads as full, exactly as the console
+ * decides it. Rows with no scoring at all drop the span before reaching here.
+ */
+export function hueOfScore(score: number, maxScore: number): Hue {
+  if (score >= maxScore) {
+    return 'green';
+  }
+  return score > 0 ? 'yellow' : 'red';
+}

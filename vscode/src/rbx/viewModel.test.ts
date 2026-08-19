@@ -279,7 +279,11 @@ test('a solution that only missed its score range says so, and accuses no verdic
   const { rows } = buildViewModel([view([scored])]);
   const mismatch = rowById(rows, '/w/a::0').detail?.mismatch;
   assert.strictEqual(mismatch?.pooled, undefined);
-  assert.deepStrictEqual(mismatch?.score, { expected: '40..60', got: '30' });
+  assert.deepStrictEqual(mismatch?.score, {
+    expected: '40..60',
+    got: '30',
+    gotHue: 'yellow',
+  });
 });
 
 test('an open-ended score range is not given a ceiling rbx never declared', () => {
@@ -359,13 +363,36 @@ test('a finished solution shows score, time and memory but never its verdict', (
   // line as the sidebar narrows, so the order is the priority and the score
   // being ahead of both measurements is what keeps it on screen longest.
   assert.deepStrictEqual(row.meta, [
-    { text: '[70/100]', hue: 'neutral', role: 'score' },
+    { text: '[70/100]', hue: 'yellow', role: 'score' },
     { text: '120 ms', hue: 'dim', role: 'time' },
     { text: '2 KiB', hue: 'dim', role: 'memory' },
   ]);
   assert.deepStrictEqual(row.detail?.score, '[70/100]');
+  assert.deepStrictEqual(row.detail?.scoreHue, 'yellow');
   assert.deepStrictEqual(row.detail?.maxTime, '120 ms');
   assert.deepStrictEqual(row.detail?.maxMemory, '2 KiB');
+});
+
+test('the score is hued like the console hues it: full green, zero red', () => {
+  const scoreHueOf = (score: number) => {
+    const run = solution(
+      0,
+      'sols/main.cpp',
+      'ACCEPTED',
+      [],
+      solutionReport({ score, maxScore: 100 }),
+    );
+    const { rows } = buildViewModel([view([run])]);
+    const row = rowById(rows, '/w/a::0');
+    // The meta line and the card must agree: they are the same score twice,
+    // and a row whose `[0/100]` is red above a card whose `[0/100]` is not
+    // reads as two different numbers.
+    assert.strictEqual(row.meta[0]?.hue, row.detail?.scoreHue);
+    return row.meta[0]?.hue;
+  };
+  assert.strictEqual(scoreHueOf(100), 'green');
+  assert.strictEqual(scoreHueOf(30), 'yellow');
+  assert.strictEqual(scoreHueOf(0), 'red');
 });
 
 test('only a group with its own outcomePerGroup declaration gets a gutter', () => {

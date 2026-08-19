@@ -247,13 +247,13 @@ test('the meta line carries its roles and no separator elements of its own', () 
     kind: 'solution',
     label: 'sols/main.cpp',
     meta: [
-      { text: '[70/100]', hue: 'neutral', role: 'score' },
+      { text: '[70/100]', hue: 'yellow', role: 'score' },
       { text: '120 ms', hue: 'dim', role: 'time' },
       { text: '2 KiB', hue: 'dim', role: 'memory' },
     ],
   });
   const html = renderTree(model([solution]), state({}));
-  assert.ok(html.includes('<span class="span span-score hue-neutral">[70/100]</span>'), html);
+  assert.ok(html.includes('<span class="span span-score hue-yellow">[70/100]</span>'), html);
   assert.ok(html.includes('<span class="span span-time hue-dim">120 ms</span>'), html);
   assert.ok(html.includes('<span class="span span-memory hue-dim">2 KiB</span>'), html);
   // No `.sep` inside the meta line -- the stylesheet owns those now.
@@ -368,12 +368,15 @@ test('a score miss names the range that was declared', () => {
     mismatch: true,
     expandable: true,
     detail: {
-      mismatch: { groups: [], score: { expected: '40..60', got: '30' } },
+      mismatch: { groups: [], score: { expected: '40..60', got: '30', gotHue: 'yellow' } },
       histogram: [],
     },
   });
   const html = renderTree(model([caught]), state({ expanded: new Set(['sol3']) }));
-  assert.ok(html.includes('Expected 40..60 pts, scored 30.'), html);
+  assert.ok(
+    html.includes('Expected 40..60 pts, scored <span class="hue-yellow">30</span>.'),
+    html,
+  );
 });
 
 test('a group name in the card cannot escape into markup', () => {
@@ -430,6 +433,7 @@ test('the histogram sizes each bar by its share of the testcases', () => {
         { short: 'WA', hue: 'red', count: 1 },
       ],
       score: '10/20',
+      scoreHue: 'yellow',
     },
   });
   const html = renderTree(model([solution]), state({ expanded: new Set(['sol0']) }));
@@ -437,12 +441,15 @@ test('the histogram sizes each bar by its share of the testcases', () => {
   assert.ok(html.includes('width: 25%'), html);
   assert.ok(html.includes('3 AC'), html);
   assert.ok(html.includes('1 WA'), html);
-  assert.ok(html.includes('10/20'), html);
+  assert.ok(html.includes('<span class="value-text hue-yellow">10/20</span>'), html);
 });
 
 test('the detail card omits maxima it does not have', () => {
   const html = renderTree(model([MAIN]), state({ expanded: new Set(['sol0']) }));
-  assert.ok(html.includes('120 ms'), html);
+  // Neutral rather than unhued: a value with nothing to say about itself still
+  // takes its colour from the `.hue-*` table, which is what leaves the score
+  // free to say something with the same mechanism.
+  assert.ok(html.includes('<span class="value-text hue-neutral">120 ms</span>'), html);
   assert.ok(!html.includes('Max memory'), html);
   assert.ok(!html.includes('Score'), html);
 });
