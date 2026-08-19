@@ -291,7 +291,7 @@ test('a testcase opens the diff when it failed and the input otherwise', () => {
   assert.strictEqual(rowById(rows, '/w/a::0').primaryCommand, undefined);
 });
 
-test('a testcase shows time, memory and the checker message', () => {
+test('a testcase shows time and memory, and not the checker message', () => {
   const one = solution(0, 'sols/main.cpp', 'ACCEPTED', [
     group('main', [
       testcase('000', 'wrong-answer', {
@@ -301,10 +301,11 @@ test('a testcase shows time, memory and the checker message', () => {
   ]);
   const { rows } = buildViewModel([view([one])]);
   const row = rowById(rows, '/w/a::0::main::000');
+  // The whole array, so a checker's free-form line cannot creep back into a
+  // 22px row and push the timings out of it.
   assert.deepStrictEqual(row.meta, [
     { text: '50 ms', hue: 'dim' },
     { text: '1 KiB', hue: 'dim' },
-    { text: 'wrong at line 1', hue: 'dim' },
   ]);
   assert.strictEqual(row.expandable, false);
   assert.strictEqual(row.section, 'rbx.testcase');

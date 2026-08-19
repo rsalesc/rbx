@@ -346,10 +346,13 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
     gutter: 'none',
     label: testcase.stem,
     labelBold: false,
+    // The checker's message is deliberately left out. It is a free-form line
+    // written by the package's own checker, so it is as long as that checker
+    // felt like being, and in a sidebar it pushed the timings out of a row that
+    // is only 22px tall. It belongs somewhere that can wrap.
     meta: spans([
       span(formatTime(evaluation?.time), 'dim'),
       span(formatMemory(evaluation?.memory), 'dim'),
-      span(evaluation?.message, 'dim'),
     ]),
     verdict,
     mismatch: false,
