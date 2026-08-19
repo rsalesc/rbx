@@ -1,0 +1,234 @@
+# VS Code run view: replacing the tree with a webview
+
+Follow-up to #664, which gave every verdict its own icon. That settled how the
+Run view shows **what happened**. It did not — and a `TreeView` cannot — settle
+how the same row shows **what the package asked for** and **whether it got it**.
+
+## The problem: a TreeItem is out of channels
+
+Everything a `TreeItem` can render:
+
+| channel | capacity |
+| --- | --- |
+| `iconPath` | one codicon, one `ThemeColor`, left edge |
+| `label` | plain text; `TreeItemLabel.highlights` is a single hardcoded "find match" style |
+| `description` | one dim string, one color, no per-substring styling |
+| `FileDecoration` | right edge, at most two characters of **plain text**, one color, one winning provider, and it leaks into the Explorer and editor tabs |
+| children | more rows — the only meaning "expand" can have |
+| `tooltip` | markdown, hover-only |
+
+Against what the Run view needs to say:
+
+- expected outcome, identifiable by color and font style the way the CLI does it — **unreachable**
+- verdict of each testcase, group and solution, as a colored icon on the right — **unreachable** (`FileDecoration.badge` is text, and capped at two characters)
+- mismatch-or-OK, as an icon on the left — the left slot is already spent on the verdict
+- independent coloring per channel, down to substrings of a description — **unreachable**
+- useful detail when a row is expanded — child rows only, and a detail row is
+  indistinguishable from a testcase row, which is itself a source of confusion
+
+Four of five are unreachable. Any encoding that fits has to fold at least two
+facts into one channel, and folding them is exactly the confusion being fixed:
+a solution declared `WRONG_ANSWER` that answers wrongly draws the same red
+`close` icon as the main solution breaking.
+
+There is a shape argument underneath the channel argument. `rbx run` lays the
+same data out as a *matrix* — `_render_detailed_group_table` puts solutions in
+columns headed by `solution.href()` (hued by `ExpectedOutcome.full_style()`) and
+outcomes in the cells. A tree linearizes that matrix onto one path, which is
+*why* the two axes end up competing for one row's worth of pixels.
+
+## D1. A webview view in the sidebar, replacing the tree
+
+The Run view becomes a `WebviewViewProvider` in the existing `rbx` view
+container, in the same slot the tree occupies today. Rejected alternatives:
+
+- **Keep the tree, add an editor-tab report.** Cheaper, but leaves the sidebar
+  — the surface actually looked at during a run — exactly as confusing as it is
+  now.
+- **Editor tab only.** Same objection, plus it costs a deliberate open.
+
+A lower-density editor-tab report is still wanted, and is designed *for* here
+(D2) but shipped separately. See "Follow-ups".
+
+What is knowingly given up, and re-implemented: keyboard navigation and
+selection, right-click menus, expansion and scroll state across hide/show,
+type-ahead filtering, ARIA tree semantics, and the `viewsWelcome` empty state
+(which does not apply to webview views). All four behaviors are required, not
+optional — a sidebar that navigates worse than the tree it replaced is not an
+improvement, however well it colors.
+
+Also given up: `FileDecoration`. A webview cannot decorate Explorer entries or
+editor tabs. That surface is worth having and is tracked separately; it is
+orthogonal to this design and this design does not depend on it.
+
+## D2. `viewModel.ts`: a pure transform, and the seam the editor tab reuses
+
+The data layer does not move. `layout.ts`, `wire.ts`, `model.ts`, `store.ts`,
+`report.ts`, `summary.ts` and `outcome.ts` are untouched, and the webview never
+sees the disk.
+
+One new module sits between the store and any renderer:
+
+```
+PackageRun[]  ->  viewModel.ts  ->  RunViewModel
+```
+
+`RunViewModel` is a flat, serializable array of rows, each carrying its display
+channels **explicitly resolved**:
+
+```ts
+interface Row {
+  id: string;              // `<root>::<solIdx>::<group>::<stem>`, as TreeItem.id is today
+  depth: number;
+  kind: 'package' | 'solution' | 'group' | 'testcase';
+  gutter: 'none' | 'met' | 'missed';
+  label: string;
+  labelHue?: Hue;          // from the expectation
+  labelBold: boolean;
+  meta: Span[];            // [{text, hue?}, ...] — substrings carry their own color
+  verdict?: { icon: string; hue: Hue; short: string };
+  mismatch: boolean;
+  detail?: Detail;
+}
+```
+
+No `vscode` import and no DOM, so it is unit-tested under `node --test` exactly
+as `summary.ts` is. It is also the seam that makes the future editor tab cheap:
+same view model, a different renderer at a different density.
+
+Row `id` is the id the tree already assigns, kept verbatim. It is the key for
+selection, for expansion state, and for every message crossing the webview
+boundary.
+
+## D3. Row anatomy: one CSS grid, four channels that align down the tree
+
+```
+[gutter][twisty][label ......................][meta][verdict]
+```
+
+- **gutter** — the *match* axis, and nothing else. Blank when nothing was
+  declared, a quiet tick when the declaration was met, a loud warning when it
+  was missed.
+- **label** — hued by the *expectation*, porting `ExpectedOutcome.full_style()`
+  (`rbx/box/schema.py:228`) as-is: bold green for `ACCEPTED`, red for
+  `WRONG_ANSWER` and `INCORRECT`, yellow for TLE/MLE, blue for RTE/CE, magenta
+  otherwise, bold plain for `ANY`. Mapped onto `charts.*` theme variables so it
+  follows the user's theme rather than hardcoding hex.
+- **meta** — dim `0.94s · 58 MiB`, as a list of spans so any substring can take
+  its own color.
+- **verdict** — right-aligned colored codicon plus short name, read straight
+  from the existing `outcomeIcon()` table. #664 is preserved exactly: a TLE
+  keeps the same yellow shape it has in the terminal beside it.
+- **mismatch** — a red left border and a faint wash on the row. This is the
+  only background color anywhere in the view, so it is the only thing that can
+  catch the eye without being read.
+
+By level: solutions get gutter, expectation hue and verdict; groups get gutter
+(from `outcomePerGroup`) and verdict; testcases get verdict only — a testcase
+has no expectation of its own to report.
+
+The verdict and the expectation now live in genuinely separate channels with
+separate alphabets, so neither has to be inferred from the other. That is the
+whole point of the change.
+
+### Expectation hues
+
+The extension does not model `ExpectedOutcome` today. This design adds that
+mapping itself, from `full_style()`. PR #666 introduces an overlapping
+`expectation.ts` for a different purpose; whichever lands first owns the table
+and the other reconciles onto it. The mapping is small and the source of truth
+is `rbx/box/schema.py` either way.
+
+## D4. Detail card on an expanded solution
+
+Expanding a solution renders a card **above** its group children. Testcases stay
+leaves: clicking one opens the diff, as it does today.
+
+The card always carries a verdict histogram (`12 AC · 3 WA · 1 TLE` as a bar),
+max time, max memory, and score.
+
+**No limit denominators in v1.** Showing `0.94s / 1.00s` would mean reading
+`problem.rbx.yml`, and the extension is deliberately a pure reader of `.rbx`
+artifacts (`layout.ts`, D2 of the M1 design). Bare maxima it is.
+
+When the solution missed its declaration, a second card above the histogram
+states declared-versus-observed in words and **names the failing groups**. It
+reuses the `summary.ts` logic that already avoids naming an expectation that was
+in fact met — a pooled `INCORRECT` on a solution that does fail is met, and only
+the per-group layer sees the miss.
+
+## D5. A pinned header strip
+
+Non-scrolling, at the top of the view, and **hidden entirely when nothing
+mismatched** — no chrome when there is nothing wrong. Otherwise:
+
+```
+⚠ 2 of 9 did not match                    [next ›]
+```
+
+`next` cycles selection through mismatched solutions. It counts *misses*, not
+failures: badging a solution that fails on purpose would report the package's
+own test suite as a problem.
+
+The strip also hosts the filter box (D6).
+
+## D6. Filter
+
+A text box narrowing by solution path and testcase stem, plus verdict tokens
+(`wa`, `tle`) and the literal `mismatch`. Ancestors of a match stay visible so
+the hierarchy still reads. This replaces the tree's built-in `Ctrl+F`, and does
+more than it did.
+
+## D7. Parity mechanics
+
+- **Keyboard** — `role="tree"` with a roving tabindex. Up/Down move, Right/Left
+  expand and collapse, Enter runs the row's primary command, Home/End jump.
+  `aria-expanded`, `aria-level`, `aria-setsize`, `aria-posinset` on every row.
+- **Context menus** — `data-vscode-context` per row with
+  `preventDefaultContextMenuItems: true`. The `package.json` menu items move
+  from `view/item/context` to `webview/context`, keyed on
+  `webviewSection == 'rbx.solution' | 'rbx.group' | 'rbx.testcase'`. Explicit
+  sections replace matching on a `contextValue` string.
+- **Commands** — unchanged. The webview posts `{type: 'invoke', commandId,
+  nodeId}`; the host resolves `nodeId` back to a `RunNode` and calls into
+  `commands.ts` with the signature it already has.
+- **State** — `getState()/setState()` holds the expansion set, scroll offset and
+  selection, restored on every re-show. Not `retainContextWhenHidden`: the state
+  is small and the host re-posts the model on visibility, so paying memory to
+  keep a hidden view alive buys nothing.
+- **Empty state** — rendered inside the webview, in the words `viewsWelcome`
+  uses today.
+
+## D8. Build and bundling
+
+A second esbuild entry (`iife`, `platform: browser`, into `dist/webview/`)
+alongside the existing extension bundle. `@vscode/codicons`' font file ships
+under `resources/` and is served through `localResourceRoots`; the HTML carries
+a nonce CSP with no remote origins.
+
+## Testing
+
+- `viewModel.ts` — unit tests under `node --test`, as `summary.ts` has.
+- The renderer stays a pure `RunViewModel -> HTML string` function, so it is
+  snapshot-tested the same way.
+- Event wiring is untested, which is where the vscode-facing glue already sits.
+
+## Risks
+
+- **Accessibility is now ours.** Screen-reader quality depends on D7 being done
+  properly rather than on VS Code doing it for us.
+- **Width.** At roughly 300px the meta column has to drop out under a container
+  query, and the detail card stays single-column.
+- **Virtualization is deferred.** Rendered rows are solutions plus groups, plus
+  testcases only under an expanded solution — and only a solo run expands one by
+  default. Revisit past ~2000 rendered rows.
+
+## Follow-ups
+
+1. **Editor-tab report.** A lower-density report in the editor area, reusing
+   `viewModel.ts` with its own renderer. The matrix shape the CLI uses belongs
+   here, where there is width for it.
+2. **Expected outcome in the Explorer and on editor tabs.** The
+   `FileDecorationProvider` from PR #666 — the one surface a webview cannot
+   reach, and worth having on its own terms. Tracked separately; this design
+   neither depends on it nor conflicts with it.
