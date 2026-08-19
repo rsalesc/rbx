@@ -244,6 +244,11 @@ function renderRow(
   if (row.mismatch) {
     classes.push('mismatch');
   }
+  // Mutually exclusive with `mismatch` by construction -- `warned` is a gutter
+  // state and `missed` outranks it -- so the two washes can never stack.
+  if (row.gutter === 'warned') {
+    classes.push('warned');
+  }
   const attrs = [
     `class="${classes.join(' ')}"`,
     'role="treeitem"',

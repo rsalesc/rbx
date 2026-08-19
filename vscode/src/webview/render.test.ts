@@ -618,6 +618,29 @@ test('a warned row draws its mark in the gutter, and not as a miss', () => {
   assert.ok(!html.includes('gutter-met'));
 });
 
+test('a warned row is washed and ruled like a miss, in the other colour', () => {
+  // The mark alone is 14px in a 22px row. The rule and the wash are what make a
+  // warned row findable without reading the sidebar, which is the whole point.
+  const html = renderTree(model([WARNED]), state());
+  assert.ok(/class="row kind-solution warned"/.test(html));
+  assert.ok(!html.includes('mismatch'));
+});
+
+test('a row never carries both washes', () => {
+  // `warned` is a gutter state and `missed` outranks it, so a mismatched row is
+  // never also warned -- the two tints can never stack into a third colour.
+  const both = row({
+    id: 'sol7',
+    kind: 'solution',
+    gutter: 'missed',
+    mismatch: true,
+    warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: [] }],
+  });
+  const html = renderTree(model([both]), state());
+  assert.ok(html.includes('mismatch'));
+  assert.ok(!/class="[^"]*\bwarned\b/.test(html));
+});
+
 test('the warning mark is not the TLE verdict icon it would sit beside', () => {
   // The mark used to be a clock at the far end of the row, which is where
   // `watch` -- time-limit-exceeded's own icon -- already sits, and a double-TL

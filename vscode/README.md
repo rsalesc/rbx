@@ -44,6 +44,12 @@ solutions, so nothing else in the view has anything to say about them: the chip
 draws its verdict, the label draws its declaration, and `sols/slow.cpp` reads
 green while `rbx run` prints a WARNING about it in the terminal.
 
+The row is ruled and washed to match, the way a missed one is -- yellow at a
+slightly lighter mix than the miss's red, because yellow is the lighter hue and
+an equal mix would read louder than the more serious row it ranks below. Those
+two washes and the selection and hover fills are the only backgrounds in the
+stylesheet; the scarcity is what lets either be found by scanning.
+
 The gutter is therefore a severity column, not a match column: tick, yellow
 triangle, red triangle. A row that both missed its declaration and carries a
 warning draws the miss, because there is one glyph to spend and the miss is the
