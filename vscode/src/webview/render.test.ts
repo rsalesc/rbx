@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import type { Row, RunViewModel } from '../rbx/viewModel';
@@ -234,6 +236,58 @@ test('indentation grows with depth and the twisty column survives on a leaf', ()
   assert.ok(html.includes('<span class="twisty"></span>'), html);
   assert.ok(html.includes('<span class="gutter"></span>'), html);
   assert.ok(html.includes('<span class="gutter gutter-met">'), html);
+});
+
+test('the meta line carries its roles and no separator elements of its own', () => {
+  // The separators are drawn by the stylesheet, as a `::before` on every span
+  // but the first. Emitting them here instead would leave one behind whenever
+  // the ladder hides the span it divides, trailing a `·` off a narrowed row.
+  const solution = row({
+    id: 'sol0',
+    kind: 'solution',
+    label: 'sols/main.cpp',
+    meta: [
+      { text: '[70/100]', hue: 'neutral', role: 'score' },
+      { text: '120 ms', hue: 'dim', role: 'time' },
+      { text: '2 KiB', hue: 'dim', role: 'memory' },
+    ],
+  });
+  const html = renderTree(model([solution]), state({}));
+  assert.ok(html.includes('<span class="span span-score hue-neutral">[70/100]</span>'), html);
+  assert.ok(html.includes('<span class="span span-time hue-dim">120 ms</span>'), html);
+  assert.ok(html.includes('<span class="span span-memory hue-dim">2 KiB</span>'), html);
+  // No `.sep` inside the meta line -- the stylesheet owns those now.
+  const meta = html.slice(html.indexOf('<span class="meta">'), html.indexOf('</span></span>'));
+  assert.ok(!meta.includes('class="sep"'), meta);
+});
+
+test('the responsive ladder hides a suffix of the meta line, score last', () => {
+  // Pinned as a table because the *order* is the design, and it is expressed in
+  // a stylesheet no unit test renders. The separator scheme in `metaCell` is
+  // only correct while hiding removes a suffix: if a future breakpoint hid the
+  // score while keeping the memory, the surviving line would start with a `·`.
+  // The compiled test sits in out-test/webview; the stylesheet it is asserting
+  // about is the source one, two levels up.
+  const css = readFileSync(join(__dirname, '..', '..', 'src', 'webview', 'style.css'), 'utf8');
+  const widthOf = (selector: string): number => {
+    // The last query that names the selector is the width it disappears at.
+    const queries = [...css.matchAll(/@container \(max-width: (\d+)px\)\s*\{([\s\S]*?)\n\}/g)];
+    const hit = queries.find((q) => q[2].includes(selector));
+    assert.ok(hit !== undefined, `no breakpoint hides ${selector}`);
+    return Number(hit[1]);
+  };
+  const expectation = widthOf('.expectation {');
+  const memory = widthOf('.span-memory');
+  const time = widthOf('.span-time');
+  const verdictName = widthOf('.verdict-name');
+  const verdict = widthOf('.verdict {');
+  // Strictly descending: each survives the one before it.
+  assert.ok(
+    expectation > memory && memory > time && time > verdictName && verdictName > verdict,
+    `ladder out of order: ${[expectation, memory, time, verdictName, verdict].join(' > ')}`,
+  );
+  // The score is never named by any of them.
+  assert.ok(!css.includes('.span-score'), 'the score must outlive every breakpoint');
 });
 
 test('a row with no meta emits no meta column, and one with meta does', () => {

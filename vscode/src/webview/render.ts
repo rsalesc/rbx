@@ -92,16 +92,30 @@ function twistyCell(row: Row, expanded: boolean): string {
 
 function spanCell(span: Span): string {
   const hue = span.hue === undefined ? '' : ` hue-${span.hue}`;
-  return `<span class="span${hue}">${escapeHtml(span.text)}</span>`;
+  const role = span.role === undefined ? '' : ` span-${span.role}`;
+  return `<span class="span${role}${hue}">${escapeHtml(span.text)}</span>`;
 }
 
 const SEPARATOR = '<span class="sep">·</span>';
 
+/**
+ * The meta line, with no separators between its spans.
+ *
+ * They are drawn by the stylesheet as a `::before` on each span but the first,
+ * which is the only arrangement that survives a span being hidden: a separator
+ * written here as its own element would stay behind when the span it divides
+ * goes, leaving `[30/100] ·` trailing off a narrowed row. Belonging to the span
+ * it precedes, it leaves when that span does.
+ *
+ * This holds because the responsive ladder always hides a *suffix* of the line
+ * -- memory before time, and neither before the score -- so the span that is
+ * first is always the one that was first.
+ */
 function metaCell(meta: readonly Span[]): string {
   if (meta.length === 0) {
     return '';
   }
-  return `<span class="meta">${meta.map(spanCell).join(SEPARATOR)}</span>`;
+  return `<span class="meta">${meta.map(spanCell).join('')}</span>`;
 }
 
 /**

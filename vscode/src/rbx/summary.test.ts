@@ -33,8 +33,8 @@ test('formatMemory walks the B / KiB / MiB ladder', () => {
   assert.strictEqual(formatMemory(undefined), undefined);
 });
 
-test('formatScore renders rbx literal brackets', () => {
-  assert.strictEqual(formatScore(70, 100), '[70/100 pts]');
+test('formatScore renders rbx literal brackets, without the console unit', () => {
+  assert.strictEqual(formatScore(70, 100), '[70/100]');
 });
 
 test('progress counts the evaluations on disk, not the verdicts in them', () => {

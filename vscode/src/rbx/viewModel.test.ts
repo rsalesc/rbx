@@ -353,12 +353,15 @@ test('a finished solution shows score, time and memory but never its verdict', (
   );
   const { rows } = buildViewModel([view([finished])]);
   const row = rowById(rows, '/w/a::0');
+  // Roles included, and in this order: the stylesheet hides a *suffix* of this
+  // line as the sidebar narrows, so the order is the priority and the score
+  // being ahead of both measurements is what keeps it on screen longest.
   assert.deepStrictEqual(row.meta, [
-    { text: '[70/100 pts]', hue: 'neutral' },
-    { text: '120 ms', hue: 'dim' },
-    { text: '2 KiB', hue: 'dim' },
+    { text: '[70/100]', hue: 'neutral', role: 'score' },
+    { text: '120 ms', hue: 'dim', role: 'time' },
+    { text: '2 KiB', hue: 'dim', role: 'memory' },
   ]);
-  assert.deepStrictEqual(row.detail?.score, '[70/100 pts]');
+  assert.deepStrictEqual(row.detail?.score, '[70/100]');
   assert.deepStrictEqual(row.detail?.maxTime, '120 ms');
   assert.deepStrictEqual(row.detail?.maxMemory, '2 KiB');
 });
@@ -466,8 +469,8 @@ test('a testcase shows time and memory, and not the checker message', () => {
   // The whole array, so a checker's free-form line cannot creep back into a
   // 22px row and push the timings out of it.
   assert.deepStrictEqual(row.meta, [
-    { text: '50 ms', hue: 'dim' },
-    { text: '1 KiB', hue: 'dim' },
+    { text: '50 ms', hue: 'dim', role: 'time' },
+    { text: '1 KiB', hue: 'dim', role: 'memory' },
   ]);
   assert.strictEqual(row.expandable, false);
   assert.strictEqual(row.section, 'rbx.testcase');

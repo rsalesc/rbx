@@ -204,6 +204,23 @@ body {
   opacity: 0.6;
 }
 
+/* The meta line's separators, drawn rather than emitted.
+   `render.ts` writes the spans with nothing between them: a separator element
+   of its own would outlive the span it divides and leave `[30/100] ·` trailing
+   off a row that had dropped its timings. Attached to the span that follows it,
+   it leaves when that span leaves -- which works because the ladder at the
+   bottom of this file only ever hides a suffix of the line. */
+.meta > .span::before {
+  content: '·';
+  margin-right: 4px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+.meta > .span:first-child::before {
+  content: none;
+}
+
 /* The declaration, immediately left of the outcome so the two read as one
    `declared -> got` phrase. Quieter than the verdict beside it: the verdict is
    what happened and the declaration is only what was asked for, and at equal
@@ -423,18 +440,65 @@ body {
   font-family: var(--vscode-editor-font-family);
 }
 
-@container (max-width: 260px) {
-  .meta {
+/*
+ * The responsive ladder.
+ *
+ * A row has more to say than a narrow sidebar can show, so the question is not
+ * whether to drop things but in which order -- and the order is by how much
+ * each would be missed, not by how much room each frees:
+ *
+ *   1. the declaration   -- what was *asked for*. The gutter still says whether
+ *                           it was met, which is the part that needs answering
+ *                           at a glance; the card says what it was.
+ *   2. memory            -- the measurement that is almost never the one being
+ *                           looked for.
+ *   3. time              -- wanted often, but a solution is opened to study its
+ *                           timings, and the card carries the maxima.
+ *   4. the verdict       -- name first, then the icon. Losing the name costs
+ *                           little while the colour and shape remain.
+ *   5. the score         -- never. On a points problem it is the answer to the
+ *                           question the view exists to answer, and it is the
+ *                           cheapest thing on the row.
+ *
+ * Everything above the score is recoverable by widening the sidebar or opening
+ * the row. Each breakpoint is set where the label -- a path, the one thing that
+ * cannot be recovered from anywhere else -- would otherwise be squeezed past
+ * legibility.
+ */
+
+/* 1. The declaration. */
+@container (max-width: 400px) {
+  .expectation {
     display: none;
   }
 }
 
-/* Narrower still. The declaration outlives the timings and is outlived by the
-   verdict, which is the order of how much each would be missed: a row can
-   always be opened for its timings, and the declaration is the only channel
-   saying what the row was *for*. */
-@container (max-width: 200px) {
-  .expectation {
+/* 2. Memory. */
+@container (max-width: 330px) {
+  .span-memory {
+    display: none;
+  }
+}
+
+/* 3. Time. */
+@container (max-width: 280px) {
+  .span-time {
+    display: none;
+  }
+}
+
+/* 4a. The verdict's name, keeping its icon: the colour and the shape are most
+   of what the name says, at a tenth of the width. */
+@container (max-width: 240px) {
+  .verdict-name {
+    display: none;
+  }
+}
+
+/* 4b. The verdict entirely. Below this the row is a path and a score, which is
+   the least a row can be and still be worth drawing. */
+@container (max-width: 190px) {
+  .verdict {
     display: none;
   }
 }

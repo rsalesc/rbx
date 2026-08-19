@@ -60,9 +60,18 @@ export function formatMemory(bytes: number | undefined): string | undefined {
   return `${Math.round(bytes / (1024 * 1024))} MiB`;
 }
 
-/** Mirrors `get_solution_score_markup`, whose brackets are literal: `[70/100 pts]`. */
+/**
+ * `[70/100]` -- `get_solution_score_markup`'s literal brackets, without its
+ * `pts`.
+ *
+ * The console has a whole terminal to spend and the unit earns its place there.
+ * In a sidebar it is four characters of a row that has to fit a path, a score,
+ * two measurements and two verdicts, and it is the only one of them carrying no
+ * information: the brackets already say this is the score, and nothing else in
+ * the meta line is a bare ratio.
+ */
 export function formatScore(score: number, maxScore: number): string {
-  return `[${score}/${maxScore} pts]`;
+  return `[${score}/${maxScore}]`;
 }
 
 /**

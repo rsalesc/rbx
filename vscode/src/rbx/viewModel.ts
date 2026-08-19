@@ -45,9 +45,20 @@ import {
 /** Whether a declared expectation was met -- `none` when none was declared. */
 export type Gutter = 'none' | 'met' | 'missed';
 
+/**
+ * What a meta span *is*, so the stylesheet can drop them in priority order.
+ *
+ * The meta line used to be an anonymous list of strings, which meant it could
+ * only be shown or hidden whole -- and the first thing a narrowing sidebar did
+ * was take the score away along with the memory figure. Naming each span is
+ * what lets the least useful one go first and the score go last.
+ */
+export type SpanRole = 'progress' | 'score' | 'time' | 'memory';
+
 export interface Span {
   readonly text: string;
   readonly hue?: Hue;
+  readonly role?: SpanRole;
 }
 
 export interface VerdictChip {
@@ -216,8 +227,8 @@ function groupGutter(report: GroupReport | undefined): Gutter {
   return matched(report.matchesExpectation);
 }
 
-function span(text: string | undefined, hue: Hue): Span | undefined {
-  return text === undefined || text === '' ? undefined : { text, hue };
+function span(text: string | undefined, hue: Hue, role?: SpanRole): Span | undefined {
+  return text === undefined || text === '' ? undefined : { text, hue, role };
 }
 
 function spans(candidates: readonly (Span | undefined)[]): Span[] {
@@ -237,15 +248,21 @@ function aggregateMeta(
   progress: Progress,
 ): Span[] {
   if (report === undefined) {
-    return spans([span(pendingDescription(progress), 'dim')]);
+    return spans([span(pendingDescription(progress), 'dim', 'progress')]);
   }
+  // Ordered by how long each survives a narrowing sidebar, widest-lived first,
+  // so that hiding always removes a *suffix* of the line -- which is what keeps
+  // the separators between them correct without the stylesheet having to know
+  // which spans are left. See the container queries in style.css.
   return spans([
-    isComplete(progress) ? undefined : span(`${progress.done}/${progress.total}`, 'dim'),
+    isComplete(progress)
+      ? undefined
+      : span(`${progress.done}/${progress.total}`, 'dim', 'progress'),
     report.maxScore === 0
       ? undefined
-      : span(formatScore(report.score, report.maxScore), 'neutral'),
-    span(formatTime(report.maxTime), 'dim'),
-    span(formatMemory(report.maxMemory), 'dim'),
+      : span(formatScore(report.score, report.maxScore), 'neutral', 'score'),
+    span(formatTime(report.maxTime), 'dim', 'time'),
+    span(formatMemory(report.maxMemory), 'dim', 'memory'),
   ]);
 }
 
@@ -510,8 +527,8 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
     // felt like being, and in a sidebar it pushed the timings out of a row that
     // is only 22px tall. It belongs somewhere that can wrap.
     meta: spans([
-      span(formatTime(evaluation?.time), 'dim'),
-      span(formatMemory(evaluation?.memory), 'dim'),
+      span(formatTime(evaluation?.time), 'dim', 'time'),
+      span(formatMemory(evaluation?.memory), 'dim', 'memory'),
     ]),
     verdict,
     mismatch: false,

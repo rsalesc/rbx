@@ -227,8 +227,8 @@ a nonce CSP with no remote origins.
 
 - **Accessibility is now ours.** Screen-reader quality depends on D7 being done
   properly rather than on VS Code doing it for us.
-- **Width.** At roughly 300px the meta column has to drop out under a container
-  query, and the detail card stays single-column.
+- **Width.** The row sheds channels in priority order as the sidebar narrows
+  (D10); the detail card stays single-column.
 - **Virtualization is deferred.** Rendered rows are solutions plus groups, plus
   testcases only under an expanded solution — and only a solo run expands one by
   default. Revisit past ~2000 rendered rows.
@@ -277,8 +277,7 @@ is what has to be read together, and reserving the width of `TLE or RTE` on
 every row costs more than a ragged left edge does. Groups take the label hue
 too, by the same rule solutions already used. `ANY` still draws nothing --
 it is how a setter declares nothing, and the gutter already treats it that way.
-Under a container query the declaration drops after the timings and before the
-verdict, which is the order of how much each is missed.
+Under a container query the declaration drops **first** -- see D10.
 
 **The card speaks per layer.** `MismatchDetail` becomes a set of optional
 clauses -- a pooled `declared → got` pair, a list of groups each with its own
@@ -297,6 +296,50 @@ group-only miss now reads:
 Naming the pooled layer as *held* is deliberate rather than redundant: the
 reader is looking at a row labelled `INCORRECT`, and saying which declaration
 was fine is what stops them chasing it.
+
+## D10. What a narrowing sidebar gives up, and in what order
+
+A row has more to say than a narrow sidebar can show. The first cut at this
+hid the meta line whole at 260px and the declaration at 200px, which got both
+halves wrong: it took the score away along with the memory figure -- one blob,
+one switch -- and it kept the *declaration* alive longer than the measurements,
+when the declaration is the least urgent thing on a cramped row.
+
+The order is by how much each would be missed, not by how much room each frees:
+
+| # | dropped | at | why it goes when it does |
+|---|---|---|---|
+| 1 | the declaration | 400px | the gutter still answers *was it met*, which is the part needed at a glance; the card says what it was |
+| 2 | memory | 330px | the measurement least often being looked for |
+| 3 | time | 280px | wanted often, but a solution is opened to study its timings, and the card carries the maxima |
+| 4a | the verdict's *name* | 240px | the colour and shape carry most of what the name says, at a tenth of the width |
+| 4b | the verdict's icon | 190px | below this a row is a path and a score, the least it can be and still be worth drawing |
+| 5 | the score | never | on a points problem it is the answer to the question the view exists to answer, and the cheapest thing on the row |
+
+Everything above the score is recoverable by widening the sidebar or opening the
+row. The breakpoints are set where the label -- a path, the one thing that
+cannot be recovered from anywhere else -- would otherwise be squeezed past
+legibility.
+
+Two mechanics make it work.
+
+**Spans are named.** `Span` gains a `role` (`progress`/`score`/`time`/`memory`)
+and the renderer turns it into a `span-*` class. An anonymous list of strings
+can only be shown or hidden whole, which is what forced the original all-or-
+nothing switch.
+
+**Separators belong to the span that follows them.** `metaCell` emits nothing
+between spans; the stylesheet draws a `·` as a `::before` on every span but the
+first. A separator written as its own element would outlive the span it divides
+and leave `[30/100] ·` trailing off a narrowed row. This is correct only while
+hiding removes a *suffix* of the line -- so the meta line is built in priority
+order, and a `render.test.ts` case asserts the breakpoints are strictly
+descending and that the score is named by none of them. Reorder the ladder and
+that test fails rather than the separators quietly going wrong.
+
+`formatScore` also drops the ` pts` the console uses. In a terminal the unit
+earns its place; in a sidebar it is four characters of the one span that has to
+survive everything else, and the brackets already say what the number is.
 
 ## Follow-ups
 
