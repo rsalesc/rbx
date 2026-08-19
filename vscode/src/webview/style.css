@@ -303,6 +303,17 @@ body {
   text-align: left;
 }
 
+/* The verdict a soft TLE hid, glossing the chip beside it.
+   Smaller and slightly faded so it reads as a note on the verdict rather than
+   as a competing one, but hued by what it actually is -- the whole reason it is
+   on the row is that it disagrees with the TLE it sits next to. No fixed width:
+   it appears on a handful of testcases, and reserving a column for it would
+   cost every other row real estate to say nothing. */
+.verdict-under {
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
 /* A run rbx warned about, drawn the way a miss is and one step quieter.
    Mutually exclusive with `.mismatch`: `warned` is a gutter state and `missed`
    outranks it, so the two washes never stack.
@@ -532,9 +543,14 @@ body {
 }
 
 /* 4a. The verdict's name, keeping its icon: the colour and the shape are most
-   of what the name says, at a tenth of the width. */
+   of what the name says, at a tenth of the width.
+
+   The hidden verdict goes with it, and cannot outlive it: `(WA)` alone beside a
+   clock icon reads as the verdict rather than as a gloss on it, which is the
+   one misreading this whole feature exists to prevent. */
 @container (max-width: 240px) {
-  .verdict-name {
+  .verdict-name,
+  .verdict-under {
     display: none;
   }
 }

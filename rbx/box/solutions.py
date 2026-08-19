@@ -1580,6 +1580,13 @@ class GroupOutcomeReport(BaseModel):
     status: SolutionOutcomeStatus
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
+    # The no-TLE verdicts in this group that NEITHER layer accepts.
+    #
+    # Already the intersection with the pooled layer's, so a reader needs no
+    # second lookup: a verdict the solution's own ``outcome`` covers is not
+    # surfaced here even when this group's ``outcomePerGroup`` would not have
+    # covered it, and vice versa. See ``unexpectedNoTleVerdicts``.
+    unexpectedNoTleVerdicts: Set[Outcome]
 
 
 def _failed_group_names(per_group: Dict[str, GroupOutcomeReport]) -> List[str]:
@@ -1628,6 +1635,19 @@ class SolutionOutcomeReport(BaseModel):
     maxScore: int
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
+    # The verdicts a soft TLE hid that the pooled ``outcome`` does not accept.
+    #
+    # A solution judged at 2x its time limit is reported TLE the moment it
+    # crosses 1x, and the verdict it *would* have got is kept in
+    # ``no_tle_outcome``. Most of those are uninteresting -- a solution declared
+    # slow being wrong in a way the declaration already allows says nothing --
+    # so only the ones no expectation covers are collected, and ACCEPTED never
+    # is: a correct answer underneath a soft TLE is the good case, and it is
+    # already reported by ``runUnderDoubleTl``.
+    #
+    # Deciding this needs ``ExpectedOutcome.match``, which is why it is computed
+    # here rather than by whoever renders it.
+    unexpectedNoTleVerdicts: Set[Outcome]
     sanitizerWarnings: bool
     verification: VerificationLevel
     scoring: ScoreType
@@ -1770,6 +1790,7 @@ class VerdictReport(BaseModel):
     got_verdicts: Set[Outcome]
     double_tl_verdicts: Set[Outcome]
     run_under_double_tl: bool
+    unexpected_no_tle_verdicts: Set[Outcome]
     expected_outcome: ExpectedOutcome
     ok: bool
 
@@ -1799,6 +1820,10 @@ def _get_verdict_report(
     bad_verdicts = set()
     no_tle_bad_verdicts = set()
     has_sanitizer_warnings = False
+    # Verdicts a soft TLE hid that this layer's expectation does not accept.
+    # ACCEPTED is never one of them: a correct answer underneath a soft TLE is
+    # the good case, and ``run_under_double_tl`` already reports it.
+    unexpected_no_tle_verdicts = set()
     for eval in evals:
         all_verdicts.add(eval.result.outcome)
         has_skipped = has_skipped or eval.result.outcome == Outcome.SKIPPED
@@ -1809,6 +1834,8 @@ def _get_verdict_report(
             and eval.result.no_tle_outcome != Outcome.ACCEPTED
         ):
             no_tle_bad_verdicts.add(eval.result.no_tle_outcome)
+            if not expected_outcome.match(eval.result.no_tle_outcome):
+                unexpected_no_tle_verdicts.add(eval.result.no_tle_outcome)
         has_plain_tle = has_plain_tle or (
             eval.result.outcome.is_slow() and eval.result.no_tle_outcome is None
         )
@@ -1882,6 +1909,7 @@ def _get_verdict_report(
         got_verdicts=report_got_verdicts,
         double_tl_verdicts=report_double_tl_verdicts,
         run_under_double_tl=report_run_under_double_tl,
+        unexpected_no_tle_verdicts=unexpected_no_tle_verdicts,
         expected_outcome=report_expected_outcome,
         ok=not has_failed,
     )
@@ -1999,6 +2027,13 @@ def get_solution_outcome_report(
             else SolutionOutcomeStatus.UNEXPECTED_VERDICTS,
             runUnderDoubleTl=report.run_under_double_tl,
             doubleTlVerdicts=report.double_tl_verdicts,
+            # Intersected with the pooled layer's: a verdict either layer
+            # accepts is not worth surfacing, and testing both here means
+            # nobody downstream has to know there were two.
+            unexpectedNoTleVerdicts=(
+                report.unexpected_no_tle_verdicts
+                & verdict_report.unexpected_no_tle_verdicts
+            ),
         )
         for name, report in per_group_expectation_reports.items()
     }
@@ -2095,6 +2130,7 @@ def get_solution_outcome_report(
         maxScore=max_score,
         runUnderDoubleTl=run_under_double_tl,
         doubleTlVerdicts=double_tl_verdicts,
+        unexpectedNoTleVerdicts=verdict_report.unexpected_no_tle_verdicts,
         sanitizerWarnings=verdict_report.has_sanitizer_warnings,
         verification=verification,
         scoring=scoring,

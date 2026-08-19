@@ -86,6 +86,20 @@ export interface VerdictChip {
   readonly icon: string;
   readonly hue: Hue;
   readonly short: string;
+  /**
+   * The verdict a soft TLE hid, on the testcase rows worth showing it on.
+   *
+   * Under `-v4` a solution is judged at 2x its time limit, so a run that
+   * crosses 1x is reported TLE while the checker still sees its output -- and
+   * `TLE` on that row can mean either "too slow" or "wrong, and too slow got
+   * there first". Those are different bugs and the chip alone cannot tell them
+   * apart.
+   *
+   * Set only where rbx says no expectation accepts the hidden verdict, so a
+   * solution declared `incorrect` that answers wrongly under a soft TLE stays
+   * quiet: the setter declared that themselves.
+   */
+  readonly under?: WarningVerdict;
 }
 
 export interface HistogramSlice {
@@ -260,12 +274,20 @@ function packageName(node: PackageNode): string {
   return node.label ?? path.basename(node.pkg.root);
 }
 
-function chip(outcome: string | undefined): VerdictChip {
+function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
   // Note this reads the outcome, never `matchesExpectation`: a solution
   // declared INCORRECT that answers wrongly still gets the WA chip. Whether
   // that was wanted is the gutter's business.
-  return { icon, hue: hueOfThemeColor(color), short: shortName(outcome) };
+  // Spread rather than `under` outright: an explicit `under: undefined` is a key
+  // every chip in the view would carry to say nothing, and it makes a chip that
+  // has no hidden verdict unequal to one written without the field.
+  return {
+    icon,
+    hue: hueOfThemeColor(color),
+    short: shortName(outcome),
+    ...(under === undefined ? {} : { under }),
+  };
 }
 
 /**
@@ -396,6 +418,9 @@ function haystack(
   const parts = [
     subject,
     verdict?.short,
+    // So `wa` finds the testcases where a soft TLE hid one, which are exactly
+    // the rows a WA filter would otherwise miss.
+    verdict?.under?.text,
     expectation?.label,
     mismatch ? 'mismatch' : undefined,
     ...(warnings.length === 0 ? [] : ['warning', 'double-tl']),
@@ -446,6 +471,30 @@ function scoreRange(range: readonly [number, number]): string {
 function outcomeOf(outcome: string | undefined): { text: string; hue: Hue } {
   const { short, hue } = chip(outcome);
   return { text: short, hue };
+}
+
+/**
+ * The verdict a soft TLE hid on this testcase, when it is worth showing.
+ *
+ * Two independent conditions, and neither is decided here. The evaluation has a
+ * `noTleOutcome` only when the TLE was *soft* -- the run finished inside double
+ * TL and the checker saw its output -- and rbx lists it in the group's
+ * `unexpectedNoTleVerdicts` only when no expectation covering that testcase
+ * accepts it. The second is an `ExpectedOutcome.match` against two declaration
+ * layers, which is exactly the matcher this extension refuses to own.
+ *
+ * Nothing to show with no group report yet: mid-run there is no published
+ * answer, and guessing one would put the matcher back.
+ */
+function hiddenVerdict(
+  testcase: TestcaseRun,
+  report: GroupReport | undefined,
+): WarningVerdict | undefined {
+  const hidden = testcase.evaluation?.noTleOutcome;
+  if (hidden === undefined || report === undefined) {
+    return undefined;
+  }
+  return report.unexpectedNoTleVerdicts.includes(hidden) ? outcomeOf(hidden) : undefined;
 }
 
 /**
@@ -701,7 +750,7 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
 function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
-  const verdict = chip(evaluation?.outcome);
+  const verdict = chip(evaluation?.outcome, hiddenVerdict(testcase, node.group.report));
   return {
     id: nodeId(node),
     parentId,

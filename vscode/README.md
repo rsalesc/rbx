@@ -78,6 +78,25 @@ Which run deserves a warning is rbx's decision, published in `report.yml` as
 `runUnderDoubleTl` and `doubleTlVerdicts`; the only thing decided here is which
 words and which glyph carry it.
 
+#### The verdict a soft TLE hid
+
+A testcase judged at 2x the limit is reported `TLE` the moment it crosses 1x,
+but the checker still saw its output -- so `TLE` on a leaf can mean *too slow*
+or *wrong, and too slow got there first*. Those are different bugs. When they
+differ, the row spells both:
+
+```
+1-gen-001        1306 ms · 10 MiB   ⌚ TLE (WA)
+```
+
+Only on leaves, and only when it matters. A solution declared `incorrect` that
+answers wrongly under a soft TLE says nothing new, and neither does a correct
+answer underneath -- that one is the `runUnderDoubleTl` warning, reported once,
+on the row above. Deciding which is which is an `ExpectedOutcome.match` against
+both the group's declaration and the solution's, so rbx decides it and publishes
+the answer per group as `unexpectedNoTleVerdicts`; the extension shows a
+testcase's `no_tle_outcome` when it appears in that list and never otherwise.
+
 **None of that is computed here.** rbx decides it and publishes it to
 `.rbx/runs/report.yml`; the extension reads it and renders it. That is
 deliberate: outcome ranking, expectation matching and dependency-gated scoring
@@ -163,7 +182,7 @@ Everything comes from files rbx already writes. The layout is a contract, and
 |---|---|
 | `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance, and each solution's resolved limits |
 | `<pkg>/.rbx/runs/report.yml` | **every aggregate**: verdicts, scores, max time/memory, per-group expectation results, double-TL warnings |
-| `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message |
+| `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message, the verdict a soft TLE hid |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.out` | solution stdout |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.err` | solution stderr (`.sol.err` for communication tasks) |
 | `<pkg>/build/tests/<group>/<stem>.in` | generated input |

@@ -712,6 +712,40 @@ test('a group name in a warning cannot escape into markup', () => {
   assert.ok(html.includes('&lt;script&gt;'));
 });
 
+test('a testcase renders the hidden verdict as a gloss on its chip', () => {
+  const leaf = row({
+    id: 'tc0',
+    kind: 'testcase',
+    label: '1-gen-001',
+    verdict: {
+      icon: 'watch',
+      hue: 'yellow',
+      short: 'TLE',
+      under: { text: 'WA', hue: 'red' },
+    },
+  });
+  // With a solution above it: a model of testcases alone is `empty`, and an
+  // empty model renders the welcome copy instead of any rows at all.
+  const html = renderTree(model([MAIN, leaf]), state({ expanded: new Set(['sol0']) }));
+
+  assert.ok(html.includes('class="verdict-under hue-red"'));
+  assert.ok(html.includes('(WA)'));
+  // Inside the verdict cell, after the name it glosses.
+  assert.ok(html.indexOf('verdict-under') > html.indexOf('verdict-name'));
+  assert.ok(html.includes('Would have been WA without the time limit'));
+});
+
+test('a testcase with no hidden verdict renders no gloss', () => {
+  const leaf = row({
+    id: 'tc1',
+    kind: 'testcase',
+    verdict: { icon: 'pass', hue: 'green', short: 'AC' },
+  });
+  const html = renderTree(model([MAIN, leaf]), state({ expanded: new Set(['sol0']) }));
+  assert.ok(html.includes('kind-testcase'));
+  assert.ok(!html.includes('verdict-under'));
+});
+
 test('a run that warned but matched everywhere still gets a header strip', () => {
   // The whole point: before this, a package whose declarations all held showed
   // no strip at all, and rbx was printing a WARNING about it in the terminal.

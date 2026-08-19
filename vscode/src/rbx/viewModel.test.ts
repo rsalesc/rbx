@@ -38,6 +38,7 @@ function groupReport(over: Partial<GroupReport> = {}): GroupReport {
     maxScore: 0,
     runUnderDoubleTl: false,
     doubleTlVerdicts: [],
+    unexpectedNoTleVerdicts: [],
     ...over,
   };
 }
@@ -794,4 +795,102 @@ test('a solution that both missed and warned draws the miss', () => {
   // Counted once, in the more serious channel.
   assert.strictEqual(mismatches, 1);
   assert.strictEqual(warned, 0);
+});
+
+// `big` hides a WA under a soft TLE, and rbx says no expectation accepts it.
+const HIDDEN_WA = solution(
+  0,
+  'sols/slow-and-wrong.cpp',
+  'TIME_LIMIT_EXCEEDED',
+  [
+    group(
+      'big',
+      [
+        testcase('000', 'accepted'),
+        testcase('001', 'time-limit-exceeded', {
+          evaluation: { outcome: 'time-limit-exceeded', noTleOutcome: 'wrong-answer' },
+        }),
+      ],
+      groupReport({
+        name: 'big',
+        outcome: 'time-limit-exceeded',
+        unexpectedNoTleVerdicts: ['wrong-answer'],
+      }),
+    ),
+  ],
+  solutionReport({
+    expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+    outcome: 'time-limit-exceeded',
+    doubleTlVerdicts: ['wrong-answer'],
+  }),
+);
+
+test('a testcase shows the verdict a soft TLE hid, beside the one it got', () => {
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  const leaf = rowById(rows, '/w/a::0::big::001');
+
+  assert.strictEqual(leaf.verdict?.short, 'TLE');
+  assert.strictEqual(leaf.verdict?.under?.text, 'WA');
+  // Hued by what it is, not by the chip it glosses -- the disagreement between
+  // the two is the reason it is on the row at all.
+  assert.strictEqual(leaf.verdict?.under?.hue, 'red');
+});
+
+test('a testcase with no hidden verdict shows only what it got', () => {
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
+});
+
+test('a hidden verdict rbx did not flag is not shown', () => {
+  // The evaluation carries it either way; whether it is worth showing is rbx's
+  // answer, and an empty list is a `no`. A solution declared `incorrect` that
+  // answers wrongly under a soft TLE lands here -- the setter said as much.
+  const quiet = solution(
+    0,
+    'sols/slow.cpp',
+    'INCORRECT',
+    [
+      group(
+        'big',
+        [
+          testcase('000', 'time-limit-exceeded', {
+            evaluation: { outcome: 'time-limit-exceeded', noTleOutcome: 'wrong-answer' },
+          }),
+        ],
+        groupReport({ name: 'big', outcome: 'time-limit-exceeded' }),
+      ),
+    ],
+    solutionReport({ expectedOutcome: 'INCORRECT', outcome: 'time-limit-exceeded' }),
+  );
+  const { rows } = buildViewModel([view([quiet])]);
+  assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
+});
+
+test('a hidden verdict is not shown before its group has a report', () => {
+  // Mid-run there is no published answer to read, and guessing one would put
+  // the expectation matcher back into this extension.
+  const pending = solution(0, 'sols/slow.cpp', 'TIME_LIMIT_EXCEEDED', [
+    group('big', [
+      testcase('000', 'time-limit-exceeded', {
+        evaluation: { outcome: 'time-limit-exceeded', noTleOutcome: 'wrong-answer' },
+      }),
+    ]),
+  ]);
+  const { rows } = buildViewModel([view([pending])]);
+  assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
+});
+
+test('the hidden verdict joins the row it is on in the filter', () => {
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  // Typing `wa` has to find the testcases where a soft TLE hid one; they are
+  // exactly the rows a WA filter would otherwise miss.
+  assert.ok(rowById(rows, '/w/a::0::big::001').search.includes('wa'));
+});
+
+test('only leaves carry a hidden verdict', () => {
+  // It is a fact about one run of one testcase. A group or a solution that
+  // aggregated them would be inventing a verdict nothing produced.
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  assert.strictEqual(rowById(rows, '/w/a::0').verdict?.under, undefined);
+  assert.strictEqual(rowById(rows, '/w/a::0::big').verdict?.under, undefined);
 });

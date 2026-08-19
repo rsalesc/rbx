@@ -33,6 +33,16 @@ export interface GroupReport {
   readonly runUnderDoubleTl: boolean;
   /** This group alone finished within double TL, but with these verdicts. */
   readonly doubleTlVerdicts: readonly string[];
+  /**
+   * The verdicts a soft TLE hid in this group that no expectation accepts.
+   *
+   * A testcase's own `noTleOutcome` is right there in its `.eval`, but whether
+   * it is worth showing is an `ExpectedOutcome.match` against both this group's
+   * declaration and the solution's -- a matcher this extension deliberately
+   * does not have. rbx answers, and a testcase row shows its `noTleOutcome`
+   * only when it appears in its group's list here.
+   */
+  readonly unexpectedNoTleVerdicts: readonly string[];
 }
 
 export interface SolutionReport {
@@ -100,6 +110,7 @@ function parseGroup(raw: Wire): GroupReport | undefined {
     maxMemory: asNumber(field(raw, 'maxMemory')),
     runUnderDoubleTl: asBoolean(field(raw, 'runUnderDoubleTl')) ?? false,
     doubleTlVerdicts: parseOutcomes(field(raw, 'doubleTlVerdicts')),
+    unexpectedNoTleVerdicts: parseOutcomes(field(raw, 'unexpectedNoTleVerdicts')),
   };
 }
 

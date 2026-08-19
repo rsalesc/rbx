@@ -881,6 +881,7 @@ def test_per_group_outcome_fails_while_pooled_outcome_passes(
         status=SolutionOutcomeStatus.UNEXPECTED_VERDICTS,
         runUnderDoubleTl=False,
         doubleTlVerdicts=set(),
+        unexpectedNoTleVerdicts=set(),
     )
 
 

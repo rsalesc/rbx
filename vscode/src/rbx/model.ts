@@ -54,6 +54,18 @@ export interface Evaluation {
   readonly time?: number;
   /** Bytes. */
   readonly memory?: number;
+  /**
+   * The verdict this testcase would have got without the time limit.
+   *
+   * Set only on a *soft* TLE: under `-v4` rbx judges at 2x the limit, so a run
+   * that crosses 1x is reported TLE while the checker still gets to see the
+   * output. A hard TLE -- one that never finished -- leaves this absent, and
+   * that difference is the whole meaning of the field.
+   *
+   * Reading it is safe; deciding whether it is worth *showing* is not. See
+   * `GroupReport.unexpectedNoTleVerdicts`.
+   */
+  readonly noTleOutcome?: string;
 }
 
 /**
@@ -141,6 +153,7 @@ export function parseEvaluation(raw: Wire): Evaluation | undefined {
     message: asString(field(raw, 'result', 'message')),
     time: asNumber(field(raw, 'log', 'time')),
     memory: asNumber(field(raw, 'log', 'memory')),
+    noTleOutcome: asString(field(raw, 'result', 'no_tle_outcome')),
   };
 }
 

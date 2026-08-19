@@ -22,7 +22,7 @@ Two deliberate constraints:
 """
 
 import pathlib
-from typing import Dict, Iterable, List, Optional, Tuple, TypeVar
+from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 
 import yaml
 from pydantic import BaseModel
@@ -66,6 +66,20 @@ class RunGroupReport(BaseModel):
     # have to guess.
     runUnderDoubleTl: bool = False
     doubleTlVerdicts: List[Outcome] = []
+    # The verdicts a soft TLE hid in this group that no expectation accepts.
+    #
+    # Under `-v4` a solution is judged at 2x its time limit and reported TLE the
+    # moment it crosses 1x; the verdict it would have got is kept alongside, in
+    # each evaluation's `no_tle_outcome`. A client showing per-testcase rows can
+    # read that field itself, but it cannot tell which of those verdicts are
+    # worth showing -- that needs `ExpectedOutcome.match` against both this
+    # group's declaration and the solution's, and reimplementing that matcher is
+    # exactly the drift this module exists to prevent.
+    #
+    # So rbx answers instead, and a client shows a testcase's `no_tle_outcome`
+    # only when it appears here. ACCEPTED never does: a correct answer under a
+    # soft TLE is the good case, already reported by `runUnderDoubleTl`.
+    unexpectedNoTleVerdicts: List[Outcome] = []
 
 
 class RunSolutionReport(BaseModel):
@@ -146,6 +160,22 @@ def _sorted_outcomes(outcomes: Iterable[Outcome]) -> List[Outcome]:
     return sorted(outcomes, key=lambda outcome: outcome.name)
 
 
+def _no_tle_verdicts_in(evals: List[Evaluation]) -> Set[Outcome]:
+    """The verdicts a soft TLE actually hid among these evaluations.
+
+    The set a group is judged against comes from whichever expectation layer
+    covers it, and the pooled layer covers the *whole solution*: without this
+    intersection a group whose testcases all ran clean inherits a verdict hidden
+    three groups away and claims it as its own. A client reading the group row
+    would then say a testcase hid something when none of them did.
+    """
+    return {
+        eval.result.no_tle_outcome
+        for eval in evals
+        if eval.result.no_tle_outcome is not None
+    }
+
+
 def _worst_outcome(evals: List[Evaluation]) -> Optional[Outcome]:
     # `Outcome.worst_outcome` is a `max`, so it raises on an empty iterable.
     if not evals:
@@ -197,6 +227,14 @@ def build_solution_report(
                 runUnderDoubleTl=per_group.runUnderDoubleTl if per_group else False,
                 doubleTlVerdicts=_sorted_outcomes(
                     per_group.doubleTlVerdicts if per_group else set()
+                ),
+                unexpectedNoTleVerdicts=_sorted_outcomes(
+                    _no_tle_verdicts_in(group_evals)
+                    & (
+                        per_group.unexpectedNoTleVerdicts
+                        if per_group
+                        else report.unexpectedNoTleVerdicts
+                    )
                 ),
             )
         )

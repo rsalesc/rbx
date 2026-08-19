@@ -179,12 +179,22 @@ function verdictCell(row: Row): string {
   if (verdict === undefined) {
     return '';
   }
+  // The verdict a soft TLE hid, in its own hue rather than the chip's: the
+  // point of showing it is that `TLE` and the verdict underneath disagree, and
+  // painting them alike would hide the disagreement. Parenthesised because it
+  // is a gloss on the chip and not a second verdict of equal standing.
+  const under =
+    verdict.under === undefined
+      ? ''
+      : `<span class="verdict-under hue-${verdict.under.hue}" ` +
+        `title="Would have been ${escapeAttr(verdict.under.text)} without the time limit">` +
+        `(${escapeHtml(verdict.under.text)})</span>`;
   // The short name is its own element so the stylesheet can give it a fixed
   // width: without one, `SKIP` pushes its icon left of every `AC` above it and
   // the column of verdicts reads as ragged.
   return `<span class="verdict hue-${verdict.hue}">${codicon(
     verdict.icon,
-  )}<span class="verdict-name">${escapeHtml(verdict.short)}</span></span>`;
+  )}<span class="verdict-name">${escapeHtml(verdict.short)}</span>${under}</span>`;
 }
 
 function labelCell(row: Row): string {

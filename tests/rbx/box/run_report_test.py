@@ -373,3 +373,144 @@ def test_double_tl_verdicts_survive_yaml(tmp_path: pathlib.Path):
 
     reloaded = run_report.RunReport.model_validate(yaml.safe_load(path.read_text()))
     assert reloaded == report
+
+
+def test_a_no_tle_verdict_no_expectation_accepts_is_surfaced(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """What a client needs to justify showing `no_tle_outcome` on a testcase row.
+
+    The verdict itself is in the `.eval` and any client can read it. Whether it
+    is worth showing needs `ExpectedOutcome.match`, so rbx answers instead.
+    """
+    solution = Solution(
+        path=tmp_path / 'slow.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'small': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED, time_ms=100),
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1200,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        ),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.groups[0].unexpectedNoTleVerdicts == [Outcome.WRONG_ANSWER]
+
+
+def test_a_no_tle_verdict_the_declaration_covers_is_not_surfaced(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """`incorrect` already says the solution answers wrongly.
+
+    Surfacing the WA underneath would be telling the setter something they
+    declared themselves.
+    """
+    solution = Solution(
+        path=tmp_path / 'slow-and-wrong.cpp', outcome=ExpectedOutcome.INCORRECT
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'small': 1})
+    evals = [
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1200,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        )
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.groups[0].unexpectedNoTleVerdicts == []
+
+
+def test_an_accepted_no_tle_verdict_is_never_surfaced(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """A correct answer under a soft TLE is the good case, not an issue.
+
+    It is already reported, once, as `runUnderDoubleTl` on the row above.
+    """
+    solution = Solution(
+        path=tmp_path / 'slow.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'small': 1})
+    evals = [
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED, time_ms=1200, no_tle_outcome=Outcome.ACCEPTED
+        )
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.groups[0].unexpectedNoTleVerdicts == []
+    assert entry.runUnderDoubleTl is True
+
+
+def test_either_layer_accepting_a_no_tle_verdict_keeps_it_quiet(
+    tmp_path, mock_skeleton, mock_points_scoring
+):
+    """Both layers have to object, which is why the group's set is an
+    intersection: `big` declares TLE and would object to the WA underneath, but
+    the solution's pooled `incorrect` accepts it, and a setter who declared the
+    solution wrong does not need telling twice.
+    """
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        outcomePerGroup={
+            'small': ExpectedOutcome.ACCEPTED,
+            'big': ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        },
+    )
+    skeleton = mock_skeleton(
+        [solution],
+        entries_per_group={'small': 1, 'big': 1},
+        scores_per_group={'small': 40, 'big': 60},
+    )
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1200,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        ),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.groups[1].name == 'big'
+    assert entry.groups[1].unexpectedNoTleVerdicts == []
+
+
+def test_a_group_that_hid_nothing_surfaces_nothing(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """The pooled answer covers the whole solution, so it must be narrowed.
+
+    `small` ran clean; only `big` hid a WA under a soft TLE. Without the
+    intersection `small` inherits the pooled set and claims a verdict hidden in
+    another group as its own, and a client reading the group row says one of its
+    testcases hid something when none of them did.
+    """
+    solution = Solution(
+        path=tmp_path / 'slow.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'small': 1, 'big': 1})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED, time_ms=10),
+        make_evaluation(
+            Outcome.TIME_LIMIT_EXCEEDED,
+            time_ms=1200,
+            no_tle_outcome=Outcome.WRONG_ANSWER,
+        ),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.groups[0].name == 'small'
+    assert entry.groups[0].unexpectedNoTleVerdicts == []
+    assert entry.groups[1].name == 'big'
+    assert entry.groups[1].unexpectedNoTleVerdicts == [Outcome.WRONG_ANSWER]
