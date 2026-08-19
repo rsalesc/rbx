@@ -208,8 +208,8 @@ test('indentation grows with depth and the twisty column survives on a leaf', ()
     model([MAIN, MAIN_GROUP, MAIN_CASE]),
     state({ expanded: new Set(['sol0', 'sol0::main']) }),
   );
-  assert.ok(html.includes('padding-left: 16px'), html);
-  assert.ok(html.includes('padding-left: 40px'), html);
+  assert.ok(html.includes('padding-left: 10px'), html);
+  assert.ok(html.includes('padding-left: 34px'), html);
   assert.ok(html.includes('<span class="twisty"></span>'), html);
   assert.ok(html.includes('<span class="gutter"></span>'), html);
   assert.ok(html.includes('<span class="gutter gutter-met">'), html);
