@@ -143,10 +143,7 @@ body {
 
 .row {
   display: grid;
-  /* The last column is the warning mark, which is absent on most rows -- safe
-     only because it is last, so a row without one simply ends a column early
-     instead of shifting everything after it. */
-  grid-template-columns: 16px 16px 1fr auto auto auto auto;
+  grid-template-columns: 16px 16px 1fr auto auto auto;
   align-items: center;
   gap: 6px;
   height: 22px;
@@ -191,21 +188,12 @@ body {
 
 .gutter-missed { color: var(--vscode-charts-red); }
 
-/* The same triangle the gutter draws, in yellow and at the other end of the row.
-   Not a clock: `watch` is the TLE verdict's own icon, and a double-TL warning
-   only ever lands on a TLE row, so the mark would have sat beside an identical
-   glyph. Yellow against the gutter's red is what says this row met its
-   declaration and is only being flagged for how narrowly. */
-.warn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--vscode-charts-yellow);
-}
-
-.warn .codicon {
-  font-size: 14px;
-}
+/* Warned shares the missed triangle and separates by colour: this row met its
+   declaration and is only being flagged for how narrowly. Full strength like
+   the miss, not dimmed like the tick -- it is news, and the whole reason the
+   warning moved into this column is that a mark of its own at the far end of
+   the row disappeared beside the TLE verdict's identically yellow clock. */
+.gutter-warned { color: var(--vscode-charts-yellow); }
 .twisty { color: var(--vscode-icon-foreground); }
 
 .label {

@@ -678,9 +678,9 @@ test('a solution that only fit in double TL is warned about while still matching
   const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
   const row = rowById(rows, '/w/a::0');
 
-  // The warning does not touch the three channels that answer "did the
-  // declaration hold" -- because it did.
-  assert.strictEqual(row.gutter, 'met');
+  // The gutter says warned, not missed: the declaration held, and `mismatch`
+  // -- which is what the header counts and the red rule keys on -- stays false.
+  assert.strictEqual(row.gutter, 'warned');
   assert.strictEqual(row.mismatch, false);
   assert.strictEqual(row.verdict?.short, 'TLE');
   assert.deepStrictEqual(
@@ -699,6 +699,7 @@ test('a group carries its own warning, with no attribution to repeat', () => {
   const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
   assert.deepStrictEqual(rowById(rows, '/w/a::0::small').warnings, []);
   const big = rowById(rows, '/w/a::0::big');
+  assert.strictEqual(big.gutter, 'warned');
   assert.deepStrictEqual(
     big.warnings.map((warning) => warning.kind),
     ['double-tl-passed'],
@@ -765,5 +766,32 @@ test('a warned row is reachable by filtering for it', () => {
 test('a solution rbx did not warn about carries no warnings', () => {
   const { rows, warned } = buildViewModel([view([MAIN])]);
   assert.deepStrictEqual(rowById(rows, '/w/a::0').warnings, []);
+  assert.strictEqual(rowById(rows, '/w/a::0').gutter, 'met');
+  assert.strictEqual(warned, 0);
+});
+
+test('a solution that both missed and warned draws the miss', () => {
+  // One glyph, and the miss is the more serious of the two. The warning is
+  // still in the card underneath, so nothing is lost by ranking them.
+  const both = solution(
+    0,
+    'sols/broken.cpp',
+    'TIME_LIMIT_EXCEEDED',
+    [],
+    solutionReport({
+      expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+      outcome: 'wrong-answer',
+      matchesExpectation: false,
+      runUnderDoubleTl: true,
+    }),
+  );
+  const { rows, mismatches, warned } = buildViewModel([view([both])]);
+  const row = rowById(rows, '/w/a::0');
+
+  assert.strictEqual(row.gutter, 'missed');
+  assert.strictEqual(row.mismatch, true);
+  assert.strictEqual(row.warnings.length, 1);
+  // Counted once, in the more serious channel.
+  assert.strictEqual(mismatches, 1);
   assert.strictEqual(warned, 0);
 });

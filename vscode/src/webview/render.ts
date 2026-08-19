@@ -66,16 +66,29 @@ function codicon(name: string): string {
 }
 
 /**
- * The match axis, and nothing else.
+ * How the row came out, in one column.
  *
  * `none` still emits the element: an empty span keeps the grid column, so every
- * label on screen starts at the same x and a gutter mark can be found by
- * scanning down that column instead of by reading the rows.
+ * label on screen starts at the same x and a mark can be found by scanning down
+ * that column instead of by reading the rows.
+ *
+ * `warned` draws the same triangle as `missed` in yellow rather than red, and
+ * carries the warning itself as a tooltip. It shares this column rather than
+ * getting one of its own because the alternative -- a second mark at the far
+ * end of the row -- put a yellow clock beside the TLE verdict's own yellow
+ * clock, and a double-TL warning only ever lands on a TLE row.
  */
 function gutterCell(row: Row): string {
   switch (row.gutter) {
     case 'met':
       return `<span class="gutter gutter-met">${codicon('check')}</span>`;
+    case 'warned': {
+      const title = row.warnings.map(warningText).join(' ');
+      return (
+        `<span class="gutter gutter-warned" title="${escapeAttr(title)}">` +
+        `${codicon('warning')}</span>`
+      );
+    }
     case 'missed':
       return `<span class="gutter gutter-missed">${codicon('warning')}</span>`;
     case 'none':
@@ -100,43 +113,6 @@ function warningText(warning: RunWarning): string {
       return `Still finished in double TL, but failed with ${verdicts}${where}.`;
     }
   }
-}
-
-/**
- * The warning mark, and nothing else.
- *
- * A triangle like the gutter's, but yellow and at the other end of the row.
- *
- * A clock would be the better glyph for "this only just fits" -- except that
- * `watch` is already the TLE verdict's icon, and a double-TL warning appears
- * *only* on a row whose verdict is TLE. The mark would have landed beside an
- * identical clock and read as nothing at all.
- *
- * The triangle is also the mark that generalizes. This channel is meant to grow
- * -- sanitizer findings and compilation warnings are the next two -- and neither
- * has anything to do with time. What every warning shares is "this row passed,
- * and something still wants your attention", which is what a warning triangle
- * says. Severity keeps it apart from the gutter's: red there means a declaration
- * was missed, yellow here means one held with a caveat, and the two never
- * occupy the same column.
- *
- * Unlike the gutter the cell collapses when empty. The gutter earns its
- * permanent column by being on the majority of rows; a warning is rare, and 16px
- * taken from every row for it is 16px the label does not get.
- *
- * That is only safe because it is the *last* cell in the row: an absent element
- * anywhere earlier would let every cell after it slide one grid column left, and
- * the columns of an unwarned row would stop lining up with a warned one. The
- * verdict is the only other cell that may be absent, and it is absent exactly on
- * package rows, which are never warned -- so the two can never both go missing
- * in a way that reorders anything.
- */
-function warningCell(row: Row): string {
-  if (row.warnings.length === 0) {
-    return '';
-  }
-  const title = row.warnings.map(warningText).join(' ');
-  return `<span class="warn" title="${escapeAttr(title)}">${codicon('warning')}</span>`;
 }
 
 function twistyCell(row: Row, expanded: boolean): string {
@@ -294,7 +270,6 @@ function renderRow(
     metaCell(row.meta) +
     expectationCell(row) +
     verdictCell(row) +
-    warningCell(row) +
     '</div>'
   );
 }

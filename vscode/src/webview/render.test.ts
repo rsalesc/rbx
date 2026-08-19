@@ -601,7 +601,7 @@ const WARNED = row({
   id: 'sol3',
   kind: 'solution',
   label: 'sols/slow.cpp',
-  gutter: 'met',
+  gutter: 'warned',
   expandable: true,
   verdict: { icon: 'watch', hue: 'yellow', short: 'TLE' },
   warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['big'] }],
@@ -611,37 +611,30 @@ const WARNED = row({
   },
 });
 
-test('a warned row draws its mark outside the gutter, which still says met', () => {
+test('a warned row draws its mark in the gutter, and not as a miss', () => {
   const html = renderTree(model([WARNED]), state());
-  assert.ok(html.includes('class="warn"'));
-  // The gutter is the match axis and the warning never writes to it.
-  assert.ok(html.includes('gutter-met'));
+  assert.ok(html.includes('gutter-warned'));
   assert.ok(!html.includes('gutter-missed'));
+  assert.ok(!html.includes('gutter-met'));
 });
 
 test('the warning mark is not the TLE verdict icon it would sit beside', () => {
-  // `watch` is time-limit-exceeded's own icon, and a double-TL warning appears
-  // only on a row whose verdict is TLE -- a clock here would be invisible.
+  // The mark used to be a clock at the far end of the row, which is where
+  // `watch` -- time-limit-exceeded's own icon -- already sits, and a double-TL
+  // warning only ever lands on a TLE row. It has to be findable next to one.
   const html = renderTree(model([WARNED]), state());
-  const mark = html.slice(html.indexOf('class="warn"'));
-  assert.ok(!mark.startsWith('class="warn"><span class="codicon codicon-watch"'));
-  assert.ok(mark.includes('codicon-warning'));
+  const gutter = html.slice(html.indexOf('gutter-warned'));
+  assert.ok(gutter.startsWith('gutter-warned"'));
+  assert.ok(!gutter.slice(0, 200).includes('codicon-watch'));
 });
 
-test('the warning mark is the last cell, so an unwarned row keeps its columns', () => {
-  // Every cell that may be absent has to be at the end, or the grid slides the
-  // cells after it one column left and warned and unwarned rows stop lining up.
-  const html = renderTree(model([WARNED]), state());
-  const warn = html.indexOf('class="warn"');
-  assert.ok(warn > html.indexOf('class="expectation'));
-  assert.ok(warn > html.indexOf('class="verdict '));
+test('an unwarned row draws the plain met tick', () => {
+  const html = renderTree(model([MAIN]), state());
+  assert.ok(html.includes('gutter-met'));
+  assert.ok(!html.includes('gutter-warned'));
 });
 
-test('an unwarned row emits no warning cell at all', () => {
-  assert.ok(!renderTree(model([MAIN]), state()).includes('class="warn"'));
-});
-
-test('the warning mark carries the sentence as its tooltip', () => {
+test('the gutter carries the warning as its tooltip', () => {
   const html = renderTree(model([WARNED]), state());
   assert.ok(html.includes('Still passed in double TL on big.'));
 });
@@ -688,6 +681,7 @@ test('a group name in a warning cannot escape into markup', () => {
   const warned = row({
     id: 'sol6',
     kind: 'solution',
+    gutter: 'warned',
     warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['<script>'] }],
   });
   const html = renderTree(model([warned]), state());

@@ -47,8 +47,24 @@ import {
   progressOf,
 } from './summary';
 
-/** Whether a declared expectation was met -- `none` when none was declared. */
-export type Gutter = 'none' | 'met' | 'missed';
+/**
+ * The one column that says how a row came out, worst news first.
+ *
+ * `none` when nothing was declared, `met` when the declaration held cleanly,
+ * `warned` when it held but rbx warned about the run anyway, `missed` when it
+ * did not hold. The last two are ordered: a row that missed its declaration
+ * *and* carries a warning draws `missed`, because the miss is the more serious
+ * of the two and the warning is still spelled out in the card underneath.
+ *
+ * This used to be the match axis alone -- met or missed, nothing else -- with
+ * warnings drawn as a separate mark at the far end of the row. That put a
+ * yellow clock immediately beside the TLE verdict's own yellow clock, since a
+ * double-TL warning only ever lands on a TLE row, and the mark disappeared into
+ * the chip it sat next to. One column carrying all three states is what makes
+ * a warned row findable by scanning, which is the whole point of having a
+ * gutter.
+ */
+export type Gutter = 'none' | 'met' | 'warned' | 'missed';
 
 /**
  * What a meta span *is*, so the stylesheet can drop them in priority order.
@@ -252,8 +268,18 @@ function chip(outcome: string | undefined): VerdictChip {
   return { icon, hue: hueOfThemeColor(color), short: shortName(outcome) };
 }
 
-function matched(matches: boolean): Gutter {
-  return matches ? 'met' : 'missed';
+/**
+ * The gutter for a row that declared something, given how it came out.
+ *
+ * `missed` outranks `warned`: a solution can both miss its declaration and
+ * carry a warning, and the gutter has one glyph to spend on saying which of
+ * those the reader should look at first.
+ */
+function matched(matches: boolean, warnings: readonly RunWarning[]): Gutter {
+  if (!matches) {
+    return 'missed';
+  }
+  return warnings.length > 0 ? 'warned' : 'met';
 }
 
 /**
@@ -280,20 +306,27 @@ function declaredExpectation(expected: string | undefined): ExpectationDisplay |
  * same case for a different reason: rbx publishes the report when the solution
  * *finishes*, so mid-run there is no verdict to compare against.
  */
-function solutionGutter(run: SolutionRun): Gutter {
+function solutionGutter(run: SolutionRun, warnings: readonly RunWarning[]): Gutter {
   const expected = run.solution.expectedOutcome;
   if (expected === undefined || expected === 'ANY' || run.report === undefined) {
-    return 'none';
+    // A warning still shows, even with nothing declared to have met: rbx raised
+    // it about the run, not about the declaration. It cannot happen today --
+    // every double-TL fact needs a slow expectation to be raised against -- but
+    // swallowing a warning rbx published is the one outcome worth ruling out.
+    return warnings.length > 0 ? 'warned' : 'none';
   }
-  return matched(run.report.matchesExpectation);
+  return matched(run.report.matchesExpectation, warnings);
 }
 
 /** A group is only judged when an `outcomePerGroup` declaration covers it. */
-function groupGutter(report: GroupReport | undefined): Gutter {
+function groupGutter(
+  report: GroupReport | undefined,
+  warnings: readonly RunWarning[],
+): Gutter {
   if (report === undefined || report.expectedOutcome === undefined) {
-    return 'none';
+    return warnings.length > 0 ? 'warned' : 'none';
   }
-  return matched(report.matchesExpectation);
+  return matched(report.matchesExpectation, warnings);
 }
 
 function span(text: string | undefined, hue: Hue, role?: SpanRole): Span | undefined {
@@ -599,12 +632,12 @@ function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
 
 function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
   const { run, solo } = node;
-  const gutter = solutionGutter(run);
+  const warnings = warningsOf(run.report, true);
+  const gutter = solutionGutter(run, warnings);
   const mismatch = gutter === 'missed';
   const declared = declaredExpectation(run.solution.expectedOutcome);
   const testcases = run.groups.flatMap((group) => group.testcases);
   const verdict = chip(run.report?.outcome);
-  const warnings = warningsOf(run.report, true);
   return {
     id: nodeId(node),
     parentId,
@@ -632,7 +665,9 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
 
 function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   const { group } = node;
-  const gutter = groupGutter(group.report);
+  // No group attribution on a group row: the row is the attribution.
+  const warnings = warningsOf(group.report, false);
+  const gutter = groupGutter(group.report, warnings);
   const mismatch = gutter === 'missed';
   const verdict = chip(group.report?.outcome);
   // A group declares an expectation the same way a solution does -- through
@@ -640,8 +675,6 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   // Leaving the group level out of both is what made a run of groups that all
   // wanted a TLE look like four ordinary rows with a warning next to them.
   const declared = declaredExpectation(group.report?.expectedOutcome);
-  // No group attribution on a group row: the row is the attribution.
-  const warnings = warningsOf(group.report, false);
   return {
     id: nodeId(node),
     parentId,

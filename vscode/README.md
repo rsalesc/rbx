@@ -37,12 +37,21 @@ it, the points it earned, and the **max** time and memory across its testcases
 
 ### Warnings on a run that passed
 
-A yellow clock at the end of a row is the fourth channel, and it exists because
-the other three cannot carry it. The gutter, the chip and the label hue all
-answer some form of "did the declaration hold", and for these warnings the
-answer is *yes*: rbx sets `status: OK` and `matchesExpectation: true` on exactly
-these solutions, so a view built on those three alone draws `sols/slow.cpp`
+A **yellow triangle in the gutter** -- where a met declaration draws a green tick
+and a missed one draws a red triangle -- is a run rbx warned about even though it
+passed. `status` is `OK` and `matchesExpectation` is `true` on exactly these
+solutions, so nothing else in the view has anything to say about them: the chip
+draws its verdict, the label draws its declaration, and `sols/slow.cpp` reads
 green while `rbx run` prints a WARNING about it in the terminal.
+
+The gutter is therefore a severity column, not a match column: tick, yellow
+triangle, red triangle. A row that both missed its declaration and carries a
+warning draws the miss, because there is one glyph to spend and the miss is the
+more serious of the two -- the warning is still spelled out in the card below.
+Warnings tried living in a mark of their own at the far end of the row first,
+which failed for a reason worth recording: a double-TL warning lands only on a
+TLE row, and `watch` is already the TLE chip's icon, so the mark vanished beside
+an identical yellow clock.
 
 Today the mark carries the two double-TL facts. `rbx run` defaults to `-v4`,
 which judges at **twice** the time limit and rewrites an over-limit run to TLE,
