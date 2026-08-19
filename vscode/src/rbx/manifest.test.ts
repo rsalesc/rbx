@@ -157,6 +157,46 @@ test('a manifest that makes no sense yields no badges rather than an error', () 
   assert.deepStrictEqual(assets('solutions:\n  - path: ""\n'), []);
 });
 
+function perGroupOf(list: DeclaredAsset[], path: string) {
+  return list.find((asset) => asset.path === path)?.perGroup;
+}
+
+test('a solution carries its per-group overrides, in the order they were declared', () => {
+  const list = assets(`
+scoring: points
+solutions:
+  - path: sols/partial.cpp
+    outcome: incorrect
+    outcomePerGroup:
+      '*': accepted
+      group3: tle
+`);
+  assert.strictEqual(expectationOf(list, 'sols/partial.cpp'), 'INCORRECT');
+  assert.deepStrictEqual(perGroupOf(list, 'sols/partial.cpp'), [
+    { group: '*', expectation: 'ACCEPTED' },
+    { group: 'group3', expectation: 'TIME_LIMIT_EXCEEDED' },
+  ]);
+});
+
+test('a solution declaring no per-group override carries none', () => {
+  const list = assets('solutions:\n  - path: sols/main.cpp\n    outcome: ac\n');
+  assert.strictEqual(perGroupOf(list, 'sols/main.cpp'), undefined);
+});
+
+test('a half-typed outcomePerGroup costs its entries, not the solution', () => {
+  assert.strictEqual(
+    perGroupOf(assets('solutions:\n  - path: s.cpp\n    outcomePerGroup: tle\n'), 's.cpp'),
+    undefined,
+  );
+  assert.deepStrictEqual(
+    perGroupOf(
+      assets('solutions:\n  - path: s.cpp\n    outcomePerGroup:\n      main:\n      g2: ac\n'),
+      's.cpp',
+    ),
+    [{ group: 'g2', expectation: 'ACCEPTED' }],
+  );
+});
+
 test('a group nested past any real depth stops rather than spinning', () => {
   // YAML aliases can describe a cycle; rbx's schema cannot, but a hand-edited
   // file is not the schema, and an extension host that hangs is worse than a

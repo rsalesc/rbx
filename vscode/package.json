@@ -167,6 +167,11 @@
         "id": "rbx.declaredRole",
         "description": "A generator, validator, checker, interactor, visualizer or statement.",
         "defaults": { "dark": "descriptionForeground", "light": "descriptionForeground", "highContrast": "descriptionForeground" }
+      },
+      {
+        "id": "rbx.solutionBannerBackground",
+        "description": "The background of the banner above line one of a solution.",
+        "defaults": { "dark": "editorWidget.background", "light": "editorWidget.background", "highContrast": "editorWidget.background" }
       }
     ],
     "configuration": {
@@ -176,6 +181,21 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Badge the files `problem.rbx.yml` declares in the Explorer and on editor tabs: solutions with their expected outcome, everything else with its role."
+        },
+        "rbx.solutionBanner": {
+          "type": "string",
+          "enum": [
+            "banner",
+            "inline",
+            "off"
+          ],
+          "default": "banner",
+          "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do above line one of that solution.",
+          "enumDescriptions": [
+            "On a line of its own, above the first line of code.",
+            "As a chip at the start of line one. Certain to render, but it shifts the first line of code sideways.",
+            "Not at all."
+          ]
         },
         "rbx.packageSearchDepth": {
           "type": "number",

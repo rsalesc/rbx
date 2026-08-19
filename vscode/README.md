@@ -138,6 +138,58 @@ Two caveats worth knowing:
   coverage; the Explorer draws badges in the UI font. If it comes out as tofu,
   `~` and `T` are the fallbacks that keep both rules intact.
 
+## The banner above line one
+
+The Explorer badge is two characters seen out of the corner of your eye. When
+you have the solution itself open, its declaration gets a line of its own,
+above line one:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ sols/partial.cpp                                             │
+├──────────────────────────────────────────────────────────────┤
+│ ✓⧖  accepted-or-tle · each group: accepted · group3: tle      │
+├──────────────────────────────────────────────────────────────┤
+│ 1  #include <bits/stdc++.h>                                  │
+│ 2  using namespace std;                                      │
+```
+
+Left is what `problem.rbx.yml` declares: the pooled `outcome` first, then every
+`outcomePerGroup` override in the order it was written. Both layers are shown
+because rbx checks both -- `outcome` against the whole testset, each override
+against one group's tests alone -- and a solution fails if either misses. `*`
+reads as **each group**, because it is not a group name. The badge and the
+colour come from the same tables the Explorer badge does, so the Explorer, the
+editor tab and this line cannot disagree about the same file.
+
+Outcomes are spelled the way the manifest spells them (`accepted-or-tle`, not
+`AC or TLE`); the hover says the same thing in the labels the run view and the
+terminal use.
+
+**The right-hand slot is reserved and ships empty.** That is where the last run
+goes -- verdict, worst time against the limit, points, and the fact of a miss.
+It is deliberately a separate issue, because it carries the questions this one
+does not have to answer: which run, how stale is too stale, and what it says
+when there has never been a run.
+
+### There is no banner API
+
+VS Code has none, so the line is a `before` attachment on a whole-line
+decoration, forced onto its own line with `display: block` injected through
+`textDecoration`. That is a CSS trick on an undocumented surface -- it works
+because VS Code interpolates `textDecoration` into the generated `::before`
+rule without sanitising it -- and `rbx.solutionBanner` is the way out if it ever
+stops working:
+
+| Value | Draws |
+|---|---|
+| `banner` (default) | a line of its own above line one |
+| `inline` | the same text as a chip at the start of line one -- certain to render, but it shifts the first line of code sideways |
+| `off` | nothing |
+
+The alternative that is *not* a trick -- `createWebviewTextEditorInset` -- is
+still proposed API and cannot ship in a published extension.
+
 ## Status
 
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):

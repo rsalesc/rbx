@@ -19,6 +19,21 @@
 import { Role, moreSpecific } from './role';
 import { Wire, asArray, asRecord, asString, field } from './wire';
 
+/**
+ * One entry of a solution's `outcomePerGroup`, resolved the same way `outcome`
+ * is.
+ *
+ * A list rather than a record because the order is the one the setter wrote,
+ * and that is the order it is read back in: `outcomePerGroup` is a stack of
+ * overrides, `'*'` usually first, and re-sorting it would make a banner read
+ * differently from the file it describes.
+ */
+export interface PerGroupExpectation {
+  /** A top-level group name, or the wildcard `*`. */
+  readonly group: string;
+  readonly expectation: string;
+}
+
 /** One file `problem.rbx.yml` names, and what it named it as. */
 export interface DeclaredAsset {
   /** As written in the manifest: relative to the package root. */
@@ -31,6 +46,17 @@ export interface DeclaredAsset {
    * showing it raw.
    */
   readonly expectation?: string;
+  /**
+   * For solutions: the declared `outcomePerGroup`, in declaration order, and
+   * absent rather than empty when nothing was declared.
+   *
+   * This is a *second* layer of expectations, not a refinement of the first:
+   * rbx keeps matching `outcome` against the whole testset while checking each
+   * entry here against one group's tests alone, and a solution fails if either
+   * layer does. So both have to be shown, and neither can stand in for the
+   * other.
+   */
+  readonly perGroup?: readonly PerGroupExpectation[];
 }
 
 /**
@@ -93,23 +119,29 @@ export function normalizeExpectation(spelled: string): string {
 class Collector {
   private readonly byPath = new Map<string, DeclaredAsset>();
 
-  add(rawPath: Wire, role: Role, expectation?: string): void {
+  add(
+    rawPath: Wire,
+    role: Role,
+    expectation?: string,
+    perGroup?: readonly PerGroupExpectation[],
+  ): void {
     const declared = asString(rawPath);
     if (declared === undefined || declared === '') {
       return;
     }
     const existing = this.byPath.get(declared);
     if (existing === undefined) {
-      this.byPath.set(declared, { path: declared, role, expectation });
+      this.byPath.set(declared, { path: declared, role, expectation, perGroup });
       return;
     }
     const winner = moreSpecific(existing.role, role);
     this.byPath.set(declared, {
       path: declared,
       role: winner,
-      // A solution's expectation survives a second, less specific claim on the
-      // same file: it is the only field either claim carries any data in.
+      // A solution's expectations survive a second, less specific claim on the
+      // same file: they are the only fields either claim carries any data in.
       expectation: existing.expectation ?? expectation,
+      perGroup: existing.perGroup ?? perGroup,
     });
   }
 
@@ -121,6 +153,30 @@ class Collector {
   assets(): DeclaredAsset[] {
     return [...this.byPath.values()];
   }
+}
+
+/**
+ * One solution's `outcomePerGroup`, or `undefined` when it declares none.
+ *
+ * Every entry is read independently, so a group whose value is still being
+ * typed -- `main:` with nothing after it -- costs that entry and leaves the
+ * rest of the declaration readable. That matters more here than elsewhere: a
+ * mapping is half-written for as long as it takes to type the next line.
+ */
+function perGroupExpectations(raw: Wire): readonly PerGroupExpectation[] | undefined {
+  const record = asRecord(raw);
+  if (record === undefined) {
+    return undefined;
+  }
+  const entries: PerGroupExpectation[] = [];
+  for (const [group, spelled] of Object.entries(record)) {
+    const value = asString(spelled);
+    if (group === '' || value === undefined) {
+      continue;
+    }
+    entries.push({ group, expectation: normalizeExpectation(value) });
+  }
+  return entries.length === 0 ? undefined : entries;
 }
 
 /**
@@ -177,6 +233,7 @@ export function parseManifest(raw: Wire): DeclaredAsset[] {
       // states look different on purpose: `?` says "runs, nothing promised",
       // and a bare file name says "rbx has never heard of this file".
       spelled === undefined ? 'ANY' : normalizeExpectation(spelled),
+      perGroupExpectations(field(solution, 'outcomePerGroup')),
     );
   }
 
