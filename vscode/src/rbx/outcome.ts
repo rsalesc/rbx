@@ -56,7 +56,11 @@ const DISPLAY: Record<string, OutcomeDisplay> = {
     color: 'descriptionForeground',
   },
   'wrong-answer': { short: 'WA', icon: 'close', color: 'charts.red' },
-  'time-limit-exceeded': { short: 'TLE', icon: 'watch', color: 'charts.yellow' },
+  'time-limit-exceeded': {
+    short: 'TLE',
+    icon: 'watch',
+    color: 'charts.yellow',
+  },
   'idleness-limit-exceeded': {
     short: 'ILE',
     icon: 'debug-pause',
@@ -75,7 +79,11 @@ const DISPLAY: Record<string, OutcomeDisplay> = {
   },
   'judge-failed': { short: 'FL', icon: 'law', color: 'charts.purple' },
   'internal-error': { short: 'IE', icon: 'alert', color: 'charts.purple' },
-  'compilation-error': { short: 'CE', icon: 'tools', color: 'charts.blue' },
+  'compilation-error': {
+    short: 'CE',
+    icon: 'tools',
+    color: 'charts.blue',
+  },
 };
 
 /** A verdict this extension is too old to know; `XX`, as rbx renders it too. */
@@ -119,20 +127,123 @@ export function isSkipped(outcome: string | undefined): boolean {
   return outcome === 'skipped';
 }
 
+/**
+ * How each declared expectation is spelled and drawn.
+ *
+ * One record per member of `ExpectedOutcome` (rbx/box/schema.py), mirroring
+ * that enum the way `DISPLAY` above mirrors `Outcome`. It is spelled out rather
+ * than derived from `DISPLAY`, because the enums have different members --
+ * `INCORRECT`, `ANY` and `TLE_OR_RTE` exist only here, `SKIPPED` only there --
+ * and reaching an `Outcome` key by lowercasing an `ExpectedOutcome` name, which
+ * this file used to do, holds by coincidence rather than by contract.
+ *
+ * **The icon is the expectation, one to one.** In the tree this is what a
+ * solution or group row draws on its left, so two expectations that are not the
+ * same expectation must not share an icon: `ACCEPTED` and `ACCEPTED_OR_TLE` are
+ * different promises, and so are `WRONG_ANSWER` and `INCORRECT`. Where an
+ * expectation names exactly one outcome it borrows that outcome's icon from
+ * `DISPLAY`, so the two vocabularies rhyme -- an `ACCEPTED` row and an accepted
+ * testcase under it both draw `pass`. The four that name no single outcome get
+ * an icon of their own:
+ *
+ *   - `ANY`             `dash`          nothing was declared
+ *   - `ACCEPTED_OR_TLE` `pass-filled`   a pass, tolerating slow
+ *   - `INCORRECT`       `circle-slash`  must fail, any way at all
+ *   - `TLE_OR_RTE`      `flame`         must hang or crash
+ *
+ * The colours are `ExpectedOutcome.style()` transposed onto `charts.*`, the
+ * same transposition `DISPLAY` makes for `get_outcome_style_verdict`. That is
+ * exact CLI parity: `rbx run` colours each solution's column header by this
+ * function, and the header is precisely what this icon replaces. Note it does
+ * not always agree with the *outcome* palette -- a declared
+ * `OUTPUT_LIMIT_EXCEEDED` is magenta here while an OLE verdict is orange there
+ * -- because those are two different functions in rbx, and copying one onto the
+ * other would be inventing a colour rbx never prints.
+ */
+interface ExpectedDisplay {
+  /** Kept identical to what this file rendered before the table existed. */
+  readonly short: string;
+  readonly icon: string;
+  readonly color: string;
+}
+
+const EXPECTED: Record<string, ExpectedDisplay> = {
+  ANY: { short: 'ANY', icon: 'dash', color: 'foreground' },
+  ACCEPTED: { short: 'AC', icon: 'pass', color: 'charts.green' },
+  ACCEPTED_OR_TLE: {
+    short: 'AC or TLE',
+    icon: 'pass-filled',
+    color: 'charts.green',
+  },
+  WRONG_ANSWER: { short: 'WA', icon: 'close', color: 'charts.red' },
+  INCORRECT: { short: 'INCORRECT', icon: 'circle-slash', color: 'charts.red' },
+  RUNTIME_ERROR: { short: 'RTE', icon: 'zap', color: 'charts.blue' },
+  TIME_LIMIT_EXCEEDED: {
+    short: 'TLE',
+    icon: 'watch',
+    color: 'charts.yellow',
+  },
+  TLE_OR_RTE: { short: 'TLE or RTE', icon: 'flame', color: 'charts.yellow' },
+  MEMORY_LIMIT_EXCEEDED: {
+    short: 'MLE',
+    icon: 'server',
+    color: 'charts.yellow',
+  },
+  OUTPUT_LIMIT_EXCEEDED: {
+    short: 'OLE',
+    icon: 'arrow-both',
+    color: 'charts.purple',
+  },
+  JUDGE_FAILED: { short: 'FL', icon: 'law', color: 'charts.purple' },
+  COMPILATION_ERROR: { short: 'CE', icon: 'tools', color: 'charts.blue' },
+};
+
+/** Whether a run honoured what the package declared for it. */
+export type ExpectationStatus = 'met' | 'missed' | 'unknown';
+
+/**
+ * The mark a mismatched row wears on its right.
+ *
+ * `FileDecoration.badge` is a `string`, so this is the one place a codicon
+ * cannot go. It is not a second vocabulary though -- it says nothing about
+ * *which* expectation or *which* verdict, only that the two disagree, and it
+ * appears on no other row.
+ */
+export const MISMATCH_BADGE = '✗';
+
 /** Display form of an expectation, e.g. `ACCEPTED_OR_TLE` -> `AC or TLE`. */
 export function expectedShortName(expected: string | undefined): string {
-  switch (expected) {
-    case undefined:
-      return '?';
-    case 'ANY':
-      return 'ANY';
-    case 'ACCEPTED_OR_TLE':
-      return 'AC or TLE';
-    case 'TLE_OR_RTE':
-      return 'TLE or RTE';
-    case 'INCORRECT':
-      return 'INCORRECT';
-    default:
-      return shortName(expected.toLowerCase().replace(/_/g, '-'));
+  if (expected === undefined) {
+    return '?';
   }
+  // `XX`, matching how an unknown *outcome* reads: an expectation this
+  // extension is too old to know is named as unknown, never guessed at.
+  return EXPECTED[expected]?.short ?? UNKNOWN.short;
+}
+
+/**
+ * The icon and colour a row draws for what it was declared to do.
+ *
+ * Absent when nothing was declared or the declaration comes from an rbx newer
+ * than this extension; the caller then falls back to what actually happened,
+ * which is the only thing it still knows.
+ */
+export function expectationIcon(
+  expected: string | undefined,
+): OutcomeIcon | undefined {
+  const display = expected === undefined ? undefined : EXPECTED[expected];
+  return display === undefined
+    ? undefined
+    : { icon: display.icon, color: display.color };
+}
+
+/**
+ * The colour a row's *label* takes for whether that declaration held.
+ *
+ * Only a miss is coloured, and it is the one thing in the view that is: a row
+ * whose text is red is a row where the package disagrees with itself. Verdict
+ * colour lives in the icon, so this channel is free to mean exactly one thing.
+ */
+export function expectationColor(status: ExpectationStatus): string | undefined {
+  return status === 'missed' ? 'charts.red' : undefined;
 }

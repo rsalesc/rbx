@@ -81,8 +81,19 @@ function scorePart(score: number, maxScore: number): string | undefined {
  * the deliberate cost of having no aggregation here: a "worst verdict so far"
  * computed in this file is exactly the duplication the report exists to remove.
  */
-export function pendingDescription(progress: Progress): string {
-  return progress.total === 0 ? 'pending' : `${progress.done}/${progress.total}`;
+export function pendingDescription(
+  progress: Progress,
+  expected?: string,
+): string {
+  const done = progress.total === 0 ? 'pending' : `${progress.done}/${progress.total}`;
+  // What a solution promises comes from the skeleton, so it is known before the
+  // run starts and all the way through it -- the one thing a row can say while
+  // it has no verdict yet. `ANY` promises nothing and is left out.
+  const declared =
+    expected === undefined || expected === 'ANY'
+      ? undefined
+      : `expects ${expectedShortName(expected)}`;
+  return join([declared, done]);
 }
 
 export function groupDescription(
@@ -92,11 +103,11 @@ export function groupDescription(
   if (report === undefined) {
     return pendingDescription(progress);
   }
-  // A group that missed its own declared expectation is the finding worth
-  // leading with, the way rbx's `_group_failure_lines` does.
+  // Only what happened. What was *wanted* is the row's icon, so spelling it
+  // out again here would cost the width that the score and timings need.
   const verdict = report.matchesExpectation
     ? shortName(report.outcome)
-    : `expected ${expectedShortName(report.expectedOutcome)}, got ${shortName(report.outcome)}`;
+    : `got ${shortName(report.outcome)}`;
   return join([
     progressPart(progress),
     verdict,
@@ -109,9 +120,10 @@ export function groupDescription(
 export function solutionDescription(
   report: SolutionReport | undefined,
   progress: Progress,
+  expected?: string,
 ): string {
   if (report === undefined) {
-    return pendingDescription(progress);
+    return pendingDescription(progress, expected);
   }
   return join([
     progressPart(progress),
@@ -126,20 +138,21 @@ export function solutionDescription(
  * The headline finding: a solution that did not behave as declared.
  *
  * A solution declares its expectations in two layers and rbx checks both, so
- * saying which one failed matters. `sols/mislabeled.cpp` in the
- * `outcome-per-group` fixture satisfies its pooled `INCORRECT` -- it does fail
- * somewhere -- and is caught only by its per-group expectations. Rendering that
- * as "expected INCORRECT, got WA" would name an expectation that was in fact
- * met.
+ * saying which one failed matters. `sols/mislabeled-groups.cpp` in the sample
+ * package satisfies its pooled `INCORRECT` -- it does fail somewhere -- and is
+ * caught only by its per-group expectations. Naming the pooled expectation
+ * there would accuse one that was in fact met, so the groups are named instead.
+ *
+ * The declared expectation itself is never spelled out: it is the row's icon.
  */
 function solutionVerdict(report: SolutionReport): string {
   if (report.matchesExpectation) {
     return shortName(report.outcome);
   }
   if (report.failedGroups.length > 0) {
-    return `${shortName(report.outcome)} · failed ${report.failedGroups.join(', ')}`;
+    return `failed ${report.failedGroups.join(', ')}`;
   }
-  return `expected ${expectedShortName(report.expectedOutcome)}, got ${shortName(report.outcome)}`;
+  return `got ${shortName(report.outcome)}`;
 }
 
 /**

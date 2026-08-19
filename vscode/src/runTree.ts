@@ -5,13 +5,20 @@
  * API is shaped around *running* tests, which this extension deliberately never
  * does -- execution stays in the terminal, and rbx keeps sole ownership of it.
  */
-import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { runUri } from './decorations';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
+import { groupExpectation, solutionExpectation } from './rbx/expectation';
 import { PackageLayout } from './rbx/layout';
-import { expectedShortName, isAccepted, outcomeIcon, shortName } from './rbx/outcome';
+import {
+  expectationIcon,
+  expectedShortName,
+  isAccepted,
+  outcomeIcon,
+  shortName,
+} from './rbx/outcome';
 import {
   ArtifactStore,
   GroupRun,
@@ -77,6 +84,62 @@ export interface TestcaseNode {
 function themeIconFor(outcome: string | undefined): vscode.ThemeIcon {
   const { icon, color } = outcomeIcon(outcome);
   return new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
+}
+
+/**
+ * The icon for a row that has a declared expectation: the *expectation*, not
+ * the verdict.
+ *
+ * A solution row is not a result, it is a claim the package makes -- `rbx run`
+ * says the same thing by heading each solution's column with `solution.href()`
+ * coloured by `ExpectedOutcome.full_style()`, and putting verdicts in the cells
+ * below. What the run actually produced is in this row's description, and in
+ * the testcase rows underneath, which keep the verdict icons from #664.
+ *
+ * Falls back to the verdict when nothing was declared or the declaration is
+ * newer than this extension: the row then shows the only thing still known
+ * about it.
+ */
+function expectationThemeIcon(
+  declared: string | undefined,
+  outcome: string | undefined,
+): vscode.ThemeIcon {
+  const expectation = expectationIcon(declared);
+  if (expectation === undefined) {
+    return themeIconFor(outcome);
+  }
+  return new vscode.ThemeIcon(
+    expectation.icon,
+    new vscode.ThemeColor(expectation.color),
+  );
+}
+
+/**
+ * The per-group breakdown, for the hover of a row that missed.
+ *
+ * Only the groups that actually missed, each naming both sides -- the same
+ * lines `_group_failure_lines` prints, which is the detail you would otherwise
+ * have to go back to the terminal for.
+ */
+function appendGroupFailures(
+  tooltip: vscode.MarkdownString,
+  groups: readonly GroupRun[],
+): void {
+  const missed = groups.filter(
+    (group) => group.report !== undefined && !group.report.matchesExpectation,
+  );
+  if (missed.length === 0) {
+    return;
+  }
+  tooltip.appendMarkdown('\nGroups that did not match:\n\n');
+  for (const group of missed) {
+    const report = group.report;
+    tooltip.appendMarkdown(
+      `- \`${group.name}\`: expected ${expectedShortName(report?.expectedOutcome)}, ` +
+        `got ${shortName(report?.outcome)}\n`,
+    );
+  }
+  tooltip.appendMarkdown('\n');
 }
 
 function testcaseItem(node: TestcaseNode): vscode.TreeItem {
@@ -178,17 +241,30 @@ function groupItem(node: GroupNode): vscode.TreeItem {
     vscode.TreeItemCollapsibleState.Expanded,
   );
   item.id = `${node.pkg.root}::${node.run.solution.index}::${node.group.name}`;
-  item.contextValue = 'rbx.group';
+  const expectation = groupExpectation(node.group);
+  item.contextValue =
+    expectation?.status === 'missed' ? 'rbx.group.mismatch' : 'rbx.group';
+  // Rows are addressed by a synthetic URI so the decoration provider can reach
+  // them; it draws nothing for a group that declared no expectation of its own.
+  item.resourceUri = runUri(node.pkg, node.run.solution.index, node.group.name);
 
   const report = node.group.report;
   const progress = progressOf(node.group.testcases);
-  item.iconPath = themeIconFor(report?.outcome);
+  // A group only has an expectation when `outcomePerGroup` covers it; otherwise
+  // the verdict is the only thing it has to show.
+  item.iconPath = expectationThemeIcon(expectation?.declared, report?.outcome);
   item.description = groupDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();
+  tooltip.supportThemeIcons = true;
   tooltip.appendMarkdown(`**${node.group.name}**\n\n`);
-  if (report?.expectedOutcome !== undefined) {
-    tooltip.appendMarkdown(`Expected: ${expectedShortName(report.expectedOutcome)}\n\n`);
+  if (expectation !== undefined) {
+    tooltip.appendMarkdown(
+      expectation.status === 'missed'
+        ? `$(error) **Expected ${expectedShortName(expectation.declared)}, got ` +
+            `${shortName(report?.outcome)}**\n\n`
+        : `Expected: ${expectedShortName(expectation.declared)}\n\n`,
+    );
   }
   appendSummary(tooltip, report, progress, node.group.testcases);
   item.tooltip = tooltip;
@@ -204,25 +280,43 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
       : vscode.TreeItemCollapsibleState.Collapsed,
   );
   item.id = `${node.pkg.root}::${solution.index}`;
-  item.contextValue = 'rbx.solution';
-  item.resourceUri = vscode.Uri.file(path.join(node.pkg.root, solution.path));
+  // A synthetic URI, not the solution's own file: decorations are global per
+  // URI, and pointing at the file would mark it in the Explorer and on its
+  // editor tab too. Nothing else in the extension reads `resourceUri` -- the
+  // commands all take the node.
+  item.resourceUri = runUri(node.pkg, solution.index);
 
   const report = node.run.report;
+  const expectation = solutionExpectation(node.run);
+  // Suffixed rather than replaced: the existing menu `when` clauses match
+  // `viewItem` by prefix regex, so they keep applying to a mismatched row.
+  item.contextValue =
+    expectation?.status === 'missed' ? 'rbx.solution.mismatch' : 'rbx.solution';
   const testcases = node.run.groups.flatMap((group) => group.testcases);
   const progress = progressOf(testcases);
-  item.iconPath = themeIconFor(report?.outcome);
-  item.description = solutionDescription(report, progress);
+  item.iconPath = expectationThemeIcon(solution.expectedOutcome, report?.outcome);
+  item.description = solutionDescription(report, progress, solution.expectedOutcome);
 
   const tooltip = new vscode.MarkdownString();
+  tooltip.supportThemeIcons = true;
   tooltip.appendMarkdown(`**${solution.path}**\n\n`);
-  // The skeleton's declared expectation, which is there even before the report.
-  tooltip.appendMarkdown(`Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`);
-  appendSummary(tooltip, report, progress, testcases);
-  // rbx names the groups that missed their own expectation; which layer caught
-  // the solution -- pooled or per-group -- is its call, already made.
-  if (report !== undefined && report.failedGroups.length > 0) {
-    tooltip.appendMarkdown(`\nFailing groups: ${report.failedGroups.join(', ')}\n`);
+  if (expectation?.status === 'missed') {
+    // Lead with the miss, and say which layer caught it. A solution can satisfy
+    // its pooled expectation and still be caught per group, and naming the
+    // pooled one there would accuse an expectation that was met.
+    tooltip.appendMarkdown(
+      report !== undefined && report.failedGroups.length > 0
+        ? `$(error) **Declared ${expectedShortName(solution.expectedOutcome)}, but ` +
+            `${report.failedGroups.length} group(s) did not match**\n\n`
+        : `$(error) **Expected ${expectedShortName(solution.expectedOutcome)}, got ` +
+            `${shortName(report?.outcome)}**\n\n`,
+    );
+  } else {
+    // From the skeleton, so it is there even before the report is.
+    tooltip.appendMarkdown(`Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`);
   }
+  appendSummary(tooltip, report, progress, testcases);
+  appendGroupFailures(tooltip, node.run.groups);
   item.tooltip = tooltip;
   return item;
 }
@@ -293,6 +387,12 @@ export class RunTreeProvider implements vscode.TreeDataProvider<RunNode> {
 
   report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
+  }
+
+  /** Packages discovered so far. For the decoration provider, which is addressed
+   * by URI and so has to map one back to the package that owns it. */
+  knownPackages(): readonly PackageLayout[] {
+    return this.packages;
   }
 
   getTreeItem(node: RunNode): vscode.TreeItem {

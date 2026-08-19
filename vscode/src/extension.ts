@@ -11,7 +11,9 @@ import * as vscode from 'vscode';
 
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
+import { ExpectationDecorationProvider } from './decorations';
 import { initLog, log } from './log';
+import { mismatchCount } from './rbx/expectation';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
 import { RunTreeProvider } from './runTree';
 
@@ -38,13 +40,44 @@ export function activate(context: vscode.ExtensionContext): void {
   log('rbx extension activated.');
   const tree = new RunTreeProvider();
 
+  // `createTreeView` rather than `registerTreeDataProvider`: the returned handle
+  // is the only way to set the view badge, which is how a solution that missed
+  // its expectation stays visible with the view collapsed.
+  const view = vscode.window.createTreeView('rbx.run', { treeDataProvider: tree });
+  const decorations = new ExpectationDecorationProvider(tree);
+
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('rbx.run', tree),
+    view,
+    decorations,
+    vscode.window.registerFileDecorationProvider(decorations),
     vscode.workspace.registerFileSystemProvider(SCHEME, new ArtifactFileSystemProvider(), {
       isReadonly: true,
       isCaseSensitive: true,
     }),
   );
+
+  /**
+   * Count the solutions that missed what they declared, across every package.
+   *
+   * Only *misses* are counted, not failures: a solution declared WRONG_ANSWER
+   * that answers wrongly did what the package asked of it, and badging it would
+   * report the package's own test suite as a problem.
+   */
+  const updateBadge = async () => {
+    let missed = 0;
+    for (const pkg of tree.knownPackages()) {
+      const run = await tree.report(pkg);
+      missed += mismatchCount(run?.solutions ?? []);
+    }
+    view.badge =
+      missed === 0
+        ? undefined
+        : {
+            value: missed,
+            tooltip: `${missed} solution${missed === 1 ? '' : 's'} did not match its expectation`,
+          };
+  };
+  context.subscriptions.push(tree.onDidChangeTreeData(() => void updateBadge()));
 
   registerCommands(context, tree);
 
