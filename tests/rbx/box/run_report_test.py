@@ -166,9 +166,61 @@ def test_per_group_expectations_are_carried_through(
     # The pooled `incorrect` holds -- it does fail somewhere -- so only the
     # per-group layer catches this solution.
     assert entry.matchesExpectation is False
+    # ...and the two layers are published apart, so a client can say *which* of
+    # them was missed instead of blaming the one that held.
+    assert entry.pooledMatchesExpectation is True
     assert entry.failedGroups == ['small', 'big']
     assert entry.groups[0].expectedOutcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED
     assert entry.groups[0].matchesExpectation is False
+
+
+def test_a_missed_pooled_expectation_is_published_as_such(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """The other side of the pair: nothing per-group, the pooled layer missed."""
+    solution = Solution(
+        path=tmp_path / 'optimistic.cpp', outcome=ExpectedOutcome.ACCEPTED
+    )
+    skeleton = mock_skeleton([solution], entries_per_group={'small': 1, 'big': 1})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.WRONG_ANSWER),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.matchesExpectation is False
+    assert entry.pooledMatchesExpectation is False
+    assert entry.failedGroups == []
+
+
+def test_an_expected_score_range_is_published(
+    tmp_path, mock_skeleton, mock_points_scoring
+):
+    """`status` alone says a score was wrong but never what was wanted."""
+    solution = Solution(
+        path=tmp_path / 'partial.cpp',
+        outcome=ExpectedOutcome.INCORRECT,
+        score=(40, 60),
+    )
+    skeleton = mock_skeleton(
+        [solution],
+        entries_per_group={'small': 1, 'big': 1},
+        scores_per_group={'small': 40, 'big': 60},
+    )
+    evals = [
+        make_evaluation(Outcome.WRONG_ANSWER),
+        make_evaluation(Outcome.WRONG_ANSWER),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    assert entry.status == 'UNEXPECTED_SCORE'
+    assert entry.expectedScore == (40, 60)
+    assert entry.score == 0
+    # The verdicts were exactly what INCORRECT asked for; only the score was not.
+    assert entry.pooledMatchesExpectation is True
+    assert entry.failedGroups == []
 
 
 def test_every_outcome_survives_the_published_report():

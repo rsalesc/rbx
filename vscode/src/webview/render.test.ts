@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import type { Row, RunViewModel } from '../rbx/viewModel';
@@ -92,9 +94,30 @@ const MISLABELED = row({
   mismatch: true,
   expandable: true,
   verdict: { icon: 'close', hue: 'red', short: 'WA' },
-  search: 'sols/mislabeled.cpp wa mismatch',
+  expectation: { label: 'INCORRECT', hue: 'red', bold: false, glyph: '\u2717' },
+  search: 'sols/mislabeled.cpp wa incorrect mismatch',
   detail: {
-    mismatch: { declared: 'INCORRECT', observed: 'WA', failedGroups: ['small', 'big'] },
+    // The trap this card exists for: the pooled INCORRECT *held*, so there is
+    // no `pooled` clause -- only the per-group layer failed.
+    mismatch: {
+      pooledHeld: 'INCORRECT',
+      groups: [
+        {
+          name: 'small',
+          declared: 'TLE',
+          declaredHue: 'yellow',
+          observed: 'AC',
+          observedHue: 'green',
+        },
+        {
+          name: 'big',
+          declared: 'TLE',
+          declaredHue: 'yellow',
+          observed: 'WA',
+          observedHue: 'red',
+        },
+      ],
+    },
     histogram: [],
   },
 });
@@ -215,6 +238,58 @@ test('indentation grows with depth and the twisty column survives on a leaf', ()
   assert.ok(html.includes('<span class="gutter gutter-met">'), html);
 });
 
+test('the meta line carries its roles and no separator elements of its own', () => {
+  // The separators are drawn by the stylesheet, as a `::before` on every span
+  // but the first. Emitting them here instead would leave one behind whenever
+  // the ladder hides the span it divides, trailing a `·` off a narrowed row.
+  const solution = row({
+    id: 'sol0',
+    kind: 'solution',
+    label: 'sols/main.cpp',
+    meta: [
+      { text: '[70/100]', hue: 'neutral', role: 'score' },
+      { text: '120 ms', hue: 'dim', role: 'time' },
+      { text: '2 KiB', hue: 'dim', role: 'memory' },
+    ],
+  });
+  const html = renderTree(model([solution]), state({}));
+  assert.ok(html.includes('<span class="span span-score hue-neutral">[70/100]</span>'), html);
+  assert.ok(html.includes('<span class="span span-time hue-dim">120 ms</span>'), html);
+  assert.ok(html.includes('<span class="span span-memory hue-dim">2 KiB</span>'), html);
+  // No `.sep` inside the meta line -- the stylesheet owns those now.
+  const meta = html.slice(html.indexOf('<span class="meta">'), html.indexOf('</span></span>'));
+  assert.ok(!meta.includes('class="sep"'), meta);
+});
+
+test('the responsive ladder hides a suffix of the meta line, score last', () => {
+  // Pinned as a table because the *order* is the design, and it is expressed in
+  // a stylesheet no unit test renders. The separator scheme in `metaCell` is
+  // only correct while hiding removes a suffix: if a future breakpoint hid the
+  // score while keeping the memory, the surviving line would start with a `·`.
+  // The compiled test sits in out-test/webview; the stylesheet it is asserting
+  // about is the source one, two levels up.
+  const css = readFileSync(join(__dirname, '..', '..', 'src', 'webview', 'style.css'), 'utf8');
+  const widthOf = (selector: string): number => {
+    // The last query that names the selector is the width it disappears at.
+    const queries = [...css.matchAll(/@container \(max-width: (\d+)px\)\s*\{([\s\S]*?)\n\}/g)];
+    const hit = queries.find((q) => q[2].includes(selector));
+    assert.ok(hit !== undefined, `no breakpoint hides ${selector}`);
+    return Number(hit[1]);
+  };
+  const expectation = widthOf('.expectation {');
+  const memory = widthOf('.span-memory');
+  const time = widthOf('.span-time');
+  const verdictName = widthOf('.verdict-name');
+  const verdict = widthOf('.verdict {');
+  // Strictly descending: each survives the one before it.
+  assert.ok(
+    expectation > memory && memory > time && time > verdictName && verdictName > verdict,
+    `ladder out of order: ${[expectation, memory, time, verdictName, verdict].join(' > ')}`,
+  );
+  // The score is never named by any of them.
+  assert.ok(!css.includes('.span-score'), 'the score must outlive every breakpoint');
+});
+
 test('a row with no meta emits no meta column, and one with meta does', () => {
   const html = renderTree(
     model([MAIN, MAIN_GROUP, MAIN_CASE]),
@@ -242,12 +317,22 @@ test('a detail card only appears under an expanded solution', () => {
   assert.ok(renderTree(TREE, state({ expanded: new Set(['sol1']) })).includes('class="detail"'));
 });
 
-test('the mismatch card names every failing group in a sentence', () => {
+test('a group-only miss says which declaration held and what each group wanted', () => {
   const html = renderTree(TREE, state({ expanded: new Set(['sol1']) }));
-  assert.ok(html.includes('Declared INCORRECT, but small, big did not match.'), html);
+  // The correction, in one assertion: the pooled INCORRECT is named as having
+  // *held*, and the groups are paired with the TLE they actually missed. The
+  // sentence this replaces read `Declared INCORRECT, but small, big did not
+  // match.`, which attached the groups to the one declaration that was met.
+  assert.ok(html.includes('INCORRECT held for the solution as a whole'), html);
+  assert.ok(html.includes('2 groups missed their <code>outcomePerGroup</code>'), html);
+  assert.ok(html.includes('<span class="group-name">small</span>'), html);
+  assert.ok(html.includes('<span class="hue-yellow">TLE</span>'), html);
+  assert.ok(html.includes('<span class="hue-green">AC</span>'), html);
+  // ...and nothing anywhere claims the solution's own declaration was missed.
+  assert.ok(!html.includes('Declared <span class="hue-red">INCORRECT</span>'), html);
 });
 
-test('the mismatch card names the observed outcome when no group is named', () => {
+test('a pooled miss is stated as a declared/got pair and nothing more', () => {
   const caught = row({
     id: 'sol2',
     kind: 'solution',
@@ -256,12 +341,81 @@ test('the mismatch card names the observed outcome when no group is named', () =
     mismatch: true,
     expandable: true,
     detail: {
-      mismatch: { declared: 'INCORRECT', observed: 'AC', failedGroups: [] },
+      mismatch: {
+        pooled: {
+          declared: 'AC',
+          declaredHue: 'green',
+          observed: 'WA',
+          observedHue: 'red',
+        },
+        groups: [],
+      },
       histogram: [],
     },
   });
   const html = renderTree(model([caught]), state({ expanded: new Set(['sol2']) }));
-  assert.ok(html.includes('Declared INCORRECT, but got AC.'), html);
+  assert.ok(html.includes('Declared <span class="hue-green">AC</span>'), html);
+  assert.ok(html.includes('<span class="hue-red">WA</span>'), html);
+  assert.ok(!html.includes('outcomePerGroup'), html);
+});
+
+test('a score miss names the range that was declared', () => {
+  const caught = row({
+    id: 'sol3',
+    kind: 'solution',
+    label: 'sols/x.cpp',
+    gutter: 'missed',
+    mismatch: true,
+    expandable: true,
+    detail: {
+      mismatch: { groups: [], score: { expected: '40..60', got: '30' } },
+      histogram: [],
+    },
+  });
+  const html = renderTree(model([caught]), state({ expanded: new Set(['sol3']) }));
+  assert.ok(html.includes('Expected 40..60 pts, scored 30.'), html);
+});
+
+test('a group name in the card cannot escape into markup', () => {
+  const caught = row({
+    id: 'sol4',
+    kind: 'solution',
+    label: 'sols/x.cpp',
+    gutter: 'missed',
+    mismatch: true,
+    expandable: true,
+    detail: {
+      mismatch: {
+        groups: [
+          {
+            name: '<img src=x onerror=alert(1)>',
+            declared: 'TLE',
+            declaredHue: 'yellow',
+            observed: 'AC',
+            observedHue: 'green',
+          },
+        ],
+      },
+      histogram: [],
+    },
+  });
+  const html = renderTree(model([caught]), state({ expanded: new Set(['sol4']) }));
+  assert.ok(!html.includes('<img'), html);
+  assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'), html);
+});
+
+test('a row spells its declaration beside the verdict, and reserves the cell without one', () => {
+  // The gap the group rows fell into: the expectation had no channel of its
+  // own, so a group declaring TLE through `outcomePerGroup` could only be a
+  // hueless name with a warning next to it.
+  const html = renderTree(TREE, state({}));
+  assert.ok(
+    html.includes('<span class="expectation hue-red"><span class="expectation-name">INCORRECT'),
+    html,
+  );
+  // Reserved, not omitted, on the rows with nothing to declare -- the column
+  // has to line up for the pair to be readable straight down.
+  assert.ok(html.includes('<span class="expectation"></span>'), html);
 });
 
 test('the histogram sizes each bar by its share of the testcases', () => {

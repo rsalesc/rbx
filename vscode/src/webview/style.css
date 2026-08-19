@@ -136,7 +136,7 @@ body {
 
 .row {
   display: grid;
-  grid-template-columns: 16px 16px 1fr auto auto;
+  grid-template-columns: 16px 16px 1fr auto auto auto;
   align-items: center;
   gap: 6px;
   height: 22px;
@@ -204,6 +204,65 @@ body {
   opacity: 0.6;
 }
 
+/* The meta line's separators, drawn rather than emitted.
+   `render.ts` writes the spans with nothing between them: a separator element
+   of its own would outlive the span it divides and leave `[30/100] ·` trailing
+   off a row that had dropped its timings. Attached to the span that follows it,
+   it leaves when that span leaves -- which works because the ladder at the
+   bottom of this file only ever hides a suffix of the line. */
+.meta > .span::before {
+  content: '·';
+  margin-right: 4px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+.meta > .span:first-child::before {
+  content: none;
+}
+
+/* The declaration, immediately left of the outcome so the two read as one
+   `declared -> got` phrase. Quieter than the verdict beside it: the verdict is
+   what happened and the declaration is only what was asked for, and at equal
+   weight the row grows a second thing competing to be read first.
+
+   It grows leftwards from the verdict rather than occupying a column of its
+   own. The verdict column is fixed-width so it can be scanned straight down;
+   giving this one the same treatment would mean reserving the width of
+   `TLE or RTE` on every row in a sidebar this narrow. What has to line up is
+   the *pair*, and the pair is anchored on the right, where the arrow always
+   meets the verdict. */
+.expectation {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
+/* `TLE or RTE` is the longest label expectation.ts spells, and a member this
+   extension is too old to know is rendered under its raw name, which has no
+   bound at all. Capped so an unknown member cannot push the verdict column off
+   the panel; every member that exists today fits inside it untouched. */
+.expectation-name {
+  max-width: 10ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Inherits the colour of whatever it points *from*, in both the row and the
+   card, so the eye follows the phrase rather than the punctuation. */
+.arrow {
+  opacity: 0.6;
+}
+
+/* The row's arrow sits in a flex box that spaces it; the card's sits in running
+   text, which does not. */
+.mismatch-line .arrow {
+  margin: 0 4px;
+}
+
 .verdict {
   display: flex;
   align-items: center;
@@ -266,6 +325,14 @@ body {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  /* The icon carries the alarm; the prose does not. The card used to be red
+     throughout, which was right when it held one red sentence -- now that it
+     names two declaration layers and hues each `declared -> got` pair by what
+     it actually is, a red wash sat in front of the colours doing the work. */
+  color: var(--vscode-foreground);
+}
+
+.mismatch-card > .codicon {
   color: var(--vscode-charts-red);
 }
 
@@ -273,6 +340,53 @@ body {
   /* The sentence wraps rather than truncating: it is the one thing in the view
      that has to be read in full. */
   white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mismatch-line {
+  margin: 0;
+}
+
+.mismatch-line code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+  opacity: 0.9;
+}
+
+/* One group per line rather than a comma-separated run: each carries its own
+   declared -> got pair, and inlined they read as one long clause in which no
+   declaration is clearly attached to any group. */
+.group-misses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group-misses li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* Neither name nor pair is hued: the pair carries the colour, and the group
+   name is the thing being talked about rather than a verdict of its own. */
+.group-name {
+  color: var(--vscode-foreground);
+  min-width: 6ch;
+  overflow-wrap: anywhere;
+}
+
+.group-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .histogram {
@@ -326,8 +440,65 @@ body {
   font-family: var(--vscode-editor-font-family);
 }
 
-@container (max-width: 260px) {
-  .meta {
+/*
+ * The responsive ladder.
+ *
+ * A row has more to say than a narrow sidebar can show, so the question is not
+ * whether to drop things but in which order -- and the order is by how much
+ * each would be missed, not by how much room each frees:
+ *
+ *   1. the declaration   -- what was *asked for*. The gutter still says whether
+ *                           it was met, which is the part that needs answering
+ *                           at a glance; the card says what it was.
+ *   2. memory            -- the measurement that is almost never the one being
+ *                           looked for.
+ *   3. time              -- wanted often, but a solution is opened to study its
+ *                           timings, and the card carries the maxima.
+ *   4. the verdict       -- name first, then the icon. Losing the name costs
+ *                           little while the colour and shape remain.
+ *   5. the score         -- never. On a points problem it is the answer to the
+ *                           question the view exists to answer, and it is the
+ *                           cheapest thing on the row.
+ *
+ * Everything above the score is recoverable by widening the sidebar or opening
+ * the row. Each breakpoint is set where the label -- a path, the one thing that
+ * cannot be recovered from anywhere else -- would otherwise be squeezed past
+ * legibility.
+ */
+
+/* 1. The declaration. */
+@container (max-width: 400px) {
+  .expectation {
+    display: none;
+  }
+}
+
+/* 2. Memory. */
+@container (max-width: 330px) {
+  .span-memory {
+    display: none;
+  }
+}
+
+/* 3. Time. */
+@container (max-width: 280px) {
+  .span-time {
+    display: none;
+  }
+}
+
+/* 4a. The verdict's name, keeping its icon: the colour and the shape are most
+   of what the name says, at a tenth of the width. */
+@container (max-width: 240px) {
+  .verdict-name {
+    display: none;
+  }
+}
+
+/* 4b. The verdict entirely. Below this the row is a path and a score, which is
+   the least a row can be and still be worth drawing. */
+@container (max-width: 190px) {
+  .verdict {
     display: none;
   }
 }

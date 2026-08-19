@@ -110,21 +110,47 @@ const PARTIAL = solution(
   }),
 );
 
+// `outcome: incorrect` with `outcomePerGroup: {'*': tle}`. Both layers are
+// declared and only the per-group one is missed -- the pooled `INCORRECT` is
+// satisfied, because the solution really does fail. Naming that layer as the
+// culprit is the bug this fixture pins.
+const MISLABELED_GROUPS = [
+  group(
+    'small',
+    [testcase('000', 'accepted')],
+    groupReport({
+      name: 'small',
+      outcome: 'accepted',
+      expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+      matchesExpectation: false,
+    }),
+  ),
+  group(
+    'big',
+    [testcase('001', 'wrong-answer')],
+    groupReport({
+      name: 'big',
+      outcome: 'wrong-answer',
+      expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+      matchesExpectation: false,
+    }),
+  ),
+];
+
 const MISLABELED = solution(
   2,
   'sols/mislabeled.cpp',
   'INCORRECT',
-  [
-    group('small', [testcase('000', 'wrong-answer')]),
-    group('big', [testcase('001', 'wrong-answer')]),
-  ],
+  MISLABELED_GROUPS,
   solutionReport({
     path: 'sols/mislabeled.cpp',
     index: 2,
     expectedOutcome: 'INCORRECT',
     outcome: 'wrong-answer',
     matchesExpectation: false,
+    pooledMatchesExpectation: true,
     failedGroups: ['small', 'big'],
+    groups: MISLABELED_GROUPS.map((entry) => entry.report!),
   }),
 );
 
@@ -155,16 +181,123 @@ test('a solution that failed exactly as declared is not a mismatch', () => {
   assert.strictEqual(row.detail?.mismatch, undefined);
 });
 
-test('a solution that failed in the wrong places names the groups that caught it', () => {
+test('a solution caught only per-group blames the per-group layer, not the pooled one', () => {
   const { rows } = buildViewModel([view([MAIN, PARTIAL, MISLABELED])]);
   const row = rowById(rows, '/w/a::2');
   assert.strictEqual(row.gutter, 'missed');
   assert.strictEqual(row.mismatch, true);
+  // `pooled` absent is the whole assertion: the solution's own INCORRECT held,
+  // so nothing here may say it was missed. What is named instead is each
+  // group's own TLE, beside what that group actually did.
   assert.deepStrictEqual(row.detail?.mismatch, {
-    declared: 'INCORRECT',
-    observed: 'WA',
-    failedGroups: ['small', 'big'],
+    pooled: undefined,
+    pooledHeld: 'INCORRECT',
+    groups: [
+      {
+        name: 'small',
+        declared: 'TLE',
+        declaredHue: 'yellow',
+        observed: 'AC',
+        observedHue: 'green',
+      },
+      {
+        name: 'big',
+        declared: 'TLE',
+        declaredHue: 'yellow',
+        observed: 'WA',
+        observedHue: 'red',
+      },
+    ],
+    score: undefined,
   });
+});
+
+test('a solution caught by its pooled declaration blames that one, and no group', () => {
+  const optimistic = solution(
+    0,
+    'sols/optimistic.cpp',
+    'ACCEPTED',
+    [group('big', [testcase('000', 'wrong-answer')], groupReport({ name: 'big' }))],
+    solutionReport({
+      path: 'sols/optimistic.cpp',
+      expectedOutcome: 'ACCEPTED',
+      outcome: 'wrong-answer',
+      matchesExpectation: false,
+      pooledMatchesExpectation: false,
+    }),
+  );
+  const { rows } = buildViewModel([view([optimistic])]);
+  assert.deepStrictEqual(rowById(rows, '/w/a::0').detail?.mismatch, {
+    pooled: { declared: 'AC', declaredHue: 'green', observed: 'WA', observedHue: 'red' },
+    // Not named as held: it is the layer that failed.
+    pooledHeld: undefined,
+    groups: [],
+    score: undefined,
+  });
+});
+
+test('a report from an rbx with no pooled flag still blames the right layer', () => {
+  // The field was added with this card; a report already on disk predates it.
+  // With no failing group to explain the miss, the pooled layer is the only
+  // thing left that can have caused it.
+  const stale = solution(
+    0,
+    'sols/optimistic.cpp',
+    'ACCEPTED',
+    [],
+    solutionReport({
+      path: 'sols/optimistic.cpp',
+      expectedOutcome: 'ACCEPTED',
+      outcome: 'wrong-answer',
+      matchesExpectation: false,
+    }),
+  );
+  const { rows } = buildViewModel([view([stale])]);
+  assert.strictEqual(rowById(rows, '/w/a::0').detail?.mismatch?.pooled?.declared, 'AC');
+});
+
+test('a solution that only missed its score range says so, and accuses no verdict', () => {
+  const scored = solution(
+    0,
+    'sols/partial.cpp',
+    'INCORRECT',
+    [],
+    solutionReport({
+      path: 'sols/partial.cpp',
+      expectedOutcome: 'INCORRECT',
+      outcome: 'wrong-answer',
+      status: 'UNEXPECTED_SCORE',
+      matchesExpectation: false,
+      pooledMatchesExpectation: true,
+      score: 30,
+      maxScore: 100,
+      expectedScore: [40, 60],
+    }),
+  );
+  const { rows } = buildViewModel([view([scored])]);
+  const mismatch = rowById(rows, '/w/a::0').detail?.mismatch;
+  assert.strictEqual(mismatch?.pooled, undefined);
+  assert.deepStrictEqual(mismatch?.score, { expected: '40..60', got: '30' });
+});
+
+test('an open-ended score range is not given a ceiling rbx never declared', () => {
+  const scored = solution(
+    0,
+    'sols/partial.cpp',
+    'INCORRECT',
+    [],
+    solutionReport({
+      expectedOutcome: 'INCORRECT',
+      outcome: 'wrong-answer',
+      status: 'UNEXPECTED_SCORE',
+      matchesExpectation: false,
+      pooledMatchesExpectation: true,
+      score: 30,
+      expectedScore: [40, 1e9],
+    }),
+  );
+  const { rows } = buildViewModel([view([scored])]);
+  assert.strictEqual(rowById(rows, '/w/a::0').detail?.mismatch?.score?.expected, '40..');
 });
 
 test('only the solution that missed its declaration is counted', () => {
@@ -220,12 +353,15 @@ test('a finished solution shows score, time and memory but never its verdict', (
   );
   const { rows } = buildViewModel([view([finished])]);
   const row = rowById(rows, '/w/a::0');
+  // Roles included, and in this order: the stylesheet hides a *suffix* of this
+  // line as the sidebar narrows, so the order is the priority and the score
+  // being ahead of both measurements is what keeps it on screen longest.
   assert.deepStrictEqual(row.meta, [
-    { text: '[70/100 pts]', hue: 'neutral' },
-    { text: '120 ms', hue: 'dim' },
-    { text: '2 KiB', hue: 'dim' },
+    { text: '[70/100]', hue: 'neutral', role: 'score' },
+    { text: '120 ms', hue: 'dim', role: 'time' },
+    { text: '2 KiB', hue: 'dim', role: 'memory' },
   ]);
-  assert.deepStrictEqual(row.detail?.score, '[70/100 pts]');
+  assert.deepStrictEqual(row.detail?.score, '[70/100]');
   assert.deepStrictEqual(row.detail?.maxTime, '120 ms');
   assert.deepStrictEqual(row.detail?.maxMemory, '2 KiB');
 });
@@ -251,14 +387,43 @@ test('only a group with its own outcomePerGroup declaration gets a gutter', () =
     solutionReport({ expectedOutcome: 'INCORRECT', outcome: 'wrong-answer' }),
   );
   const { rows } = buildViewModel([view([declared])]);
-  assert.strictEqual(rowById(rows, '/w/a::0::small').gutter, 'none');
-  assert.strictEqual(rowById(rows, '/w/a::0::big').gutter, 'missed');
-  assert.strictEqual(rowById(rows, '/w/a::0::big').mismatch, true);
-  // A group carries no expectation of its own to hue by; the declaration is a
-  // property of the solution.
-  assert.strictEqual(rowById(rows, '/w/a::0::big').labelHue, undefined);
+  const small = rowById(rows, '/w/a::0::small');
+  const big = rowById(rows, '/w/a::0::big');
+  assert.strictEqual(small.gutter, 'none');
+  assert.strictEqual(big.gutter, 'missed');
+  assert.strictEqual(big.mismatch, true);
+  // A group that declares one draws it in both channels, exactly as a solution
+  // does. Leaving the group level out of both is what made four groups that all
+  // wanted a TLE read as four ordinary rows with a warning beside them.
+  assert.deepStrictEqual(big.expectation, {
+    label: 'AC',
+    hue: 'green',
+    bold: true,
+    glyph: '\u2713',
+  });
+  assert.strictEqual(big.labelHue, 'green');
+  assert.strictEqual(big.labelBold, true);
+  // ...and a group with no declaration of its own borrows none from the
+  // solution above it, which declared INCORRECT.
+  assert.strictEqual(small.expectation, undefined);
+  assert.strictEqual(small.labelHue, undefined);
   // Group mismatches are not solution mismatches.
   assert.strictEqual(buildViewModel([view([declared])]).mismatches, 0);
+});
+
+test('a group inherits nothing from a solution declaring ANY, and neither does the row', () => {
+  const any = solution(
+    0,
+    'sols/x.cpp',
+    'ANY',
+    [group('small', [testcase('000', 'accepted')], groupReport({ name: 'small' }))],
+    solutionReport({ expectedOutcome: 'ANY' }),
+  );
+  const { rows } = buildViewModel([view([any])]);
+  // ANY is how a setter declares nothing, so it earns no chip -- the same rule
+  // the gutter already applied.
+  assert.strictEqual(rowById(rows, '/w/a::0').expectation, undefined);
+  assert.strictEqual(rowById(rows, '/w/a::0::small').expectation, undefined);
 });
 
 test('the histogram is ordered by count, ties by outcome name', () => {
@@ -304,8 +469,8 @@ test('a testcase shows time and memory, and not the checker message', () => {
   // The whole array, so a checker's free-form line cannot creep back into a
   // 22px row and push the timings out of it.
   assert.deepStrictEqual(row.meta, [
-    { text: '50 ms', hue: 'dim' },
-    { text: '1 KiB', hue: 'dim' },
+    { text: '50 ms', hue: 'dim', role: 'time' },
+    { text: '1 KiB', hue: 'dim', role: 'memory' },
   ]);
   assert.strictEqual(row.expandable, false);
   assert.strictEqual(row.section, 'rbx.testcase');
@@ -314,10 +479,18 @@ test('a testcase shows time and memory, and not the checker message', () => {
 
 test('the search haystack carries the verdict, and mismatch only when missed', () => {
   const { rows } = buildViewModel([view([MAIN, PARTIAL, MISLABELED])]);
+  // `ac` once, not twice: on a healthy solution the declaration and the verdict
+  // are the same word.
   assert.strictEqual(rowById(rows, '/w/a::0').search, 'sols/main.cpp ac');
-  assert.strictEqual(rowById(rows, '/w/a::1').search, 'sols/partial.cpp wa');
-  assert.strictEqual(rowById(rows, '/w/a::2').search, 'sols/mislabeled.cpp wa mismatch');
+  assert.strictEqual(rowById(rows, '/w/a::1').search, 'sols/partial.cpp wa incorrect');
+  assert.strictEqual(
+    rowById(rows, '/w/a::2').search,
+    'sols/mislabeled.cpp wa incorrect mismatch',
+  );
   assert.strictEqual(rowById(rows, '/w/a::0::main::000').search, 'main/000 ac');
+  // Typing `tle` reaches the group that *wanted* one, which is the only way to
+  // find it: nothing it produced is spelled TLE.
+  assert.strictEqual(rowById(rows, '/w/a::2::small').search, 'small ac tle mismatch');
 });
 
 test('a package with no run on disk produces an empty model', () => {

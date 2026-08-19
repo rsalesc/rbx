@@ -38,11 +38,23 @@ export interface SolutionReport {
   readonly outcome?: string;
   readonly status: string;
   readonly matchesExpectation: boolean;
+  /**
+   * Whether the *pooled* `outcome` layer held on its own.
+   *
+   * `matchesExpectation` is the aggregate of two independent layers, and the
+   * aggregate alone cannot say which of them to blame: `sols/mislabeled.cpp`
+   * declares `incorrect` and *is* incorrect, and is caught only by its
+   * `outcomePerGroup`. Absent on a report written by an rbx that predates the
+   * field -- see `pooledMissed` in viewModel.ts for what stands in then.
+   */
+  readonly pooledMatchesExpectation?: boolean;
   readonly score: number;
   readonly maxScore: number;
   readonly maxTime?: number;
   readonly maxMemory?: number;
   readonly failedGroups: readonly string[];
+  /** The `[min, max]` score range declared, when one was. */
+  readonly expectedScore?: readonly [number, number];
   readonly groups: readonly GroupReport[];
 }
 
@@ -65,6 +77,19 @@ function parseGroup(raw: Wire): GroupReport | undefined {
     maxTime: asNumber(field(raw, 'maxTime')),
     maxMemory: asNumber(field(raw, 'maxMemory')),
   };
+}
+
+/**
+ * `[min, max]`, or `undefined` for anything that is not exactly that.
+ *
+ * Both ends are required: a half-parsed range would be rendered as a bound the
+ * package never declared, which is worse than rendering no bound at all.
+ */
+function parseScoreRange(raw: Wire): readonly [number, number] | undefined {
+  const values = asArray(raw)
+    .map((value) => asNumber(value))
+    .filter((value): value is number => value !== undefined);
+  return values.length === 2 ? [values[0], values[1]] : undefined;
 }
 
 function parseSolution(raw: Wire): SolutionReport | undefined {
@@ -94,6 +119,8 @@ function parseSolution(raw: Wire): SolutionReport | undefined {
     failedGroups: asArray(field(raw, 'failedGroups'))
       .map((name) => asString(name))
       .filter((name): name is string => name !== undefined),
+    pooledMatchesExpectation: asBoolean(field(raw, 'pooledMatchesExpectation')),
+    expectedScore: parseScoreRange(field(raw, 'expectedScore')),
     groups,
   };
 }
