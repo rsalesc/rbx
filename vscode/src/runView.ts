@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
 import { RunNode, flattenNodes, nodeId } from './rbx/nodes';
+import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { buildViewModel } from './rbx/viewModel';
 import { RunDataProvider } from './runData';
 
@@ -76,9 +77,18 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // No `retainContextWhenHidden`: the client persists its own state through
     // `setState` and the host re-posts the whole model on every change, so
     // paying to keep a hidden view alive would buy nothing back.
-    const subscription = this.data.onDidChange(() => void this.post());
+    const subscriptions = [
+      this.data.onDidChange(() => void this.post()),
+      // `rbx.solutionLabel` changes nothing on disk, so no reload will bring the
+      // new labels in on its own -- the view has to rebuild the model itself.
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('rbx.solutionLabel')) {
+          void this.post();
+        }
+      }),
+    ];
     view.onDidDispose(() => {
-      subscription.dispose();
+      subscriptions.forEach((subscription) => subscription.dispose());
       this.view = undefined;
     });
   }
@@ -97,7 +107,12 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   private async post(): Promise<void> {
     const packages = await this.data.loadAll();
     this.nodes = new Map(flattenNodes(packages).map((node) => [nodeId(node), node]));
-    await this.view?.webview.postMessage({ type: 'state', model: buildViewModel(packages) });
+    // Read per post rather than cached: the setting is window-scoped and the
+    // configuration API is the only place its current value lives.
+    const style = asSolutionLabelStyle(
+      vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
+    );
+    await this.view?.webview.postMessage({ type: 'state', model: buildViewModel(packages, style) });
   }
 
   private html(webview: vscode.Webview): string {

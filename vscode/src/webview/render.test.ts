@@ -573,3 +573,16 @@ test('sibling rank follows model order across two families of siblings', () => {
   const roots = html.slice(html.indexOf('data-id="sol1"'));
   assert.ok(roots.includes('aria-posinset="2"'), roots);
 });
+
+test('a shortened label carries its full path as a tooltip, escaped', () => {
+  const html = renderTree(
+    model([row({ id: 'sol0', label: 'main.cpp', labelTitle: 'sols/"a b"/main.cpp' })]),
+    state(),
+  );
+  assert.ok(html.includes('title="sols/&quot;a b&quot;/main.cpp"'), html);
+});
+
+test('a row whose label is already the whole path gets no tooltip', () => {
+  const html = renderTree(model([MAIN]), state());
+  assert.ok(!html.includes('title='), html);
+});
