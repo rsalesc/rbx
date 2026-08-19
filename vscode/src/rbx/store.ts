@@ -71,7 +71,14 @@ export interface PackageRun {
   readonly solutions: readonly SolutionRun[];
 }
 
-async function readYamlFile(filePath: string): Promise<unknown> {
+/**
+ * Parse a YAML file, or `undefined` for anything that is not readable YAML.
+ *
+ * Exported for the manifest reader, which needs the same tolerance for a
+ * different reason: run artifacts are caught half-written by the watcher,
+ * `problem.rbx.yml` is caught half-typed by the user.
+ */
+export async function readYamlFile(filePath: string): Promise<unknown> {
   let text: string;
   try {
     text = await fs.readFile(filePath, 'utf8');
