@@ -11,14 +11,15 @@ import * as vscode from 'vscode';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
-import { expectedShortName, isAccepted, outcomeIcon, shortName } from './rbx/outcome';
 import {
-  ArtifactStore,
-  GroupRun,
-  PackageRun,
-  SolutionRun,
-  TestcaseRun,
-} from './rbx/store';
+  GroupNode,
+  PackageNode,
+  RunNode,
+  SolutionNode,
+  TestcaseNode,
+} from './rbx/nodes';
+import { expectedShortName, isAccepted, outcomeIcon, shortName } from './rbx/outcome';
+import { ArtifactStore, PackageRun, TestcaseRun } from './rbx/store';
 import {
   Progress,
   formatCounts,
@@ -30,40 +31,13 @@ import {
   solutionDescription,
 } from './rbx/summary';
 
-export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
-
-export interface PackageNode {
-  readonly kind: 'package';
-  readonly pkg: PackageLayout;
-}
-
-export interface SolutionNode {
-  readonly kind: 'solution';
-  readonly pkg: PackageLayout;
-  readonly run: SolutionRun;
-  /**
-   * This package's run covered only this solution, so the user is focused on
-   * it and the tree opens it. Mirrors how `rbx run` itself picks
-   * `SingleSolutionRunReporter` -- the only reporter that prints per-testcase
-   * lines -- on `len(skeleton.solutions) == 1`.
-   */
-  readonly solo: boolean;
-}
-
-export interface GroupNode {
-  readonly kind: 'group';
-  readonly pkg: PackageLayout;
-  readonly run: SolutionRun;
-  readonly group: GroupRun;
-}
-
-export interface TestcaseNode {
-  readonly kind: 'testcase';
-  readonly pkg: PackageLayout;
-  readonly run: SolutionRun;
-  readonly group: GroupRun;
-  readonly testcase: TestcaseRun;
-}
+export type {
+  GroupNode,
+  PackageNode,
+  RunNode,
+  SolutionNode,
+  TestcaseNode,
+} from './rbx/nodes';
 
 /**
  * The verdict's own icon, from the table in outcome.ts.
