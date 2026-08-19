@@ -103,11 +103,11 @@ export function groupDescription(
   if (report === undefined) {
     return pendingDescription(progress);
   }
-  // A group that missed its own declared expectation is the finding worth
-  // leading with, the way rbx's `_group_failure_lines` does.
+  // Only what happened. What was *wanted* is the row's icon, so spelling it
+  // out again here would cost the width that the score and timings need.
   const verdict = report.matchesExpectation
     ? shortName(report.outcome)
-    : `expected ${expectedShortName(report.expectedOutcome)}, got ${shortName(report.outcome)}`;
+    : `got ${shortName(report.outcome)}`;
   return join([
     progressPart(progress),
     verdict,
@@ -138,20 +138,21 @@ export function solutionDescription(
  * The headline finding: a solution that did not behave as declared.
  *
  * A solution declares its expectations in two layers and rbx checks both, so
- * saying which one failed matters. `sols/mislabeled.cpp` in the
- * `outcome-per-group` fixture satisfies its pooled `INCORRECT` -- it does fail
- * somewhere -- and is caught only by its per-group expectations. Rendering that
- * as "expected INCORRECT, got WA" would name an expectation that was in fact
- * met.
+ * saying which one failed matters. `sols/mislabeled-groups.cpp` in the sample
+ * package satisfies its pooled `INCORRECT` -- it does fail somewhere -- and is
+ * caught only by its per-group expectations. Naming the pooled expectation
+ * there would accuse one that was in fact met, so the groups are named instead.
+ *
+ * The declared expectation itself is never spelled out: it is the row's icon.
  */
 function solutionVerdict(report: SolutionReport): string {
   if (report.matchesExpectation) {
     return shortName(report.outcome);
   }
   if (report.failedGroups.length > 0) {
-    return `${shortName(report.outcome)} · failed ${report.failedGroups.join(', ')}`;
+    return `failed ${report.failedGroups.join(', ')}`;
   }
-  return `expected ${expectedShortName(report.expectedOutcome)}, got ${shortName(report.outcome)}`;
+  return `got ${shortName(report.outcome)}`;
 }
 
 /**

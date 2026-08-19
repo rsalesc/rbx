@@ -1,12 +1,9 @@
 import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
 import { test } from 'node:test';
 
 import {
-  expectationBadge,
   expectationColor,
-  expectationTooltip,
+  expectationIcon,
   expectedShortName,
   outcomeIcon,
   shortName,
@@ -94,134 +91,85 @@ test('expectation names are unchanged by the move to a table', () => {
   assert.strictEqual(expectedShortName('TELEPORTED'), 'XX');
 });
 
-test('a badge is at most two characters, which VS Code enforces at runtime', () => {
-  // `FileDecoration.validate` throws on a longer badge, so an over-long entry
-  // is a crash in the view rather than a cosmetic slip.
-  for (const expected of EXPECTED_OUTCOMES) {
-    const badge = expectationBadge(expected);
-    if (badge !== undefined) {
-      assert.ok(badge.length <= 2, `${expected} -> ${badge}`);
-    }
-  }
+test('every declared expectation gets an icon of its own', () => {
+  // One to one: the icon *is* the expectation in the tree, so two different
+  // promises must not draw the same thing. This is what rules out reusing a
+  // coarse pass/fail/slow set -- ACCEPTED and ACCEPTED_OR_TLE would collide,
+  // and so would WRONG_ANSWER and INCORRECT.
+  const icons = EXPECTED_OUTCOMES.map((expected) => expectationIcon(expected)?.icon);
+  assert.ok(
+    icons.every((icon) => icon !== undefined),
+    `missing icon: ${EXPECTED_OUTCOMES.filter((_, i) => icons[i] === undefined).join(',')}`,
+  );
+  assert.strictEqual(new Set(icons).size, icons.length, icons.join(','));
 });
 
-test('badges are the two-letter spelling rbx itself accepts in the YAML', () => {
-  // Not a vocabulary of the view's own: these are the aliases a setter types
-  // into problem.rbx.yml, so the mark echoes their own file.
-  assert.strictEqual(expectationBadge('ACCEPTED'), 'AC');
-  assert.strictEqual(expectationBadge('WRONG_ANSWER'), 'WA');
-  assert.strictEqual(expectationBadge('TIME_LIMIT_EXCEEDED'), 'TL');
-  assert.strictEqual(expectationBadge('MEMORY_LIMIT_EXCEEDED'), 'ML');
-  assert.strictEqual(expectationBadge('OUTPUT_LIMIT_EXCEEDED'), 'OL');
-  assert.strictEqual(expectationBadge('RUNTIME_ERROR'), 'RE');
-  assert.strictEqual(expectationBadge('JUDGE_FAILED'), 'JF');
-  assert.strictEqual(expectationBadge('COMPILATION_ERROR'), 'CE');
-});
-
-test('a compound expectation keeps rbx `+` spelling for "or"', () => {
-  // From rbx's own `ac+tle` and `tle+re` aliases, and honest besides: `A+`
-  // says accepted, and more is tolerated.
-  assert.strictEqual(expectationBadge('ACCEPTED_OR_TLE'), 'A+');
-  assert.strictEqual(expectationBadge('TLE_OR_RTE'), 'T+');
-});
-
-test('badges carry no symbols, the row already having a codicon', () => {
-  // A second symbolic alphabet beside the verdict codicon reads as noise, and
-  // a codicon cannot go here anyway -- `FileDecoration.badge` is a string.
-  for (const expected of EXPECTED_OUTCOMES) {
-    const badge = expectationBadge(expected);
-    if (badge !== undefined) {
-      assert.match(badge, /^[A-Z][A-Z+]$/, `${expected} -> ${badge}`);
-    }
-  }
-});
-
-test('a declaration is coloured by its own hue, as rbx prints it', () => {
-  // `ExpectedOutcome.style()` transposed onto `charts.*`: a solution declared
-  // TLE is yellow here exactly as `rbx run` prints it yellow.
-  assert.strictEqual(expectationColor('ACCEPTED'), 'charts.green');
-  assert.strictEqual(expectationColor('ACCEPTED_OR_TLE'), 'charts.green');
-  assert.strictEqual(expectationColor('WRONG_ANSWER'), 'charts.red');
-  assert.strictEqual(expectationColor('INCORRECT'), 'charts.red');
-  assert.strictEqual(expectationColor('TIME_LIMIT_EXCEEDED'), 'charts.yellow');
-  assert.strictEqual(expectationColor('MEMORY_LIMIT_EXCEEDED'), 'charts.yellow');
-  assert.strictEqual(expectationColor('RUNTIME_ERROR'), 'charts.blue');
-  assert.strictEqual(expectationColor('COMPILATION_ERROR'), 'charts.blue');
-  // rbx's own style() has no branch for OLE and falls through to magenta, so
-  // this is purple rather than the orange an OLE *outcome* draws.
-  assert.strictEqual(expectationColor('OUTPUT_LIMIT_EXCEEDED'), 'charts.purple');
-  assert.strictEqual(expectationColor('ANY'), undefined);
-  assert.strictEqual(expectationColor(undefined), undefined);
-});
-
-test('a met expectation leaves #664 icon exactly as it was', () => {
-  for (const [outcome, color] of Object.entries(CLI_PALETTE)) {
-    assert.deepStrictEqual(outcomeIcon(outcome, 'met'), outcomeIcon(outcome), outcome);
-    assert.strictEqual(outcomeIcon(outcome, 'met').color, color, outcome);
-  }
-});
-
-test('a missed expectation swaps in the marked variant of the same verdict', () => {
-  // The verdict stays legible -- a solution that missed by timing out still
-  // shows a clock -- but the row stops claiming the run went to plan.
-  assert.deepStrictEqual(outcomeIcon('time-limit-exceeded', 'missed'), {
-    icon: 'rbx-watch-mismatch',
-    color: 'charts.red',
-  });
-  assert.deepStrictEqual(outcomeIcon('accepted', 'missed'), {
-    icon: 'rbx-pass-mismatch',
-    color: 'charts.red',
-  });
-});
-
-test('a pending row has no mismatch icon, having nothing to have missed', () => {
-  // There is no glyph for it in the font, and naming one that does not exist
-  // renders as blank rather than as an error.
-  assert.deepStrictEqual(outcomeIcon(undefined, 'missed'), outcomeIcon(undefined));
-});
-
-test('every verdict the tree can draw has a contributed mismatch icon', () => {
-  // The font is generated by scripts/build-mismatch-font.py from its own list
-  // of icon ids. If DISPLAY grows a verdict that the generator and
-  // package.json do not know about, the mismatched row renders *blank* -- VS
-  // Code does not complain about an unknown icon id. This is that guard.
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'),
-  ) as { contributes: { icons: Record<string, { default: { fontCharacter: string } }> } };
-  const contributed = manifest.contributes.icons;
-
-  for (const outcome of [...Object.keys(CLI_PALETTE), 'teleported']) {
-    const { icon } = outcomeIcon(outcome, 'missed');
-    assert.ok(icon in contributed, `${outcome} -> ${icon} is not contributed`);
-  }
-
-  const characters = Object.values(contributed).map((i) => i.default.fontCharacter);
-  assert.strictEqual(
-    new Set(characters).size,
-    characters.length,
-    'two icons share a font character',
+test('the pairs that a coarse icon set would have collapsed stay distinct', () => {
+  assert.notStrictEqual(
+    expectationIcon('ACCEPTED')?.icon,
+    expectationIcon('ACCEPTED_OR_TLE')?.icon,
+  );
+  assert.notStrictEqual(
+    expectationIcon('WRONG_ANSWER')?.icon,
+    expectationIcon('INCORRECT')?.icon,
+  );
+  assert.notStrictEqual(
+    expectationIcon('TIME_LIMIT_EXCEEDED')?.icon,
+    expectationIcon('TLE_OR_RTE')?.icon,
   );
 });
 
-test('the hover names both sides in rbx own spelling', () => {
-  assert.strictEqual(
-    expectationTooltip('WRONG_ANSWER', 'wrong-answer', 'met'),
-    'Expected WA, got WA',
-  );
-  assert.strictEqual(
-    expectationTooltip('ACCEPTED', 'time-limit-exceeded', 'missed'),
-    'Expected AC, but got TLE',
-  );
-  // Nothing is claimed about an outcome that does not exist yet.
-  assert.strictEqual(expectationTooltip('ACCEPTED', undefined, 'unknown'), 'Expected AC');
+test('an expectation naming one outcome borrows that outcome icon', () => {
+  // So an ACCEPTED row and an accepted testcase beneath it draw the same mark.
+  // Only the four that name no single outcome are allowed their own.
+  for (const [expected, outcome] of [
+    ['ACCEPTED', 'accepted'],
+    ['WRONG_ANSWER', 'wrong-answer'],
+    ['TIME_LIMIT_EXCEEDED', 'time-limit-exceeded'],
+    ['MEMORY_LIMIT_EXCEEDED', 'memory-limit-exceeded'],
+    ['RUNTIME_ERROR', 'runtime-error'],
+    ['OUTPUT_LIMIT_EXCEEDED', 'output-limit-exceeded'],
+    ['COMPILATION_ERROR', 'compilation-error'],
+    ['JUDGE_FAILED', 'judge-failed'],
+  ]) {
+    assert.strictEqual(
+      expectationIcon(expected)?.icon,
+      outcomeIcon(outcome).icon,
+      expected,
+    );
+  }
 });
 
-test('a miss caught only per group does not accuse the pooled expectation', () => {
-  // `sols/mislabeled.cpp` in the outcome-per-group fixture: its pooled
-  // INCORRECT is satisfied -- it does fail -- and only the per-group layer
-  // catches it, so naming INCORRECT as the broken promise would be wrong.
-  assert.strictEqual(
-    expectationTooltip('INCORRECT', 'wrong-answer', 'missed', ['small', 'big']),
-    'Declared INCORRECT, but small, big did not match',
-  );
+test('expectation colours are the ones rbx prints for a declaration', () => {
+  // `ExpectedOutcome.style()`, not `get_outcome_style_verdict`. They disagree
+  // -- a declared OLE is magenta while an OLE verdict is orange -- and copying
+  // the verdict palette over would invent a colour rbx never prints.
+  const CLI_EXPECTED_PALETTE: Record<string, string> = {
+    ACCEPTED: 'charts.green',
+    ACCEPTED_OR_TLE: 'charts.green',
+    WRONG_ANSWER: 'charts.red',
+    INCORRECT: 'charts.red',
+    RUNTIME_ERROR: 'charts.blue',
+    TIME_LIMIT_EXCEEDED: 'charts.yellow',
+    TLE_OR_RTE: 'charts.yellow',
+    MEMORY_LIMIT_EXCEEDED: 'charts.yellow',
+    OUTPUT_LIMIT_EXCEEDED: 'charts.purple',
+    JUDGE_FAILED: 'charts.purple',
+    COMPILATION_ERROR: 'charts.blue',
+  };
+  for (const [expected, color] of Object.entries(CLI_EXPECTED_PALETTE)) {
+    assert.strictEqual(expectationIcon(expected)?.color, color, expected);
+  }
+});
+
+test('an expectation this extension does not know draws no icon', () => {
+  // The row falls back to its verdict rather than inventing a mark.
+  assert.strictEqual(expectationIcon('TELEPORTED'), undefined);
+  assert.strictEqual(expectationIcon(undefined), undefined);
+});
+
+test('only a miss is coloured, so misses are the only coloured rows', () => {
+  assert.strictEqual(expectationColor('missed'), 'charts.red');
+  assert.strictEqual(expectationColor('met'), undefined);
+  assert.strictEqual(expectationColor('unknown'), undefined);
 });

@@ -1,220 +1,170 @@
-# Surfacing a solution's expected outcome in VS Code
+# Surfacing a solution's expected outcome in the VS Code Run view
 
-Follow-up to #664, which gave each verdict its own icon in the Run view. That
-settled how the extension shows **what happened**. This settles how it shows
-**what was supposed to happen**, and whether it did.
+Follow-up to #664, which gave each verdict its own icon. That settled how the
+extension shows **what happened**. This settles how it shows **what the package
+asked for**, and whether it got it.
 
-Scope is the VS Code extension only. `rbx run` is unchanged, and no field is
-added to the run report: everything below is presentation over data already on
-the wire.
+Scope is the Run view only. `rbx run` is unchanged and no field is added to the
+run report: everything below is presentation over data already on the wire.
 
 ## The problem
 
-Two distinct failures of the current view:
-
 1. **The expectation is invisible.** `sols/wa.cpp`, declared `WRONG_ANSWER`,
    answers wrongly and draws a red `close` icon -- pixel-identical to the main
-   solution breaking. The declaration is only in the hover tooltip.
-2. **Mismatches do not stand out.** The interesting row -- outcome missed the
-   declaration -- says `expected AC, got WA` in `TreeItem.description`, which is
-   dim monochrome text sitting among every other row's `AC · 120 ms · 4 MiB`.
+   solution breaking. In the sample package, six of eleven rows draw a failure
+   icon while doing exactly what was asked, so the tree reads as a wall of red
+   when nothing is wrong.
+2. **Mismatches do not stand out.** The one row that matters -- the run missed
+   the declaration -- said `expected AC, got WA` in dim monochrome
+   `description` text, sitting among every other row's `AC · 120 ms · 4 MiB`.
 
 ## What the CLI does
 
 `_render_detailed_group_table` (`rbx/box/solutions.py:2362`) gives each solution
 a **column**, headed by `solution.href()` and coloured by
-`ExpectedOutcome.full_style()`. The expectation lives in the header -- the
-identity of the thing -- and the outcomes live in the cells. Two facts, two
-axes. The TUI does the same (`rbx/box/ui/screens/run.py:29-35`).
+`ExpectedOutcome.full_style()`; the verdicts go in the cells below. The
+expectation is the column's *identity*; the outcome is its *content*. The TUI
+does the same, appending the declared outcome to the solution's name
+(`rbx/box/ui/screens/run.py:29-35`).
 
-A tree row is not a table column; it has one line for both facts. So the split
-has to be re-expressed in channels a `TreeItem` actually has.
-
-## The channels, and what they can hold
-
-This is worth stating precisely, because two of the design's decisions are
-forced by it rather than chosen:
-
-| channel | can hold |
-| --- | --- |
-| `TreeItem.iconPath` | one `ThemeIcon`, themeable via `ThemeColor` |
-| `TreeItem.description` | plain text |
-| `FileDecoration.badge` | a `string` of **at most two characters** -- no icon |
-| `FileDecoration.color` | **one** `ThemeColor`, tinting badge and label together |
-| `FileDecoration.tooltip` | plain text -- no markdown, no icon |
-
-So: a codicon cannot appear in a decoration at all, a decoration cannot carry
-two colours, and there is no bold/italic anywhere -- which rules out porting
-rbx's own trick of separating `ACCEPTED` (`bold green`) from `ACCEPTED_OR_TLE`
-(plain `green`) by weight.
+A tree row is not a column, but it has the same two slots.
 
 ## Design
 
-**The decoration says what was declared. The icon says what happened, and
-whether that was what was wanted.**
+**A solution row is a claim, not a result.** So:
 
-### Decoration: the declaration
+| channel | carries |
+| --- | --- |
+| icon | the **declared expectation**, one icon per `ExpectedOutcome` |
+| description | what the run actually produced |
+| label colour | red **iff** the run missed the declaration |
+| badge (right) | `✗` **iff** the run missed the declaration |
+| tooltip | the full breakdown, including which groups missed |
 
-- **Badge** -- the two-letter spelling rbx itself accepts in `problem.rbx.yml`:
-  `AC`, `WA`, `TL`, `ML`, `OL`, `RE`, `JF`, `CE`. The mark on the row is the
-  token the setter typed into their own file, so the view introduces no
-  vocabulary of its own. Compound expectations keep rbx's `+` separator from its
-  `ac+tle` and `tle+re` aliases: `A+` and `T+`, which is also the honest reading
-  -- *accepted, and more is tolerated*. `INCORRECT` is `IN`.
+Testcase rows are unaffected: a testcase has no expectation of its own, so it
+keeps the verdict icons from #664. That is also what keeps the two vocabularies
+rhyming -- an `ACCEPTED` solution row and an accepted testcase beneath it both
+draw `pass`.
 
-  Letters rather than rbx's `✓ ⧖ ✗` glyphs for two reasons: the row already
-  carries a codicon, and a second symbolic alphabet beside it reads as noise;
-  and at the badge's ~11px a `⧖` is not distinguishable from a `✗`, where `TL`
-  and `WA` are unambiguous. VS Code's own decorations are letters (`M`, `U`,
-  `A`) for the same reason.
+### One icon per expectation
 
-- **Colour** -- `ExpectedOutcome.style()` transposed onto the `charts.*` family,
-  the same transposition #664 made for verdicts. A solution declared TLE is
-  yellow here exactly as `rbx run` prints it yellow. Note `OUTPUT_LIMIT_EXCEEDED`
-  is purple, not the orange an OLE *outcome* draws: `style()` has no branch for
-  it and falls through to magenta. This colours a declaration, not a verdict.
+The icon *is* the expectation, so two different promises must not share one.
+Where an expectation names exactly one outcome it borrows that outcome's icon
+from `DISPLAY`. The four that name no single outcome get their own:
 
-- `ANY` gets no decoration at all. Nothing was declared, and marking every
-  undeclared solution would put a mark carrying no information on most rows.
+| expectation | icon | | expectation | icon |
+| --- | --- | --- | --- | --- |
+| `ANY` | `dash` | | `TIME_LIMIT_EXCEEDED` | `watch` |
+| `ACCEPTED` | `pass` | | `TLE_OR_RTE` | `flame` |
+| `ACCEPTED_OR_TLE` | `pass-filled` | | `MEMORY_LIMIT_EXCEEDED` | `server` |
+| `WRONG_ANSWER` | `close` | | `OUTPUT_LIMIT_EXCEEDED` | `arrow-both` |
+| `INCORRECT` | `circle-slash` | | `JUDGE_FAILED` | `law` |
+| `RUNTIME_ERROR` | `zap` | | `COMPILATION_ERROR` | `tools` |
 
-Both come from `problem.rbx.yml` by way of the skeleton, so neither is a claim
-about the last run and **neither goes stale** when the solution is edited.
+`ACCEPTED` vs `ACCEPTED_OR_TLE` and `WRONG_ANSWER` vs `INCORRECT` are the pairs
+a coarse pass/fail/slow set would have collapsed, and a test asserts all twelve
+stay distinct. Every id was checked against the codicon table in an installed
+VS Code build.
 
-### Icon: the verdict, and whether it was the declared one
+Colours are `ExpectedOutcome.style()` transposed onto `charts.*` -- exact
+parity with the column header this icon replaces. Note it deliberately does not
+match the *verdict* palette everywhere: a declared `OUTPUT_LIMIT_EXCEEDED` is
+magenta while an OLE verdict is orange, because those are two different
+functions in rbx, and copying one onto the other would invent a colour rbx
+never prints.
 
-On a match, #664's table is untouched.
+### One vocabulary
 
-On a miss the icon switches to the same verdict's **mismatch variant** -- that
-codicon with a small circled cross in its top-right corner -- and turns red. The
-verdict stays legible (a solution that missed by timing out still shows a clock)
-while the row stops claiming the run went to plan.
+The first cut drew a codicon on the left and one of rbx's `✓ ⧖ ✗` glyphs on the
+right: two alphabets for the same kind of statement. The glyphs are gone. The
+tree speaks codicons, and `MISMATCH_BADGE` (`✗`) is the single exception,
+forced by `FileDecoration.badge` being a `string` -- it says nothing about
+*which* expectation or *which* verdict, only that the two disagree.
 
-Red rather than the verdict's own hue is the one place this view departs from
-the terminal palette. On a row that broke its promise the interesting fact is
-the promise, not the verdict, and once colour moved to the declaration this is
-the only channel left to say so.
+### Red means exactly one thing
 
-**Consequence worth naming:** because the mark lives in the icon, and only the
-Run view draws an icon, a mismatch is visible there and *not* on an Explorer
-entry or an editor tab. Those still show what a solution was declared to be,
-which is the more useful fact while editing it.
+Only a missed expectation colours a **label**. Verdict colour lives in the
+icon, so the label channel is free to carry one fact, and a row whose text is
+red is a row where the package disagrees with itself.
 
-### The mismatch icons
+An expectation that is *itself* red (`WRONG_ANSWER`, `INCORRECT`) still draws a
+red icon whether or not it was met -- that is the declaration's own hue, per
+CLI parity. The mismatch signal is the label plus the `✗`, not the icon.
 
-No codicon exists for "this icon, but wrong", so the glyphs are generated:
-`scripts/build-mismatch-font.py` builds `resources/rbx-mismatch.woff`, in which
-each glyph is a TrueType **composite** of two codicon outlines -- the verdict
-icon scaled down and anchored bottom-left, plus `error` scaled into the corner.
-Components reference the base outlines rather than copying them, so every icon
-gets an identical mark and the font is ~2.5 KB.
+### Descriptions stay narrow
 
-A contributed icon font rather than SVG files because icons declared through
-`contributes.icons` are ordinary `ThemeIcon`s and so accept a `ThemeColor`; an
-SVG referenced by `iconPath` is an image fixed at whatever colours are baked
-into it, which would have cost the per-verdict palette this view shares with the
-terminal.
+Since the icon carries the expectation, a mismatch never repeats it:
 
-The mark is `error` -- a circled cross -- rather than a bare `close` cross,
-which is not a style preference: a tree row draws at 16px, and at that size the
-cross alone thins to a hairline that disappears against the base glyph, while
-the circle gives the mark a closed shape that survives rasterisation. Judging
-this at 64px will mislead you; `--preview` renders the sizes that matter.
+| case | description |
+| --- | --- |
+| met | `AC · [100/100 pts] · 12 ms · 10 MiB` |
+| missed, pooled | `got WA · [30/100 pts] · 9 ms · 10 MiB` |
+| missed, per group | `failed samples, main, edge, big · ...` |
+| still running | `expects AC · 3/10` |
 
-The outlines come from VS Code's codicons (CC BY 4.0);
-`resources/CODICONS-LICENSE.md` carries the required attribution and ships with
-the font.
+The per-group form matters: a solution can satisfy its pooled expectation and
+still be caught per group. `sols/mislabeled-groups.cpp` declares `incorrect`
+pooled -- which **holds**, it does fail -- and `tle` for every group, which it
+misses. Naming the pooled expectation there would accuse one that was met.
 
-### The hover, and the two layers of expectation
+### Groups
 
-The tooltip names both sides -- `Expected AC, but got TLE`. Names rather than
-marks because `FileDecoration.tooltip` is a plain string and can carry neither a
-codicon nor a glyph it could explain.
+Identical treatment, driven by `GroupReport.expectedOutcome`, which rbx sets
+exactly when `outcomePerGroup` covers the group. A group with no declaration of
+its own falls back to its verdict icon, that being the only thing it has to
+show.
 
-A solution declares expectations in two layers, pooled and per-group, and rbx
-checks both, so a miss must say *which layer* caught it. `sols/mislabeled.cpp`
-in the `outcome-per-group` fixture is the case that matters: its pooled
-`INCORRECT` is satisfied -- it does fail -- and only its `outcomePerGroup`
-catches it. Rendering that as "expected INCORRECT, but got WA" would accuse an
-expectation that was in fact met. So when `failedGroups` is non-empty the hover
-names the groups instead: `Declared INCORRECT, but samples, main did not match`.
-Same distinction `solutionVerdict` (summary.ts) already draws.
+### Why rows are not files
 
-### Where decorations attach
+Every decorated row is addressed by a synthetic `rbx-run:` URI, **including
+solutions**, which do have a real file. Decorations are global per URI, so
+pointing at `sols/wa.cpp` would mark it in the Explorer and on its editor tab
+too. That is a separate question with its own scoping and staleness problems
+(see the channel inventory issue), and a private scheme keeps this change
+inside the view it was designed for. Nothing else reads `resourceUri` -- the
+commands all take the node -- so nothing else changes.
 
-- **Solutions** -- the existing `resourceUri` (`runTree.ts:208`), the real file.
-  Decorations are global per URI, so the declaration also shows in the Explorer
-  and on editor tabs. `propagate` must be `false`, or the badge climbs to the
-  `sols/` folder.
-- **Groups** -- no `resourceUri` today; they get a synthetic
-  `rbx-run:/<index>/<group>`. Only groups covered by an `outcomePerGroup` entry
-  are decorated, which is exactly when `report.yml` sets
-  `GroupReport.expectedOutcome`.
-- **Testcases** -- nothing. A testcase has no expectation of its own.
+This also removes the need for the mtime-vs-report staleness rule an earlier
+draft carried: its whole purpose was to stop an editor tab accusing a file the
+user had already fixed, and no decoration leaves the Run view any more.
 
-## Consolidating the two vocabularies
+### Tooltips
 
-`outcome.ts` opens by warning that `Outcome` and `ExpectedOutcome` are different
-types that must not be conflated, and then conflated them at the bottom:
+Markdown with `supportThemeIcons`, leading with the miss and listing every
+group that missed with both sides named -- the same lines
+`_group_failure_lines` prints. Note the hover *delay* is not controllable from
+an extension; it is the user-level `workbench.hover.delay` setting.
 
-```ts
-default:
-  return shortName(expected.toLowerCase().replace(/_/g, '-'));
-```
+## Consolidating the vocabularies
 
-That assumes every `ExpectedOutcome` member name lowercases onto an `Outcome`
-key. It holds today by coincidence, not contract -- the enums have genuinely
-different members (`INCORRECT`, `ANY`, `TLE_OR_RTE` exist only in one;
-`SKIPPED` only in the other).
-
-Now: two explicit tables, no string-guessing between them. `EXPECTED` has one
-record per `ExpectedOutcome` member giving its name, badge and hue, mirroring
-`schema.py` the way `DISPLAY` mirrors `Outcome`, with a test asserting every
-member is covered.
+`outcome.ts` opened by warning that `Outcome` and `ExpectedOutcome` must not be
+conflated, then ended with `shortName(expected.toLowerCase().replace(/_/g,
+'-'))`, reaching an `Outcome` key by lowercasing an `ExpectedOutcome` name. It
+held by coincidence: the enums have different members (`INCORRECT`, `ANY`,
+`TLE_OR_RTE` only in one; `SKIPPED` only in the other). It is now an explicit
+`EXPECTED` table, one record per member, with a test that every member is
+covered.
 
 ## Data flow
 
 Nothing new is read. `report.yml` v1 already carries `expectedOutcome`,
 `matchesExpectation` and `failedGroups` per solution and per group
-(`rbx/box/run_report.py:42-78`), and `skeleton.yml` carries the declared
-expectation before any run finishes (`model.ts:111`).
+(`rbx/box/run_report.py:42-78`), and `skeleton.yml` carries the declaration
+before any run finishes (`model.ts:111`).
 
-The decoration provider serves from `ArtifactStore`'s already-loaded
-`PackageRun` and never triggers a read. `onDidChangeFileDecorations` fires from
-the tree's existing change event, since a decoration goes out of date under
-exactly the conditions the tree already watches for.
-
-## Smaller changes, same theme
-
-- `pendingDescription` gains the expectation: `expects AC · 3/10`. It comes from
-  the skeleton, so it is available before and during the run.
-- `contextValue` becomes `rbx.solution.mismatch` on a miss -- suffixed, so the
-  existing prefix-regex menu `when` clauses keep applying.
-- `TreeView.badge` counts solutions that missed, visible with the view
-  collapsed. Misses, not failures: badging a solution that fails on purpose
-  would report the package's own test suite as a problem.
+The decoration provider serves from `ArtifactStore`'s cached `PackageRun` and
+rides `onDidChangeTreeData`, which already fires when artifacts land.
 
 ## Error handling
 
-An unknown `ExpectedOutcome` -- an extension older than the `rbx-cp` that wrote
-the report -- misses the `EXPECTED` table and yields no decoration, the same way
-an unknown `Outcome` already yields `XX`. Absent is the correct rendering for
-"this extension does not know"; guessing would be the drift this design exists
-to remove.
-
-An unknown *icon id* is the more dangerous case, because VS Code renders it as
-**blank** rather than complaining. A test therefore asserts that every verdict
-`outcomeIcon` can return has a matching entry in `contributes.icons`, so a
-verdict added to `DISPLAY` without regenerating the font fails the suite instead
-of silently blanking the row.
+An `ExpectedOutcome` this extension is too old to know misses the table, draws
+no expectation icon, and the row falls back to its verdict. Absent is the
+correct rendering for "not known"; guessing would be the drift this design
+exists to remove.
 
 ## Testing
 
-The display logic is pure functions in `outcome.ts` and `expectation.ts`,
-covered by `node --test` without a `vscode` import; `decorations.ts` and
-`runTree.ts` stay thin wrappers over them. Beyond the per-function tests, three
-guard the seams that types cannot:
-
-- every `ExpectedOutcome` member has a record,
-- every badge is at most two characters (`FileDecoration.validate` throws
-  otherwise, which is a runtime failure in the view),
-- every mismatch icon is contributed in package.json.
+`expectationIcon`, `expectationColor` and `expectedShortName` are pure and
+covered in `outcome.test.ts`, including the twelve-way distinctness check and
+the CLI colour table. Verified end to end against `rbx-vscode-sample`, whose
+eleven solutions cover every expectation and all three mismatch shapes.

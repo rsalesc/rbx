@@ -1,51 +1,48 @@
 /**
- * The expectation channel: a badge and a hue saying what a row was declared to
- * do.
+ * The mismatch channel: red label text and an `✗` badge on rows where the run
+ * disagreed with what the package declared.
  *
- * A thin wrapper over `rbx/outcome.ts` and `rbx/expectation.ts`, the way
- * runTree.ts is thin over the same modules -- all the logic worth testing lives
- * there, without a `vscode` import.
+ * A `FileDecoration` is the only way to colour a `TreeItem`'s label, which is
+ * why this exists at all -- `TreeItem` itself offers an icon, a description and
+ * a tooltip, none of which can tint the row.
  *
- * Decorations rather than the icon because the icon is already spoken for:
- * #664 gave every verdict its own codicon, and that channel keeps reporting
- * what *happened*. Note what this file therefore does not carry: whether the
- * declaration held. That is the icon's business, which grows a mark in its
- * corner on a miss -- so a mismatch shows in the Run view, where there is an
- * icon, and not on an Explorer entry or an editor tab, where there is not.
+ * Every row it decorates is addressed by a synthetic `rbx-run:` URI, including
+ * solutions, which do have a real file behind them. That is deliberate:
+ * decorations are global per URI, so decorating `sols/wa.cpp` itself would put
+ * the mark on that file in the Explorer and on its editor tab as well. The
+ * Explorer is a separate question with its own scoping and staleness problems
+ * (see the channel inventory issue), and pulling the URI into a private scheme
+ * keeps this change inside the view it was designed for.
  *
- * Everything here is read from problem.rbx.yml by way of the skeleton, so none
- * of it is a claim about the last run and none of it goes stale when the
- * solution is edited.
+ * Nothing here decides anything: `matchesExpectation` was computed by
+ * `rbx.box.run_report`.
  */
-import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { groupExpectation, solutionExpectation } from './rbx/expectation';
 import { PackageLayout } from './rbx/layout';
-import { expectationBadge, expectationColor, expectationTooltip } from './rbx/outcome';
+import { MISMATCH_BADGE, expectationColor, expectedShortName } from './rbx/outcome';
 import { PackageRun } from './rbx/store';
 
-/** Scheme for rows that are not files, i.e. groups. */
+/** Scheme for run rows, none of which are files as far as decorations go. */
 export const RUN_SCHEME = 'rbx-run';
 
 /**
- * A URI standing for one group under one solution.
+ * A URI standing for one solution row, or one group row beneath it.
  *
- * Groups have no file of their own, and a decoration provider is addressed by
- * URI, so they get a synthetic one. The package root goes in the query rather
- * than the path: it is an absolute path itself, and concatenating it would make
- * the group name unrecoverable on a root containing a digit-only segment. It
- * still has to be *somewhere*, or two packages declaring the same group name
- * under the same solution index would collide.
+ * The package root goes in the query rather than the path: it is an absolute
+ * path itself, and concatenating it would make the group name unrecoverable.
+ * It still has to be somewhere, or two packages in one workspace would collide
+ * on the same solution index.
  */
-export function groupUri(
+export function runUri(
   pkg: PackageLayout,
   solutionIndex: number,
-  group: string,
+  group?: string,
 ): vscode.Uri {
   return vscode.Uri.from({
     scheme: RUN_SCHEME,
-    path: `/${solutionIndex}/${group}`,
+    path: group === undefined ? `/${solutionIndex}` : `/${solutionIndex}/${group}`,
     query: pkg.root,
   });
 }
@@ -65,7 +62,7 @@ export class ExpectationDecorationProvider implements vscode.FileDecorationProvi
 
   constructor(private readonly source: RunSource) {
     // The tree already fires whenever artifacts land or packages are
-    // rediscovered, and a decoration is stale under exactly the same
+    // rediscovered, and a decoration goes stale under exactly those
     // conditions -- so it rides that event rather than watching the disk twice.
     this.disposable = source.onDidChangeTreeData(() => this.changed.fire(undefined));
   }
@@ -78,72 +75,49 @@ export class ExpectationDecorationProvider implements vscode.FileDecorationProvi
   async provideFileDecoration(
     uri: vscode.Uri,
   ): Promise<vscode.FileDecoration | undefined> {
-    const expectation =
-      uri.scheme === RUN_SCHEME ? await this.forGroup(uri) : await this.forSolution(uri);
-    if (expectation === undefined) {
+    if (uri.scheme !== RUN_SCHEME) {
       return undefined;
     }
-    const badge = expectationBadge(expectation.declared);
-    if (badge === undefined) {
-      // `ANY`, or a declaration from an rbx newer than this extension. Both
-      // mean there is nothing honest to draw.
+    const resolved = await this.resolve(uri);
+    // Only a miss is drawn. A row that did what it promised gets no decoration
+    // at all, which is what makes the decorated rows findable by eye.
+    if (resolved === undefined || resolved.status !== 'missed') {
       return undefined;
     }
     const decoration = new vscode.FileDecoration(
-      badge,
-      expectationTooltip(
-        expectation.declared,
-        expectation.outcome,
-        expectation.status,
-        expectation.failedGroups,
-      ),
+      MISMATCH_BADGE,
+      `Did not match its expected outcome (${expectedShortName(resolved.declared)})`,
+      new vscode.ThemeColor(expectationColor('missed') ?? 'charts.red'),
     );
-    const color = expectationColor(expectation.declared);
-    if (color !== undefined) {
-      decoration.color = new vscode.ThemeColor(color);
-    }
-    // Otherwise a decorated solution paints its `sols/` directory too, in a
-    // tree where every sibling is also a solution.
+    // Rows are not files, but a group row is a child of a solution row and
+    // would otherwise tint its parent for a miss the parent may not have.
     decoration.propagate = false;
     return decoration;
   }
 
-  private async forSolution(uri: vscode.Uri) {
-    if (uri.scheme !== 'file') {
-      return undefined;
-    }
-    for (const pkg of this.source.knownPackages()) {
-      const relative = path.relative(pkg.root, uri.fsPath);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) {
-        continue;
-      }
-      const run = (await this.source.report(pkg))?.solutions.find(
-        (candidate) => candidate.solution.path === relative,
-      );
-      if (run !== undefined) {
-        return solutionExpectation(run);
-      }
-    }
-    return undefined;
-  }
-
-  private async forGroup(uri: vscode.Uri) {
+  private async resolve(
+    uri: vscode.Uri,
+  ): Promise<{ declared: string; status: string } | undefined> {
     const [, index, ...rest] = uri.path.split('/');
     const solutionIndex = Number(index);
-    const name = rest.join('/');
-    if (!Number.isInteger(solutionIndex) || name === '') {
+    if (!Number.isInteger(solutionIndex)) {
       return undefined;
     }
-    const pkg = this.source
-      .knownPackages()
-      .find((candidate) => candidate.root === uri.query);
+    const pkg = this.source.knownPackages().find((known) => known.root === uri.query);
     if (pkg === undefined) {
       return undefined;
     }
     const run = (await this.source.report(pkg))?.solutions.find(
       (candidate) => candidate.solution.index === solutionIndex,
     );
-    const group = run?.groups.find((candidate) => candidate.name === name);
+    if (run === undefined) {
+      return undefined;
+    }
+    const name = rest.join('/');
+    if (name === '') {
+      return solutionExpectation(run);
+    }
+    const group = run.groups.find((candidate) => candidate.name === name);
     return group === undefined ? undefined : groupExpectation(group);
   }
 }

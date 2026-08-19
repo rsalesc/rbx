@@ -59,30 +59,30 @@ const DISPLAY: Record<string, OutcomeDisplay> = {
   'time-limit-exceeded': {
     short: 'TLE',
     icon: 'watch',
-    color: 'charts.yellow'
+    color: 'charts.yellow',
   },
   'idleness-limit-exceeded': {
     short: 'ILE',
     icon: 'debug-pause',
-    color: 'charts.yellow'
+    color: 'charts.yellow',
   },
   'memory-limit-exceeded': {
     short: 'MLE',
     icon: 'server',
-    color: 'charts.yellow'
+    color: 'charts.yellow',
   },
   'runtime-error': { short: 'RTE', icon: 'zap', color: 'charts.blue' },
   'output-limit-exceeded': {
     short: 'OLE',
     icon: 'arrow-both',
-    color: 'charts.orange'
+    color: 'charts.orange',
   },
   'judge-failed': { short: 'FL', icon: 'law', color: 'charts.purple' },
   'internal-error': { short: 'IE', icon: 'alert', color: 'charts.purple' },
   'compilation-error': {
     short: 'CE',
     icon: 'tools',
-    color: 'charts.blue'
+    color: 'charts.blue',
   },
 };
 
@@ -114,45 +114,9 @@ export function shortName(outcome: string | undefined): string {
   return display(outcome).short;
 }
 
-/**
- * The prefix of the contributed mismatch icons, which `contributes.icons` in
- * package.json declares and `scripts/build-mismatch-font.py` generates. One per
- * verdict icon, the same glyph with a mark in its corner.
- */
-function mismatchIcon(icon: string): string {
-  return `rbx-${icon}-mismatch`;
-}
-
-/**
- * The icon a row draws: which verdict, and whether it was the declared one.
- *
- * On a match this is #664's table untouched -- the verdict's own codicon in the
- * hue `rbx run` prints it in, so the tree and the terminal beside it agree.
- *
- * On a miss the icon switches to the same verdict's *mismatch* variant, which
- * is that codicon with a small circled cross in the top-right, and turns red.
- * The verdict is still legible -- a solution that missed by timing out still
- * shows a clock -- but the row stops claiming the run went to plan. Red rather
- * than the verdict's own hue is deliberate and is the one place this view
- * departs from the terminal palette: on a row that broke its promise the
- * interesting fact is the promise, not the verdict, and this is the only
- * channel left saying so once colour moved to the declaration.
- */
-export function outcomeIcon(
-  outcome: string | undefined,
-  status: ExpectationStatus = 'unknown',
-): OutcomeIcon {
+export function outcomeIcon(outcome: string | undefined): OutcomeIcon {
   const { icon, color } = display(outcome);
-  if (status !== 'missed') {
-    return { icon, color };
-  }
-  // PENDING has no mismatch variant and needs none: a row with no verdict
-  // cannot have missed anything. Fall back to its plain icon rather than
-  // naming a glyph the font does not carry, which renders as blank.
-  if (outcome === undefined) {
-    return { icon, color };
-  }
-  return { icon: mismatchIcon(icon), color: 'charts.red' };
+  return { icon, color };
 }
 
 export function isAccepted(outcome: string | undefined): boolean {
@@ -164,67 +128,88 @@ export function isSkipped(outcome: string | undefined): boolean {
 }
 
 /**
- * How each declared expectation is spelled and badged.
+ * How each declared expectation is spelled and drawn.
  *
  * One record per member of `ExpectedOutcome` (rbx/box/schema.py), mirroring
  * that enum the way `DISPLAY` above mirrors `Outcome`. It is spelled out rather
- * than derived from `DISPLAY` because the two enums have different members:
- * `INCORRECT`, `ANY` and `TLE_OR_RTE` exist only here, `SKIPPED` only there.
- * Reaching an `Outcome` key by lowercasing an `ExpectedOutcome` name -- which
- * is what this file used to do -- holds today by coincidence, not by contract.
+ * than derived from `DISPLAY`, because the enums have different members --
+ * `INCORRECT`, `ANY` and `TLE_OR_RTE` exist only here, `SKIPPED` only there --
+ * and reaching an `Outcome` key by lowercasing an `ExpectedOutcome` name, which
+ * this file used to do, holds by coincidence rather than by contract.
  *
- * `badge` is what the tree, the Explorer and the editor tab show. It is the
- * two-letter spelling rbx itself accepts for the expectation in
- * problem.rbx.yml -- `ac`, `wa`, `tl`, `ml`, `ol`, `re`, `jf`, `ce` -- so the
- * mark on the row is the same token the setter typed into the file, and the
- * view introduces no vocabulary of its own. The compound expectations use
- * rbx's `+` spelling from its `ac+tle` and `tle+re` aliases, which is also the
- * honest rendering: `A+` says "accepted, and more is tolerated".
+ * **The icon is the expectation, one to one.** In the tree this is what a
+ * solution or group row draws on its left, so two expectations that are not the
+ * same expectation must not share an icon: `ACCEPTED` and `ACCEPTED_OR_TLE` are
+ * different promises, and so are `WRONG_ANSWER` and `INCORRECT`. Where an
+ * expectation names exactly one outcome it borrows that outcome's icon from
+ * `DISPLAY`, so the two vocabularies rhyme -- an `ACCEPTED` row and an accepted
+ * testcase under it both draw `pass`. The four that name no single outcome get
+ * an icon of their own:
  *
- * `ANY` deliberately has no badge: nothing was declared, and marking every
- * undeclared solution would put a symbol carrying no information on most rows.
+ *   - `ANY`             `dash`          nothing was declared
+ *   - `ACCEPTED_OR_TLE` `pass-filled`   a pass, tolerating slow
+ *   - `INCORRECT`       `circle-slash`  must fail, any way at all
+ *   - `TLE_OR_RTE`      `flame`         must hang or crash
  *
- * Two hard constraints on `badge`, both enforced by the test suite:
- *
- *   - **At most two characters.** `FileDecoration.validate` in VS Code throws
- *     on a longer badge, so an over-long entry here is a runtime failure in the
- *     view, not a cosmetic slip.
- *   - **Letters, not symbols.** The row already carries a codicon for the
- *     outcome (#664), and a second symbolic alphabet beside it reads as noise;
- *     letters also survive the badge's ~11px far better than `⧖` does. A
- *     codicon cannot be used here at all -- `FileDecoration.badge` is a
- *     `string`, not a `ThemeIcon`.
+ * The colours are `ExpectedOutcome.style()` transposed onto `charts.*`, the
+ * same transposition `DISPLAY` makes for `get_outcome_style_verdict`. That is
+ * exact CLI parity: `rbx run` colours each solution's column header by this
+ * function, and the header is precisely what this icon replaces. Note it does
+ * not always agree with the *outcome* palette -- a declared
+ * `OUTPUT_LIMIT_EXCEEDED` is magenta here while an OLE verdict is orange there
+ * -- because those are two different functions in rbx, and copying one onto the
+ * other would be inventing a colour rbx never prints.
  */
 interface ExpectedDisplay {
-  /** Long form, for descriptions and hovers. */
+  /** Kept identical to what this file rendered before the table existed. */
   readonly short: string;
-  /** At most two characters; absent for `ANY`. */
-  readonly badge?: string;
-  /** Hue of the declaration, from `ExpectedOutcome.style()`. */
-  readonly color?: string;
+  readonly icon: string;
+  readonly color: string;
 }
 
 const EXPECTED: Record<string, ExpectedDisplay> = {
-  ANY: { short: 'ANY' },
-  ACCEPTED: { short: 'AC', badge: 'AC', color: 'charts.green' },
-  ACCEPTED_OR_TLE: { short: 'AC or TLE', badge: 'A+', color: 'charts.green' },
-  WRONG_ANSWER: { short: 'WA', badge: 'WA', color: 'charts.red' },
-  INCORRECT: { short: 'INCORRECT', badge: 'IN', color: 'charts.red' },
-  RUNTIME_ERROR: { short: 'RTE', badge: 'RE', color: 'charts.blue' },
-  TIME_LIMIT_EXCEEDED: { short: 'TLE', badge: 'TL', color: 'charts.yellow' },
-  TLE_OR_RTE: { short: 'TLE or RTE', badge: 'T+', color: 'charts.yellow' },
-  MEMORY_LIMIT_EXCEEDED: { short: 'MLE', badge: 'ML', color: 'charts.yellow' },
-  // Purple, not the orange an OLE *outcome* draws: `ExpectedOutcome.style()`
-  // has no branch for it and falls through to magenta, the same hue it gives
-  // JUDGE_FAILED. Faithful to rbx rather than to the outcome palette, because
-  // this colours a declaration and not a verdict.
-  OUTPUT_LIMIT_EXCEEDED: { short: 'OLE', badge: 'OL', color: 'charts.purple' },
-  JUDGE_FAILED: { short: 'FL', badge: 'JF', color: 'charts.purple' },
-  COMPILATION_ERROR: { short: 'CE', badge: 'CE', color: 'charts.blue' },
+  ANY: { short: 'ANY', icon: 'dash', color: 'foreground' },
+  ACCEPTED: { short: 'AC', icon: 'pass', color: 'charts.green' },
+  ACCEPTED_OR_TLE: {
+    short: 'AC or TLE',
+    icon: 'pass-filled',
+    color: 'charts.green',
+  },
+  WRONG_ANSWER: { short: 'WA', icon: 'close', color: 'charts.red' },
+  INCORRECT: { short: 'INCORRECT', icon: 'circle-slash', color: 'charts.red' },
+  RUNTIME_ERROR: { short: 'RTE', icon: 'zap', color: 'charts.blue' },
+  TIME_LIMIT_EXCEEDED: {
+    short: 'TLE',
+    icon: 'watch',
+    color: 'charts.yellow',
+  },
+  TLE_OR_RTE: { short: 'TLE or RTE', icon: 'flame', color: 'charts.yellow' },
+  MEMORY_LIMIT_EXCEEDED: {
+    short: 'MLE',
+    icon: 'server',
+    color: 'charts.yellow',
+  },
+  OUTPUT_LIMIT_EXCEEDED: {
+    short: 'OLE',
+    icon: 'arrow-both',
+    color: 'charts.purple',
+  },
+  JUDGE_FAILED: { short: 'FL', icon: 'law', color: 'charts.purple' },
+  COMPILATION_ERROR: { short: 'CE', icon: 'tools', color: 'charts.blue' },
 };
 
 /** Whether a run honoured what the package declared for it. */
 export type ExpectationStatus = 'met' | 'missed' | 'unknown';
+
+/**
+ * The mark a mismatched row wears on its right.
+ *
+ * `FileDecoration.badge` is a `string`, so this is the one place a codicon
+ * cannot go. It is not a second vocabulary though -- it says nothing about
+ * *which* expectation or *which* verdict, only that the two disagree, and it
+ * appears on no other row.
+ */
+export const MISMATCH_BADGE = '✗';
 
 /** Display form of an expectation, e.g. `ACCEPTED_OR_TLE` -> `AC or TLE`. */
 export function expectedShortName(expected: string | undefined): string {
@@ -237,68 +222,28 @@ export function expectedShortName(expected: string | undefined): string {
 }
 
 /**
- * The mark a row wears for what it was declared to do.
+ * The icon and colour a row draws for what it was declared to do.
  *
- * Absent means "do not decorate this row at all": either nothing was declared
- * (`ANY`), or the declaration is from an rbx newer than this extension, in
- * which case an invented badge would be worse than none.
+ * Absent when nothing was declared or the declaration comes from an rbx newer
+ * than this extension; the caller then falls back to what actually happened,
+ * which is the only thing it still knows.
  */
-export function expectationBadge(expected: string | undefined): string | undefined {
-  return expected === undefined ? undefined : EXPECTED[expected]?.badge;
-}
-
-/**
- * The colour a row wears for what it was declared to do.
- *
- * This is `ExpectedOutcome.style()` transposed onto the `charts.*` family, the
- * same transposition #664 made for the verdict palette -- so a solution
- * declared TLE is yellow here exactly as `rbx run` prints it yellow.
- *
- * Note what this colour is *not*: it does not say whether the declaration held.
- * That fact is carried by the icon, which grows a mark in its corner on a miss
- * (see `outcomeIcon`). A `FileDecoration` has one colour and no font styling --
- * rbx separates ACCEPTED from ACCEPTED_OR_TLE by weight, `bold green` against
- * plain `green`, which has no equivalent here -- so the two facts cannot share
- * this channel, and the badge spelling (`AC` against `A+`) carries the
- * distinction instead.
- */
-export function expectationColor(expected: string | undefined): string | undefined {
-  return expected === undefined ? undefined : EXPECTED[expected]?.color;
-}
-
-/**
- * Hover text for a decorated row: `Expected AC, got TLE`.
- *
- * A port of `ExpectedOutcome.full_markup()` joined to
- * `get_full_outcome_markup_verdict` -- the same sentence rbx prints, minus the
- * marks and the colour. rbx can afford `✓ ACCEPTED` there because a terminal
- * renders whatever it is given; `FileDecoration.tooltip` is a plain `string`,
- * so it can carry neither a codicon nor rbx's glyphs, and names alone are
- * clearer than a symbol the hover cannot explain.
- *
- * `failedGroups` is not decoration: a solution declares its expectations in two
- * layers and rbx checks both, so a miss caught only by the per-group layer must
- * not be reported as if the pooled one had been violated. `sols/mislabeled.cpp`
- * in the `outcome-per-group` fixture is the case -- its pooled `INCORRECT` is
- * satisfied, it does fail, and saying "expected INCORRECT, but got WA" would
- * accuse an expectation that was in fact met. Same distinction
- * `solutionVerdict` (summary.ts) draws, for the same reason.
- */
-export function expectationTooltip(
+export function expectationIcon(
   expected: string | undefined,
-  outcome: string | undefined,
-  status: ExpectationStatus,
-  failedGroups: readonly string[] = [],
-): string {
-  const declared = expectedShortName(expected);
-  if (status === 'unknown') {
-    return `Expected ${declared}`;
-  }
-  const got = shortName(outcome);
-  if (status === 'met') {
-    return `Expected ${declared}, got ${got}`;
-  }
-  return failedGroups.length > 0
-    ? `Declared ${declared}, but ${failedGroups.join(', ')} did not match`
-    : `Expected ${declared}, but got ${got}`;
+): OutcomeIcon | undefined {
+  const display = expected === undefined ? undefined : EXPECTED[expected];
+  return display === undefined
+    ? undefined
+    : { icon: display.icon, color: display.color };
+}
+
+/**
+ * The colour a row's *label* takes for whether that declaration held.
+ *
+ * Only a miss is coloured, and it is the one thing in the view that is: a row
+ * whose text is red is a row where the package disagrees with itself. Verdict
+ * colour lives in the icon, so this channel is free to mean exactly one thing.
+ */
+export function expectationColor(status: ExpectationStatus): string | undefined {
+  return status === 'missed' ? 'charts.red' : undefined;
 }

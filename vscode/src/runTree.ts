@@ -5,16 +5,15 @@
  * API is shaped around *running* tests, which this extension deliberately never
  * does -- execution stays in the terminal, and rbx keeps sole ownership of it.
  */
-import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { groupUri } from './decorations';
+import { runUri } from './decorations';
 import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { groupExpectation, solutionExpectation } from './rbx/expectation';
 import { PackageLayout } from './rbx/layout';
 import {
-  ExpectationStatus,
+  expectationIcon,
   expectedShortName,
   isAccepted,
   outcomeIcon,
@@ -74,23 +73,73 @@ export interface TestcaseNode {
 }
 
 /**
- * The row's icon: which verdict, and whether it was the declared one.
+ * The verdict's own icon, from the table in outcome.ts.
  *
- * Both facts land here because the row has nowhere else to put the second one.
- * The decoration channel carries the *declaration* -- its badge and hue say
- * what the solution promised -- and a `FileDecoration` has one colour, no font
- * styling and no icon, so it cannot also say whether the promise was kept.
- *
- * On a match this is #664 unchanged. On a miss the verdict's mismatch variant
- * draws the same codicon with a circled cross in its corner, in red; see
- * `outcomeIcon`.
+ * Note this reads the *outcome*, not `matchesExpectation`: a solution declared
+ * `WRONG_ANSWER` that answers wrongly is doing its job, and still gets the WA
+ * icon. Whether that met the expectation is what the description and the
+ * tooltip say -- same split the CLI makes, which also colors the verdict by
+ * what happened rather than by whether it was wanted.
  */
-function themeIconFor(
-  outcome: string | undefined,
-  status: ExpectationStatus = 'unknown',
-): vscode.ThemeIcon {
-  const { icon, color } = outcomeIcon(outcome, status);
+function themeIconFor(outcome: string | undefined): vscode.ThemeIcon {
+  const { icon, color } = outcomeIcon(outcome);
   return new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
+}
+
+/**
+ * The icon for a row that has a declared expectation: the *expectation*, not
+ * the verdict.
+ *
+ * A solution row is not a result, it is a claim the package makes -- `rbx run`
+ * says the same thing by heading each solution's column with `solution.href()`
+ * coloured by `ExpectedOutcome.full_style()`, and putting verdicts in the cells
+ * below. What the run actually produced is in this row's description, and in
+ * the testcase rows underneath, which keep the verdict icons from #664.
+ *
+ * Falls back to the verdict when nothing was declared or the declaration is
+ * newer than this extension: the row then shows the only thing still known
+ * about it.
+ */
+function expectationThemeIcon(
+  declared: string | undefined,
+  outcome: string | undefined,
+): vscode.ThemeIcon {
+  const expectation = expectationIcon(declared);
+  if (expectation === undefined) {
+    return themeIconFor(outcome);
+  }
+  return new vscode.ThemeIcon(
+    expectation.icon,
+    new vscode.ThemeColor(expectation.color),
+  );
+}
+
+/**
+ * The per-group breakdown, for the hover of a row that missed.
+ *
+ * Only the groups that actually missed, each naming both sides -- the same
+ * lines `_group_failure_lines` prints, which is the detail you would otherwise
+ * have to go back to the terminal for.
+ */
+function appendGroupFailures(
+  tooltip: vscode.MarkdownString,
+  groups: readonly GroupRun[],
+): void {
+  const missed = groups.filter(
+    (group) => group.report !== undefined && !group.report.matchesExpectation,
+  );
+  if (missed.length === 0) {
+    return;
+  }
+  tooltip.appendMarkdown('\nGroups that did not match:\n\n');
+  for (const group of missed) {
+    const report = group.report;
+    tooltip.appendMarkdown(
+      `- \`${group.name}\`: expected ${expectedShortName(report?.expectedOutcome)}, ` +
+        `got ${shortName(report?.outcome)}\n`,
+    );
+  }
+  tooltip.appendMarkdown('\n');
 }
 
 function testcaseItem(node: TestcaseNode): vscode.TreeItem {
@@ -192,24 +241,28 @@ function groupItem(node: GroupNode): vscode.TreeItem {
     vscode.TreeItemCollapsibleState.Expanded,
   );
   item.id = `${node.pkg.root}::${node.run.solution.index}::${node.group.name}`;
-  item.contextValue = 'rbx.group';
-  // A group has no file, so it gets a synthetic URI purely to be addressable by
-  // the decoration provider. Set unconditionally: the provider returns nothing
-  // for a group that declared no expectation of its own.
-  item.resourceUri = groupUri(node.pkg, node.run.solution.index, node.group.name);
+  const expectation = groupExpectation(node.group);
+  item.contextValue =
+    expectation?.status === 'missed' ? 'rbx.group.mismatch' : 'rbx.group';
+  // Rows are addressed by a synthetic URI so the decoration provider can reach
+  // them; it draws nothing for a group that declared no expectation of its own.
+  item.resourceUri = runUri(node.pkg, node.run.solution.index, node.group.name);
 
   const report = node.group.report;
   const progress = progressOf(node.group.testcases);
-  const expectation = groupExpectation(node.group);
-  item.iconPath = themeIconFor(report?.outcome, expectation?.status);
+  // A group only has an expectation when `outcomePerGroup` covers it; otherwise
+  // the verdict is the only thing it has to show.
+  item.iconPath = expectationThemeIcon(expectation?.declared, report?.outcome);
   item.description = groupDescription(report, progress);
 
   const tooltip = new vscode.MarkdownString();
+  tooltip.supportThemeIcons = true;
   tooltip.appendMarkdown(`**${node.group.name}**\n\n`);
   if (expectation !== undefined) {
     tooltip.appendMarkdown(
       expectation.status === 'missed'
-        ? `**Missed its expectation**: ${expectedShortName(expectation.declared)}\n\n`
+        ? `$(error) **Expected ${expectedShortName(expectation.declared)}, got ` +
+            `${shortName(report?.outcome)}**\n\n`
         : `Expected: ${expectedShortName(expectation.declared)}\n\n`,
     );
   }
@@ -227,7 +280,11 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
       : vscode.TreeItemCollapsibleState.Collapsed,
   );
   item.id = `${node.pkg.root}::${solution.index}`;
-  item.resourceUri = vscode.Uri.file(path.join(node.pkg.root, solution.path));
+  // A synthetic URI, not the solution's own file: decorations are global per
+  // URI, and pointing at the file would mark it in the Explorer and on its
+  // editor tab too. Nothing else in the extension reads `resourceUri` -- the
+  // commands all take the node.
+  item.resourceUri = runUri(node.pkg, solution.index);
 
   const report = node.run.report;
   const expectation = solutionExpectation(node.run);
@@ -237,23 +294,29 @@ function solutionItem(node: SolutionNode): vscode.TreeItem {
     expectation?.status === 'missed' ? 'rbx.solution.mismatch' : 'rbx.solution';
   const testcases = node.run.groups.flatMap((group) => group.testcases);
   const progress = progressOf(testcases);
-  item.iconPath = themeIconFor(report?.outcome, expectation?.status);
+  item.iconPath = expectationThemeIcon(solution.expectedOutcome, report?.outcome);
   item.description = solutionDescription(report, progress, solution.expectedOutcome);
 
   const tooltip = new vscode.MarkdownString();
+  tooltip.supportThemeIcons = true;
   tooltip.appendMarkdown(`**${solution.path}**\n\n`);
-  // The skeleton's declared expectation, which is there even before the report.
-  tooltip.appendMarkdown(
-    expectation?.status === 'missed'
-      ? `**Missed its expectation**: ${expectedShortName(solution.expectedOutcome)}\n\n`
-      : `Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`,
-  );
-  appendSummary(tooltip, report, progress, testcases);
-  // rbx names the groups that missed their own expectation; which layer caught
-  // the solution -- pooled or per-group -- is its call, already made.
-  if (report !== undefined && report.failedGroups.length > 0) {
-    tooltip.appendMarkdown(`\nFailing groups: ${report.failedGroups.join(', ')}\n`);
+  if (expectation?.status === 'missed') {
+    // Lead with the miss, and say which layer caught it. A solution can satisfy
+    // its pooled expectation and still be caught per group, and naming the
+    // pooled one there would accuse an expectation that was met.
+    tooltip.appendMarkdown(
+      report !== undefined && report.failedGroups.length > 0
+        ? `$(error) **Declared ${expectedShortName(solution.expectedOutcome)}, but ` +
+            `${report.failedGroups.length} group(s) did not match**\n\n`
+        : `$(error) **Expected ${expectedShortName(solution.expectedOutcome)}, got ` +
+            `${shortName(report?.outcome)}**\n\n`,
+    );
+  } else {
+    // From the skeleton, so it is there even before the report is.
+    tooltip.appendMarkdown(`Expected: ${expectedShortName(solution.expectedOutcome)}\n\n`);
   }
+  appendSummary(tooltip, report, progress, testcases);
+  appendGroupFailures(tooltip, node.run.groups);
   item.tooltip = tooltip;
   return item;
 }

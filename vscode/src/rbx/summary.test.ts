@@ -89,7 +89,7 @@ test('a scored group shows its points', () => {
   );
 });
 
-test('a group that missed its own expectation leads with the mismatch', () => {
+test('a group that missed says what it got, not what it wanted', () => {
   const report = group({
     outcome: 'accepted',
     expectedOutcome: 'TIME_LIMIT_EXCEEDED',
@@ -98,7 +98,9 @@ test('a group that missed its own expectation leads with the mismatch', () => {
   });
   assert.strictEqual(
     groupDescription(report, { done: 1, total: 1 }),
-    'expected TLE, got AC · 13 ms',
+    // The declared TLE is the row's icon; repeating it here would cost the
+    // width the timings need.
+    'got AC · 13 ms',
   );
 });
 
@@ -115,7 +117,7 @@ test('a solution matching its expectation shows the plain verdict', () => {
   );
 });
 
-test('a solution contradicting its pooled expectation leads with the mismatch', () => {
+test('a solution contradicting its pooled expectation says what it got', () => {
   const report = solution({
     outcome: 'wrong-answer',
     status: 'UNEXPECTED_VERDICTS',
@@ -124,13 +126,14 @@ test('a solution contradicting its pooled expectation leads with the mismatch', 
   });
   assert.strictEqual(
     solutionDescription(report, { done: 4, total: 4 }),
-    'expected AC, got WA · 340 ms',
+    'got WA · 340 ms',
   );
 });
 
 test('a solution caught only per group names the groups, not the expectation', () => {
   // Its pooled INCORRECT *is* satisfied -- it does fail somewhere -- so saying
-  // "expected INCORRECT, got WA" would name an expectation that was met.
+  // "expected INCORRECT, got WA" would name an expectation that was met. The
+  // groups are the finding; the pooled declaration is not.
   const report = solution({
     expectedOutcome: 'INCORRECT',
     outcome: 'wrong-answer',
@@ -141,7 +144,7 @@ test('a solution caught only per group names the groups, not the expectation', (
   });
   assert.strictEqual(
     solutionDescription(report, { done: 2, total: 2 }),
-    'WA · failed small, big · 13 ms',
+    'failed small, big · 13 ms',
   );
 });
 
