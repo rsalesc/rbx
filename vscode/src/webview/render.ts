@@ -105,10 +105,20 @@ function warningText(warning: RunWarning): string {
 /**
  * The warning mark, and nothing else.
  *
- * A clock rather than the gutter's triangle, and in its own column: the two say
- * different things and drawing both as ⚠ would read as one axis. The triangle
- * means a declaration was missed; this means the declaration held but the run
- * only just fits, which is a fact about time and is drawn as one.
+ * A triangle like the gutter's, but yellow and at the other end of the row.
+ *
+ * A clock would be the better glyph for "this only just fits" -- except that
+ * `watch` is already the TLE verdict's icon, and a double-TL warning appears
+ * *only* on a row whose verdict is TLE. The mark would have landed beside an
+ * identical clock and read as nothing at all.
+ *
+ * The triangle is also the mark that generalizes. This channel is meant to grow
+ * -- sanitizer findings and compilation warnings are the next two -- and neither
+ * has anything to do with time. What every warning shares is "this row passed,
+ * and something still wants your attention", which is what a warning triangle
+ * says. Severity keeps it apart from the gutter's: red there means a declaration
+ * was missed, yellow here means one held with a caveat, and the two never
+ * occupy the same column.
  *
  * Unlike the gutter the cell collapses when empty. The gutter earns its
  * permanent column by being on the majority of rows; a warning is rare, and 16px
@@ -126,7 +136,7 @@ function warningCell(row: Row): string {
     return '';
   }
   const title = row.warnings.map(warningText).join(' ');
-  return `<span class="warn" title="${escapeAttr(title)}">${codicon('watch')}</span>`;
+  return `<span class="warn" title="${escapeAttr(title)}">${codicon('warning')}</span>`;
 }
 
 function twistyCell(row: Row, expanded: boolean): string {
@@ -389,7 +399,7 @@ function warningCard(warnings: readonly RunWarning[]): string {
     .join('');
   return (
     '<div class="warning-card">' +
-    codicon('watch') +
+    codicon('warning') +
     `<div class="mismatch-text">${body}</div>` +
     '</div>'
   );
@@ -634,7 +644,7 @@ export function renderHeader(model: RunViewModel, _state: UiState): string {
       : `<span class="header-count">${codicon('warning')}${model.mismatches} of ${solutions} did not match</span>`) +
     (model.warned === 0
       ? ''
-      : `<span class="header-count header-warned">${codicon('watch')}${model.warned} warned</span>`);
+      : `<span class="header-count header-warned">${codicon('warning')}${model.warned} warned</span>`);
   return (
     '<div class="header">' +
     counts +

@@ -611,13 +611,21 @@ const WARNED = row({
   },
 });
 
-test('a warned row draws a mark that is not the mismatch triangle', () => {
+test('a warned row draws its mark outside the gutter, which still says met', () => {
   const html = renderTree(model([WARNED]), state());
   assert.ok(html.includes('class="warn"'));
-  assert.ok(html.includes('codicon-watch'));
-  // The gutter still says the declaration held.
+  // The gutter is the match axis and the warning never writes to it.
   assert.ok(html.includes('gutter-met'));
   assert.ok(!html.includes('gutter-missed'));
+});
+
+test('the warning mark is not the TLE verdict icon it would sit beside', () => {
+  // `watch` is time-limit-exceeded's own icon, and a double-TL warning appears
+  // only on a row whose verdict is TLE -- a clock here would be invisible.
+  const html = renderTree(model([WARNED]), state());
+  const mark = html.slice(html.indexOf('class="warn"'));
+  assert.ok(!mark.startsWith('class="warn"><span class="codicon codicon-watch"'));
+  assert.ok(mark.includes('codicon-warning'));
 });
 
 test('the warning mark is the last cell, so an unwarned row keeps its columns', () => {

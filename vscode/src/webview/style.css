@@ -191,9 +191,11 @@ body {
 
 .gutter-missed { color: var(--vscode-charts-red); }
 
-/* Yellow, and a clock rather than a triangle: this row met its declaration and
-   is only being flagged for how close to the time limit it ran. Red here would
-   read as the mismatch the gutter is drawing two columns to the left. */
+/* The same triangle the gutter draws, in yellow and at the other end of the row.
+   Not a clock: `watch` is the TLE verdict's own icon, and a double-TL warning
+   only ever lands on a TLE row, so the mark would have sat beside an identical
+   glyph. Yellow against the gutter's red is what says this row met its
+   declaration and is only being flagged for how narrowly. */
 .warn {
   display: flex;
   align-items: center;
