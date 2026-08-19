@@ -13,7 +13,8 @@ import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
 import { initLog, log } from './log';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
-import { RunTreeProvider } from './runTree';
+import { RunDataProvider } from './runData';
+import { RunViewProvider } from './runView';
 
 /**
  * Map a changed path back to the package it belongs to.
@@ -36,20 +37,21 @@ function packageRootOf(fsPath: string): string | undefined {
 export function activate(context: vscode.ExtensionContext): void {
   initLog(context);
   log('rbx extension activated.');
-  const tree = new RunTreeProvider();
+  const data = new RunDataProvider();
+  const view = new RunViewProvider(data, context.extensionUri);
 
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider('rbx.run', tree),
+    vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),
     vscode.workspace.registerFileSystemProvider(SCHEME, new ArtifactFileSystemProvider(), {
       isReadonly: true,
       isCaseSensitive: true,
     }),
   );
 
-  registerCommands(context, tree);
+  registerCommands(context, view, data);
 
   // Artifacts land incrementally as evaluations resolve, which is what gives
-  // the tree live progress without any streaming protocol: each new `.eval`
+  // the view live progress without any streaming protocol: each new `.eval`
   // fills in one testcase. Refreshes are debounced because a run drops many
   // files in quick succession.
   const pending = new Set<string>();
@@ -68,7 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
       timer = undefined;
       for (const changed of pending) {
         log(`Artifacts changed under ${changed}; reloading.`);
-        tree.invalidate(changed);
+        data.invalidate(changed);
       }
       pending.clear();
     }, 200);
@@ -97,14 +99,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // A package appearing or disappearing changes the set of roots, not just
   // their contents, so it needs a full rediscovery.
   const manifests = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_MANIFEST}`);
-  manifests.onDidCreate(() => tree.refresh());
-  manifests.onDidDelete(() => tree.refresh());
+  manifests.onDidCreate(() => data.refresh());
+  manifests.onDidDelete(() => data.refresh());
   context.subscriptions.push(
     manifests,
-    vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => data.refresh()),
   );
 
-  void tree.refresh();
+  void data.refresh();
 }
 
 export function deactivate(): void {

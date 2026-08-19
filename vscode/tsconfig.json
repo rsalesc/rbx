@@ -3,7 +3,11 @@
     "module": "Node16",
     "moduleResolution": "Node16",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    // "DOM" is here for src/webview/main.ts, which runs in a webview and not in
+    // the extension host. It only *adds* globals, so the node build is
+    // unaffected; the extension code is kept off them by having no reason to
+    // reach for one, not by the compiler.
+    "lib": ["ES2022", "DOM"],
     "outDir": "out",
     "sourceMap": true,
     "rootDir": "src",

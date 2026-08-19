@@ -1,0 +1,333 @@
+/*
+ * The run view's look.
+ *
+ * Two rules carry the whole design. First, a hue is a role and never a literal
+ * color: `.hue-red` resolves to a `--vscode-*` variable, so the view follows
+ * the user's theme and a high-contrast theme keeps working. Second, a
+ * background fill is reserved -- selection, hover, and the mismatch wash are
+ * the only ones in this file. That scarcity is what lets a missed expectation
+ * be found by scanning the sidebar instead of by reading it, which is the whole
+ * reason the view was rewritten.
+ */
+
+@font-face {
+  /* Task 4 copies codicon.ttf next to this stylesheet. */
+  font-family: 'codicon';
+  src: url('codicon.ttf') format('truetype');
+}
+
+html,
+body {
+  /* The tree, not the document, is what scrolls. Without a height to fill, the
+     tree grows to fit its rows, the body scrolls instead, and `tree.scrollTop`
+     is forever 0 -- which quietly turns saving and restoring the scroll
+     position into a no-op. */
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  /* The sidebar is narrow; the row is responsible for fitting into it. */
+  overflow-x: hidden;
+}
+
+.codicon {
+  font-family: 'codicon';
+  font-size: 16px;
+  line-height: 1;
+  display: inline-block;
+  text-align: center;
+  /* The glyphs are private-use code points; never let them be selected as text. */
+  user-select: none;
+}
+
+/*
+ * The per-icon `content` rules are deliberately not written out here. outcome.ts
+ * names fifteen codicons and grows whenever rbx gains an outcome; a hand-copied
+ * table of private-use code points would be a second place to keep in step with
+ * the font, and wrong silently -- a mistyped code point draws a different icon
+ * rather than nothing. Task 4 ships the vendored `codicon.css` next to the
+ * font, which carries the whole mapping.
+ */
+
+.hue-green { color: var(--vscode-charts-green); }
+.hue-red { color: var(--vscode-charts-red); }
+.hue-yellow { color: var(--vscode-charts-yellow); }
+.hue-blue { color: var(--vscode-charts-blue); }
+.hue-purple { color: var(--vscode-charts-purple); }
+.hue-orange { color: var(--vscode-charts-orange); }
+.hue-dim { color: var(--vscode-descriptionForeground); }
+.hue-neutral { color: var(--vscode-foreground); }
+
+/* No `position: sticky` on the header or the filter: they are flex items that
+   never scroll, because the only scrolling box in the view is `#tree`. */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.header-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  color: var(--vscode-charts-red);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  border: none;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.header button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.filter {
+  padding: 4px 8px;
+}
+
+.filter input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 2px 4px;
+}
+
+.filter input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+#tree {
+  /* The meta column drops out on a narrow sidebar; the query has to measure the
+     tree, not the viewport, so a wide window with a narrow sidebar still hides
+     it. */
+  container-type: inline-size;
+  /* Takes the space the header and the filter leave; `min-height: 0` because a
+     flex item defaults to `min-height: auto` and would refuse to shrink below
+     its content, which is exactly how the tree stops being the scrolling box. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 16px 16px 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  /* Tighter than the left inset: nothing on the right needs separating from an
+     edge mark, and the sidebar is narrow enough that the verdicts want the
+     room. */
+  padding-right: 4px;
+  cursor: pointer;
+  /* Every row reserves the mismatch rule, transparent until it is earned.
+     Without it a tinted row is 2px wider on its left than its neighbours, and
+     the gutter -- the one column whose whole job is to be scannable straight
+     down -- stops lining up exactly where it matters most. */
+  border-left: 2px solid transparent;
+  /* The single most important rule in the file: no row may widen the view. */
+  overflow: hidden;
+}
+
+.gutter,
+.twisty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Empty in both the `none` and leaf cases, and still occupying its column, so
+     every label starts at the same x and the gutter can be scanned. */
+  width: 16px;
+}
+
+/* A size below the 16px default: the gutter is glanced at down a column, not
+   read, and at full weight a column of ticks competes with the verdicts on the
+   other side of the row. */
+.gutter .codicon,
+.twisty .codicon {
+  font-size: 14px;
+}
+
+/* Met is the unremarkable case -- almost every row in a healthy package -- so
+   it is stated quietly. A miss stays at full strength. */
+.gutter-met {
+  color: var(--vscode-charts-green);
+  opacity: 0.7;
+}
+
+.gutter-missed { color: var(--vscode-charts-red); }
+.twisty { color: var(--vscode-icon-foreground); }
+
+.label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.bold { font-weight: 600; }
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sep {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict .codicon {
+  font-size: 14px;
+}
+
+/* Wide enough for the longest short name outcome.ts spells (`SKIP`), so every
+   verdict icon lands on the same x and the column can be read straight down --
+   the right-hand counterpart to what the gutter does on the left.
+
+   Left-aligned within that width. Right-aligning it puts `AC` hard against the
+   panel edge, and the trailing space a short name leaves is what keeps the
+   column off the border. */
+.verdict-name {
+  min-width: 4ch;
+  text-align: left;
+}
+
+.mismatch {
+  /* Colouring a rule every row already reserves, so tinting a row never moves
+     it. */
+  border-left-color: var(--vscode-charts-red);
+  /* The only background in the file besides selection and hover. */
+  background: color-mix(in srgb, var(--vscode-charts-red) 8%, transparent);
+}
+
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.row[aria-selected='true'] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* Indented by margin rather than padding, so the padding below is free to be
+   the card's own breathing room instead of its indentation. */
+.detail {
+  margin-right: 4px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--vscode-panel-border, var(--vscode-descriptionForeground));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mismatch-card {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--vscode-charts-red);
+}
+
+.mismatch-text {
+  /* The sentence wraps rather than truncating: it is the one thing in the view
+     that has to be read in full. */
+  white-space: normal;
+}
+
+.histogram {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bars {
+  display: flex;
+  height: 4px;
+  overflow: hidden;
+}
+
+.bar {
+  /* Hued through `color` like everything else, so one `.hue-*` table serves the
+     label, the meta, the verdict and the bar alike. */
+  background: currentColor;
+  height: 100%;
+}
+
+.counts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.values {
+  display: flex;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+.value {
+  display: flex;
+  gap: 4px;
+}
+
+.value-text {
+  color: var(--vscode-foreground);
+}
+
+.welcome {
+  padding: 8px 16px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.welcome code {
+  font-family: var(--vscode-editor-font-family);
+}
+
+@container (max-width: 260px) {
+  .meta {
+    display: none;
+  }
+}

@@ -9,7 +9,9 @@ import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import { artifactUri } from './artifactFs';
-import { RunNode, RunTreeProvider, TestcaseNode } from './runTree';
+import { RunNode, TestcaseNode } from './rbx/nodes';
+import { RunDataProvider } from './runData';
+import { RunViewProvider } from './runView';
 
 /** `sols/wa.cpp/main/1-gen-000` -- the display prefix shared by a testcase's tabs. */
 function labelPrefix(node: TestcaseNode): string {
@@ -50,13 +52,32 @@ async function openArtifact(
 
 export function registerCommands(
   context: vscode.ExtensionContext,
-  tree: RunTreeProvider,
+  view: RunViewProvider,
+  data: RunDataProvider,
 ): void {
-  const register = (id: string, handler: (node: RunNode) => unknown) => {
-    context.subscriptions.push(vscode.commands.registerCommand(id, handler));
+  /**
+   * The seam where two invocation paths arrive in two shapes.
+   *
+   * A keyboard or double-click invocation goes through runView.ts, which
+   * resolves the row itself and passes a real `RunNode`. A `webview/context`
+   * menu item never does: VS Code invokes the command with the row's
+   * `data-vscode-context` object, so all that arrives is the id inside it.
+   */
+  const resolve = (arg: unknown): RunNode | undefined => {
+    if (typeof arg === 'object' && arg !== null && 'kind' in arg) {
+      return arg as RunNode;
+    }
+    const id = (arg as { rbxNodeId?: unknown } | undefined)?.rbxNodeId;
+    return typeof id === 'string' ? view.nodeById(id) : undefined;
   };
 
-  register('rbx.refresh', () => tree.refresh());
+  const register = (id: string, handler: (node: RunNode | undefined) => unknown) => {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(id, (arg: unknown) => handler(resolve(arg))),
+    );
+  };
+
+  register('rbx.refresh', () => data.refresh());
 
   register('rbx.openInput', async (node) => {
     if (!isTestcase(node)) {
@@ -147,7 +168,7 @@ export function registerCommands(
   });
 
   register('rbx.revealInExplorer', async (node) => {
-    if (node.kind !== 'package') {
+    if (node?.kind !== 'package') {
       return;
     }
     await vscode.commands.executeCommand(

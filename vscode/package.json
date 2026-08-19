@@ -35,17 +35,12 @@
       "rbx": [
         {
           "id": "rbx.run",
+          "type": "webview",
           "name": "Run",
           "contextualTitle": "rbx"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "rbx.run",
-        "contents": "No rbx run found in this workspace.\n\nRun `rbx run` in the terminal and the results will show up here."
-      }
-    ],
     "commands": [
       {
         "command": "rbx.refresh",
@@ -99,45 +94,40 @@
           "group": "navigation"
         }
       ],
-      "view/item/context": [
-        {
-          "command": "rbx.diffOutput",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
-          "group": "inline"
-        },
+      "webview/context": [
         {
           "command": "rbx.openInput",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "when": "webviewSection == 'rbx.testcase'",
           "group": "1_open@1"
         },
         {
           "command": "rbx.openOutput",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "when": "webviewSection == 'rbx.testcase'",
           "group": "1_open@2"
         },
         {
           "command": "rbx.openAnswer",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "when": "webviewSection == 'rbx.testcase'",
           "group": "1_open@3"
         },
         {
           "command": "rbx.openStderr",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "when": "webviewSection == 'rbx.testcase'",
           "group": "1_open@4"
         },
         {
           "command": "rbx.diffOutput",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "when": "webviewSection == 'rbx.testcase'",
           "group": "2_compare@1"
         },
         {
           "command": "rbx.copyPath",
-          "when": "view == rbx.run && viewItem =~ /^rbx.testcase/",
+          "when": "webviewSection == 'rbx.testcase'",
           "group": "3_copy@1"
         },
         {
           "command": "rbx.revealInExplorer",
-          "when": "view == rbx.run && viewItem == rbx.package",
+          "when": "webviewSection == 'rbx.package'",
           "group": "3_copy@1"
         }
       ]
@@ -168,6 +158,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@vscode/codicons": "^0.0.36",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.23.0",
     "typescript": "^5.5.0"
