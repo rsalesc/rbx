@@ -138,9 +138,15 @@ body {
   display: grid;
   grid-template-columns: 16px 16px 1fr auto auto;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   height: 22px;
+  padding-right: 8px;
   cursor: pointer;
+  /* Every row reserves the mismatch rule, transparent until it is earned.
+     Without it a tinted row is 2px wider on its left than its neighbours, and
+     the gutter -- the one column whose whole job is to be scannable straight
+     down -- stops lining up exactly where it matters most. */
+  border-left: 2px solid transparent;
   /* The single most important rule in the file: no row may widen the view. */
   overflow: hidden;
 }
@@ -155,7 +161,21 @@ body {
   width: 16px;
 }
 
-.gutter-met { color: var(--vscode-charts-green); }
+/* A size below the 16px default: the gutter is glanced at down a column, not
+   read, and at full weight a column of ticks competes with the verdicts on the
+   other side of the row. */
+.gutter .codicon,
+.twisty .codicon {
+  font-size: 14px;
+}
+
+/* Met is the unremarkable case -- almost every row in a healthy package -- so
+   it is stated quietly. A miss stays at full strength. */
+.gutter-met {
+  color: var(--vscode-charts-green);
+  opacity: 0.7;
+}
+
 .gutter-missed { color: var(--vscode-charts-red); }
 .twisty { color: var(--vscode-icon-foreground); }
 
@@ -184,14 +204,27 @@ body {
 .verdict {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-right: 8px;
+  gap: 4px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
+.verdict .codicon {
+  font-size: 14px;
+}
+
+/* Wide enough for the longest short name outcome.ts spells (`SKIP`), so every
+   verdict icon lands on the same x and the column can be read straight down --
+   the right-hand counterpart to what the gutter does on the left. */
+.verdict-name {
+  min-width: 4ch;
+  text-align: left;
+}
+
 .mismatch {
-  border-left: 2px solid var(--vscode-charts-red);
+  /* Colouring a rule every row already reserves, so tinting a row never moves
+     it. */
+  border-left-color: var(--vscode-charts-red);
   /* The only background in the file besides selection and hover. */
   background: color-mix(in srgb, var(--vscode-charts-red) 8%, transparent);
 }
@@ -210,19 +243,22 @@ body {
   outline-offset: -1px;
 }
 
+/* Indented by margin rather than padding, so the padding below is free to be
+   the card's own breathing room instead of its indentation. */
 .detail {
-  padding-top: 2px;
-  padding-bottom: 6px;
-  padding-right: 8px;
+  margin-right: 8px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--vscode-panel-border, var(--vscode-descriptionForeground));
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .mismatch-card {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 6px;
   color: var(--vscode-charts-red);
 }
 
@@ -260,7 +296,7 @@ body {
 
 .values {
   display: flex;
-  gap: 12px;
+  gap: 4px 16px;
   flex-wrap: wrap;
   color: var(--vscode-descriptionForeground);
 }

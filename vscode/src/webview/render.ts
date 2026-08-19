@@ -99,9 +99,12 @@ function verdictCell(row: Row): string {
   if (verdict === undefined) {
     return '';
   }
-  return `<span class="verdict hue-${verdict.hue}">${codicon(verdict.icon)}${escapeHtml(
-    verdict.short,
-  )}</span>`;
+  // The short name is its own element so the stylesheet can give it a fixed
+  // width: without one, `SKIP` pushes its icon left of every `AC` above it and
+  // the column of verdicts reads as ragged.
+  return `<span class="verdict hue-${verdict.hue}">${codicon(
+    verdict.icon,
+  )}<span class="verdict-name">${escapeHtml(verdict.short)}</span></span>`;
 }
 
 function labelCell(row: Row): string {
@@ -280,7 +283,9 @@ function renderDetail(row: Row, detail: SolutionDetail, id: string): string {
   // it or announces it as an empty level of the tree. As a plain div it is out
   // of the tree structure entirely, and the row it belongs to reaches it
   // through `aria-describedby` instead.
-  return `<div class="detail" id="${escapeAttr(id)}" style="padding-left: ${indent(row.depth + 1)}px">${body}</div>`;
+  // Indented with a margin, not padding: the card's padding is its own inset,
+  // and mixing the two here is what left the text sitting flat against its edge.
+  return `<div class="detail" id="${escapeAttr(id)}" style="margin-left: ${indent(row.depth + 1)}px">${body}</div>`;
 }
 
 /**
