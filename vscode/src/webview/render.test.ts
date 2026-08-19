@@ -733,6 +733,9 @@ test('a testcase renders the hidden verdict as a gloss on its chip', () => {
   // Inside the verdict cell, after the name it glosses.
   assert.ok(html.indexOf('verdict-under') > html.indexOf('verdict-name'));
   assert.ok(html.includes('Would have been WA without the time limit'));
+  // The gloss has to sit against the name, so the chip releases the width it
+  // reserves for column alignment -- which this row was never going to keep.
+  assert.ok(html.includes('verdict-glossed'));
 });
 
 test('a testcase with no hidden verdict renders no gloss', () => {
@@ -744,6 +747,9 @@ test('a testcase with no hidden verdict renders no gloss', () => {
   const html = renderTree(model([MAIN, leaf]), state({ expanded: new Set(['sol0']) }));
   assert.ok(html.includes('kind-testcase'));
   assert.ok(!html.includes('verdict-under'));
+  // An unglossed chip keeps its reserved width: that is what lines the verdict
+  // icons up down the column on every ordinary row.
+  assert.ok(!html.includes('verdict-glossed'));
 });
 
 test('a run that warned but matched everywhere still gets a header strip', () => {

@@ -192,7 +192,15 @@ function verdictCell(row: Row): string {
   // The short name is its own element so the stylesheet can give it a fixed
   // width: without one, `SKIP` pushes its icon left of every `AC` above it and
   // the column of verdicts reads as ragged.
-  return `<span class="verdict hue-${verdict.hue}">${codicon(
+  //
+  // `verdict-glossed` releases that fixed width, and only here. It buys the
+  // alignment of a column of icons, and a row carrying a gloss is wider than
+  // its neighbours regardless -- so on this row the reserved width aligns
+  // nothing and only holds `(WA)` a character away from the verdict it belongs
+  // to. Written as a class rather than `:has(+ .verdict-under)` so the rule
+  // does not depend on selector support in whichever Electron is underneath.
+  const glossed = verdict.under === undefined ? '' : ' verdict-glossed';
+  return `<span class="verdict hue-${verdict.hue}${glossed}">${codicon(
     verdict.icon,
   )}<span class="verdict-name">${escapeHtml(verdict.short)}</span>${under}</span>`;
 }

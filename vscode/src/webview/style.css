@@ -312,6 +312,16 @@ body {
 .verdict-under {
   font-size: 0.9em;
   opacity: 0.85;
+  /* Most of the way back through the flex gap the chip sets between its parts.
+     A gloss belongs to the verdict beside it, and at the same 4px that
+     separates the icon from the name it read as a third, independent thing. */
+  margin-left: -2px;
+}
+
+/* Only a glossed chip gives up the reserved width -- see verdictCell. `TLE` in
+   a 4ch box leaves a character of air exactly where the gloss has to attach. */
+.verdict-glossed .verdict-name {
+  min-width: 0;
 }
 
 /* A run rbx warned about, drawn the way a miss is and one step quieter.
