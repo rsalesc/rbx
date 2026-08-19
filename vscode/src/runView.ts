@@ -104,9 +104,20 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     const nonce = makeNonce();
     const asset = (...parts: string[]): vscode.Uri =>
       webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', ...parts));
+    // `'unsafe-inline'` on styles only, and it is load-bearing: a `style-src`
+    // without it drops every `style` attribute, which is how a row states its
+    // indentation and how a histogram bar states its width. Without it the tree
+    // renders every depth flush left and every bar at zero width, silently --
+    // there is no error, the attribute is simply gone.
+    //
+    // What it costs is bounded. `script-src` stays nonce-only, so the dangerous
+    // half of inline content is still refused; `default-src 'none'` leaves no
+    // `img-src` or `connect-src`, so injected CSS has nowhere to send anything;
+    // and every value interpolated into this document goes through
+    // `escapeHtml`/`escapeAttr` first.
     const csp = [
       `default-src 'none'`,
-      `style-src ${webview.cspSource}`,
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
       `font-src ${webview.cspSource}`,
       `script-src 'nonce-${nonce}'`,
     ].join('; ');

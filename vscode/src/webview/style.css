@@ -220,13 +220,12 @@ body {
    verdict icon lands on the same x and the column can be read straight down --
    the right-hand counterpart to what the gutter does on the left.
 
-   Right-aligned within that width, not left: `AC` in a four-character box would
-   otherwise trail two characters of empty space before the panel edge, which
-   reads as a wide and uneven right margin on exactly the rows that have the
-   shortest verdicts. */
+   Left-aligned within that width. Right-aligning it puts `AC` hard against the
+   panel edge, and the trailing space a short name leaves is what keeps the
+   column off the border. */
 .verdict-name {
   min-width: 4ch;
-  text-align: right;
+  text-align: left;
 }
 
 .mismatch {
