@@ -242,20 +242,29 @@ tree.addEventListener('click', (event) => {
   if (id === undefined) {
     return;
   }
-  if (target.closest('.twisty') !== null) {
+  const row = rowById(id);
+  // `detail` is the click count, so the second click of a double click selects
+  // without acting twice -- which would otherwise expand a node and instantly
+  // collapse it again, or open the same testcase twice.
+  const acts = event.detail <= 1;
+  // A click anywhere on a parent row expands it, not just one on the 16px
+  // twisty. The twisty is a target you have to aim at, and every other row in
+  // the view responds to being clicked anywhere along it.
+  if (acts && row?.expandable === true) {
+    // Assigned rather than passed through `select`, which renders: `toggle`
+    // renders too, and doing both would draw the view twice per click.
     selected = id;
     toggle(id);
     return;
   }
   select(id);
-  // A single click opens, as it did when this view was a `TreeView` and the
-  // row carried `TreeItem.command` -- VS Code fires that on the first click,
-  // and every tree in the product opens a testcase the same way. `detail` is
-  // the click count, so the second click of a double click selects without
-  // opening the same testcase twice.
-  if (event.detail <= 1) {
-    invoke(rowById(id));
+  if (!acts) {
+    return;
   }
+  // A leaf opens on a single click, as it did when this view was a `TreeView`
+  // and the row carried `TreeItem.command` -- VS Code fires that on the first
+  // click, and every tree in the product opens a testcase the same way.
+  invoke(row);
 });
 
 tree.addEventListener('keydown', (event) => {
