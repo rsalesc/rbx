@@ -19,7 +19,7 @@
 import * as path from 'path';
 
 import { ExpectationDisplay, expectationDisplay } from './expectation';
-import { Hue, hueOfThemeColor } from './hue';
+import { Hue, hueOfScore, hueOfThemeColor } from './hue';
 import {
   GroupNode,
   PackageNode,
@@ -92,6 +92,8 @@ export interface Mismatched {
 export interface ScoreMismatch {
   readonly expected: string;
   readonly got: string;
+  /** How the score it got reads on its own -- see `hueOfScore`. */
+  readonly gotHue: Hue;
 }
 
 /**
@@ -123,6 +125,8 @@ export interface SolutionDetail {
   readonly maxTime?: string;
   readonly maxMemory?: string;
   readonly score?: string;
+  /** Set exactly when `score` is -- see `hueOfScore`. */
+  readonly scoreHue?: Hue;
 }
 
 export interface Row {
@@ -260,7 +264,11 @@ function aggregateMeta(
       : span(`${progress.done}/${progress.total}`, 'dim', 'progress'),
     report.maxScore === 0
       ? undefined
-      : span(formatScore(report.score, report.maxScore), 'neutral', 'score'),
+      : span(
+          formatScore(report.score, report.maxScore),
+          hueOfScore(report.score, report.maxScore),
+          'score',
+        ),
     span(formatTime(report.maxTime), 'dim', 'time'),
     span(formatMemory(report.maxMemory), 'dim', 'memory'),
   ]);
@@ -405,6 +413,7 @@ function mismatchDetail(run: SolutionRun, report: SolutionReport): MismatchDetai
         ? {
             expected: scoreRange(report.expectedScore),
             got: String(report.score),
+            gotHue: hueOfScore(report.score, report.maxScore),
           }
         : undefined,
   };
@@ -424,6 +433,10 @@ function solutionDetail(run: SolutionRun, mismatch: boolean): SolutionDetail {
       report === undefined || report.maxScore === 0
         ? undefined
         : formatScore(report.score, report.maxScore),
+    scoreHue:
+      report === undefined || report.maxScore === 0
+        ? undefined
+        : hueOfScore(report.score, report.maxScore),
   };
 }
 

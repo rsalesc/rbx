@@ -427,9 +427,11 @@ body {
   gap: 4px;
 }
 
-.value-text {
-  color: var(--vscode-foreground);
-}
+/* `.value-text` deliberately has no rule of its own. It used to set
+   `color: var(--vscode-foreground)`, which -- sitting after the `.hue-*` table
+   at equal specificity -- would quietly beat the score's hue. The text now
+   carries `hue-neutral` when it has nothing to say and its own hue when it
+   does, so colour comes from that one table like everywhere else in the view. */
 
 .welcome {
   padding: 8px 16px;

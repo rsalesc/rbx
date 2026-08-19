@@ -291,7 +291,10 @@ function groupLines(groups: readonly GroupMismatch[], held: string | undefined):
 function scoreLine(score: ScoreMismatch): string {
   return (
     '<p class="mismatch-line">Expected ' +
-    `${escapeHtml(score.expected)} pts, scored ${escapeHtml(score.got)}.</p>`
+    // Only what it scored is hued: the expectation is a range the author wrote,
+    // not an outcome, and colouring it would read as a verdict on the
+    // declaration rather than on the run.
+    `${escapeHtml(score.expected)} pts, scored ${hued(score.got, score.gotHue)}.</p>`
   );
 }
 
@@ -342,14 +345,18 @@ function histogramCard(histogram: readonly HistogramSlice[]): string {
   return `<div class="histogram"><div class="bars">${bars}</div><div class="counts">${counts}</div></div>`;
 }
 
-function value(label: string, text: string | undefined): string {
+function value(label: string, text: string | undefined, hue?: string): string {
   if (text === undefined || text === '') {
     return '';
   }
+  // Always hued, `neutral` when the value has nothing to say about itself, so
+  // that the colour of a value comes from the one `.hue-*` table like every
+  // other coloured thing in the view rather than from `.value-text` itself.
+  const textClass = `value-text hue-${hue ?? 'neutral'}`;
   return (
     '<span class="value">' +
     `<span class="value-label">${escapeHtml(label)}</span>` +
-    `<span class="value-text">${escapeHtml(text)}</span>` +
+    `<span class="${textClass}">${escapeHtml(text)}</span>` +
     '</span>'
   );
 }
@@ -360,7 +367,7 @@ function valuesCard(detail: SolutionDetail): string {
   const values = [
     value('Max time', detail.maxTime),
     value('Max memory', detail.maxMemory),
-    value('Score', detail.score),
+    value('Score', detail.score, detail.scoreHue),
   ].join('');
   return values === '' ? '' : `<div class="values">${values}</div>`;
 }
