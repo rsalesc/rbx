@@ -27,6 +27,7 @@ function row(over: Partial<Row> & Pick<Row, 'id'>): Row {
     label: over.id,
     labelBold: false,
     meta: [],
+    warnings: [],
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
@@ -40,6 +41,8 @@ function model(rows: readonly Row[]): RunViewModel {
   return {
     rows,
     mismatches: rows.filter((r) => r.kind === 'solution' && r.mismatch).length,
+    warned: rows.filter((r) => r.kind === 'solution' && !r.mismatch && r.warnings.length > 0)
+      .length,
     empty: !rows.some((r) => r.kind === 'solution'),
   };
 }
@@ -598,4 +601,173 @@ test('a shortened label carries its full path as a tooltip, escaped', () => {
 test('a row whose label is already the whole path gets no tooltip', () => {
   const html = renderTree(model([MAIN]), state());
   assert.ok(!html.includes('title='), html);
+});
+
+const WARNED = row({
+  id: 'sol3',
+  kind: 'solution',
+  label: 'sols/slow.cpp',
+  gutter: 'warned',
+  expandable: true,
+  verdict: { icon: 'watch', hue: 'yellow', short: 'TLE' },
+  warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['big'] }],
+  detail: {
+    histogram: [],
+    warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['big'] }],
+  },
+});
+
+test('a warned row draws its mark in the gutter, and not as a miss', () => {
+  const html = renderTree(model([WARNED]), state());
+  assert.ok(html.includes('gutter-warned'));
+  assert.ok(!html.includes('gutter-missed'));
+  assert.ok(!html.includes('gutter-met'));
+});
+
+test('a warned row is washed and ruled like a miss, in the other colour', () => {
+  // The mark alone is 14px in a 22px row. The rule and the wash are what make a
+  // warned row findable without reading the sidebar, which is the whole point.
+  const html = renderTree(model([WARNED]), state());
+  assert.ok(/class="row kind-solution warned"/.test(html));
+  assert.ok(!html.includes('mismatch'));
+});
+
+test('a row never carries both washes', () => {
+  // `warned` is a gutter state and `missed` outranks it, so a mismatched row is
+  // never also warned -- the two tints can never stack into a third colour.
+  const both = row({
+    id: 'sol7',
+    kind: 'solution',
+    gutter: 'missed',
+    mismatch: true,
+    warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: [] }],
+  });
+  const html = renderTree(model([both]), state());
+  assert.ok(html.includes('mismatch'));
+  assert.ok(!/class="[^"]*\bwarned\b/.test(html));
+});
+
+test('the warning mark is not the TLE verdict icon it would sit beside', () => {
+  // The mark used to be a clock at the far end of the row, which is where
+  // `watch` -- time-limit-exceeded's own icon -- already sits, and a double-TL
+  // warning only ever lands on a TLE row. It has to be findable next to one.
+  const html = renderTree(model([WARNED]), state());
+  const gutter = html.slice(html.indexOf('gutter-warned'));
+  assert.ok(gutter.startsWith('gutter-warned"'));
+  assert.ok(!gutter.slice(0, 200).includes('codicon-watch'));
+});
+
+test('an unwarned row draws the plain met tick', () => {
+  const html = renderTree(model([MAIN]), state());
+  assert.ok(html.includes('gutter-met'));
+  assert.ok(!html.includes('gutter-warned'));
+});
+
+test('the gutter carries the warning as its tooltip', () => {
+  const html = renderTree(model([WARNED]), state());
+  assert.ok(html.includes('Still passed in double TL on big.'));
+});
+
+test('an expanded warned solution gets a card of its own', () => {
+  const html = renderTree(model([WARNED]), state({ expanded: new Set(['sol3']) }));
+  assert.ok(html.includes('class="warning-card"'));
+  // Not folded into the mismatch card: this solution missed nothing.
+  assert.ok(!html.includes('class="mismatch-card"'));
+});
+
+test('the double-TL verdicts warning names the verdicts it found', () => {
+  const warned = row({
+    id: 'sol4',
+    kind: 'solution',
+    expandable: true,
+    detail: {
+      histogram: [],
+      warnings: [
+        {
+          kind: 'double-tl-verdicts',
+          verdicts: [{ text: 'WA', hue: 'red' }],
+          groups: ['big'],
+        },
+      ],
+    },
+  });
+  const html = renderTree(model([warned]), state({ expanded: new Set(['sol4']) }));
+  assert.ok(html.includes('Still finished in double TL, but failed with WA on big.'));
+});
+
+test('a warning with no group attribution says nothing about groups', () => {
+  const warned = row({
+    id: 'sol5',
+    kind: 'solution',
+    expandable: true,
+    detail: { histogram: [], warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: [] }] },
+  });
+  const html = renderTree(model([warned]), state({ expanded: new Set(['sol5']) }));
+  assert.ok(html.includes('Still passed in double TL.'));
+});
+
+test('a group name in a warning cannot escape into markup', () => {
+  const warned = row({
+    id: 'sol6',
+    kind: 'solution',
+    gutter: 'warned',
+    warnings: [{ kind: 'double-tl-passed', verdicts: [], groups: ['<script>'] }],
+  });
+  const html = renderTree(model([warned]), state());
+  assert.ok(!html.includes('<script>'));
+  assert.ok(html.includes('&lt;script&gt;'));
+});
+
+test('a testcase renders the hidden verdict as a gloss on its chip', () => {
+  const leaf = row({
+    id: 'tc0',
+    kind: 'testcase',
+    label: '1-gen-001',
+    verdict: {
+      icon: 'watch',
+      hue: 'yellow',
+      short: 'TLE',
+      under: { text: 'WA', hue: 'red' },
+    },
+  });
+  // With a solution above it: a model of testcases alone is `empty`, and an
+  // empty model renders the welcome copy instead of any rows at all.
+  const html = renderTree(model([MAIN, leaf]), state({ expanded: new Set(['sol0']) }));
+
+  assert.ok(html.includes('class="verdict-under hue-red"'));
+  assert.ok(html.includes('(WA)'));
+  // Inside the verdict cell, after the name it glosses.
+  assert.ok(html.indexOf('verdict-under') > html.indexOf('verdict-name'));
+  assert.ok(html.includes('Would have been WA without the time limit'));
+  // The gloss has to sit against the name, so the chip releases the width it
+  // reserves for column alignment -- which this row was never going to keep.
+  assert.ok(html.includes('verdict-glossed'));
+});
+
+test('a testcase with no hidden verdict renders no gloss', () => {
+  const leaf = row({
+    id: 'tc1',
+    kind: 'testcase',
+    verdict: { icon: 'pass', hue: 'green', short: 'AC' },
+  });
+  const html = renderTree(model([MAIN, leaf]), state({ expanded: new Set(['sol0']) }));
+  assert.ok(html.includes('kind-testcase'));
+  assert.ok(!html.includes('verdict-under'));
+  // An unglossed chip keeps its reserved width: that is what lines the verdict
+  // icons up down the column on every ordinary row.
+  assert.ok(!html.includes('verdict-glossed'));
+});
+
+test('a run that warned but matched everywhere still gets a header strip', () => {
+  // The whole point: before this, a package whose declarations all held showed
+  // no strip at all, and rbx was printing a WARNING about it in the terminal.
+  const html = renderHeader(model([WARNED]), state());
+  assert.ok(html.includes('1 warned'));
+  assert.ok(!html.includes('did not match'));
+  // Nothing to walk to, so the button that walks mismatches is not offered.
+  assert.ok(!html.includes('next-mismatch'));
+});
+
+test('a clean run with nothing warned still gets no header strip', () => {
+  assert.strictEqual(renderHeader(model([MAIN]), state()), '');
 });

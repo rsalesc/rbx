@@ -47,8 +47,24 @@ import {
   progressOf,
 } from './summary';
 
-/** Whether a declared expectation was met -- `none` when none was declared. */
-export type Gutter = 'none' | 'met' | 'missed';
+/**
+ * The one column that says how a row came out, worst news first.
+ *
+ * `none` when nothing was declared, `met` when the declaration held cleanly,
+ * `warned` when it held but rbx warned about the run anyway, `missed` when it
+ * did not hold. The last two are ordered: a row that missed its declaration
+ * *and* carries a warning draws `missed`, because the miss is the more serious
+ * of the two and the warning is still spelled out in the card underneath.
+ *
+ * This used to be the match axis alone -- met or missed, nothing else -- with
+ * warnings drawn as a separate mark at the far end of the row. That put a
+ * yellow clock immediately beside the TLE verdict's own yellow clock, since a
+ * double-TL warning only ever lands on a TLE row, and the mark disappeared into
+ * the chip it sat next to. One column carrying all three states is what makes
+ * a warned row findable by scanning, which is the whole point of having a
+ * gutter.
+ */
+export type Gutter = 'none' | 'met' | 'warned' | 'missed';
 
 /**
  * What a meta span *is*, so the stylesheet can drop them in priority order.
@@ -70,6 +86,20 @@ export interface VerdictChip {
   readonly icon: string;
   readonly hue: Hue;
   readonly short: string;
+  /**
+   * The verdict a soft TLE hid, on the testcase rows worth showing it on.
+   *
+   * Under `-v4` a solution is judged at 2x its time limit, so a run that
+   * crosses 1x is reported TLE while the checker still sees its output -- and
+   * `TLE` on that row can mean either "too slow" or "wrong, and too slow got
+   * there first". Those are different bugs and the chip alone cannot tell them
+   * apart.
+   *
+   * Set only where rbx says no expectation accepts the hidden verdict, so a
+   * solution declared `incorrect` that answers wrongly under a soft TLE stays
+   * quiet: the setter declared that themselves.
+   */
+  readonly under?: WarningVerdict;
 }
 
 export interface HistogramSlice {
@@ -85,6 +115,39 @@ export interface GroupMismatch {
   readonly declaredHue: Hue;
   readonly observed: string;
   readonly observedHue: Hue;
+}
+
+/**
+ * What a run warned about while still *passing*.
+ *
+ * A fourth channel, alongside the gutter, the chip and the label hue, and it
+ * exists because none of those three can carry this. All of them answer some
+ * form of "did the declaration hold", and for a double-TL warning the answer is
+ * yes: rbx sets `status: OK` and `matchesExpectation: true` on exactly these
+ * solutions. A view built only on those three draws `sols/slow.cpp` as a clean
+ * green row while rbx is printing a WARNING about it in the terminal.
+ *
+ * Which run deserves a warning is rbx's decision, published in `report.yml`; the
+ * only thing decided here is which words and which glyph carry it.
+ */
+export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts';
+
+export interface WarningVerdict {
+  readonly text: string;
+  readonly hue: Hue;
+}
+
+export interface RunWarning {
+  readonly kind: WarningKind;
+  /** Set for `double-tl-verdicts`, empty otherwise. */
+  readonly verdicts: readonly WarningVerdict[];
+  /**
+   * The groups this fact came from, when any group is narrower than "the whole
+   * solution" about it -- the same attribution `_on_groups_markup` prints.
+   * Empty on a group row, where the row itself is already the attribution, and
+   * on a solution whose pooled layer raised the warning with no group doing so.
+   */
+  readonly groups: readonly string[];
 }
 
 export interface Mismatched {
@@ -126,6 +189,14 @@ export interface MismatchDetail {
 
 export interface SolutionDetail {
   readonly mismatch?: MismatchDetail;
+  /**
+   * Warnings about a run that passed -- see `RunWarning`.
+   *
+   * Optional like every other clause of this card, which the renderer prints
+   * only when it is set; `Row.warnings` is the required one, because a row that
+   * forgot to answer the question would silently draw no mark.
+   */
+  readonly warnings?: readonly RunWarning[];
   readonly histogram: readonly HistogramSlice[];
   readonly maxTime?: string;
   readonly maxMemory?: string;
@@ -164,6 +235,14 @@ export interface Row {
    */
   readonly expectation?: ExpectationDisplay;
   readonly verdict?: VerdictChip;
+  /**
+   * Warnings this row carries, in the order the console prints them.
+   *
+   * Deliberately not folded into `mismatch`: a warned row still matched its
+   * declaration, and counting it as a mismatch would report a working package
+   * as broken -- the same reason `mismatches` counts misses and not failures.
+   */
+  readonly warnings: readonly RunWarning[];
   readonly mismatch: boolean;
   readonly expandable: boolean;
   readonly defaultExpanded: boolean;
@@ -178,6 +257,8 @@ export interface Row {
 export interface RunViewModel {
   readonly rows: readonly Row[];
   readonly mismatches: number;
+  /** Solutions that passed but carry at least one warning. */
+  readonly warned: number;
   readonly empty: boolean;
 }
 
@@ -193,16 +274,34 @@ function packageName(node: PackageNode): string {
   return node.label ?? path.basename(node.pkg.root);
 }
 
-function chip(outcome: string | undefined): VerdictChip {
+function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
   // Note this reads the outcome, never `matchesExpectation`: a solution
   // declared INCORRECT that answers wrongly still gets the WA chip. Whether
   // that was wanted is the gutter's business.
-  return { icon, hue: hueOfThemeColor(color), short: shortName(outcome) };
+  // Spread rather than `under` outright: an explicit `under: undefined` is a key
+  // every chip in the view would carry to say nothing, and it makes a chip that
+  // has no hidden verdict unequal to one written without the field.
+  return {
+    icon,
+    hue: hueOfThemeColor(color),
+    short: shortName(outcome),
+    ...(under === undefined ? {} : { under }),
+  };
 }
 
-function matched(matches: boolean): Gutter {
-  return matches ? 'met' : 'missed';
+/**
+ * The gutter for a row that declared something, given how it came out.
+ *
+ * `missed` outranks `warned`: a solution can both miss its declaration and
+ * carry a warning, and the gutter has one glyph to spend on saying which of
+ * those the reader should look at first.
+ */
+function matched(matches: boolean, warnings: readonly RunWarning[]): Gutter {
+  if (!matches) {
+    return 'missed';
+  }
+  return warnings.length > 0 ? 'warned' : 'met';
 }
 
 /**
@@ -229,20 +328,27 @@ function declaredExpectation(expected: string | undefined): ExpectationDisplay |
  * same case for a different reason: rbx publishes the report when the solution
  * *finishes*, so mid-run there is no verdict to compare against.
  */
-function solutionGutter(run: SolutionRun): Gutter {
+function solutionGutter(run: SolutionRun, warnings: readonly RunWarning[]): Gutter {
   const expected = run.solution.expectedOutcome;
   if (expected === undefined || expected === 'ANY' || run.report === undefined) {
-    return 'none';
+    // A warning still shows, even with nothing declared to have met: rbx raised
+    // it about the run, not about the declaration. It cannot happen today --
+    // every double-TL fact needs a slow expectation to be raised against -- but
+    // swallowing a warning rbx published is the one outcome worth ruling out.
+    return warnings.length > 0 ? 'warned' : 'none';
   }
-  return matched(run.report.matchesExpectation);
+  return matched(run.report.matchesExpectation, warnings);
 }
 
 /** A group is only judged when an `outcomePerGroup` declaration covers it. */
-function groupGutter(report: GroupReport | undefined): Gutter {
+function groupGutter(
+  report: GroupReport | undefined,
+  warnings: readonly RunWarning[],
+): Gutter {
   if (report === undefined || report.expectedOutcome === undefined) {
-    return 'none';
+    return warnings.length > 0 ? 'warned' : 'none';
   }
-  return matched(report.matchesExpectation);
+  return matched(report.matchesExpectation, warnings);
 }
 
 function span(text: string | undefined, hue: Hue, role?: SpanRole): Span | undefined {
@@ -300,12 +406,26 @@ function haystack(
   verdict: VerdictChip | undefined,
   mismatch: boolean,
   expectation?: ExpectationDisplay,
+  warnings: readonly RunWarning[] = [],
 ): string {
   // The declaration joins the haystack so `tle` finds the groups that *wanted*
   // a TLE as well as the ones that got one -- which, on a solution declared
   // slow, are not the same rows. Deduplicated because on the common row the
   // two agree, and `sols/main.cpp ac ac` is a haystack that says nothing twice.
-  const parts = [subject, verdict?.short, expectation?.label, mismatch ? 'mismatch' : undefined]
+  // `warning` and `double-tl` both filter to a warned row: the first is what a
+  // user scanning for anything wrong types, the second what someone who already
+  // knows what they are hunting types.
+  const parts = [
+    subject,
+    verdict?.short,
+    // So `wa` finds the testcases where a soft TLE hid one, which are exactly
+    // the rows a WA filter would otherwise miss.
+    verdict?.under?.text,
+    expectation?.label,
+    mismatch ? 'mismatch' : undefined,
+    ...(warnings.length === 0 ? [] : ['warning', 'double-tl']),
+    ...warnings.flatMap((warning) => warning.verdicts.map((verdict) => verdict.text)),
+  ]
     .filter((part): part is string => part !== undefined)
     .map((part) => part.toLowerCase());
   return [...new Set(parts)].join(' ');
@@ -351,6 +471,86 @@ function scoreRange(range: readonly [number, number]): string {
 function outcomeOf(outcome: string | undefined): { text: string; hue: Hue } {
   const { short, hue } = chip(outcome);
   return { text: short, hue };
+}
+
+/**
+ * The verdict a soft TLE hid on this testcase, when it is worth showing.
+ *
+ * Two independent conditions, and neither is decided here. The evaluation has a
+ * `noTleOutcome` only when the TLE was *soft* -- the run finished inside double
+ * TL and the checker saw its output -- and rbx lists it in the group's
+ * `unexpectedNoTleVerdicts` only when no expectation covering that testcase
+ * accepts it. The second is an `ExpectedOutcome.match` against two declaration
+ * layers, which is exactly the matcher this extension refuses to own.
+ *
+ * Nothing to show with no group report yet: mid-run there is no published
+ * answer, and guessing one would put the matcher back.
+ */
+function hiddenVerdict(
+  testcase: TestcaseRun,
+  report: GroupReport | undefined,
+): WarningVerdict | undefined {
+  const hidden = testcase.evaluation?.noTleOutcome;
+  if (hidden === undefined || report === undefined) {
+    return undefined;
+  }
+  return report.unexpectedNoTleVerdicts.includes(hidden) ? outcomeOf(hidden) : undefined;
+}
+
+/**
+ * The groups that raised one of the two double-TL facts.
+ *
+ * The same attribution `_on_groups_markup` prints beside the console warning,
+ * and read off the group records for the reason `groupMismatches` reads off
+ * them too: `failedGroups` has no equivalent here, and a warning that cannot
+ * say where it came from sends the reader through every group looking.
+ */
+function warnedGroups(
+  report: SolutionReport,
+  raised: (group: GroupReport) => boolean,
+): string[] {
+  return report.groups.filter(raised).map((group) => group.name);
+}
+
+/**
+ * The warnings on a report, pooled or per-group.
+ *
+ * The two facts are independent and each gets its own entry, never one merged
+ * sentence: both are unions over the pooled layer and every group, so two
+ * different groups can each contribute one, and attributing both to a single
+ * group list is how the second was lost entirely on the console side (#607).
+ *
+ * `groups` is empty for a group's own report, where the row already says where
+ * the warning came from.
+ */
+function warningsOf(
+  report: SolutionReport | GroupReport | undefined,
+  attribute: boolean,
+): RunWarning[] {
+  if (report === undefined) {
+    return [];
+  }
+  const solution = attribute ? (report as SolutionReport) : undefined;
+  const warnings: RunWarning[] = [];
+  if (report.runUnderDoubleTl) {
+    warnings.push({
+      kind: 'double-tl-passed',
+      verdicts: [],
+      groups:
+        solution === undefined ? [] : warnedGroups(solution, (group) => group.runUnderDoubleTl),
+    });
+  }
+  if (report.doubleTlVerdicts.length > 0) {
+    warnings.push({
+      kind: 'double-tl-verdicts',
+      verdicts: report.doubleTlVerdicts.map((outcome) => outcomeOf(outcome)),
+      groups:
+        solution === undefined
+          ? []
+          : warnedGroups(solution, (group) => group.doubleTlVerdicts.length > 0),
+    });
+  }
+  return warnings;
 }
 
 /**
@@ -433,16 +633,23 @@ function mismatchDetail(run: SolutionRun, report: SolutionReport): MismatchDetai
   };
 }
 
-function solutionDetail(run: SolutionRun, mismatch: boolean): SolutionDetail {
+function solutionDetail(
+  run: SolutionRun,
+  mismatch: boolean,
+  warnings: readonly RunWarning[],
+): SolutionDetail {
   const report = run.report;
   const testcases = run.groups.flatMap((group) => group.testcases);
   return {
     mismatch: mismatch && report !== undefined ? mismatchDetail(run, report) : undefined,
+    warnings,
     histogram: histogram(testcases),
     maxTime: report === undefined ? undefined : formatTime(report.maxTime),
     maxMemory: report === undefined ? undefined : formatMemory(report.maxMemory),
-    // No limit denominator: the extension reads only `.rbx` artifacts and never
-    // problem.rbx.yml, so there is nothing here to divide by.
+    // No limit denominator yet. There is now one to divide by -- `skeleton.yml`
+    // carries each solution's resolved limits -- but showing a time against it
+    // is a decision about what "close to the limit" means, and nobody has made
+    // it. Absence here is a gap, no longer an impossibility.
     score:
       report === undefined || report.maxScore === 0
         ? undefined
@@ -465,6 +672,7 @@ function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
     label,
     labelBold: false,
     meta: [],
+    warnings: [],
     mismatch: false,
     expandable: true,
     defaultExpanded: true,
@@ -475,7 +683,8 @@ function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
 
 function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
   const { run, solo } = node;
-  const gutter = solutionGutter(run);
+  const warnings = warningsOf(run.report, true);
+  const gutter = solutionGutter(run, warnings);
   const mismatch = gutter === 'missed';
   const declared = declaredExpectation(run.solution.expectedOutcome);
   const testcases = run.groups.flatMap((group) => group.testcases);
@@ -493,20 +702,23 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
     meta: aggregateMeta(run.report, progressOf(testcases)),
     expectation: declared,
     verdict,
+    warnings,
     mismatch,
     expandable: true,
     // Mirrors the tree, which mirrors rbx's own `len(skeleton.solutions) == 1`
     // choice of the reporter that prints per-testcase lines.
     defaultExpanded: solo,
-    detail: solutionDetail(run, mismatch),
-    search: haystack(run.solution.path, verdict, mismatch, declared),
+    detail: solutionDetail(run, mismatch, warnings),
+    search: haystack(run.solution.path, verdict, mismatch, declared, warnings),
     section: 'rbx.solution',
   };
 }
 
 function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   const { group } = node;
-  const gutter = groupGutter(group.report);
+  // No group attribution on a group row: the row is the attribution.
+  const warnings = warningsOf(group.report, false);
+  const gutter = groupGutter(group.report, warnings);
   const mismatch = gutter === 'missed';
   const verdict = chip(group.report?.outcome);
   // A group declares an expectation the same way a solution does -- through
@@ -526,12 +738,13 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
     meta: aggregateMeta(group.report, progressOf(group.testcases)),
     expectation: declared,
     verdict,
+    warnings,
     mismatch,
     expandable: true,
     // Groups stay open even under a collapsed solution: the group breakdown is
     // the reason to open a solution at all.
     defaultExpanded: true,
-    search: haystack(group.name, verdict, mismatch, declared),
+    search: haystack(group.name, verdict, mismatch, declared, warnings),
     section: 'rbx.group',
   };
 }
@@ -539,7 +752,7 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
 function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
-  const verdict = chip(evaluation?.outcome);
+  const verdict = chip(evaluation?.outcome, hiddenVerdict(testcase, node.group.report));
   return {
     id: nodeId(node),
     parentId,
@@ -559,6 +772,10 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
       span(formatMemory(evaluation?.memory), 'dim', 'memory'),
     ]),
     verdict,
+    // A double-TL fact is decided over a whole group or a whole solution, never
+    // over one testcase: a single soft TLE says nothing until it is weighed
+    // against the expectation the layer above it declared.
+    warnings: [],
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
@@ -645,6 +862,11 @@ export function buildViewModel(
     // working, and counting it would report the package's own test suite as a
     // problem.
     mismatches: rows.filter((row) => row.kind === 'solution' && row.gutter === 'missed').length,
+    // Warned *and* matching: a solution that already reads as a mismatch is
+    // counted once, in the channel that is the more serious of the two.
+    warned: rows.filter(
+      (row) => row.kind === 'solution' && row.gutter !== 'missed' && row.warnings.length > 0,
+    ).length,
     empty: !rows.some((row) => row.kind === 'solution'),
   };
 }

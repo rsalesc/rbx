@@ -36,6 +36,9 @@ function groupReport(over: Partial<GroupReport> = {}): GroupReport {
     matchesExpectation: true,
     score: 0,
     maxScore: 0,
+    runUnderDoubleTl: false,
+    doubleTlVerdicts: [],
+    unexpectedNoTleVerdicts: [],
     ...over,
   };
 }
@@ -59,6 +62,8 @@ function solutionReport(over: Partial<SolutionReport> = {}): SolutionReport {
     score: 0,
     maxScore: 0,
     failedGroups: [],
+    runUnderDoubleTl: false,
+    doubleTlVerdicts: [],
     groups: [],
     ...over,
   };
@@ -635,4 +640,258 @@ test('the filter matches the full path whatever the label shows', () => {
   const { rows } = buildViewModel([view([MAIN, PARTIAL])], 'basename');
   assert.strictEqual(rowById(rows, '/w/a::0').search, 'sols/main.cpp ac');
   assert.strictEqual(rowById(rows, '/w/a::1').search, 'sols/partial.cpp wa incorrect');
+});
+
+// `sols/slow.cpp` declares TLE and gets one, so every expectation-shaped
+// channel in the view reads clean -- the gutter is `met`, the chip is TLE, the
+// status is OK. The only thing saying its slowness is borderline is the warning
+// rbx published, and before it existed here this row was indistinguishable from
+// a decisively slow one.
+const BORDERLINE_SLOW = solution(
+  0,
+  'sols/slow.cpp',
+  'TIME_LIMIT_EXCEEDED',
+  [
+    group(
+      'small',
+      [testcase('000', 'time-limit-exceeded')],
+      groupReport({ name: 'small', outcome: 'time-limit-exceeded' }),
+    ),
+    group(
+      'big',
+      [testcase('001', 'time-limit-exceeded')],
+      groupReport({ name: 'big', outcome: 'time-limit-exceeded', runUnderDoubleTl: true }),
+    ),
+  ],
+  solutionReport({
+    path: 'sols/slow.cpp',
+    expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+    outcome: 'time-limit-exceeded',
+    matchesExpectation: true,
+    runUnderDoubleTl: true,
+    groups: [
+      groupReport({ name: 'small', outcome: 'time-limit-exceeded' }),
+      groupReport({ name: 'big', outcome: 'time-limit-exceeded', runUnderDoubleTl: true }),
+    ],
+  }),
+);
+
+test('a solution that only fit in double TL is warned about while still matching', () => {
+  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const row = rowById(rows, '/w/a::0');
+
+  // The gutter says warned, not missed: the declaration held, and `mismatch`
+  // -- which is what the header counts and the red rule keys on -- stays false.
+  assert.strictEqual(row.gutter, 'warned');
+  assert.strictEqual(row.mismatch, false);
+  assert.strictEqual(row.verdict?.short, 'TLE');
+  assert.deepStrictEqual(
+    row.warnings.map((warning) => warning.kind),
+    ['double-tl-passed'],
+  );
+});
+
+test('a solution warning names the groups it came from', () => {
+  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const row = rowById(rows, '/w/a::0');
+  assert.deepStrictEqual(row.warnings[0].groups, ['big']);
+});
+
+test('a group carries its own warning, with no attribution to repeat', () => {
+  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  assert.deepStrictEqual(rowById(rows, '/w/a::0::small').warnings, []);
+  const big = rowById(rows, '/w/a::0::big');
+  assert.strictEqual(big.gutter, 'warned');
+  assert.deepStrictEqual(
+    big.warnings.map((warning) => warning.kind),
+    ['double-tl-passed'],
+  );
+  // The row is already the attribution; repeating `big` in the sentence on the
+  // `big` row says nothing.
+  assert.deepStrictEqual(big.warnings[0].groups, []);
+});
+
+test('the two double-TL facts stay independent rather than merging', () => {
+  // Both are unions over the pooled layer and every group, so two groups can
+  // each raise one -- gating one on the other is how the second was lost on the
+  // console side (#607).
+  const both = solution(
+    0,
+    'sols/slow.cpp',
+    'TIME_LIMIT_EXCEEDED',
+    [],
+    solutionReport({
+      expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+      outcome: 'time-limit-exceeded',
+      runUnderDoubleTl: true,
+      doubleTlVerdicts: ['wrong-answer'],
+      groups: [
+        groupReport({ name: 'small', runUnderDoubleTl: true }),
+        groupReport({ name: 'big', doubleTlVerdicts: ['wrong-answer'] }),
+      ],
+    }),
+  );
+  const row = rowById(buildViewModel([view([both])]).rows, '/w/a::0');
+
+  assert.deepStrictEqual(
+    row.warnings.map((warning) => warning.kind),
+    ['double-tl-passed', 'double-tl-verdicts'],
+  );
+  // Each fact names only the group that raised *it*.
+  assert.deepStrictEqual(row.warnings[0].groups, ['small']);
+  assert.deepStrictEqual(row.warnings[1].groups, ['big']);
+  assert.deepStrictEqual(
+    row.warnings[1].verdicts.map((verdict) => verdict.text),
+    ['WA'],
+  );
+});
+
+test('a warned solution is counted apart from a mismatched one', () => {
+  const { mismatches, warned } = buildViewModel([view([MAIN, BORDERLINE_SLOW])]);
+  // A run where every declaration held still has something to report.
+  assert.strictEqual(mismatches, 0);
+  assert.strictEqual(warned, 1);
+});
+
+test('a testcase is never warned: the fact is decided a layer above it', () => {
+  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  assert.deepStrictEqual(rowById(rows, '/w/a::0::big::001').warnings, []);
+});
+
+test('a warned row is reachable by filtering for it', () => {
+  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const search = rowById(rows, '/w/a::0').search;
+  assert.ok(search.includes('warning'));
+  assert.ok(search.includes('double-tl'));
+});
+
+test('a solution rbx did not warn about carries no warnings', () => {
+  const { rows, warned } = buildViewModel([view([MAIN])]);
+  assert.deepStrictEqual(rowById(rows, '/w/a::0').warnings, []);
+  assert.strictEqual(rowById(rows, '/w/a::0').gutter, 'met');
+  assert.strictEqual(warned, 0);
+});
+
+test('a solution that both missed and warned draws the miss', () => {
+  // One glyph, and the miss is the more serious of the two. The warning is
+  // still in the card underneath, so nothing is lost by ranking them.
+  const both = solution(
+    0,
+    'sols/broken.cpp',
+    'TIME_LIMIT_EXCEEDED',
+    [],
+    solutionReport({
+      expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+      outcome: 'wrong-answer',
+      matchesExpectation: false,
+      runUnderDoubleTl: true,
+    }),
+  );
+  const { rows, mismatches, warned } = buildViewModel([view([both])]);
+  const row = rowById(rows, '/w/a::0');
+
+  assert.strictEqual(row.gutter, 'missed');
+  assert.strictEqual(row.mismatch, true);
+  assert.strictEqual(row.warnings.length, 1);
+  // Counted once, in the more serious channel.
+  assert.strictEqual(mismatches, 1);
+  assert.strictEqual(warned, 0);
+});
+
+// `big` hides a WA under a soft TLE, and rbx says no expectation accepts it.
+const HIDDEN_WA = solution(
+  0,
+  'sols/slow-and-wrong.cpp',
+  'TIME_LIMIT_EXCEEDED',
+  [
+    group(
+      'big',
+      [
+        testcase('000', 'accepted'),
+        testcase('001', 'time-limit-exceeded', {
+          evaluation: { outcome: 'time-limit-exceeded', noTleOutcome: 'wrong-answer' },
+        }),
+      ],
+      groupReport({
+        name: 'big',
+        outcome: 'time-limit-exceeded',
+        unexpectedNoTleVerdicts: ['wrong-answer'],
+      }),
+    ),
+  ],
+  solutionReport({
+    expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+    outcome: 'time-limit-exceeded',
+    doubleTlVerdicts: ['wrong-answer'],
+  }),
+);
+
+test('a testcase shows the verdict a soft TLE hid, beside the one it got', () => {
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  const leaf = rowById(rows, '/w/a::0::big::001');
+
+  assert.strictEqual(leaf.verdict?.short, 'TLE');
+  assert.strictEqual(leaf.verdict?.under?.text, 'WA');
+  // Hued by what it is, not by the chip it glosses -- the disagreement between
+  // the two is the reason it is on the row at all.
+  assert.strictEqual(leaf.verdict?.under?.hue, 'red');
+});
+
+test('a testcase with no hidden verdict shows only what it got', () => {
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
+});
+
+test('a hidden verdict rbx did not flag is not shown', () => {
+  // The evaluation carries it either way; whether it is worth showing is rbx's
+  // answer, and an empty list is a `no`. A solution declared `incorrect` that
+  // answers wrongly under a soft TLE lands here -- the setter said as much.
+  const quiet = solution(
+    0,
+    'sols/slow.cpp',
+    'INCORRECT',
+    [
+      group(
+        'big',
+        [
+          testcase('000', 'time-limit-exceeded', {
+            evaluation: { outcome: 'time-limit-exceeded', noTleOutcome: 'wrong-answer' },
+          }),
+        ],
+        groupReport({ name: 'big', outcome: 'time-limit-exceeded' }),
+      ),
+    ],
+    solutionReport({ expectedOutcome: 'INCORRECT', outcome: 'time-limit-exceeded' }),
+  );
+  const { rows } = buildViewModel([view([quiet])]);
+  assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
+});
+
+test('a hidden verdict is not shown before its group has a report', () => {
+  // Mid-run there is no published answer to read, and guessing one would put
+  // the expectation matcher back into this extension.
+  const pending = solution(0, 'sols/slow.cpp', 'TIME_LIMIT_EXCEEDED', [
+    group('big', [
+      testcase('000', 'time-limit-exceeded', {
+        evaluation: { outcome: 'time-limit-exceeded', noTleOutcome: 'wrong-answer' },
+      }),
+    ]),
+  ]);
+  const { rows } = buildViewModel([view([pending])]);
+  assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
+});
+
+test('the hidden verdict joins the row it is on in the filter', () => {
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  // Typing `wa` has to find the testcases where a soft TLE hid one; they are
+  // exactly the rows a WA filter would otherwise miss.
+  assert.ok(rowById(rows, '/w/a::0::big::001').search.includes('wa'));
+});
+
+test('only leaves carry a hidden verdict', () => {
+  // It is a fact about one run of one testcase. A group or a solution that
+  // aggregated them would be inventing a verdict nothing produced.
+  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  assert.strictEqual(rowById(rows, '/w/a::0').verdict?.under, undefined);
+  assert.strictEqual(rowById(rows, '/w/a::0::big').verdict?.under, undefined);
 });

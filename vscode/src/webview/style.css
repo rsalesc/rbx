@@ -4,10 +4,11 @@
  * Two rules carry the whole design. First, a hue is a role and never a literal
  * color: `.hue-red` resolves to a `--vscode-*` variable, so the view follows
  * the user's theme and a high-contrast theme keeps working. Second, a
- * background fill is reserved -- selection, hover, and the mismatch wash are
- * the only ones in this file. That scarcity is what lets a missed expectation
- * be found by scanning the sidebar instead of by reading it, which is the whole
- * reason the view was rewritten.
+ * background fill is reserved -- selection, hover, and the two verdict washes
+ * (a missed expectation in red, a warned run in yellow) are the only ones in
+ * this file. That scarcity is what lets either be found by scanning the sidebar
+ * instead of by reading it, which is the whole reason the view was rewritten.
+ * A third wash would cost the other two most of their value.
  */
 
 @font-face {
@@ -87,6 +88,13 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Only the mismatch count stretches. The warned count sits beside it at its
+   natural width, so the two never split the bar down the middle. */
+.header-warned {
+  flex: 0 0 auto;
+  color: var(--vscode-charts-yellow);
+}
+
 .header button {
   font-family: inherit;
   font-size: inherit;
@@ -145,7 +153,8 @@ body {
      room. */
   padding-right: 4px;
   cursor: pointer;
-  /* Every row reserves the mismatch rule, transparent until it is earned.
+  /* Every row reserves the rule a miss or a warning colours, transparent until
+     it is earned.
      Without it a tinted row is 2px wider on its left than its neighbours, and
      the gutter -- the one column whose whole job is to be scannable straight
      down -- stops lining up exactly where it matters most. */
@@ -180,6 +189,13 @@ body {
 }
 
 .gutter-missed { color: var(--vscode-charts-red); }
+
+/* Warned shares the missed triangle and separates by colour: this row met its
+   declaration and is only being flagged for how narrowly. Full strength like
+   the miss, not dimmed like the tick -- it is news, and the whole reason the
+   warning moved into this column is that a mark of its own at the far end of
+   the row disappeared beside the TLE verdict's identically yellow clock. */
+.gutter-warned { color: var(--vscode-charts-yellow); }
 .twisty { color: var(--vscode-icon-foreground); }
 
 .label {
@@ -287,11 +303,43 @@ body {
   text-align: left;
 }
 
+/* The verdict a soft TLE hid, glossing the chip beside it.
+   Smaller and slightly faded so it reads as a note on the verdict rather than
+   as a competing one, but hued by what it actually is -- the whole reason it is
+   on the row is that it disagrees with the TLE it sits next to. No fixed width:
+   it appears on a handful of testcases, and reserving a column for it would
+   cost every other row real estate to say nothing. */
+/* No margin of its own: the chip's 4px flex gap is the right distance, and a
+   negative pull that closed it ran `TLE` and `(WA)` together into one word.
+   What separates the gloss from the verdict is its size, not its spacing. */
+.verdict-under {
+  font-size: 0.82em;
+  opacity: 0.85;
+}
+
+/* Only a glossed chip gives up the reserved width -- see verdictCell. `TLE` in
+   a 4ch box leaves a character of air exactly where the gloss has to attach. */
+.verdict-glossed .verdict-name {
+  min-width: 0;
+}
+
+/* A run rbx warned about, drawn the way a miss is and one step quieter.
+   Mutually exclusive with `.mismatch`: `warned` is a gutter state and `missed`
+   outranks it, so the two washes never stack.
+
+   6% against the miss's 8% is not a rounding choice. Yellow is a far lighter
+   hue than red, so an equal mix reads *louder* than the thing it is supposed to
+   rank below -- the number is what keeps the more serious row the more visible
+   one. Adjust it if a theme disagrees; it is the only knob here. */
+.warned {
+  border-left-color: var(--vscode-charts-yellow);
+  background: color-mix(in srgb, var(--vscode-charts-yellow) 6%, transparent);
+}
+
 .mismatch {
   /* Colouring a rule every row already reserves, so tinting a row never moves
      it. */
   border-left-color: var(--vscode-charts-red);
-  /* The only background in the file besides selection and hover. */
   background: color-mix(in srgb, var(--vscode-charts-red) 8%, transparent);
 }
 
@@ -334,6 +382,20 @@ body {
 
 .mismatch-card > .codicon {
   color: var(--vscode-charts-red);
+}
+
+/* Shares the mismatch card's layout -- and its text classes -- because it is
+   the same kind of object in the same place; only the icon and its colour say
+   which of the two the reader is looking at. */
+.warning-card {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--vscode-foreground);
+}
+
+.warning-card > .codicon {
+  color: var(--vscode-charts-yellow);
 }
 
 .mismatch-text {
@@ -490,9 +552,14 @@ body {
 }
 
 /* 4a. The verdict's name, keeping its icon: the colour and the shape are most
-   of what the name says, at a tenth of the width. */
+   of what the name says, at a tenth of the width.
+
+   The hidden verdict goes with it, and cannot outlive it: `(WA)` alone beside a
+   clock icon reads as the verdict rather than as a gloss on it, which is the
+   one misreading this whole feature exists to prevent. */
 @container (max-width: 240px) {
-  .verdict-name {
+  .verdict-name,
+  .verdict-under {
     display: none;
   }
 }

@@ -39,7 +39,7 @@ declare function acquireVsCodeApi(): VsCodeApi;
 
 const vscode = acquireVsCodeApi();
 
-const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, empty: true };
+const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
 
 const persisted = vscode.getState();
 

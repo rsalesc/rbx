@@ -29,6 +29,20 @@ export interface GroupReport {
   readonly maxTime?: number;
   /** Bytes. */
   readonly maxMemory?: number;
+  /** This group alone only timed out within double TL. */
+  readonly runUnderDoubleTl: boolean;
+  /** This group alone finished within double TL, but with these verdicts. */
+  readonly doubleTlVerdicts: readonly string[];
+  /**
+   * The verdicts a soft TLE hid in this group that no expectation accepts.
+   *
+   * A testcase's own `noTleOutcome` is right there in its `.eval`, but whether
+   * it is worth showing is an `ExpectedOutcome.match` against both this group's
+   * declaration and the solution's -- a matcher this extension deliberately
+   * does not have. rbx answers, and a testcase row shows its `noTleOutcome`
+   * only when it appears in its group's list here.
+   */
+  readonly unexpectedNoTleVerdicts: readonly string[];
 }
 
 export interface SolutionReport {
@@ -55,6 +69,24 @@ export interface SolutionReport {
   readonly failedGroups: readonly string[];
   /** The `[min, max]` score range declared, when one was. */
   readonly expectedScore?: readonly [number, number];
+  /**
+   * A solution declared slow that only timed out *within* double TL.
+   *
+   * The one field here that describes a run which passed: `status` is `OK` and
+   * `matchesExpectation` is true, so every other channel in the view draws this
+   * solution clean. rbx decides it -- the console prints the same fact as a
+   * WARNING -- and the extension only renders it.
+   */
+  readonly runUnderDoubleTl: boolean;
+  /**
+   * What a solution declared slow would have got without the time limit.
+   *
+   * Independent of `runUnderDoubleTl`, not an alternative to it: both are
+   * unions over the pooled layer and every group, so two groups can each raise
+   * one. Empty on an rbx that predates the field, which is indistinguishable
+   * from a run with nothing to say -- and that is the safe direction.
+   */
+  readonly doubleTlVerdicts: readonly string[];
   readonly groups: readonly GroupReport[];
 }
 
@@ -76,7 +108,23 @@ function parseGroup(raw: Wire): GroupReport | undefined {
     maxScore: asNumber(field(raw, 'maxScore')) ?? 0,
     maxTime: asNumber(field(raw, 'maxTime')),
     maxMemory: asNumber(field(raw, 'maxMemory')),
+    runUnderDoubleTl: asBoolean(field(raw, 'runUnderDoubleTl')) ?? false,
+    doubleTlVerdicts: parseOutcomes(field(raw, 'doubleTlVerdicts')),
+    unexpectedNoTleVerdicts: parseOutcomes(field(raw, 'unexpectedNoTleVerdicts')),
   };
+}
+
+/**
+ * The verdict names in a `doubleTlVerdicts` list, dropping anything unusable.
+ *
+ * Absent on a report written by an rbx that predates the field, which reads as
+ * an empty list -- the same as a run with nothing to warn about. Under-warning
+ * against an old report is the safe direction; inventing a warning is not.
+ */
+function parseOutcomes(raw: Wire): string[] {
+  return asArray(raw)
+    .map((value) => asString(value))
+    .filter((value): value is string => value !== undefined);
 }
 
 /**
@@ -121,6 +169,8 @@ function parseSolution(raw: Wire): SolutionReport | undefined {
       .filter((name): name is string => name !== undefined),
     pooledMatchesExpectation: asBoolean(field(raw, 'pooledMatchesExpectation')),
     expectedScore: parseScoreRange(field(raw, 'expectedScore')),
+    runUnderDoubleTl: asBoolean(field(raw, 'runUnderDoubleTl')) ?? false,
+    doubleTlVerdicts: parseOutcomes(field(raw, 'doubleTlVerdicts')),
     groups,
   };
 }

@@ -20,6 +20,7 @@ import type {
   Mismatched,
   Row,
   RunViewModel,
+  RunWarning,
   ScoreMismatch,
   SolutionDetail,
   Span,
@@ -65,20 +66,52 @@ function codicon(name: string): string {
 }
 
 /**
- * The match axis, and nothing else.
+ * How the row came out, in one column.
  *
  * `none` still emits the element: an empty span keeps the grid column, so every
- * label on screen starts at the same x and a gutter mark can be found by
- * scanning down that column instead of by reading the rows.
+ * label on screen starts at the same x and a mark can be found by scanning down
+ * that column instead of by reading the rows.
+ *
+ * `warned` draws the same triangle as `missed` in yellow rather than red, and
+ * carries the warning itself as a tooltip. It shares this column rather than
+ * getting one of its own because the alternative -- a second mark at the far
+ * end of the row -- put a yellow clock beside the TLE verdict's own yellow
+ * clock, and a double-TL warning only ever lands on a TLE row.
  */
 function gutterCell(row: Row): string {
   switch (row.gutter) {
     case 'met':
       return `<span class="gutter gutter-met">${codicon('check')}</span>`;
+    case 'warned': {
+      const title = row.warnings.map(warningText).join(' ');
+      return (
+        `<span class="gutter gutter-warned" title="${escapeAttr(title)}">` +
+        `${codicon('warning')}</span>`
+      );
+    }
     case 'missed':
       return `<span class="gutter gutter-missed">${codicon('warning')}</span>`;
     case 'none':
       return '<span class="gutter"></span>';
+  }
+}
+
+/**
+ * A warning about a run that *passed*, in one line.
+ *
+ * The words are the console's own, shortened to a row that has to fit a path
+ * and two measurements beside them. Which run gets one is rbx's decision -- see
+ * `RunWarning` -- so nothing here inspects an outcome to reach it.
+ */
+function warningText(warning: RunWarning): string {
+  const where = warning.groups.length === 0 ? '' : ` on ${warning.groups.join(', ')}`;
+  switch (warning.kind) {
+    case 'double-tl-passed':
+      return `Still passed in double TL${where}.`;
+    case 'double-tl-verdicts': {
+      const verdicts = warning.verdicts.map((verdict) => verdict.text).join(' ');
+      return `Still finished in double TL, but failed with ${verdicts}${where}.`;
+    }
   }
 }
 
@@ -146,12 +179,30 @@ function verdictCell(row: Row): string {
   if (verdict === undefined) {
     return '';
   }
+  // The verdict a soft TLE hid, in its own hue rather than the chip's: the
+  // point of showing it is that `TLE` and the verdict underneath disagree, and
+  // painting them alike would hide the disagreement. Parenthesised because it
+  // is a gloss on the chip and not a second verdict of equal standing.
+  const under =
+    verdict.under === undefined
+      ? ''
+      : `<span class="verdict-under hue-${verdict.under.hue}" ` +
+        `title="Would have been ${escapeAttr(verdict.under.text)} without the time limit">` +
+        `(${escapeHtml(verdict.under.text)})</span>`;
   // The short name is its own element so the stylesheet can give it a fixed
   // width: without one, `SKIP` pushes its icon left of every `AC` above it and
   // the column of verdicts reads as ragged.
-  return `<span class="verdict hue-${verdict.hue}">${codicon(
+  //
+  // `verdict-glossed` releases that fixed width, and only here. It buys the
+  // alignment of a column of icons, and a row carrying a gloss is wider than
+  // its neighbours regardless -- so on this row the reserved width aligns
+  // nothing and only holds `(WA)` a character away from the verdict it belongs
+  // to. Written as a class rather than `:has(+ .verdict-under)` so the rule
+  // does not depend on selector support in whichever Electron is underneath.
+  const glossed = verdict.under === undefined ? '' : ' verdict-glossed';
+  return `<span class="verdict hue-${verdict.hue}${glossed}">${codicon(
     verdict.icon,
-  )}<span class="verdict-name">${escapeHtml(verdict.short)}</span></span>`;
+  )}<span class="verdict-name">${escapeHtml(verdict.short)}</span>${under}</span>`;
 }
 
 function labelCell(row: Row): string {
@@ -210,6 +261,11 @@ function renderRow(
   const classes = ['row', `kind-${row.kind}`];
   if (row.mismatch) {
     classes.push('mismatch');
+  }
+  // Mutually exclusive with `mismatch` by construction -- `warned` is a gutter
+  // state and `missed` outranks it -- so the two washes can never stack.
+  if (row.gutter === 'warned') {
+    classes.push('warned');
   }
   const attrs = [
     `class="${classes.join(' ')}"`,
@@ -324,6 +380,29 @@ function mismatchCard(mismatch: MismatchDetail): string {
   );
 }
 
+/**
+ * What a passing run still warned about.
+ *
+ * Its own card rather than a clause inside `mismatchCard`: that card only ever
+ * appears on a solution that missed something, and these warnings appear on
+ * solutions that missed nothing at all -- which is the whole reason they were
+ * invisible here before.
+ */
+function warningCard(warnings: readonly RunWarning[]): string {
+  if (warnings.length === 0) {
+    return '';
+  }
+  const body = warnings
+    .map((warning) => `<p class="mismatch-line">${escapeHtml(warningText(warning))}</p>`)
+    .join('');
+  return (
+    '<div class="warning-card">' +
+    codicon('warning') +
+    `<div class="mismatch-text">${body}</div>` +
+    '</div>'
+  );
+}
+
 /** A percentage with no trailing zeroes, so 3 of 4 reads `75%` and not `75.00%`. */
 function percent(count: number, total: number): string {
   return `${Number(((count / total) * 100).toFixed(2))}%`;
@@ -366,8 +445,8 @@ function value(label: string, text: string | undefined, hue?: string): string {
 }
 
 function valuesCard(detail: SolutionDetail): string {
-  // No denominators: the extension reads only `.rbx` artifacts, never
-  // problem.rbx.yml, so there is no limit here to divide by.
+  // No denominators: see `solutionDetail`, which decides what these are. The
+  // limits exist on the skeleton now; rendering against them does not.
   const values = [
     value('Max time', detail.maxTime),
     value('Max memory', detail.maxMemory),
@@ -383,6 +462,7 @@ function valuesCard(detail: SolutionDetail): string {
 function renderDetail(row: Row, detail: SolutionDetail, id: string): string {
   const body =
     (detail.mismatch === undefined ? '' : mismatchCard(detail.mismatch)) +
+    warningCard(detail.warnings ?? []) +
     histogramCard(detail.histogram) +
     valuesCard(detail);
   if (body === '') {
@@ -549,14 +629,27 @@ export function renderTree(model: RunViewModel, state: UiState): string {
  * filter box therefore cannot live here -- see `renderFilter`.
  */
 export function renderHeader(model: RunViewModel, _state: UiState): string {
-  if (model.mismatches === 0) {
+  if (model.mismatches === 0 && model.warned === 0) {
     return '';
   }
   const solutions = model.rows.filter((row) => row.kind === 'solution').length;
+  // Two counts, never merged: a solution that missed its declaration and one
+  // that met it on a run rbx warned about are different news, and a single
+  // number covering both would let the second hide inside the first.
+  const counts =
+    (model.mismatches === 0
+      ? ''
+      : `<span class="header-count">${codicon('warning')}${model.mismatches} of ${solutions} did not match</span>`) +
+    (model.warned === 0
+      ? ''
+      : `<span class="header-count header-warned">${codicon('warning')}${model.warned} warned</span>`);
   return (
     '<div class="header">' +
-    `<span class="header-count">${codicon('warning')}${model.mismatches} of ${solutions} did not match</span>` +
-    '<button id="next-mismatch">next ›</button>' +
+    counts +
+    // Only when there is a mismatch to walk to: the button steps through the
+    // `mismatch` rows, and offering it on a run that has none is a control that
+    // does nothing.
+    (model.mismatches === 0 ? '' : '<button id="next-mismatch">next ›</button>') +
     '</div>'
   );
 }

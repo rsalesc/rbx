@@ -22,7 +22,7 @@ Two deliberate constraints:
 """
 
 import pathlib
-from typing import Dict, Iterable, List, Optional, Tuple, TypeVar
+from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 
 import yaml
 from pydantic import BaseModel
@@ -60,6 +60,26 @@ class RunGroupReport(BaseModel):
     # time limit, and the only one worth a glance.
     maxTime: Optional[float] = None  # seconds
     maxMemory: Optional[int] = None  # bytes
+    # The double-TL facts for this group alone. See `RunSolutionReport` for what
+    # they mean; they are published per group as well because the console names
+    # the groups a warning came from, and a client with only the aggregate would
+    # have to guess.
+    runUnderDoubleTl: bool = False
+    doubleTlVerdicts: List[Outcome] = []
+    # The verdicts a soft TLE hid in this group that no expectation accepts.
+    #
+    # Under `-v4` a solution is judged at 2x its time limit and reported TLE the
+    # moment it crosses 1x; the verdict it would have got is kept alongside, in
+    # each evaluation's `no_tle_outcome`. A client showing per-testcase rows can
+    # read that field itself, but it cannot tell which of those verdicts are
+    # worth showing -- that needs `ExpectedOutcome.match` against both this
+    # group's declaration and the solution's, and reimplementing that matcher is
+    # exactly the drift this module exists to prevent.
+    #
+    # So rbx answers instead, and a client shows a testcase's `no_tle_outcome`
+    # only when it appears here. ACCEPTED never does: a correct answer under a
+    # soft TLE is the good case, already reported by `runUnderDoubleTl`.
+    unexpectedNoTleVerdicts: List[Outcome] = []
 
 
 class RunSolutionReport(BaseModel):
@@ -94,6 +114,29 @@ class RunSolutionReport(BaseModel):
     # Without it a client meeting `status == UNEXPECTED_SCORE` knows a solution
     # is wrong but has nothing to say about how.
     expectedScore: Optional[Tuple[int, int]] = None
+    # Whether a solution declared slow only timed out *within* double TL.
+    #
+    # Published because it is a warning about a run that otherwise passed:
+    # `status` is OK and `matchesExpectation` is true, so a client reading only
+    # those draws a clean row for a solution whose slowness the testset does not
+    # actually prove. Under `-v4` (the default) rbx runs at 2x the time limit
+    # and rewrites an over-TL run to TLE, so a solution declared TLE that fits
+    # inside that doubled window is borderline, not decisively slow.
+    #
+    # `get_verdict_markup_with_warnings` prints exactly this, and had the only
+    # copy of it.
+    runUnderDoubleTl: bool = False
+    # The verdicts a solution declared slow would have had *without* the time
+    # limit -- it finished inside double TL, but wrongly.
+    #
+    # Independent of `runUnderDoubleTl` rather than an alternative to it: both
+    # are unions over the pooled layer and every group, so two different groups
+    # can each contribute one fact. Gating one on the other is how the second
+    # was lost entirely (#607).
+    #
+    # A sorted list rather than a set: YAML has no set, and the console sorts
+    # these for display anyway.
+    doubleTlVerdicts: List[Outcome] = []
     groups: List[RunGroupReport] = []
 
 
@@ -105,6 +148,32 @@ class RunReport(BaseModel):
 def _max_of(values: Iterable[Optional[_T]]) -> Optional[_T]:
     present = [value for value in values if value is not None]
     return max(present) if present else None
+
+
+def _sorted_outcomes(outcomes: Iterable[Outcome]) -> List[Outcome]:
+    """A set of verdicts, in the order the console prints them.
+
+    Sorted by name rather than by badness: `get_verdict_markup_with_warnings`
+    sorts these the same way, and a client showing them beside the console
+    should not have to explain why the two orders differ.
+    """
+    return sorted(outcomes, key=lambda outcome: outcome.name)
+
+
+def _no_tle_verdicts_in(evals: List[Evaluation]) -> Set[Outcome]:
+    """The verdicts a soft TLE actually hid among these evaluations.
+
+    The set a group is judged against comes from whichever expectation layer
+    covers it, and the pooled layer covers the *whole solution*: without this
+    intersection a group whose testcases all ran clean inherits a verdict hidden
+    three groups away and claims it as its own. A client reading the group row
+    would then say a testcase hid something when none of them did.
+    """
+    return {
+        eval.result.no_tle_outcome
+        for eval in evals
+        if eval.result.no_tle_outcome is not None
+    }
 
 
 def _worst_outcome(evals: List[Evaluation]) -> Optional[Outcome]:
@@ -155,6 +224,18 @@ def build_solution_report(
                 maxScore=group.score,
                 maxTime=_max_of(eval.log.time for eval in group_evals),
                 maxMemory=_max_of(eval.log.memory for eval in group_evals),
+                runUnderDoubleTl=per_group.runUnderDoubleTl if per_group else False,
+                doubleTlVerdicts=_sorted_outcomes(
+                    per_group.doubleTlVerdicts if per_group else set()
+                ),
+                unexpectedNoTleVerdicts=_sorted_outcomes(
+                    _no_tle_verdicts_in(group_evals)
+                    & (
+                        per_group.unexpectedNoTleVerdicts
+                        if per_group
+                        else report.unexpectedNoTleVerdicts
+                    )
+                ),
             )
         )
 
@@ -175,6 +256,8 @@ def build_solution_report(
         maxMemory=_max_of(eval.log.memory for eval in report.evals),
         failedGroups=report.failedGroups,
         expectedScore=report.expectedScore,
+        runUnderDoubleTl=report.runUnderDoubleTl,
+        doubleTlVerdicts=_sorted_outcomes(report.doubleTlVerdicts),
         groups=groups,
     )
 

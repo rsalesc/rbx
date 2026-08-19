@@ -35,6 +35,68 @@ Every solution and every group carries its own summary: the verdict underneath
 it, the points it earned, and the **max** time and memory across its testcases
 -- the slowest test being the one the time limit is judged against.
 
+### Warnings on a run that passed
+
+A **yellow triangle in the gutter** -- where a met declaration draws a green tick
+and a missed one draws a red triangle -- is a run rbx warned about even though it
+passed. `status` is `OK` and `matchesExpectation` is `true` on exactly these
+solutions, so nothing else in the view has anything to say about them: the chip
+draws its verdict, the label draws its declaration, and `sols/slow.cpp` reads
+green while `rbx run` prints a WARNING about it in the terminal.
+
+The row is ruled and washed to match, the way a missed one is -- yellow at a
+slightly lighter mix than the miss's red, because yellow is the lighter hue and
+an equal mix would read louder than the more serious row it ranks below. Those
+two washes and the selection and hover fills are the only backgrounds in the
+stylesheet; the scarcity is what lets either be found by scanning.
+
+The gutter is therefore a severity column, not a match column: tick, yellow
+triangle, red triangle. A row that both missed its declaration and carries a
+warning draws the miss, because there is one glyph to spend and the miss is the
+more serious of the two -- the warning is still spelled out in the card below.
+Warnings tried living in a mark of their own at the far end of the row first,
+which failed for a reason worth recording: a double-TL warning lands only on a
+TLE row, and `watch` is already the TLE chip's icon, so the mark vanished beside
+an identical yellow clock.
+
+Today the mark carries the two double-TL facts. `rbx run` defaults to `-v4`,
+which judges at **twice** the time limit and rewrites an over-limit run to TLE,
+so a solution declared `TLE` can be caught two ways while still matching what it
+declared:
+
+| Warning | What it means |
+|---|---|
+| *Still passed in double TL* | It timed out, but fit inside 2x the limit -- borderline slow, not decisively so |
+| *Still finished in double TL, but failed with WA* | It fit inside 2x the limit and was **wrong** underneath: slow is not why it fails |
+
+The two are independent and each names the groups it came from, because both are
+unions over the pooled layer and every group and two groups can each raise one.
+Warned solutions are counted in the header strip separately from mismatched
+ones, so a run where every declaration held still reports what rbx warned about.
+
+Which run deserves a warning is rbx's decision, published in `report.yml` as
+`runUnderDoubleTl` and `doubleTlVerdicts`; the only thing decided here is which
+words and which glyph carry it.
+
+#### The verdict a soft TLE hid
+
+A testcase judged at 2x the limit is reported `TLE` the moment it crosses 1x,
+but the checker still saw its output -- so `TLE` on a leaf can mean *too slow*
+or *wrong, and too slow got there first*. Those are different bugs. When they
+differ, the row spells both:
+
+```
+1-gen-001        1306 ms · 10 MiB   ⌚ TLE (WA)
+```
+
+Only on leaves, and only when it matters. A solution declared `incorrect` that
+answers wrongly under a soft TLE says nothing new, and neither does a correct
+answer underneath -- that one is the `runUnderDoubleTl` warning, reported once,
+on the row above. Deciding which is which is an `ExpectedOutcome.match` against
+both the group's declaration and the solution's, so rbx decides it and publishes
+the answer per group as `unexpectedNoTleVerdicts`; the extension shows a
+testcase's `no_tle_outcome` when it appears in that list and never otherwise.
+
 **None of that is computed here.** rbx decides it and publishes it to
 `.rbx/runs/report.yml`; the extension reads it and renders it. That is
 deliberate: outcome ranking, expectation matching and dependency-gated scoring
@@ -187,9 +249,9 @@ Everything comes from files rbx already writes. The layout is a contract, and
 | Path | Contents |
 |---|---|
 | `<pkg>/problem.rbx.yml` | what the package *declares*: solutions and their expected outcomes, and every other file it names |
-| `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance |
-| `<pkg>/.rbx/runs/report.yml` | **every aggregate**: verdicts, scores, max time/memory, per-group expectation results |
-| `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message |
+| `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance, and each solution's resolved limits |
+| `<pkg>/.rbx/runs/report.yml` | **every aggregate**: verdicts, scores, max time/memory, per-group expectation results, double-TL warnings |
+| `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message, the verdict a soft TLE hid |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.out` | solution stdout |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.err` | solution stderr (`.sol.err` for communication tasks) |
 | `<pkg>/build/tests/<group>/<stem>.in` | generated input |
@@ -203,6 +265,12 @@ Two things are easy to get wrong here:
   real rbx bug once (#418 / #429).
 - A missing `.eval` means *pending*, not *failed*. That is what gives the view
   live progress during a run for free.
+- `skeleton.yml` carries each solution's `limits` already resolved through its
+  language. The table above it is keyed by language, and mapping a solution onto
+  one of its entries needs rbx's own `find_language_name` -- so the resolved
+  copy is the only one a reader here can use. Nothing renders it yet; it is
+  written so that a time can one day be shown against the limit it was judged
+  under.
 - A missing `report.yml` means *no solution has finished yet*, never *stale*:
   rbx deletes it when it writes a new skeleton. A `version` it does not
   recognise is ignored outright, because rendering a run without aggregates is
