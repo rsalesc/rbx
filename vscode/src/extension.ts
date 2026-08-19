@@ -17,7 +17,8 @@ import { initLog, log } from './log';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
-import { registerSolutionBanner } from './solutionBanner';
+import { registerSolutionLens } from './solutionLens';
+import { registerSolutionStatus } from './solutionStatus';
 
 /**
  * Map a changed path back to the package it belongs to.
@@ -45,7 +46,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const declared = new DeclaredIndex(data);
   context.subscriptions.push(declared);
   registerDecorations(context, declared);
-  registerSolutionBanner(context, declared);
+  registerSolutionLens(context, declared);
+  registerSolutionStatus(context, declared);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),

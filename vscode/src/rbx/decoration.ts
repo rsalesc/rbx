@@ -11,8 +11,8 @@
  * channel here -- no background, no second line -- which is what the badge
  * alphabet in expectation.ts exists to work around.
  */
-import { colorIdOf } from './color';
 import { expectationDisplay } from './expectation';
+import { Hue } from './hue';
 import { DeclaredAsset } from './manifest';
 import { roleBadge, roleLabel } from './role';
 
@@ -23,6 +23,30 @@ export interface BadgeDecoration {
   readonly colorId: string;
   readonly tooltip: string;
 }
+
+/**
+ * Hues, as contributed colour ids.
+ *
+ * Contributed rather than `charts.*` directly so a colour theme can restyle
+ * them, but defaulting *to* `charts.*` so that one that does not still agrees
+ * with the run view -- which reaches the same hues through the webview's
+ * `--vscode-charts-*` variables.
+ *
+ * The Explorer is the only channel that carries a hue at all: a CodeLens takes
+ * the theme's own `editorCodeLens.foreground` and a language status item has
+ * severity rather than colour, so neither of the editor channels can borrow
+ * this table even though they say the same thing.
+ */
+const COLOR: Record<Hue, string> = {
+  green: 'rbx.expectedAccepted',
+  red: 'rbx.expectedIncorrect',
+  yellow: 'rbx.expectedSlow',
+  blue: 'rbx.expectedError',
+  purple: 'rbx.expectedOther',
+  orange: 'rbx.expectedOther',
+  neutral: 'rbx.expectedAny',
+  dim: 'rbx.declaredRole',
+};
 
 /**
  * How `asset` is badged, or `undefined` for one there is nothing to say about.
@@ -39,7 +63,7 @@ export function decorationFor(asset: DeclaredAsset): BadgeDecoration | undefined
     }
     return {
       badge: display.badge,
-      colorId: colorIdOf(display.hue),
+      colorId: COLOR[display.hue],
       tooltip:
         display.label === 'ANY'
           ? 'rbx solution — no outcome declared'
@@ -50,7 +74,7 @@ export function decorationFor(asset: DeclaredAsset): BadgeDecoration | undefined
     badge: roleBadge(asset.role),
     // One neutral colour for every role. A role carries no judgement, so it
     // must not borrow a hue that means one.
-    colorId: colorIdOf('dim'),
+    colorId: COLOR.dim,
     tooltip: `rbx ${roleLabel(asset.role)}`,
   };
 }
