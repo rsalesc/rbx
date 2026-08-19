@@ -1,0 +1,278 @@
+/*
+ * The run view's look.
+ *
+ * Two rules carry the whole design. First, a hue is a role and never a literal
+ * color: `.hue-red` resolves to a `--vscode-*` variable, so the view follows
+ * the user's theme and a high-contrast theme keeps working. Second, a
+ * background fill is reserved -- selection, hover, and the mismatch wash are
+ * the only ones in this file. That scarcity is what lets a missed expectation
+ * be found by scanning the sidebar instead of by reading it, which is the whole
+ * reason the view was rewritten.
+ */
+
+@font-face {
+  /* Task 4 copies codicon.ttf next to this stylesheet. */
+  font-family: 'codicon';
+  src: url('codicon.ttf') format('truetype');
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  /* The sidebar is narrow; the row is responsible for fitting into it. */
+  overflow-x: hidden;
+}
+
+.codicon {
+  font-family: 'codicon';
+  font-size: 16px;
+  line-height: 1;
+  display: inline-block;
+  text-align: center;
+  /* The glyphs are private-use code points; never let them be selected as text. */
+  user-select: none;
+}
+
+/*
+ * The per-icon `content` rules are deliberately not written out here. outcome.ts
+ * names fifteen codicons and grows whenever rbx gains an outcome; a hand-copied
+ * table of private-use code points would be a second place to keep in step with
+ * the font, and wrong silently -- a mistyped code point draws a different icon
+ * rather than nothing. Task 4 ships the vendored `codicon.css` next to the
+ * font, which carries the whole mapping.
+ */
+
+.hue-green { color: var(--vscode-charts-green); }
+.hue-red { color: var(--vscode-charts-red); }
+.hue-yellow { color: var(--vscode-charts-yellow); }
+.hue-blue { color: var(--vscode-charts-blue); }
+.hue-purple { color: var(--vscode-charts-purple); }
+.hue-orange { color: var(--vscode-charts-orange); }
+.hue-dim { color: var(--vscode-descriptionForeground); }
+.hue-neutral { color: var(--vscode-foreground); }
+
+#header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.header-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  color: var(--vscode-charts-red);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  border: none;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.header button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.filter {
+  padding: 4px 8px;
+}
+
+.filter input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 2px 4px;
+}
+
+.filter input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+#tree {
+  /* The meta column drops out on a narrow sidebar; the query has to measure the
+     tree, not the viewport, so a wide window with a narrow sidebar still hides
+     it. */
+  container-type: inline-size;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 16px 16px 1fr auto auto;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  cursor: pointer;
+  /* The single most important rule in the file: no row may widen the view. */
+  overflow: hidden;
+}
+
+.gutter,
+.twisty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Empty in both the `none` and leaf cases, and still occupying its column, so
+     every label starts at the same x and the gutter can be scanned. */
+  width: 16px;
+}
+
+.gutter-met { color: var(--vscode-charts-green); }
+.gutter-missed { color: var(--vscode-charts-red); }
+.twisty { color: var(--vscode-icon-foreground); }
+
+.label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.bold { font-weight: 600; }
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sep {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mismatch {
+  border-left: 2px solid var(--vscode-charts-red);
+  /* The only background in the file besides selection and hover. */
+  background: color-mix(in srgb, var(--vscode-charts-red) 8%, transparent);
+}
+
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.row[aria-selected='true'] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.detail {
+  padding-top: 2px;
+  padding-bottom: 6px;
+  padding-right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mismatch-card {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--vscode-charts-red);
+}
+
+.mismatch-text {
+  /* The sentence wraps rather than truncating: it is the one thing in the view
+     that has to be read in full. */
+  white-space: normal;
+}
+
+.histogram {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bars {
+  display: flex;
+  height: 4px;
+  overflow: hidden;
+}
+
+.bar {
+  /* Hued through `color` like everything else, so one `.hue-*` table serves the
+     label, the meta, the verdict and the bar alike. */
+  background: currentColor;
+  height: 100%;
+}
+
+.counts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.values {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+.value {
+  display: flex;
+  gap: 4px;
+}
+
+.value-text {
+  color: var(--vscode-foreground);
+}
+
+.welcome {
+  padding: 8px 16px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.welcome code {
+  font-family: var(--vscode-editor-font-family);
+}
+
+@container (max-width: 260px) {
+  .meta {
+    display: none;
+  }
+}
