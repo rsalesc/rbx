@@ -16,9 +16,20 @@
   src: url('codicon.ttf') format('truetype');
 }
 
+html,
+body {
+  /* The tree, not the document, is what scrolls. Without a height to fill, the
+     tree grows to fit its rows, the body scrolls instead, and `tree.scrollTop`
+     is forever 0 -- which quietly turns saving and restoring the scroll
+     position into a no-op. */
+  height: 100%;
+}
+
 body {
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
   color: var(--vscode-foreground);
@@ -54,12 +65,8 @@ body {
 .hue-dim { color: var(--vscode-descriptionForeground); }
 .hue-neutral { color: var(--vscode-foreground); }
 
-#header {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
+/* No `position: sticky` on the header or the filter: they are flex items that
+   never scroll, because the only scrolling box in the view is `#tree`. */
 .header {
   display: flex;
   align-items: center;
@@ -118,6 +125,11 @@ body {
      tree, not the viewport, so a wide window with a narrow sidebar still hides
      it. */
   container-type: inline-size;
+  /* Takes the space the header and the filter leave; `min-height: 0` because a
+     flex item defaults to `min-height: auto` and would refuse to shrink below
+     its content, which is exactly how the tree stops being the scrolling box. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
