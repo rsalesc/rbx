@@ -7,6 +7,7 @@ import {
   escapeAttr,
   escapeHtml,
   matchesFilter,
+  renderFilter,
   renderHeader,
   renderTree,
   visibleRows,
@@ -319,4 +320,102 @@ test('the selected row is the one that holds the tab stop', () => {
   assert.ok(selected.includes('aria-selected="true"'), selected);
   assert.ok(selected.includes('tabindex="0"'), selected);
   assert.strictEqual(html.match(/tabindex="0"/g)?.length, 1);
+});
+
+test('a selection filtered off screen lends its tab stop without its selection', () => {
+  // `main.cpp` filters `sol1` away; the tree still needs one tab stop, but the
+  // row that stands in for it is not the one the user picked.
+  const html = renderTree(TREE, state({ selected: 'sol1', filter: 'main.cpp' }));
+  assert.strictEqual(html.match(/tabindex="0"/g)?.length, 1);
+  assert.ok(!html.includes('aria-selected="true"'), html);
+});
+
+test('the filter box escapes a quote rather than closing its own attribute', () => {
+  const html = renderFilter(state({ filter: 'say "hi" & <b>' }));
+  assert.ok(html.includes('value="say &quot;hi&quot; &amp; &lt;b&gt;"'), html);
+  assert.ok(!html.includes('<b>'), html);
+});
+
+// Every verdict short name in outcome.ts, plus the pending and unknown ones.
+// The list is spelled out because `DISPLAY` is private to that module; a new
+// verdict that slips past this test still cannot slip past the invariant, which
+// is that meta never consults the outcome at all.
+const SHORT_NAMES = ['AC', 'SKIP', 'WA', 'TLE', 'ILE', 'MLE', 'RTE', 'OLE', 'FL', 'IE', 'CE', 'XX'];
+
+/** The inner HTML of every meta column on screen -- the chip that follows is not part of it. */
+function metaRegions(html: string): string[] {
+  return [...html.matchAll(/<span class="meta">([\s\S]*?)(?=<span class="verdict|<\/div>)/g)].map(
+    (match) => match[1],
+  );
+}
+
+test('no verdict short name reaches the meta column', () => {
+  // The verdict has its own chip; spelling it in the meta as well is the
+  // conflation the view model exists to undo, and the renderer must not
+  // reintroduce it by painting a verdict into that column.
+  const html = renderTree(TREE, state({ expanded: new Set(['sol0', 'sol0::main']) }));
+  const regions = metaRegions(html);
+  assert.ok(regions.length > 0, html);
+  for (const region of regions) {
+    for (const short of SHORT_NAMES) {
+      assert.ok(!region.includes(short), `${short} in meta: ${region}`);
+    }
+  }
+});
+
+test('an expanded solution points at its detail card and the card is not a tree group', () => {
+  const html = renderTree(TREE, state({ expanded: new Set(['sol1']) }));
+  assert.ok(html.includes('aria-describedby="detail:sol1"'), html);
+  assert.ok(html.includes('<div class="detail" id="detail:sol1"'), html);
+  assert.ok(!html.includes('role="group"'), html);
+});
+
+test('a row id with a space still names exactly one detail card', () => {
+  const spaced = row({
+    id: '/w/a::sols/my sol.cpp',
+    kind: 'solution',
+    label: 'sols/my sol.cpp',
+    expandable: true,
+    detail: { histogram: [], maxTime: '1 ms' },
+  });
+  const html = renderTree(model([spaced]), state({ expanded: new Set([spaced.id]) }));
+  const described = /aria-describedby="([^"]*)"/.exec(html)?.[1];
+  assert.ok(described !== undefined, html);
+  assert.ok(!described.includes(' '), described);
+  assert.ok(html.includes(`id="${described}"`), html);
+});
+
+test('a solution whose card is empty carries no aria-describedby', () => {
+  const pending = row({
+    id: 'sol0',
+    kind: 'solution',
+    label: 'sols/main.cpp',
+    expandable: true,
+    detail: { histogram: [] },
+  });
+  const html = renderTree(model([pending]), state({ expanded: new Set(['sol0']) }));
+  assert.ok(!html.includes('aria-describedby'), html);
+});
+
+test('sibling rank follows model order across two families of siblings', () => {
+  const second = row({
+    id: 'sol0::other',
+    parentId: 'sol0',
+    depth: 1,
+    kind: 'group',
+    label: 'other',
+    section: 'rbx.group',
+    search: 'other',
+  });
+  const html = renderTree(
+    model([MAIN, MAIN_GROUP, MAIN_CASE, second, MISLABELED]),
+    state({ expanded: new Set(['sol0']) }),
+  );
+  const first = html.slice(html.indexOf('data-id="sol0::main"'));
+  assert.ok(first.includes('aria-posinset="1"'), first);
+  assert.ok(first.includes('aria-setsize="2"'), first);
+  const other = html.slice(html.indexOf('data-id="sol0::other"'));
+  assert.ok(other.includes('aria-posinset="2"'), other);
+  const roots = html.slice(html.indexOf('data-id="sol1"'));
+  assert.ok(roots.includes('aria-posinset="2"'), roots);
 });

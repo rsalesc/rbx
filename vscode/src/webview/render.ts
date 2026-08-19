@@ -136,7 +136,21 @@ interface Position {
   readonly posinset: number;
 }
 
-function renderRow(row: Row, state: UiState, position: Position): string {
+/**
+ * `tabStop` is passed apart from `state.selected` on purpose.
+ *
+ * When the selection is filtered off screen the tree still needs exactly one
+ * tab stop, and the first visible row stands in -- but standing in for the tab
+ * stop is not being selected, and announcing `aria-selected` on a row the user
+ * never picked describes a selection that does not exist.
+ */
+function renderRow(
+  row: Row,
+  state: UiState,
+  position: Position,
+  tabStop: string | undefined,
+  describedBy: string | undefined,
+): string {
   const expanded = state.expanded.has(row.id);
   const selected = state.selected === row.id;
   const classes = ['row', `kind-${row.kind}`];
@@ -154,8 +168,11 @@ function renderRow(row: Row, state: UiState, position: Position): string {
     // Absent, not false, on a leaf: `aria-expanded="false"` on a childless node
     // tells a screen reader there is something to open.
     ...(row.expandable ? [`aria-expanded="${expanded}"`] : []),
+    // Only when the card is really on screen: pointing at an id that is not in
+    // the document makes a screen reader announce no description at all.
+    ...(describedBy === undefined ? [] : [`aria-describedby="${escapeAttr(describedBy)}"`]),
     `aria-selected="${selected}"`,
-    `tabindex="${selected ? 0 : -1}"`,
+    `tabindex="${tabStop === row.id ? 0 : -1}"`,
     contextAttr(row),
   ];
   return (
@@ -250,7 +267,7 @@ function valuesCard(detail: SolutionDetail): string {
  * The card under an expanded solution -- empty string when it would be a box
  * with nothing in it, which is what a solution still running would get.
  */
-function renderDetail(row: Row, detail: SolutionDetail): string {
+function renderDetail(row: Row, detail: SolutionDetail, id: string): string {
   const body =
     (detail.mismatch === undefined ? '' : mismatchCard(detail.mismatch)) +
     histogramCard(detail.histogram) +
@@ -258,7 +275,23 @@ function renderDetail(row: Row, detail: SolutionDetail): string {
   if (body === '') {
     return '';
   }
-  return `<div class="detail" role="group" style="padding-left: ${indent(row.depth + 1)}px">${body}</div>`;
+  // No `role="group"`: inside a `role="tree"`, a group is expected to contain
+  // treeitems, and this card contains prose -- so a screen reader either skips
+  // it or announces it as an empty level of the tree. As a plain div it is out
+  // of the tree structure entirely, and the row it belongs to reaches it
+  // through `aria-describedby` instead.
+  return `<div class="detail" id="${escapeAttr(id)}" style="padding-left: ${indent(row.depth + 1)}px">${body}</div>`;
+}
+
+/**
+ * The id of the card under `rowId` -- what its row's `aria-describedby` names.
+ *
+ * Percent-encoded rather than interpolated raw: `aria-describedby` is a
+ * *space-separated* id list, and a row id is built from a solution path, so
+ * `sols/my sol.cpp` would otherwise name two ids and describe neither.
+ */
+function detailId(rowId: string): string {
+  return `detail:${encodeURIComponent(rowId)}`;
 }
 
 export function matchesFilter(row: Row, filter: string): boolean {
@@ -350,35 +383,44 @@ export function renderTree(model: RunViewModel, state: UiState): string {
   // Siblings are counted among the rows actually on screen: announcing "3 of 9"
   // while six of them are filtered out describes a tree the user cannot see.
   const siblings = new Map<string, Row[]>();
+  // Filled in the same pass as the buckets, so a row's rank among its siblings
+  // costs a lookup instead of a scan of the bucket it was just appended to.
+  const ranks = new Map<string, number>();
   for (const row of rows) {
     const key = row.parentId ?? '';
-    const bucket = siblings.get(key);
+    let bucket = siblings.get(key);
     if (bucket === undefined) {
-      siblings.set(key, [row]);
-    } else {
-      bucket.push(row);
+      bucket = [];
+      siblings.set(key, bucket);
     }
+    bucket.push(row);
+    ranks.set(row.id, bucket.length);
   }
 
   // A tree needs exactly one tab stop. The selection holds it; with nothing
-  // selected the first row does, so a Tab into the view lands somewhere useful.
-  const tabStop = rows.some((row) => row.id === state.selected)
-    ? state.selected
-    : rows[0]?.id;
-  const focused: UiState = { ...state, selected: tabStop };
+  // selected -- or with the selection filtered off screen -- the first row does,
+  // so a Tab into the view lands somewhere useful.
+  const tabStop = rows.some((row) => row.id === state.selected) ? state.selected : rows[0]?.id;
 
   return rows
     .map((row) => {
       const bucket = siblings.get(row.parentId ?? '') ?? [row];
-      const html = renderRow(row, focused, {
-        level: row.depth + 1,
-        setsize: bucket.length,
-        posinset: bucket.indexOf(row) + 1,
-      });
+      const id = detailId(row.id);
       const detail =
         row.detail !== undefined && state.expanded.has(row.id)
-          ? renderDetail(row, row.detail)
+          ? renderDetail(row, row.detail, id)
           : '';
+      const html = renderRow(
+        row,
+        state,
+        {
+          level: row.depth + 1,
+          setsize: bucket.length,
+          posinset: ranks.get(row.id) ?? 1,
+        },
+        tabStop,
+        detail === '' ? undefined : id,
+      );
       return html + detail;
     })
     .join('');

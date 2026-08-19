@@ -112,7 +112,9 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     ].join('; ');
     // The tree container is part of the static shell rather than something
     // `renderTree` replaces, so focus and scroll survive a re-render --
-    // `renderTree` returns only its inner HTML.
+    // `renderTree` returns only its inner HTML. It is `tabindex="-1"` and not
+    // `0`: the rows carry the roving tab stop, and a focusable container would
+    // make Tab stop twice on its way into the view.
     return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -126,7 +128,7 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   <body>
     <div id="header"></div>
     <div id="filter-host"></div>
-    <div id="tree" role="tree" tabindex="0"></div>
+    <div id="tree" role="tree" tabindex="-1"></div>
     <script nonce="${nonce}" src="${asset('webview', 'main.js')}"></script>
   </body>
 </html>`;
