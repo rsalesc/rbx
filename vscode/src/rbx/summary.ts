@@ -2,16 +2,20 @@
  * How a run's aggregates are *rendered*. Nothing here computes them.
  *
  * The verdict, the score and the max time and memory all arrive already decided
- * in `.rbx/runs/report.yml` (report.ts). This file turns them into the strings
- * the tree shows, and counts how many testcases have landed so far -- which is
- * a count of files on disk, not a judgement about them.
+ * in `.rbx/runs/report.yml` (report.ts). This file formats them, and counts how
+ * many testcases have landed so far -- which is a count of files on disk, not a
+ * judgement about them.
+ *
+ * It used to compose whole description strings too, which is how the verdict,
+ * the expectation and the mismatch all ended up folded into one line of dim
+ * grey. viewModel.ts now keeps them in separate channels and reaches only for
+ * the formatters below.
  *
  * The units deliberately match `rbx run` itself: two surfaces reporting the
  * same run should not disagree on whether 32 MiB is "32MB".
  */
 import type { Evaluation } from './model';
-import type { GroupReport, SolutionReport } from './report';
-import { expectedShortName, shortName } from './outcome';
+import { shortName } from './outcome';
 
 export interface SummarizableTestcase {
   readonly evaluation?: Evaluation;
@@ -61,18 +65,6 @@ export function formatScore(score: number, maxScore: number): string {
   return `[${score}/${maxScore} pts]`;
 }
 
-function join(parts: (string | undefined)[]): string {
-  return parts.filter((part): part is string => part !== undefined && part !== '').join(' · ');
-}
-
-function progressPart(progress: Progress): string | undefined {
-  return isComplete(progress) ? undefined : `${progress.done}/${progress.total}`;
-}
-
-function scorePart(score: number, maxScore: number): string | undefined {
-  return maxScore === 0 ? undefined : formatScore(score, maxScore);
-}
-
 /**
  * A node whose report has not been written yet.
  *
@@ -83,63 +75,6 @@ function scorePart(score: number, maxScore: number): string | undefined {
  */
 export function pendingDescription(progress: Progress): string {
   return progress.total === 0 ? 'pending' : `${progress.done}/${progress.total}`;
-}
-
-export function groupDescription(
-  report: GroupReport | undefined,
-  progress: Progress,
-): string {
-  if (report === undefined) {
-    return pendingDescription(progress);
-  }
-  // A group that missed its own declared expectation is the finding worth
-  // leading with, the way rbx's `_group_failure_lines` does.
-  const verdict = report.matchesExpectation
-    ? shortName(report.outcome)
-    : `expected ${expectedShortName(report.expectedOutcome)}, got ${shortName(report.outcome)}`;
-  return join([
-    progressPart(progress),
-    verdict,
-    scorePart(report.score, report.maxScore),
-    formatTime(report.maxTime),
-    formatMemory(report.maxMemory),
-  ]);
-}
-
-export function solutionDescription(
-  report: SolutionReport | undefined,
-  progress: Progress,
-): string {
-  if (report === undefined) {
-    return pendingDescription(progress);
-  }
-  return join([
-    progressPart(progress),
-    solutionVerdict(report),
-    scorePart(report.score, report.maxScore),
-    formatTime(report.maxTime),
-    formatMemory(report.maxMemory),
-  ]);
-}
-
-/**
- * The headline finding: a solution that did not behave as declared.
- *
- * A solution declares its expectations in two layers and rbx checks both, so
- * saying which one failed matters. `sols/mislabeled.cpp` in the
- * `outcome-per-group` fixture satisfies its pooled `INCORRECT` -- it does fail
- * somewhere -- and is caught only by its per-group expectations. Rendering that
- * as "expected INCORRECT, got WA" would name an expectation that was in fact
- * met.
- */
-function solutionVerdict(report: SolutionReport): string {
-  if (report.matchesExpectation) {
-    return shortName(report.outcome);
-  }
-  if (report.failedGroups.length > 0) {
-    return `${shortName(report.outcome)} · failed ${report.failedGroups.join(', ')}`;
-  }
-  return `expected ${expectedShortName(report.expectedOutcome)}, got ${shortName(report.outcome)}`;
 }
 
 /**

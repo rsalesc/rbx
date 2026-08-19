@@ -8,7 +8,7 @@
  */
 import * as vscode from 'vscode';
 
-import { discoverPackages } from './discovery';
+import { discoverPackages, packageLabel } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
 import { PackageRunView } from './rbx/nodes';
@@ -100,7 +100,7 @@ export class RunDataProvider {
       } else {
         log(`${pkg.root}: ${run.solutions.length} solution(s) in the last run.`);
       }
-      views.push({ pkg, run });
+      views.push({ pkg, run, label: packageLabel(pkg) });
     }
     return views;
   }

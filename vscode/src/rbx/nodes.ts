@@ -14,6 +14,8 @@ export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
 export interface PackageNode {
   readonly kind: 'package';
   readonly pkg: PackageLayout;
+  /** The host's disambiguated label, when it supplied one. */
+  readonly label?: string;
 }
 
 export interface SolutionNode {
@@ -62,6 +64,15 @@ export function nodeId(node: RunNode): string {
 export interface PackageRunView {
   readonly pkg: PackageLayout;
   readonly run: PackageRun | undefined;
+  /**
+   * What to call this package in the view.
+   *
+   * Supplied by the host rather than derived here, because telling two packages
+   * named `prob` apart needs `vscode.workspace` to say which folder each sits
+   * in -- and this module's value is being testable without the editor API.
+   * Absent in tests and wherever the basename is unambiguous.
+   */
+  readonly label?: string;
 }
 
 /**
@@ -75,12 +86,12 @@ export interface PackageRunView {
 export function flattenNodes(packages: readonly PackageRunView[]): RunNode[] {
   const showPackages = packages.length > 1;
   const nodes: RunNode[] = [];
-  for (const { pkg, run } of packages) {
+  for (const { pkg, run, label } of packages) {
     if (run === undefined) {
       continue;
     }
     if (showPackages) {
-      nodes.push({ kind: 'package', pkg });
+      nodes.push({ kind: 'package', pkg, label });
     }
     const solo = run.solutions.length === 1;
     for (const solutionRun of run.solutions) {

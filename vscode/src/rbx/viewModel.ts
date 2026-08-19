@@ -105,16 +105,15 @@ export interface RunViewModel {
 }
 
 /**
- * The package's directory name.
+ * What to call a package.
  *
- * Deliberately *not* `packageLabel` from ../discovery, which asks
- * `vscode.workspace` which folder the package sits in: importing it would drag
- * the editor API into a module whose whole value is being testable without it.
- * The workspace-relative form it produces is a nicety for a multi-root
- * workspace; the basename is right in every other case.
+ * The host disambiguates two packages both named `prob` by asking
+ * `vscode.workspace` which folder each sits in, and passes the answer down --
+ * importing that here would drag the editor API into a module whose whole value
+ * is being testable without it. The basename is right whenever it did not.
  */
-function packageName(root: string): string {
-  return path.basename(root);
+function packageName(node: PackageNode): string {
+  return node.label ?? path.basename(node.pkg.root);
 }
 
 function chip(outcome: string | undefined): VerdictChip {
@@ -261,7 +260,7 @@ function solutionDetail(run: SolutionRun, mismatch: boolean): SolutionDetail {
 }
 
 function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
-  const label = packageName(node.pkg.root);
+  const label = packageName(node);
   return {
     id: nodeId(node),
     parentId,

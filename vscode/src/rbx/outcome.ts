@@ -121,21 +121,3 @@ export function isAccepted(outcome: string | undefined): boolean {
 export function isSkipped(outcome: string | undefined): boolean {
   return outcome === 'skipped';
 }
-
-/** Display form of an expectation, e.g. `ACCEPTED_OR_TLE` -> `AC or TLE`. */
-export function expectedShortName(expected: string | undefined): string {
-  switch (expected) {
-    case undefined:
-      return '?';
-    case 'ANY':
-      return 'ANY';
-    case 'ACCEPTED_OR_TLE':
-      return 'AC or TLE';
-    case 'TLE_OR_RTE':
-      return 'TLE or RTE';
-    case 'INCORRECT':
-      return 'INCORRECT';
-    default:
-      return shortName(expected.toLowerCase().replace(/_/g, '-'));
-  }
-}

@@ -5,10 +5,10 @@
  * `ExpectedOutcome.style()`, `full_style()` and `icon()` in rbx/box/schema.py,
  * and deliberately derives nothing from the `Outcome` table in outcome.ts. The
  * two enums merely happen to share some spellings; lowercasing an
- * `ExpectedOutcome` name to reach an `Outcome` key -- which is what
- * `expectedShortName` still does -- works only by coincidence and silently
- * mislabels every member where the coincidence stops (INCORRECT, TLE_OR_RTE,
- * ANY). An explicit record per member is the point of this file.
+ * `ExpectedOutcome` name to reach an `Outcome` key -- which is what the
+ * `expectedShortName` this file replaced used to do -- works only by
+ * coincidence, and silently mislabels every member where the coincidence stops
+ * (INCORRECT, TLE_OR_RTE, ANY). An explicit record per member is the point.
  */
 import { Hue } from './hue';
 
