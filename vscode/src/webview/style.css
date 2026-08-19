@@ -136,7 +136,7 @@ body {
 
 .row {
   display: grid;
-  grid-template-columns: 16px 16px 1fr auto auto;
+  grid-template-columns: 16px 16px 1fr auto auto auto;
   align-items: center;
   gap: 6px;
   height: 22px;
@@ -204,6 +204,48 @@ body {
   opacity: 0.6;
 }
 
+/* The declaration, immediately left of the outcome so the two read as one
+   `declared -> got` phrase. Quieter than the verdict beside it: the verdict is
+   what happened and the declaration is only what was asked for, and at equal
+   weight the row grows a second thing competing to be read first.
+
+   It grows leftwards from the verdict rather than occupying a column of its
+   own. The verdict column is fixed-width so it can be scanned straight down;
+   giving this one the same treatment would mean reserving the width of
+   `TLE or RTE` on every row in a sidebar this narrow. What has to line up is
+   the *pair*, and the pair is anchored on the right, where the arrow always
+   meets the verdict. */
+.expectation {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
+/* `TLE or RTE` is the longest label expectation.ts spells, and a member this
+   extension is too old to know is rendered under its raw name, which has no
+   bound at all. Capped so an unknown member cannot push the verdict column off
+   the panel; every member that exists today fits inside it untouched. */
+.expectation-name {
+  max-width: 10ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Inherits the colour of whatever it points *from*, in both the row and the
+   card, so the eye follows the phrase rather than the punctuation. */
+.arrow {
+  opacity: 0.6;
+}
+
+/* The row's arrow sits in a flex box that spaces it; the card's sits in running
+   text, which does not. */
+.mismatch-line .arrow {
+  margin: 0 4px;
+}
+
 .verdict {
   display: flex;
   align-items: center;
@@ -266,6 +308,14 @@ body {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  /* The icon carries the alarm; the prose does not. The card used to be red
+     throughout, which was right when it held one red sentence -- now that it
+     names two declaration layers and hues each `declared -> got` pair by what
+     it actually is, a red wash sat in front of the colours doing the work. */
+  color: var(--vscode-foreground);
+}
+
+.mismatch-card > .codicon {
   color: var(--vscode-charts-red);
 }
 
@@ -273,6 +323,53 @@ body {
   /* The sentence wraps rather than truncating: it is the one thing in the view
      that has to be read in full. */
   white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mismatch-line {
+  margin: 0;
+}
+
+.mismatch-line code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+  opacity: 0.9;
+}
+
+/* One group per line rather than a comma-separated run: each carries its own
+   declared -> got pair, and inlined they read as one long clause in which no
+   declaration is clearly attached to any group. */
+.group-misses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group-misses li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* Neither name nor pair is hued: the pair carries the colour, and the group
+   name is the thing being talked about rather than a verdict of its own. */
+.group-name {
+  color: var(--vscode-foreground);
+  min-width: 6ch;
+  overflow-wrap: anywhere;
+}
+
+.group-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .histogram {
@@ -328,6 +425,16 @@ body {
 
 @container (max-width: 260px) {
   .meta {
+    display: none;
+  }
+}
+
+/* Narrower still. The declaration outlives the timings and is outlived by the
+   verdict, which is the order of how much each would be missed: a row can
+   always be opened for its timings, and the declaration is the only channel
+   saying what the row was *for*. */
+@container (max-width: 200px) {
+  .expectation {
     display: none;
   }
 }

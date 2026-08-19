@@ -14,10 +14,13 @@
  * which is why nothing that decides anything is allowed to live there.
  */
 import type {
+  GroupMismatch,
   HistogramSlice,
   MismatchDetail,
+  Mismatched,
   Row,
   RunViewModel,
+  ScoreMismatch,
   SolutionDetail,
   Span,
 } from '../rbx/viewModel';
@@ -99,6 +102,29 @@ function metaCell(meta: readonly Span[]): string {
     return '';
   }
   return `<span class="meta">${meta.map(spanCell).join(SEPARATOR)}</span>`;
+}
+
+/**
+ * What the row declared, in words, immediately left of what it got.
+ *
+ * Emitted even when there is nothing to say, for the same reason the gutter is:
+ * the pair reads as `TLE \u2192 WA` down a column, and a cell that disappears on
+ * the undeclared rows takes the column's alignment with it.
+ *
+ * The arrow is inside this cell rather than between the two, so it arrives and
+ * leaves with the declaration it points from.
+ */
+function expectationCell(row: Row): string {
+  const expectation = row.expectation;
+  if (expectation === undefined) {
+    return '<span class="expectation"></span>';
+  }
+  return (
+    `<span class="expectation hue-${expectation.hue}">` +
+    `<span class="expectation-name">${escapeHtml(expectation.label)}</span>` +
+    '<span class="arrow">\u2192</span>' +
+    '</span>'
+  );
 }
 
 function verdictCell(row: Row): string {
@@ -191,36 +217,88 @@ function renderRow(
     twistyCell(row, expanded) +
     labelCell(row) +
     metaCell(row.meta) +
+    expectationCell(row) +
     verdictCell(row) +
     '</div>'
   );
 }
 
-/**
- * What a caught solution got wrong, in a sentence.
- *
- * The old view said this as `expected INCORRECT, got WA` in the same dim grey
- * as every row's timing, where it was invisible. `failedGroups` is what rbx
- * itself names as the culprit, so the groups are the sentence when there are
- * any; the observed outcome only stands in when rbx named none.
- */
-function mismatchSentence(mismatch: MismatchDetail): string {
-  // `did not match`, not `matched`: rbx reports the groups that *failed* their
-  // declaration, so naming them as the ones that matched says the opposite of
-  // what happened -- and the whole reason this card exists is that the old
-  // phrasing could not be read at a glance.
-  const tail =
-    mismatch.failedGroups.length > 0
-      ? `${mismatch.failedGroups.map(escapeHtml).join(', ')} did not match`
-      : `got ${escapeHtml(mismatch.observed)}`;
-  return `Declared ${escapeHtml(mismatch.declared)}, but ${tail}.`;
+function hued(text: string, hue: string): string {
+  return `<span class="hue-${hue}">${escapeHtml(text)}</span>`;
 }
 
+/** `TLE \u2192 AC`, the same pairing the rows use, so the card reads as a zoom
+ * into them rather than as a second notation. */
+function declaredGot(pair: Mismatched | GroupMismatch): string {
+  return (
+    hued(pair.declared, pair.declaredHue) +
+    '<span class="arrow">\u2192</span>' +
+    hued(pair.observed, pair.observedHue)
+  );
+}
+
+/**
+ * The pooled layer's own miss.
+ *
+ * Printed only when `MismatchDetail.pooled` is set, which is only when that
+ * layer is what failed. The old card printed this unconditionally and then
+ * listed the failing groups after a `but`, which read as if those groups had
+ * missed the pooled declaration -- for a solution whose pooled declaration
+ * held, that named the one expectation nothing was wrong with.
+ */
+function pooledLine(pooled: Mismatched): string {
+  return `<p class="mismatch-line">Declared ${declaredGot(pooled)}</p>`;
+}
+
+/** A group per row, each naming its own declaration. */
+function groupLines(groups: readonly GroupMismatch[], held: string | undefined): string {
+  const count = groups.length;
+  const subject = count === 1 ? '1 group' : `${count} groups`;
+  // Naming the pooled declaration as *held* is the correction: the reader is
+  // looking at a row labelled INCORRECT and needs to be told that is not the
+  // declaration these groups missed.
+  const lead =
+    held === undefined
+      ? `${subject} missed their <code>outcomePerGroup</code> declaration:`
+      : `${escapeHtml(held)} held for the solution as a whole; ` +
+        `${subject} missed their <code>outcomePerGroup</code> declaration:`;
+  const rows = groups
+    .map(
+      (group) =>
+        '<li>' +
+        `<span class="group-name">${escapeHtml(group.name)}</span>` +
+        `<span class="group-pair">${declaredGot(group)}</span>` +
+        '</li>',
+    )
+    .join('');
+  return `<p class="mismatch-line">${lead}</p><ul class="group-misses">${rows}</ul>`;
+}
+
+function scoreLine(score: ScoreMismatch): string {
+  return (
+    '<p class="mismatch-line">Expected ' +
+    `${escapeHtml(score.expected)} pts, scored ${escapeHtml(score.got)}.</p>`
+  );
+}
+
+/**
+ * What a caught solution got wrong, layer by layer.
+ *
+ * Each clause speaks only for the layer it belongs to and appears only when
+ * that layer failed, so no sentence here can accuse an expectation that held.
+ */
 function mismatchCard(mismatch: MismatchDetail): string {
+  const body =
+    (mismatch.pooled === undefined ? '' : pooledLine(mismatch.pooled)) +
+    (mismatch.groups.length === 0 ? '' : groupLines(mismatch.groups, mismatch.pooledHeld)) +
+    (mismatch.score === undefined ? '' : scoreLine(mismatch.score));
+  if (body === '') {
+    return '';
+  }
   return (
     '<div class="mismatch-card">' +
     codicon('warning') +
-    `<span class="mismatch-text">${mismatchSentence(mismatch)}</span>` +
+    `<div class="mismatch-text">${body}</div>` +
     '</div>'
   );
 }

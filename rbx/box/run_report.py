@@ -22,7 +22,7 @@ Two deliberate constraints:
 """
 
 import pathlib
-from typing import Dict, Iterable, List, Optional, TypeVar
+from typing import Dict, Iterable, List, Optional, Tuple, TypeVar
 
 import yaml
 from pydantic import BaseModel
@@ -33,6 +33,10 @@ from rbx.grading.steps import Evaluation, Outcome
 # Bump when a change would make an older reader misread the file. A reader that
 # meets a version it does not know must ignore the report rather than guess --
 # showing a run without aggregates is recoverable, showing wrong verdicts is not.
+#
+# Adding an optional field is not such a change: an older reader drops what it
+# does not know and reads everything else exactly as before. Bumping for it
+# would instead make every existing reader ignore the whole file.
 REPORT_VERSION = 1
 
 REPORT_FILENAME = 'report.yml'
@@ -70,11 +74,26 @@ class RunSolutionReport(BaseModel):
     # `status == OK`, hoisted out so a client need not learn the status values
     # to answer the only question most of them ask.
     matchesExpectation: bool = True
+    # Whether the *pooled* `outcome` layer held on its own.
+    #
+    # Published apart from `matchesExpectation` because that one is the
+    # aggregate of two independent layers, and a client that has only the
+    # aggregate cannot tell which of them it is allowed to blame. A solution
+    # declaring `outcome: incorrect` with an `outcomePerGroup` can fail only
+    # the per-group layer while the pooled `incorrect` it names was in fact
+    # met -- saying "expected INCORRECT, got WA" there accuses an expectation
+    # that held. `get_verdict_markup` draws exactly this distinction for the
+    # console, and had the only copy of it.
+    pooledMatchesExpectation: bool = True
     score: int = 0
     maxScore: int = 0
     maxTime: Optional[float] = None
     maxMemory: Optional[int] = None
     failedGroups: List[str] = []
+    # The `[min, max]` score range declared for this solution, when one was.
+    # Without it a client meeting `status == UNEXPECTED_SCORE` knows a solution
+    # is wrong but has nothing to say about how.
+    expectedScore: Optional[Tuple[int, int]] = None
     groups: List[RunGroupReport] = []
 
 
@@ -149,11 +168,13 @@ def build_solution_report(
         outcome=_worst_outcome(report.evals),
         status=report.status.value,
         matchesExpectation=report.status.ok(),
+        pooledMatchesExpectation=report.pooledStatus.ok(),
         score=report.gotScore,
         maxScore=report.maxScore,
         maxTime=_max_of(eval.log.time for eval in report.evals),
         maxMemory=_max_of(eval.log.memory for eval in report.evals),
         failedGroups=report.failedGroups,
+        expectedScore=report.expectedScore,
         groups=groups,
     )
 

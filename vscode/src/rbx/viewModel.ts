@@ -18,7 +18,7 @@
  */
 import * as path from 'path';
 
-import { expectationDisplay } from './expectation';
+import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfThemeColor } from './hue';
 import {
   GroupNode,
@@ -62,10 +62,48 @@ export interface HistogramSlice {
   readonly count: number;
 }
 
-export interface MismatchDetail {
+/** One group that missed its own `outcomePerGroup` declaration. */
+export interface GroupMismatch {
+  readonly name: string;
   readonly declared: string;
+  readonly declaredHue: Hue;
   readonly observed: string;
-  readonly failedGroups: readonly string[];
+  readonly observedHue: Hue;
+}
+
+export interface Mismatched {
+  readonly declared: string;
+  readonly declaredHue: Hue;
+  readonly observed: string;
+  readonly observedHue: Hue;
+}
+
+export interface ScoreMismatch {
+  readonly expected: string;
+  readonly got: string;
+}
+
+/**
+ * What a caught solution got wrong, layer by layer.
+ *
+ * A solution declares its expectations in two independent layers -- pooled
+ * `outcome` and per-group `outcomePerGroup` -- and either can be the one that
+ * failed. The card used to name the pooled declaration and then list the
+ * groups from `failedGroups` beside it, which reads as though those groups
+ * missed *that* declaration. For `sols/mislabeled-groups.cpp` that is exactly
+ * backwards: its pooled `INCORRECT` held, and only its per-group `TLE` was
+ * missed, so the sentence accused the one expectation that was met.
+ *
+ * So the layers stay apart here too, and each carries its own declared/observed
+ * pair. `pooled` is set only when the pooled layer is what failed -- the same
+ * condition `get_verdict_markup` uses before it will print `Expected: X`.
+ */
+export interface MismatchDetail {
+  readonly pooled?: Mismatched;
+  /** The pooled declaration's label, set only when that layer *held*. */
+  readonly pooledHeld?: string;
+  readonly groups: readonly GroupMismatch[];
+  readonly score?: ScoreMismatch;
 }
 
 export interface SolutionDetail {
@@ -86,6 +124,16 @@ export interface Row {
   readonly labelHue?: Hue;
   readonly labelBold: boolean;
   readonly meta: readonly Span[];
+  /**
+   * The expectation this row *declared*, spelled out.
+   *
+   * The label's hue carries the same fact, and on a solution row -- whose label
+   * is a path the reader already knows -- that was enough. On a group row it is
+   * not: `edge` drawn in yellow does not say `TIME_LIMIT_EXCEEDED`, and a group
+   * that declares one through `outcomePerGroup` had no channel at all to say so.
+   * Absent when nothing was declared, or when `ANY` declared nothing to miss.
+   */
+  readonly expectation?: ExpectationDisplay;
   readonly verdict?: VerdictChip;
   readonly mismatch: boolean;
   readonly expandable: boolean;
@@ -126,6 +174,22 @@ function chip(outcome: string | undefined): VerdictChip {
 
 function matched(matches: boolean): Gutter {
   return matches ? 'met' : 'missed';
+}
+
+/**
+ * How to draw a declaration, or `undefined` when there is none to draw.
+ *
+ * `ANY` folds into `undefined` on purpose: it is the way a setter says "I am
+ * declaring nothing about this", so spelling it out in the row would put a
+ * chip on every solution that opted out of having one. It is the same rule the
+ * gutter applies -- there is nothing to have met or missed -- and the two must
+ * not disagree about whether a row declared anything.
+ */
+function declaredExpectation(expected: string | undefined): ExpectationDisplay | undefined {
+  if (expected === undefined || expected === 'ANY') {
+    return undefined;
+  }
+  return expectationDisplay(expected);
 }
 
 /**
@@ -192,11 +256,20 @@ function aggregateMeta(
  * literal `mismatch` only where there is one, so it is a usable token rather
  * than noise on every row.
  */
-function haystack(subject: string, verdict: VerdictChip | undefined, mismatch: boolean): string {
-  return [subject, verdict?.short, mismatch ? 'mismatch' : undefined]
+function haystack(
+  subject: string,
+  verdict: VerdictChip | undefined,
+  mismatch: boolean,
+  expectation?: ExpectationDisplay,
+): string {
+  // The declaration joins the haystack so `tle` finds the groups that *wanted*
+  // a TLE as well as the ones that got one -- which, on a solution declared
+  // slow, are not the same rows. Deduplicated because on the common row the
+  // two agree, and `sols/main.cpp ac ac` is a haystack that says nothing twice.
+  const parts = [subject, verdict?.short, expectation?.label, mismatch ? 'mismatch' : undefined]
     .filter((part): part is string => part !== undefined)
-    .join(' ')
-    .toLowerCase();
+    .map((part) => part.toLowerCase());
+  return [...new Set(parts)].join(' ');
 }
 
 /**
@@ -223,22 +296,100 @@ function histogram(testcases: readonly TestcaseRun[]): HistogramSlice[] {
 }
 
 /**
+ * `40`, `40..`, `40..60` -- `get_expected_score_repr`'s spelling, so the card
+ * and the console name a range the same way.
+ */
+function scoreRange(range: readonly [number, number]): string {
+  const [lo, hi] = range;
+  if (lo === hi) {
+    return String(lo);
+  }
+  // rbx writes an open upper bound as 10^9; naming it would invent a ceiling
+  // the setter never wrote.
+  return hi >= 1e9 ? `${lo}..` : `${lo}..${hi}`;
+}
+
+function outcomeOf(outcome: string | undefined): { text: string; hue: Hue } {
+  const { short, hue } = chip(outcome);
+  return { text: short, hue };
+}
+
+/**
+ * The groups that missed their own declaration, with what each one wanted.
+ *
+ * Read off `report.groups` rather than `report.failedGroups`: the two hold the
+ * same names, but only the group records carry the `expectedOutcome` that makes
+ * the line worth reading -- a bare list of names is what sent the reader
+ * looking for a declaration that was not the one they missed.
+ */
+function groupMismatches(report: SolutionReport): GroupMismatch[] {
+  return report.groups
+    .filter((group) => group.expectedOutcome !== undefined && !group.matchesExpectation)
+    .map((group) => {
+      const declared = expectationDisplay(group.expectedOutcome);
+      const observed = outcomeOf(group.outcome);
+      return {
+        name: group.name,
+        declared: declared?.label ?? '',
+        declaredHue: declared?.hue ?? 'neutral',
+        observed: observed.text,
+        observedHue: observed.hue,
+      };
+    });
+}
+
+/**
+ * Whether the *pooled* declaration is one of the things that failed.
+ *
+ * rbx publishes the answer, and it is the only source that is right in every
+ * case. The fallback is for a report written by an rbx that predates the field:
+ * with no group failures to explain the mismatch, the pooled layer is the only
+ * thing left that can have caused it. That inference is wrong only when both
+ * layers failed at once, where it under-reports rather than accusing a layer
+ * that held -- which is the direction this whole card is being moved in.
+ */
+function pooledMissed(report: SolutionReport, groups: readonly GroupMismatch[]): boolean {
+  if (report.pooledMatchesExpectation !== undefined) {
+    return !report.pooledMatchesExpectation;
+  }
+  return groups.length === 0 && report.status !== 'UNEXPECTED_SCORE';
+}
+
+/**
  * What a mismatched solution got wrong.
  *
- * `failedGroups` verbatim rather than a phrase naming the pooled expectation:
- * `sols/mislabeled.cpp` in the `outcome-per-group` fixture *satisfies* its
- * pooled `INCORRECT` -- it does fail somewhere -- and is caught only by its
- * per-group declarations, so "expected INCORRECT, got WA" would name an
- * expectation that was in fact met. See `solutionVerdict` in summary.ts.
+ * Every clause is optional and the card prints only the ones that are set, so a
+ * solution that missed one layer never has a sentence about the other put in
+ * its mouth.
  */
 function mismatchDetail(run: SolutionRun, report: SolutionReport): MismatchDetail {
+  const groups = groupMismatches(report);
+  const missed = pooledMissed(report, groups);
   // A missed gutter already implies a declaration, so the display is there; the
-  // fallback only satisfies the type.
-  const declared = expectationDisplay(run.solution.expectedOutcome);
+  // fallbacks below only satisfy the type.
+  const declared = declaredExpectation(run.solution.expectedOutcome);
+  const observed = outcomeOf(report.outcome);
   return {
-    declared: declared?.label ?? '',
-    observed: shortName(report.outcome),
-    failedGroups: report.failedGroups,
+    pooled: missed
+      ? {
+          declared: declared?.label ?? '',
+          declaredHue: declared?.hue ?? 'neutral',
+          observed: observed.text,
+          observedHue: observed.hue,
+        }
+      : undefined,
+    // Named only when it is the *other* layer that failed: the reader's first
+    // guess is that the declaration on the solution line is the culprit, and
+    // saying which one held is what stops them chasing it.
+    pooledHeld: !missed && groups.length > 0 ? declared?.label : undefined,
+    groups,
+    score:
+      report.status === 'UNEXPECTED_SCORE' && report.expectedScore !== undefined
+        ? {
+            expected: scoreRange(report.expectedScore),
+            got: String(report.score),
+          }
+        : undefined,
   };
 }
 
@@ -282,7 +433,7 @@ function solutionRow(node: SolutionNode, depth: number, parentId?: string): Row 
   const { run, solo } = node;
   const gutter = solutionGutter(run);
   const mismatch = gutter === 'missed';
-  const declared = expectationDisplay(run.solution.expectedOutcome);
+  const declared = declaredExpectation(run.solution.expectedOutcome);
   const testcases = run.groups.flatMap((group) => group.testcases);
   const verdict = chip(run.report?.outcome);
   return {
@@ -295,6 +446,7 @@ function solutionRow(node: SolutionNode, depth: number, parentId?: string): Row 
     labelHue: declared?.hue,
     labelBold: declared?.bold ?? false,
     meta: aggregateMeta(run.report, progressOf(testcases)),
+    expectation: declared,
     verdict,
     mismatch,
     expandable: true,
@@ -302,7 +454,7 @@ function solutionRow(node: SolutionNode, depth: number, parentId?: string): Row 
     // choice of the reporter that prints per-testcase lines.
     defaultExpanded: solo,
     detail: solutionDetail(run, mismatch),
-    search: haystack(run.solution.path, verdict, mismatch),
+    search: haystack(run.solution.path, verdict, mismatch, declared),
     section: 'rbx.solution',
   };
 }
@@ -312,6 +464,11 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   const gutter = groupGutter(group.report);
   const mismatch = gutter === 'missed';
   const verdict = chip(group.report?.outcome);
+  // A group declares an expectation the same way a solution does -- through
+  // `outcomePerGroup` -- so it is drawn the same way, in the same two channels.
+  // Leaving the group level out of both is what made a run of groups that all
+  // wanted a TLE look like four ordinary rows with a warning next to them.
+  const declared = declaredExpectation(group.report?.expectedOutcome);
   return {
     id: nodeId(node),
     parentId,
@@ -319,15 +476,17 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
     kind: 'group',
     gutter,
     label: group.name,
-    labelBold: false,
+    labelHue: declared?.hue,
+    labelBold: declared?.bold ?? false,
     meta: aggregateMeta(group.report, progressOf(group.testcases)),
+    expectation: declared,
     verdict,
     mismatch,
     expandable: true,
     // Groups stay open even under a collapsed solution: the group breakdown is
     // the reason to open a solution at all.
     defaultExpanded: true,
-    search: haystack(group.name, verdict, mismatch),
+    search: haystack(group.name, verdict, mismatch, declared),
     section: 'rbx.group',
   };
 }

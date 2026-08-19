@@ -92,9 +92,30 @@ const MISLABELED = row({
   mismatch: true,
   expandable: true,
   verdict: { icon: 'close', hue: 'red', short: 'WA' },
-  search: 'sols/mislabeled.cpp wa mismatch',
+  expectation: { label: 'INCORRECT', hue: 'red', bold: false, glyph: '\u2717' },
+  search: 'sols/mislabeled.cpp wa incorrect mismatch',
   detail: {
-    mismatch: { declared: 'INCORRECT', observed: 'WA', failedGroups: ['small', 'big'] },
+    // The trap this card exists for: the pooled INCORRECT *held*, so there is
+    // no `pooled` clause -- only the per-group layer failed.
+    mismatch: {
+      pooledHeld: 'INCORRECT',
+      groups: [
+        {
+          name: 'small',
+          declared: 'TLE',
+          declaredHue: 'yellow',
+          observed: 'AC',
+          observedHue: 'green',
+        },
+        {
+          name: 'big',
+          declared: 'TLE',
+          declaredHue: 'yellow',
+          observed: 'WA',
+          observedHue: 'red',
+        },
+      ],
+    },
     histogram: [],
   },
 });
@@ -242,12 +263,22 @@ test('a detail card only appears under an expanded solution', () => {
   assert.ok(renderTree(TREE, state({ expanded: new Set(['sol1']) })).includes('class="detail"'));
 });
 
-test('the mismatch card names every failing group in a sentence', () => {
+test('a group-only miss says which declaration held and what each group wanted', () => {
   const html = renderTree(TREE, state({ expanded: new Set(['sol1']) }));
-  assert.ok(html.includes('Declared INCORRECT, but small, big did not match.'), html);
+  // The correction, in one assertion: the pooled INCORRECT is named as having
+  // *held*, and the groups are paired with the TLE they actually missed. The
+  // sentence this replaces read `Declared INCORRECT, but small, big did not
+  // match.`, which attached the groups to the one declaration that was met.
+  assert.ok(html.includes('INCORRECT held for the solution as a whole'), html);
+  assert.ok(html.includes('2 groups missed their <code>outcomePerGroup</code>'), html);
+  assert.ok(html.includes('<span class="group-name">small</span>'), html);
+  assert.ok(html.includes('<span class="hue-yellow">TLE</span>'), html);
+  assert.ok(html.includes('<span class="hue-green">AC</span>'), html);
+  // ...and nothing anywhere claims the solution's own declaration was missed.
+  assert.ok(!html.includes('Declared <span class="hue-red">INCORRECT</span>'), html);
 });
 
-test('the mismatch card names the observed outcome when no group is named', () => {
+test('a pooled miss is stated as a declared/got pair and nothing more', () => {
   const caught = row({
     id: 'sol2',
     kind: 'solution',
@@ -256,12 +287,81 @@ test('the mismatch card names the observed outcome when no group is named', () =
     mismatch: true,
     expandable: true,
     detail: {
-      mismatch: { declared: 'INCORRECT', observed: 'AC', failedGroups: [] },
+      mismatch: {
+        pooled: {
+          declared: 'AC',
+          declaredHue: 'green',
+          observed: 'WA',
+          observedHue: 'red',
+        },
+        groups: [],
+      },
       histogram: [],
     },
   });
   const html = renderTree(model([caught]), state({ expanded: new Set(['sol2']) }));
-  assert.ok(html.includes('Declared INCORRECT, but got AC.'), html);
+  assert.ok(html.includes('Declared <span class="hue-green">AC</span>'), html);
+  assert.ok(html.includes('<span class="hue-red">WA</span>'), html);
+  assert.ok(!html.includes('outcomePerGroup'), html);
+});
+
+test('a score miss names the range that was declared', () => {
+  const caught = row({
+    id: 'sol3',
+    kind: 'solution',
+    label: 'sols/x.cpp',
+    gutter: 'missed',
+    mismatch: true,
+    expandable: true,
+    detail: {
+      mismatch: { groups: [], score: { expected: '40..60', got: '30' } },
+      histogram: [],
+    },
+  });
+  const html = renderTree(model([caught]), state({ expanded: new Set(['sol3']) }));
+  assert.ok(html.includes('Expected 40..60 pts, scored 30.'), html);
+});
+
+test('a group name in the card cannot escape into markup', () => {
+  const caught = row({
+    id: 'sol4',
+    kind: 'solution',
+    label: 'sols/x.cpp',
+    gutter: 'missed',
+    mismatch: true,
+    expandable: true,
+    detail: {
+      mismatch: {
+        groups: [
+          {
+            name: '<img src=x onerror=alert(1)>',
+            declared: 'TLE',
+            declaredHue: 'yellow',
+            observed: 'AC',
+            observedHue: 'green',
+          },
+        ],
+      },
+      histogram: [],
+    },
+  });
+  const html = renderTree(model([caught]), state({ expanded: new Set(['sol4']) }));
+  assert.ok(!html.includes('<img'), html);
+  assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'), html);
+});
+
+test('a row spells its declaration beside the verdict, and reserves the cell without one', () => {
+  // The gap the group rows fell into: the expectation had no channel of its
+  // own, so a group declaring TLE through `outcomePerGroup` could only be a
+  // hueless name with a warning next to it.
+  const html = renderTree(TREE, state({}));
+  assert.ok(
+    html.includes('<span class="expectation hue-red"><span class="expectation-name">INCORRECT'),
+    html,
+  );
+  // Reserved, not omitted, on the rows with nothing to declare -- the column
+  // has to line up for the pair to be readable straight down.
+  assert.ok(html.includes('<span class="expectation"></span>'), html);
 });
 
 test('the histogram sizes each bar by its share of the testcases', () => {

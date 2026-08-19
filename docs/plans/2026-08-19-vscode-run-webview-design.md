@@ -127,6 +127,11 @@ By level: solutions get gutter, expectation hue and verdict; groups get gutter
 (from `outcomePerGroup`) and verdict; testcases get verdict only — a testcase
 has no expectation of its own to report.
 
+> **Superseded by D9.** Giving a group the gutter but no expectation channel
+> left it unable to say *what* it had wanted, which is the one thing a reader
+> of a missed group needs. Groups now carry the expectation in both channels,
+> and both levels gained a spelled-out chip beside the verdict.
+
 The verdict and the expectation now live in genuinely separate channels with
 separate alphabets, so neither has to be inferred from the other. That is the
 whole point of the change.
@@ -156,6 +161,11 @@ states declared-versus-observed in words and **names the failing groups**. It
 reuses the `summary.ts` logic that already avoids naming an expectation that was
 in fact met — a pooled `INCORRECT` on a solution that does fail is met, and only
 the per-group layer sees the miss.
+
+> **Superseded by D9.** The intent above was right and the implementation did
+> not achieve it: the card named the pooled declaration *and* listed the failing
+> groups in one sentence, which reads as those groups having missed that
+> declaration. The layers are now separated in the model, not only in the prose.
 
 ## D5. A pinned header strip
 
@@ -222,6 +232,71 @@ a nonce CSP with no remote origins.
 - **Virtualization is deferred.** Rendered rows are solutions plus groups, plus
   testcases only under an expanded solution — and only a solo run expands one by
   default. Revisit past ~2000 rendered rows.
+
+## D9. The two declaration layers, kept apart (follow-up to #672)
+
+`sols/mislabeled-groups.cpp` declares `outcome: incorrect` with
+`outcomePerGroup: {'*': tle}`. It *is* incorrect, so the pooled layer holds; it
+is caught only by the per-group layer, which every group missed. The view as
+shipped said, of that solution:
+
+```
+Declared INCORRECT, but samples, main, edge, big did not match.
+```
+
+Both halves are true and the sentence is false: those groups missed `TLE`, not
+`INCORRECT`. And nothing anywhere in the view said `TLE` at all -- the group
+rows read as four ordinary rows with a warning beside them.
+
+Three changes, one per layer of the problem.
+
+**The report publishes which layer failed.** `matchesExpectation` is the
+aggregate of both, and the aggregate cannot say which one to blame.
+`RunSolutionReport` gains `pooledMatchesExpectation`, read straight off the
+`pooledStatus` that `get_verdict_markup` was already using for exactly this
+decision in the console and nowhere else. `expectedScore` comes with it, so the
+third failure mode -- a score outside its declared range -- has something to say
+beyond "wrong". Both fields are optional, so the version does not bump: an older
+reader drops them and reads the rest unchanged, where a bump would make every
+existing reader ignore the whole file. An extension meeting a report without
+them infers the pooled layer from "no group failed, so nothing else can have",
+which is exact except when both layers failed at once, where it under-reports
+rather than accusing a layer that held.
+
+**A row spells its declaration.** The expectation gets a channel of its own,
+between the meta and the verdict, on solutions and groups alike:
+
+```
+[gutter][twisty][label .............][meta][expectation][verdict]
+
+  ⚠  edge      [0/30 pts] · 9 ms · 10 MiB    TLE → ✗ WA
+```
+
+It grows leftwards from the verdict instead of taking a fixed column: the pair
+is what has to be read together, and reserving the width of `TLE or RTE` on
+every row costs more than a ragged left edge does. Groups take the label hue
+too, by the same rule solutions already used. `ANY` still draws nothing --
+it is how a setter declares nothing, and the gutter already treats it that way.
+Under a container query the declaration drops after the timings and before the
+verdict, which is the order of how much each is missed.
+
+**The card speaks per layer.** `MismatchDetail` becomes a set of optional
+clauses -- a pooled `declared → got` pair, a list of groups each with its own
+pair, a score range -- and the renderer prints only the clauses that are set. A
+group-only miss now reads:
+
+```
+⚠ INCORRECT held for the solution as a whole; 4 groups missed their
+  outcomePerGroup declaration:
+     samples   TLE → AC
+     main      TLE → AC
+     edge      TLE → WA
+     big       TLE → WA
+```
+
+Naming the pooled layer as *held* is deliberate rather than redundant: the
+reader is looking at a row labelled `INCORRECT`, and saying which declaration
+was fine is what stops them chasing it.
 
 ## Follow-ups
 
