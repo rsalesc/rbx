@@ -29,9 +29,16 @@ export interface UiState {
   readonly filter: string;
 }
 
-/** Indentation of a row at `depth`, in px -- also the detail card's. */
+/**
+ * Indentation of a row at `depth`, in px -- also the detail card's.
+ *
+ * The base inset is what separates the gutter mark from the row's left edge,
+ * where a mismatch draws its red rule. It applies at every depth and on every
+ * row, mark or no mark, because the point of the gutter is that it lines up
+ * down a column.
+ */
 function indent(depth: number): number {
-  return 8 + depth * 12;
+  return 12 + depth * 12;
 }
 
 export function escapeHtml(text: string): string {
