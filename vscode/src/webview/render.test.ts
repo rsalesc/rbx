@@ -243,7 +243,7 @@ test('a detail card only appears under an expanded solution', () => {
 
 test('the mismatch card names every failing group in a sentence', () => {
   const html = renderTree(TREE, state({ expanded: new Set(['sol1']) }));
-  assert.ok(html.includes('Declared INCORRECT, but small, big matched.'), html);
+  assert.ok(html.includes('Declared INCORRECT, but small, big did not match.'), html);
 });
 
 test('the mismatch card names the observed outcome when no group is named', () => {

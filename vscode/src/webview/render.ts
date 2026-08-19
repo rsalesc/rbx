@@ -178,9 +178,13 @@ function renderRow(row: Row, state: UiState, position: Position): string {
  * any; the observed outcome only stands in when rbx named none.
  */
 function mismatchSentence(mismatch: MismatchDetail): string {
+  // `did not match`, not `matched`: rbx reports the groups that *failed* their
+  // declaration, so naming them as the ones that matched says the opposite of
+  // what happened -- and the whole reason this card exists is that the old
+  // phrasing could not be read at a glance.
   const tail =
     mismatch.failedGroups.length > 0
-      ? `${mismatch.failedGroups.map(escapeHtml).join(', ')} matched`
+      ? `${mismatch.failedGroups.map(escapeHtml).join(', ')} did not match`
       : `got ${escapeHtml(mismatch.observed)}`;
   return `Declared ${escapeHtml(mismatch.declared)}, but ${tail}.`;
 }
