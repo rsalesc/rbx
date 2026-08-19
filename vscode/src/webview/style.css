@@ -309,13 +309,12 @@ body {
    on the row is that it disagrees with the TLE it sits next to. No fixed width:
    it appears on a handful of testcases, and reserving a column for it would
    cost every other row real estate to say nothing. */
+/* No margin of its own: the chip's 4px flex gap is the right distance, and a
+   negative pull that closed it ran `TLE` and `(WA)` together into one word.
+   What separates the gloss from the verdict is its size, not its spacing. */
 .verdict-under {
-  font-size: 0.9em;
+  font-size: 0.82em;
   opacity: 0.85;
-  /* Most of the way back through the flex gap the chip sets between its parts.
-     A gloss belongs to the verdict beside it, and at the same 4px that
-     separates the icon from the name it read as a third, independent thing. */
-  margin-left: -2px;
 }
 
 /* Only a glossed chip gives up the reserved width -- see verdictCell. `TLE` in
