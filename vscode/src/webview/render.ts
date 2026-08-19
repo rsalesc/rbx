@@ -162,7 +162,11 @@ function labelCell(row: Row): string {
   if (row.labelBold) {
     classes.push('bold');
   }
-  return `<span class="${classes.join(' ')}">${escapeHtml(row.label)}</span>`;
+  // The title is the only channel a shortened label has for the path it stands
+  // for; rows whose label is already the whole path get no tooltip, so hovering
+  // one never pops a box repeating what is on screen.
+  const title = row.labelTitle === undefined ? '' : ` title="${escapeAttr(row.labelTitle)}"`;
+  return `<span class="${classes.join(' ')}"${title}>${escapeHtml(row.label)}</span>`;
 }
 
 /**

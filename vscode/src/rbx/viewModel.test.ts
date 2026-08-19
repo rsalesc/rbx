@@ -160,7 +160,9 @@ test('a solution that met its ACCEPTED declaration reads green all the way throu
   assert.strictEqual(row.kind, 'solution');
   assert.strictEqual(row.gutter, 'met');
   assert.strictEqual(row.mismatch, false);
-  assert.strictEqual(row.label, 'sols/main.cpp');
+  // `main.cpp`, not `sols/main.cpp`: the default style trims the directory the
+  // package's solutions share. The styles are pinned on their own below.
+  assert.strictEqual(row.label, 'main.cpp');
   assert.strictEqual(row.labelHue, 'green');
   assert.strictEqual(row.labelBold, true);
   assert.deepStrictEqual(row.verdict, { icon: 'pass', hue: 'green', short: 'AC' });
@@ -547,4 +549,62 @@ test('a package row is labelled by its directory and carries no verdict', () => 
   assert.strictEqual(row.gutter, 'none');
   assert.strictEqual(row.section, 'rbx.package');
   assert.strictEqual(row.defaultExpanded, true);
+});
+
+// `rbx.solutionLabel`. The styles themselves are pinned in solutionLabel.test.ts;
+// what these hold to account is that the view model reaches them and that the
+// row keeps the whole path in the two places the label is not the whole path.
+
+const NESTED = solution(3, 'sols/slow/tle.cpp', 'INCORRECT', [], solutionReport({
+  path: 'sols/slow/tle.cpp',
+  index: 3,
+  expectedOutcome: 'INCORRECT',
+  outcome: 'time-limit-exceeded',
+}));
+
+test('the label style picks how much of a solution path a row shows', () => {
+  const solutions = [MAIN, PARTIAL, NESTED];
+  const labelsOf = (style: Parameters<typeof buildViewModel>[1]): string[] =>
+    buildViewModel([view(solutions)], style)
+      .rows.filter((row) => row.kind === 'solution')
+      .map((row) => row.label);
+
+  assert.deepStrictEqual(labelsOf('full'), [
+    'sols/main.cpp',
+    'sols/partial.cpp',
+    'sols/slow/tle.cpp',
+  ]);
+  assert.deepStrictEqual(labelsOf('trimmed'), ['main.cpp', 'partial.cpp', 'slow/tle.cpp']);
+  assert.deepStrictEqual(labelsOf('basename'), ['main.cpp', 'partial.cpp', 'tle.cpp']);
+  // The default is what the host omits the argument to get.
+  assert.deepStrictEqual(labelsOf(undefined), labelsOf('trimmed'));
+});
+
+test('each package trims by the prefix its own solutions share', () => {
+  const elsewhere = solution(0, 'other/dir/x.cpp', 'ACCEPTED', [], solutionReport({
+    path: 'other/dir/x.cpp',
+  }));
+  const { rows } = buildViewModel(
+    [view([MAIN, PARTIAL]), { pkg: OTHER, run: run([elsewhere]) }],
+    'trimmed',
+  );
+  // `/w/b`'s lone solution lives nowhere near `sols/`, and that costs `/w/a`
+  // nothing: a shared prefix computed across both packages would be empty.
+  assert.strictEqual(rowById(rows, '/w/a::0').label, 'main.cpp');
+  assert.strictEqual(rowById(rows, '/w/a::1').label, 'partial.cpp');
+  assert.strictEqual(rowById(rows, '/w/b::0').label, 'x.cpp');
+});
+
+test('a shortened label keeps the whole path for the tooltip', () => {
+  const { rows } = buildViewModel([view([MAIN, PARTIAL])], 'basename');
+  assert.strictEqual(rowById(rows, '/w/a::0').labelTitle, 'sols/main.cpp');
+  // Nothing was dropped, so there is nothing for a tooltip to add.
+  const full = buildViewModel([view([MAIN, PARTIAL])], 'full');
+  assert.strictEqual(rowById(full.rows, '/w/a::0').labelTitle, undefined);
+});
+
+test('the filter matches the full path whatever the label shows', () => {
+  const { rows } = buildViewModel([view([MAIN, PARTIAL])], 'basename');
+  assert.strictEqual(rowById(rows, '/w/a::0').search, 'sols/main.cpp ac');
+  assert.strictEqual(rowById(rows, '/w/a::1').search, 'sols/partial.cpp wa incorrect');
 });

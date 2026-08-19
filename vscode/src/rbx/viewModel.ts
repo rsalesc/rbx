@@ -31,6 +31,11 @@ import {
 } from './nodes';
 import { isAccepted, outcomeIcon, shortName } from './outcome';
 import { GroupReport, SolutionReport } from './report';
+import {
+  DEFAULT_SOLUTION_LABEL_STYLE,
+  SolutionLabelStyle,
+  solutionLabels,
+} from './solutionLabel';
 import { SolutionRun, TestcaseRun } from './store';
 import {
   Progress,
@@ -132,6 +137,15 @@ export interface Row {
   readonly kind: 'package' | 'solution' | 'group' | 'testcase';
   readonly gutter: Gutter;
   readonly label: string;
+  /**
+   * The whole of what the label is a shortening of, for the row's tooltip.
+   *
+   * Only solution rows carry one, and only because `rbx.solutionLabel` lets the
+   * label stop short of the path: a user reading `main.cpp` under two packages
+   * still has somewhere to find out which `sols/` it came from. Absent when the
+   * label is already the whole truth.
+   */
+  readonly labelTitle?: string;
   readonly labelHue?: Hue;
   readonly labelBold: boolean;
   readonly meta: readonly Span[];
@@ -446,7 +460,7 @@ function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
   };
 }
 
-function solutionRow(node: SolutionNode, depth: number, parentId?: string): Row {
+function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
   const { run, solo } = node;
   const gutter = solutionGutter(run);
   const mismatch = gutter === 'missed';
@@ -459,7 +473,8 @@ function solutionRow(node: SolutionNode, depth: number, parentId?: string): Row 
     depth,
     kind: 'solution',
     gutter,
-    label: run.solution.path,
+    label,
+    labelTitle: label === run.solution.path ? undefined : run.solution.path,
     labelHue: declared?.hue,
     labelBold: declared?.bold ?? false,
     meta: aggregateMeta(run.report, progressOf(testcases)),
@@ -553,8 +568,34 @@ const DEPTHS: Record<Row['kind'], number> = {
   testcase: 3,
 };
 
-export function buildViewModel(packages: readonly PackageRunView[]): RunViewModel {
+/**
+ * Every package's solution labels, by package root and then by solution path.
+ *
+ * Computed package by package, so the prefix `trimmed` drops is the one *that*
+ * package's solutions share -- a contest workspace where one package keeps its
+ * solutions somewhere unusual does not cost every other package its trimming.
+ */
+function labelsByPackage(
+  packages: readonly PackageRunView[],
+  style: SolutionLabelStyle,
+): Map<string, Map<string, string>> {
+  const labels = new Map<string, Map<string, string>>();
+  for (const { pkg, run } of packages) {
+    if (run === undefined) {
+      continue;
+    }
+    const paths = run.solutions.map((solutionRun) => solutionRun.solution.path);
+    labels.set(pkg.root, solutionLabels(paths, style));
+  }
+  return labels;
+}
+
+export function buildViewModel(
+  packages: readonly PackageRunView[],
+  style: SolutionLabelStyle = DEFAULT_SOLUTION_LABEL_STYLE,
+): RunViewModel {
   const nodes = flattenNodes(packages);
+  const labels = labelsByPackage(packages, style);
   // `flattenNodes` drops the package level for a single package, so the offset
   // has to come from the walk it actually performed rather than from the input.
   const hasPackages = nodes.some((node) => node.kind === 'package');
@@ -571,8 +612,10 @@ export function buildViewModel(packages: readonly PackageRunView[]): RunViewMode
       switch (node.kind) {
         case 'package':
           return packageRow(node, depth, parentId);
-        case 'solution':
-          return solutionRow(node, depth, parentId);
+        case 'solution': {
+          const path = node.run.solution.path;
+          return solutionRow(node, depth, labels.get(node.pkg.root)?.get(path) ?? path, parentId);
+        }
         case 'group':
           return groupRow(node, depth, parentId);
         case 'testcase':

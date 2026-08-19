@@ -50,6 +50,26 @@ A run of a single solution opens expanded, the way `rbx run` prints per-testcase
 lines only when there is one solution to print them for. A run of several opens
 with the solutions collapsed; expanding one reveals its groups already open.
 
+### Naming solutions
+
+Nearly every package keeps its solutions under one directory, so the path rbx
+records repeats that directory on every row and spends the sidebar's narrowest
+column saying nothing. `rbx.solutionLabel` chooses how much of it to keep:
+
+| Value | `sols/main.cpp`, `sols/slow/tle.cpp` |
+|---|---|
+| `full` | `sols/main.cpp`, `sols/slow/tle.cpp` |
+| `trimmed` (default) | `main.cpp`, `slow/tle.cpp` |
+| `basename` | `main.cpp`, `tle.cpp` |
+
+`trimmed` drops the longest directory prefix *that package's* solutions all
+share, so one package that stores its solutions somewhere unusual does not cost
+the others their trimming. It works in whole path segments and never touches a
+file name: `main.cpp` beside `mai_x.cpp` stays both.
+
+Whatever is shown, the filter box still matches the full path, and a shortened
+name carries the whole one as its tooltip.
+
 ## Status
 
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):

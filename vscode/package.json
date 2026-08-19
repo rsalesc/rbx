@@ -139,6 +139,21 @@
           "type": "number",
           "default": 3,
           "markdownDescription": "How deep to search workspace folders for `problem.rbx.yml` files."
+        },
+        "rbx.solutionLabel": {
+          "type": "string",
+          "enum": [
+            "full",
+            "trimmed",
+            "basename"
+          ],
+          "default": "trimmed",
+          "markdownDescription": "How the Run view names a solution. Filtering always matches the full path, whatever is shown.",
+          "enumDescriptions": [
+            "The full path, relative to the package root: `sols/main.cpp`.",
+            "The path without the directory every solution in the package shares: `main.cpp`, and `slow/tle.cpp` for one nested deeper.",
+            "The file name alone: `main.cpp`, and `tle.cpp` for `sols/slow/tle.cpp`."
+          ]
         }
       }
     }
