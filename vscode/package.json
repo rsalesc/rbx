@@ -132,9 +132,51 @@
         }
       ]
     },
+    "colors": [
+      {
+        "id": "rbx.expectedAccepted",
+        "description": "A solution declared to be accepted.",
+        "defaults": { "dark": "charts.green", "light": "charts.green", "highContrast": "charts.green" }
+      },
+      {
+        "id": "rbx.expectedIncorrect",
+        "description": "A solution declared to answer wrongly, or to fail some other way.",
+        "defaults": { "dark": "charts.red", "light": "charts.red", "highContrast": "charts.red" }
+      },
+      {
+        "id": "rbx.expectedSlow",
+        "description": "A solution declared to run out of time or memory.",
+        "defaults": { "dark": "charts.yellow", "light": "charts.yellow", "highContrast": "charts.yellow" }
+      },
+      {
+        "id": "rbx.expectedError",
+        "description": "A solution declared to crash or to fail compilation.",
+        "defaults": { "dark": "charts.blue", "light": "charts.blue", "highContrast": "charts.blue" }
+      },
+      {
+        "id": "rbx.expectedOther",
+        "description": "A solution declared to over-print or to break the checker.",
+        "defaults": { "dark": "charts.purple", "light": "charts.purple", "highContrast": "charts.purple" }
+      },
+      {
+        "id": "rbx.expectedAny",
+        "description": "A solution that declares no outcome.",
+        "defaults": { "dark": "foreground", "light": "foreground", "highContrast": "foreground" }
+      },
+      {
+        "id": "rbx.declaredRole",
+        "description": "A generator, validator, checker, interactor, visualizer or statement.",
+        "defaults": { "dark": "descriptionForeground", "light": "descriptionForeground", "highContrast": "descriptionForeground" }
+      }
+    ],
     "configuration": {
       "title": "rbx",
       "properties": {
+        "rbx.decorateExplorer": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Badge the files `problem.rbx.yml` declares in the Explorer and on editor tabs: solutions with their expected outcome, everything else with its role."
+        },
         "rbx.packageSearchDepth": {
           "type": "number",
           "default": 3,

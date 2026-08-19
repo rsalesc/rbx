@@ -429,6 +429,7 @@ test('only a group with its own outcomePerGroup declaration gets a gutter', () =
     hue: 'green',
     bold: true,
     glyph: '\u2713',
+    badge: '\u2713',
   });
   assert.strictEqual(big.labelHue, 'green');
   assert.strictEqual(big.labelBold, true);

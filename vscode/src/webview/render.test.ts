@@ -94,7 +94,13 @@ const MISLABELED = row({
   mismatch: true,
   expandable: true,
   verdict: { icon: 'close', hue: 'red', short: 'WA' },
-  expectation: { label: 'INCORRECT', hue: 'red', bold: false, glyph: '\u2717' },
+  expectation: {
+    label: 'INCORRECT',
+    hue: 'red',
+    bold: false,
+    glyph: '\u2717',
+    badge: '\u2717?',
+  },
   search: 'sols/mislabeled.cpp wa incorrect mismatch',
   detail: {
     // The trap this card exists for: the pooled INCORRECT *held*, so there is

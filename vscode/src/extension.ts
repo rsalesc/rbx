@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
+import { registerDecorations } from './decorations';
 import { initLog, log } from './log';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
@@ -39,6 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
   log('rbx extension activated.');
   const data = new RunDataProvider();
   const view = new RunViewProvider(data, context.extensionUri);
+  const decorations = registerDecorations(context, data);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),
@@ -98,15 +100,23 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // A package appearing or disappearing changes the set of roots, not just
   // their contents, so it needs a full rediscovery.
+  //
+  // A manifest being *edited* changes no root, and so does not concern the run
+  // view at all -- but it is exactly what the badges are drawn from, which is
+  // why they are refreshed on all three events and the run view on only two.
   const manifests = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_MANIFEST}`);
-  manifests.onDidCreate(() => data.refresh());
-  manifests.onDidDelete(() => data.refresh());
+  const rediscover = () => {
+    void data.refresh().then(() => decorations.refresh());
+  };
+  manifests.onDidCreate(rediscover);
+  manifests.onDidDelete(rediscover);
+  manifests.onDidChange(() => void decorations.refresh());
   context.subscriptions.push(
     manifests,
-    vscode.workspace.onDidChangeWorkspaceFolders(() => data.refresh()),
+    vscode.workspace.onDidChangeWorkspaceFolders(rediscover),
   );
 
-  void data.refresh();
+  rediscover();
 }
 
 export function deactivate(): void {
