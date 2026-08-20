@@ -94,10 +94,11 @@ async def test_main_validator_report_hit_bound_issues(
     assert '- "x": max-value not hit' in out
 
 
-async def test_main_validator_skip_hit_bound_issues_on_samples(
+async def test_main_validator_report_hit_bound_issues_on_samples_only_package(
     testing_pkg: testing_package.TestingPackage,
     capsys: pytest.CaptureFixture[str],
 ):
+    """Samples count towards the package-wide hit bounds when bounds are shared."""
     testing_pkg.add_testgroup_from_glob('samples', 'manual_tests/*.in')
     testing_pkg.add_file('manual_tests/000.in').write_text('59\n')
     testing_pkg.add_file('manual_tests/001.in').write_text('73\n')
@@ -117,9 +118,39 @@ async def test_main_validator_skip_hit_bound_issues_on_samples(
     assert validation_infos[1].hit_bounds == {'"x"': (False, False)}
 
     out = capsys.readouterr().out
-    assert '- "x": min-value not hit' not in out
-    assert '- "x": max-value not hit' not in out
-    assert 'No validation issues found' in out
+    assert 'Hit bounds:' in out
+    assert '- "x": min-value not hit' in out
+    assert '- "x": max-value not hit' in out
+
+
+async def test_samples_do_not_get_their_own_hit_bounds_group(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """With group-specific bounds, samples are left out of the report entirely."""
+    testing_pkg.add_testgroup_from_glob('samples', 'manual_tests/samples/*.in')
+    testing_pkg.add_testgroup_from_glob('main', 'manual_tests/main/*.in')
+    testing_pkg.add_file('manual_tests/samples/000.in').write_text('59\n')
+    testing_pkg.add_file('manual_tests/main/000.in').write_text('73\n')
+
+    testing_pkg.set_validator(
+        'validator.cpp', src='validators/int-validator-bounded.cpp'
+    )
+    testing_pkg.yml.testcases[1].vars = {'N': {'max': 100}}
+    testing_pkg.save()
+
+    assert _has_group_specific_bounds() is True
+
+    await generate_testcases()
+
+    validation_infos = await validate_testcases()
+    print_validation_report(validation_infos)
+
+    assert not has_validation_errors(validation_infos)
+
+    out = capsys.readouterr().out
+    assert 'Group main hit bounds:' in out
+    assert 'samples hit bounds' not in out
 
 
 async def test_main_validator_no_hit_bound_issues(
