@@ -551,17 +551,13 @@ def print_validation_report(
         return any(not v[0] or not v[1] for v in hit_bounds.values())
 
     # Cleanup entries in hit bounds per group that are totally empty.
-    # Also skip samples.
+    # Samples never get their own group entry; when bounds are not group-specific
+    # they were already merged into the package-wide entry above.
     hit_bounds_per_group = {
         k: v
         for k, v in hit_bounds_per_group.items()
         if _is_hit_bound_good(v) and k != 'samples'
     }
-
-    all_groups = set(info.testcase.group for info in infos if info.testcase is not None)
-    if len(all_groups) == 1 and 'samples' in all_groups:
-        # If there's only the samples group, do not check for hit bounds.
-        hit_bounds_per_group = {}
 
     if not hit_bounds_per_group and not any_failure:
         console.console.print('No validation issues found.')
