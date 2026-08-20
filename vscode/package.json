@@ -177,6 +177,16 @@
           "default": true,
           "markdownDescription": "Badge the files `problem.rbx.yml` declares in the Explorer and on editor tabs: solutions with their expected outcome, everything else with its role."
         },
+        "rbx.solutionCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do on a CodeLens above its first line."
+        },
+        "rbx.solutionStatus": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do in the language status area, which stays visible while you scroll."
+        },
         "rbx.packageSearchDepth": {
           "type": "number",
           "default": 3,

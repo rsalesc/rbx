@@ -200,6 +200,72 @@ Two caveats worth knowing:
   coverage; the Explorer draws badges in the UI font. If it comes out as tofu,
   `~` and `T` are the fallbacks that keep both rules intact.
 
+## While you are editing a solution
+
+The Explorer badge is two characters seen out of the corner of your eye. With
+the solution itself open, the same declaration is spelled out in two more
+places.
+
+**A CodeLens, on its own line above line one:**
+
+```
+  ✓ accepted-or-tle · each group: accepted · group3: time-limit-exceeded · score 50..80
+1 #include <bits/stdc++.h>
+2 using namespace std;
+```
+
+**A language status item**, which is the half that survives scrolling: it
+stays in the status bar for as long as that solution is the active editor, it
+can be pinned so it is always on screen, and it carries the pooled outcome with
+the per-group overrides on its detail line. Clicking either opens the Run view.
+
+Both say the pooled `outcome` first, then every `outcomePerGroup` override in
+the order it was written, then the expected `score` if the solution declares
+one. All three are separate claims that rbx checks separately -- `outcome`
+against the whole testset, each override against one group's tests alone, and
+the score against the total -- and a solution fails if any of them misses. `*`
+reads as **each group**, because it is not a group name. Outcomes are spelled
+the way the manifest spells them (`accepted-or-tle`, not `AC or TLE`); the
+hover says the same thing in the labels the run view and the terminal use.
+
+A score reads the way `rbx run` prints it: `score 100` for an exact one,
+`score 50..80` for a range, and `score 50..` for one with no ceiling -- an
+omitted bound is rbx's `10^9`, and naming it would invent a maximum the setter
+never wrote.
+
+**The right-hand slot of the lens is reserved and ships empty.** That is where
+the last run goes -- verdict, worst time against the limit, points, and the
+fact of a miss. It is deliberately a separate issue, because it carries the
+questions this one does not have to answer: which run, how stale is too stale,
+and what it says when there has never been a run.
+
+`rbx.solutionCodeLens` and `rbx.solutionStatus` turn the two off independently.
+
+### Why a CodeLens, and not a banner
+
+VS Code has no banner API. The substitute everyone reaches for first -- a
+whole-line decoration whose `before` attachment is pushed onto its own line
+with `display: block` -- **cannot work**, and it is worth writing down why, so
+nobody spends an afternoon on it again:
+
+- The extension host forwards a fixed set of properties to the editor
+  (`contentText`, `margin`, `width`, `height`, colours, `textDecoration`).
+  Nothing in it asks for a taller line.
+- So the line box stays one line high and the block lands *on top of* line one.
+  Tuning the CSS moves the overlap around; it never removes it.
+
+A CodeLens gets a line because the editor renders one by adding a **view zone**
+above its range -- real reserved space, which is why it cannot overlap. What it
+costs is colour: a lens is drawn in `editorCodeLens.foreground` with no
+per-lens override, so the expectation's hue stays with the Explorer badge and
+the editor tab, and the lens carries the glyph as a codicon instead. Language
+status items have severity rather than colour for the same reason, and severity
+is always `Information` here: severity means "something is wrong", and a
+declaration never is -- a *miss* is, and that belongs to the run.
+
+The one API that would give a real banner, `createWebviewTextEditorInset`, is
+still proposed and cannot ship in a published extension.
+
 ## Status
 
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):

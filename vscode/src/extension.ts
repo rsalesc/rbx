@@ -11,11 +11,14 @@ import * as vscode from 'vscode';
 
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
+import { DeclaredIndex } from './declared';
 import { registerDecorations } from './decorations';
 import { initLog, log } from './log';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
+import { registerSolutionLens } from './solutionLens';
+import { registerSolutionStatus } from './solutionStatus';
 
 /**
  * Map a changed path back to the package it belongs to.
@@ -40,7 +43,11 @@ export function activate(context: vscode.ExtensionContext): void {
   log('rbx extension activated.');
   const data = new RunDataProvider();
   const view = new RunViewProvider(data, context.extensionUri);
-  const decorations = registerDecorations(context, data);
+  const declared = new DeclaredIndex(data);
+  context.subscriptions.push(declared);
+  registerDecorations(context, declared);
+  registerSolutionLens(context, declared);
+  registerSolutionStatus(context, declared);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),
@@ -102,15 +109,16 @@ export function activate(context: vscode.ExtensionContext): void {
   // their contents, so it needs a full rediscovery.
   //
   // A manifest being *edited* changes no root, and so does not concern the run
-  // view at all -- but it is exactly what the badges are drawn from, which is
-  // why they are refreshed on all three events and the run view on only two.
+  // view at all -- but it is exactly what the badges and banners are drawn
+  // from, which is why the index is re-read on all three events and the run
+  // view on only two.
   const manifests = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_MANIFEST}`);
   const rediscover = () => {
-    void data.refresh().then(() => decorations.refresh());
+    void data.refresh().then(() => declared.refresh());
   };
   manifests.onDidCreate(rediscover);
   manifests.onDidDelete(rediscover);
-  manifests.onDidChange(() => void decorations.refresh());
+  manifests.onDidChange(() => void declared.refresh());
   context.subscriptions.push(
     manifests,
     vscode.workspace.onDidChangeWorkspaceFolders(rediscover),

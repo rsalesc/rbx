@@ -157,6 +157,46 @@ test('a manifest that makes no sense yields no badges rather than an error', () 
   assert.deepStrictEqual(assets('solutions:\n  - path: ""\n'), []);
 });
 
+function perGroupOf(list: DeclaredAsset[], path: string) {
+  return list.find((asset) => asset.path === path)?.perGroup;
+}
+
+test('a solution carries its per-group overrides, in the order they were declared', () => {
+  const list = assets(`
+scoring: points
+solutions:
+  - path: sols/partial.cpp
+    outcome: incorrect
+    outcomePerGroup:
+      '*': accepted
+      group3: tle
+`);
+  assert.strictEqual(expectationOf(list, 'sols/partial.cpp'), 'INCORRECT');
+  assert.deepStrictEqual(perGroupOf(list, 'sols/partial.cpp'), [
+    { group: '*', expectation: 'ACCEPTED' },
+    { group: 'group3', expectation: 'TIME_LIMIT_EXCEEDED' },
+  ]);
+});
+
+test('a solution declaring no per-group override carries none', () => {
+  const list = assets('solutions:\n  - path: sols/main.cpp\n    outcome: ac\n');
+  assert.strictEqual(perGroupOf(list, 'sols/main.cpp'), undefined);
+});
+
+test('a half-typed outcomePerGroup costs its entries, not the solution', () => {
+  assert.strictEqual(
+    perGroupOf(assets('solutions:\n  - path: s.cpp\n    outcomePerGroup: tle\n'), 's.cpp'),
+    undefined,
+  );
+  assert.deepStrictEqual(
+    perGroupOf(
+      assets('solutions:\n  - path: s.cpp\n    outcomePerGroup:\n      main:\n      g2: ac\n'),
+      's.cpp',
+    ),
+    [{ group: 'g2', expectation: 'ACCEPTED' }],
+  );
+});
+
 test('a group nested past any real depth stops rather than spinning', () => {
   // YAML aliases can describe a cycle; rbx's schema cannot, but a hand-edited
   // file is not the schema, and an extension host that hangs is worse than a
@@ -164,4 +204,46 @@ test('a group nested past any real depth stops rather than spinning', () => {
   const cyclic: Record<string, unknown> = { name: 'main' };
   cyclic.subgroups = [cyclic];
   assert.deepStrictEqual(parseManifest({ testcases: [cyclic] }), []);
+});
+
+function scoreOf(list: DeclaredAsset[], path: string) {
+  return list.find((asset) => asset.path === path)?.score;
+}
+
+test('an exact expected score reads as a range of one', () => {
+  const list = assets('solutions:\n  - path: sols/main.cpp\n    score: 100\n');
+  assert.deepStrictEqual(scoreOf(list, 'sols/main.cpp'), [100, 100]);
+});
+
+test('a declared score range keeps both bounds', () => {
+  const list = assets('solutions:\n  - path: s.cpp\n    score: [50, 80]\n');
+  assert.deepStrictEqual(scoreOf(list, 's.cpp'), [50, 80]);
+});
+
+/**
+ * `expected_score_range` fills an omitted bound with 0 and 10^9, and the run
+ * report arrives already filled in the same way. Doing it here too is what lets
+ * one formatter draw a range whichever side it came from.
+ */
+test('an open bound is filled the way rbx fills it', () => {
+  assert.deepStrictEqual(
+    scoreOf(assets('solutions:\n  - path: s.cpp\n    score: [50, null]\n'), 's.cpp'),
+    [50, 1e9],
+  );
+  assert.deepStrictEqual(
+    scoreOf(assets('solutions:\n  - path: s.cpp\n    score: [null, 80]\n'), 's.cpp'),
+    [0, 80],
+  );
+});
+
+test('a score that is not a number or a pair is read as none at all', () => {
+  assert.strictEqual(scoreOf(assets('solutions:\n  - path: s.cpp\n'), 's.cpp'), undefined);
+  assert.strictEqual(
+    scoreOf(assets('solutions:\n  - path: s.cpp\n    score: full\n'), 's.cpp'),
+    undefined,
+  );
+  assert.strictEqual(
+    scoreOf(assets('solutions:\n  - path: s.cpp\n    score: [1, 2, 3]\n'), 's.cpp'),
+    undefined,
+  );
 });

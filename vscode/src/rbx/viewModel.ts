@@ -31,6 +31,7 @@ import {
 } from './nodes';
 import { isAccepted, outcomeIcon, shortName } from './outcome';
 import { GroupReport, SolutionReport } from './report';
+import { scoreRange } from './score';
 import {
   DEFAULT_SOLUTION_LABEL_STYLE,
   SolutionLabelStyle,
@@ -458,16 +459,6 @@ function histogram(testcases: readonly TestcaseRun[]): HistogramSlice[] {
  * `40`, `40..`, `40..60` -- `get_expected_score_repr`'s spelling, so the card
  * and the console name a range the same way.
  */
-function scoreRange(range: readonly [number, number]): string {
-  const [lo, hi] = range;
-  if (lo === hi) {
-    return String(lo);
-  }
-  // rbx writes an open upper bound as 10^9; naming it would invent a ceiling
-  // the setter never wrote.
-  return hi >= 1e9 ? `${lo}..` : `${lo}..${hi}`;
-}
-
 function outcomeOf(outcome: string | undefined): { text: string; hue: Hue } {
   const { short, hue } = chip(outcome);
   return { text: short, hue };

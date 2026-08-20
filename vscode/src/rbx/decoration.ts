@@ -31,6 +31,11 @@ export interface BadgeDecoration {
  * them, but defaulting *to* `charts.*` so that one that does not still agrees
  * with the run view -- which reaches the same hues through the webview's
  * `--vscode-charts-*` variables.
+ *
+ * The Explorer is the only channel that carries a hue at all: a CodeLens takes
+ * the theme's own `editorCodeLens.foreground` and a language status item has
+ * severity rather than colour, so neither of the editor channels can borrow
+ * this table even though they say the same thing.
  */
 const COLOR: Record<Hue, string> = {
   green: 'rbx.expectedAccepted',

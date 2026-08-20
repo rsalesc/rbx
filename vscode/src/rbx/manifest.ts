@@ -17,7 +17,22 @@
  *     edited by hand and is therefore *usually* half-written when we read it.
  */
 import { Role, moreSpecific } from './role';
-import { Wire, asArray, asRecord, asString, field } from './wire';
+import { Wire, asArray, asNumber, asRecord, asString, field } from './wire';
+
+/**
+ * One entry of a solution's `outcomePerGroup`, resolved the same way `outcome`
+ * is.
+ *
+ * A list rather than a record because the order is the one the setter wrote,
+ * and that is the order it is read back in: `outcomePerGroup` is a stack of
+ * overrides, `'*'` usually first, and re-sorting it would make a banner read
+ * differently from the file it describes.
+ */
+export interface PerGroupExpectation {
+  /** A top-level group name, or the wildcard `*`. */
+  readonly group: string;
+  readonly expectation: string;
+}
 
 /** One file `problem.rbx.yml` names, and what it named it as. */
 export interface DeclaredAsset {
@@ -31,6 +46,27 @@ export interface DeclaredAsset {
    * showing it raw.
    */
   readonly expectation?: string;
+  /**
+   * For solutions: the declared `outcomePerGroup`, in declaration order, and
+   * absent rather than empty when nothing was declared.
+   *
+   * This is a *second* layer of expectations, not a refinement of the first:
+   * rbx keeps matching `outcome` against the whole testset while checking each
+   * entry here against one group's tests alone, and a solution fails if either
+   * layer does. So both have to be shown, and neither can stand in for the
+   * other.
+   */
+  readonly perGroup?: readonly PerGroupExpectation[];
+  /**
+   * For solutions: the declared `score`, as the filled-in `[lo, hi]` range
+   * `expected_score_range` produces -- an exact score becomes `[n, n]`, and an
+   * omitted bound becomes 0 or 10^9.
+   *
+   * Filled here rather than kept as the setter wrote it so that one formatter
+   * can draw a range whichever side it arrived from: the run report publishes
+   * `expectedScore` already filled in exactly this way.
+   */
+  readonly score?: readonly [number, number];
 }
 
 /**
@@ -93,23 +129,31 @@ export function normalizeExpectation(spelled: string): string {
 class Collector {
   private readonly byPath = new Map<string, DeclaredAsset>();
 
-  add(rawPath: Wire, role: Role, expectation?: string): void {
+  add(
+    rawPath: Wire,
+    role: Role,
+    expectation?: string,
+    perGroup?: readonly PerGroupExpectation[],
+    score?: readonly [number, number],
+  ): void {
     const declared = asString(rawPath);
     if (declared === undefined || declared === '') {
       return;
     }
     const existing = this.byPath.get(declared);
     if (existing === undefined) {
-      this.byPath.set(declared, { path: declared, role, expectation });
+      this.byPath.set(declared, { path: declared, role, expectation, perGroup, score });
       return;
     }
     const winner = moreSpecific(existing.role, role);
     this.byPath.set(declared, {
       path: declared,
       role: winner,
-      // A solution's expectation survives a second, less specific claim on the
-      // same file: it is the only field either claim carries any data in.
+      // A solution's expectations survive a second, less specific claim on the
+      // same file: they are the only fields either claim carries any data in.
       expectation: existing.expectation ?? expectation,
+      perGroup: existing.perGroup ?? perGroup,
+      score: existing.score ?? score,
     });
   }
 
@@ -121,6 +165,62 @@ class Collector {
   assets(): DeclaredAsset[] {
     return [...this.byPath.values()];
   }
+}
+
+/**
+ * rbx's stand-in for an unbounded upper score (`expected_score_range`).
+ *
+ * Not a real ceiling, and never drawn as one: `scoreRange` in score.ts prints
+ * `50..` rather than inventing a maximum the setter never wrote.
+ */
+const OPEN_ABOVE = 10 ** 9;
+
+/**
+ * One solution's declared `score`, filled the way `expected_score_range` fills
+ * it, or `undefined` when nothing usable was declared.
+ *
+ * `score: 100` is the exact-score spelling and `score: [lo, hi]` the range one,
+ * with either bound nullable. Anything else -- a word, a three-element list, a
+ * half-typed value -- reads as no declaration at all rather than as a wrong
+ * one.
+ */
+function expectedScore(raw: Wire): readonly [number, number] | undefined {
+  const exact = asNumber(raw);
+  if (exact !== undefined) {
+    return [exact, exact];
+  }
+  if (!Array.isArray(raw) || raw.length !== 2) {
+    return undefined;
+  }
+  const [lo, hi] = raw.map(asNumber);
+  if (lo === undefined && hi === undefined) {
+    return undefined;
+  }
+  return [lo ?? 0, hi ?? OPEN_ABOVE];
+}
+
+/**
+ * One solution's `outcomePerGroup`, or `undefined` when it declares none.
+ *
+ * Every entry is read independently, so a group whose value is still being
+ * typed -- `main:` with nothing after it -- costs that entry and leaves the
+ * rest of the declaration readable. That matters more here than elsewhere: a
+ * mapping is half-written for as long as it takes to type the next line.
+ */
+function perGroupExpectations(raw: Wire): readonly PerGroupExpectation[] | undefined {
+  const record = asRecord(raw);
+  if (record === undefined) {
+    return undefined;
+  }
+  const entries: PerGroupExpectation[] = [];
+  for (const [group, spelled] of Object.entries(record)) {
+    const value = asString(spelled);
+    if (group === '' || value === undefined) {
+      continue;
+    }
+    entries.push({ group, expectation: normalizeExpectation(value) });
+  }
+  return entries.length === 0 ? undefined : entries;
 }
 
 /**
@@ -177,6 +277,8 @@ export function parseManifest(raw: Wire): DeclaredAsset[] {
       // states look different on purpose: `?` says "runs, nothing promised",
       // and a bare file name says "rbx has never heard of this file".
       spelled === undefined ? 'ANY' : normalizeExpectation(spelled),
+      perGroupExpectations(field(solution, 'outcomePerGroup')),
+      expectedScore(field(solution, 'score')),
     );
   }
 

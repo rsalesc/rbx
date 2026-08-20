@@ -160,3 +160,21 @@ export function expectationDisplay(
     badge: CROSS,
   };
 }
+
+/**
+ * How the setter would have spelled `expected` in `problem.rbx.yml`.
+ *
+ * The kebab-case of the member name, which `AutoEnum` accepts for every member
+ * (`_normalize(e.name)` is registered before any alias) and which the schema's
+ * own examples use. Derived by rule rather than tabled: the rule is rbx's, and
+ * a hand-written column would be a second place for a member to be spelled.
+ *
+ * A member this extension does not know is returned untouched -- it came out of
+ * the manifest, so the setter's own spelling is the only honest one available.
+ */
+export function expectationSpelling(expected: string): string {
+  if (!Object.hasOwn(DISPLAY, expected)) {
+    return expected;
+  }
+  return expected.toLowerCase().replace(/_/g, '-');
+}
