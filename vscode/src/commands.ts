@@ -1,14 +1,17 @@
 /**
  * Commands that open artifacts.
  *
- * Everything opens through the read-only `rbx:` scheme (see artifactFs.ts), so
- * a generated file can never be edited by accident and each tab gets a title
- * that says which solution and testcase it belongs to.
+ * Every *generated* file opens through the read-only `rbx:` scheme (see
+ * artifactFs.ts), so it can never be edited by accident and each tab gets a
+ * title that says which solution and testcase it belongs to. A solution's
+ * source is the one thing here rbx did not generate: it opens as itself, on
+ * the `file:` scheme, because editing it is the whole point of reaching it.
  */
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import { artifactUri } from './artifactFs';
+import { solutionSourcePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
@@ -78,6 +81,25 @@ export function registerCommands(
   };
 
   register('rbx.refresh', () => data.refresh());
+
+  register('rbx.openSolution', async (node) => {
+    if (node?.kind !== 'solution') {
+      return;
+    }
+    const source = solutionSourcePath(node.pkg, node.run.solution.path);
+    if ((await firstExisting([source])) === undefined) {
+      // The skeleton names a solution `problem.rbx.yml` declares, so a missing
+      // file means the package changed since the run, not that the row is bad.
+      vscode.window.showInformationMessage(
+        `No file at ${node.run.solution.path}. The package may have changed since this run.`,
+      );
+      return;
+    }
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(source));
+    // `preview: true` to match every other row in the view: arrowing down a
+    // list of solutions reuses one tab instead of littering the tab bar.
+    await vscode.window.showTextDocument(document, { preview: true });
+  });
 
   register('rbx.openInput', async (node) => {
     if (!isTestcase(node)) {

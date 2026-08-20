@@ -112,6 +112,24 @@ A run of a single solution opens expanded, the way `rbx run` prints per-testcase
 lines only when there is one solution to print them for. A run of several opens
 with the solutions collapsed; expanding one reveals its groups already open.
 
+### Opening what a row names
+
+Every row that names a file opens it, and always the same way: <kbd>Enter</kbd>
+on the keyboard, a click on a leaf, a double click on anything that also
+expands.
+
+| Row | Opens |
+|---|---|
+| solution | its source file, for editing -- `sols/wa.cpp` is a file you wrote |
+| testcase | the diff against the expected answer if it failed, the input otherwise |
+| group | nothing; it is a heading over testcases, with no file behind it |
+
+A solution row both expands and opens, so the two gestures are kept apart: a
+single click expands it, as a click on any parent row does, and opening it takes
+<kbd>Enter</kbd> or a double click. The second click of a double click takes the
+first one's expansion back, so the tree is left where it was -- the same net
+effect a double click has on a folder in the Explorer.
+
 ### Naming solutions
 
 Nearly every package keeps its solutions under one directory, so the path rbx
@@ -294,9 +312,11 @@ npm run package    # production bundle
 ```
 
 The tests cover the pure logic only -- deciding what a row displays
-(`src/rbx/viewModel.ts`) and turning that into HTML (`src/webview/render.ts`) --
-which is why both are modules that never import `vscode` and never touch the
-DOM. Interaction and the extension host are left to the F5 development host.
+(`src/rbx/viewModel.ts`), turning that into HTML (`src/webview/render.ts`) and
+deciding what a click on a row means (`src/webview/gesture.ts`) -- which is why
+all three are modules that never import `vscode` and never touch the DOM. The
+extension host and the DOM plumbing around them are left to the F5 development
+host.
 
 From the repository root, the same via mise:
 

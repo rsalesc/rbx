@@ -11,6 +11,7 @@
  * `vscode` module is impossible in a webview and would not work if it were.
  */
 import type { Row, RunViewModel } from '../rbx/viewModel';
+import { rowClick } from './gesture';
 import { UiState, renderFilter, renderHeader, renderTree, visibleRows } from './render';
 
 interface VsCodeApi {
@@ -243,28 +244,18 @@ tree.addEventListener('click', (event) => {
     return;
   }
   const row = rowById(id);
-  // `detail` is the click count, so the second click of a double click selects
-  // without acting twice -- which would otherwise expand a node and instantly
-  // collapse it again, or open the same testcase twice.
-  const acts = event.detail <= 1;
-  // A click anywhere on a parent row expands it, not just one on the 16px
-  // twisty. The twisty is a target you have to aim at, and every other row in
-  // the view responds to being clicked anywhere along it.
-  if (acts && row?.expandable === true) {
+  const action = rowClick(row, event.detail);
+  if (action.toggle) {
     // Assigned rather than passed through `select`, which renders: `toggle`
     // renders too, and doing both would draw the view twice per click.
     selected = id;
     toggle(id);
-    return;
+  } else {
+    select(id);
   }
-  select(id);
-  if (!acts) {
-    return;
+  if (action.open) {
+    invoke(row);
   }
-  // A leaf opens on a single click, as it did when this view was a `TreeView`
-  // and the row carried `TreeItem.command` -- VS Code fires that on the first
-  // click, and every tree in the product opens a testcase the same way.
-  invoke(row);
 });
 
 tree.addEventListener('keydown', (event) => {
