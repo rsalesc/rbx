@@ -150,7 +150,7 @@ right:
 ▾ Compilation Findings ②
 ▎ sols/wrong.cpp                  CE       ⎘ ⧉
 ▾▎ sols/main.cpp                  3 warns  ⎘ ⧉
-    41 · -Wsign-compare
+    22 · -Wshadow
     88 · -Wunused-variable
 ```
 
@@ -176,7 +176,7 @@ query, and a `FileSystemProvider` streams it rather than holding it in memory as
 a string — which is what makes a very long compile error cheap to open.
 
 Expansion is deliberately thin. A warning row's twisty lists one compact line
-per warning — `41 · -Wsign-compare`, the location and the *kind*, with the
+per warning — `22 · -Wshadow`, the location and the *kind*, with the
 message only as the hover title — because the panel is 30% of a sidebar and a
 wall of `comparison of integer expressions of different signedness` is what it
 must not become. Clicking one of those lines opens the source at that line.

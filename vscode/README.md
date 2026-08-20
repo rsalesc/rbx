@@ -144,9 +144,9 @@ on screen is itself the news.
   buttons: **open the source**, and **open the compiler output** -- the stderr
   verbatim, in a read-only `rbx:` tab.
 - A row with warnings **expands** into one line per warning: its line number and
-  its flag, nothing more. The compiler's own sentence is the hover title, not a
-  line of the panel -- a third of a narrow sidebar has no room for
-  `comparison of integer expressions of different signedness`. Clicking one goes
+  its flag, nothing more -- `22 · -Wshadow`. The compiler's own sentence is the
+  hover title, not a line of the panel: a third of a narrow sidebar has no room
+  for `declaration of 'total' shadows a global declaration`. Clicking one goes
   to that line in the source.
 - Clicking a row that failed to compile opens the compiler output, since there
   is nothing to expand and that is the only place the answer is.

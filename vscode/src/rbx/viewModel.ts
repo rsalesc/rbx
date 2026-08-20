@@ -261,7 +261,7 @@ export interface Row {
 export interface FindingWarning {
   readonly id: string;
   readonly line: number;
-  /** `-Wsign-compare`; empty for a warning the compiler attributed to no flag. */
+  /** `-Wshadow`; empty for a warning the compiler attributed to no flag. */
   readonly flag: string;
   /** The whole message -- a hover title, never a line of the panel. */
   readonly title: string;
