@@ -731,6 +731,10 @@ def _build_run_log(
 
 class CompilationError(RbxException):
     not_found_executable: Optional[str] = None
+    # The compiler's own output, carried so a caller can persist it verbatim
+    # instead of scraping it back out of the console markup this exception
+    # accumulates. Empty when no compiler ever ran (`not_found_executable`).
+    logs: Optional[List[PreprocessLog]] = None
 
 
 async def compile(
@@ -766,6 +770,7 @@ async def compile(
             sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
         except ProgramError as e:
             with CompilationError() as err:
+                err.logs = list(logs)
                 if isinstance(e, ProgramNotFoundError):
                     err.not_found_executable = e.executable
                     err.print(
@@ -825,6 +830,7 @@ async def compile(
 
     if logs and logs[-1].exitcode != 0:
         with CompilationError() as err:
+            err.logs = logs
             err.print(
                 '[error]FAILED[/error] Preprocessing failed with command',
                 utils.highlight_json_obj(logs[-1].cmd),

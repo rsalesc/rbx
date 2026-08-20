@@ -3,13 +3,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import type { Row, RunViewModel } from '../rbx/viewModel';
+import type { FindingRow, Findings, Row, RunViewModel } from '../rbx/viewModel';
 import {
   UiState,
   escapeAttr,
   escapeHtml,
   matchesFilter,
   renderFilter,
+  renderFindings,
   renderHeader,
   renderTree,
   visibleRows,
@@ -48,7 +49,7 @@ function model(rows: readonly Row[]): RunViewModel {
 }
 
 function state(over: Partial<UiState> = {}): UiState {
-  return { expanded: new Set<string>(), filter: '', ...over };
+  return { expanded: new Set<string>(), filter: '', findingsOpen: false, ...over };
 }
 
 const MAIN = row({
@@ -770,4 +771,157 @@ test('a run that warned but matched everywhere still gets a header strip', () =>
 
 test('a clean run with nothing warned still gets no header strip', () => {
   assert.strictEqual(renderHeader(model([MAIN]), state()), '');
+});
+
+// --- The Compilation Findings panel ------------------------------------------
+
+function findingRow(over: Partial<FindingRow> & Pick<FindingRow, 'id'>): FindingRow {
+  return {
+    label: over.id,
+    labelBold: false,
+    severity: 'warning',
+    summary: '1 warn',
+    warnings: [],
+    section: 'rbx.finding',
+    ...over,
+  };
+}
+
+function withFindings(rows: readonly FindingRow[]): RunViewModel {
+  const errors = rows.some((row) => row.severity === 'error');
+  const findings: Findings = {
+    rows,
+    badge: rows.length,
+    hue: errors ? 'red' : 'yellow',
+    errors,
+    signature: rows.map((row) => row.id).join('|'),
+  };
+  return { ...model([MAIN]), findings };
+}
+
+const WARNED_FINDING = findingRow({
+  id: 'f0',
+  label: 'main.cpp',
+  labelTitle: 'sols/main.cpp',
+  labelHue: 'green',
+  labelBold: true,
+  summary: '2 warns',
+  warnings: [
+    { id: 'f0::0', line: 41, flag: '-Wsign-compare', title: 'comparison of integers' },
+    { id: 'f0::1', line: 88, flag: '', title: 'something unflagged' },
+  ],
+});
+
+const BROKEN_FINDING = findingRow({
+  id: 'f1',
+  label: 'broken.cpp',
+  severity: 'error',
+  summary: 'CE',
+  labelHue: 'red',
+  reason: "'g++' was not found",
+});
+
+test('a run with nothing to report draws no panel at all', () => {
+  // Its presence is the signal, so a clean package must not carry a header
+  // telling it there is nothing to see.
+  assert.strictEqual(renderFindings(model([MAIN]), state()), '');
+});
+
+test('the header survives collapsing, and the badge with it', () => {
+  // A warnings-only run never opens the panel by itself, so the badge is the
+  // only thing that can carry the news.
+  const html = renderFindings(withFindings([WARNED_FINDING]), state());
+  assert.ok(html.includes('Compilation Findings'));
+  assert.ok(html.includes('findings-badge hue-yellow'));
+  assert.ok(html.includes('aria-expanded="false"'));
+  // Collapsed means collapsed: no rows are drawn behind the header.
+  assert.ok(!html.includes('finding-row'));
+});
+
+test('the badge reddens when something failed to compile', () => {
+  const html = renderFindings(
+    withFindings([WARNED_FINDING, BROKEN_FINDING]),
+    state({ findingsOpen: true }),
+  );
+  assert.ok(html.includes('findings-badge hue-red'));
+  assert.ok(html.includes('>2<'));
+});
+
+test('severity is carried by the row, and the label keeps the declaration', () => {
+  const html = renderFindings(withFindings([BROKEN_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('severity-error'));
+  // The label hue is the declaration, exactly as it is in the tree above: the
+  // panel says how badly it compiled in the gutter and the wash, not in the name.
+  assert.ok(html.includes('class="label hue-red"'));
+  assert.ok(html.includes('CE'));
+});
+
+test('a failure names its reason in the row title', () => {
+  const html = renderFindings(withFindings([BROKEN_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes(escapeAttr("'g++' was not found")));
+});
+
+test('a row with no warnings offers nothing to expand', () => {
+  const html = renderFindings(withFindings([BROKEN_FINDING]), state({ findingsOpen: true }));
+  assert.ok(!html.includes('finding-twisty codicon'));
+});
+
+test('an expanded row lists where each warning is and what kind it is', () => {
+  const html = renderFindings(
+    withFindings([WARNED_FINDING]),
+    state({ findingsOpen: true, expanded: new Set(['f0']) }),
+  );
+  assert.ok(html.includes('-Wsign-compare'));
+  assert.ok(html.includes('>41<'));
+  // The message is a hover title and never a line of the panel: the panel is a
+  // third of a narrow sidebar.
+  assert.ok(html.includes('title="comparison of integers"'));
+  assert.ok(!html.includes('>comparison of integers<'));
+});
+
+test('a collapsed row lists no warnings', () => {
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('finding-row'));
+  assert.ok(!html.includes('finding-warning'));
+});
+
+test('every row offers both destinations', () => {
+  // The source is where you fix it; the log is what the compiler actually said.
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('data-action="source"'));
+  assert.ok(html.includes('data-action="log"'));
+});
+
+test('a finding row carries the context payload its menu keys on', () => {
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('rbx.finding'));
+  assert.ok(html.includes('rbxNodeId'));
+});
+
+test('a path with a quote in it cannot break out of the row', () => {
+  // `data-vscode-context` is delimited with a single quote so its JSON can keep
+  // its own double ones, and a solution path is a name the package author
+  // chose -- an apostrophe in one would otherwise close the attribute early.
+  const nasty = findingRow({
+    id: "f'2",
+    label: `it's "bad".cpp`,
+    labelTitle: `sols/it's "bad".cpp`,
+    summary: 'CE',
+    severity: 'error',
+  });
+  const html = renderFindings(withFindings([nasty]), state({ findingsOpen: true }));
+  assert.ok(html.includes(`data-id="${escapeAttr("f'2")}"`));
+  assert.ok(!html.includes(`data-id="f'2"`));
+  assert.ok(html.includes(escapeAttr(`sols/it's "bad".cpp`)));
+});
+
+test('an empty run that failed to compile is not told there is no run', () => {
+  // There *is* a run; the reason it looks like nothing happened is in the panel.
+  const html = renderTree({ ...model([]), findings: withFindings([BROKEN_FINDING]).findings }, state());
+  assert.ok(html.includes('No solution made it into this run'));
+  assert.ok(!html.includes('No rbx run found'));
+});
+
+test('an empty workspace still gets the welcome text', () => {
+  assert.ok(renderTree(model([]), state()).includes('No rbx run found'));
 });

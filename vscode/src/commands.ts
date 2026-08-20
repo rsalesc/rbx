@@ -160,6 +160,50 @@ export function registerCommands(
     );
   });
 
+  register('rbx.openCompileLog', async (node) => {
+    if (node?.kind !== 'finding' && node?.kind !== 'findingWarning') {
+      return;
+    }
+    const finding = node.finding;
+    const realPath = await firstExisting([finding.logPath]);
+    if (realPath === undefined) {
+      vscode.window.showInformationMessage(
+        'The compiler output for this solution is no longer on disk. Run `rbx run` again.',
+      );
+      return;
+    }
+    // Through the `rbx:` scheme like every other artifact: read-only, streamed
+    // rather than held as a string -- a compile error can be a very long file --
+    // and titled after the solution it belongs to.
+    const uri = artifactUri(realPath, `${finding.entry.path}/compile.log`);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: true });
+  });
+
+  register('rbx.openSolutionSource', async (node) => {
+    if (node?.kind !== 'finding' && node?.kind !== 'findingWarning') {
+      return;
+    }
+    const realPath = await firstExisting([node.finding.sourcePath]);
+    if (realPath === undefined) {
+      vscode.window.showInformationMessage(
+        `${node.finding.entry.path} is not on disk in this workspace.`,
+      );
+      return;
+    }
+    // The real file, not the `rbx:` scheme: this is the user's own source and
+    // the point of opening it is to fix it.
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(realPath));
+    // Line numbers are 1-based in a compiler's output and 0-based here. A
+    // finding row carries no line of its own, so it opens at the top.
+    const line = node.kind === 'findingWarning' ? Math.max(0, node.warning.line - 1) : 0;
+    const position = new vscode.Position(line, 0);
+    await vscode.window.showTextDocument(document, {
+      preview: true,
+      selection: new vscode.Range(position, position),
+    });
+  });
+
   register('rbx.copyPath', async (node) => {
     if (!isTestcase(node)) {
       return;

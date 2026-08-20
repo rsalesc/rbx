@@ -84,6 +84,18 @@
         "command": "rbx.copyPath",
         "title": "Copy Path",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.openCompileLog",
+        "title": "Open Compiler Output",
+        "category": "rbx",
+        "icon": "$(output)"
+      },
+      {
+        "command": "rbx.openSolutionSource",
+        "title": "Open Solution Source",
+        "category": "rbx",
+        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -124,6 +136,16 @@
           "command": "rbx.copyPath",
           "when": "webviewSection == 'rbx.testcase'",
           "group": "3_copy@1"
+        },
+        {
+          "command": "rbx.openSolutionSource",
+          "when": "webviewSection == 'rbx.finding'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "rbx.openCompileLog",
+          "when": "webviewSection == 'rbx.finding'",
+          "group": "1_open@2"
         },
         {
           "command": "rbx.revealInExplorer",

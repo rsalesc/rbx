@@ -12,12 +12,15 @@ import { parse as parseYaml } from 'yaml';
 import {
   Ext,
   PackageLayout,
+  compilationLogPath,
   reportPath,
   runArtifactPath,
   skeletonPath,
+  solutionSourcePath,
   testArtifactPath,
 } from './layout';
 import {
+  CompilationEntry,
   Evaluation,
   Skeleton,
   SolutionEntry,
@@ -66,9 +69,25 @@ export interface SolutionRun {
   readonly report?: SolutionReport;
 }
 
+/**
+ * One solution's compilation record, with its files resolved on this host.
+ *
+ * Kept apart from `SolutionRun` because the two do not line up: a solution that
+ * failed to compile has a finding and no run at all, and a solution that merely
+ * warned has both.
+ */
+export interface CompilationFinding {
+  readonly entry: CompilationEntry;
+  /** Absolute path to the stored compiler output. */
+  readonly logPath: string;
+  /** Absolute path to the solution's source. */
+  readonly sourcePath: string;
+}
+
 export interface PackageRun {
   readonly skeleton: Skeleton;
   readonly solutions: readonly SolutionRun[];
+  readonly findings: readonly CompilationFinding[];
 }
 
 /**
@@ -180,6 +199,13 @@ export class ArtifactStore {
         loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index)),
       ),
     );
-    return { skeleton, solutions };
+    const findings = skeleton.compilation.map(
+      (entry): CompilationFinding => ({
+        entry,
+        logPath: compilationLogPath(this.pkg, entry.log),
+        sourcePath: solutionSourcePath(this.pkg, entry.path),
+      }),
+    );
+    return { skeleton, solutions, findings };
   }
 }

@@ -112,6 +112,50 @@ A run of a single solution opens expanded, the way `rbx run` prints per-testcase
 lines only when there is one solution to print them for. A run of several opens
 with the solutions collapsed; expanding one reveals its groups already open.
 
+### Compilation findings
+
+Everything above is about *running* a solution. A solution that did not compile
+never ran, and until now it was not in the view at all: rbx filters it out of
+`skeleton.yml`'s `solutions` before the run starts, so the row simply went
+missing, with nothing anywhere saying which solution had gone or why. Compiler
+warnings were invisible in the plainer sense -- nothing on disk mentioned them,
+so the sidebar was silent while the terminal was not.
+
+A **Compilation Findings** panel sits under the tree, with one compact row per
+solution the compile phase had something to say about. It is absent entirely
+when there is nothing to say, the same way the header strip is: the panel being
+on screen is itself the news.
+
+- The **badge** on its header counts the rows, and is **red** the moment one
+  solution failed to compile, **yellow** while everything merely warned. A
+  coloured badge is the reason the panel lives inside this webview rather than
+  in a second view of the container: a `ViewBadge` is a plain count on the
+  activity-bar icon and cannot be coloured, and here the colour is the message.
+- A run with a **compile error opens the panel by itself**, once, when it
+  arrives. A warnings-only run never does -- the yellow badge is what carries
+  it, and a panel that opened for every warning would be a panel nobody leaves
+  open. Closing it sticks for the rest of that run, however many times the view
+  refreshes underneath.
+- Each row is ruled and washed in its severity, at the same two mixes the tree
+  uses for a miss and for a warning. The **name keeps its declaration's colour**,
+  exactly as it has in the tree above, so a row here and the same row up there
+  are recognisably the same solution.
+- The right of a row says `CE` or `3 warns`, and hovering it reveals two
+  buttons: **open the source**, and **open the compiler output** -- the stderr
+  verbatim, in a read-only `rbx:` tab.
+- A row with warnings **expands** into one line per warning: its line number and
+  its flag, nothing more. The compiler's own sentence is the hover title, not a
+  line of the panel -- a third of a narrow sidebar has no room for
+  `comparison of integer expressions of different signedness`. Clicking one goes
+  to that line in the source.
+- Clicking a row that failed to compile opens the compiler output, since there
+  is nothing to expand and that is the only place the answer is.
+
+Sanitizer and linter warnings are deliberately *not* here. Both live in rbx's
+same console block, but one comes from running a solution rather than compiling
+it and the other is not compiler output at all; a panel called Compilation
+Findings that carried them would be lying about what it contains.
+
 ### Naming solutions
 
 Nearly every package keeps its solutions under one directory, so the path rbx
@@ -315,7 +359,8 @@ Everything comes from files rbx already writes. The layout is a contract, and
 | Path | Contents |
 |---|---|
 | `<pkg>/problem.rbx.yml` | what the package *declares*: solutions and their expected outcomes, and every other file it names |
-| `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance, and each solution's resolved limits |
+| `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance, each solution's resolved limits, and what the compile phase reported |
+| `<pkg>/.rbx/runs/compilation/<i>.log` | one solution's compiler output, verbatim |
 | `<pkg>/.rbx/runs/report.yml` | **every aggregate**: verdicts, scores, max time/memory, per-group expectation results, double-TL warnings |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message, the verdict a soft TLE hid |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.out` | solution stdout |
@@ -337,6 +382,13 @@ Two things are easy to get wrong here:
   copy is the only one a reader here can use. Nothing renders it yet; it is
   written so that a time can one day be shown against the limit it was judged
   under.
+- `skeleton.yml`'s `compilation` lists **only** the solutions with something to
+  report, and a solution that failed to compile appears there and nowhere else
+  -- it is absent from `solutions` and from `compiled_solutions`, because it
+  never entered the run. The compiler output is *not* inlined: it is unbounded,
+  and the skeleton is parsed in full by every reader, so each record points at a
+  file beside it instead. A skeleton written by an older rbx has no field at
+  all, which reads as a clean compile and no panel.
 - A missing `report.yml` means *no solution has finished yet*, never *stale*:
   rbx deletes it when it writes a new skeleton. A `version` it does not
   recognise is ignored outright, because rendering a run without aggregates is

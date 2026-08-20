@@ -11,7 +11,14 @@
  * `vscode` module is impossible in a webview and would not work if it were.
  */
 import type { Row, RunViewModel } from '../rbx/viewModel';
-import { UiState, renderFilter, renderHeader, renderTree, visibleRows } from './render';
+import {
+  UiState,
+  renderFilter,
+  renderFindings,
+  renderHeader,
+  renderTree,
+  visibleRows,
+} from './render';
 
 interface VsCodeApi {
   postMessage(message: unknown): void;
@@ -33,6 +40,15 @@ interface PersistedState {
    * persistence; losing it would be a regression.
    */
   readonly touched: string[];
+  readonly findingsOpen: boolean;
+  /**
+   * The findings the panel's open/closed state was last decided against.
+   *
+   * The host re-posts the whole model on every file-watcher tick, so "a new
+   * model arrived" cannot mean "a new run started". Without this, a panel the
+   * user closed would spring open again on the next tick of the same run.
+   */
+  readonly findingsSignature?: string;
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -49,13 +65,16 @@ const touched = new Set<string>(persisted?.touched ?? []);
 let selected: string | undefined = persisted?.selected;
 let filter = persisted?.filter ?? '';
 let pendingScrollTop: number | undefined = persisted?.scrollTop ?? 0;
+let findingsOpen = persisted?.findingsOpen ?? false;
+let findingsSignature: string | undefined = persisted?.findingsSignature;
 
 const header = document.getElementById('header') as HTMLElement;
 const filterHost = document.getElementById('filter-host') as HTMLElement;
 const tree = document.getElementById('tree') as HTMLElement;
+const findings = document.getElementById('findings') as HTMLElement;
 
 function uiState(): UiState {
-  return { expanded, selected, filter };
+  return { expanded, selected, filter, findingsOpen };
 }
 
 function rowById(id: string | undefined): Row | undefined {
@@ -75,6 +94,8 @@ function save(): void {
       filter,
       scrollTop: tree.scrollTop,
       touched: [...touched],
+      findingsOpen,
+      findingsSignature,
     });
   }, 100);
 }
@@ -83,12 +104,17 @@ function filterInput(): HTMLInputElement | null {
   return document.getElementById('filter') as HTMLInputElement | null;
 }
 
-/** Re-render the tree, keeping scroll where it was. */
+/** Re-render the tree and the findings panel, keeping scroll where it was. */
 function render(): void {
   const scrollTop = tree.scrollTop;
   header.innerHTML = renderHeader(model, uiState());
   tree.innerHTML = renderTree(model, uiState());
   tree.scrollTop = scrollTop;
+  findings.innerHTML = renderFindings(model, uiState());
+  // The panel is `display: none` until it has something in it, so a clean run
+  // does not leave an empty flex item taking the bottom border with it.
+  findings.classList.toggle('has-findings', model.findings !== undefined);
+  findings.classList.toggle('open', model.findings !== undefined && findingsOpen);
 }
 
 /** Re-render everything, including the filter box, and restore its caret. */
@@ -173,8 +199,32 @@ function invoke(row: Row | undefined): void {
  * Only ids the user has never touched are seeded, so a solution they collapsed
  * stays collapsed across every refresh of the run.
  */
+/**
+ * Open the panel on a run that failed to compile something, once.
+ *
+ * Only on a *new* run -- a changed signature -- and only ever to open: a
+ * warnings-only run is left for the badge to advertise, and a panel the user
+ * closed stays closed for the rest of that run however many times the host
+ * re-posts the model.
+ */
+function seedFindings(next: RunViewModel): void {
+  const signature = next.findings?.signature;
+  if (signature === findingsSignature) {
+    return;
+  }
+  findingsSignature = signature;
+  if (next.findings?.errors === true) {
+    findingsOpen = true;
+  }
+}
+
 function seedExpansion(next: RunViewModel): void {
-  const ids = new Set(next.rows.map((row) => row.id));
+  const ids = new Set([
+    ...next.rows.map((row) => row.id),
+    // Finding rows expand through the same `expanded` set, so their ids have to
+    // survive the prune below.
+    ...(next.findings?.rows ?? []).map((row) => row.id),
+  ]);
   for (const row of next.rows) {
     if (row.defaultExpanded && !touched.has(row.id)) {
       expanded.add(row.id);
@@ -200,6 +250,7 @@ function seedExpansion(next: RunViewModel): void {
 
 function setModel(next: RunViewModel): void {
   model = next;
+  seedFindings(next);
   seedExpansion(next);
   renderAll();
   // Only the first model restores the persisted scroll: there are no rows to
@@ -345,6 +396,71 @@ filterHost.addEventListener('input', (event) => {
 header.addEventListener('click', (event) => {
   if ((event.target as HTMLElement).closest('#next-mismatch') !== null) {
     cycleMismatch();
+  }
+});
+
+/** Ask the host to open one of a finding's two files. */
+function openFinding(commandId: string, nodeId: string): void {
+  vscode.postMessage({ type: 'invoke', commandId, nodeId });
+}
+
+function toggleFindings(open?: boolean): void {
+  findingsOpen = open ?? !findingsOpen;
+  render();
+  save();
+}
+
+/**
+ * Everything the panel responds to, in one listener on a container that
+ * survives re-rendering -- the same arrangement the tree uses, and for the same
+ * reason: the elements inside are replaced wholesale on every model.
+ */
+findings.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement;
+  if (target.closest('#findings-header') !== null) {
+    toggleFindings();
+    return;
+  }
+  const warning = target.closest('.finding-warning') as HTMLElement | null;
+  if (warning?.dataset.id !== undefined) {
+    // The warning knows its own line; the host reads it off the node this id
+    // resolves to, so nothing about a position has to survive postMessage.
+    openFinding('rbx.openSolutionSource', warning.dataset.id);
+    return;
+  }
+  const row = target.closest('.finding-row') as HTMLElement | null;
+  const id = row?.dataset.id;
+  if (id === undefined) {
+    return;
+  }
+  const action = (target.closest('.finding-action') as HTMLElement | null)?.dataset.action;
+  if (action === 'source') {
+    openFinding('rbx.openSolutionSource', id);
+    return;
+  }
+  if (action === 'log') {
+    openFinding('rbx.openCompileLog', id);
+    return;
+  }
+  // A row with warnings under it opens them; a row that failed to compile has
+  // nothing to expand, so clicking it goes where the answer is -- the compiler's
+  // own output.
+  const expandable =
+    row !== null && row.querySelector('.finding-twisty[aria-expanded]') !== null;
+  if (expandable) {
+    toggle(id);
+    return;
+  }
+  openFinding('rbx.openCompileLog', id);
+});
+
+findings.addEventListener('keydown', (event) => {
+  const target = event.target as HTMLElement;
+  // The header is a `div` playing a button, so it has to honour both keys a
+  // real button would.
+  if (target.id === 'findings-header' && (event.key === 'Enter' || event.key === ' ')) {
+    toggleFindings();
+    event.preventDefault();
   }
 });
 

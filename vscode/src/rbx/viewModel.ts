@@ -21,11 +21,13 @@ import * as path from 'path';
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
 import {
+  FindingNode,
   GroupNode,
   PackageNode,
   PackageRunView,
   SolutionNode,
   TestcaseNode,
+  findingNodes,
   flattenNodes,
   nodeId,
 } from './nodes';
@@ -255,12 +257,77 @@ export interface Row {
   readonly primaryCommand?: string;
 }
 
+/** One warning line under an expanded finding row. */
+export interface FindingWarning {
+  readonly id: string;
+  readonly line: number;
+  /** `-Wsign-compare`; empty for a warning the compiler attributed to no flag. */
+  readonly flag: string;
+  /** The whole message -- a hover title, never a line of the panel. */
+  readonly title: string;
+}
+
+/**
+ * One solution the compile phase had something to say about.
+ *
+ * A fifth channel, and the first that is not about the run at all. The gutter,
+ * the chip, the label hue and the warning mark all answer a question about
+ * *running* a solution; a solution that failed to compile never ran, and is not
+ * even in `rows` -- rbx filters it out of the skeleton's `solutions` before the
+ * run starts. It exists here or nowhere.
+ *
+ * Identity and severity stay separate, as they do upstairs: the label is hued
+ * by what the solution *declared*, so a row here is recognisably the same
+ * solution as the row above it, and how badly it compiled is carried by
+ * `severity` alone.
+ */
+export interface FindingRow {
+  readonly id: string;
+  readonly label: string;
+  readonly labelTitle?: string;
+  readonly labelHue?: Hue;
+  readonly labelBold: boolean;
+  readonly severity: 'error' | 'warning';
+  /** `CE`, or `3 warns`. */
+  readonly summary: string;
+  /** Why it failed, when rbx could say in one line. The row's hover title. */
+  readonly reason?: string;
+  readonly warnings: readonly FindingWarning[];
+  /** The `webviewSection` a context menu keys on. */
+  readonly section: string;
+}
+
+export interface Findings {
+  readonly rows: readonly FindingRow[];
+  /** Rows, not warnings: the badge must agree with what opening it shows. */
+  readonly badge: number;
+  readonly hue: 'red' | 'yellow';
+  /** Whether anything failed to compile -- what the panel auto-opens on. */
+  readonly errors: boolean;
+  /**
+   * What the client compares to decide the findings are a *new* run's.
+   *
+   * The webview cannot otherwise tell "the same findings, re-posted by a
+   * file-watcher tick" from "a fresh run": both arrive as a whole new model.
+   * Auto-opening on the former would reopen, on every tick, a panel the user
+   * had just closed.
+   */
+  readonly signature: string;
+}
+
 export interface RunViewModel {
   readonly rows: readonly Row[];
   readonly mismatches: number;
   /** Solutions that passed but carry at least one warning. */
   readonly warned: number;
   readonly empty: boolean;
+  /**
+   * What the compile phase reported, or nothing at all.
+   *
+   * Absent rather than empty when every solution compiled cleanly: the panel's
+   * presence is itself the signal, exactly as the header strip's is.
+   */
+  readonly findings?: Findings;
 }
 
 /**
@@ -805,10 +872,92 @@ function labelsByPackage(
     if (run === undefined) {
       continue;
     }
-    const paths = run.solutions.map((solutionRun) => solutionRun.solution.path);
+    // The findings' paths join the set the labels are computed over: a solution
+    // that failed to compile is not in `solutions`, and labelling it on its own
+    // would trim it against a different prefix from every row above it.
+    const paths = [
+      ...run.solutions.map((solutionRun) => solutionRun.solution.path),
+      ...run.findings.map((finding) => finding.entry.path),
+    ];
     labels.set(pkg.root, solutionLabels(paths, style));
   }
   return labels;
+}
+
+/**
+ * `3 warns`, `1 warn`, `CE`.
+ *
+ * The count is of warnings, not of rows, because it is the only number on a
+ * finding row and it should say how much there is to read once opened.
+ */
+function findingSummary(node: FindingNode): string {
+  const entry = node.finding.entry;
+  if (entry.status === 'FAILED') {
+    // The same two letters `ExpectedOutcome.COMPILATION_ERROR` draws with, so a
+    // package that *declared* a compile error and one that suffered one read as
+    // the same event in the two places they appear.
+    return 'CE';
+  }
+  const count = entry.warnings.length;
+  return count === 1 ? '1 warn' : `${count} warns`;
+}
+
+function findingRow(node: FindingNode, label: string): FindingRow {
+  const entry = node.finding.entry;
+  const declared = declaredExpectation(entry.expectedOutcome);
+  return {
+    id: nodeId(node),
+    label,
+    labelTitle: label === entry.path ? undefined : entry.path,
+    labelHue: declared?.hue,
+    labelBold: declared?.bold ?? false,
+    severity: entry.status === 'FAILED' ? 'error' : 'warning',
+    summary: findingSummary(node),
+    reason: entry.reason,
+    warnings: entry.warnings.map((warning, index) => ({
+      id: `${nodeId(node)}::${index}`,
+      line: warning.line,
+      flag: warning.flag ?? '',
+      // The whole message is the hover title and never a line of the panel:
+      // the panel is a third of a narrow sidebar, and `comparison of integer
+      // expressions of different signedness` is most of a row on its own.
+      title: warning.msg,
+    })),
+    section: 'rbx.finding',
+  };
+}
+
+/**
+ * The panel's whole model, or `undefined` when there is nothing to report.
+ *
+ * `undefined` and not an empty list: the panel is absent from the view when the
+ * compile phase was clean, so a package whose solutions all compiled does not
+ * carry a header saying so.
+ */
+function buildFindings(
+  packages: readonly PackageRunView[],
+  labels: Map<string, Map<string, string>>,
+): Findings | undefined {
+  const rows = findingNodes(packages)
+    .filter((node): node is FindingNode => node.kind === 'finding')
+    .map((node) => {
+      const path = node.finding.entry.path;
+      return findingRow(node, labels.get(node.pkg.root)?.get(path) ?? path);
+    });
+  if (rows.length === 0) {
+    return undefined;
+  }
+  const errors = rows.some((row) => row.severity === 'error');
+  return {
+    rows,
+    badge: rows.length,
+    hue: errors ? 'red' : 'yellow',
+    errors,
+    // Severity is in the signature as well as identity: a solution whose
+    // warnings turn into an error between two runs is a new thing to be shown,
+    // even though the same file is named both times.
+    signature: rows.map((row) => `${row.id}:${row.severity}:${row.summary}`).join('|'),
+  };
 }
 
 export function buildViewModel(
@@ -858,6 +1007,9 @@ export function buildViewModel(
     warned: rows.filter(
       (row) => row.kind === 'solution' && row.gutter !== 'missed' && row.warnings.length > 0,
     ).length,
+    // `rows` is not consulted: a run whose every solution failed to compile has
+    // no solution rows at all, and it is precisely the run with most to say.
     empty: !rows.some((row) => row.kind === 'solution'),
+    findings: buildFindings(packages, labels),
   };
 }

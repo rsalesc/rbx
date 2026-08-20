@@ -78,6 +78,23 @@ export function reportPath(pkg: PackageLayout): string {
   return path.join(runsDir(pkg), 'report.yml');
 }
 
+/**
+ * One solution's compile output, from the path the skeleton records.
+ *
+ * The skeleton stores it relative to the runs dir (`compilation/0.log`) for the
+ * same reason `solutionRunsDir` is derived rather than read: an absolute path
+ * recorded by the machine that ran rbx is not one this host can necessarily
+ * open.
+ */
+export function compilationLogPath(pkg: PackageLayout, relative: string): string {
+  return path.join(runsDir(pkg), relative);
+}
+
+/** A solution's source, from the package-relative path rbx records. */
+export function solutionSourcePath(pkg: PackageLayout, solutionPath: string): string {
+  return path.join(pkg.root, solutionPath);
+}
+
 export function testsDir(pkg: PackageLayout): string {
   return path.join(pkg.root, BUILD_DIR, 'tests');
 }
