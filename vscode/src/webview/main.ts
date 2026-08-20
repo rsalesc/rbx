@@ -245,15 +245,15 @@ tree.addEventListener('click', (event) => {
   }
   const row = rowById(id);
   const action = rowClick(row, event.detail);
-  if (action.toggle) {
+  if (action.expansion === 'none') {
+    select(id);
+  } else {
     // Assigned rather than passed through `select`, which renders: `toggle`
     // renders too, and doing both would draw the view twice per click.
     selected = id;
-    toggle(id);
-  } else {
-    select(id);
+    toggle(id, action.expansion === 'expand' ? true : undefined);
   }
-  if (action.open) {
+  if (action.invoke) {
     invoke(row);
   }
 });

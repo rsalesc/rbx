@@ -32,31 +32,33 @@ const testcase = row({
 });
 
 test('a single click expands a row that expands', () => {
-  assert.deepStrictEqual(rowClick(solution, 1), { toggle: true, open: false });
-  assert.deepStrictEqual(rowClick(group, 1), { toggle: true, open: false });
+  assert.deepStrictEqual(rowClick(solution, 1), { expansion: 'toggle', invoke: false });
+  assert.deepStrictEqual(rowClick(group, 1), { expansion: 'toggle', invoke: false });
 });
 
 test('a single click opens a leaf', () => {
-  assert.deepStrictEqual(rowClick(testcase, 1), { toggle: false, open: true });
+  assert.deepStrictEqual(rowClick(testcase, 1), { expansion: 'none', invoke: true });
 });
 
-test('a double click on a solution opens it and takes the expansion back', () => {
-  assert.deepStrictEqual(rowClick(solution, 2), { toggle: true, open: true });
+test('a double click on a solution opens it and leaves the row expanded', () => {
+  // Not a second toggle: the first click may have collapsed the row, and a
+  // gesture that opens a file should not shut the thing it opened from.
+  assert.deepStrictEqual(rowClick(solution, 2), { expansion: 'expand', invoke: true });
 });
 
 test('a double click on a group only expands, once', () => {
-  assert.deepStrictEqual(rowClick(group, 2), { toggle: false, open: false });
+  assert.deepStrictEqual(rowClick(group, 2), { expansion: 'none', invoke: false });
 });
 
 test('a double click on a leaf does not open it twice', () => {
-  assert.deepStrictEqual(rowClick(testcase, 2), { toggle: false, open: false });
+  assert.deepStrictEqual(rowClick(testcase, 2), { expansion: 'none', invoke: false });
 });
 
 test('a third click adds nothing to the double click', () => {
-  assert.deepStrictEqual(rowClick(solution, 3), { toggle: false, open: false });
-  assert.deepStrictEqual(rowClick(testcase, 3), { toggle: false, open: false });
+  assert.deepStrictEqual(rowClick(solution, 3), { expansion: 'none', invoke: false });
+  assert.deepStrictEqual(rowClick(testcase, 3), { expansion: 'none', invoke: false });
 });
 
 test('a click on a row that is gone does nothing', () => {
-  assert.deepStrictEqual(rowClick(undefined, 1), { toggle: false, open: false });
+  assert.deepStrictEqual(rowClick(undefined, 1), { expansion: 'none', invoke: false });
 });

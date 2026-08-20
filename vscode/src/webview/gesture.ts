@@ -11,18 +11,19 @@ import type { Row } from '../rbx/viewModel';
 
 export interface RowClick {
   /**
-   * Flip the row's expansion.
+   * What the click does to the row's expansion.
    *
-   * On the second click of a double click this *undoes* what the first click
-   * did, so a double click leaves the tree where it was and means only "open"
-   * -- the same net effect a double click has on a folder in the Explorer.
+   * `expand` rather than a second `toggle` on the second click of a double
+   * click: the first click may have *collapsed* the row, and a gesture that
+   * opens a file should not also shut the thing it opened from. A double click
+   * therefore always leaves the row expanded, whichever way it started.
    */
-  readonly toggle: boolean;
+  readonly expansion: 'toggle' | 'expand' | 'none';
   /** Run the row's `primaryCommand`. */
-  readonly open: boolean;
+  readonly invoke: boolean;
 }
 
-const NOTHING: RowClick = { toggle: false, open: false };
+const NOTHING: RowClick = { expansion: 'none', invoke: false };
 
 /**
  * `detail` is the browser's click count: 1 for a single click, 2 for the second
@@ -39,12 +40,11 @@ export function rowClick(row: Row | undefined, detail: number): RowClick {
     // A parent expands on a click anywhere along it, not just on the 16px
     // twisty; a leaf opens on a single click, as it did when this view was a
     // `TreeView` and the row carried `TreeItem.command`.
-    return { toggle: row.expandable, open: !row.expandable && opens };
+    return { expansion: row.expandable ? 'toggle' : 'none', invoke: !row.expandable && opens };
   }
   if (detail === 2 && row.expandable && opens) {
-    // The only gesture that reaches a row which both expands and opens: the
-    // first click expanded it, so this one takes that back and opens instead.
-    return { toggle: true, open: true };
+    // The only gesture that reaches a row which both expands and opens.
+    return { expansion: 'expand', invoke: true };
   }
   return NOTHING;
 }

@@ -126,9 +126,10 @@ expands.
 
 A solution row both expands and opens, so the two gestures are kept apart: a
 single click expands it, as a click on any parent row does, and opening it takes
-<kbd>Enter</kbd> or a double click. The second click of a double click takes the
-first one's expansion back, so the tree is left where it was -- the same net
-effect a double click has on a folder in the Explorer.
+<kbd>Enter</kbd> or a double click. A double click always leaves the row
+**expanded**, whichever way it started -- the second click is not a second
+toggle, because a gesture that opens a file should not also shut the row it was
+opened from.
 
 ### Naming solutions
 
