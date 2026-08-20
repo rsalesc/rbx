@@ -129,3 +129,84 @@ test('the tooltip spells every layer out in the labels the run view uses', () =>
   assert.ok(tooltip.includes('group3'), tooltip);
   assert.ok(tooltip.includes('TLE'), tooltip);
 });
+
+test('an expected score joins the declaration as its own phrase', () => {
+  const declaration = declarationFor({
+    path: 'sols/partial.cpp',
+    role: 'solution',
+    expectation: 'INCORRECT',
+    score: [50, 80],
+  })!;
+  assert.strictEqual(lensTitle(declaration), '$(error) incorrect · score 50..80');
+});
+
+test('an exact expected score is one number, not a range of one', () => {
+  const declaration = declarationFor({
+    path: 'sols/main.cpp',
+    role: 'solution',
+    expectation: 'ACCEPTED',
+    score: [100, 100],
+  })!;
+  assert.strictEqual(lensTitle(declaration), '$(pass) accepted · score 100');
+});
+
+/**
+ * rbx writes an open upper bound as 10^9; naming it would invent a ceiling the
+ * setter never wrote.
+ */
+test('an open upper bound is drawn open', () => {
+  const declaration = declarationFor({
+    path: 'sols/main.cpp',
+    role: 'solution',
+    expectation: 'ANY',
+    score: [50, 1e9],
+  })!;
+  assert.strictEqual(lensTitle(declaration), '$(question) no outcome declared · score 50..');
+});
+
+test('the score follows the per-group overrides, and the run slot follows it', () => {
+  const declaration = declarationFor({
+    path: 'sols/partial.cpp',
+    role: 'solution',
+    expectation: 'INCORRECT',
+    perGroup: [{ group: 'group3', expectation: 'TIME_LIMIT_EXCEEDED' }],
+    score: [50, 80],
+  })!;
+  assert.strictEqual(
+    lensTitle(declaration),
+    '$(error) incorrect · group3: time-limit-exceeded · score 50..80',
+  );
+  assert.ok(lensTitle(declaration, 'last run — 40/100').endsWith('last run — 40/100'));
+});
+
+test('the status item keeps the score on its detail line', () => {
+  const declaration = declarationFor({
+    path: 'sols/partial.cpp',
+    role: 'solution',
+    expectation: 'INCORRECT',
+    perGroup: [{ group: 'group3', expectation: 'TIME_LIMIT_EXCEEDED' }],
+    score: [50, 80],
+  })!;
+  assert.strictEqual(statusText(declaration), '$(error) incorrect');
+  assert.strictEqual(statusDetail(declaration), 'group3: time-limit-exceeded · score 50..80');
+});
+
+test('a solution declaring no score says nothing about one', () => {
+  const declaration = declarationFor({
+    path: 'sols/main.cpp',
+    role: 'solution',
+    expectation: 'ACCEPTED',
+  })!;
+  assert.ok(!lensTitle(declaration).includes('score'), lensTitle(declaration));
+  assert.strictEqual(statusDetail(declaration), undefined);
+});
+
+test('the tooltip says the expected score too', () => {
+  const tooltip = declarationFor({
+    path: 'sols/main.cpp',
+    role: 'solution',
+    expectation: 'ACCEPTED',
+    score: [50, 80],
+  })!.tooltip;
+  assert.ok(tooltip.includes('50..80'), tooltip);
+});

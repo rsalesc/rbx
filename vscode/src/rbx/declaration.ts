@@ -16,6 +16,7 @@
  */
 import { expectationDisplay, expectationSpelling } from './expectation';
 import { DeclaredAsset, PerGroupExpectation } from './manifest';
+import { scoreRange } from './score';
 
 export interface SolutionDeclaration {
   /**
@@ -32,6 +33,14 @@ export interface SolutionDeclaration {
   readonly pooled: string;
   /** Each `outcomePerGroup` override, in the order it was written. */
   readonly overrides: readonly string[];
+  /**
+   * The declared `score`, as `score 100` or `score 50..80`, when there is one.
+   *
+   * A separate phrase rather than part of the outcome, because it is a separate
+   * claim: `outcome` says how the solution behaves, `score` says what that is
+   * worth, and rbx checks them independently.
+   */
+  readonly score?: string;
   /** The same declaration in the labels the run view and the terminal use. */
   readonly tooltip: string;
 }
@@ -103,6 +112,7 @@ export function declarationFor(asset: DeclaredAsset): SolutionDeclaration | unde
     pooled:
       asset.expectation === 'ANY' ? NOTHING_DECLARED : expectationSpelling(asset.expectation),
     overrides: (asset.perGroup ?? []).map(groupPhrase),
+    score: asset.score === undefined ? undefined : `score ${scoreRange(asset.score)}`,
     tooltip: tooltipFor(asset, display.label),
   };
 }
@@ -121,6 +131,9 @@ function tooltipFor(asset: DeclaredAsset, label: string): string {
     const group = entry.group === '*' ? WILDCARD : entry.group;
     return `${group}: ${expectationDisplay(entry.expectation)?.label ?? entry.expectation}`;
   });
+  if (asset.score !== undefined) {
+    lines.push(`expected score ${scoreRange(asset.score)}`);
+  }
   return [head, ...lines].join('\n');
 }
 
@@ -135,24 +148,32 @@ function tooltipFor(asset: DeclaredAsset, label: string): string {
  * finished sentence on its own.
  */
 export function lensTitle(declaration: SolutionDeclaration, run?: string): string {
-  const declared = `$(${declaration.icon}) ${[declaration.pooled, ...declaration.overrides].join(SEPARATOR)}`;
+  const declared = `$(${declaration.icon}) ${phrases(declaration).join(SEPARATOR)}`;
   return run === undefined || run === '' ? declared : `${declared}${GAP}${run}`;
+}
+
+/** The declaration in reading order: outcome, then overrides, then score. */
+function phrases(declaration: SolutionDeclaration): string[] {
+  const rest = declaration.score === undefined ? [] : [declaration.score];
+  return [declaration.pooled, ...declaration.overrides, ...rest];
 }
 
 /**
  * The status item's one line, which is the pooled outcome only.
  *
  * The status bar is crowded and shared with every other extension, so the
- * per-group layer moves to `statusDetail`, which the user sees on hover or when
- * the item is pinned open.
+ * per-group layer and the score move to `statusDetail`, which the user sees on
+ * hover or when the item is pinned open.
  */
 export function statusText(declaration: SolutionDeclaration): string {
   return `$(${declaration.icon}) ${declaration.pooled}`;
 }
 
-/** The overrides, or `undefined` when the solution declares none. */
+/**
+ * Everything the status item's one line has no room for -- the per-group
+ * overrides and the expected score -- or `undefined` when there is neither.
+ */
 export function statusDetail(declaration: SolutionDeclaration): string | undefined {
-  return declaration.overrides.length === 0
-    ? undefined
-    : declaration.overrides.join(SEPARATOR);
+  const rest = phrases(declaration).slice(1);
+  return rest.length === 0 ? undefined : rest.join(SEPARATOR);
 }

@@ -17,7 +17,7 @@
  *     edited by hand and is therefore *usually* half-written when we read it.
  */
 import { Role, moreSpecific } from './role';
-import { Wire, asArray, asRecord, asString, field } from './wire';
+import { Wire, asArray, asNumber, asRecord, asString, field } from './wire';
 
 /**
  * One entry of a solution's `outcomePerGroup`, resolved the same way `outcome`
@@ -57,6 +57,16 @@ export interface DeclaredAsset {
    * other.
    */
   readonly perGroup?: readonly PerGroupExpectation[];
+  /**
+   * For solutions: the declared `score`, as the filled-in `[lo, hi]` range
+   * `expected_score_range` produces -- an exact score becomes `[n, n]`, and an
+   * omitted bound becomes 0 or 10^9.
+   *
+   * Filled here rather than kept as the setter wrote it so that one formatter
+   * can draw a range whichever side it arrived from: the run report publishes
+   * `expectedScore` already filled in exactly this way.
+   */
+  readonly score?: readonly [number, number];
 }
 
 /**
@@ -124,6 +134,7 @@ class Collector {
     role: Role,
     expectation?: string,
     perGroup?: readonly PerGroupExpectation[],
+    score?: readonly [number, number],
   ): void {
     const declared = asString(rawPath);
     if (declared === undefined || declared === '') {
@@ -131,7 +142,7 @@ class Collector {
     }
     const existing = this.byPath.get(declared);
     if (existing === undefined) {
-      this.byPath.set(declared, { path: declared, role, expectation, perGroup });
+      this.byPath.set(declared, { path: declared, role, expectation, perGroup, score });
       return;
     }
     const winner = moreSpecific(existing.role, role);
@@ -142,6 +153,7 @@ class Collector {
       // same file: they are the only fields either claim carries any data in.
       expectation: existing.expectation ?? expectation,
       perGroup: existing.perGroup ?? perGroup,
+      score: existing.score ?? score,
     });
   }
 
@@ -153,6 +165,38 @@ class Collector {
   assets(): DeclaredAsset[] {
     return [...this.byPath.values()];
   }
+}
+
+/**
+ * rbx's stand-in for an unbounded upper score (`expected_score_range`).
+ *
+ * Not a real ceiling, and never drawn as one: `scoreRange` in score.ts prints
+ * `50..` rather than inventing a maximum the setter never wrote.
+ */
+const OPEN_ABOVE = 10 ** 9;
+
+/**
+ * One solution's declared `score`, filled the way `expected_score_range` fills
+ * it, or `undefined` when nothing usable was declared.
+ *
+ * `score: 100` is the exact-score spelling and `score: [lo, hi]` the range one,
+ * with either bound nullable. Anything else -- a word, a three-element list, a
+ * half-typed value -- reads as no declaration at all rather than as a wrong
+ * one.
+ */
+function expectedScore(raw: Wire): readonly [number, number] | undefined {
+  const exact = asNumber(raw);
+  if (exact !== undefined) {
+    return [exact, exact];
+  }
+  if (!Array.isArray(raw) || raw.length !== 2) {
+    return undefined;
+  }
+  const [lo, hi] = raw.map(asNumber);
+  if (lo === undefined && hi === undefined) {
+    return undefined;
+  }
+  return [lo ?? 0, hi ?? OPEN_ABOVE];
 }
 
 /**
@@ -234,6 +278,7 @@ export function parseManifest(raw: Wire): DeclaredAsset[] {
       // and a bare file name says "rbx has never heard of this file".
       spelled === undefined ? 'ANY' : normalizeExpectation(spelled),
       perGroupExpectations(field(solution, 'outcomePerGroup')),
+      expectedScore(field(solution, 'score')),
     );
   }
 

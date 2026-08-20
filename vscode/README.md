@@ -147,7 +147,7 @@ places.
 **A CodeLens, on its own line above line one:**
 
 ```
-  ✓ accepted-or-tle · each group: accepted · group3: time-limit-exceeded
+  ✓ accepted-or-tle · each group: accepted · group3: time-limit-exceeded · score 50..80
 1 #include <bits/stdc++.h>
 2 using namespace std;
 ```
@@ -158,12 +158,18 @@ can be pinned so it is always on screen, and it carries the pooled outcome with
 the per-group overrides on its detail line. Clicking either opens the Run view.
 
 Both say the pooled `outcome` first, then every `outcomePerGroup` override in
-the order it was written. Both layers are shown because rbx checks both --
-`outcome` against the whole testset, each override against one group's tests
-alone -- and a solution fails if either misses. `*` reads as **each group**,
-because it is not a group name. Outcomes are spelled the way the manifest
-spells them (`accepted-or-tle`, not `AC or TLE`); the hover says the same thing
-in the labels the run view and the terminal use.
+the order it was written, then the expected `score` if the solution declares
+one. All three are separate claims that rbx checks separately -- `outcome`
+against the whole testset, each override against one group's tests alone, and
+the score against the total -- and a solution fails if any of them misses. `*`
+reads as **each group**, because it is not a group name. Outcomes are spelled
+the way the manifest spells them (`accepted-or-tle`, not `AC or TLE`); the
+hover says the same thing in the labels the run view and the terminal use.
+
+A score reads the way `rbx run` prints it: `score 100` for an exact one,
+`score 50..80` for a range, and `score 50..` for one with no ceiling -- an
+omitted bound is rbx's `10^9`, and naming it would invent a maximum the setter
+never wrote.
 
 **The right-hand slot of the lens is reserved and ships empty.** That is where
 the last run goes -- verdict, worst time against the limit, points, and the
