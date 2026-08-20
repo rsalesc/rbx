@@ -22,7 +22,7 @@ def _keys(conf: str) -> list:
     return [line.split('=', 1)[0] for line in conf.splitlines() if '=' in line]
 
 
-# -- the bc expressions ------------------------------------------------------
+# -- the emitted numbers -----------------------------------------------------
 
 
 def test_fmt_seconds_is_exact():
@@ -32,30 +32,17 @@ def test_fmt_seconds_is_exact():
     assert timing.fmt_seconds(0) == '0.000'
 
 
-@pytest.mark.parametrize('base_ms', [500, 1000, 1350, 12000])
-@pytest.mark.parametrize('measured_seconds', ['0.01', '0.35', '4.2'])
-def test_calibrafactor_pins_the_limit_whatever_was_measured(base_ms, measured_seconds):
-    # calibreitor.sh splices the factor into `<factor> * <worst> + 0.02` and hands
-    # that to bc, whose precedence Python shares. That the measured time cannot move
-    # the result is the whole mechanism, so it is asserted over the real expression
-    # rather than over the string.
-    factor = timing.calibrafactor_for_fixed_limit(base_ms)
-    limit = eval(f'{factor} * {measured_seconds} + 0.02')  # noqa: S307
-    assert limit == pytest.approx(base_ms / 1000)
-
-
-def test_fixed_limits_split_into_a_base_and_increments():
+def test_fixed_limits_split_into_a_default_and_the_languages_off_it():
     limits = timing.build_fixed_limits({'cpp': 1000, 'java': 3000}, base_ms=1000)
     assert limits.base_ms == 1000
-    # cpp is at the base, so it needs no increment at all.
+    # cpp is at the default, so it needs no override of its own.
     assert limits.per_language_ms == {'java': 3000}
 
 
-def test_fixed_limits_take_the_base_from_the_tightest_bucket():
+def test_fixed_limits_take_the_default_from_the_tightest_bucket():
     # The profile's own base counts too: a language MOJ knows but the package emits
-    # no scripts for falls back to `TL[default]`, which the pinned factor sets to
-    # exactly this base. Taking the smallest number involved also keeps every
-    # increment non-negative.
+    # no scripts for falls back to `TLOVERRIDE[default]`, so the tightest limit
+    # involved is what that fallback has to be.
     limits = timing.build_fixed_limits({'cpp': 1000, 'py': 3000}, base_ms=700)
     assert limits.base_ms == 700
     assert limits.per_language_ms == {'cpp': 1000, 'py': 3000}
@@ -76,19 +63,25 @@ def test_conf_pins_the_limits_of_the_moj_profile(testing_pkg, tmp_path):
         / 'conf'
     ).read_text()
 
-    # 1000ms base, minus the 0.02 calibreitor.sh adds back.
-    assert _conf_value(conf, 'TLMOD[calibrafactor]') == '0.980+0'
-    assert _conf_value(conf, 'TLMOD[java.sum]') == '2.000'
-    assert _conf_value(conf, 'TLMOD[py.sum]') == '1.500'
-    # A language sitting at the base needs no increment.
-    assert 'TLMOD[cpp.sum]' not in _keys(conf)
-    assert 'TLMOD[c.sum]' not in _keys(conf)
+    # Literal seconds: MOJ greps TLOVERRIDE out of conf, it never evaluates it.
+    assert _conf_value(conf, 'TLOVERRIDE[default]') == '1.000'
+    assert _conf_value(conf, 'TLOVERRIDE[java]') == '3.000'
+    assert _conf_value(conf, 'TLOVERRIDE[py]') == '2.500'
+    # A language sitting at the default needs no override of its own.
+    assert 'TLOVERRIDE[cpp]' not in _keys(conf)
+    assert 'TLOVERRIDE[c]' not in _keys(conf)
+    # Nothing goes through the calibration arithmetic any more.
+    assert 'TLMOD[calibrafactor]' not in _keys(conf)
+    assert not [key for key in _keys(conf) if key.endswith('.sum]')]
 
 
 def test_conf_pins_a_single_limit_when_every_language_agrees(moj_package):
     conf = (moj_package / 'conf').read_text()
-    assert _conf_value(conf, 'TLMOD[calibrafactor]') == '0.980+0'
-    assert not [key for key in _keys(conf) if key.endswith('.sum]')]
+    assert [key for key in _keys(conf) if key.startswith('TLOVERRIDE[')] == [
+        'TLOVERRIDE[default]'
+    ]
+    assert _conf_value(conf, 'TLOVERRIDE[default]') == '1.000'
+    assert 'TLMOD[calibrafactor]' not in _keys(conf)
 
 
 def test_calibration_tl_covers_the_largest_pinned_limit():
@@ -168,5 +161,6 @@ def test_calibrate_hands_the_ac_ratio_to_moj(testing_pkg, tmp_path):
     # The environment's acToTimeLimit, so the judge's own measurements land where
     # `rbx time` would have put the limit.
     assert _conf_value(conf, 'TLMOD[calibrafactor]') == '2'
-    assert not [key for key in _keys(conf) if key.endswith('.sum]')]
+    # Nothing is pinned, so the judge's measurement is not overridden either.
+    assert not [key for key in _keys(conf) if key.startswith('TLOVERRIDE[')]
     assert 'CALIBRATIONTL' not in _keys(conf)
