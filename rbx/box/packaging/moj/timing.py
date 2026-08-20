@@ -8,11 +8,15 @@ takes the worst time per language, and writes
 into `tl`, with `TL[default]` the smallest of those. `build-and-test.sh` then adds
 `TLMOD[<lang>.sum]` to whichever entry applies before judging.
 
-Both values are spliced into `bc` expressions as *text*, which is what makes fixed
-limits expressible at all: a factor of `<b>+0` turns the first expression into
-`<b> + 0 * worst + 0.02`, a line with slope zero, so the calibrated limit no longer
-depends on what the judge measured. `<lang>.sum` then lifts each language from that
-common floor to its own limit.
+A setter who does not want a measured limit at all authors `TLOVERRIDE` instead:
+
+    TLOVERRIDE[<lang>] // TLOVERRIDE[default] // calibrated[<lang>]
+
+is the limit MOJ judges with -- applied *after* the `TLMOD` arithmetic, so it wins
+over every other knob -- and the same value it displays everywhere (training,
+contest, the TL sheet, `/problems/tl`). Calibration still runs and its history stays
+visible; the override simply outranks whatever it measured. Values are read by grep,
+never evaluated, so only a literal number of seconds is accepted here.
 
 Everything here is in integer milliseconds, the unit rbx's limits profiles use;
 only the emitted strings are in seconds, the unit mojtools uses.
@@ -21,11 +25,6 @@ only the emitted strings are in seconds, the unit mojtools uses.
 import math
 from typing import Dict, List, NamedTuple, Optional
 
-# The constant `calibreitor.sh` adds to every limit it writes. Subtracted from the
-# pinned base so a fixed limit lands exactly on the number rbx estimated instead of
-# 20ms above it.
-CALIBRATION_INCREMENT_MS = 20
-
 # `calibreitor.sh` enforces this dummy limit (`CALIBRATIONTL`, 5s by default) on the
 # accepted solutions while it measures them. A problem whose own limit is larger
 # would see them time out during calibration, so the dummy is raised to match.
@@ -33,30 +32,18 @@ DEFAULT_CALIBRATION_TL_SECONDS = 5
 
 
 class FixedTimeLimits(NamedTuple):
-    """Pinned limits: a base every language starts from, plus per-language deltas."""
+    """Pinned limits: a default every language falls back to, plus per-language ones."""
 
     base_ms: int
-    # MOJ language id -> its own limit, in ms. Only languages above the base.
+    # MOJ language id -> its own limit, in ms. Only languages off the default.
     per_language_ms: Dict[str, int]
 
 
 def fmt_seconds(ms: int) -> str:
-    """Milliseconds as the exact decimal number of seconds mojtools reads with `bc`."""
+    """Milliseconds as the exact decimal number of seconds mojtools reads."""
     sign = '-' if ms < 0 else ''
     ms = abs(ms)
     return f'{sign}{ms // 1000}.{ms % 1000:03d}'
-
-
-def calibrafactor_for_fixed_limit(base_ms: int) -> str:
-    """The `TLMOD[calibrafactor]` value pinning every calibrated limit to `base_ms`.
-
-    The factor is spliced in front of a multiplication (`<factor> * worst + 0.02`),
-    so `<base - 0.02>+0` makes the whole expression evaluate to `base` regardless of
-    what the judge measured -- and regardless of the language, since `TL[default]`
-    is then the same constant too.
-    """
-    pinned = max(base_ms - CALIBRATION_INCREMENT_MS, 0)
-    return f'{fmt_seconds(pinned)}+0'
 
 
 def calibration_tl_seconds(
@@ -64,8 +51,9 @@ def calibration_tl_seconds(
 ) -> int:
     """The `CALIBRATIONTL` a package with these limits needs, in whole seconds.
 
-    The largest pinned limit is the floor that matters: an accepted solution is
-    allowed to run right up to its own language's limit, so a tighter dummy limit
+    The override wins at judging time, but calibration still has to *finish*: the
+    largest pinned limit is the floor that matters, since an accepted solution is
+    allowed to run right up to its own language's limit and a tighter dummy limit
     would TLE it during calibration and abort the run.
 
     It is additionally never below mojtools' own 5s default, nor below
@@ -84,11 +72,11 @@ def calibration_tl_seconds(
 def build_fixed_limits(
     limits_by_language_ms: Dict[str, int], base_ms: int
 ) -> FixedTimeLimits:
-    """Split per-language limits into a common base and the deltas above it.
+    """Split per-language limits into a common default and the languages off it.
 
-    The base is the tightest limit involved -- the profile's own base included, since
-    a language MOJ knows but the package emits no scripts for falls back to
-    `TL[default]`, which the pinned factor sets to exactly this value.
+    The default is the tightest limit involved -- the profile's own base included,
+    since a language MOJ knows but the package emits no scripts for falls back to
+    `TLOVERRIDE[default]`.
     """
     base = min([base_ms, *limits_by_language_ms.values()])
     per_language = {
@@ -105,27 +93,24 @@ def fixed_limit_lines(
     """The `conf` block pinning the limits, as commented lines."""
     lines = [
         '# Time limits are PINNED here, not calibrated: they come from the `moj`',
-        '# limits profile `rbx time -p moj` estimated. calibreitor.sh still has to',
-        '# run, since mojtools refuses to judge a package with no `tl` file, but the',
-        '# factor below has slope zero -- it expands to',
-        '#   <base - 0.02> + 0 * <worst measured time> + 0.02',
-        '# -- so every language lands on the same base limit whatever it measures.',
-        f'# Base time limit: {limits.base_ms} ms.',
-        f'TLMOD[calibrafactor]={calibrafactor_for_fixed_limit(limits.base_ms)}',
+        '# limits profile `rbx time -p moj` estimated. MOJ applies TLOVERRIDE after',
+        '# everything else -- calibration and the TLMOD knobs alike -- both when it',
+        '# judges and everywhere it shows a limit, so these are the numbers that',
+        '# count. calibreitor.sh still has to run, since mojtools refuses to judge a',
+        '# package with no `tl` file, but what it measures no longer decides anything.',
+        f'# Default time limit: {limits.base_ms} ms.',
+        f'TLOVERRIDE[default]={fmt_seconds(limits.base_ms)}',
         '',
     ]
     if limits.per_language_ms:
         lines.extend(
             [
-                '# And the increment each language needs on top of that base to reach',
-                '# its own time limit, added by build-and-test.sh before judging.',
+                '# And the languages whose own limit differs from that default.',
             ]
         )
         for language, limit_ms in sorted(limits.per_language_ms.items()):
             lines.append(f'# {language}: {limit_ms} ms.')
-            lines.append(
-                f'TLMOD[{language}.sum]={fmt_seconds(limit_ms - limits.base_ms)}'
-            )
+            lines.append(f'TLOVERRIDE[{language}]={fmt_seconds(limit_ms)}')
         lines.append('')
 
     calibration_tl = calibration_tl_seconds(limits, inference_timeout_ms)

@@ -218,7 +218,7 @@ def test_conf_uses_the_rss_memory_knob(moj_package):
     assert 'ULIMITS[-v]' not in conf
     assert 'ULIMITS[-f]=' in conf
     # The time limits are pinned from the `moj` limits profile; see test_timing.py.
-    assert 'TLMOD[calibrafactor]=' in conf
+    assert 'TLOVERRIDE[default]=' in conf
 
 
 def test_binary_problems_halt_at_the_first_failure(moj_binary_package):
