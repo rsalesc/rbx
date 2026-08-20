@@ -122,3 +122,17 @@ export const IGNORED_DIRS: ReadonlySet<string> = new Set([
   'node_modules',
   '.git',
 ]);
+
+/**
+ * Absolute path to a solution's source file.
+ *
+ * `SolutionEntry.path` is relative to the package root and written with the
+ * separator of the host that ran rbx, so a package generated on Windows and
+ * read on macOS arrives with backslashes -- `path.join` would keep them and
+ * produce one long, nonexistent basename. Splitting on both separators first
+ * is what makes the join mean the same thing on either host.
+ */
+export function solutionSourcePath(pkg: PackageLayout, solutionPath: string): string {
+  const segments = solutionPath.split(/[\\/]+/).filter((segment) => segment !== '');
+  return path.join(pkg.root, ...segments);
+}

@@ -488,7 +488,16 @@ test('a testcase opens the diff when it failed and the input otherwise', () => {
   assert.strictEqual(rowById(rows, '/w/a::0::main::001').primaryCommand, 'rbx.diffOutput');
   // No evaluation yet: there is nothing to diff against.
   assert.strictEqual(rowById(rows, '/w/a::0::main::002').primaryCommand, 'rbx.openInput');
-  assert.strictEqual(rowById(rows, '/w/a::0').primaryCommand, undefined);
+});
+
+test('a solution opens its source, and a group opens nothing', () => {
+  const one = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [testcase('000', 'accepted')]),
+  ]);
+  const { rows } = buildViewModel([view([one])]);
+  assert.strictEqual(rowById(rows, '/w/a::0').primaryCommand, 'rbx.openSolution');
+  // A group is a heading over testcases; there is no file behind it to open.
+  assert.strictEqual(rowById(rows, '/w/a::0::main').primaryCommand, undefined);
 });
 
 test('a testcase shows time and memory, and not the checker message', () => {

@@ -49,6 +49,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "rbx.openSolution",
+        "title": "Open Solution",
+        "category": "rbx",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "rbx.openInput",
         "title": "Open Input",
         "category": "rbx",
@@ -95,6 +101,11 @@
         }
       ],
       "webview/context": [
+        {
+          "command": "rbx.openSolution",
+          "when": "webviewSection == 'rbx.solution'",
+          "group": "1_open@1"
+        },
         {
           "command": "rbx.openInput",
           "when": "webviewSection == 'rbx.testcase'",
