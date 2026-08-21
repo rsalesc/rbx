@@ -40,7 +40,7 @@ solutions and applying the estimation strategy configured in the environment: ei
 
 1. **Displays current profile** -- If a profile already exists for the given name, its current limits are shown.
 2. **Strategy selection** -- You are prompted to choose how to define the time limit (unless `--auto` or `--strategy` is used).
-3. **Solution execution** -- For estimating strategies, the solutions the limit is inferred from are run against all testcases, so that their true execution times can be measured. Accepted solutions run with no time limit enforced; solutions expected to be too slow, which only run when the ratios bound the limit from above, are capped at `inferenceTimeout`.
+3. **Solution execution** -- For estimating strategies, the solutions the limit is inferred from are run against all testcases, so that their true execution times can be measured. Every one of them is capped at [`inferenceTimeout`](#the-estimation-cap); solutions expected to be too slow only run at all when the ratios bound the limit from above.
 4. **Time report** -- The fastest and slowest solution times are shown, along with per-language breakdowns if solutions in multiple languages exist.
 5. **Estimation** -- The ratios (or the formula) are applied to compute the estimated time limit.
 6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a sensible limit instead of falling back to the base. See [Language groups](#language-groups).
@@ -111,7 +111,6 @@ to be too slow are allowed:
 | `acToTimeLimit` | The time limit is **at least** this multiple of the slowest accepted solution. |
 | `timeLimitToTle` | The time limit times this must still fit within the fastest solution expected to be too slow. Omit it to leave the limit unbounded from above. |
 | `timeResolution` | The time limit is rounded up to a multiple of this, in milliseconds. |
-| `inferenceTimeout` | Solutions expected to be too slow are run with this timeout, in milliseconds. One that hits it is dropped from the upper bound, with a warning. |
 
 Unlike a formula, the ratios bound the time limit from **both** sides, so a limit that would
 let a solution meant to time out pass is caught while estimating: when no limit satisfies the
@@ -127,7 +126,6 @@ timing:
     acToTimeLimit: 2.0
     timeLimitToTle: 1.5
     timeResolution: 100
-    inferenceTimeout: 10000
 ```
 
 A single problem can override any subset of them in its `problem.rbx.yml`; the ratios it does
@@ -136,8 +134,42 @@ not mention are inherited from the environment:
 ```yaml
 timing:
   multipliers:
-    inferenceTimeout: 60000   # this problem's solutions are slower than most
+    timeLimitToTle: 2.0   # this problem's slow solutions are further apart
 ```
+
+## The estimation cap
+
+While the limit is being estimated there is no limit to enforce yet, so a solution left to run
+freely could run forever. `timing.inferenceTimeout` is the cap every solution runs under during
+`rbx time`, in milliseconds, whichever strategy estimates the limit -- ratios or formula:
+
+```yaml
+timing:
+  inferenceTimeout: 10000   # ms; defaults to 10s
+```
+
+- A solution expected to be **too slow** that hits the cap is dropped from the upper bound,
+  with a warning: it did not finish, so how long it would have taken is unknown. If the limit
+  then resolves above what the cap alone allows (`inferenceTimeout / timeLimitToTle`), `rbx`
+  says so -- the cap, not the solutions, bounded the estimate.
+- An **accepted** solution that hits it is an error: its measured time is truncated, so it
+  cannot bound the limit from below. Raise the cap, or speed the solution up.
+
+Either way, the solution stops there: its remaining testcases are skipped, since they would
+measure nothing usable.
+
+A single problem can raise it in its `problem.rbx.yml`:
+
+```yaml
+timing:
+  inferenceTimeout: 60000   # this problem's solutions are slower than most
+```
+
+!!! note "The old spelling"
+
+    This used to live under `timing.multipliers`, where it only applied to ratio-based
+    estimation. That spelling still works in both files, but it is deprecated, and declaring
+    both in the same file is an error.
 
 ### Which solutions bound which side
 
@@ -352,7 +384,6 @@ multipliers:
   acToTimeLimit: 2.0
   timeLimitToTle: 1.5
   timeResolution: 100
-  inferenceTimeout: 10000
 
 # How languages were grouped during estimation (presentation-only metadata,
 # written automatically by `rbx time`; never used for limit resolution).

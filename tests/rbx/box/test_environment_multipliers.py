@@ -11,7 +11,8 @@ from rbx.box.environment import (
 def test_multipliers_defaults():
     m = TimingMultipliers(acToTimeLimit=2.0)
     assert m.timeLimitToTle is None
-    assert m.inferenceTimeout == 10000
+    # Deprecated here: the cap is resolved from `timing.inferenceTimeout`.
+    assert m.inferenceTimeout is None
     assert m.timeResolution == 100
 
 

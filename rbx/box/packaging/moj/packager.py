@@ -94,14 +94,16 @@ def _resolved_multipliers() -> Optional[TimingMultipliers]:
     return strategy.multipliers_or_die()
 
 
-def _inference_timeout_ms() -> Optional[int]:
-    """The cap rbx enforced on a solution while estimating, when there is one.
+def _inference_timeout_ms() -> int:
+    """The cap rbx enforced on a solution while estimating.
 
-    Fed to `CALIBRATIONTL` so calibration waits at least as long as estimation did;
-    a formula-mode problem defines no such cap, and the 5s default stands.
+    Fed to `CALIBRATIONTL` so calibration waits at least as long as estimation did.
+    Every strategy estimates under a cap, formula mode included.
     """
-    multipliers = _resolved_multipliers()
-    return multipliers.inferenceTimeout if multipliers is not None else None
+    return timing_config.resolve_inference_timeout(
+        environment.get_environment().timing,
+        package.find_problem_package_or_die().timing,
+    )
 
 
 def _ac_to_time_limit_or_die() -> float:

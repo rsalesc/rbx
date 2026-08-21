@@ -89,7 +89,6 @@ multipliers:
   acToTimeLimit: 2.0
   timeLimitToTle: 1.5
   timeResolution: 100
-  inferenceTimeout: 10000
 ```
 
 You can also add per-language overrides if your contest accepts solutions in multiple

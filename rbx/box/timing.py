@@ -556,8 +556,12 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
     is the single most important fact about such a run, so it is spelled out
     instead of merely omitted.
     """
+    cap_line = (
+        f'  every solution runs capped at {strategy.inferenceTimeout} ms '
+        f'(inferenceTimeout)'
+    )
     if not strategy.uses_multipliers:
-        return f'Using formula: {strategy.formula_or_die()}'
+        return f'Using formula: {strategy.formula_or_die()}\n{cap_line}'
     multipliers = strategy.multipliers_or_die()
     lines = [
         'Using ratios:',
@@ -567,8 +571,7 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
     if multipliers.timeLimitToTle is not None:
         lines.append(
             f'  and at most 1/{multipliers.timeLimitToTle} of the fastest solution '
-            f'expected to be too slow (timeLimitToTle); those solutions run '
-            f'capped at {multipliers.inferenceTimeout} ms (inferenceTimeout)'
+            f'expected to be too slow (timeLimitToTle)'
         )
     else:
         lines.append(
@@ -580,6 +583,7 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
         f'  rounded up to a multiple of {multipliers.timeResolution} ms '
         f'(timeResolution)'
     )
+    lines.append(cap_line)
     return '\n'.join(lines)
 
 
@@ -786,20 +790,23 @@ async def estimate_time_limit(
 
 @dataclasses.dataclass(frozen=True)
 class _InferenceCap:
-    """The cap a capped estimation run enforced, with the ratio that justifies it.
+    """The cap an estimation run enforced, with the ratio that justifies it.
 
-    Its presence *is* the answer to "was this run capped?", so no caller has to
-    re-derive that from a timelimit override or re-narrow an optional
-    multipliers block.
+    Every estimation run is capped -- the cap is a property of the estimation,
+    not of the multipliers -- but only a run that bounds the limit from above has
+    a `timeLimitToTle` to weigh a dropped solution against.
     """
 
     timeout: int
-    time_limit_to_tle: float
+    time_limit_to_tle: Optional[float] = None
 
     @property
     def largest_bounded_limit(self) -> int:
         """The largest limit a solution stopped at the cap could still justify.
         Above it, the cap -- not the solution -- is what bounded the estimate."""
+        assert self.time_limit_to_tle is not None, (
+            'Only a run bounded from above can drop a solution at the cap.'
+        )
         return math.floor(self.timeout / _exact(self.time_limit_to_tle))
 
 
@@ -994,8 +1001,8 @@ class _InferenceRun:
 
     result: RunSolutionResult
     strategy: timing_config.TimingStrategy
-    # The cap this run enforced, or None when it ran unbounded.
-    cap: Optional[_InferenceCap] = None
+    # The cap this run enforced. Always present: every run is capped.
+    cap: _InferenceCap
     # Slow solutions the cap stopped, so they measure nothing usable.
     dropped_upper: List[Solution] = dataclasses.field(default_factory=list)
 
@@ -1011,14 +1018,19 @@ class _InferenceRun:
 def _resolve_inference_strategy(
     formula: Optional[str],
 ) -> timing_config.TimingStrategy:
+    env_timing = environment.get_environment().timing
+    package_timing = package.find_problem_package_or_die().timing
     # A formula passed in here is the CLI's custom-formula escape hatch: it forces
     # the formula path for this run regardless of what the environment configures.
+    # The cap is not part of that escape hatch -- it still comes from the config.
     if formula is not None:
-        return timing_config.TimingStrategy(formula=formula)
-    return timing_config.resolve_strategy(
-        environment.get_environment().timing,
-        package.find_problem_package_or_die().timing,
-    )
+        return timing_config.TimingStrategy(
+            formula=formula,
+            inferenceTimeout=timing_config.resolve_inference_timeout(
+                env_timing, package_timing
+            ),
+        )
+    return timing_config.resolve_strategy(env_timing, package_timing)
 
 
 async def _run_for_inference(
@@ -1039,19 +1051,18 @@ async def _run_for_inference(
         raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
 
     upper_solutions: List[Solution] = []
-    cap: Optional[_InferenceCap] = None
-    if multipliers is not None and multipliers.timeLimitToTle is not None:
+    time_limit_to_tle = multipliers.timeLimitToTle if multipliers is not None else None
+    if time_limit_to_tle is not None:
         # The slow solutions are only worth running when their timings bound
-        # something, and they only terminate under a cap.
+        # something -- and they only terminate because of the cap below.
         upper_solutions = get_inference_solutions(InferenceRole.UPPER)
-        if upper_solutions:
-            cap = _InferenceCap(
-                timeout=multipliers.inferenceTimeout,
-                time_limit_to_tle=multipliers.timeLimitToTle,
-            )
-        # With no slow solution there is nothing to bound the limit from above,
-        # so the cap would buy nothing and only add a way for a legitimately
-        # slow accepted solution to fail the estimate.
+    # Every estimation run is capped, whatever it estimates with: a solution that
+    # outruns the cap measures nothing usable, and waiting on it forever measures
+    # nothing either.
+    cap = _InferenceCap(
+        timeout=strategy.inferenceTimeout,
+        time_limit_to_tle=time_limit_to_tle if upper_solutions else None,
+    )
 
     status = (
         'Running solutions for time estimation...'
@@ -1070,17 +1081,13 @@ async def _run_for_inference(
             # doubling the limit here would double the very cap that exists to
             # bound the solutions running under it.
             verification=_INFERENCE_VERIFICATION,
-            timelimit_override=cap.timeout if cap is not None else -1,
+            timelimit_override=cap.timeout,
             nruns=runs,
             # A solution killed at the cap has its measurement dropped either
             # way -- an upper-bound one bounds nothing, a lower-bound one fails
             # the estimate outright -- so its remaining tests only cost wall
-            # clock. With no cap there is no timeout to hit.
-            abort_on=(
-                (lambda ctx: ctx.evaluation.result.outcome.is_slow())
-                if cap is not None
-                else None
-            ),
+            # clock.
+            abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow(),
         )
 
     console.console.print()
@@ -1099,12 +1106,10 @@ async def _run_for_inference(
         gating_solutions={str(solution.path) for solution in lower_solutions},
     )
 
-    dropped_upper: List[Solution] = []
-    if cap is not None:
-        diagnosis = await _diagnose_inference_run(result)
-        if not _report_inference_diagnosis(diagnosis, cap):
-            return None
-        dropped_upper = diagnosis.dropped_upper
+    diagnosis = await _diagnose_inference_run(result)
+    if not _report_inference_diagnosis(diagnosis, cap):
+        return None
+    dropped_upper = diagnosis.dropped_upper
 
     if not ok:
         console.console.print(
@@ -1150,8 +1155,7 @@ async def compute_time_limits(
     if estimated_tl is None:
         return None
 
-    if run.cap is not None:
-        _warn_if_the_cap_bounded_the_estimate(estimated_tl, run.cap, run.dropped_upper)
+    _warn_if_the_cap_bounded_the_estimate(estimated_tl, run.cap, run.dropped_upper)
 
     limits_path = package.get_limits_file(profile)
     console.console.print(

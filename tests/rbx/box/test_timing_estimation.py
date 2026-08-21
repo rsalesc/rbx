@@ -32,7 +32,12 @@ def _formula(formula: str) -> TimingStrategy:
 
 
 def _multipliers(**kwargs) -> TimingStrategy:
-    return TimingStrategy(multipliers=TimingMultipliers(**kwargs))
+    # `inferenceTimeout` belongs to the strategy, not to the ratios.
+    inference_timeout = kwargs.pop('inferenceTimeout', None)
+    strategy_kwargs = (
+        {} if inference_timeout is None else {'inferenceTimeout': inference_timeout}
+    )
+    return TimingStrategy(multipliers=TimingMultipliers(**kwargs), **strategy_kwargs)
 
 
 def _measured_groups(profile_kwargs) -> Dict[int, GroupMeasurements]:
@@ -383,7 +388,10 @@ def test_no_lower_bound_measurements_raise_a_setter_facing_error():
 
 
 def test_strategy_is_described_as_a_formula_or_as_ratios():
-    assert _describe_strategy(_formula('slowest * 2')) == 'Using formula: slowest * 2'
+    formula_described = _describe_strategy(_formula('slowest * 2'))
+    assert 'Using formula: slowest * 2' in formula_described
+    # The cap applies to a formula estimate too, so it is spelled out there.
+    assert 'capped at 10000 ms (inferenceTimeout)' in formula_described
     described = _describe_strategy(
         _multipliers(
             acToTimeLimit=2.0,

@@ -359,6 +359,9 @@ class LanguageGroup(BaseModel):
 
 DEFAULT_TIMING_FORMULA = 'step_up(max(fastest * 3, slowest * 1.5), 100)'
 
+# The cap enforced on solutions during estimation when nothing configures one.
+DEFAULT_INFERENCE_TIMEOUT = 10000
+
 
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -377,6 +380,15 @@ used.""",
         default=None,
         description="""Ratios used to infer the time limit from the measured
 solutions. Mutually exclusive with `formula`.""",
+    )
+
+    inferenceTimeout: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="""Time limit (in milliseconds) enforced on every solution run
+while the time limit is estimated, whatever the estimation strategy is. A solution
+expected to be too slow that hits it is dropped from the upper bound; an accepted one
+that hits it is an error. Defaults to 10s.""",
     )
 
     groups: List[LanguageGroup] = Field(
@@ -410,6 +422,19 @@ solutions. Mutually exclusive with `formula`.""",
         return self
 
     @model_validator(mode='after')
+    def _validate_single_inference_timeout(self):
+        if (
+            self.inferenceTimeout is not None
+            and self.multipliers is not None
+            and self.multipliers.inferenceTimeout is not None
+        ):
+            raise ValueError(
+                'timing.inferenceTimeout and timing.multipliers.inferenceTimeout '
+                'are the same setting; keep only timing.inferenceTimeout.'
+            )
+        return self
+
+    @model_validator(mode='after')
     def _validate_exclusive_strategies(self):
         if self.formula is not None and self.multipliers is not None:
             raise ValueError(
@@ -417,6 +442,17 @@ solutions. Mutually exclusive with `formula`.""",
                 'set exactly one of them.'
             )
         return self
+
+    def resolved_inference_timeout(self) -> int:
+        """The cap in effect for this environment, old spelling included."""
+        if self.inferenceTimeout is not None:
+            return self.inferenceTimeout
+        if (
+            self.multipliers is not None
+            and self.multipliers.inferenceTimeout is not None
+        ):
+            return self.multipliers.inferenceTimeout
+        return DEFAULT_INFERENCE_TIMEOUT
 
     def resolved_formula(self) -> Optional[str]:
         """The formula to estimate with, or None when multipliers are in use."""

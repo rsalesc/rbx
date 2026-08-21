@@ -411,8 +411,10 @@ class TestComputeTimeLimits:
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     @mock.patch('rbx.box.timing.estimate_time_limit')
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items', return_value={})
     async def test_compute_time_limits_success(
         self,
+        mock_consume_evaluations,
         mock_estimate_time_limit,
         mock_print_run_report,
         mock_run_solutions,
@@ -454,8 +456,10 @@ class TestComputeTimeLimits:
     @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items', return_value={})
     async def test_compute_time_limits_failed_run_report(
         self,
+        mock_consume_evaluations,
         mock_print_run_report,
         mock_run_solutions,
         mock_get_inference_solutions,
@@ -470,6 +474,7 @@ class TestComputeTimeLimits:
         mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         mock_result = mock.Mock()
+        mock_result.skeleton.solutions = [mock_solution]
         mock_run_solutions.return_value = mock_result
 
         # Mock print_run_report to return False (failure)
@@ -523,8 +528,10 @@ class TestTimingIntegration:
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
     @mock.patch('rbx.box.timing.estimate_time_limit')
+    @mock.patch('rbx.box.timing.consume_and_key_evaluation_items', return_value={})
     async def test_timing_with_real_problem(
         self,
+        mock_consume_evaluations,
         mock_estimate_time_limit,
         mock_print_run_report,
         mock_run_solutions,
