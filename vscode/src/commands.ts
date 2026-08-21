@@ -10,6 +10,7 @@
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
+import { ActiveProblem } from './activeProblem';
 import { artifactUri } from './artifactFs';
 import { solutionSourcePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
@@ -57,6 +58,7 @@ export function registerCommands(
   context: vscode.ExtensionContext,
   view: RunViewProvider,
   data: RunDataProvider,
+  active: ActiveProblem,
 ): void {
   /**
    * The seam where two invocation paths arrive in two shapes.
@@ -189,17 +191,47 @@ export function registerCommands(
     await vscode.env.clipboard.writeText(node.testcase.inputPath);
   });
 
-  register('rbx.revealInExplorer', async (node) => {
-    // The package row this hung off is gone, so nothing invokes it right now --
-    // a later step re-attaches it to the view's header. Every node still names
-    // the package it came from, so the body is left standing rather than
-    // guessing at what the header will pass.
-    if (node === undefined) {
-      return;
-    }
-    await vscode.commands.executeCommand(
-      'revealInExplorer',
-      vscode.Uri.file(node.pkg.root),
-    );
-  });
+  // Not registered through `register`: this one takes no row.
+  //
+  // It used to hang off the package row, and when that row went away its
+  // `webview/context` entry became unreachable -- no row emits
+  // `webviewSection == 'rbx.package'` any more. Rather than re-point it at a
+  // row that means something else, it is now a palette command over the *view*:
+  // the view shows one problem, so "reveal the package" has exactly one answer
+  // without a row to ask.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rbx.revealInExplorer', async () => {
+      const root = active.selected();
+      if (root === undefined) {
+        vscode.window.showInformationMessage('No rbx problem found in this workspace.');
+        return;
+      }
+      await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(root));
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rbx.selectProblem', async () => {
+      const problems = active.problems();
+      if (problems.length === 0) {
+        void vscode.window.showInformationMessage('No rbx problem found in this workspace.');
+        return;
+      }
+      // The palette twin of the dropdown, and the only way to switch problems
+      // when the dropdown is hidden -- `renderSelector` draws nothing for a
+      // single problem, and a keyboard user may never open the sidebar at all.
+      const picked = await vscode.window.showQuickPick(
+        problems.map((problem) => ({
+          label: problem.label,
+          description: problem.group,
+          detail: problem.root,
+          root: problem.root,
+        })),
+        { placeHolder: 'Show which problem in the Run view?' },
+      );
+      if (picked !== undefined) {
+        active.select(picked.root);
+      }
+    }),
+  );
 }

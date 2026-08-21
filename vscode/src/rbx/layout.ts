@@ -115,14 +115,6 @@ export function testArtifactPath(
   return path.join(testsDir(pkg), group, `${stem}${ext}`);
 }
 
-/** Directories whose contents should never be scanned when discovering packages. */
-export const IGNORED_DIRS: ReadonlySet<string> = new Set([
-  CACHE_DIR,
-  BUILD_DIR,
-  'node_modules',
-  '.git',
-]);
-
 /**
  * Absolute path to a solution's source file.
  *

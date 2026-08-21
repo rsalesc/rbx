@@ -83,8 +83,14 @@
       },
       {
         "command": "rbx.revealInExplorer",
-        "title": "Reveal Package in Explorer",
+        "title": "Reveal Problem in Explorer",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.selectProblem",
+        "title": "Select Problem",
+        "category": "rbx",
+        "icon": "$(list-selection)"
       },
       {
         "command": "rbx.copyPath",
@@ -95,9 +101,14 @@
     "menus": {
       "view/title": [
         {
+          "command": "rbx.selectProblem",
+          "when": "view == rbx.run",
+          "group": "navigation@1"
+        },
+        {
           "command": "rbx.refresh",
           "when": "view == rbx.run",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "webview/context": [
@@ -134,11 +145,6 @@
         {
           "command": "rbx.copyPath",
           "when": "webviewSection == 'rbx.testcase'",
-          "group": "3_copy@1"
-        },
-        {
-          "command": "rbx.revealInExplorer",
-          "when": "webviewSection == 'rbx.package'",
           "group": "3_copy@1"
         }
       ]
@@ -197,11 +203,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do in the language status area, which stays visible while you scroll."
-        },
-        "rbx.packageSearchDepth": {
-          "type": "number",
-          "default": 3,
-          "markdownDescription": "How deep to search workspace folders for `problem.rbx.yml` files."
         },
         "rbx.solutionLabel": {
           "type": "string",

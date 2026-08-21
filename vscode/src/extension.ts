@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  registerCommands(context, view, data);
+  registerCommands(context, view, data, active);
 
   // Artifacts land incrementally as evaluations resolve, which is what gives
   // the view live progress without any streaming protocol: each new `.eval`
@@ -103,6 +103,29 @@ export function activate(context: vscode.ExtensionContext): void {
   // itself being created or removed -- which is all `rbx clean` produces.
   watch(`**/${CACHE_DIR}/**`);
   watch(`**/${CACHE_DIR}`);
+
+  // A third glob, for a different question: the two above ask *what changed*,
+  // this one asks *what is running*. `skeleton.yml` is written when a run
+  // starts (rbx/box/solutions.py:746 -- "A new skeleton is what marks a new
+  // run"), so following it makes the view track the problem currently running:
+  // `rbx contest each run` walks the view through the contest in step with the
+  // run itself.
+  //
+  // Create and change only, never delete: `rbx clean` removes the skeleton,
+  // and switching to a package whose run was just deleted is the opposite of
+  // following work.
+  const skeletons = vscode.workspace.createFileSystemWatcher(
+    `**/${CACHE_DIR}/runs/skeleton.yml`,
+  );
+  const followRun = (uri: vscode.Uri) => {
+    const root = packageRootOf(uri.fsPath);
+    if (root !== undefined) {
+      void active.follow(root);
+    }
+  };
+  skeletons.onDidCreate(followRun);
+  skeletons.onDidChange(followRun);
+  context.subscriptions.push(skeletons);
 
   context.subscriptions.push(new vscode.Disposable(() => {
     if (timer !== undefined) {

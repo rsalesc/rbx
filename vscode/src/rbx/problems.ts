@@ -4,7 +4,7 @@
  * Pure: the caller supplies the roots, the contest identities and a fallback
  * labeller, because naming a package with no contest needs `vscode.workspace`
  * to say which folder it sits in -- and this module's value is being testable
- * without the editor API. Same split as `PackageRunView.label`.
+ * without the editor API.
  *
  * `roots` is taken as already de-duplicated: a repeated root becomes a repeated
  * choice. `discovery.ts` collects them through a `Set`, and keeping the rule on

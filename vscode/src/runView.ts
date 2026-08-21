@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
+import { log } from './log';
 import { packageLayout } from './rbx/layout';
 import { PackageRunView, RunNode, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
@@ -50,6 +51,14 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
    */
   private nodes = new Map<string, RunNode>();
   private view?: vscode.WebviewView;
+  /**
+   * What the last post said, so the log can report edges instead of ticks.
+   *
+   * `post` runs on every debounced watcher tick -- many per run -- so logging
+   * unconditionally would bury the output channel. Only a change of problem, or
+   * of whether that problem has a readable run at all, is news.
+   */
+  private posted?: { readonly root?: string; readonly readable: boolean };
 
   constructor(
     private readonly data: RunDataProvider,
@@ -139,6 +148,20 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     this.nodes = new Map(
       (view === undefined ? [] : flattenNodes(view)).map((node) => [nodeId(node), node]),
     );
+    const readable = view?.run !== undefined;
+    const posted = this.posted;
+    if (posted === undefined || posted.root !== selected || posted.readable !== readable) {
+      // Nothing said for an undefined selection: discovery already logged that
+      // it found no package, and repeating it here adds no fact.
+      if (selected !== undefined) {
+        log(
+          readable
+            ? `Loaded the run in ${selected}.`
+            : `No readable run for ${selected} -- run \`rbx run\` in that directory.`,
+        );
+      }
+      this.posted = { root: selected, readable };
+    }
     // Read per post rather than cached: the setting is window-scoped and the
     // configuration API is the only place its current value lives.
     const style = asSolutionLabelStyle(
