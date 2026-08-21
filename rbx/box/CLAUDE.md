@@ -128,9 +128,22 @@ probe, upload the *directory*, calibrate, and poll `moj check` under a bound. It
 all of that when the judge reports ready **and** the package it just built fingerprints
 equal to the one this machine last uploaded and saw calibrated; the fingerprint is a
 local record in the problem cache, so it cannot see an upload from another machine.
-`run_solution` raises `NotImplementedError`: it is task 6. The live probe
-(`docs/plans/2026-08-21-moj-probe-notes.md`) confirmed only `AC`/`WA`/`RE`/`TLE`, so
-whatever maps a `code` to an `Outcome` must leave an unobserved one unknown.
+
+`run_solution` submits the solution with `moj testrun` on a **background task** and
+returns one `Deferred` per entry over that one shared job -- it must not block, because
+`_produce_solution_items` builds every solution's deferreds before the first resolves,
+which is how every solution ends up queued while the report prints the first. `Deferred`
+memoizes each deferred's *own* result and nothing else, so the task is held by the runner.
+Results are paired to entries **by MOJ test name**, out of the mapping `prepare` captured
+off the packager that built the uploaded package: the live probe
+(`docs/plans/2026-08-21-moj-probe-notes.md`) found the `tests` array is *not ordered*, so
+pairing by position would misattribute essentially every timing. `MAX_INFLIGHT_TESTRUNS`
+caps how much of the shared judge park a session occupies; the poll is bounded, like
+`prepare`'s. `_OUTCOME_BY_MOJ_CODE` maps only the four codes the probe actually saw
+(`AC`/`WA`/`RE`/`TLE`) and **refuses an unrecognised one by name** rather than guessing --
+a wrong verdict silently corrupts the time limit being estimated. A testcase MOJ did not
+report on becomes `SKIPPED` with no timing (never a zero), and only the `.eval` is written,
+never an empty `.out`.
 
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 

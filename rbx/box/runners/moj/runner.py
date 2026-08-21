@@ -3,8 +3,7 @@
 `rbx time` estimates a time limit from timings measured *where rbx runs*. This
 runner measures them where the problem will actually be judged instead: it
 uploads a throwaway probe package to a private `rbxt-` problem on MOJ, has the
-judge calibrate it, and (from task 6 on) runs each solution there with
-`moj testrun`.
+judge calibrate it, and then runs each solution there with `moj testrun`.
 
 Everything expensive is once per run, which is what `prepare` is: one upload and
 one calibration serve however many solutions get measured, because `moj testrun`
@@ -19,11 +18,12 @@ import hashlib
 import json
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import typer
 
-from rbx.box import environment, package, timing_config
+from rbx import console
+from rbx.box import environment, package, tasks, timing_config
 from rbx.box.code import find_language
 from rbx.box.deferred import Deferred
 from rbx.box.exception import RbxException
@@ -33,7 +33,13 @@ from rbx.box.packaging.moj.packager import MojPackager, ProbePackage, UniformPin
 from rbx.box.runners.base import RunContext, RunnerCapabilities, SolutionRunner
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj.problem_id import ensure_moj_id, is_rbxt_id, moj_id_path
-from rbx.grading.steps import Evaluation
+from rbx.grading.steps import (
+    CheckerResult,
+    Evaluation,
+    Outcome,
+    TestcaseIO,
+    TestcaseLog,
+)
 
 if TYPE_CHECKING:
     # Only for the annotation: `solutions` imports the runner machinery back, and
@@ -55,6 +61,67 @@ if TYPE_CHECKING:
 # the failure modes, because it looks like slowness rather than like a failure.
 CALIBRATION_POLL_INTERVAL_SECONDS = 3.0
 CALIBRATION_POLL_ATTEMPTS = 400
+
+# How often to ask whether a *testrun* has finished, and how many times.
+#
+# Exactly the CLI's own wait loop (200 polls at 3s, ~10 minutes), because this
+# waits on exactly what the CLI waits on: one solution against one testset. The
+# bound exists for the same reason `CALIBRATION_POLL_ATTEMPTS` does, and the live
+# probe strengthened the case rather than weakened it: a queued run carries no
+# `tests` key at all and **no terminal failure status was ever observed**
+# (`docs/plans/2026-08-21-moj-probe-notes.md`, "Shape while still running"). So
+# "not done" cannot be distinguished from "will never be done", and an unbounded
+# poll would hang `rbx time` with no output.
+TESTRUN_POLL_INTERVAL_SECONDS = 3.0
+TESTRUN_POLL_ATTEMPTS = 200
+
+# How many testruns rbx keeps in flight at once.
+#
+# The judge park is **shared** -- two judges, both `Intel Xeon E5-2680 v4`, and
+# every other setter's submissions queue behind whatever rbx dispatches. Two is
+# one per judge: enough to keep the park busy while `rbx time` prints the first
+# solution's report, and small enough that a timing session does not become a
+# denial of service on everyone else. It also bounds how much of the run is lost
+# when a session is interrupted.
+#
+# A constant rather than a setting, deliberately, until there is a reason to make
+# it one. The design sketches `runners.moj.concurrency` in `env.rbx.yml`, which is
+# runner *selection* -- task 7 -- and a knob nobody can reach yet is a knob whose
+# every value is untested.
+MAX_INFLIGHT_TESTRUNS = 2
+
+# MOJ's per-test `code`, as it lands in `TestrunTest.code`, mapped onto rbx's
+# `Outcome`. Adding a code is one line here and nothing else.
+#
+# **Observed** -- provoked against the live judge and read off the response
+# (`docs/plans/2026-08-21-moj-probe-notes.md`, section 3): all four below. There
+# are no *inferred* entries in this table on purpose. `MLE`, `OLE`, `PE`, `CE` and
+# `JE` are codes MOJ plausibly emits -- it enforces `MEMLIMITMB`, and its checker
+# bridge has a judge-error path -- but plausibly is not observed, and their exact
+# spellings are guesses. An unrecognised code is therefore refused by name (see
+# `MojRunner._submit_and_poll`) rather than mapped: this table feeds a *time limit*, and a
+# wrong verdict there is silent. A solution mis-mapped to ACCEPTED contributes its
+# time to the estimate as if it had passed; one mis-mapped to TIME_LIMIT_EXCEEDED
+# drops out of it. Neither leaves a trace in the report the setter reads.
+_OUTCOME_BY_MOJ_CODE: Dict[str, Outcome] = {
+    'AC': Outcome.ACCEPTED,
+    'WA': Outcome.WRONG_ANSWER,
+    'RE': Outcome.RUNTIME_ERROR,
+    'TLE': Outcome.TIME_LIMIT_EXCEEDED,
+}
+
+# What goes in `TestcaseLog.exitstatus` for a testcase MOJ ran.
+#
+# Not one of `SandboxBase`'s constants, because none of them is true: those name
+# how a *local* sandbox observed the process exit, and MOJ reports a verdict, not
+# a wait status. `EXIT_SANDBOX_ERROR` -- what `RunLog` defaults to -- would be
+# actively wrong, since `checkers.py` reads it as "the sandbox broke". A plain
+# honest string follows the precedent `_record_skipped_evaluation` set with
+# `'skipped'`.
+REMOTE_EXIT_STATUS = 'judged remotely'
+
+# ... and for one MOJ did not report on. See `_evaluation_for`.
+UNREPORTED_EXIT_STATUS = 'not reported'
 
 # Where the fingerprint of the last package this machine successfully uploaded and
 # calibrated is kept. Under the problem cache rather than beside `.moj-id`: it is a
@@ -108,6 +175,25 @@ class MojRunner:
         supports_sanitizers=False,
     )
 
+    def __init__(self) -> None:
+        # Everything below is settled by `prepare` and read by `run_solution`.
+        # One `MojRunner` instance serves a whole `run_solutions` call --
+        # `_produce_solution_items` holds the same object across every solution --
+        # so instance state is the run's state, and a second run gets a second
+        # object rather than a stale field.
+        #
+        # `run_solution` refuses rather than re-derives when these are unset: the
+        # remote problem is not something to guess at, and the testcase names have
+        # to be the ones the *uploaded* package used, not the ones a fresh
+        # packager would produce from whatever the tree holds now.
+        self._moj_id: Optional[str] = None
+        self._packager: Optional[MojPackager] = None
+        self._names_by_entry: Optional[Dict[Tuple[str, int], str]] = None
+        # Created on first use rather than here: an `asyncio.Semaphore` belongs to
+        # the loop that first awaits it, and nothing guarantees this object was
+        # constructed inside the loop that will run it.
+        self._testrun_slots: Optional[asyncio.Semaphore] = None
+
     async def prepare(self, ctx: RunContext) -> None:
         """Get a calibrated probe problem onto the judge, once per run.
 
@@ -123,6 +209,7 @@ class MojRunner:
         login = await cli.whoami()
 
         moj_id = self._problem_id(login)
+        self._moj_id = moj_id
 
         cap_ms = _uniform_cap_ms(ctx)
 
@@ -171,17 +258,230 @@ class MojRunner:
         entries: List[GenerationTestcaseEntry],
         ctx: RunContext,
     ) -> List[Deferred[Evaluation]]:
-        # Task 6. Deliberately not stubbed out with a guessed verdict mapping.
-        # The live probe (`docs/plans/2026-08-21-moj-probe-notes.md`) observed
-        # `AC` / `WA` / `RE` / `TLE` and nothing else: `MLE`, `OLE`, `PE`, `CE`
-        # and `JE` were never provoked, so a code -> `Outcome` table written here
-        # would turn an unobserved code into a confident wrong verdict. Whatever
-        # task 6 writes has to keep an unknown code *unknown*.
-        raise NotImplementedError(
-            'The MOJ runner cannot run solutions yet: `moj testrun` fan-out and '
-            'verdict mapping are task 6 of the remote-runner design. See '
-            '`docs/plans/2026-08-20-moj-remote-runner-design.md`.'
+        """Queue this solution on the judge now; hand back one deferred per entry.
+
+        **Nothing here awaits.** `_produce_solution_items` calls this
+        synchronously, once per solution, before a single deferred is resolved --
+        so the submission goes onto a background task and every solution is
+        already sitting in the judge's queue while the report is still printing
+        the first one. That is the entire reason the seam is per solution.
+
+        The N deferreds share one job. `Deferred` will not do that for you: its
+        `__call__` memoizes each deferred's *own* result with a bare
+        `if self.cache is None` and no lock, so N deferreds over one submission
+        would be N submissions unless the task is held here.
+        """
+        if not entries:
+            # No entries, no submission -- and, more to the point, no task. An
+            # `asyncio.Task` nobody awaits whose body raises prints an
+            # "exception was never retrieved" traceback out of the garbage
+            # collector, at a moment unrelated to anything the setter did.
+            return []
+
+        names = self._names_for(entries)
+
+        if self._testrun_slots is None:
+            self._testrun_slots = asyncio.Semaphore(MAX_INFLIGHT_TESTRUNS)
+
+        # `create_task`, not a coroutine held for later: the point is that the
+        # judge starts working before anything awaits. The task is captured by
+        # every deferred below, so it is never garbage-collected mid-flight.
+        job = asyncio.create_task(
+            self._submit_and_poll(solution, expected_names=names, ctx=ctx)
         )
+
+        return [
+            Deferred(
+                # Bound as defaults, because the lambda outlives the loop
+                # iteration: a late-bound `entry` would give every deferred the
+                # last testcase's evaluation.
+                lambda entry=entry, name=name: self._slice(job, solution, entry, name)
+            )
+            for entry, name in zip(entries, names)
+        ]
+
+    # -- run_solution, in pieces ----------------------------------------------
+
+    def _names_for(self, entries: List[GenerationTestcaseEntry]) -> List[str]:
+        """The MOJ file name of each entry, in entry order.
+
+        Looked up in the mapping `prepare` captured off the packager that built
+        the uploaded package -- never re-derived. See `_names_by_entry`.
+        """
+        if self._names_by_entry is None:
+            raise MojRunnerError(
+                'The MOJ runner was asked to run a solution before it prepared '
+                'the problem on the judge. This is an rbx bug: `prepare()` has to '
+                'run first, and it is what settles which remote problem to submit '
+                'to and what the judge calls each testcase.'
+            )
+
+        names: List[str] = []
+        for entry in entries:
+            name = self._names_by_entry.get(_entry_key(entry))
+            if name is None:
+                # The run is asking for a testcase the probe package does not
+                # contain, so the judge never ran it and never will. There is no
+                # honest evaluation to synthesize, and inventing a name would
+                # pair this entry with some *other* testcase's timing.
+                raise MojRunnerError(
+                    f'The testcase `{entry.group_entry}` is not in the package '
+                    f'rbx uploaded to MOJ, so the judge has no result for it. '
+                    f'This is an rbx bug: the probe package is built from the '
+                    f'same testcase entries this run measures.'
+                )
+            names.append(name)
+        return names
+
+    async def _submit_and_poll(
+        self,
+        solution: 'SolutionSkeleton',
+        expected_names: List[str],
+        ctx: RunContext,
+    ) -> Dict[str, cli.TestrunTest]:
+        """Submit one solution and wait for its verdicts, keyed by MOJ test name.
+
+        Holds a slot for the whole submit-and-wait, not just for the submit: what
+        `MAX_INFLIGHT_TESTRUNS` bounds is how much of the shared judge park rbx
+        occupies, and a run that has been dispatched is occupying it whether or
+        not rbx is still talking to the server.
+        """
+        assert self._testrun_slots is not None
+        async with self._testrun_slots:
+            run = await self._submit(solution, ctx)
+            status = await self._wait_for_testrun(run, solution, ctx)
+
+        # `by_name` refuses duplicate names rather than letting a dict
+        # comprehension drop one of them.
+        tests = status.by_name
+
+        # Every code is checked here, once, before any evaluation is built -- and
+        # the failure lands on *every* deferred of this solution, because they all
+        # await this task. Doing it per-slice instead would let the entries before
+        # the unknown code resolve into a report that looks complete.
+        unknown = sorted(
+            {
+                test.code
+                for test in tests.values()
+                if test.code not in _OUTCOME_BY_MOJ_CODE
+            }
+        )
+        if unknown:
+            listed = ', '.join(f'`{code}`' for code in unknown)
+            raise MojRunnerError(
+                f'MOJ reported the verdict code(s) {listed} for `{solution.path}` '
+                f'in testrun `{run}`, and rbx does not know what they mean.\n'
+                f'Refusing to guess: only `AC`, `WA`, `RE` and `TLE` have ever '
+                f'been seen from a real testrun (see '
+                f'`docs/plans/2026-08-21-moj-probe-notes.md`), and a code mapped '
+                f'to the wrong outcome would silently corrupt the time limit this '
+                f'run is estimating, with nothing in the report to say so.\n'
+                f'If the code is legitimate, add it to `_OUTCOME_BY_MOJ_CODE` in '
+                f'`rbx/box/runners/moj/runner.py`.'
+            )
+
+        missing = [name for name in expected_names if name not in tests]
+        if missing:
+            # Reported, not raised. Every test MOJ *did* report carries a real
+            # verdict and a real timing, and throwing those away over the ones it
+            # did not is the worse trade -- but a timing vector quietly short a
+            # few entries is exactly how an estimate goes wrong without anyone
+            # noticing, so it is said out loud. The evaluations themselves stay
+            # honest: unmeasured, never zero (see `_evaluation_for`).
+            #
+            # A probe package suppresses `STOPWHEN_*` precisely so this does not
+            # happen; the live probe watched a failing run come back with 4 tests
+            # out of 72 against a problem that had them enabled.
+            console.console.print(
+                f'[warning]MOJ reported no result for {len(missing)} of '
+                f'{len(expected_names)} testcases of [item]{solution.path}[/item] '
+                f'(testrun [item]{run}[/item]).[/warning]\n'
+                f'[warning]Those testcases are left unmeasured; the time limit is '
+                f'estimated from the rest.[/warning]'
+            )
+        return tests
+
+    async def _submit(self, solution: 'SolutionSkeleton', ctx: RunContext) -> str:
+        """Queue one solution with `moj testrun` and return the run id."""
+        if self._moj_id is None or self._packager is None:
+            raise MojRunnerError(
+                'The MOJ runner was asked to run a solution before it prepared '
+                'the problem on the judge. This is an rbx bug: `prepare()` has to '
+                'run first.'
+            )
+
+        if ctx.progress:
+            ctx.progress.update(f'Sending [item]{solution.path}[/item] to MOJ...')
+
+        try:
+            content = self._packager.solution_content(solution)
+        except typer.Exit as e:
+            # Same reasoning as `_build_probe`: `MojPackager` reports a setter
+            # mistake -- here, a solution that does not reduce to one translation
+            # unit -- by printing and raising a CLI control-flow exception, and
+            # letting that unwind a library call would end the command with an
+            # exit code nothing here chose.
+            raise MojRunnerError(
+                f'Could not prepare `{solution.path}` for MOJ; see the error '
+                f'above. MOJ compiles a submission from a single file, so every '
+                f'solution rbx times has to reduce to one.'
+            ) from e
+
+        with tempfile.TemporaryDirectory(prefix='rbx-moj-testrun-') as tmp:
+            # The **basename is load-bearing**: `moj testrun` sends
+            # `filename: basename(sol)` and the server picks the language off the
+            # extension. Writing the amalgamated bytes to `solution.cpp` would
+            # compile a Python solution as C++.
+            source = pathlib.Path(tmp) / solution.path.name
+            source.write_bytes(content)
+            # The problem *id*, not the package directory the CLI would also
+            # accept: rbx builds its package into a temp dir that is long gone by
+            # now, and the id is what `prepare` decided to write to.
+            return await cli.testrun(self._moj_id, source)
+
+    async def _wait_for_testrun(
+        self, run: str, solution: 'SolutionSkeleton', ctx: RunContext
+    ) -> cli.TestrunStatus:
+        """Poll until the judge is finished with `run`. Bounded."""
+        for attempt in range(TESTRUN_POLL_ATTEMPTS):
+            status = await cli.testrun_status(run)
+            if status.done:
+                return status
+            if ctx.progress:
+                waited = int(attempt * TESTRUN_POLL_INTERVAL_SECONDS)
+                ctx.progress.update(
+                    f'Waiting for MOJ to judge [item]{solution.path}[/item] '
+                    f'({waited}s)...'
+                )
+            if attempt + 1 < TESTRUN_POLL_ATTEMPTS:
+                await asyncio.sleep(TESTRUN_POLL_INTERVAL_SECONDS)
+
+        minutes = int(TESTRUN_POLL_ATTEMPTS * TESTRUN_POLL_INTERVAL_SECONDS / 60)
+        raise MojRunnerError(
+            f'MOJ has not finished the testrun of `{solution.path}` after '
+            f'{minutes} minutes, so rbx has no timings for it and stopped '
+            f'waiting.\n'
+            f'Check it with `moj --json testrun-status {run}`. A testrun runs '
+            f'outside history and placar, so nothing on the server needs cleaning '
+            f'up.'
+        )
+
+    async def _slice(
+        self,
+        job: 'asyncio.Task[Dict[str, cli.TestrunTest]]',
+        solution: 'SolutionSkeleton',
+        entry: GenerationTestcaseEntry,
+        name: str,
+    ) -> Evaluation:
+        """One entry's evaluation, out of the shared testrun.
+
+        Awaiting a `Task` more than once is fine -- it hands every waiter the same
+        result (or the same exception), and does not re-run the body.
+        """
+        tests = await job
+        # `.get`, not `[]`: a name MOJ did not report is a case with an answer,
+        # and it is not this one blowing up. See `_evaluation_for`.
+        return _evaluation_for(solution, entry, tests.get(name))
 
     # -- prepare, in pieces ---------------------------------------------------
 
@@ -222,6 +522,20 @@ class MojRunner:
             timing_mode=UniformPinned(limit_ms=cap_ms),
             probe=ProbePackage(submission_languages=_testrun_languages(ctx)),
         )
+        # Kept for `run_solution`, which needs two things from this exact object:
+        # the names the testcases take **in the package that gets uploaded**, and
+        # `solution_content` to amalgamate each timed solution the same way the
+        # shipped one was. Building a second packager there would be a second
+        # chance to disagree with this one; and the names in particular cannot be
+        # re-derived from the entries alone, which is why `testcase_names` is
+        # public at all (see its docstring: the index is a 1-based running counter
+        # over *built* entries, not `group_entry.index`).
+        #
+        # Assigned before `package()` runs, so the mapping is the one the fast
+        # path's fingerprint was computed over too, whether or not the upload
+        # happens.
+        self._packager = packager
+        self._names_by_entry = _names_by_entry(packager)
         try:
             packager.package(build_path, package_path, [])
         except typer.Exit as e:
@@ -426,6 +740,134 @@ def _testrun_languages(ctx: RunContext) -> Tuple[str, ...]:
             'let the judge accept a submission in.'
         )
     return tuple(languages)
+
+
+# -- pairing rbx testcases to MOJ's ---------------------------------------------
+
+
+def _entry_key(entry: GenerationTestcaseEntry) -> Tuple[str, int]:
+    """What identifies a testcase entry across two lists of them.
+
+    Object identity would be wrong even though it would work today: a
+    `SolutionReportSkeleton` round-trips through `skeleton.yml`, so the entries
+    `run_solution` is handed are not guaranteed to be the same *objects* the
+    packager was constructed with. `(group, index)` is the pair rbx itself names
+    a testcase by everywhere else -- it is what `TestcaseEntry.__str__` prints and
+    what the report renders.
+    """
+    return (entry.group_entry.group, entry.group_entry.index)
+
+
+def _names_by_entry(packager: MojPackager) -> Dict[Tuple[str, int], str]:
+    """The MOJ file name of each built testcase, keyed by `_entry_key`.
+
+    **This is the load-bearing one.** The live probe found the `tests` array of a
+    testrun is *not ordered* -- an AC run began `['t01_handmade_002', 'sample2',
+    't01_handmade_001']`, because the park runs tests in parallel and they come
+    back as they finish. Pairing by position would therefore misattribute
+    essentially every timing, and would do it silently: every number would still
+    look like a plausible time for *some* test.
+
+    Duplicate keys are an error rather than last-one-wins, for the same reason
+    `TestrunStatus.by_name` refuses duplicate names: a dict that silently drops one
+    of two entries pairs one of them with the other's timing.
+    """
+    named: Dict[Tuple[str, int], str] = {}
+    for entry, name in packager.testcase_names():
+        key = _entry_key(entry)
+        if key in named:
+            raise MojRunnerError(
+                f'Two built testcases of this problem are both `{entry.group_entry}`, '
+                f"and rbx cannot tell which of MOJ's results belongs to which. "
+                f'This is an rbx bug.'
+            )
+        named[key] = name
+    return named
+
+
+def _evaluation_for(
+    solution: 'SolutionSkeleton',
+    entry: GenerationTestcaseEntry,
+    test: Optional[cli.TestrunTest],
+) -> Evaluation:
+    """Turn one MOJ per-test result into an rbx `Evaluation`, and persist it.
+
+    Honest about what a remote judge does not report, which
+    `RunnerCapabilities` has already declared and this must not quietly walk back:
+
+    - **no memory.** `moj testrun-status` reports `{name, code, time, tl}`, and
+      nothing about memory. `None`, never 0 -- a 0 reads as a measurement.
+    - **no wall time.** Same.
+    - **no artifacts.** No `.out`, no `.err`, no `.log`. Only the `.eval` is
+      written, which is the precedent `_record_skipped_evaluation` set: the run
+      explorer renders a missing artifact as "(does not exist)", while an empty
+      `.out` would claim the solution printed nothing.
+    - **no exit status.** See `REMOTE_EXIT_STATUS`.
+
+    `test is None` is a testcase MOJ did not report on at all. It gets `SKIPPED`
+    with no timing -- the outcome rbx already uses for "this testcase produced no
+    result", and the one thing that cannot be mistaken for a verdict about the
+    solution. It deliberately does **not** get `INTERNAL_ERROR` or
+    `JUDGE_FAILED`: neither happened as far as anyone knows, and both rank worse
+    than every real verdict, so one unreported test would take over the solution's
+    outcome. `SKIPPED` ranks just after `ACCEPTED` and therefore never masks the
+    verdict that a reported test really produced. `_submit_and_poll` has already
+    said out loud how many there were.
+    """
+    testcase = entry.metadata.copied_to
+    output_dir = solution.runs_dir / entry.group_entry.group
+
+    if test is None:
+        result = CheckerResult(
+            outcome=Outcome.SKIPPED,
+            message='MOJ reported no result for this testcase.',
+        )
+        log = TestcaseLog(
+            exitcode=-1,
+            exitstatus=UNREPORTED_EXIT_STATUS,
+            time=None,
+            wall_time=None,
+            memory=None,
+        )
+    else:
+        result = CheckerResult(
+            outcome=_OUTCOME_BY_MOJ_CODE[test.code],
+            # MOJ judges with the packaged checker and hands back a code, never
+            # the checker's own words (`reports_checker_messages=False`). Saying
+            # where the verdict came from is the useful thing left to say, and it
+            # is what stops a reader taking an empty message for a checker that
+            # had nothing to report.
+            message=f'Judged remotely by MOJ ({test.code}).',
+        )
+        log = TestcaseLog(
+            exitcode=-1,
+            exitstatus=REMOTE_EXIT_STATUS,
+            # Seconds, which is what `TestcaseLog.time` is in and what MOJ
+            # reports. A TLE carries its *real* time rather than the limit
+            # (2.81s against a 0.614s `tl`, in the probe), so it is stored as
+            # reported and not clamped: how far over the cap a solution ran is
+            # exactly what phase 2 wants.
+            time=test.time,
+            wall_time=None,
+            memory=None,
+        )
+
+    evaluation = Evaluation(
+        result=result,
+        testcase=TestcaseIO(
+            # The index *within its group*, which is what names the on-disk
+            # artifact and what the report renders -- not the position in the
+            # flattened testset.
+            index=entry.group_entry.index,
+            input=testcase.inputPath,
+            output=testcase.outputPath,
+        ),
+        log=log,
+    )
+    tasks.write_evaluation(
+        evaluation, tasks.get_testcase_output_path(testcase, output_dir)
+    )
+    return evaluation
 
 
 # -- the fast path's local record -----------------------------------------------

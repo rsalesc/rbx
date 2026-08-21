@@ -545,18 +545,5 @@ async def test_an_upload_that_never_reached_calibration_is_not_trusted_later(
     assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '2.500'
 
 
-# -- what task 6 still owes ----------------------------------------------------
-
-
-async def test_running_a_solution_is_not_implemented_yet(testing_pkg, tmp_path):
-    """No guessed verdict mapping: MOJ's `code` vocabulary is unobserved.
-
-    A plausible-looking table would turn an unknown code into a confident wrong
-    verdict, which is worse than not running at all.
-    """
-    ctx = _context(tmp_path)
-
-    with pytest.raises(NotImplementedError) as exc:
-        MojRunner().run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
-
-    assert 'task 6' in str(exc.value)
+# `run_solution` -- the testrun fan-out that used to raise here -- now exists, and
+# is exercised in `test_run_solution.py` against the same `FakeMoj`.
