@@ -202,21 +202,27 @@ _LOGIN_RE = re.compile(r'^login:[ \t]*(\S+)', re.MULTILINE)
 # the first is the likelier of the two to be reworded, while the second is a
 # copy-pasteable command and so is load-bearing for humans too.
 #
-# `(\d+)` rather than `\S+`, and a boundary after it, because the id goes straight
-# back out as a shell token in `moj testrun-status <run>`. Swallowing a trailing
-# `.` or `(` from the surrounding prose -- or truncating a hypothetical `4711abc` to
-# `4711` -- is worse than not matching at all: it fails later as a remote 404
-# instead of immediately as "could not find a run id", which is precisely the loud
-# failure this module trades prose parsing for.
+# The character class is **observed**, not guessed: the live probe
+# (`docs/plans/2026-08-21-moj-probe-notes.md`) got a 32-character hex digest back
+# four times out of four -- `d89e6b7735c675fd7b50b3354ba64097` and friends. This
+# pattern originally read `(\d+)`, on the design doc's inference that `$run` was
+# numeric, and therefore matched **nothing at all**: every real testrun failed
+# with "could not find a run id". That it failed loudly rather than truncating is
+# what made the mistake catchable in one command instead of as a mystery 404 --
+# which is the whole reason the class is narrow rather than `\S+`.
 #
-# OPEN (probe): whether a run id is always numeric. The design doc records `$run`
-# as numeric everywhere it appears; if the server ever issues a non-numeric one,
-# these patterns refuse it loudly rather than mangle it, and the fix is to widen
-# the class to `[A-Za-z0-9_-]+`.
+# So it is still a class rather than `\S+`, with a boundary after it, because the
+# id goes straight back out as a shell token in `moj testrun-status <run>`.
+# Swallowing a trailing `.` or `(` from the surrounding prose is worse than not
+# matching at all, and the `#` in the boundary keeps the pattern from reading a
+# problem id (`alice#rbxt-...`) as a run id: it refuses instead.
+_RUN_ID = r'[A-Za-z0-9_-]+'
 _RUN_ID_BOUNDARY = r'(?![A-Za-z0-9_#-])'
 _RUN_ID_RES = (
-    re.compile(r'enfileirado no juiz:[ \t]*run[ \t]+(\d+)' + _RUN_ID_BOUNDARY),
-    re.compile(r'testrun-status[ \t]+(\d+)' + _RUN_ID_BOUNDARY),
+    re.compile(
+        r'enfileirado no juiz:[ \t]*run[ \t]+(' + _RUN_ID + r')' + _RUN_ID_BOUNDARY
+    ),
+    re.compile(r'testrun-status[ \t]+(' + _RUN_ID + r')' + _RUN_ID_BOUNDARY),
 )
 
 

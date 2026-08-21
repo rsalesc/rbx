@@ -128,8 +128,9 @@ probe, upload the *directory*, calibrate, and poll `moj check` under a bound. It
 all of that when the judge reports ready **and** the package it just built fingerprints
 equal to the one this machine last uploaded and saw calibrated; the fingerprint is a
 local record in the problem cache, so it cannot see an upload from another machine.
-`run_solution` raises `NotImplementedError`: it is task 6, and MOJ's verdict-`code`
-vocabulary has to be observed on a live probe before anything may map it to `Outcome`.
+`run_solution` raises `NotImplementedError`: it is task 6. The live probe
+(`docs/plans/2026-08-21-moj-probe-notes.md`) confirmed only `AC`/`WA`/`RE`/`TLE`, so
+whatever maps a `code` to an `Outcome` must leave an unobserved one unknown.
 
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 

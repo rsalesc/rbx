@@ -171,14 +171,15 @@ class MojRunner:
         entries: List[GenerationTestcaseEntry],
         ctx: RunContext,
     ) -> List[Deferred[Evaluation]]:
-        # Task 6. Deliberately not stubbed out with a guessed verdict mapping:
-        # MOJ reports a `code` per test whose vocabulary nothing on this side has
-        # observed yet (see `cli.TestrunTest`), and inventing a code -> `Outcome`
-        # table would turn an unknown code into a confident wrong verdict.
+        # Task 6. Deliberately not stubbed out with a guessed verdict mapping.
+        # The live probe (`docs/plans/2026-08-21-moj-probe-notes.md`) observed
+        # `AC` / `WA` / `RE` / `TLE` and nothing else: `MLE`, `OLE`, `PE`, `CE`
+        # and `JE` were never provoked, so a code -> `Outcome` table written here
+        # would turn an unobserved code into a confident wrong verdict. Whatever
+        # task 6 writes has to keep an unknown code *unknown*.
         raise NotImplementedError(
             'The MOJ runner cannot run solutions yet: `moj testrun` fan-out and '
-            "verdict mapping are task 6 of the remote-runner design, and MOJ's "
-            'verdict codes have to be observed on a live probe first. See '
+            'verdict mapping are task 6 of the remote-runner design. See '
             '`docs/plans/2026-08-20-moj-remote-runner-design.md`.'
         )
 

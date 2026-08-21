@@ -28,10 +28,18 @@ from rbx.box.runners.moj.cli import MojCliError, MojNotInstalledError
 
 Canned = Union[str, Callable[[Sequence[str]], str]]
 
-# What `moj testrun --no-wait` really prints. Confirmed from the CLI source.
+# A run id as the live judge really issues one: a 32-character hex digest, not a
+# number. Observed four times out of four by the probe of 2026-08-21
+# (`docs/plans/2026-08-21-moj-probe-notes.md`); the second id below is another of
+# them, used to keep a single hard-coded digest from passing by coincidence.
+_RUN_ID = 'd89e6b7735c675fd7b50b3354ba64097'
+_OTHER_RUN_ID = '6ac4364288283cda5c5f8732eae6f144'
+
+# What `moj testrun --no-wait` really prints. Confirmed from the CLI source, and
+# the wording confirmed verbatim against the live CLI.
 _QUEUED = (
-    'enfileirado no juiz: run 4711  (sol.cpp contra alice#rbxt-deadbeef)\n'
-    'acompanhe com: moj --json testrun-status 4711\n'
+    f'enfileirado no juiz: run {_RUN_ID}  (sol.cpp contra alice#rbxt-deadbeef)\n'
+    f'acompanhe com: moj --json testrun-status {_RUN_ID}\n'
 )
 
 # What `moj whoami` really prints. Confirmed from the CLI source.
@@ -178,7 +186,49 @@ async def test_testrun_extracts_the_run_id_from_the_queued_message(
 ):
     _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_QUEUED}EOF\n")
 
-    assert await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')) == '4711'
+    assert await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')) == _RUN_ID
+
+
+async def test_a_run_id_is_a_hex_digest_rather_than_a_number(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """What the live judge really issues, and what a `(\\d+)` pattern misses.
+
+    The pattern was originally written for a numeric id, on the design doc's
+    inference; the probe of 2026-08-21 got a hex digest four times out of four,
+    which means that pattern matched nothing and every real testrun failed with
+    "could not find a run id".
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        f"cat <<'EOF'\nenfileirado no juiz: run {_OTHER_RUN_ID}  "
+        f'(re.cpp contra rsalesc#delete)\nEOF\n',
+    )
+
+    assert (
+        await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp'))
+        == _OTHER_RUN_ID
+    )
+
+
+async def test_the_follow_up_command_line_also_carries_a_hex_run_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The second pattern is the fallback if the queued line is ever reworded.
+
+    It has to read the same ids as the first one, or the fallback is decorative.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        f"cat <<'EOF'\nacompanhe com: moj --json testrun-status {_OTHER_RUN_ID}\nEOF\n",
+    )
+
+    assert (
+        await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp'))
+        == _OTHER_RUN_ID
+    )
 
 
 async def test_testrun_does_not_wait_for_the_judge(
@@ -236,17 +286,20 @@ async def test_the_run_id_never_swallows_an_adjacent_parenthesis(
     assert await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')) == '4711'
 
 
-async def test_an_unexpected_run_id_is_refused_rather_than_truncated(
+async def test_a_problem_id_in_the_run_slot_is_refused_rather_than_truncated(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    """If ids stop being numeric, refusing is the safe half of being wrong.
+    """`#` is what still bounds the id now that letters and digits are allowed.
 
-    Truncating `4711abc` to `4711` would poll a run that is not the one queued.
+    A reworded line that put the problem id where the run id goes would otherwise
+    be truncated at the `#` and polled as a run that was never queued. Refusing
+    is the safe half of being wrong: it fails immediately and readably instead of
+    as a remote 404 later.
     """
     _stub_moj(
         monkeypatch,
         tmp_path,
-        "cat <<'EOF'\nenfileirado no juiz: run 4711abc\nEOF\n",
+        "cat <<'EOF'\nenfileirado no juiz: run rsalesc#delete\nEOF\n",
     )
 
     with pytest.raises(MojCliError):
