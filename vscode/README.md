@@ -35,6 +35,31 @@ Every solution and every group carries its own summary: the verdict underneath
 it, the points it earned, and the **max** time and memory across its testcases
 -- the slowest test being the one the time limit is judged against.
 
+### One problem at a time
+
+The view shows **one package**, and a dropdown in its header picks which. The
+dropdown is hidden when the workspace holds a single package, so a one-problem
+workspace reads exactly as it did before. The header strip's mismatch and
+warning counts are that one problem's -- a count summed over a ten-problem
+contest named none of them and said nothing about the one on screen.
+
+Problems are named by the **contest letter** `contest.rbx.yml` gives them, in
+the order the contest declares them and with its declared colour as a dot,
+rather than by directory name in path order. The nearest `contest.rbx.yml`
+above a package is the one that names it, a dispatcher's variants included. A
+package no contest claims keeps its directory name and sorts after the ones a
+contest does claim; with more than one contest open, the dropdown groups by
+contest.
+
+The view also **follows the problem that is running**. rbx writes a new
+skeleton when a run *begins*, so the selection moves to the problem now being
+run rather than to one that has already finished -- during `rbx contest each
+run` it walks the contest in step. Left alone, the selection is remembered per
+workspace, so reopening the window returns to the problem you were reading.
+
+For the keyboard, `rbx: Select Problem` offers the same list as a quick pick.
+`rbx: Reveal Problem in Explorer` reveals whichever problem is selected.
+
 ### Warnings on a run that passed
 
 A **yellow triangle in the gutter** -- where a met declaration draws a green tick
