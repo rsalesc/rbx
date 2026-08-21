@@ -558,8 +558,11 @@ export function visibleRows(model: RunViewModel, state: UiState): Row[] {
 /** The welcome text, verbatim from the `viewsWelcome` block it replaces. */
 const WELCOME =
   '<div class="welcome">' +
-  '<p>No rbx run found in this workspace.</p>' +
-  '<p>Run <code>rbx run</code> in the terminal and the results will show up here.</p>' +
+  // Not "in this workspace": the view is one problem's now, and in a contest
+  // where nine problems have run and the selected one has not, a sentence about
+  // the workspace is simply false.
+  '<p>No rbx run found for this problem.</p>' +
+  '<p>Run <code>rbx run</code> in its directory and the results will show up here.</p>' +
   '</div>';
 
 /**
@@ -679,7 +682,10 @@ export function renderFilter(state: UiState): string {
  *
  * The colour dot is a `style` attribute, which the CSP permits on styles only
  * (see the note in runView.ts) -- and the value is a colour a contest author
- * wrote, so it goes through `escapeAttr` like everything else.
+ * wrote, so it goes through `escapeAttr` like everything else. Escaping alone
+ * would not be enough: a declared colour needs no markup to be a whole extra
+ * declaration, which is why `contest.ts` drops anything that is not a colour
+ * before it ever gets here.
  */
 export function renderSelector(problems: readonly ProblemChoice[], selected?: string): string {
   if (problems.length <= 1) {

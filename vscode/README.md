@@ -45,7 +45,9 @@ contest named none of them and said nothing about the one on screen.
 
 Problems are named by the **contest letter** `contest.rbx.yml` gives them, in
 the order the contest declares them and with its declared colour as a dot,
-rather than by directory name in path order. The nearest `contest.rbx.yml`
+rather than by directory name in path order. The dot shows the **selected**
+problem's colour only, not one per entry: a native `<select>` cannot be relied
+on to colour its options, so an open dropdown is a plain list of letters. The nearest `contest.rbx.yml`
 above a package is the one that names it, a dispatcher's variants included. A
 package no contest claims keeps its directory name and sorts after the ones a
 contest does claim; with more than one contest open, the dropdown groups by

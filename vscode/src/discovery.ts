@@ -2,8 +2,8 @@
  * Finds rbx problem packages in the open workspace.
  *
  * A package is any directory holding a `problem.rbx.yml`. A contest workspace
- * holds several; a single-problem workspace holds one, and the tree flattens
- * that case away.
+ * holds several; a single-problem workspace holds one. Which of them the Run
+ * view shows is not decided here but in `activeProblem.ts`.
  */
 import * as path from 'path';
 import * as vscode from 'vscode';

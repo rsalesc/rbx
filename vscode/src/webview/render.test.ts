@@ -466,9 +466,11 @@ test('the detail card omits maxima it does not have', () => {
 
 test('the empty model renders the welcome copy that viewsWelcome used to hold', () => {
   const html = renderTree(model([]), state());
-  assert.ok(html.includes('No rbx run found in this workspace.'), html);
+  // One problem's, not the workspace's: nine of ten problems having run says
+  // nothing about the one on screen.
+  assert.ok(html.includes('No rbx run found for this problem.'), html);
   assert.ok(
-    html.includes('Run <code>rbx run</code> in the terminal and the results will show up here.'),
+    html.includes('Run <code>rbx run</code> in its directory and the results will show up here.'),
     html,
   );
   assert.ok(!html.includes('class="row'), html);
