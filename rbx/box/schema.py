@@ -960,6 +960,33 @@ solution of the group. Absent when the bound was derived from another group's li
     )
 
 
+class TimingGroupUpperValidation(BaseModel):
+    """What checking a group's slow solutions against its time limit found."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    confirmed: List[str] = Field(
+        default=[],
+        description="""Solutions of this group expected to be too slow that were
+confirmed to be so: they were still running once the estimated time limit times
+`timeLimitToTle` had elapsed. Presentation-only.""",
+    )
+
+    violating: List[TimingBound] = Field(
+        default=[],
+        description="""Solutions of this group expected to be too slow that finished
+within the estimated time limit times `timeLimitToTle`, so they do not respect the
+upper bound. `value` is the time the solution actually took. Presentation-only.""",
+    )
+
+    skipped: List[str] = Field(
+        default=[],
+        description="""Solutions of this group expected to be too slow that were not
+run, either because `timeLimitToTle` is unset or because the validation phase was
+skipped. Presentation-only.""",
+    )
+
+
 class TimingGroupReport(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -987,11 +1014,19 @@ was estimated from multipliers and some slow solution of the group bounded it.
 Presentation-only.""",
     )
 
+    upperValidation: Optional[TimingGroupUpperValidation] = Field(
+        default=None,
+        description="""What checking this group's slow solutions against its estimated
+time limit found. Absent when the group has no slow solutions. Presentation-only.""",
+    )
+
     droppedUpper: List[str] = Field(
         default=[],
-        description="""Solutions of this group that were expected to be too slow but
-were still running at `inferenceTimeout`, so they bound nothing from above.
-Presentation-only.""",
+        deprecated=True,
+        exclude=True,
+        description="""Deprecated: replaced by `upperValidation`. Accepted so that a
+limits profile written before the estimation was split into two phases still parses;
+never written.""",
     )
 
 

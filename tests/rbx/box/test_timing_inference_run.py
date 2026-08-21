@@ -198,7 +198,7 @@ async def test_multipliers_without_tle_ratio_runs_only_lower_solutions(pkg):
     # Nothing about the run differs from the formula path: every solution that
     # ran still gates the report, and nothing was dropped.
     assert run.print_run_report.call_args.kwargs['gating_solutions'] == set(run.tracked)
-    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
+    assert run.estimate.call_args.kwargs['confirmed_upper_per_language'] == {}
 
 
 async def test_multipliers_with_tle_ratio_runs_both_capped(pkg):
@@ -243,7 +243,7 @@ async def test_multipliers_with_tle_ratio_but_no_slow_solutions_still_cap(pkg):
     assert run.timelimit_override == 7000
     # With no slow solution there is nothing to drop from the upper bound.
     assert result is not None
-    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
+    assert run.estimate.call_args.kwargs['confirmed_upper_per_language'] == {}
 
 
 async def test_custom_formula_forces_formula_mode_over_multipliers(pkg):
@@ -312,7 +312,7 @@ async def test_an_upper_solution_at_the_cap_is_dropped_with_a_warning(pkg, capsy
         ),
     )
     assert result is not None
-    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {
+    assert run.estimate.call_args.kwargs['confirmed_upper_per_language'] == {
         'cpp': [str(tle.path)]
     }
     printed = _printed(capsys)

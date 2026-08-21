@@ -330,19 +330,31 @@ def _lower_timings(
 
 def _upper_timings(
     pooled: List[timing_groups.Measurement],
-    dropped: List[str],
+    confirmed: List[str],
+    skipped: Optional[List[str]] = None,
 ) -> Optional[timing_groups.UpperTimings]:
-    if not pooled and not dropped:
+    """The upper-bound evidence for one group.
+
+    ``pooled`` holds the slow solutions that finished under the limit they were
+    probed at, so every one of them violates the bound; ``confirmed`` holds the
+    ones that did not finish, which is the outcome the estimate needs.
+    """
+    skipped = skipped or []
+    if not pooled and not confirmed and not skipped:
         return None
     if not pooled:
-        # Every slow solution of the group was dropped: it bounds nothing from
-        # above, but the drop still belongs to this group.
-        return timing_groups.UpperTimings(dropped_upper=dropped)
+        # No slow solution of the group was measured: it bounds nothing from
+        # above, but the outcome still belongs to this group.
+        return timing_groups.UpperTimings(
+            confirmed_upper=confirmed, skipped_upper=skipped
+        )
     fastest_slow, fastest_slow_solution = min(pooled)
     return timing_groups.UpperTimings(
         fastest_slow=fastest_slow,
         fastest_slow_solution=fastest_slow_solution,
-        dropped_upper=dropped,
+        confirmed_upper=confirmed,
+        violating_upper=sorted(pooled),
+        skipped_upper=skipped,
     )
 
 
@@ -352,7 +364,7 @@ def build_timing_profile(
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
     slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
-    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
 ) -> TimingProfile:
@@ -367,7 +379,7 @@ def build_timing_profile(
         derive_fn = None
 
     slow_per_language = slow_timing_per_solution_per_language or {}
-    dropped_per_language = dropped_upper_per_language or {}
+    confirmed_per_language = confirmed_upper_per_language or {}
 
     if repartition is not None:
         groups = timing_groups.partition_from_assignment(repartition, relatives)
@@ -378,14 +390,14 @@ def build_timing_profile(
     measured: Dict[int, timing_groups.GroupMeasurements] = {}
     all_values: List[timing_groups.Measurement] = []
     all_slow_values: List[timing_groups.Measurement] = []
-    all_dropped: List[str] = []
+    all_confirmed: List[str] = []
     for idx, group in enumerate(groups):
         values = _pooled(timing_per_solution_per_language, group.languages)
         slow_values = _pooled(slow_per_language, group.languages)
         dropped = [
             path
             for lang in group.languages
-            for path in (dropped_per_language.get(lang) or [])
+            for path in (confirmed_per_language.get(lang) or [])
         ]
         if not values and not slow_values and not dropped:
             continue
@@ -395,14 +407,14 @@ def build_timing_profile(
         )
         all_values.extend(values)
         all_slow_values.extend(slow_values)
-        all_dropped.extend(dropped)
+        all_confirmed.extend(dropped)
 
     if not all_values:
         raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
 
     base = timing_groups.GroupMeasurements(
         lower=_lower_timings(all_values),
-        upper=_upper_timings(all_slow_values, all_dropped),
+        upper=_upper_timings(all_slow_values, all_confirmed),
     )
     result = timing_groups.resolve_groups(groups, measured, base, eval_fn, derive_fn)
     return TimingProfile(
@@ -456,7 +468,7 @@ def build_preview_renderer(
     env_groups: List[environment.LanguageGroup],
     all_languages: List[str],
     slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
-    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
     width: Optional[int] = None,
 ) -> Callable[..., ANSI]:
     """Return a memoized callback mapping a picker assignment (and optional
@@ -475,7 +487,7 @@ def build_preview_renderer(
                 env_groups=env_groups,
                 all_languages=all_languages,
                 slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
-                dropped_upper_per_language=dropped_upper_per_language,
+                confirmed_upper_per_language=confirmed_upper_per_language,
                 repartition=assignment,
                 relatives=relatives,
             )
@@ -511,7 +523,7 @@ async def _prompt_repartition(
     timing_per_solution_per_language: Dict[str, Dict[str, int]],
     strategy: timing_config.TimingStrategy,
     slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
-    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
 ) -> Optional[timing_group_picker.GroupAssignment]:
     preview = build_preview_renderer(
         timing_per_solution_per_language=timing_per_solution_per_language,
@@ -519,7 +531,7 @@ async def _prompt_repartition(
         env_groups=env_groups,
         all_languages=all_languages,
         slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
-        dropped_upper_per_language=dropped_upper_per_language,
+        confirmed_upper_per_language=confirmed_upper_per_language,
         width=console.console.size.width,
     )
     langs_with_solutions = {
@@ -656,7 +668,7 @@ async def estimate_time_limit(
     result: RunSolutionResult,
     strategy: Optional[timing_config.TimingStrategy] = None,
     auto: bool = False,
-    dropped_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
 ) -> Optional[TimingProfile]:
     if not result.skeleton.solutions:
         console.print('[error]No solutions to estimate time limit from.[/error]')
@@ -682,9 +694,9 @@ async def estimate_time_limit(
         # before the setter navigates a picker in which no grouping can succeed.
         raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
 
-    dropped_upper_per_language = dropped_upper_per_language or {}
+    confirmed_upper_per_language = confirmed_upper_per_language or {}
     dropped_paths = {
-        path for paths in dropped_upper_per_language.values() for path in paths
+        path for paths in confirmed_upper_per_language.values() for path in paths
     }
 
     timing_per_solution_per_language = await _timings_per_language(
@@ -730,7 +742,7 @@ async def estimate_time_limit(
                 [
                     *timing_per_solution_per_language,
                     *slow_timing_per_solution_per_language,
-                    *dropped_upper_per_language,
+                    *confirmed_upper_per_language,
                 ]
             )
         ),
@@ -745,7 +757,7 @@ async def estimate_time_limit(
             timing_per_solution_per_language,
             strategy,
             slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
-            dropped_upper_per_language=dropped_upper_per_language,
+            confirmed_upper_per_language=confirmed_upper_per_language,
         )
         if picked is None:
             console.print('[error]Time limit estimation cancelled.[/error]')
@@ -764,7 +776,7 @@ async def estimate_time_limit(
             env_groups=env_groups,
             all_languages=all_languages,
             slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
-            dropped_upper_per_language=dropped_upper_per_language,
+            confirmed_upper_per_language=confirmed_upper_per_language,
             repartition=repartition,
             relatives=relatives,
         )
@@ -1150,7 +1162,7 @@ async def compute_time_limits(
         run.result,
         run.strategy,
         auto=auto,
-        dropped_upper_per_language=run.dropped_upper_per_language(),
+        confirmed_upper_per_language=run.dropped_upper_per_language(),
     )
     if estimated_tl is None:
         return None
