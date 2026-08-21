@@ -7,9 +7,20 @@
  * it consumes carries no editor API with it.
  */
 import { PackageLayout } from './layout';
-import { GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
+import { CompilationWarning } from './model';
+import { CompilationFinding, GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
 
-export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
+/**
+ * The nodes the tree walk produces.
+ *
+ * Split out of `RunNode` so `flattenNodes` can promise it yields *only* these:
+ * the compilation findings are a second surface with its own list, and folding
+ * them into the walk would put them in the tree the walk describes.
+ */
+export type TreeNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
+
+/** Everything a command can be invoked on, tree or panel. */
+export type RunNode = TreeNode | FindingNode | FindingWarningNode;
 
 export interface PackageNode {
   readonly kind: 'package';
@@ -46,11 +57,34 @@ export interface TestcaseNode {
   readonly testcase: TestcaseRun;
 }
 
+/** One solution's row in the Compilation Findings panel. */
+export interface FindingNode {
+  readonly kind: 'finding';
+  readonly pkg: PackageLayout;
+  readonly finding: CompilationFinding;
+}
+
+/** One warning under an expanded finding row. */
+export interface FindingWarningNode {
+  readonly kind: 'findingWarning';
+  readonly pkg: PackageLayout;
+  readonly finding: CompilationFinding;
+  readonly warning: CompilationWarning;
+  /** Its position among the finding's warnings, which is what makes the id unique. */
+  readonly index: number;
+}
+
 /** The stable row id. Identical to the `TreeItem.id`s the tree used. */
 export function nodeId(node: RunNode): string {
   switch (node.kind) {
     case 'package':
       return node.pkg.root;
+    // `compile` rather than a solution index: a solution that failed to compile
+    // has no index, because it never entered the run.
+    case 'finding':
+      return `${node.pkg.root}::compile::${node.finding.entry.path}`;
+    case 'findingWarning':
+      return `${node.pkg.root}::compile::${node.finding.entry.path}::${node.index}`;
     case 'solution':
       return `${node.pkg.root}::${node.run.solution.index}`;
     case 'group':
@@ -83,9 +117,9 @@ export interface PackageRunView {
  * The count is of discovered packages, not of packages that have run, so the
  * view does not gain and lose a level as runs come and go.
  */
-export function flattenNodes(packages: readonly PackageRunView[]): RunNode[] {
+export function flattenNodes(packages: readonly PackageRunView[]): TreeNode[] {
   const showPackages = packages.length > 1;
-  const nodes: RunNode[] = [];
+  const nodes: TreeNode[] = [];
   for (const { pkg, run, label } of packages) {
     if (run === undefined) {
       continue;
@@ -102,6 +136,29 @@ export function flattenNodes(packages: readonly PackageRunView[]): RunNode[] {
           nodes.push({ kind: 'testcase', pkg, run: solutionRun, group, testcase });
         }
       }
+    }
+  }
+  return nodes;
+}
+
+/**
+ * Every compilation finding, and every warning under one, in skeleton order.
+ *
+ * A second walk rather than a branch of `flattenNodes`: these rows are not in
+ * the tree, they answer a different question, and the panel that draws them is
+ * absent whenever this returns nothing. The warnings are walked too so that a
+ * click on one resolves to a node like any other row in the view.
+ */
+export function findingNodes(
+  packages: readonly PackageRunView[],
+): (FindingNode | FindingWarningNode)[] {
+  const nodes: (FindingNode | FindingWarningNode)[] = [];
+  for (const { pkg, run } of packages) {
+    for (const finding of run?.findings ?? []) {
+      nodes.push({ kind: 'finding', pkg, finding });
+      finding.entry.warnings.forEach((warning, index) => {
+        nodes.push({ kind: 'findingWarning', pkg, finding, warning, index });
+      });
     }
   }
   return nodes;

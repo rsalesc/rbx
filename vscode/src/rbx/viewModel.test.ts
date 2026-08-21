@@ -4,7 +4,14 @@ import { test } from 'node:test';
 import type { PackageLayout } from './layout';
 import type { PackageRunView } from './nodes';
 import type { GroupReport, SolutionReport } from './report';
-import type { GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
+import type { CompilationEntry } from './model';
+import type {
+  CompilationFinding,
+  GroupRun,
+  PackageRun,
+  SolutionRun,
+  TestcaseRun,
+} from './store';
 import { Row, buildViewModel } from './viewModel';
 
 // The fixtures below transcribe rbx's `outcome-per-group` e2e package: a main
@@ -79,12 +86,40 @@ function solution(
   return { solution: { path, index, expectedOutcome }, groups, report };
 }
 
-function run(solutions: readonly SolutionRun[]): PackageRun {
-  return { skeleton: { solutions: [], entries: [], groups: [] }, solutions };
+function run(
+  solutions: readonly SolutionRun[],
+  findings: readonly CompilationFinding[] = [],
+): PackageRun {
+  return {
+    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    solutions,
+    findings,
+  };
 }
 
-function view(solutions: readonly SolutionRun[]): PackageRunView {
-  return { pkg: PKG, run: run(solutions) };
+function view(
+  solutions: readonly SolutionRun[],
+  findings: readonly CompilationFinding[] = [],
+): PackageRunView {
+  return { pkg: PKG, run: run(solutions, findings) };
+}
+
+function finding(
+  path: string,
+  over: Partial<CompilationEntry> = {},
+): CompilationFinding {
+  return {
+    entry: {
+      path,
+      expectedOutcome: 'ACCEPTED',
+      status: 'WARNINGS',
+      log: 'compilation/0.log',
+      warnings: [],
+      ...over,
+    },
+    logPath: `/w/a/.rbx/runs/${over.log ?? 'compilation/0.log'}`,
+    sourcePath: `/w/a/${path}`,
+  };
 }
 
 function rowById(rows: readonly Row[], id: string): Row {
@@ -903,4 +938,147 @@ test('only leaves carry a hidden verdict', () => {
   const { rows } = buildViewModel([view([HIDDEN_WA])]);
   assert.strictEqual(rowById(rows, '/w/a::0').verdict?.under, undefined);
   assert.strictEqual(rowById(rows, '/w/a::0::big').verdict?.under, undefined);
+});
+
+// --- Compilation findings ----------------------------------------------------
+
+test('a run that compiled cleanly has no findings at all', () => {
+  // Absent, not empty: the panel's presence in the view is itself the signal,
+  // so a package with nothing to report must not carry a header saying so.
+  assert.strictEqual(buildViewModel([view([MAIN])]).findings, undefined);
+});
+
+test('a solution that failed to compile is reported though it is in no row', () => {
+  // The whole point. rbx filters it out of the skeleton's `solutions` before
+  // the run starts, so `rows` cannot know it exists.
+  const model = buildViewModel([
+    view([MAIN], [finding('sols/broken.cpp', { status: 'FAILED', log: 'compilation/0.log' })]),
+  ]);
+  assert.ok(!model.rows.some((row) => row.label.includes('broken')));
+  const findings = model.findings;
+  assert.ok(findings !== undefined);
+  assert.strictEqual(findings.rows.length, 1);
+  assert.strictEqual(findings.rows[0].severity, 'error');
+  assert.strictEqual(findings.rows[0].summary, 'CE');
+});
+
+test('the badge counts rows and reddens as soon as one failed to compile', () => {
+  const model = buildViewModel([
+    view(
+      [MAIN],
+      [
+        finding('sols/warned.cpp', {
+          warnings: [{ file: 'sols/x.cpp', line: 4, flag: '-Wsign-compare', msg: 'comparison' }],
+        }),
+        finding('sols/broken.cpp', { status: 'FAILED' }),
+      ],
+    ),
+  ]);
+  // Rows, not warnings: the badge has to agree with what opening it shows.
+  assert.strictEqual(model.findings?.badge, 2);
+  assert.strictEqual(model.findings?.hue, 'red');
+  assert.strictEqual(model.findings?.errors, true);
+});
+
+test('a warnings-only run stays yellow and does not ask to be opened', () => {
+  const model = buildViewModel([
+    view(
+      [MAIN],
+      [finding('sols/warned.cpp', { warnings: [{ file: 'sols/x.cpp', line: 4, msg: 'comparison' }] })],
+    ),
+  ]);
+  assert.strictEqual(model.findings?.hue, 'yellow');
+  assert.strictEqual(model.findings?.errors, false);
+});
+
+test('the summary counts warnings, singular when there is one', () => {
+  const model = buildViewModel([
+    view(
+      [MAIN],
+      [
+        finding('sols/one.cpp', { warnings: [{ file: 'sols/x.cpp', line: 4, msg: 'a' }] }),
+        finding('sols/three.cpp', {
+          warnings: [
+            { file: 'sols/x.cpp', line: 4, msg: 'a' },
+            { file: 'sols/x.cpp', line: 5, msg: 'b' },
+            { file: 'sols/x.cpp', line: 6, msg: 'c' },
+          ],
+        }),
+      ],
+    ),
+  ]);
+  assert.deepStrictEqual(
+    model.findings?.rows.map((row) => row.summary),
+    ['1 warn', '3 warns'],
+  );
+});
+
+test('a finding row is hued by what its solution declared, not by severity', () => {
+  // The label is the identity channel here as it is in the tree, so a row in
+  // the panel and the same row above it are recognisably the same solution.
+  // Severity has the gutter and the wash to itself.
+  const model = buildViewModel([
+    view(
+      [MAIN],
+      [finding('sols/wa.cpp', { status: 'FAILED', expectedOutcome: 'WRONG_ANSWER' })],
+    ),
+  ]);
+  assert.strictEqual(model.findings?.rows[0].labelHue, 'red');
+  assert.strictEqual(model.findings?.rows[0].labelBold, false);
+  assert.strictEqual(model.findings?.rows[0].severity, 'error');
+});
+
+test('a finding label is trimmed against the solutions it sits with', () => {
+  // Labelled on its own, a solution absent from `solutions` would be trimmed
+  // against a different prefix from every row above it.
+  const model = buildViewModel([view([MAIN], [finding('sols/broken.cpp')])], 'trimmed');
+  assert.strictEqual(model.findings?.rows[0].label, 'broken.cpp');
+  assert.strictEqual(model.findings?.rows[0].labelTitle, 'sols/broken.cpp');
+});
+
+test('a warning carries its position and flag, and its message only as a title', () => {
+  const model = buildViewModel([
+    view(
+      [MAIN],
+      [
+        finding('sols/warned.cpp', {
+          warnings: [
+            { file: 'sols/x.cpp', line: 41, flag: '-Wsign-compare', msg: 'comparison of integer expressions' },
+            { file: 'sols/x.cpp', line: 88, msg: 'unflagged something' },
+          ],
+        }),
+      ],
+    ),
+  ]);
+  const warnings = model.findings?.rows[0].warnings ?? [];
+  assert.deepStrictEqual(
+    warnings.map((warning) => [warning.line, warning.flag]),
+    [
+      [41, '-Wsign-compare'],
+      [88, ''],
+    ],
+  );
+  assert.strictEqual(warnings[0].title, 'comparison of integer expressions');
+});
+
+test('the signature changes when a warning becomes an error', () => {
+  // What the client compares to decide the panel should open again. Identity
+  // alone would let the same file turn from warned to broken unannounced.
+  const warned = buildViewModel([view([MAIN], [finding('sols/x.cpp')])]);
+  const failed = buildViewModel([view([MAIN], [finding('sols/x.cpp', { status: 'FAILED' })])]);
+  assert.notStrictEqual(warned.findings?.signature, failed.findings?.signature);
+});
+
+test('the signature is stable across re-posts of the same run', () => {
+  const first = buildViewModel([view([MAIN], [finding('sols/x.cpp')])]);
+  const second = buildViewModel([view([MAIN], [finding('sols/x.cpp')])]);
+  assert.strictEqual(first.findings?.signature, second.findings?.signature);
+});
+
+test('a run where nothing compiled is empty and still reports', () => {
+  // The view is empty *and* has everything to say -- the case that used to show
+  // a bare "no run found".
+  const model = buildViewModel([view([], [finding('sols/broken.cpp', { status: 'FAILED' })])]);
+  assert.strictEqual(model.empty, true);
+  assert.strictEqual(model.findings?.rows.length, 1);
 });

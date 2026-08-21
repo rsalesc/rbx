@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
-import { RunNode, flattenNodes, nodeId } from './rbx/nodes';
+import { RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { buildViewModel } from './rbx/viewModel';
 import { RunDataProvider } from './runData';
@@ -106,7 +106,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
    */
   private async post(): Promise<void> {
     const packages = await this.data.loadAll();
-    this.nodes = new Map(flattenNodes(packages).map((node) => [nodeId(node), node]));
+    // Both walks, because both produce rows the client can click: the tree's,
+    // and the compilation findings' -- including the warning lines under them,
+    // each of which resolves to the position it opens the source at.
+    const nodes: RunNode[] = [...flattenNodes(packages), ...findingNodes(packages)];
+    this.nodes = new Map(nodes.map((node) => [nodeId(node), node]));
     // Read per post rather than cached: the setting is window-scoped and the
     // configuration API is the only place its current value lives.
     const style = asSolutionLabelStyle(
@@ -155,6 +159,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     <div id="header"></div>
     <div id="filter-host"></div>
     <div id="tree" role="tree" tabindex="-1"></div>
+    <!-- The findings panel is a flex sibling of the tree rather than a second
+         view in the container: only a webview can give the header a badge
+         coloured by severity, which is the whole point of it. It stays empty,
+         and hidden, whenever the compile phase had nothing to report. -->
+    <div id="findings"></div>
     <script nonce="${nonce}" src="${asset('webview', 'main.js')}"></script>
   </body>
 </html>`;
