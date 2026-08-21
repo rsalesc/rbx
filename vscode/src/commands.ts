@@ -190,7 +190,11 @@ export function registerCommands(
   });
 
   register('rbx.revealInExplorer', async (node) => {
-    if (node?.kind !== 'package') {
+    // The package row this hung off is gone, so nothing invokes it right now --
+    // a later step re-attaches it to the view's header. Every node still names
+    // the package it came from, so the body is left standing rather than
+    // guessing at what the header will pass.
+    if (node === undefined) {
       return;
     }
     await vscode.commands.executeCommand(

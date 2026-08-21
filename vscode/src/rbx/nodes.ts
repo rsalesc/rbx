@@ -9,14 +9,7 @@
 import { PackageLayout } from './layout';
 import { GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
 
-export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
-
-export interface PackageNode {
-  readonly kind: 'package';
-  readonly pkg: PackageLayout;
-  /** The host's disambiguated label, when it supplied one. */
-  readonly label?: string;
-}
+export type RunNode = SolutionNode | GroupNode | TestcaseNode;
 
 export interface SolutionNode {
   readonly kind: 'solution';
@@ -46,11 +39,16 @@ export interface TestcaseNode {
   readonly testcase: TestcaseRun;
 }
 
-/** The stable row id. Identical to the `TreeItem.id`s the tree used. */
+/**
+ * The stable row id. Identical to the `TreeItem.id`s the tree used.
+ *
+ * Still rooted at the package directory even though no row draws that level:
+ * the ids outlive the package on screen -- the client keeps a selection, and
+ * the host resolves context-menu commands through a map of them -- so an id
+ * from one package must never name a row of another.
+ */
 export function nodeId(node: RunNode): string {
   switch (node.kind) {
-    case 'package':
-      return node.pkg.root;
     case 'solution':
       return `${node.pkg.root}::${node.run.solution.index}`;
     case 'group':
@@ -76,31 +74,24 @@ export interface PackageRunView {
 }
 
 /**
- * Every row in display order, each parent immediately before its children.
+ * Every row of one package's run, in display order, parents before children.
  *
- * The package level is dropped when the workspace holds exactly one package --
- * the common case, where making the user expand one node forever buys nothing.
- * The count is of discovered packages, not of packages that have run, so the
- * view does not gain and lose a level as runs come and go.
+ * One package, because the view shows one: the selector upstream decides which,
+ * so there is no package level left to draw and no rule about when to draw it.
  */
-export function flattenNodes(packages: readonly PackageRunView[]): RunNode[] {
-  const showPackages = packages.length > 1;
+export function flattenNodes(view: PackageRunView): RunNode[] {
+  const { pkg, run } = view;
+  if (run === undefined) {
+    return [];
+  }
   const nodes: RunNode[] = [];
-  for (const { pkg, run, label } of packages) {
-    if (run === undefined) {
-      continue;
-    }
-    if (showPackages) {
-      nodes.push({ kind: 'package', pkg, label });
-    }
-    const solo = run.solutions.length === 1;
-    for (const solutionRun of run.solutions) {
-      nodes.push({ kind: 'solution', pkg, run: solutionRun, solo });
-      for (const group of solutionRun.groups) {
-        nodes.push({ kind: 'group', pkg, run: solutionRun, group });
-        for (const testcase of group.testcases) {
-          nodes.push({ kind: 'testcase', pkg, run: solutionRun, group, testcase });
-        }
+  const solo = run.solutions.length === 1;
+  for (const solutionRun of run.solutions) {
+    nodes.push({ kind: 'solution', pkg, run: solutionRun, solo });
+    for (const group of solutionRun.groups) {
+      nodes.push({ kind: 'group', pkg, run: solutionRun, group });
+      for (const testcase of group.testcases) {
+        nodes.push({ kind: 'testcase', pkg, run: solutionRun, group, testcase });
       }
     }
   }

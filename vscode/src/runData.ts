@@ -97,10 +97,9 @@ export class RunDataProvider {
   /**
    * Every discovered package paired with whatever run is on disk for it.
    *
-   * Packages with no readable run are kept rather than filtered: `flattenNodes`
-   * already drops them, and the rule that hides the package level counts
-   * *discovered* packages, so dropping them here would make the view gain and
-   * lose a level as runs come and go.
+   * Packages with no readable run are kept rather than filtered: a package the
+   * user can select must still be listed when it has never been run, and
+   * `flattenNodes` renders it as nothing.
    */
   async loadAll(): Promise<PackageRunView[]> {
     await this.ensureDiscovered();

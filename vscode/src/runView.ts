@@ -15,7 +15,8 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
-import { RunNode, flattenNodes, nodeId } from './rbx/nodes';
+import { packageLayout } from './rbx/layout';
+import { PackageRunView, RunNode, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { buildViewModel } from './rbx/viewModel';
 import { RunDataProvider } from './runData';
@@ -101,18 +102,23 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   /**
    * Load everything and hand the client a whole new model.
    *
-   * The id map is rebuilt in the same pass, from the same `PackageRunView`s, so
+   * The id map is rebuilt in the same pass, from the same `PackageRunView`, so
    * an id the client can see always resolves to the node it was built from.
    */
   private async post(): Promise<void> {
     const packages = await this.data.loadAll();
-    this.nodes = new Map(flattenNodes(packages).map((node) => [nodeId(node), node]));
+    // Placeholder: the view now renders one package, but nothing chooses which
+    // yet -- the selector lands in a later step and replaces this with the
+    // user's choice. Until then the first package discovered stands in, and an
+    // empty workspace gets a view with no run, which draws as the empty state.
+    const selected: PackageRunView = packages[0] ?? { pkg: packageLayout(''), run: undefined };
+    this.nodes = new Map(flattenNodes(selected).map((node) => [nodeId(node), node]));
     // Read per post rather than cached: the setting is window-scoped and the
     // configuration API is the only place its current value lives.
     const style = asSolutionLabelStyle(
       vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
     );
-    await this.view?.webview.postMessage({ type: 'state', model: buildViewModel(packages, style) });
+    await this.view?.webview.postMessage({ type: 'state', model: buildViewModel(selected, style) });
   }
 
   private html(webview: vscode.Webview): string {

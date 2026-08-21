@@ -16,13 +16,10 @@
  * Pure by design, like nodes.ts: no `vscode` import, so `node --test` can hold
  * the whole thing to account.
  */
-import * as path from 'path';
-
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
 import {
   GroupNode,
-  PackageNode,
   PackageRunView,
   SolutionNode,
   TestcaseNode,
@@ -210,7 +207,7 @@ export interface Row {
   readonly id: string;
   readonly parentId?: string;
   readonly depth: number;
-  readonly kind: 'package' | 'solution' | 'group' | 'testcase';
+  readonly kind: 'solution' | 'group' | 'testcase';
   readonly gutter: Gutter;
   readonly label: string;
   /**
@@ -261,18 +258,6 @@ export interface RunViewModel {
   /** Solutions that passed but carry at least one warning. */
   readonly warned: number;
   readonly empty: boolean;
-}
-
-/**
- * What to call a package.
- *
- * The host disambiguates two packages both named `prob` by asking
- * `vscode.workspace` which folder each sits in, and passes the answer down --
- * importing that here would drag the editor API into a module whose whole value
- * is being testable without it. The basename is right whenever it did not.
- */
-function packageName(node: PackageNode): string {
-  return node.label ?? path.basename(node.pkg.root);
 }
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
@@ -652,26 +637,6 @@ function solutionDetail(
   };
 }
 
-function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
-  const label = packageName(node);
-  return {
-    id: nodeId(node),
-    parentId,
-    depth,
-    kind: 'package',
-    gutter: 'none',
-    label,
-    labelBold: false,
-    meta: [],
-    warnings: [],
-    mismatch: false,
-    expandable: true,
-    defaultExpanded: true,
-    search: haystack(label, undefined, false),
-    section: 'rbx.package',
-  };
-}
-
 function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
   const { run, solo } = node;
   const warnings = warningsOf(run.report, true);
@@ -786,61 +751,40 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
   };
 }
 
-/** How deep each kind sits, given whether the walk emitted package rows. */
+/** How deep each kind sits, counting the solution as the top level. */
 const DEPTHS: Record<Row['kind'], number> = {
-  package: 0,
-  solution: 1,
-  group: 2,
-  testcase: 3,
+  solution: 0,
+  group: 1,
+  testcase: 2,
 };
 
-/**
- * Every package's solution labels, by package root and then by solution path.
- *
- * Computed package by package, so the prefix `trimmed` drops is the one *that*
- * package's solutions share -- a contest workspace where one package keeps its
- * solutions somewhere unusual does not cost every other package its trimming.
- */
-function labelsByPackage(
-  packages: readonly PackageRunView[],
-  style: SolutionLabelStyle,
-): Map<string, Map<string, string>> {
-  const labels = new Map<string, Map<string, string>>();
-  for (const { pkg, run } of packages) {
-    if (run === undefined) {
-      continue;
-    }
-    const paths = run.solutions.map((solutionRun) => solutionRun.solution.path);
-    labels.set(pkg.root, solutionLabels(paths, style));
-  }
-  return labels;
-}
-
 export function buildViewModel(
-  packages: readonly PackageRunView[],
+  view: PackageRunView,
   style: SolutionLabelStyle = DEFAULT_SOLUTION_LABEL_STYLE,
 ): RunViewModel {
-  const nodes = flattenNodes(packages);
-  const labels = labelsByPackage(packages, style);
-  // `flattenNodes` drops the package level for a single package, so the offset
-  // has to come from the walk it actually performed rather than from the input.
-  const hasPackages = nodes.some((node) => node.kind === 'package');
-  const offset = hasPackages ? 0 : 1;
+  const nodes = flattenNodes(view);
+  // Over the selected package's solutions alone, which is what the label
+  // styles have always meant: the prefix `trimmed` drops is the one *this*
+  // package's solutions share, so a sibling keeping its solutions somewhere
+  // unusual cannot cost this one its trimming. It no longer even can -- the
+  // sibling does not reach this function any more.
+  const labels = solutionLabels(
+    view.run?.solutions.map((solution) => solution.solution.path) ?? [],
+    style,
+  );
   // The most recent row at each level, so a child can name its parent without
   // the walk having to carry a stack.
   const parents = new Map<number, string>();
 
   const rows: Row[] = [];
   for (const node of nodes) {
-    const depth = DEPTHS[node.kind] - offset;
+    const depth = DEPTHS[node.kind];
     const parentId = parents.get(depth - 1);
     const row = ((): Row => {
       switch (node.kind) {
-        case 'package':
-          return packageRow(node, depth, parentId);
         case 'solution': {
           const path = node.run.solution.path;
-          return solutionRow(node, depth, labels.get(node.pkg.root)?.get(path) ?? path, parentId);
+          return solutionRow(node, depth, labels.get(path) ?? path, parentId);
         }
         case 'group':
           return groupRow(node, depth, parentId);
