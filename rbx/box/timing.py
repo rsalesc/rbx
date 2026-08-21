@@ -227,10 +227,16 @@ def _check_bounds(
     bounds: TimingBounds,
     multipliers: schema.TimingMultipliers,
     measured: timing_groups.GroupMeasurements,
+    force: bool = False,
 ) -> int:
     """Return the quantized limit if the group's slow solutions allow it, else
-    raise naming the binding solution on each side and the knob to turn."""
-    if bounds.fits:
+    raise naming the binding solution on each side and the knob to turn.
+
+    ``force`` keeps the limit anyway, for a setter who has seen the violation and
+    decided to accept it. The violation is not swallowed: the bounds it breaks
+    stay on the group report, so the profile records what was overridden.
+    """
+    if bounds.fits or force:
         return bounds.time_limit
     assert bounds.upper is not None
 
@@ -274,20 +280,25 @@ def _check_bounds(
 
 def make_multipliers_eval(
     multipliers: schema.TimingMultipliers,
+    force: bool = False,
 ) -> timing_groups.EvalFn:
     """Estimator that bounds the limit from below by the group's accepted
     solutions, quantizes it to ``timeResolution``, and checks it against the
-    upper bound its slow solutions impose."""
+    upper bound its slow solutions impose. ``force`` keeps a limit that fails
+    that check."""
 
     def _eval(measured: timing_groups.GroupMeasurements) -> timing_groups.EvalResult:
         bounds = compute_bounds(multipliers, measured)
-        return _as_eval_result(bounds, _check_bounds(bounds, multipliers, measured))
+        return _as_eval_result(
+            bounds, _check_bounds(bounds, multipliers, measured, force=force)
+        )
 
     return _eval
 
 
 def make_multipliers_derive(
     multipliers: schema.TimingMultipliers,
+    force: bool = False,
 ) -> timing_groups.DeriveFn:
     """Post-processor for a limit that did NOT come from the group's own accepted
     solutions: it is quantized to ``timeResolution`` and still checked against
@@ -297,7 +308,9 @@ def make_multipliers_derive(
         tl: int, measured: timing_groups.GroupMeasurements
     ) -> timing_groups.EvalResult:
         bounds = compute_bounds(multipliers, measured, derived_from=tl)
-        return _as_eval_result(bounds, _check_bounds(bounds, multipliers, measured))
+        return _as_eval_result(
+            bounds, _check_bounds(bounds, multipliers, measured, force=force)
+        )
 
     return _derive
 
@@ -367,12 +380,13 @@ def build_timing_profile(
     confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
+    force: bool = False,
 ) -> TimingProfile:
     multipliers = strategy.multipliers
     if multipliers is not None:
-        eval_fn = make_multipliers_eval(multipliers)
+        eval_fn = make_multipliers_eval(multipliers, force=force)
         derive_fn: Optional[timing_groups.DeriveFn] = make_multipliers_derive(
-            multipliers
+            multipliers, force=force
         )
     else:
         eval_fn = make_formula_eval(strategy.formula_or_die())
