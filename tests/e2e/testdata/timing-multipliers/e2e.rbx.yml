@@ -7,36 +7,45 @@ scenarios:
     description: >
       `rbx time --auto` with an accepted solution and a solution expected to be
       too slow that are comfortably apart. The estimate resolves, the written
-      limit is a multiple of the time resolution (100ms), and the profile
-      records the solution that bounds it on each side.
+      limit is a multiple of the time resolution (100ms), the accepted solution
+      is recorded as bounding it from below, and the slow one is confirmed too
+      slow for it.
     steps:
       - cmd: time --auto
         cwd: range-ok
         expect:
+          stdout_contains:
+            - 'is too slow for the estimated time limit, as expected'
           files_exist:
             - 'range-ok/.limits/local.yml'
           file_contains:
-            # A multiple of 100ms, with both bounds and their solutions recorded.
-            range-ok/.limits/local.yml: '/(?ms)^timeLimit: [0-9]*00$.*solution: sols/main\.cpp$.*solution: sols/slow\.cpp$/'
+            # A multiple of 100ms, bounded from below by the accepted solution.
+            # The slow one is confirmed rather than measured, so it bounds
+            # nothing and no upper bound is recorded.
+            range-ok/.limits/local.yml: '/(?ms)\A(?!.*upperBound).*^timeLimit: [0-9]*00$.*solution: sols/main\.cpp$.*confirmed:\s*\n\s*- sols/slow\.cpp/'
 
   - name: empty-range
     description: >
       Same setup, but the solution declared too slow returns immediately, so it
-      caps the limit below what the accepted solution requires. No limit is
-      valid: the estimate is refused and nothing is written to the profile.
+      finishes well within the limit the estimate demands of it. `--auto` has no
+      language-group picker to go back to, so the violation is reported and
+      recorded rather than re-decided, and the limit is written anyway.
     steps:
       - cmd: time --auto
         cwd: empty-range
-        # The estimation is refused: `rbx time` reports the range, leaves the
-        # profile untouched, and fails -- a limit was asked for and none was
-        # produced, which a pipeline running `rbx time` has to see.
-        expect_exit: 1
         expect:
           stdout_contains:
-            - 'no valid time limit exists'
+            # The offending solution is named, with what it took and what the
+            # limit requires of it.
             - 'sols/not_slow.cpp'
-          files_absent:
+            - 'does not respect its upper bound'
+            - 'upperValidation'
+          files_exist:
             - 'empty-range/.limits/local.yml'
+          file_contains:
+            # The measurement that broke the bound is what makes the violation
+            # reportable, so it is recorded against the solution that took it.
+            empty-range/.limits/local.yml: '/(?ms)violating:\s*\n\s*- value: [0-9]+\s*\n\s*solution: sols/not_slow\.cpp/'
 
   - name: inference-off
     description: >

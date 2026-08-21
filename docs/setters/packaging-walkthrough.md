@@ -68,10 +68,11 @@ When prompted, you'll see four strategies:
 | **Custom time limit**            | You already know the exact time limit you want.                             |
 
 By default, {{rbx}} estimates from ratios: the limit is at least `acToTimeLimit`
-times the slowest accepted solution, small enough that `timeLimitToTle` times the
-limit still fits within the fastest solution expected to be too slow, and rounded
-up to a multiple of `timeResolution`. If no limit satisfies them, the estimation
-fails and says which solution binds each side. You can tune the ratios (or switch
+times the slowest accepted solution, and rounded up to a multiple of
+`timeResolution`. Once it is decided, each solution expected to be too slow is run
+at `timeLimitToTle` times that limit to confirm it really is too slow. If one of
+them finishes, {{rbx}} says so and lets you regroup the languages, keep the limit
+anyway, or start over. You can tune the ratios (or switch
 to a formula) in `env.rbx.yml` -- see the
 [Profiling](/setters/profiling#time-limit-ratios) docs for details.
 

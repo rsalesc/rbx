@@ -335,6 +335,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Skip checking the estimated limit against the solutions '
+                    'expected to be too slow. The limit is written with its upper '
+                    'bound unchecked.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--skip-slow'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

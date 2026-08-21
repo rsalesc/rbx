@@ -403,7 +403,7 @@ def test_strategy_is_described_as_a_formula_or_as_ratios():
     # Every number in effect is spelled out as the relation it imposes, with the
     # YAML key it comes from in parentheses.
     assert '2.0x the slowest accepted solution (acToTimeLimit)' in described
-    assert '1/1.5 of the fastest solution expected to be too slow' in described
+    assert '1.5x the limit, checked afterwards (timeLimitToTle)' in described
     assert 'capped at 8000 ms (inferenceTimeout)' in described
     assert 'multiple of 100 ms (timeResolution)' in described
 

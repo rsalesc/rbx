@@ -192,7 +192,7 @@ the file at load time.
 
 ### The estimation cap
 
-`timing.inferenceTimeout` caps how long any solution may run while the limit is being
+`timing.inferenceTimeout` caps how long an accepted solution may run while the limit is being
 estimated, whichever strategy estimates it:
 
 ```yaml
@@ -200,9 +200,11 @@ timing:
   inferenceTimeout: 10000   # ms; defaults to 10s
 ```
 
-A solution expected to be too slow that hits the cap is dropped from the upper bound, with a
-warning; an accepted one that hits it is an error, since its measurement is truncated and
+An accepted solution that hits the cap is an error, since its measurement is truncated and
 bounds nothing. Raise it for an environment whose solutions are legitimately slow.
+
+It does not apply to the solutions expected to be too slow: those are never measured, only
+checked against the estimated limit.
 
 !!! note "The old spelling"
 
@@ -223,12 +225,14 @@ timing:
 ```
 
 - `acToTimeLimit`: the limit is at least this multiple of the slowest accepted solution.
-- `timeLimitToTle`: the limit times this must still fit within the fastest solution expected
-  to be too slow. When it is unset, those solutions are not run at all.
+- `timeLimitToTle`: every solution expected to be too slow must take at least the limit times
+  this. It is checked after the limit is estimated, by running each of those solutions at that
+  bound. When it is unset, they are not run at all.
 - `timeResolution`: the limit is rounded up to a multiple of this.
 
-If no limit satisfies the ratios, the estimation fails naming the solution that binds each
-side, and nothing is written to the limits profile. A problem may override any subset of the
+If no limit satisfies the ratios, the estimation reports the solution that binds each side and
+re-opens the language-group picker, so the ratios can be satisfied by regrouping — or the limit
+kept anyway. A problem may override any subset of the
 ratios under `timing.multipliers` in its `problem.rbx.yml`, and a solution may opt into (or
 out of) either side with its `inference` field — see the
 [Profiling](/setters/profiling#time-limit-ratios) guide.

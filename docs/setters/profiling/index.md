@@ -40,13 +40,14 @@ solutions and applying the estimation strategy configured in the environment: ei
 
 1. **Displays current profile** -- If a profile already exists for the given name, its current limits are shown.
 2. **Strategy selection** -- You are prompted to choose how to define the time limit (unless `--auto` or `--strategy` is used).
-3. **Solution execution** -- For estimating strategies, the solutions the limit is inferred from are run against all testcases, so that their true execution times can be measured. Every one of them is capped at [`inferenceTimeout`](#the-estimation-cap); solutions expected to be too slow only run at all when the ratios bound the limit from above.
+3. **Solution execution** -- For estimating strategies, the accepted solutions are run against all testcases, so that their true execution times can be measured. Every one of them is capped at [`inferenceTimeout`](#the-estimation-cap). The solutions expected to be too slow are *not* run here; see [Checking the upper bound](#checking-the-upper-bound).
 4. **Time report** -- The fastest and slowest solution times are shown, along with per-language breakdowns if solutions in multiple languages exist.
 5. **Estimation** -- The ratios (or the formula) are applied to compute the estimated time limit.
 6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a sensible limit instead of falling back to the base. See [Language groups](#language-groups).
-7. **Profile persistence** -- The result is written to `.limits/<profile>.yml`, together with the chosen grouping as metadata.
+7. **Upper-bound check** -- Each solution expected to be too slow is run at the limit the estimate demands of it, to confirm it really is too slow. See [Checking the upper bound](#checking-the-upper-bound).
+8. **Profile persistence** -- The result is written to `.limits/<profile>.yml`, together with the chosen grouping and what the check found.
 
-All seven steps in one run, taking the recommended **Estimate** strategy and the default
+All the steps in one run, taking the recommended **Estimate** strategy and the default
 grouping — note the preview table updating as the languages are bucketed, and the strategy
 printed just above the limits that get written:
 
@@ -140,23 +141,22 @@ timing:
 ## The estimation cap
 
 While the limit is being estimated there is no limit to enforce yet, so a solution left to run
-freely could run forever. `timing.inferenceTimeout` is the cap every solution runs under during
-`rbx time`, in milliseconds, whichever strategy estimates the limit -- ratios or formula:
+freely could run forever. `timing.inferenceTimeout` is the cap the accepted solutions run under
+during `rbx time`, in milliseconds, whichever strategy estimates the limit -- ratios or formula:
 
 ```yaml
 timing:
   inferenceTimeout: 10000   # ms; defaults to 10s
 ```
 
-- A solution expected to be **too slow** that hits the cap is dropped from the upper bound,
-  with a warning: it did not finish, so how long it would have taken is unknown. If the limit
-  then resolves above what the cap alone allows (`inferenceTimeout / timeLimitToTle`), `rbx`
-  says so -- the cap, not the solutions, bounded the estimate.
-- An **accepted** solution that hits it is an error: its measured time is truncated, so it
-  cannot bound the limit from below. Raise the cap, or speed the solution up.
+An accepted solution that hits the cap is an error: its measured time is truncated, so it
+cannot bound the limit from below. Raise the cap, or speed the solution up. Either way the
+solution stops there -- its remaining testcases are skipped, since they would measure nothing
+usable.
 
-Either way, the solution stops there: its remaining testcases are skipped, since they would
-measure nothing usable.
+The cap does not apply to the solutions expected to be too slow. They are not measured at all;
+they are checked against the estimated limit instead, at a limit derived from it. Raising
+`inferenceTimeout` therefore does nothing for them.
 
 A single problem can raise it in its `problem.rbx.yml`:
 
@@ -191,6 +191,43 @@ solutions:
 
 `inference: lower` on a solution expected to be too slow is rejected: a solution meant to
 time out cannot bound the limit from below.
+
+## Checking the upper bound
+
+A solution expected to be too slow does not need to be measured. It needs to answer one
+question: does it take at least `timeLimitToTle` times the estimated limit? Running it at
+exactly that bound answers it, without waiting to find out how slow it really is.
+
+So once the limit is decided, `rbx time` runs each of those solutions at
+`timeLimitToTle × <the limit for its language>`, and reads the verdict:
+
+- It **runs out of time** -- confirmed. It respects the upper bound, and its remaining
+  testcases are skipped: one timeout settles the question.
+- It **finishes** -- the upper bound is violated, and now there is a real time to report it
+  with. `rbx` names the solution, what it took, and what the limit demands of it.
+- It **fails some other way** (a crash, a wrong answer) -- evidence of nothing either way, and
+  an error. Fix it, or set `inference: false` to leave it out.
+
+A violation is not the end of the run. The language-group picker re-opens, this time knowing
+what the check found, so its preview shows which groupings cannot work. From there you can
+regroup to satisfy the bound, press ++f++ to keep the limits anyway, or cancel. Nothing is
+written until you settle on one of the three.
+
+Where there is no picker to re-open -- `--auto`, or a problem with a single language -- the
+violation is reported, recorded in the profile under `upperValidation`, and the limit is
+written anyway.
+
+Re-checking after a regroup is cheap: a solution that already ran out of time at some limit
+also runs out of time at any lower one, and a solution that finished is answered by arithmetic.
+Only the solutions whose bound went up are run again.
+
+Pass `--skip-slow` to stop after the estimate, leaving the upper bound unchecked:
+
+```console
+$ rbx time --skip-slow
+```
+
+Without `timeLimitToTle` there is no upper bound to check, so this phase does not run at all.
 
 ## Time limit formulas
 

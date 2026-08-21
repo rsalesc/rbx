@@ -599,7 +599,7 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
     instead of merely omitted.
     """
     cap_line = (
-        f'  every solution runs capped at {strategy.inferenceTimeout} ms '
+        f'  the accepted solutions run capped at {strategy.inferenceTimeout} ms '
         f'(inferenceTimeout)'
     )
     if not strategy.uses_multipliers:
@@ -612,8 +612,9 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
     ]
     if multipliers.timeLimitToTle is not None:
         lines.append(
-            f'  and at most 1/{multipliers.timeLimitToTle} of the fastest solution '
-            f'expected to be too slow (timeLimitToTle)'
+            f'  and every solution expected to be too slow must take at least '
+            f'{multipliers.timeLimitToTle}x the limit, checked afterwards '
+            f'(timeLimitToTle)'
         )
     else:
         lines.append(
@@ -1410,7 +1411,11 @@ async def _estimate_and_validate(
         )
         _report_validation_outcome(outcome, profile)
         if outcome.ok:
-            return profile
+            # Rebuilt so the profile records what the check found rather than
+            # what was known before it ran. The limits cannot move: a confirmed
+            # solution contributes no measurement, and a measured one that
+            # respects the bound only widens the range the limit already fits.
+            return ctx.build(picked, knowledge=knowledge, announce=False)
 
         violated = True
         if auto or not ctx.can_prompt:
