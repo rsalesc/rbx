@@ -711,33 +711,104 @@ async def _compile_checking_digests(check: bool) -> Tuple[Optional[str], Optiona
     return checker_digest, interactor_digest
 
 
-async def _produce_solution_items(
+def _gated_evaluation(
+    inner: Deferred[Evaluation],
+    gate: _AbortGate,
+    abort_on: AbortPredicate,
+    solution: Solution,
+    entry: GenerationTestcaseEntry,
+    group: GroupSkeleton,
+    output_dir: pathlib.Path,
+) -> Deferred[Evaluation]:
+    """Wrap one backend evaluation in the abort gate.
+
+    Deliberately here and not in the backend: skipping is a decision about the
+    *run*, not about where a testcase executes, and a copy of it in every runner
+    is a copy that can drift. `Deferred` is lazy, so a gate that has already
+    tripped means `inner` is never awaited and the testcase never dispatches --
+    the saving is real, not just cosmetic.
+    """
+    group_name = group.name
+
+    async def run_fn() -> Evaluation:
+        if gate.is_skipped(group_name):
+            # The backend never ran, so nothing has created this directory --
+            # the skipped `.eval` still has to land somewhere.
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return _record_skipped_evaluation(
+                entry.metadata.copied_to, entry.group_entry.index, output_dir
+            )
+        evaluation = await inner()
+        context = AbortContext(
+            solution=solution,
+            group=group,
+            entry=entry.group_entry,
+            expected_outcome=solution.outcome,
+            group_expected_outcome=solution.expected_outcome_for_group(group_name),
+            evaluation=evaluation,
+        )
+        if abort_on(context):
+            gate.trip(group_name)
+        return evaluation
+
+    return Deferred(run_fn)
+
+
+def _produce_solution_items(
     runner: 'SolutionRunner',
     ctx: 'RunContext',
 ) -> List[EvaluationItem]:
     skeleton = ctx.skeleton
+    groups_by_name = {group.name: group for group in skeleton.groups}
     res: List[EvaluationItem] = []
 
-    # Just ensure the iteration is (solution, group) order.
     for solution in skeleton.solutions:
-        # One gate per solution: `run_solution` is called once per group, so a
-        # gate built inside it would forget every group boundary.
+        # One gate per solution: a solution that dooms its own run must not
+        # decide anything about the solutions that follow it.
         gate = (
             _AbortGate(skeleton.groups, package.get_scoring())
             if ctx.abort_on is not None
             else None
         )
-        for group in skeleton.groups:
-            entries = skeleton.get_entries_for_group(group.name)
-            res.extend(
+        # The whole testset in one call, flattened in `skeleton.groups` order --
+        # which is the (solution, group) order the report renders. A backend that
+        # submits to a remote judge gets one submission per solution this way,
+        # instead of one per group.
+        entries = [
+            entry
+            for group in skeleton.groups
+            for entry in skeleton.get_entries_for_group(group.name)
+        ]
+        evals = runner.run_solution(solution, entries, ctx)
+        # The protocol says one deferred per entry, in entry order. Zipping a
+        # short list would silently drop that solution's last testcases.
+        assert len(evals) == len(entries), (
+            f'runner {runner.name} returned {len(evals)} evaluations '
+            f'for {len(entries)} testcases'
+        )
+
+        for entry, eval in zip(entries, evals):
+            if gate is not None:
+                assert ctx.abort_on is not None
+                # Every entry belongs to a group of the skeleton. Assert rather
+                # than skip: a refactor that broke this would silently turn the
+                # abort off instead of failing.
+                group = groups_by_name.get(entry.group_entry.group)
+                assert group is not None
+                eval = _gated_evaluation(
+                    eval,
+                    gate,
+                    ctx.abort_on,
+                    solution,
+                    entry,
+                    group,
+                    solution.runs_dir / group.name,
+                )
+            res.append(
                 EvaluationItem(
                     solution=solution,
                     testcase_entry=entry.group_entry,
                     eval=eval,
-                )
-                for entry, eval in zip(
-                    entries,
-                    runner.run_solution(solution, entries, skeleton.groups, ctx, gate),
                 )
             )
 
@@ -755,9 +826,10 @@ async def run_solutions(
     abort_on: Optional[AbortPredicate] = None,
     runner: Optional['SolutionRunner'] = None,
 ) -> RunSolutionResult:
-    # Imported here, not at module scope: `runners.local` reads the shared
-    # abort/skip machinery off this module, so importing it eagerly would close
-    # the cycle.
+    # Imported here, not at module scope: `runners.local` imports this module
+    # back -- for `run_solution_on_testcase` and for `SolutionSkeleton` -- so an
+    # eager import would close the cycle. Untangling that means lifting the
+    # skeleton types out of this 2185-line module, which is its own change.
     from rbx.box.runners.base import RunContext
     from rbx.box.runners.local import LocalRunner
 
@@ -781,19 +853,12 @@ async def run_solutions(
         verification=verification,
         timelimit_override=timelimit_override,
         nruns=nruns,
-        capture_pipes=skeleton.capture_pipes,
         progress=progress,
         abort_on=abort_on,
     )
 
     await runner.prepare(ctx)
-    try:
-        items = await _produce_solution_items(runner=runner, ctx=ctx)
-    finally:
-        # `finally`, so a backend that acquired something in `prepare` -- a
-        # remote session, a temporary directory -- still gets to release it when
-        # producing the items blows up part-way through.
-        await runner.finalize()
+    items = _produce_solution_items(runner=runner, ctx=ctx)
 
     return RunSolutionResult(skeleton=skeleton, items=items)
 

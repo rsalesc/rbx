@@ -7,6 +7,10 @@ a judge reached over its own CLI is another.
 The seam is per **solution**, not per testcase, because that is the grain a remote
 judge works at: one submission is judged against every test at once. A per-testcase
 seam would force every batch backend to secretly coalesce calls back into a batch.
+
+Skipping and aborting are deliberately *not* a backend's business. `run_solutions`
+wraps every deferred a backend hands back with the gate logic, so a backend never
+reimplements it and every backend gets it identically.
 """
 
 import dataclasses
@@ -19,12 +23,10 @@ from rbx.utils import StatusProgress
 
 if TYPE_CHECKING:
     from rbx.box.generation_schema import GenerationTestcaseEntry
-    from rbx.box.schema import Solution
     from rbx.box.solutions import (
         AbortPredicate,
-        GroupSkeleton,
         SolutionReportSkeleton,
-        _AbortGate,
+        SolutionSkeleton,
     )
 
 
@@ -41,12 +43,16 @@ class RunnerCapabilities:
     # Writes .out / .err / .log beside the .eval.
     captures_artifacts: bool = True
     # Fills CheckerResult.message with the checker's own words.
-    checker_messages: bool = True
+    reports_checker_messages: bool = True
     # Can run a testcase several times and keep the best measurement.
     supports_nruns: bool = True
-    # Can stop a solution part-way through, so `abort_on` means something.
+    # Can still save the work of a skipped testcase. A backend that has already
+    # handed the whole submission to a judge cannot -- `abort_on` will still
+    # report the skip, but nothing is spared by it.
     supports_abort: bool = True
+    # Can drive an interactor against the solution, for COMMUNICATION problems.
     supports_interactive: bool = True
+    # Can build and run the solution under a sanitizer.
     supports_sanitizers: bool = True
 
 
@@ -60,7 +66,6 @@ class RunContext:
     verification: VerificationLevel
     timelimit_override: Optional[int]
     nruns: int
-    capture_pipes: bool
     progress: Optional[StatusProgress]
     abort_on: Optional['AbortPredicate']
 
@@ -75,15 +80,12 @@ class SolutionRunner(Protocol):
 
     def run_solution(
         self,
-        solution: 'Solution',
+        solution: 'SolutionSkeleton',
         entries: List['GenerationTestcaseEntry'],
-        groups: List['GroupSkeleton'],
         ctx: RunContext,
-        gate: Optional['_AbortGate'],
     ) -> List[Deferred[Evaluation]]:
-        """One deferred per entry, in entry order. Must not block."""
-        ...
+        """One deferred per entry, in entry order. Must not block.
 
-    async def finalize(self) -> None:
-        """Release whatever `prepare` acquired. Always called."""
+        `entries` is the solution's whole testset, flattened in group order.
+        """
         ...
