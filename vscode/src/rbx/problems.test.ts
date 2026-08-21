@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
+import * as path from 'path';
 
+import { parseContest, problemIdentities } from './contest';
 import { problemChoices } from './problems';
 
 const identity = (shortName: string, order: number, color?: string, contestRoot = '/c') => ({
@@ -163,4 +165,47 @@ test('heads contests by the name the heading shows, not by their full path', () 
     choices.map((c) => c.group),
     ['alpha', 'beta'],
   );
+});
+
+test('offers nothing when nothing was discovered', () => {
+  // What makes a workspace with no packages hide the dropdown and select
+  // nothing at all, rather than show an empty control over an empty view.
+  assert.deepStrictEqual(
+    problemChoices([], new Map(), () => 'unused'),
+    [],
+  );
+});
+
+test('leaves a lone contest problem ungrouped', () => {
+  // A one-problem workspace has to read exactly as it did before the selector:
+  // one option, and no `<optgroup>` heading over it.
+  const choices = problemChoices(['/c/A'], new Map([['/c/A', identity('A', 0)]]), () => '');
+  assert.deepStrictEqual(choices, [
+    { root: '/c/A', label: 'A', color: undefined, group: undefined },
+  ]);
+});
+
+test('names two same-basename packages apart, if the host does', () => {
+  // The contract the fallback labeller carries: two packages can share a
+  // basename, and telling them apart needs the workspace folders only the host
+  // can see. This module asks for a label and prints whatever it is handed.
+  const choices = problemChoices(['/one/prob', '/two/prob'], new Map(), (root) => root.slice(1));
+  assert.deepStrictEqual(
+    choices.map((c) => c.label),
+    ['one/prob', 'two/prob'],
+  );
+});
+
+test('a contest that names nothing usable costs its packages their letters only', () => {
+  // The promise in contest.ts's header: a malformed contest file must cost the
+  // packages their letters, never the view. Every package falls through to the
+  // loose branch and keeps its directory name.
+  for (const raw of [{ problems: [] }, { problems: [{ path: 'A' }, 'nonsense', 42] }]) {
+    const identities = problemIdentities('/c', parseContest(raw));
+    const choices = problemChoices(['/c/A', '/c/B'], identities, (root) => path.basename(root));
+    assert.deepStrictEqual(choices, [
+      { root: '/c/A', label: 'A', color: undefined, group: undefined },
+      { root: '/c/B', label: 'B', color: undefined, group: undefined },
+    ]);
+  }
 });
