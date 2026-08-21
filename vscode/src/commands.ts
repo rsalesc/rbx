@@ -82,7 +82,12 @@ export function registerCommands(
     );
   };
 
-  register('rbx.refresh', () => data.refresh());
+  // The manual escape hatch, so it has to cover everything a watcher can miss
+  // -- the runs *and* the problem list. Rebuilding only the runs would re-post
+  // the stale choices, leaving the button unable to fix the one thing a user
+  // reaches for it to fix. `data` first: `active.refresh()` reads the roots it
+  // rediscovers.
+  register('rbx.refresh', () => data.refresh().then(() => active.refresh()));
 
   register('rbx.openSolution', async (node) => {
     if (node?.kind !== 'solution') {

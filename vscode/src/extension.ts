@@ -15,6 +15,7 @@ import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
 import { registerDecorations } from './decorations';
 import { initLog, log } from './log';
+import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
@@ -157,6 +158,36 @@ export function activate(context: vscode.ExtensionContext): void {
     manifests,
     vscode.workspace.onDidChangeWorkspaceFolders(rediscover),
   );
+
+  // The dropdown's letters, order and colours come from `contest.rbx.yml`, and
+  // nothing above watches it: renaming `A` to `B`, adding a colour, reordering
+  // the list or adding an entry would otherwise reach the view only on a window
+  // reload.
+  //
+  // All three events, unlike the manifest watcher just above -- and for the
+  // mirror-image reason. There, an *edit* changes no root and so does not
+  // concern the selector; here the identities live *inside* the file, so an
+  // edit is the common case, while a create or delete just means a package
+  // gained or lost its contest.
+  //
+  // `active.refresh()` alone, not `rediscover`: a contest file names problems,
+  // it does not create packages. The set of package roots is exactly what it
+  // was, so re-globbing the workspace and re-reading every manifest would buy
+  // nothing but the hitch.
+  const contests = vscode.workspace.createFileSystemWatcher(`**/${CONTEST_FILE_GLOB}`);
+  const recontest = (uri: vscode.Uri) => {
+    // The glob is deliberately loose (see `CONTEST_FILE_GLOB`), so the basename
+    // is checked against the names rbx would actually load.
+    const name = path.basename(uri.fsPath);
+    if (name === CONTEST_MANIFEST || isContestVariantFile(name)) {
+      log(`${uri.fsPath} changed; rebuilding the problem list.`);
+      void active.refresh();
+    }
+  };
+  contests.onDidCreate(recontest);
+  contests.onDidChange(recontest);
+  contests.onDidDelete(recontest);
+  context.subscriptions.push(contests);
 
   rediscover();
 }
