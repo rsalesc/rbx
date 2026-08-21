@@ -119,6 +119,18 @@ throwaway package a timing run measures on -- model solution only, one uniform
 `STOPWHEN_*`. Pair timings back onto testcases with `MojPackager.testcase_names()`,
 never by position and never by re-deriving the names.
 
+`MojRunner` (`runners/moj/runner.py`) is that client's `SolutionRunner`. `prepare()`
+is the whole of it today: read the login, refuse any `.moj-id` binding that is not an
+`rbxt-` one (uploading over a real problem destroys it), resolve the **one** cap the
+probe pins (`ctx.timelimit_override` when positive -- it is `-1`, not `None`, when
+there is none -- else `timing.multipliers.inferenceTimeout`, else refuse), build the
+probe, upload the *directory*, calibrate, and poll `moj check` under a bound. It skips
+all of that when the judge reports ready **and** the package it just built fingerprints
+equal to the one this machine last uploaded and saw calibrated; the fingerprint is a
+local record in the problem cache, so it cannot see an upload from another machine.
+`run_solution` raises `NotImplementedError`: it is task 6, and MOJ's verdict-`code`
+vocabulary has to be observed on a live probe before anything may map it to `Outcome`.
+
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 ### Deferred Execution (`deferred.py`)
