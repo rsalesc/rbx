@@ -12,6 +12,36 @@ const identity = (shortName: string, order: number, color?: string, contestRoot 
   contestRoot,
 });
 
+test('pairs the contest letter with the name the package declares', () => {
+  const names = new Map([['/c/z', 'sum-of-pairs']]);
+  const choices = problemChoices(
+    ['/c/z'],
+    new Map([['/c/z', identity('A', 0)]]),
+    () => 'fallback',
+    (root) => names.get(root),
+  );
+  assert.strictEqual(choices[0].label, 'A · sum-of-pairs');
+});
+
+test('a package that declares no name keeps the bare letter', () => {
+  // No dangling separator: rbx does not require `name:`, and a manifest is
+  // usually half-typed when the extension reads it.
+  const choices = problemChoices(
+    ['/c/z'],
+    new Map([['/c/z', identity('A', 0)]]),
+    () => 'fallback',
+    () => undefined,
+  );
+  assert.strictEqual(choices[0].label, 'A');
+});
+
+test('a package no contest claims is named by the host alone', () => {
+  // The name would be redundant here: the fallback label is already the
+  // package's own path, and there is no letter for it to disambiguate.
+  const choices = problemChoices(['/loose'], new Map(), () => 'loose-label', () => 'declared');
+  assert.strictEqual(choices[0].label, 'loose-label');
+});
+
 test('orders contest problems by their declared order, not by path', () => {
   // `/c/z` is `A` and sorts first despite sorting last lexicographically --
   // which is the whole point of reading the contest file.

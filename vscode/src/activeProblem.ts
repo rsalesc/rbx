@@ -10,11 +10,33 @@ import * as vscode from 'vscode';
 import { indexContests } from './contestIndex';
 import { packageLabel } from './discovery';
 import { log } from './log';
-import { packageLayout } from './rbx/layout';
+import { manifestPath, packageLayout } from './rbx/layout';
+import { parseProblemName } from './rbx/manifest';
 import { ProblemChoice, problemChoices } from './rbx/problems';
+import { readYamlFile } from './rbx/store';
 import { RunDataProvider } from './runData';
 
 const SELECTED_KEY = 'rbx.selectedProblem';
+
+/**
+ * What each package calls itself, for the letter in the dropdown to sit beside.
+ *
+ * A second read of the manifests `DeclaredIndex` also reads, rather than a
+ * dependency between the two: they refresh on the same events but answer
+ * different questions, and one small YAML per package -- of which a contest has
+ * a dozen -- is cheaper than the coupling. A package that cannot be read simply
+ * has no name, and its row keeps the bare letter.
+ */
+async function declaredNames(roots: readonly string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  for (const root of roots) {
+    const name = parseProblemName(await readYamlFile(manifestPath(packageLayout(root))));
+    if (name !== undefined) {
+      names.set(root, name);
+    }
+  }
+  return names;
+}
 
 export class ActiveProblem {
   private readonly changed = new vscode.EventEmitter<void>();
@@ -36,7 +58,13 @@ export class ActiveProblem {
   async refresh(): Promise<void> {
     const roots = (await this.data.discovered()).map((pkg) => pkg.root);
     const identities = await indexContests(roots);
-    this.choices = problemChoices(roots, identities, (root) => packageLabel(packageLayout(root)));
+    const names = await declaredNames(roots);
+    this.choices = problemChoices(
+      roots,
+      identities,
+      (root) => packageLabel(packageLayout(root)),
+      (root) => names.get(root),
+    );
     if (!this.knows(this.selectedRoot)) {
       // The selected package went away -- deleted, renamed, or moved out of the
       // glob. Falling back to the first keeps the view showing *something*.

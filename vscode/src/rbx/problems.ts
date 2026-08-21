@@ -26,6 +26,18 @@ export interface ProblemChoice {
 /** How a package with no contest is named. Supplied by the host. */
 export type FallbackLabel = (root: string) => string;
 
+/**
+ * What a package calls itself, when it says so. Supplied by the host.
+ *
+ * Injected rather than read here for the same reason as `FallbackLabel`:
+ * reaching the manifest means touching the disk, and this module's value is
+ * being decidable without it.
+ */
+export type ProblemName = (root: string) => string | undefined;
+
+/** Separates the contest letter from the problem's own name. */
+const NAME_SEPARATOR = ' · ';
+
 /** A package a contest named: it always has a contest to group under. */
 interface ContestedEntry {
   readonly root: string;
@@ -70,6 +82,7 @@ export function problemChoices(
   roots: readonly string[],
   identities: ReadonlyMap<string, ProblemIdentity>,
   fallback: FallbackLabel,
+  name: ProblemName = () => undefined,
 ): ProblemChoice[] {
   const contested: ContestedEntry[] = [];
   const loose: LooseEntry[] = [];
@@ -78,9 +91,16 @@ export function problemChoices(
     if (identity === undefined) {
       loose.push({ root, label: fallback(root) });
     } else {
+      // The letter carries the ordering and the contest's own vocabulary; the
+      // name says which problem it actually is. A package that declares no
+      // name keeps the bare letter rather than growing an empty separator.
+      const declared = name(root);
       contested.push({
         root,
-        label: identity.shortName,
+        label:
+          declared === undefined
+            ? identity.shortName
+            : `${identity.shortName}${NAME_SEPARATOR}${declared}`,
         color: identity.color,
         // The contest that named the problem, not the problem's parent: a
         // contest may nest its problems, and the intermediate directory is
