@@ -165,17 +165,20 @@ def pkg(testing_pkg: testing_package.TestingPackage):
     return testing_pkg
 
 
-async def test_formula_mode_runs_only_lower_solutions_uncapped(pkg):
+async def test_formula_mode_runs_only_lower_solutions_under_the_cap(pkg):
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
     run, result = await _compute(
         pkg,
-        timing_config=TimingConfig(formula='slowest * 2'),
+        timing_config=TimingConfig(formula='slowest * 2', inferenceTimeout=7000),
         lower=[ac],
         upper=[tle],
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
+    # A formula estimate has no upper bound to run the slow solutions for, but
+    # the cap is a property of the estimation, not of the ratios: it still
+    # bounds how long the accepted solutions may run.
+    assert run.timelimit_override == 7000
     assert result is not None
 
 
@@ -191,7 +194,7 @@ async def test_multipliers_without_tle_ratio_runs_only_lower_solutions(pkg):
         upper=[tle],
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
+    assert run.timelimit_override == 7000
     # Nothing about the run differs from the formula path: every solution that
     # ran still gates the report, and nothing was dropped.
     assert run.print_run_report.call_args.kwargs['gating_solutions'] == set(run.tracked)
@@ -221,11 +224,10 @@ async def test_multipliers_with_tle_ratio_runs_both_capped(pkg):
     assert run.timelimit_override == 7000
 
 
-async def test_multipliers_with_tle_ratio_but_no_slow_solutions_stay_uncapped(pkg):
+async def test_multipliers_with_tle_ratio_but_no_slow_solutions_still_cap(pkg):
     # The path most existing packages take once the default preset ships
-    # timeLimitToTle: nothing bounds the limit from above, so the cap would buy
-    # nothing and only add a way for a legitimately slow accepted solution to
-    # fail the estimate.
+    # timeLimitToTle: nothing bounds the limit from above, so there is nothing
+    # to drop -- but the accepted solutions still run under the cap.
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     run, result = await _compute(
         pkg,
@@ -238,8 +240,8 @@ async def test_multipliers_with_tle_ratio_but_no_slow_solutions_stay_uncapped(pk
         upper=[],
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
-    # And with no cap there is nothing to diagnose.
+    assert run.timelimit_override == 7000
+    # With no slow solution there is nothing to drop from the upper bound.
     assert result is not None
     assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
 
@@ -250,14 +252,17 @@ async def test_custom_formula_forces_formula_mode_over_multipliers(pkg):
     run, _ = await _compute(
         pkg,
         timing_config=TimingConfig(
-            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
+            inferenceTimeout=6000,
+            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
         ),
         lower=[ac],
         upper=[tle],
         formula='slowest * 3',
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
+    # The custom formula overrides how the limit is derived, not the cap the
+    # solutions are measured under -- that still comes from the configuration.
+    assert run.timelimit_override == 6000
     assert run.estimate.call_args.args[2].formula == 'slowest * 3'
 
 
@@ -409,6 +414,26 @@ async def test_a_lower_solution_at_the_cap_is_an_error(pkg, capsys):
     assert '✗' in printed
     assert 'ac.cpp' in printed
     assert 'cannot bound the time limit from below' in printed
+
+
+async def test_a_lower_solution_at_the_cap_is_an_error_in_formula_mode_too(pkg, capsys):
+    # Nothing bounds a formula estimate from above, but a truncated measurement
+    # is just as worthless there: the formula reads the measured times.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    run, result = await _compute(
+        pkg,
+        timing_config=TimingConfig(formula='slowest * 2', inferenceTimeout=7000),
+        lower=[ac],
+        upper=[],
+        structured=_structured({ac: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)]}),
+        run_report_ok=False,
+    )
+    assert result is None
+    run.estimate.assert_not_called()
+    printed = _printed(capsys)
+    assert 'ac.cpp' in printed
+    assert 'cannot bound the time limit from below' in printed
+    assert '7000 ms' in printed
 
 
 async def test_a_lower_solution_failing_for_a_non_timing_reason_uses_the_plain_gate(
@@ -783,9 +808,8 @@ async def _time_a_real_package(*, abort: bool, profile: str) -> _RealRun:
     env = environment.get_environment()
     capped = env.timing.model_copy(
         update={
-            'multipliers': TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=500
-            ),
+            'inferenceTimeout': 500,
+            'multipliers': TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
             'formula': None,
         }
     )
