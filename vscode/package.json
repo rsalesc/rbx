@@ -83,8 +83,14 @@
       },
       {
         "command": "rbx.revealInExplorer",
-        "title": "Reveal Package in Explorer",
+        "title": "Reveal Problem in Explorer",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.selectProblem",
+        "title": "Select Problem",
+        "category": "rbx",
+        "icon": "$(list-selection)"
       },
       {
         "command": "rbx.copyPath",
@@ -101,9 +107,14 @@
     "menus": {
       "view/title": [
         {
+          "command": "rbx.selectProblem",
+          "when": "view == rbx.run",
+          "group": "navigation@1"
+        },
+        {
           "command": "rbx.refresh",
           "when": "view == rbx.run",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "webview/context": [
@@ -151,11 +162,6 @@
           "command": "rbx.openCompileLog",
           "when": "webviewSection == 'rbx.finding'",
           "group": "1_open@2"
-        },
-        {
-          "command": "rbx.revealInExplorer",
-          "when": "webviewSection == 'rbx.package'",
-          "group": "3_copy@1"
         }
       ]
     },
@@ -219,11 +225,6 @@
           "default": true,
           "markdownDescription": "Report what the last `rbx run` compiled in the Problems panel: a warning on each line the compiler warned about, and an error on any solution that failed to compile."
         },
-        "rbx.packageSearchDepth": {
-          "type": "number",
-          "default": 3,
-          "markdownDescription": "How deep to search workspace folders for `problem.rbx.yml` files."
-        },
         "rbx.solutionLabel": {
           "type": "string",
           "enum": [
@@ -247,7 +248,7 @@
     "watch": "node esbuild.mjs --watch",
     "package": "node esbuild.mjs --production",
     "typecheck": "tsc --noEmit",
-    "pretest": "node esbuild.test.mjs",
+    "pretest": "node esbuild.mjs && node esbuild.test.mjs",
     "test": "node --test \"out-test/**/*.test.js\"",
     "lint": "eslint src",
     "vscode:prepublish": "npm run package"

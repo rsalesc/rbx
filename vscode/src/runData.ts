@@ -3,12 +3,12 @@
  *
  * Split out of the old tree provider so that nothing about *drawing* the view
  * lives next to what feeds it: this half talks to the workspace and the disk,
- * the webview half turns what it loads into rows. The two meet at
- * `PackageRunView`, which carries no editor API.
+ * the webview half turns what it loads into rows. The two meet at `PackageRun`,
+ * which carries no editor API.
  */
 import * as vscode from 'vscode';
 
-import { discoverPackages, packageLabel } from './discovery';
+import { discoverPackages } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
 import { PackageRunView } from './rbx/nodes';
@@ -90,6 +90,12 @@ export class RunDataProvider {
     return store;
   }
 
+  /**
+   * Whatever run is on disk for one package, or undefined if none is readable.
+   *
+   * A package with no readable run is not an error: one that has never been run
+   * still has to be selectable, and `flattenNodes` renders it as nothing.
+   */
   report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
   }
@@ -97,22 +103,18 @@ export class RunDataProvider {
   /**
    * Every discovered package paired with whatever run is on disk for it.
    *
-   * Packages with no readable run are kept rather than filtered: `flattenNodes`
-   * already drops them, and the rule that hides the package level counts
-   * *discovered* packages, so dropping them here would make the view gain and
-   * lose a level as runs come and go.
+   * The Run view deliberately does NOT use this -- it shows one problem and
+   * loads only that one, which is what stops a ten-problem contest paying for
+   * nine of them on every watcher tick. This is for the surfaces that are
+   * workspace-wide on purpose: the Problems panel reports a compile error in
+   * problem B while you are reading problem A, the same way the Explorer badges
+   * every package's declarations however few of them are on screen.
    */
   async loadAll(): Promise<PackageRunView[]> {
-    await this.ensureDiscovered();
+    const packages = await this.discovered();
     const views: PackageRunView[] = [];
-    for (const pkg of this.packages) {
-      const run = await this.report(pkg);
-      if (run === undefined) {
-        log(`No readable run for ${pkg.root} -- run \`rbx run\` in that directory.`);
-      } else {
-        log(`${pkg.root}: ${run.solutions.length} solution(s) in the last run.`);
-      }
-      views.push({ pkg, run, label: packageLabel(pkg) });
+    for (const pkg of packages) {
+      views.push({ pkg, run: await this.report(pkg) });
     }
     return views;
   }

@@ -15,16 +15,23 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
-import { RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
+import { ActiveProblem } from './activeProblem';
+import { log } from './log';
+import { packageLayout } from './rbx/layout';
+import { PackageRunView, RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
-import { buildViewModel } from './rbx/viewModel';
+import { EMPTY_MODEL, buildViewModel } from './rbx/viewModel';
 import { RunDataProvider } from './runData';
 
-/** What main.ts posts back: a load announcement, or a row's primary command. */
+/**
+ * What main.ts posts back: a load announcement, a row's primary command, or the
+ * problem the dropdown was just set to.
+ */
 interface ClientMessage {
   readonly type?: string;
   readonly commandId?: string;
   readonly nodeId?: string;
+  readonly root?: string;
 }
 
 /** A CSP nonce. Fresh per resolve, from a real random source. */
@@ -44,9 +51,18 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
    */
   private nodes = new Map<string, RunNode>();
   private view?: vscode.WebviewView;
+  /**
+   * What the last post said, so the log can report edges instead of ticks.
+   *
+   * `post` runs on every debounced watcher tick -- many per run -- so logging
+   * unconditionally would bury the output channel. Only a change of problem, or
+   * of whether that problem has a readable run at all, is news.
+   */
+  private posted?: { readonly root?: string; readonly readable: boolean };
 
   constructor(
     private readonly data: RunDataProvider,
+    private readonly active: ActiveProblem,
     private readonly extensionUri: vscode.Uri,
   ) {}
 
@@ -61,6 +77,12 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((message: ClientMessage) => {
       if (message.type === 'ready') {
         void this.post();
+        return;
+      }
+      if (message.type === 'select' && message.root !== undefined) {
+        // No `post` here: `ActiveProblem` fires its change event, which is
+        // already subscribed below. Posting as well would draw the view twice.
+        this.active.select(message.root);
         return;
       }
       if (message.type === 'invoke' && message.commandId !== undefined) {
@@ -79,6 +101,9 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // paying to keep a hidden view alive would buy nothing back.
     const subscriptions = [
       this.data.onDidChange(() => void this.post()),
+      // Both, and they are different events: `data` changes what the selected
+      // problem's run says, `active` changes which problem that is.
+      this.active.onDidChange(() => void this.post()),
       // `rbx.solutionLabel` changes nothing on disk, so no reload will bring the
       // new labels in on its own -- the view has to rebuild the model itself.
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -99,24 +124,58 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Load everything and hand the client a whole new model.
+   * Load the selected problem's run and hand the client a whole new model.
    *
-   * The id map is rebuilt in the same pass, from the same `PackageRunView`s, so
+   * One problem, not every discovered one: only the selected package is read
+   * from disk, so a contest of thirty problems costs one package's artifacts
+   * per tick rather than thirty.
+   *
+   * The id map is rebuilt in the same pass, from the same `PackageRunView`, so
    * an id the client can see always resolves to the node it was built from.
+   *
+   * The dropdown's contents ride along with the model rather than on a message
+   * of their own: they are answers to the same question -- what is the view
+   * showing -- and posting them separately would let the client draw a
+   * selection the model does not match.
    */
   private async post(): Promise<void> {
-    const packages = await this.data.loadAll();
+    const selected = this.active.selected();
+    // Undefined and not an empty layout: no package was discovered, so there is
+    // nothing to load and the client draws its empty state.
+    const pkg = selected === undefined ? undefined : packageLayout(selected);
+    const view: PackageRunView | undefined =
+      pkg === undefined ? undefined : { pkg, run: await this.data.report(pkg) };
     // Both walks, because both produce rows the client can click: the tree's,
     // and the compilation findings' -- including the warning lines under them,
     // each of which resolves to the position it opens the source at.
-    const nodes: RunNode[] = [...flattenNodes(packages), ...findingNodes(packages)];
+    const nodes: RunNode[] =
+      view === undefined ? [] : [...flattenNodes(view), ...findingNodes(view)];
     this.nodes = new Map(nodes.map((node) => [nodeId(node), node]));
+    const readable = view?.run !== undefined;
+    const posted = this.posted;
+    if (posted === undefined || posted.root !== selected || posted.readable !== readable) {
+      // Nothing said for an undefined selection: discovery already logged that
+      // it found no package, and repeating it here adds no fact.
+      if (selected !== undefined) {
+        log(
+          readable
+            ? `Loaded the run in ${selected}.`
+            : `No readable run for ${selected} -- run \`rbx run\` in that directory.`,
+        );
+      }
+      this.posted = { root: selected, readable };
+    }
     // Read per post rather than cached: the setting is window-scoped and the
     // configuration API is the only place its current value lives.
     const style = asSolutionLabelStyle(
       vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
     );
-    await this.view?.webview.postMessage({ type: 'state', model: buildViewModel(packages, style) });
+    await this.view?.webview.postMessage({
+      type: 'state',
+      model: view === undefined ? EMPTY_MODEL : buildViewModel(view, style),
+      problems: this.active.problems(),
+      selected,
+    });
   }
 
   private html(webview: vscode.Webview): string {
@@ -156,6 +215,7 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     <title>rbx Run</title>
   </head>
   <body>
+    <div id="selector-host"></div>
     <div id="header"></div>
     <div id="filter-host"></div>
     <div id="tree" role="tree" tabindex="-1"></div>

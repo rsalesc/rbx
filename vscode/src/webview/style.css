@@ -109,6 +109,43 @@ body {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
+.selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+/* The contest's own colour, so the two contests open in one window are told
+   apart by the same mark the Explorer badges them with. `flex: none` because a
+   circle that a long problem name squeezed into an ellipse would read as a
+   different mark. */
+.selector-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* `min-width: 0` because a `<select>` defaults to `min-width: auto` and would
+   refuse to shrink below its longest option, pushing the dot off a narrow
+   sidebar rather than truncating the name. */
+.selector select {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  padding: 2px 4px;
+}
+
+.selector select:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
 .filter {
   padding: 4px 8px;
 }

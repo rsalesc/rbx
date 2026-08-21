@@ -16,14 +16,11 @@
  * Pure by design, like nodes.ts: no `vscode` import, so `node --test` can hold
  * the whole thing to account.
  */
-import * as path from 'path';
-
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
 import {
   FindingNode,
   GroupNode,
-  PackageNode,
   PackageRunView,
   SolutionNode,
   TestcaseNode,
@@ -39,7 +36,7 @@ import {
   SolutionLabelStyle,
   solutionLabels,
 } from './solutionLabel';
-import { SolutionRun, TestcaseRun } from './store';
+import { PackageRun, SolutionRun, TestcaseRun } from './store';
 import {
   Progress,
   formatMemory,
@@ -212,16 +209,16 @@ export interface Row {
   readonly id: string;
   readonly parentId?: string;
   readonly depth: number;
-  readonly kind: 'package' | 'solution' | 'group' | 'testcase';
+  readonly kind: 'solution' | 'group' | 'testcase';
   readonly gutter: Gutter;
   readonly label: string;
   /**
    * The whole of what the label is a shortening of, for the row's tooltip.
    *
    * Only solution rows carry one, and only because `rbx.solutionLabel` lets the
-   * label stop short of the path: a user reading `main.cpp` under two packages
-   * still has somewhere to find out which `sols/` it came from. Absent when the
-   * label is already the whole truth.
+   * label stop short of the path: a user reading `main.cpp` still has somewhere
+   * to find out which `sols/` it came from. Absent when the label is already
+   * the whole truth.
    */
   readonly labelTitle?: string;
   readonly labelHue?: Hue;
@@ -331,16 +328,13 @@ export interface RunViewModel {
 }
 
 /**
- * What to call a package.
+ * The model of a view with no problem behind it at all.
  *
- * The host disambiguates two packages both named `prob` by asking
- * `vscode.workspace` which folder each sits in, and passes the answer down --
- * importing that here would drag the editor API into a module whose whole value
- * is being testable without it. The basename is right whenever it did not.
+ * Distinct from `buildViewModel` of a package with no run: there is no package,
+ * so there is no layout to invent one for. Shared by both halves so the client's
+ * starting state and the host's answer for an empty workspace cannot drift.
  */
-function packageName(node: PackageNode): string {
-  return node.label ?? path.basename(node.pkg.root);
-}
+export const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
@@ -719,26 +713,6 @@ function solutionDetail(
   };
 }
 
-function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
-  const label = packageName(node);
-  return {
-    id: nodeId(node),
-    parentId,
-    depth,
-    kind: 'package',
-    gutter: 'none',
-    label,
-    labelBold: false,
-    meta: [],
-    warnings: [],
-    mismatch: false,
-    expandable: true,
-    defaultExpanded: true,
-    search: haystack(label, undefined, false),
-    section: 'rbx.package',
-  };
-}
-
 function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
   const { run, solo } = node;
   const warnings = warningsOf(run.report, true);
@@ -853,40 +827,25 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
   };
 }
 
-/** How deep each kind sits, given whether the walk emitted package rows. */
+/** How deep each kind sits, counting the solution as the top level. */
 const DEPTHS: Record<Row['kind'], number> = {
-  package: 0,
-  solution: 1,
-  group: 2,
-  testcase: 3,
+  solution: 0,
+  group: 1,
+  testcase: 2,
 };
 
 /**
- * Every package's solution labels, by package root and then by solution path.
+ * Every path the labels are computed over, for one package.
  *
- * Computed package by package, so the prefix `trimmed` drops is the one *that*
- * package's solutions share -- a contest workspace where one package keeps its
- * solutions somewhere unusual does not cost every other package its trimming.
+ * The findings' paths join the solutions': a solution that failed to compile is
+ * not in `solutions`, and labelling it on its own would trim it against a
+ * different prefix from every row above it.
  */
-function labelsByPackage(
-  packages: readonly PackageRunView[],
-  style: SolutionLabelStyle,
-): Map<string, Map<string, string>> {
-  const labels = new Map<string, Map<string, string>>();
-  for (const { pkg, run } of packages) {
-    if (run === undefined) {
-      continue;
-    }
-    // The findings' paths join the set the labels are computed over: a solution
-    // that failed to compile is not in `solutions`, and labelling it on its own
-    // would trim it against a different prefix from every row above it.
-    const paths = [
-      ...run.solutions.map((solutionRun) => solutionRun.solution.path),
-      ...run.findings.map((finding) => finding.entry.path),
-    ];
-    labels.set(pkg.root, solutionLabels(paths, style));
-  }
-  return labels;
+function labelledPaths(run: PackageRun | undefined): string[] {
+  return [
+    ...(run?.solutions ?? []).map((solutionRun) => solutionRun.solution.path),
+    ...(run?.findings ?? []).map((finding) => finding.entry.path),
+  ];
 }
 
 /**
@@ -940,14 +899,14 @@ function findingRow(node: FindingNode, label: string): FindingRow {
  * carry a header saying so.
  */
 function buildFindings(
-  packages: readonly PackageRunView[],
-  labels: Map<string, Map<string, string>>,
+  view: PackageRunView,
+  labels: ReadonlyMap<string, string>,
 ): Findings | undefined {
-  const rows = findingNodes(packages)
+  const rows = findingNodes(view)
     .filter((node): node is FindingNode => node.kind === 'finding')
     .map((node) => {
       const path = node.finding.entry.path;
-      return findingRow(node, labels.get(node.pkg.root)?.get(path) ?? path);
+      return findingRow(node, labels.get(path) ?? path);
     });
   if (rows.length === 0) {
     return undefined;
@@ -966,30 +925,29 @@ function buildFindings(
 }
 
 export function buildViewModel(
-  packages: readonly PackageRunView[],
+  view: PackageRunView,
   style: SolutionLabelStyle = DEFAULT_SOLUTION_LABEL_STYLE,
 ): RunViewModel {
-  const nodes = flattenNodes(packages);
-  const labels = labelsByPackage(packages, style);
-  // `flattenNodes` drops the package level for a single package, so the offset
-  // has to come from the walk it actually performed rather than from the input.
-  const hasPackages = nodes.some((node) => node.kind === 'package');
-  const offset = hasPackages ? 0 : 1;
+  const nodes = flattenNodes(view);
+  // Over the selected package's paths alone, which is what the label styles
+  // have always meant: the prefix `trimmed` drops is the one *this* package's
+  // solutions share, so a sibling keeping its solutions somewhere unusual
+  // cannot cost this one its trimming. It no longer even can -- the sibling
+  // does not reach this function any more.
+  const labels = solutionLabels(labelledPaths(view.run), style);
   // The most recent row at each level, so a child can name its parent without
   // the walk having to carry a stack.
   const parents = new Map<number, string>();
 
   const rows: Row[] = [];
   for (const node of nodes) {
-    const depth = DEPTHS[node.kind] - offset;
+    const depth = DEPTHS[node.kind];
     const parentId = parents.get(depth - 1);
     const row = ((): Row => {
       switch (node.kind) {
-        case 'package':
-          return packageRow(node, depth, parentId);
         case 'solution': {
           const path = node.run.solution.path;
-          return solutionRow(node, depth, labels.get(node.pkg.root)?.get(path) ?? path, parentId);
+          return solutionRow(node, depth, labels.get(path) ?? path, parentId);
         }
         case 'group':
           return groupRow(node, depth, parentId);
@@ -1015,6 +973,6 @@ export function buildViewModel(
     // `rows` is not consulted: a run whose every solution failed to compile has
     // no solution rows at all, and it is precisely the run with most to say.
     empty: !rows.some((row) => row.kind === 'solution'),
-    findings: buildFindings(packages, labels),
+    findings: buildFindings(view, labels),
   };
 }
